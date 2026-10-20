@@ -3296,3 +3296,60 @@ entries with stripped stamps", "renderBacklogIndexBlock lists Fixed entries afte
 Open lines" and "renderBacklogIndexBlock re-reads a Done section whose stat changed";
 `test/backlog-index-edges.test.ts` — "renderBacklogIndexBlock takes the newest five closed entries
 from the live section first, then its archive".
+
+## Merge strikes: a merge that keeps failing is blamed on its change after two strikes of the same patch, and only a judged failure of a readable patch is a strike
+
+`src/merge/merge-check-failures.ts` owns the strike store on `RunnerState.mergeCheckFailures`, keyed
+by patch-id.
+
+### INV-BF1: one patch's failures keep the pin under the limit and blame the change at it
+
+**Guarantee.** One patch's red in-lock check, or its deterministic cross-check block, keeps the pin
+(`merge_blocked`) under `MERGE_CHECK_FAILURE_LIMIT`. At the limit the failure is blamed on the
+change: a red check through `attributeRedCheck`, a block through a rejection that names it, with the
+pin deleted and the strike cleared.
+
+**Binds.** `src/merge/merge-check-failures.ts` (`MERGE_CHECK_FAILURE_LIMIT`, `pinKept`,
+`keepPinOrAttribute`, `mergeCheckRed`, `mergeBlocked`).
+
+**Pinned by.** `test/merger.test.ts` — "a single merge's red in-lock check retries once, then
+rejects on a green main", "a single merge's red in-lock check retries once, then keeps its pin as
+main_red" and "a fix-claim-blocked merge retries once, then rejects with the block reason".
+
+### INV-BF2: strikes are counted per patch-id
+
+**Guarantee.** A pin whose patch-id cannot be read never stores a strike and is never blamed by
+count. A stored strike on another patch does not add to the new one.
+
+**Binds.** `src/merge/merge-check-failures.ts` (`tallyCheckFailure`).
+
+**Pinned by.** `test/merge-check-strikes.test.ts` — "mergeBlocked keeps a pin whose patch-id cannot
+be read on every attempt and stores no strike" and "mergeBlocked starts a new patch's count at one
+when the stored strike belongs to another patch".
+
+### INV-BF3: a red that judged nothing is not a strike
+
+**Guarantee.** A red check that judged nothing (an unverified tree) is not a strike, and neither is
+a red that fails only main's known failures. Both keep the pin.
+
+**Binds.** `src/merge/merge-check-failures.ts` (`attributeRedCheck`).
+
+**Pinned by.** `test/merger.test.ts` — "an unverified red in-lock check — the run timed out — keeps
+the pin without a strike"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref and
+records no strike for an unverified red" and "attributeRedCheck keeps the ref, with no strike, for a
+red that fails only main's known failures".
+
+### INV-BF4: a first strike warns, and a passing retry is a flake only for the same pin
+
+**Guarantee.** A red merge check's first strike logs a warning naming the failing test. A retry that
+then passes logs a `MERGE_FLAKY_WARNING_PREFIX` flake, but only when the stored strike's patch-id is
+the merged pin's. `attributeRedCheck` excuses a known-flaky headline once per headline per pin.
+
+**Binds.** `src/merge/merge-check-failures.ts` (`noteMergeRetryPassed`, `attributeRedCheck`),
+`RunnerState.mergeFlakeExcused`.
+
+**Pinned by.** `test/merger.test.ts` — "a kept-for-re-merge red merge check logs a warning naming
+the failing test", "a red merge check that passes on its kept-pin retry logs a merge-check flake
+warning" and "a stale red strike of another pin is not recorded as a flake when a different pin
+merges"; `test/attribute-red-check.test.ts` — "attributeRedCheck keeps the ref once for a
+known-flake red, then attributes a repeat".
