@@ -614,3 +614,56 @@ merge, a resume or a run in progress keeps its claim"; `test/orchestrator-schedu
 claimed entry that merges releases the claim on the next poll", "pausing one instance releases its
 claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
 claim" and "a released claim is saved to disk before the runner runs again".
+
+## The backlog archive: finished entries move once, and only the ones a change added
+
+The archive moves finished entries out of PLANS.md / BUGS.md into PLANS-DONE.md / BUGS-FIXED.md: at
+commit time (`archiveNewFinishedEntries`), in bulk (`archiveFinishedOnMain`, behind `tumwater
+archive`) and at team start. Each rule below is the pure `archiveFinishedText`'s.
+
+### INV-O1: the commit-time sweep moves only the entries the change added, to the top of the archive
+
+**Guarantee.** `archiveFinishedText` with a `baseKeys` selection moves only the finished-section
+entries whose heading key (`archiveKey`) the change's merge-base did not hold. They go above the
+archive's existing entries, in their live order. Entries the base already held stay in the live
+section. A `_None yet._` placeholder and the next section's heading are left in place.
+`archiveNewFinishedEntries` computes the base from the worktree's merge-base with main.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`archiveFinishedText`, `archiveNewFinishedEntries`),
+`src/run/run-stage.ts` (its call before the commit).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "the commit-time sweep moves only the entries the
+change added, newest first, into a new archive", "the sweep prepends to an existing archive and
+leaves entries the base already had", "the sweep keeps a placeholder in the live section and a
+following section's heading intact" and "archiveNewFinishedEntries writes the move in a worktree
+against its merge-base".
+
+### INV-O2: an entry the archive already holds is never archived twice
+
+**Guarantee.** A selected entry whose heading key the archive already holds does not move
+(`entryFates`). With the same text (blank edges and trailing whitespace ignored, `entryText`) it is
+dropped from the live section. With other text it stays in the live section, where the author and
+the reviewer see it. This holds for the commit-time sweep, the bulk archive whatever it keeps, and
+`archiveFinishedOnMain`.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`entryFates`, `entryText`, `archiveFinishedText`,
+`archiveFinishedOnMain`).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "the sweep drops an added entry the archive holds
+verbatim and leaves an edited copy in the live section", "a sweep that only finds re-pasted entries
+empties the live section and leaves the archive as it was", "the bulk archive skips entries the
+archive already holds, whatever it keeps" and "archiveFinishedOnMain drops a hand commit's re-pasted
+entries instead of archiving them twice".
+
+### INV-O3: with no archive file, the commit-time sweep leaves a live section that holds older entries as it is
+
+**Guarantee.** When the archive file does not exist and the live finished section would still hold
+other entries after the move, `archiveFinishedText` returns null for a `baseKeys` selection. Nothing
+is written, so an archive never sits above older live history. The bulk archive (`keep`) still
+creates the archive from `archiveTemplate`.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`archiveFinishedText`, `archiveTemplate`).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "the sweep moves nothing while legacy entries sit in
+the live section and no archive exists" and "the bulk archive moves the whole body, one-line records
+included, or all but the newest kept entries".
