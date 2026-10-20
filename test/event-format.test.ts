@@ -174,6 +174,10 @@ test("formatEvent renders wake reasons and warning messages operators rely on", 
 
   const stop = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_stop" } as never);
   assert.match(stop, /tumwater stopped/);
+  assert.match(
+    formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_stop", cause: "restart" } as never),
+    / tumwater stopped to restart onto the new build$/,
+  );
 });
 
 test("formatEvent carries the reason on non-changed tick outcomes", () => {

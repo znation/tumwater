@@ -210,6 +210,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     const types = eventTypes(repo);
     assert.ok(types.includes("orchestrator_start"));
     assert.ok(types.includes("orchestrator_stop"));
+    assert.equal(eventsOfType(repo, "orchestrator_stop")[0]?.cause, "signal", "the caller abort is a signal stop");
     // Both enabled roles got their startup tick.
     for (const role of ["clean", "dedupe"])
       assert.ok(loadRunnerState(repo, role).runs >= 1, `${role} should have ticked`);

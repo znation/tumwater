@@ -333,16 +333,25 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The flags that outlive one poll (orchestrator-poll.ts's PollState).
   const state = newPollState();
 
+  // Why the poll loop ended, for the orchestrator_stop event: a throw leaves "error".
+  let stopCause: "restart" | "once" | "signal" | "error" = "error";
   try {
     while (!signal.aborted) {
       const inputs = await pollRequestsAndWatch(ctx, state);
       const gates = pollGatesAndHolds(ctx, state, inputs);
-      if (await pollRedeploy(ctx, state, inputs)) break;
+      if (await pollRedeploy(ctx, state, inputs)) {
+        stopCause = "restart";
+        break;
+      }
       await pollMergeDrain(ctx, state, inputs, gates);
       await pollSchedule(ctx, state, inputs, gates);
-      if (pollReserveAndExit(ctx, state, inputs)) break;
+      if (pollReserveAndExit(ctx, state, inputs)) {
+        stopCause = "once";
+        break;
+      }
       await sleepInterruptible(pollMs, signal);
     }
+    if (stopCause === "error") stopCause = "signal";
   } finally {
     await drainInFlightWork(
       root,
@@ -353,7 +362,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
       () => internalStop.abort(),
     );
-    emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop" });
+    emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop", cause: stopCause });
     notifier.dispose();
     removeQuiet(infoFile);
   }

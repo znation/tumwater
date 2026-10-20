@@ -47,6 +47,7 @@ test("a stale self-hosted build drains the team, swaps, and returns restart", as
     assert.ok(types.indexOf("build_stale") < types.indexOf("restart_pending"), "stale, then pending");
     assert.ok(types.indexOf("restart_pending") < types.indexOf("restart"), "pending, then restart");
     assert.ok(types.indexOf("restart") < types.indexOf("orchestrator_stop"), "the stop follows the restart");
+    assert.equal(eventsOfType(repo, "orchestrator_stop")[0]?.cause, "restart", "the stop names the restart");
     assert.equal(fs.readdirSync(path.join(repo, ".tumwater/inbox")).length, 1, "the held director prompt survives for the next generation");
     assert.equal(readOrchestratorInfo(repo), null, "the info file is removed like any other stop");
   } finally {

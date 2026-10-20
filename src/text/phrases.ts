@@ -144,7 +144,26 @@ export function roleResumePhrase(role: unknown): string {
 
 /** The line for an orchestrator shutdown — the event feed (event-format.ts) and the failure
  * digest's Team state changes lines (src/failure/failure-state-change.ts) both render it. */
-export const ORCHESTRATOR_STOPPED = "tumwater stopped";
+const ORCHESTRATOR_STOPPED = "tumwater stopped";
+
+/** The orchestrator shutdown line with its `cause` (restart, once, signal, error): the event feed
+ * (event-format.ts) and the failure digest (src/failure/failure-state-change.ts) both render it.
+ * A missing or unknown cause — every event logged before the field existed — renders the bare
+ * ORCHESTRATOR_STOPPED. */
+export function orchestratorStopPhrase(cause: unknown): string {
+  switch (cause) {
+    case "restart":
+      return `${ORCHESTRATOR_STOPPED} to restart onto the new build`;
+    case "once":
+      return `${ORCHESTRATOR_STOPPED} — the --once round settled`;
+    case "signal":
+      return `${ORCHESTRATOR_STOPPED} on a stop signal`;
+    case "error":
+      return `${ORCHESTRATOR_STOPPED} — its polling failed`;
+    default:
+      return ORCHESTRATOR_STOPPED;
+  }
+}
 
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
  * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,

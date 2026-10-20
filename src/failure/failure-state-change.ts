@@ -10,7 +10,7 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
@@ -204,7 +204,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `tumwater started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
       break;
     case "orchestrator_stop":
-      text = ORCHESTRATOR_STOPPED;
+      text = orchestratorStopPhrase(ev.cause);
       break;
     case "supervisor_exit":
       text = `tumwater down — restart ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;

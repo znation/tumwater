@@ -4,7 +4,7 @@ import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { squash, textOr, truncate } from "../text/text.js";
@@ -220,7 +220,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "orchestrator_start":
       return `tumwater started (pid ${textOr(e.pid)}${e.build ? `, version ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
-      return ORCHESTRATOR_STOPPED;
+      return orchestratorStopPhrase(e.cause);
     case "prompt_enqueued":
       return `message added to the inbox: ${textOr(e.preview)}`;
     case "prompt_cancelled":

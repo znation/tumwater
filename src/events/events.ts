@@ -45,7 +45,7 @@ export interface HarnessEvent {
     | "wake"
     | "run_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change tick), or "plans-full" (the plan role's PLANS.md already holds its eligible-plan target); one per deferral episode
     | "orchestrator_start"
-    | "orchestrator_stop"
+    | "orchestrator_stop" // carries cause (restart, once, signal or error); events logged before the field existed carry none
     | "prompt_enqueued"
     | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
     | "prompt_edited" // a queued prompt's text was rewritten in place (tumwater prompt --edit)

@@ -246,6 +246,10 @@ test("run_deferred, orchestrator lifecycle, and supervisor_exit render their pay
   );
   assert.equal(describeStateChange(ev({ type: "orchestrator_start", pid: 4242 })), "tumwater started (pid 4242)");
   assert.equal(describeStateChange(ev({ type: "orchestrator_stop" })), "tumwater stopped");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_stop", cause: "once" })), "tumwater stopped — the --once round settled");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_stop", cause: "signal" })), "tumwater stopped on a stop signal");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_stop", cause: "error" })), "tumwater stopped — its polling failed");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_stop", cause: "bogus" })), "tumwater stopped");
   assert.equal(
     describeStateChange(ev({ type: "supervisor_exit", generation: 7, code: 1 })),
     "tumwater down — restart 7 exited 1",
