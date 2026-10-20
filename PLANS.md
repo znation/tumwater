@@ -55,4 +55,52 @@ Out of scope, unchanged: the failure digest (`report --failures --since`), whose
 - The existing tests "tumwater report --since prints the window totals and validates its flags" and "renderSinceReportMarkdown pins the header, totals voice, role ranking, and zero window" pass unchanged.
 - `npm run test:gate` passes, including test/help.test.ts and test/completion.test.ts.
 
+### Transcript search in the dashboard, part 1/2: `GET /api/transcript?role=<id>&grep=<text>` keeps only the transcript entries that contain the text, each under its run's separator, through one filter shared with `logs --transcript --grep` (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/ui/transcript.ts + src/cli/log-commands.ts + src/gui/gui-endpoints.ts + docs/how-it-works.md + test/transcript.test.ts + test/gui.test.ts)
+
+**Goal.** `tumwater logs --transcript <id> --grep <text>` now keeps only the matching entries, each under its run's separator. The dashboard's role drawer reads the same transcript through `GET /api/transcript` (`handleTranscript`, src/gui/gui-endpoints.ts), which takes only `role`, `n` and `prompt`, so the drawer cannot search it. This part adds an optional `grep` query parameter. It uses the same keep rule, moved out of `cmdLogsTranscript`'s `printEntry` (src/cli/log-commands.ts) into one exported filter in src/ui/transcript.ts, so the CLI and the API cannot drift apart. Part 2/2 ("Transcript search in the dashboard, part 2/2") adds the drawer's search box. When this was planned, `grep -n 'grep' src/ui/transcript.ts` printed nothing and `handleTranscript` read no `grep` parameter.
+
+**Approach.**
+1. src/ui/transcript.ts: right after `isRunSeparatorLine`, add `export function createTranscriptFilter(needle: string): (entry: TranscriptEntry) => string[] | null`. `needle` is already lowercased. The returned function holds `lastSeparator: string | null` and `separatorShown: boolean` and applies exactly the rule `printEntry` applies today:
+   - an empty entry returns null;
+   - an entry whose first line passes `isRunSeparatorLine` sets `lastSeparator` to that line and `separatorShown = false`;
+   - an entry with no line whose `toLowerCase()` includes `needle` returns null;
+   - otherwise it returns the entry. If the entry does not open with a separator, and `lastSeparator` is non-null and `!separatorShown`, it returns `[lastSeparator, ...entry]`. In both cases it sets `separatorShown = true`.
+   The doc comment says this is the transcript-search keep rule that `logs --transcript --grep` and `GET /api/transcript?grep=` share.
+2. src/cli/log-commands.ts `cmdLogsTranscript`: replace the `lastSeparator`/`separatorShown` state and the separator logic in `printEntry` with `const filter = needle === null ? null : createTranscriptFilter(needle);`. `printEntry` prints the entry when `filter` is null. Otherwise it calls `filter(lines)` and, on a non-null result, increments `matched` and `say`s `out.join("\n")`. Import `createTranscriptFilter` beside `isRunSeparatorLine`, and drop `isRunSeparatorLine` from the import if it is no longer used there. The output does not change.
+3. src/ui/transcript.ts `readTranscript`: add `grep?: string` to `opts` (an already-lowercased, non-empty needle). When it is set, take `value.entries.slice(-take)` as now, map each entry through one `createTranscriptFilter(opts.grep)` (dropping nulls), flatten the kept entries, and do not append `pending`, because a lone pending separator holds no match. The tail cache stays keyed by `includePrompts` only, since the filter runs after the cache. Without `grep`, the result does not change. Extend the doc comment: `limit` bounds the scanned entries, not the kept ones, which is the scan-then-filter rule `logs --transcript -n N --grep` uses.
+4. src/gui/gui-endpoints.ts `handleTranscript`: read `const grep = (q.get("grep") ?? "").trim().toLowerCase();`. Absent or blank filters nothing, the convention `/api/history`'s `grep` uses. Pass `grep: grep === "" ? undefined : grep` beside `includePrompts`. Add `[&grep=<text>]` to the doc comment's route line, plus one sentence: grep keeps only the entries containing the text, case-insensitively, each under its run's separator, the `logs --transcript <id> --grep` rule; `n` bounds the entries scanned.
+5. docs/how-it-works.md: in the dashboard paragraph that names `GET /api/transcript?…&prompt=1`, add after that sentence: "`&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does."
+
+**Files.** src/ui/transcript.ts, src/cli/log-commands.ts, src/gui/gui-endpoints.ts, docs/how-it-works.md, test/transcript.test.ts (import `createTranscriptFilter` from `../src/ui/transcript.js`), test/gui.test.ts. Before claiming that no invariant changes, run `grep -n 'api/transcript\|readTranscript' docs/invariants.md`. When this was planned it printed nothing.
+
+**Acceptance criteria.**
+- New unit test "createTranscriptFilter keeps matching entries under their run's separator, once per run". It feeds `["── run @ a ──", "  p1"]`, `["  on it"]`, `["  found the LEAK"]`, `["  LEAK again"]`, `["── run @ b ──", "  tidy"]` and `["  leak late"]` to one `createTranscriptFilter("leak")`. The non-null results are, in order, `["── run @ a ──", "  found the LEAK"]`, `["  LEAK again"]` and `["── run @ b ──", "  leak late"]`. An empty entry returns null.
+- In test/gui.test.ts "gui /api/transcript serves rendered lines and validates role/n", after the `withPrompt` assertions with the same log: `/api/transcript?role=feature&n=10&grep=THING` returns lines deep-equal to `ok.lines`. The assistant turn's text and its tool call form one entry, and the run's separator opens it, so the one matching entry is the whole unfiltered view. `&grep=nomatch` returns `{ lines: [] }`, and `&grep=` (blank) returns lines deep-equal to `ok.lines`.
+- The existing tests in test/log-commands-views.test.ts, including "logs --transcript --grep keeps matching entries under their run's separator", pass unchanged.
+- `grep -n 'separatorShown' src/cli/log-commands.ts` prints nothing, and `grep -n 'createTranscriptFilter' src/cli/log-commands.ts src/ui/transcript.ts` prints lines from both files.
+- `npm run test:gate` passes.
+
+### Transcript search in the dashboard, part 2/2: the role drawer's Live transcript gets a search box that narrows it through `GET /api/transcript?…&grep=` (planned 2026-10-20 by the plan role; "requires part 1/2 landed"; touches src/ui/gui/gui-client-drawer.ts + docs/how-it-works.md + test/gui-client-drawer.test.ts)
+
+**Goal.** Part 1/2 ("Transcript search in the dashboard, part 1/2") gives `GET /api/transcript` a `grep` parameter. This part gives the drawer's "Live transcript" section (`openRole`, src/ui/gui/gui-client-drawer.ts) a search box beside "Show prompts". While the box holds text, the panel shows only the matching entries, each under its run's separator. That is the dashboard twin of `tumwater logs --transcript <id> --grep <text>`.
+
+**Approach.**
+1. src/ui/gui/gui-client-drawer.ts:
+   - Beside `let transcriptPrompts = false;`, add `let transcriptGrep = "";`, and reset it to `""` in `openRole` where `transcriptPrompts` is reset.
+   - In `openRole`'s sec-head markup, put `<input type='search' id='transcriptgrep' class='input-sm' placeholder='Search transcript' aria-label='Search transcript' style='margin-left:auto'>` before the Show prompts button, and move the button's `margin-left:auto` to `margin-left:8px`. Before naming `input-sm`, check that it exists with `grep -rn 'input-sm' src/ui/gui`. When it is absent, reuse the class the `feedgrep` box uses (`grep -rn "feedgrep" src/ui/gui`). The markup is written only by `openRole`, so the 1 s poll never rewrites the box or wipes typing.
+   - `refreshTranscript`: capture `const grep = transcriptGrep;` beside `prompts`. Append `(grep ? "&grep=" + encodeURIComponent(grep) : "")` to the URL. Drop a stale answer with `|| transcriptGrep !== grep` beside the `transcriptPrompts !== prompts` check. When `lines` is empty and `grep` is set, paint `<span class='muted'>No transcript entries match “` + esc(grep) + `”.</span>` instead of the "No transcript yet" text.
+   - Add `function setTranscriptGrep(value) { transcriptGrep = String(value ?? "").trim(); refreshTranscript(true); }`.
+   - Beside the drawer's existing `click` listener, register `$("drawer").addEventListener("input", (ev) => { if (ev.target && ev.target.id === "transcriptgrep") setTranscriptGrep(ev.target.value); });`.
+   - Update the file's header comment, which describes the transcript and its "Show prompts" button, to mention the search box and `&grep=`.
+2. docs/how-it-works.md: in the dashboard paragraph that part 1/2 edited, say that the drawer's search box sends that `&grep=`.
+
+**Files.** src/ui/gui/gui-client-drawer.ts, docs/how-it-works.md, test/gui-client-drawer.test.ts.
+
+**Acceptance criteria.** New tests in test/gui-client-drawer.test.ts, using `openDrawer`, `workingStatus`, and the env's `jsonCalls` and `responses`:
+- "the transcript search box narrows the live transcript through &grep and resets per role": after `toggleRole("clean")`, call `setTranscriptGrep("  Leak ")` and await the fetch. `jsonCalls` then holds a path ending `&grep=Leak`, and the `transcript` panel paints the response's lines. `setTranscriptGrep("")` fetches a path without `&grep`. Opening another role (or closing and reopening "clean") fetches without `&grep`.
+- "a transcript search with no match says so": a `responses` entry for the `&grep=nomatch` path returning `{ lines: [] }` paints a panel containing `No transcript entries match` and `nomatch`, escaped (also check `setTranscriptGrep("<b>")` paints `&lt;b&gt;`).
+- The existing tests "the role drawer paints a working role's actions, metrics, runs, and transcript with the real formatters" and "transcriptHtml classifies run separators, tool calls, thinking, and warnings, escaping each line" pass unchanged.
+- `grep -n "transcriptgrep" src/ui/gui/gui-client-drawer.ts` prints the markup line and the listener line.
+- `npm run test:gate` passes.
+
 ## Done
