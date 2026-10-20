@@ -188,6 +188,10 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N run trail/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+P older run/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+R transcript/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true, trailTranscript: "plain" }), /Ctrl\+R prompts/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true, trailTranscript: "prompts" }), /Ctrl\+R hide transcript/);
+  assert.doesNotMatch(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+R/);
   assert.doesNotMatch(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+P/);
   // The History pane names its Summary toggle in the Ctrl+Y hint, the summary or the rows.
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: null }), /Ctrl\+Y summary/);

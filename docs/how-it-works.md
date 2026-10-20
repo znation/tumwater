@@ -474,7 +474,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   `readTickDetail`/`renderTickDetail` pair `tumwater history <role> --last` and the dashboard's
   History drill-down use, then the run commit's per-file stat footer (`tumwater history <role>
   <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
-  `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest.
+  `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest. `Ctrl+R` on a trail adds the run's agent transcript, then the transcript with each agent run's prompt, then hides it again (the text of `history <role> <n> --transcript [--prompt]`).
   The dashboard's History drill-down adds a "Revert this change…" button on a run whose change is on
   the base branch: it previews through `previewRevert`, then reverts through `revertMergedCommit`,
   the two cores `tumwater revert` uses (`POST /api/revert`).

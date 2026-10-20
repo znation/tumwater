@@ -20,10 +20,10 @@ import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, branchName, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, branchName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
-import { renderTickDetail } from "../src/tick/tick-detail.js";
+import { renderTickDetail, tickTranscriptLines } from "../src/tick/tick-detail.js";
 import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
@@ -904,6 +904,73 @@ function openHistory(keys: ReturnType<typeof makeKeys>["keys"]): void {
   keys.syncSnapshot(0, false, ["clean"]);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
 }
+
+function writeTrailPiLog(root: string): void {
+  const lines = [
+    { type: "tumwater_run", kind: "author", agent: "pi", ts: 1_700_000_010_000 },
+    { type: "agent_start" },
+    { type: "message_end", message: { role: "user", content: [{ type: "text", text: "asked-one" }], timestamp: 1_700_000_010_000 } },
+    { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "said-one" }], timestamp: 1_700_000_010_000 } },
+  ];
+  fs.mkdirSync(path.dirname(piLogPath(root, "clean")), { recursive: true });
+  fs.writeFileSync(piLogPath(root, "clean"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+}
+
+test("Ctrl+R on the History trail cycles the agent transcript off, plain, prompts, off", () => {
+  const root = historyTrailRoot();
+  writeTrailPiLog(root);
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>(() => {}));
+  openHistory(keys);
+  const rows = keys.state();
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.deepEqual(keys.state(), rows, "Ctrl+R on the rows changes nothing");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  const detail = readTickDetail(root, "clean", 1)!;
+  const bare = renderTickDetail(detail);
+  assert.equal(keys.state().trailTranscript, "off");
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().trailTranscript, "plain");
+  const plain = tickTranscriptLines(root, "clean", 1, detail).found;
+  assert.ok(plain.length > 0 && plain.join("\n").includes("said-one"));
+  assert.equal(keys.state().trailCache, `${bare}\n\n${plain.join("\n")}`);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().trailTranscript, "prompts");
+  const withPrompts = tickTranscriptLines(root, "clean", 1, detail, { includePrompts: true }).found;
+  assert.equal(keys.state().trailCache, `${bare}\n\n${withPrompts.join("\n")}`);
+  assert.ok(withPrompts.length > plain.length);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().trailTranscript, "off");
+  assert.equal(keys.state().trailCache, bare);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailTranscript, "off", "leaving and re-entering the trail starts bare");
+});
+
+test("Ctrl+R on a run with no transcript segment shows the note", () => {
+  const root = historyTrailRoot();
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>(() => {}));
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  const note = tickTranscriptLines(root, "clean", 1, readTickDetail(root, "clean", 1)!).note;
+  assert.ok((keys.state().trailCache ?? "").endsWith(`\n\n${note}`));
+});
+
+test("the History trail composes detail, stat, then transcript whichever finishes first", async () => {
+  const root = historyTrailRoot();
+  writeTrailPiLog(root);
+  let resolve!: (s: string) => void;
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>((r) => (resolve = r)));
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  resolve(" a.ts | 1 +");
+  await new Promise((r) => setImmediate(r));
+  const detail = readTickDetail(root, "clean", 1)!;
+  const plain = tickTranscriptLines(root, "clean", 1, detail).found.join("\n");
+  assert.equal(keys.state().trailCache, `${renderTickDetail(detail)}\n\n a.ts | 1 +\n\n${plain}`);
+});
 
 test("the History trail appends the tick commit's stat once it resolves", async () => {
   const root = historyTrailRoot();

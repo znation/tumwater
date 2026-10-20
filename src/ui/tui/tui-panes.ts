@@ -156,11 +156,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return backlog.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "r") {
-      // The in-place Ctrl+R refresh arms: the Pending pane's queue/roster re-read, then the
-      // Health pane's doctor re-run, then the backlog's release — each returns false when
-      // its view does not apply, so the order among the three is immaterial.
+      // The Ctrl+R arms: the Pending pane's queue/roster re-read, the Health pane's doctor
+      // re-run, the History trail's transcript cycle, then the backlog's release — each returns
+      // false when its view does not apply, so the order among them is immaterial.
       if (pending.handleKey?.(key, ctx)) return true;
       if (health.handleKey?.(key, ctx)) return true;
+      if (history.handleKey?.(key, ctx)) return true;
       return backlog.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "v") {
@@ -261,6 +262,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       trailMode: hist.trailMode,
       trailIndex: hist.trailIndex,
       trailCache: hist.trailCache,
+      trailTranscript: hist.trailTranscript,
       selectedQueued: que.selectedQueued,
       queuedRows: que.queuedRows,
       healthProblems: heal.healthProblems,

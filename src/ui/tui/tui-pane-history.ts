@@ -16,7 +16,7 @@ import {
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
-import { renderTickDetail } from "../../tick/tick-detail.js";
+import { renderTickDetail, tickTranscriptLines } from "../../tick/tick-detail.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -63,6 +63,14 @@ export function createHistoryPane(
   let trailMode = false;
   let trailIndex = 0;
   let trailCache: string | null = null;
+  // Ctrl+R cycles the shown run's agent transcript off -> plain -> prompts -> off, the terminal
+  // twin of `history <role> <n> --transcript [--prompt]`. trailCache is composed from the parts
+  // below (detail, stat, transcript, in `tumwater tick`'s order) for the run in trailRun.
+  let trailTranscript: "off" | "plain" | "prompts" = "off";
+  let trailText = "";
+  let trailStat: string | null = null;
+  let trailTranscriptText: string | null = null;
+  let trailRun: { role: string; run: number; detail: TickDetail } | null = null;
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
 
   /** The pane's row selection: scope, then window, then search, then outcome class — the order
@@ -158,13 +166,32 @@ export function createHistoryPane(
   // Append the tick commit's per-file stat to the trail text once it resolves — the join
   // `tumwater tick --stat` uses. Applies only while the trail is still on and no read or reset
   // bumped trailGen since the request, so an older tick's stat never overwrites a newer view.
+  const composeTrail = (): void => {
+    trailCache = [trailText, trailStat, trailTranscriptText].filter((part) => part !== null).join("\n\n");
+  };
+
+  // Read the shown run's transcript at the chosen level into trailTranscriptText (null when off
+  // or on a throw, which is flashed): the two outputs `tumwater history --transcript` prints.
+  const loadTranscript = (): void => {
+    trailTranscriptText = null;
+    if (trailTranscript === "off" || trailRun === null) return;
+    try {
+      const { found, note } = tickTranscriptLines(session.root, trailRun.role, trailRun.run, trailRun.detail, {
+        includePrompts: trailTranscript === "prompts",
+      });
+      trailTranscriptText = found.length > 0 ? found.join("\n") : note;
+    } catch (err) {
+      session.flashError(err);
+    }
+  };
+
   const loadTrailStat = (detail: TickDetail): void => {
     const gen = trailGen;
-    const text = renderTickDetail(detail);
     void session.tickStat(session.root, detail).then(
       (stat) => {
         if (!trailMode || gen !== trailGen) return;
-        trailCache = `${text}\n\n${stat}`;
+        trailStat = stat;
+        composeTrail();
         session.requestRender();
       },
       (err: unknown) => {
@@ -197,8 +224,17 @@ export function createHistoryPane(
         return false;
       }
       const detail = readTickDetail(session.root, row.role, row.run);
-      trailCache = detail === null ? null : renderTickDetail(detail);
-      if (detail !== null) loadTrailStat(detail);
+      trailStat = null;
+      trailTranscriptText = null;
+      trailRun = detail === null ? null : { role: row.role, run: row.run, detail };
+      if (detail === null) {
+        trailCache = null;
+      } else {
+        trailText = renderTickDetail(detail);
+        loadTranscript();
+        composeTrail();
+        loadTrailStat(detail);
+      }
       trailIndex = index;
       return true;
     } catch (err) {
@@ -255,6 +291,7 @@ export function createHistoryPane(
         trailMode = false;
         trailCache = null;
         trailIndex = 0;
+        trailTranscript = "off";
       } else {
         // Toggle the trail on: read the pane-scoped newest completed tick. A scope holding
         // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a tick turns
@@ -278,6 +315,20 @@ export function createHistoryPane(
           loadTrail(null, 0);
           session.flashMessage("oldest run reached; back to the newest");
         }
+        session.paneScroll = 0;
+      }
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "r") {
+      // Ctrl+R cycles the trail's agent transcript: off -> plain -> prompts -> off. Anywhere
+      // else (no History view, no trail) it falls through to the other panes' Ctrl+R arms. The
+      // run is unchanged, so trailGen stays and an in-flight stat still lands on it.
+      if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
+      if (promptLineFree(ctx.es)) {
+        trailTranscript = trailTranscript === "off" ? "plain" : trailTranscript === "plain" ? "prompts" : "off";
+        loadTranscript();
+        composeTrail();
         session.paneScroll = 0;
       }
       session.requestRender();
@@ -360,6 +411,7 @@ export function createHistoryPane(
       trailMode = false;
       trailCache = null;
       trailIndex = 0;
+      trailTranscript = "off";
     },
     dropScopes(roles) {
       // The same drop for History's exact-role scope: a retired or renamed role must not keep
@@ -384,6 +436,7 @@ export function createHistoryPane(
         trailMode,
         trailIndex,
         trailCache,
+        trailTranscript,
       };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };

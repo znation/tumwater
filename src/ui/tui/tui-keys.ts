@@ -162,6 +162,9 @@ interface TuiKeysState {
    * entry and windowed by paneBody; null while the rows are shown or when the newest
    * completed tick could not be read. */
   trailCache: string | null;
+  /** The trail's agent transcript level (Ctrl+R): off, the plain transcript, or the transcript
+   * with each agent run's prompt — `history <role> <n> --transcript [--prompt]`'s text. */
+  trailTranscript: "off" | "plain" | "prompts";
   /** Whether the viewed role's pane shows the collected unmerged change (the second Ctrl+N
    * step) instead of the transcript — true only on a transcript view. */
   changeMode: boolean;
