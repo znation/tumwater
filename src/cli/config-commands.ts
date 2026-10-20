@@ -8,6 +8,7 @@ import {
 import { canonicalConfigKey } from "../config/config-aliases.js";
 import { parseConfigKey, unknownConfigKeyError, unknownRoleFieldError } from "../config/config-keys.js";
 import { modelTierMap } from "../config/config-schema.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which
@@ -67,27 +68,37 @@ function screenOperableKey(root: string, key: string) {
   return { parsed, config };
 }
 
+/** The resolved value of one screened key in a loaded config (defaults merged in): what `config
+ * get` prints and what `config unset` reports the key now resolves to. Undefined when nothing
+ * sets it. */
+function resolvedConfigValue(
+  config: TumwaterConfig,
+  parsed: ReturnType<typeof parseConfigKey>,
+  key: string,
+): unknown {
+  const record = config as unknown as Record<string, unknown>;
+  return parsed.kind === "map"
+    ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
+    : parsed.kind === "tier"
+      ? modelTierMap(record.model)[parsed.tier] // a string is shorthand for { default }
+      : parsed.kind === "agent"
+        ? (record.backends as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+            parsed.field
+          ]
+        : parsed.kind === "role"
+          ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+              parsed.field
+            ]
+          : record[canonicalConfigKey(key)];
+}
+
 /** The `tumwater config` command body: bare prints the resolved config; `get` and `unset`
  * screen their key through screenOperableKey, while `set` writes through setConfigKey. */
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   const [sub, key, ...rest] = args;
   if (sub === "get") {
     const { parsed, config } = screenOperableKey(root, key ?? "");
-    const record = config as unknown as Record<string, unknown>;
-    const value =
-      parsed.kind === "map"
-        ? (record[parsed.map] as Record<string, unknown> | undefined)?.[parsed.role]
-        : parsed.kind === "tier"
-          ? modelTierMap(record.model)[parsed.tier] // a string is shorthand for { default }
-          : parsed.kind === "agent"
-            ? (record.backends as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
-                parsed.field
-              ]
-            : parsed.kind === "role"
-              ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
-                  parsed.field
-                ]
-              : record[canonicalConfigKey(key ?? "")];
+    const value = resolvedConfigValue(config, parsed, key ?? "");
     sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
     return;
   }
@@ -99,14 +110,22 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     // The same screens get runs first, so a typo'd top-level key, role id, or role field
     // fails identically — unsetConfigKey's own parse/field checks are the mutation-side
     // backstop, not the wording the operator sees.
-    screenOperableKey(root, k);
+    const { parsed } = screenOperableKey(root, k);
     const result = unsetConfigKey(root, k);
     if (!result.ok) fail(result.error);
-    say(
-      result.oldValue === undefined
-        ? `unset ${k}`
-        : `unset ${k} (was ${JSON.stringify(result.oldValue)})`,
-    );
+    // The reload only feeds the message, so a failed one leaves `now` undefined.
+    const reloaded = loadConfigSafe(root).config;
+    const now = reloaded === undefined ? undefined : resolvedConfigValue(reloaded, parsed, k);
+    const resolves = now === undefined ? "" : JSON.stringify(now);
+    if (result.oldValue === undefined) {
+      say(
+        `${k} is not set in tumwater.json, so nothing was removed` +
+          (now === undefined ? "" : ` (it resolves to ${resolves})`),
+      );
+    } else {
+      const was = JSON.stringify(result.oldValue);
+      say(`unset ${k} (was ${was}${now === undefined ? "" : `; now resolves to ${resolves}`})`);
+    }
     return;
   }
   if (sub === "set") {

@@ -256,7 +256,7 @@ test("unset removes a dotted role field, preserving the entry's other fields, an
 
   const miss = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.model"]));
   assert.ok(!miss.exited);
-  assert.equal(miss.stdout, "unset roles.qa.model\n", "an absent field is a no-op that names the key only");
+  assert.equal(miss.stdout, "roles.qa.model is not set in tumwater.json, so nothing was removed\n", "an absent field is a no-op that says so");
   assert.equal(
     fs.readFileSync(path.join(root, "tumwater.json"), "utf8"),
     afterFirstUnset,
@@ -273,10 +273,11 @@ test("unset of a default-carrying key or a default-seeded role field the file ne
   const file = path.join(root, "tumwater.json");
   const before = fs.readFileSync(file, "utf8");
 
+  const expected: Record<string, string> = { maxConcurrent: " (it resolves to 6)", quietHours: "" };
   for (const key of ["maxConcurrent", "quietHours"]) {
     const out = await attemptAsync(() => cmdConfig(root, ["unset", key]));
     assert.ok(!out.exited, `${key}: ${out.stderr}`);
-    assert.equal(out.stdout, `unset ${key}\n`, `${key}: an absent top-level key names the key only`);
+    assert.equal(out.stdout, `${key} is not set in tumwater.json, so nothing was removed${expected[key]}\n`, `${key}: an absent top-level key says nothing was removed`);
     assert.equal(fs.readFileSync(file, "utf8"), before, `${key}: the no-op left the file byte-identical`);
   }
 
@@ -284,7 +285,7 @@ test("unset of a default-carrying key or a default-seeded role field the file ne
   assert.ok(!seeded.exited, seeded.stderr);
   assert.equal(
     seeded.stdout,
-    "unset roles.qa.minRunIntervalSeconds\n",
+    "roles.qa.minRunIntervalSeconds is not set in tumwater.json, so nothing was removed (it resolves to 7200)\n",
     "a default the operator never wrote reports no removed value",
   );
   assert.equal(fs.readFileSync(file, "utf8"), before, "the seeded-field no-op left the file byte-identical");
@@ -316,4 +317,17 @@ test("the defensive tail fails unset with no key using CONFIG_USAGE", async () =
   const out = await attemptAsync(() => cmdConfig(root, ["unset"]));
   assert.ok(out.exited && out.code === 1);
   assert.match(out.stderr, new RegExp(CONFIG_USAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
+test("unset of a key whose file value equals its default says what it now resolves to", async () => {
+  const root = makeRepo();
+  const idle = { initialSeconds: 120, factor: 2, maxSeconds: 3600 };
+  writeConfig(root, { maxConcurrent: 6, idleBackoff: idle });
+  const one = await attemptAsync(() => cmdConfig(root, ["unset", "maxConcurrent"]));
+  assert.equal(one.stdout, "unset maxConcurrent (was 6; now resolves to 6)\n");
+  const two = await attemptAsync(() => cmdConfig(root, ["unset", "idleBackoff"]));
+  assert.equal(
+    two.stdout,
+    `unset idleBackoff (was ${JSON.stringify(idle)}; now resolves to ${JSON.stringify(idle)})\n`,
+  );
 });
