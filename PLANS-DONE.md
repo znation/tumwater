@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 7/14: Rename the dashboard's role card and drawer code (planned 2026-10-16 by user; requires parts 6a/14, 6b/14 and 6c/14 landed; design in plans/terminology.md "Code names"; touches src/ui/gui/ + src/gui/ + test/gui*.test.ts + test/cli-gui.test.ts + test/helpers/gui-client-scope.ts; done 2026-10-19 by the feature role)
+
+**Goal.** The dashboard's browser code and server glue name the Roles card, drawer and rank by role, including `GUI_CLIENT_ROLES_JS` and the DOM ids and CSS classes the card uses.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message. Dashboard hashes were renamed by Plain terms scripting, and the legacy `#loop/<id>` route must keep working.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- The gui-client modules are browser code inside `String.raw` templates, which tsc does not check, so rename by hand and verify by test. The client modules are concatenated into one script (`GUI_CLIENT_JS` in src/ui/gui/gui-client.ts), so a new name must not collide across them; `grep` all of src/ui/gui/ before each rename.
+- Server-side exports: `GUI_CLIENT_LOOPS_JS` → `GUI_CLIENT_ROLES_JS` (src/ui/gui/gui-client-roles.ts and its use in gui-client.ts).
+- Browser functions and constants: `openLoop` → `openRole`, `openLoopRole` → `openRoleId`, `toggleLoop` → `toggleRole`, `renderLoopDrawer` → `renderRoleDrawer`, `renderLoops` → `renderRoles`, `patchLoops` → `patchRoles`, `sortLoops` → `sortRoles`, `loopRank` → `roleRank` (the browser twin in gui-client-model.ts, which interpolates `ROLE_RANK_RULES`), `loopPhase` → `rolePhase`, `loopCells` → `roleCells`, `loopKeys` → `roleKeys`, `LOOP_TDS` → `ROLE_TDS`, `LOOP_GROUPS` → `ROLE_GROUPS`, `wasLoop` → `wasRole`, and `loadLoopTicks` → `loadRoleRuns` (its final name, so Plain terms code run does not touch it again).
+- DOM and CSS names in gui-page.ts, gui-styles.ts and the client modules: id `loops` → `roles`, `loopstable` → `rolestable`, `loops-title` → `roles-title`; classes `loops` → `roles` and `c-loop` → `c-role`; the drawer kind `"loop"` → `"role"`. First confirm `.roles` and `.c-role` are not already used as selectors in gui-styles.ts.
+- test/helpers/gui-client-scope.ts and the gui tests reach browser functions by name: update them. In test/gui-client-boot.test.ts the local `let openRole` would collide with the renamed `openRole` hook, so rename the local `openedRole`.
+- src/gui/ (gui-endpoints.ts, gui-prompt-commands.ts, gui-args.ts, gui-backlog-commands.ts, http-body.ts, gui-operator-commands.ts, gui-team-commands.ts): comments and any `LoopState`/`loadLoopState` uses.
+- If a String.raw line carries `// vocabulary-ok: …` only because of a word renamed here, drop the marker.
+
+**Files touched.** src/ui/gui/*.ts, src/gui/*.ts, test/gui*.test.ts, test/cli-gui.test.ts, test/fixtures/gui-fixtures.ts, test/helpers/gui-client-scope.ts.
+
+**Acceptance criteria.**
+- `GUI_CLIENT_ROLES_JS` is declared and `GUI_CLIENT_LOOPS_JS` appears nowhere.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_|c-loop|loopstable|"loops?"|#loops\b|\.loops\b' src/ui/gui src/gui` lists only payload keys that are not this series' and kept senses.
+- The dashboard tests that open a role drawer by `#role/<id>` and by the legacy `#loop/<id>` hash both pass, and the suite's test count is unchanged.
+- `npm run test` passes.
+
 ### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).

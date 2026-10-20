@@ -96,10 +96,10 @@ function checkedPromptFields(
   return { text, images, notBeforeMs };
 }
 
-/** Handle POST /api/prompt-role: queue a prompt for one loop — the dashboard's per-row
+/** Handle POST /api/prompt-role: queue a prompt for one role — the dashboard's per-row
  * prompt affordance submits here, calling the same path `tumwater prompt --role <id>` uses
- * (submitRolePrompt enqueues into that loop's own queue and logs under it, then a single-role
- * wake brings the live loop in within one poll; the wake message rides back for the flash).
+ * (submitRolePrompt enqueues into that role's own queue and logs under it, then a single-role
+ * wake brings the live role in within one poll; the wake message rides back for the flash).
  * The role validates exactly like /api/transcript (the shared rejectBadRole wording), and the
  * body discipline is /api/prompt's: readJsonObject → 400 malformed/non-object, 413 oversized,
  * text a non-empty string within the shared length rule → 400 otherwise — plus the same
@@ -111,9 +111,9 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
   // Image-input submit gate (plans/image-input.md "Attachments", part 5/5): an attachment the
-  // target loop cannot read (and that no tier reroutes) answers 400 naming the fix before
+  // target role cannot read (and that no tier reroutes) answers 400 naming the fix before
   // anything is queued — the same gate submitRolePrompt enforces, surfaced as a user-input
-  // error rather than the server's 500. A loop that reroutes a blind read is not refused; its
+  // error rather than the server's 500. A role that reroutes a blind read is not refused; its
   // notice rides in the confirmation the composer flashes.
   let notice = "";
   if (fields.images && fields.images.length > 0) {
@@ -138,7 +138,7 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
  * position-addressed `prompt --cancel`. The role is optional (absent cancels from the
  * director's queue) and validates exactly like /api/transcript; a file name failing the
  * shared rejectBadQueueFileName guard is a user-input error answered 400 with
- * nothing touched on disk. A vanished file answers 200 { status: "gone" } — the loop already
+ * nothing touched on disk. A vanished file answers 200 { status: "gone" } — the role already
  * dequeued the prompt, which is data for the flash line, not a server fault. Same body
  * discipline as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */
 export async function handlePromptCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -165,7 +165,7 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
  * and images validate through the same checkedPromptFields /api/prompt and /api/prompt-role
  * use; editQueuedFile throws for a bad name or an over-cap text — both user-input errors
  * answered 400 (a filesystem failure reads as 400 like handleConfigSet's failed write). A
- * vanished file answers 200 { ok: true, status: "gone" } — the loop already dequeued the
+ * vanished file answers 200 { ok: true, status: "gone" } — the role already dequeued the
  * prompt, which is data for the flash line, not a server error; an edit answers 200 with the
  * old and new operator-facing text the client flashes. Same body discipline as /api/prompt
  * (readJsonObject → 400 malformed/non-object, 413 oversized). */
@@ -179,7 +179,7 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   if (!fields) return;
   // Image-input gate (plans/image-input.md "Attachments", part 5/5), the edit twin of
   // handlePromptRole's: an image edited into the queued prompt answers 400 naming the fix
-  // when the target loop cannot read it (and no tier reroutes it) — the same gate
+  // when the target role cannot read it (and no tier reroutes it) — the same gate
   // submitRolePrompt enforces — before anything is written.
   if (fields.images && fields.images.length > 0) {
     const guidance = imagePromptGuidance(root, role);

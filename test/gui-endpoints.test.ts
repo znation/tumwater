@@ -506,7 +506,7 @@ test("handleTick serves one run's collector payload plus its pre-rendered text",
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }),
     JSON.stringify({ ts: 2_000, loop: "clean", type: "review_verdict", verdict: "approve" }),
     JSON.stringify({ ts: 47_000, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 }),
-    // Another loop's same-numbered tick must not leak into clean's block.
+    // Another role's same-numbered tick must not leak into clean's block.
     JSON.stringify({ ts: 48_000, loop: "feature", type: "run_end", run: 3, result: "no_change" }),
   ]);
   const { captured, data } = await serveTick(root, "?role=clean&run=3");
@@ -567,7 +567,7 @@ function serveRole(root: string, query: string) {
 
 test("handleRole serves a role's notes and next prompt, refusing a missing or unknown role", async () => {
   const root = tmpdir();
-  // A notebook written by the loop's own earlier tick — the text the drawer's Notebook
+  // A notebook written by the role's own earlier tick — the text the drawer's Notebook
   // section must show verbatim.
   const notes = roleNotesPath(root, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
@@ -751,7 +751,7 @@ test("handleRoleCap maps an instance id to its base role's cap", async () => {
   const root = tmpdir();
   const { captured, data } = await serveRoleCap(root, { role: "feature-2", maxDailyCostUsd: 4 });
   assert.equal(captured.status, 200);
-  // The cap is about the role, so a bare loop id writes the base role's key.
+  // The cap is about the role, so a bare role id writes the base role's key.
   assert.deepEqual(data, { ok: true, role: "feature", maxDailyCostUsd: 4 });
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal((onDisk.maxDailyCostUsdPerRole as Record<string, unknown>).feature, 4);
@@ -874,7 +874,7 @@ test("handleRoleQuietHours maps an instance id to its base role's key", async ()
   writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
   const { captured, data } = await serveRoleQuietHours(root, { role: "feature-2", window: "23:00-07:00" });
   assert.equal(captured.status, 200);
-  // The window governs the role, so a bare loop id writes the base role's key.
+  // The window governs the role, so a bare role id writes the base role's key.
   assert.deepEqual(data, { ok: true, role: "feature", message: "feature: quiet hours set to 23:00-07:00" });
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   assert.equal((onDisk.quietHoursPerRole as Record<string, unknown>).feature, "23:00-07:00");

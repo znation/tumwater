@@ -89,7 +89,7 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
   sendRequestResult(res, requestAbort(root, body.role as string));
 }
 
-/** Handle POST /api/role-notes: the loop drawer's notebook Edit/Clear — the same saveRoleNote
+/** Handle POST /api/role-notes: the role drawer's notebook Edit/Clear — the same saveRoleNote
  * `tumwater role <id> --notes-file` / `--clear-notes` call, so the 4 KB cap and its wording
  * cannot drift. `"text": ""` clears. The director has no notes (400, the CLI's wording); a
  * non-string text is a 400 before anything is written; an over-cap note is a 400 carrying

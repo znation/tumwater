@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** The dashboard's view model, browser-side — the pure layer between the status payload and
- * what the page shows, with no DOM of its own: each loop's phase pill (label, tone, live
- * detail), its last result in words with the tone of its outcome, the loop sort order and
+ * what the page shows, with no DOM of its own: each role's phase pill (label, tone, live
+ * detail), its last result in words with the tone of its outcome, the role sort order and
  * rank groups, the alerts list with the page's own offline entry, the activity feed's
  * kind/tone classification, the backlog title's trailing "(planned …)" metadata, and the
  * queued prompts in execution order. It is the browser twin of the rules status-model.ts
@@ -13,13 +13,13 @@
 import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
 import { STALL_SOURCE } from "../tick-progress-model.js";
 import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_BUILD_RESULTS, ROUTINE_EVENTS } from "../tone.js";
-import { LOOP_RANK_RULES } from "../status-model.js";
+import { ROLE_RANK_RULES } from "../status-model.js";
 
 export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
-  // How a loop's phase label (status-model.ts loopPhase) reads here: a status word and tone for
+  // How a role's phase label (status-model.ts rolePhase) reads here: a status word and tone for
   // its pill, whether it is live work, and the detail the label carried after its first word.
   function phaseInfo(phase) {
-    // status-model.ts loopPhase appends a " · no change ×N" streak suffix to a resting idle
+    // status-model.ts rolePhase appends a " · no change ×N" streak suffix to a resting idle
     // cell's label. Strip it so the exact/startsWith matches and the parsed detail see the
     // plain phase; phaseDetailBase re-appends the streak once itself from the payload's
     // noChangeStreak, so the GUI renders it exactly once.
@@ -60,7 +60,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
   // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
-  // inFlightDetail) — the cue that a working loop may be stuck. The pattern is that module's
+  // inFlightDetail) — the cue that a working role may be stuck. The pattern is that module's
   // STALL_SOURCE (interpolated at module build), shared with team-alerts.ts's server-side
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
@@ -89,31 +89,31 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // build (like STALL above) so the page cannot drift from the server's eventKind.
   const PROBLEM_RESULTS = ${JSON.stringify(PROBLEM_RESULTS)};
   const ROUTINE_BUILD_RESULTS = ${JSON.stringify(ROUTINE_BUILD_RESULTS)};
-  // What explains a loop's last result: its summary, or — for a problem that carries none — the
-  // last error the loop recorded.
+  // What explains a role's last result: its summary, or — for a problem that carries none — the
+  // last error the role recorded.
   const resultWhy = (l) => l.lastSummary || (PROBLEM_RESULTS.includes(l.lastResult) || l.phase === "failing" ? l.lastError || "" : "");
-  // loop-sort:start
-  // Loop order — status-model.ts's loopRank/sortLoopsByState, the TUI's order too: the running
+  // role-sort:start
+  // Role order — status-model.ts's roleRank/sortRolesByState, the TUI's order too: the running
   // director first (its own live work, outside the maxConcurrent cap it bypasses — BUGS.md
   // 2026-10-06), then live work (working, reviewing, merge), then work waiting in the pipe
-  // line (approved, awaiting a slot), then loops that need attention (failing, main red), then
-  // paused, then idle; within a rank the most recent tick first, a never-ticked loop last, ties
-  // by name. The phase → rank rules are status-model.ts's LOOP_RANK_RULES (interpolated at
+  // line (approved, awaiting a slot), then roles that need attention (failing, main red), then
+  // paused, then idle; within a rank the most recent tick first, a never-ticked role last, ties
+  // by name. The phase → rank rules are status-model.ts's ROLE_RANK_RULES (interpolated at
   // module build, like STALL/PROBLEM_RESULTS above), so the literals cannot drift from the
   // server's copy.
-  const LOOP_RANK_RULES = ${JSON.stringify(LOOP_RANK_RULES)};
-  function loopRank(phase) {
+  const ROLE_RANK_RULES = ${JSON.stringify(ROLE_RANK_RULES)};
+  function roleRank(phase) {
     const p = String(phase || "");
-    for (const r of LOOP_RANK_RULES) {
+    for (const r of ROLE_RANK_RULES) {
       if (r.active ? isActivePhase(p) : (r.phases || []).includes(p) || (r.prefixes || []).some((x) => p.startsWith(x)))
         return r.rank;
     }
     return 4;
   }
-  function sortLoops(loops) {
-    return loops.slice().sort((a, b) => {
-      const ra = loopRank(a.phase);
-      const rb = loopRank(b.phase);
+  function sortRoles(roles) {
+    return roles.slice().sort((a, b) => {
+      const ra = roleRank(a.phase);
+      const rb = roleRank(b.phase);
       if (ra !== rb) return ra - rb;
       const ta = a.lastRunEndedAt ?? 0;
       const tb = b.lastRunEndedAt ?? 0;
@@ -121,12 +121,12 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
       return a.role.localeCompare(b.role);
     });
   }
-  // loop-sort:end
+  // role-sort:end
   // The team table's section for each rank. The running director has its own section so it
   // does not join the In-progress rows an operator scans against maxConcurrent; the permit
   // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting to start") keep
   // sharing In progress (BUGS.md 2026-10-06).
-  const LOOP_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
+  const ROLE_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
   // The payload's alerts (team-alerts.ts teamAlerts — the TUI's attention lines use the same
   // list), plus the one only the page can know: that its server stopped answering.
   const OFFLINE_ALERT = { key: "offline", tone: "red", title: "Lost contact with the dashboard server",
@@ -173,7 +173,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     const m = ENTRY_STAMP_RE.exec(String(t));
     return m ? { title: String(t).slice(0, m.index), meta: m[1] } : { title: String(t), meta: "" };
   }
-  // Queued prompts in execution order — the director's first, then each loop's — each with the
+  // Queued prompts in execution order — the director's first, then each role's — each with the
   // queue-file address its Cancel button sends (never a list position, so a stale frame can
   // never cancel the wrong prompt).
   function queuedPrompts(d) {

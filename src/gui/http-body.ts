@@ -26,7 +26,7 @@ export function badRequest(res: http.ServerResponse, message: string): void {
 }
 
 /** Send 200 with the {"ok":true,"status":"gone"} body every file-addressed handler that answers
- * for a vanished entry (the loop already dequeued it) replies with — data for the UI's flash
+ * for a vanished entry (the role already dequeued it) replies with — data for the UI's flash
  * line, not a server fault — so the status and the `{ ok, status }` wrapper live here instead
  * of being open-coded at each call site. */
 export function okGone(res: http.ServerResponse): void {

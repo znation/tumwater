@@ -338,7 +338,7 @@ test("dropping or pasting files onto the composer attaches the images and ignore
   assert.equal(prevented.length, 5, "a paste with no files is left alone");
 });
 
-test("the composer's submit queues for the director or one loop through the CLI's endpoints", async () => {
+test("the composer's submit queues for the director or one role through the CLI's endpoints", async () => {
   const s = composerScope();
   const input = s.input();
   s.scope.renderComposer(STATUS);
@@ -504,9 +504,9 @@ test("switching target mid-recall keeps the unsent draft, not the recalled entry
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the composer shows, under the image
-// chips, where an image prompt to a text-only loop will run (read from the status payload's
-// per-loop imageInput/imageReroute), and hides it for a vision loop.
-test("the image note under the chips names where a text-only loop's image prompt runs", () => {
+// chips, where an image prompt to a text-only role will run (read from the status payload's
+// per-role imageInput/imageReroute), and hides it for a vision role.
+test("the image note under the chips names where a text-only role's image prompt runs", () => {
   const s = composerScope();
   const status = {
     roles: [
@@ -522,7 +522,7 @@ test("the image note under the chips names where a text-only loop's image prompt
   assert.equal(note.hidden, false);
   assert.match(note.textContent, /qa's model can't read images; image prompts run on strong \(claude-opus-5-5\)/);
 
-  // A vision loop shows no note; a text-only loop with no target shows none either (the
+  // A vision role shows no note; a text-only role with no target shows none either (the
   // submit gate will refuse on the server, which the flash reports).
   s.scope.setTarget("bugfix");
   assert.equal(s.el("promptimagenote").hidden, true);

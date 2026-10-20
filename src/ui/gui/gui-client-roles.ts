@@ -1,18 +1,18 @@
 // vocabulary: plain
-/** The dashboard's loops table, browser-side — the team's rows grouped by what the loops are
+/** The dashboard's roles table, browser-side — the team's rows grouped by what the roles are
  * doing (working, merge, needs-attention, paused, idle), each with its status pill, current
  * work, spend, and per-row operator controls (prompt, wake, pause/resume, and the two-click
- * abort), patched cell by cell so a ticking row keeps focus and hover. renderLoops repaints it
+ * abort), patched cell by cell so a ticking row keeps focus and hover. renderRoles repaints it
  * from each /api/status poll; renderTeam (gui-client-team.ts) calls it. Spliced into
- * gui-client.ts's script, reaching its helpers (esc, icon, phaseInfo, sortLoops, postAction,
+ * gui-client.ts's script, reaching its helpers (esc, icon, phaseInfo, sortRoles, postAction,
  * setTarget, focusComposer, rerender, …) through that concatenation. */
-export const GUI_CLIENT_LOOPS_JS = String.raw`
-  // ---- loops ----
+export const GUI_CLIENT_ROLES_JS = String.raw`
+  // ---- roles ----
   // row-actions:start
   // A two-click confirm, the confirmSlot shape the drawer's note-clear/entry-cancel also use:
   // the first click stores a { id, title?, until } record and repaints; armed() fires a second
   // click inside the 5 s window; a 5100 ms auto-disarm drops an unconfirmed record past its
-  // expiry. Defined here (the earliest consumer splice) so the loops' abort in this file, an
+  // expiry. Defined here (the earliest consumer splice) so the roles' abort in this file, an
   // earlier splice, and the drawer's notebook-clear/entry-cancel in a later splice all share
   // one arm, guard, and disarm instead of three copies.
   function confirmSlot(repaint) {
@@ -27,8 +27,8 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       },
     };
   }
-  // The abort slot: keyed by role, so arming is per loop — a second click on the same loop's
-  // abort fires, while a first click on another loop's abort re-arms instead of posting.
+  // The abort slot: keyed by role, so arming is per role — a second click on the same role's
+  // abort fires, while a first click on another role's abort re-arms instead of posting.
   const confirmAbortSlot = confirmSlot(rerender);
   const abortConfirming = (role) => confirmAbortSlot.armed(role);
   // The drawer's Disable slot: a second click on the same role's Disable fires, a first click
@@ -41,7 +41,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   const roleWakeMenuOpen = (role) => roleChooserOpen(role, "wake-in");
   const ROLE_PAUSE_CHOICES = [[1800, "30m"], [3600, "1h"], [7200, "2h"], [28800, "8h"], [0, "standing"]];
   const ROLE_WAKE_CHOICES = ROLE_PAUSE_CHOICES.filter((c) => c[0] > 0); // a wake has no "standing" choice
-  // A loop's controls, from its table row or its drawer: prompt (aims the composer at the loop),
+  // A role's controls, from its table row or its drawer: prompt (aims the composer at the role),
   // wake, pause/resume (the target state is always explicit), and abort, which discards the
   // tick's work — the first click arms it, a second within 5 s fires it.
   async function rowAction(action, role, forSeconds) {
@@ -90,9 +90,9 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     });
   }
   // row-actions:end
-  // loops-table:start
-  // The status pill's second line: what the phase label carried, or when an idle loop runs next.
-  // The future operator wakes that name this loop (or its base role), earliest first. Reads the
+  // roles-table:start
+  // The status pill's second line: what the phase label carried, or when an idle role runs next.
+  // The future operator wakes that name this role (or its base role), earliest first. Reads the
   // payload's scheduledWakes, falling back to the lone scheduledWake of an older server.
   function scheduledWakesFor(l, d) {
     const all = d.scheduledWakes || (d.scheduledWake ? [d.scheduledWake] : []);
@@ -113,13 +113,13 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;
     const backoff = next.startsWith("sleeping ") ? "sleeping — next check in " + next.slice(9) : "";
-    // A yield-scaled clock: the loop's recent ticks merged nothing, so it ticks less often.
+    // A yield-scaled clock: the role's recent ticks merged nothing, so it ticks less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing merged lately" : "";
     // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
-    // status-model loopPhase's · no change ×N suffix): how many completed ticks in a row
+    // status-model rolePhase's · no change ×N suffix): how many completed ticks in a row
     // returned nothing to do. Shown only on a resting idle cell (sleeping/queued/idle/
     // deferred) — never on live work, a pause, a failure, or main-red, which the status
-    // label likewise leaves bare. Observational only: a legitimately idle maintenance loop
+    // label likewise leaves bare. Observational only: a legitimately idle maintenance role
     // can hold a long streak.
     const noChange = ["sleeping", "queued", "idle", "deferred"].includes(info.key) && (l.noChangeStreak || 0) >= 2
       ? " · no change ×" + l.noChangeStreak : "";
@@ -128,7 +128,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedLoops || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
     return info.detail + noChange;
   }
-  function loopCells(l, d) {
+  function roleCells(l, d) {
     const info = phaseInfo(l.phase);
     const paused = (d.pausedLoops || []).includes(l.role);
     const queued = (d.roleInbox || {})[l.role] || 0;
@@ -151,7 +151,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       activity = text ? "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>" : "<div class='muted'>" + pending + "</div>";
     } else if (l.claim) {
       // An idle instance holding a claim names its entry; the pill detail carries why an
-      // idle loop with none is idle.
+      // idle role with none is idle.
       const text = l.claim;
       activity = "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>";
     } else if (l.lastResult) {
@@ -178,18 +178,18 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     } else actions += b("pause", "pause", "Pause " + roleLabel(l.role)) + b("pause-for", "clock", "Pause " + roleLabel(l.role) + " for a duration");
     return { info, cells: [name, status, activity, spent, "<div class='actions'>" + actions + "</div>"] };
   }
-  // loops-table:end
-  const LOOP_TDS = ["c-loop", "c-status", "c-activity", "c-today num", "c-actions"]; // vocabulary-ok: CSS class the stylesheet and tests match
-  let loopKeys = "";
-  // Rows are patched cell by cell: a working loop's elapsed time changes every second, and
+  // roles-table:end
+  const ROLE_TDS = ["c-role", "c-status", "c-activity", "c-today num", "c-actions"];
+  let roleKeys = "";
+  // Rows are patched cell by cell: a working role's elapsed time changes every second, and
   // rewriting only that cell keeps focus and hover on the row's buttons.
-  function patchLoops(rows) {
+  function patchRoles(rows) {
     const tbody = $("rolerows");
     const keys = rows.map((r) => r.key).join("|");
-    if (keys !== loopKeys) {
-      loopKeys = keys;
+    if (keys !== roleKeys) {
+      roleKeys = keys;
       tbody.innerHTML = rows.map((r) => "<tr class='" + r.cls + "'" + (r.role ? " data-role='" + esc(r.role) + "'" : "") + ">" +
-        r.cells.map((c, j) => (r.group ? "<td colspan='5'>" : "<td class='" + LOOP_TDS[j] + "'>") + c + "</td>").join("") + "</tr>").join("");
+        r.cells.map((c, j) => (r.group ? "<td colspan='5'>" : "<td class='" + ROLE_TDS[j] + "'>") + c + "</td>").join("") + "</tr>").join("");
       Array.from(tbody.rows).forEach((tr, i) => Array.from(tr.cells).forEach((td, j) => { td._html = rows[i].cells[j]; }));
       return;
     }
@@ -202,31 +202,31 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       });
     });
   }
-  function renderLoops(d) {
-    $("loopstable").classList.toggle("free", Boolean(d.budget && d.budget.free));
-    const byGroup = LOOP_GROUPS.map(() => []);
-    for (const l of sortLoops(d.roles || [])) {
-      const rank = loopRank(l.phase);
-      byGroup[LOOP_GROUPS.findIndex((g) => g.slice(1).includes(rank))].push(l);
+  function renderRoles(d) {
+    $("rolestable").classList.toggle("free", Boolean(d.budget && d.budget.free));
+    const byGroup = ROLE_GROUPS.map(() => []);
+    for (const l of sortRoles(d.roles || [])) {
+      const rank = roleRank(l.phase);
+      byGroup[ROLE_GROUPS.findIndex((g) => g.slice(1).includes(rank))].push(l);
     }
-    const selected = openLoopRole();
+    const selected = openRoleId();
     const rows = [];
-    LOOP_GROUPS.forEach((g, gi) => {
+    ROLE_GROUPS.forEach((g, gi) => {
       if (!byGroup[gi].length) return;
       rows.push({ key: "g" + gi, cls: "group", group: true, cells: [esc(g[0]) + "<span class='badge'>" + byGroup[gi].length + "</span>"] });
       for (const l of byGroup[gi]) {
-        const { info, cells } = loopCells(l, d);
+        const { info, cells } = roleCells(l, d);
         rows.push({ key: "l:" + l.role, role: l.role, cls: "loop clickable" + (info.live ? " live" : "") + (selected === l.role ? " selected" : ""), cells }); // vocabulary-ok: CSS class the stylesheet and tests match
       }
     });
     if (!rows.length) rows.push({ key: "empty", cls: "group", group: true, cells: ["No roles are enabled in tumwater.json"] });
-    patchLoops(rows);
+    patchRoles(rows);
   }
   $("rolerows").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button.rowaction");
     if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for)); return; }
     const tr = clickClosest(ev, "tr[data-role]");
-    if (tr) toggleLoop(tr.dataset.role);
+    if (tr) toggleRole(tr.dataset.role);
   });
   $("resetall").addEventListener("click", () =>
     postAction("/api/reset-counters", {}, (d) => (d && typeof d.message === "string" ? d.message : "counters reset")));

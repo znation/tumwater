@@ -27,9 +27,9 @@ function bootScope(inject: Record<string, unknown>, log: string[]) {
   for (const id of ["team-view", "history", "report", "failures", "pending", "settings-view", "tab-team", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
     els[id] = fakeEl(log, id);
   }
-  return clientScope<{ switchView(v: string): void; route(): void; openLoopRole(): string | null }>(
-    ["view-routing"], ["switchView", "route", "openLoopRole"],
-    { $: (id: string) => els[id], openLoopRole: () => null, ...inject },
+  return clientScope<{ switchView(v: string): void; route(): void; openRoleId(): string | null }>(
+    ["view-routing"], ["switchView", "route", "openRoleId"],
+    { $: (id: string) => els[id], openRoleId: () => null, ...inject },
   );
 }
 
@@ -99,32 +99,32 @@ test("route follows #role/<role> into the drawer over team, and idempotently on 
   const log: string[] = [];
   const calls: string[] = [];
   let hash = "#role/feature";
-  let openRole: string | null = null;
+  let openedRole: string | null = null;
   const scope = bootScope({
     location: { get hash() { return hash; } },
     lastStatus: { roles: [] },
     renderTeam: () => calls.push("renderTeam"),
     fetchHistory: () => calls.push("fetchHistory"),
-    openLoopRole: () => openRole,
-    openLoop: (role: string) => { calls.push("openLoop " + role); openRole = role; },
+    openRoleId: () => openedRole,
+    openRole: (role: string) => { calls.push("openRole " + role); openedRole = role; },
   }, log);
 
   // A fresh load straight to #role/feature: team is shown behind the drawer and the
   // feature drawer opens.
   scope.route();
-  assert.deepEqual(calls, ["renderTeam", "openLoop feature"]);
-  assert.equal(scope.openLoopRole(), "feature");
+  assert.deepEqual(calls, ["renderTeam", "openRole feature"]);
+  assert.equal(scope.openRoleId(), "feature");
 
-  // A poll-driven re-route to the same loop is a no-op: no rebuilt drawer (the live
+  // A poll-driven re-route to the same role is a no-op: no rebuilt drawer (the live
   // transcript the reader is pinned to would reset) and no team re-render either.
   calls.length = 0;
   scope.route();
   assert.deepEqual(calls, [], "the already-open drawer is left alone");
 
-  // Merge on a different loop's link does open that drawer.
+  // Merge on a different role's link does open that drawer.
   hash = "#role/qa";
   scope.route();
-  assert.deepEqual(calls, ["openLoop qa"]);
+  assert.deepEqual(calls, ["openRole qa"]);
 
   // A plain tab hash routes to that view (Back/Forward land here).
   hash = "#history";
@@ -137,7 +137,7 @@ test("route follows #role/<role> into the drawer over team, and idempotently on 
   calls.length = 0;
   log.length = 0;
   scope.route();
-  assert.deepEqual(calls, ["openLoop feature"]);
+  assert.deepEqual(calls, ["openRole feature"]);
   assert.deepEqual(log, [], "no view switch behind the drawer once routed — history stays visible");
 });
 
@@ -601,11 +601,11 @@ test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
     location: { get hash() { return hash; } },
     lastStatus: { roles: [] },
     renderTeam: () => calls.push("renderTeam"),
-    openLoopRole: () => null,
-    openLoop: (role: string) => calls.push("openLoop " + role),
+    openRoleId: () => null,
+    openRole: (role: string) => calls.push("openRole " + role),
   }, log);
   scope.route();
-  assert.deepEqual(calls, ["renderTeam", "openLoop qa"]);
+  assert.deepEqual(calls, ["renderTeam", "openRole qa"]);
 
   calls.length = 0;
   hash = "#fleet";

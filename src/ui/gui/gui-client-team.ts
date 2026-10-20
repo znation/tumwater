@@ -1,10 +1,10 @@
 // vocabulary: plain
 /** The dashboard's team view, browser-side — the main screen between polls: the sidebar's
- * project name and team status (loops running, build state, main's check, quiet hours),
- * the alerts band for whatever needs a human (a failing loop, a red main, a spent budget,
+ * project name and team status (roles running, build state, main's check, quiet hours),
+ * the alerts band for whatever needs a human (a failing role, a red main, a spent budget,
  * an old build, open questions, a pause), today's progress tiles with their
  * per-day bar chart, the backlog with its questions/plans/bugs tabs, and the notable activity
- * feed (the loops table with its per-row actions lives in gui-client-roles.ts; the composer
+ * feed (the roles table with its per-row actions lives in gui-client-roles.ts; the composer
  * rendered onto this view lives in gui-client-composer.ts). renderTeam repaints all of it
  * from each /api/status poll. Spliced into gui-client.ts's script, reaching its helpers (esc,
  * icon, getJson, postJson, postAction, plural, agree, recall, fmtAgo, fmtTokens, fmtUsd,
@@ -234,11 +234,11 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       "<span class='stat-sub'>" + t.sub + "</span>" + (t.meter || "") + (t.act ? "</button>" : "</div>");
   }
   function renderStats(d) {
-    const loops = d.roles || [];
+    const roles = d.roles || [];
     // The running set (phaseInfo.live), not the permit-holder inFlight: the exempt running
     // director is genuinely in flight, so the tile must count it even though it holds no
     // maxConcurrent permit (BUGS.md 2026-10-06).
-    const live = loops.filter((l) => phaseInfo(l.phase).live);
+    const live = roles.filter((l) => phaseInfo(l.phase).live);
     const kinds = {};
     for (const l of live) { const k = phaseInfo(l.phase).key; kinds[k] = (kinds[k] || 0) + 1; }
     const KIND_WORDS = { working: "working", reviewing: "reviewing", landing: "merging" }; // vocabulary-ok: phase key, renamed with the status model // retired-name-ok: phase key, renamed with the status model
@@ -250,7 +250,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     const bugs = (d.bugs || []).length;
     const qs = (d.questions || []).length;
     paintPanel("stats", [
-      { label: "In flight", icon: "bolt", value: live.length + " <small>of " + loops.length + " roles</small>", sub: esc(liveSub) },
+      { label: "In flight", icon: "bolt", value: live.length + " <small>of " + roles.length + " roles</small>", sub: esc(liveSub) },
       { label: "Merged today", icon: "merge", act: "view", arg: "history", hint: "See every run in History",
         value: t ? String(t.commits) + " <small>" + agree(t.commits, "commit", "commits") + "</small>" : "—",
         sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed · " + workSplit(t)) : "counting…" },
@@ -334,7 +334,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
     else if (key === "queued") {
       // Each role's queue head carries no Move to top (a no-op there); every later row of
-      // that role does. The rows arrive grouped by role — director first, then each loop in
+      // that role does. The rows arrive grouped by role — director first, then each role in
       // id order — so a Set of roles already painted marks each group's first row.
       const paintedFirst = new Set();
       html = list.map((q) => {
@@ -504,7 +504,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   });
 
   // activity:start
-  // The Activity card's own narrowing, beside the Notable/All segmented choice: a Loop picker
+  // The Activity card's own narrowing, beside the Notable/All segmented choice: a Role picker
   // and a text box filter the events the card carries, and — once a filter is set — a debounced
   // /api/logs search reaches past that carried window into the log's recent slice (the same
   // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed), while the tally
@@ -529,7 +529,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // Only the non-empty filters ride the query: an absent grep/role means unfiltered server-side,
   // exactly as handleLogs reads them. The type is deliberately NOT carried: the server slice must
   // still deliver every type so the tally chips can be built from it — the type is a local
-  // narrowing on the rows in hand, like the Loop picker, not a query narrowing.
+  // narrowing on the rows in hand, like the Role picker, not a query narrowing.
   function feedLogsQuery() {
     const params = [];
     if (feedText) params.push("grep=" + encodeURIComponent(feedText));
@@ -560,9 +560,9 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     }
     if (lastStatus) renderFeed(lastStatus);
   }
-  // The Loop picker's options follow the team's role list (custom loops included), keyed so a
+  // The Role picker's options follow the team's role list (custom roles included), keyed so a
   // poll with no roster change repaints nothing. A role the team dropped falls back to All
-  // loops and persists, exactly as syncRolePicker does for the report and History pickers.
+  // roles and persists, exactly as syncRolePicker does for the report and History pickers.
   function syncFeedRoles(d) {
     if (!d) return;
     feedRole = syncRolePicker("feedrole", (d.roles || []).map((l) => l.role), feedRole, "feed-role");
@@ -692,12 +692,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // activity:end
 
   function renderTeam(d) {
-    const loops = d.roles || [];
-    const sub = plural(loops.length, "role") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the team is stopped") +
+    const roles = d.roles || [];
+    const sub = plural(roles.length, "role") + " · " + (d.running ? roles.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the team is stopped") +
       (d.paused ? " · paused" : "");
     if ($("teamsub").textContent !== sub) $("teamsub").textContent = sub;
     renderStats(d);
-    renderLoops(d);
+    renderRoles(d);
     renderBacklog(d);
     renderFeed(d);
   }

@@ -162,9 +162,9 @@ test("the report hover chip is created once and lives outside #report", () => {
 });
 
 test("rolePickerOptions renders All roles plus one escaped option per role, order preserved", () => {
-  // The Loop picker's options are the pure half of the role scope every picker shares (the
-  // Usage/Failures views and History): the team list comes from /api/status's loops, custom
-  // loops included, so a role name can carry HTML metacharacters and must be escaped in both
+  // The Role picker's options are the pure half of the role scope every picker shares (the
+  // Usage/Failures views and History): the team list comes from /api/status's roles, custom
+  // roles included, so a role name can carry HTML metacharacters and must be escaped in both
   // the option's value and its label.
   const { rolePickerOptions } = clientScope<{ rolePickerOptions(roles?: string[]): string }>(
     ["format", "report-role"],
@@ -184,14 +184,14 @@ test("rolePickerOptions renders All roles plus one escaped option per role, orde
 });
 
 test("reportBaseRoles folds each instance into its `instanceOf` base role, once, in team order", () => {
-  // The report views' Loop picker must offer the same roles the scoped collectors honor. The
+  // The report views' Role picker must offer the same roles the scoped collectors honor. The
   // status payload names an instance's base as `instanceOf`; a bare row has none, so its own
   // role is the base. Dedupe keeps a multi-instance base to a single option.
-  const { reportBaseRoles } = clientScope<{ reportBaseRoles(loops?: Array<{ role: string; instanceOf?: string }>): string[] }>(
+  const { reportBaseRoles } = clientScope<{ reportBaseRoles(roles?: Array<{ role: string; instanceOf?: string }>): string[] }>(
     ["format", "report-role"],
     ["reportBaseRoles"],
   );
-  assert.deepEqual(reportBaseRoles([]), [], "no loops leaves no roles");
+  assert.deepEqual(reportBaseRoles([]), [], "no roles leaves no roles");
   assert.deepEqual(
     reportBaseRoles([{ role: "feature" }, { role: "feature-2", instanceOf: "feature" }, { role: "bugfix-2", instanceOf: "bugfix" }, { role: "clean" }]),
     ["feature", "bugfix", "clean"],
@@ -199,7 +199,7 @@ test("reportBaseRoles folds each instance into its `instanceOf` base role, once,
   );
 });
 
-test("the Rejections by loop chart stacks per role in the ticks order and stays empty without a map", () => {
+test("the Rejections by role chart stacks per role in the ticks order and stays empty without a map", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
     chartTicksByRole(d: ReportData): string;
@@ -229,7 +229,7 @@ test("the Rejections by loop chart stacks per role in the ticks order and stays 
   // A role that rejected but never ticked (qa) still keeps a stack row, after the tickers.
   assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
   const rects = parseRects(chartRejectionsByRole(data));
-  assert.equal(rects.length, 3, "one segment per (day, loop) with a rejection");
+  assert.equal(rects.length, 3, "one segment per (day, role) with a rejection");
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
   assert.equal(legendOf(chartRejectionsByRole(data)), legendOf(chartTicksByRole(data)), "same per-role order and colors as the ticks element");
   // A missing rejectionsByRole map renders the element empty (no segments).

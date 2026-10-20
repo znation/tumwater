@@ -54,7 +54,7 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
  * through the CLI's own setConfigKey dotted path so the per-key validator and whole-candidate
  * validateConfig (which rejects an unknown role id) own the final truth. The director has no
  * cap (role-view.ts's guard exempts it), so it is refused up front with wording that mirrors
- * handleRoleNotes. A bare `feature-2` loop id maps to its base role's cap (baseRoleOf), since
+ * handleRoleNotes. A bare `feature-2` role id maps to its base role's cap (baseRoleOf), since
  * the cap is about the role. A write failure is configKeyError's 400 exactly as handleConfigSet
  * reports it. */
 export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -94,7 +94,7 @@ export async function handleRoleCap(req: http.IncomingMessage, res: http.ServerR
  * interval), otherwise the write rides the CLI's own setConfigKey dotted path so
  * checkMinRunInterval and whole-candidate validateConfig (which rejects an unknown role id)
  * own the final truth. The director is accepted here — it ticks on the same clock, unlike
- * the cap's director exemption. A bare `feature-2` loop id maps to its base role's override
+ * the cap's director exemption. A bare `feature-2` role id maps to its base role's override
  * (baseRoleOf), since the interval is about the role. A write failure is configKeyError's 400
  * exactly as handleRoleCap reports it. */
 export async function handleRoleInterval(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -144,7 +144,7 @@ export async function handleRoleInterval(req: http.IncomingMessage, res: http.Se
  * (unlike handleRoleCap's director exemption): setConfigKey runs the candidate through
  * validateConfig, whose INSTANCE_COUNT rejects 0, 9, 1.5 and `abc` and whose INSTANCE_ROLES
  * branch rejects an instances key under any role but feature and bugfix (the director and
- * custom roles included). A bare `feature-2` loop id maps to its base role's count (baseRoleOf),
+ * custom roles included). A bare `feature-2` role id maps to its base role's count (baseRoleOf),
  * since the count is about the role. A write failure is configKeyError's 400 exactly as
  * handleRoleInterval reports it. */
 export async function handleRoleInstances(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
@@ -186,7 +186,7 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
  * already write it). Same body discipline as /api/role-interval (readPostBody → 400
  * malformed/non-object, 413 oversized); a missing/blank role is a 400 `role required`, each
  * of the three must be a string when present (400 naming the field otherwise), and at least
- * one must be present (400 `provider, model or thinking required`). A bare `feature-2` loop
+ * one must be present (400 `provider, model or thinking required`). A bare `feature-2` role
  * id maps to its base role's keys (baseRoleOf). The director is accepted — configForRole
  * resolves roles.director.* like any role's, matching the CLI's accepted triple for it.
  * Values are trimmed; `""` clears that field (never stored — checkStringField rejects an
@@ -221,7 +221,7 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
  * `Instructions override` row's Edit/Save. Same body discipline as /api/role-cap (readPostBody
  * → 400 malformed/non-object, 413 oversized); an empty role id is a 400, and a bare `feature-2`
- * loop id maps to its base role's override (baseRoleOf), the key tick-prompt reads — so an
+ * role id maps to its base role's override (baseRoleOf), the key tick-prompt reads — so an
  * instance edits the instructions its runs carry (readRoleBody's shared guard is not used
  * because it rejects instance ids, and the unknown-role check is validateConfig's, below).
  * The director is editable here (its override reaches its runs), unlike handleRoleNotes'
@@ -256,9 +256,9 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
  * yields the boolean checkBoolean expects), and validateConfig's unknown-role check refuses an
  * unknown id as configKeyError's 400 before anything is written. Same body discipline as
  * /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a missing,
- * non-string, or blank role is a 400 `role required`, and a bare `feature-2` loop id maps to
+ * non-string, or blank role is a 400 `role required`, and a bare `feature-2` role id maps to
  * its base role's key (baseRoleOf), so an instance disables/enables the role it belongs to.
- * The director cannot be disabled (with it disabled loopIds omits it and no loop dequeues the
+ * The director cannot be disabled (with it disabled runnerIds omits it and no role dequeues the
  * operator's inbox), so a disable is refused explicitly; enabling the director stays harmless
  * and mirrors the CLI's --enable. */
 async function setRoleEnabled(req: http.IncomingMessage, res: http.ServerResponse, root: string, enabled: boolean): Promise<void> {
@@ -295,7 +295,7 @@ export async function handleRoleDisable(req: http.IncomingMessage, res: http.Ser
  * role's daily quiet-hours window — the control the `Quiet hours` row it already shows leads
  * to (the counterpart of the in-flight `tumwater role <id> --quiet-hours` CLI write). Same body
  * discipline as /api/role-cap (readPostBody → 400 malformed/non-object, 413 oversized); a
- * missing/blank role is a 400, and a bare `feature-2` loop id maps to its base role's key
+ * missing/blank role is a 400, and a bare `feature-2` role id maps to its base role's key
  * (baseRoleOf), so an instance edits the window its runs read. The director is refused up front:
  * `quietHoursPerRole.director` is inert (roleQuietHold and doctor both exempt the director). An
  * empty/whitespace-only window clears the key (unsetConfigKey, like the CLI's --clear-quiet-hours);

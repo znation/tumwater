@@ -6,7 +6,7 @@ import { initProject } from "../src/init/init.js";
 import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -20,20 +20,20 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 // transport file covers hostile
 // input and whose lifecycle file covers reload and post-listen errors.
 
-test("/api/status exposes each loop's nextRunAt and backoffSeconds", async () => {
+test("/api/status exposes each role's nextRunAt and backoffSeconds", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui schedule test");
-  const state = freshLoopState("clean");
+  const state = freshRunnerState("clean");
   state.nextRunAt = 1_758_800_000_000;
   state.backoffSeconds = 90;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
   const { server, base } = await startLocalGui(repo);
   try {
     const status = (await (await fetch(base + "/api/status")).json()) as {
       roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }>;
     };
     const clean = status.roles.find((l) => l.role === "clean");
-    assert.ok(clean, "the loop has a payload row");
+    assert.ok(clean, "the role has a payload row");
     assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms — the GUI formats it client-side");
     assert.equal(clean.backoffSeconds, 90);
   } finally {
@@ -91,7 +91,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     assert.equal(cancelled[0]!.source, DIRECTOR_ROLE);
     assert.equal(cancelled[0]!.preview, "first prompt");
 
-    // Re-cancelling the same file — or one the loop already dequeued — is "gone" (200),
+    // Re-cancelling the same file — or one the role already dequeued — is "gone" (200),
     // data for the flash line, not a 500; and it logs no second event, removes nothing else.
     res = await post({ file: path.basename(first) });
     assert.equal(res.status, 200);
@@ -99,7 +99,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     assert.equal(inboxSize(repo), 1);
     assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled").length, 1);
 
-    // A role-scoped cancel targets that loop's own queue (role given explicitly).
+    // A role-scoped cancel targets that role's own queue (role given explicitly).
     res = await post({ role: "clean", file: path.basename(clean) });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true, status: "cancelled", preview: "clean prompt" });
@@ -219,7 +219,7 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
     assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own run_start");
     assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
 
-    // role filters to that loop's rows (a filter is not a target: an id with no ticks is a
+    // role filters to that role's rows (a filter is not a target: an id with no ticks is a
     // legitimate empty result, not an error — no config validation).
     const scoped = await (await fetch(base + "/api/history?role=clean")).json();
     assert.deepEqual(scoped, { rows: tickRows(events, 20, "clean") });
@@ -354,7 +354,7 @@ test("gui /api/run serves one run's detail over the live route, 404 when the sca
 
 test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
   // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
-  // fills with a busy sibling loop's run_ends, so the filtered rows fall short while the
+  // fills with a busy sibling role's run_ends, so the filtered rows fall short while the
   // role's older ticks sit just past it. The endpoint must grow the scan like cmdHistory,
   // not return fewer rows (or an empty set) for a role the retained log covers.
   const repo = makeRepo();

@@ -1,8 +1,8 @@
 // vocabulary: plain
 /** The dashboard's boot, browser-side: view routing over #fragment links (Back/Forward and
- * bookmarks work, re-clicking the open tab refetches), #role/<role> opening that loop's
+ * bookmarks work, re-clicking the open tab refetches), #role/<role> opening that role's
  * drawer with the address bar following it, the global action dispatcher behind the
- * data-act/data-open attributes (alert and tile buttons, loop names anywhere, questions),
+ * data-act/data-open attributes (alert and tile buttons, role names anywhere, questions),
  * the keyboard shortcuts (Escape closes the drawer, "/" focuses the composer), the theme
  * toggle, and the one-second /api/status poll that renders every view and reloads the page
  * when the serving build moves. Spliced into gui-client.ts's script as its last section,
@@ -37,8 +37,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "settings") { fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
-  // tab refetches its data. #role/<role> opens that loop's drawer (over Team on a fresh load),
-  // and the address bar follows the open drawer, so a loop's live view can be linked to.
+  // tab refetches its data. #role/<role> opens that role's drawer (over Team on a fresh load),
+  // and the address bar follows the open drawer, so a role's live view can be linked to.
   let routed = false;
   function route() {
     // A malformed percent-escape in the fragment (#%, an unencoded paste) makes
@@ -49,7 +49,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     try { h = decodeURIComponent(h); } catch { /* malformed escape: route on the raw fragment */ }
     if (h.startsWith("role/") || h.startsWith("loop/")) { // vocabulary-ok: legacy dashboard hash, still routed
       if (!routed) switchView("team");
-      if (openLoopRole() !== h.slice(h.indexOf("/") + 1)) openLoop(h.slice(h.indexOf("/") + 1));
+      if (openRoleId() !== h.slice(h.indexOf("/") + 1)) openRole(h.slice(h.indexOf("/") + 1));
     } else switchView(h);
     routed = true;
   }
@@ -96,7 +96,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     const box = clickClosest(ev, "input[data-action='doctor-problems']");
     if (box) toggleDoctorProblems(box.checked);
   });
-  // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
+  // ---- global actions: alert and tile buttons, role names anywhere, questions ----
   // run-act:start
   // The backlog drawer rows resolve a list entry's title from the last polled status by its
   // backlog file and 0-based position (entry-cancel, entry-edit, and the mention action). The
@@ -105,7 +105,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     return ((lastStatus && lastStatus[file]) || [])[Number(index)];
   }
   function runAct(act, arg) {
-    if (act === "role") openLoop(arg);
+    if (act === "role") openRole(arg);
     else if (act === "close") closeDrawer();
     else if (act === "view") location.hash = arg;
     else if (act === "budget") openBudgetEditor();
@@ -353,7 +353,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // handler toggles the card).
     if (open && !t.closest("#rolerows") && !t.closest("[data-tickdetail]")) { // vocabulary-ok: element selectors
       ev.preventDefault();
-      toggleLoop(open.dataset.open);
+      toggleRole(open.dataset.open);
     }
   });
   const typing = (el) => el instanceof Element && el.closest("input, textarea, select, [contenteditable]") !== null;
@@ -385,16 +385,16 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (!lastStatus) return;
     if (activeView === "team") renderTeam(lastStatus);
     if (activeView === "pending") renderPendingQueue(lastStatus);
-    if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus); // vocabulary-ok: drawer kind
+    if (drawer && drawer.kind === "role") renderRoleDrawer(lastStatus);
   }
   let lastEventKey = null;
   // New events are what move the numbers the other panels show (today's merges, the History
-  // rows, the open loop's recent ticks), so they refetch on that signal, each throttled.
+  // rows, the open role's recent ticks), so they refetch on that signal, each throttled.
   function onNewEvents() {
     refreshToday(false);
     if (activeView === "history") fetchHistory(true);
     if (activeView === "usage") fetchReport(true);
-    loadLoopTicks(false);
+    loadRoleRuns(false);
   }
   async function refresh() {
     let d;
@@ -427,7 +427,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (activeView === "team") renderTeam(d);
       if (activeView === "pending") renderPendingQueue(d);
       if (activeView === "history") syncHistoryRoles(d);
-      // Keep the Usage/Failures Loop pickers in step with the team while either is open.
+      // Keep the Usage/Failures Role pickers in step with the team while either is open.
       if (activeView === "usage" || activeView === "failures") syncReportRoles(d);
       const items = d.eventItems || [];
       const last = items[items.length - 1];
@@ -446,7 +446,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // had finished. The chain's one contract is to keep polling: refresh guards its own fetches
   // and renders, but anything that escapes it is caught here, because a rejection would kill
   // the chain at the setTimeout below and freeze the page exactly like the wedged server this
-  // loop exists to survive — so the reschedule runs no matter how the poll ended. pollSignal
+  // poll loop exists to survive — so the reschedule runs no matter how the poll ended. pollSignal
   // bounds each request so a wedged server cannot park an iteration forever.
   async function pollLoop() {
     try {

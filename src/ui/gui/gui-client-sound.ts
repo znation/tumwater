@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's sound layer, browser-side: one short synthesized cue when a new needs-you
- * alert appears (a failing loop, a red main, a spent budget, a lost server), scoped from
+ * alert appears (a failing role, a red main, a spent budget, a lost server), scoped from
  * docs/feature-gui-audio-sound-effects.md to the alerts cue — the one moment the team
  * genuinely needs a human. Client-side only: Web Audio is a browser built-in, so the zero
  * runtime dependencies principle holds, and every path degrades to silence — no AudioContext,
@@ -21,7 +21,7 @@ export const GUI_CLIENT_SOUND_JS = String.raw`  // sound:start
     if (audioCtx || typeof AudioContext === "undefined") return;
     try { audioCtx = new AudioContext(); } catch { /* no audio in this browser */ }
   }
-  // One cue per tone, well under a second: red is two beeps (a failing loop or red main is
+  // One cue per tone, well under a second: red is two beeps (a failing role or red main is
   // the most urgent), amber one beep (a pause, a stale build), indigo a soft low tone (an
   // open question). Each note is [frequency, start offset in seconds].
   const CUE_NOTES = { red: [[880, 0], [660, 0.18]], amber: [[660, 0]], indigo: [[440, 0]] };

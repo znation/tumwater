@@ -30,7 +30,7 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
     ],
   };
   const html = pendingTableHtml(team);
-  // Every role is listed and every row opens that loop's drawer.
+  // Every role is listed and every row opens that role's drawer.
   for (const role of ["feature", "qa", "clean"]) {
     assert.match(html, new RegExp(`data-open='${role}'`), `${role} row opens its drawer`);
   }
@@ -39,7 +39,7 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
   assert.match(html, /abc12345 add the thing/);
   assert.match(html, /def67890 fix the thing/);
   assert.match(html, /title='notes\.txt'[^>]*>1 file</);
-  // An idle loop reads as such with no work line; an absent worktree degrades.
+  // An idle role reads as such with no work line; an absent worktree degrades.
   assert.match(html, /no unmerged work/);
   assert.match(html, /no worktree/);
   assert.doesNotMatch(html, /undefined|NaN/);

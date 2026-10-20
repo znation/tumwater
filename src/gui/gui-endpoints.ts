@@ -16,7 +16,7 @@ import { answeredQuestionEntries, donePlanEntries, fixedBugEntries, openBugEntri
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { knownRoleIds, loadConfigSafe } from "../config/config.js";
-import { loopEnabled } from "../roles/runner-ids.js";
+import { runnerEnabled } from "../roles/runner-ids.js";
 import { artifactPhrase, previewRetire } from "../operator/retire.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { collectReport, collectReportSince } from "../report/report-data.js";
@@ -41,9 +41,9 @@ import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
-/** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
+/** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one role's pi
  * log (same rendering as `tumwater logs --role <id>`). Unknown/missing role or a bad n → 400.
- * User-defined loops are valid targets too — the GUI marks them with an asterisk, so clicking
+ * User-defined roles are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
  * once (gui/gui-server.ts's parseRequestTarget) and threads it down, so the parse idiom lives
@@ -111,7 +111,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
  * full per-role view with `diff`/`uncommittedDiff`, `tumwater diff --role <id> --json`). The
  * role is a target, not a filter, so it validates through rejectBadRole exactly like
  * /api/transcript and /api/run (unknown/missing → 400 naming the valid ids) — the same ids
- * `parseRoleFlag` accepts on the CLI, including disabled and user-defined loops. The
+ * `parseRoleFlag` accepts on the CLI, including disabled and user-defined roles. The
  * collectors degrade absent worktrees and missing base branches to their `state` instead of
  * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
  * it works whether or not the team is running. */
@@ -174,7 +174,7 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
 }
 
 /** Handle GET /api/failures?days=N[&role=<id>] or /api/failures?sinceMs=<ms>[&role=<id>]: the
- * same bounded Markdown failure digest the telemetry loop feeds on and `tumwater report
+ * same bounded Markdown failure digest the telemetry role feeds on and `tumwater report
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
  * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can
@@ -209,7 +209,7 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses and is capped through
  * sinceMsQuery (gui-args.ts, LOGS_SINCE_MAX_MS — the shared `history --since` cap), and note is
  * SPARSE_WINDOW_NOTE when covered is false, else "". role is optional: absent or empty → all
- * loops; present → passed straight through as the role filter with no config validation (a
+ * roles; present → passed straight through as the role filter with no config validation (a
  * filter is not a target — an id with no ticks legitimately yields zero rows), so the endpoint
  * reads nothing but files, like /api/report and /api/failures. Reads files directly, so it
  * present → passed straight through as the role filter with no config validation (a
@@ -221,7 +221,7 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * `tumwater history --summary` prints, so the dashboard Summary and the table cannot disagree
  * about what a tick was. Reads files directly, so it works whether or not the team is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  const role = q.get("role") || null; // "" and absent both read all loops
+  const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
   if (q.get("sinceMs") !== null) {
@@ -270,7 +270,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
   if (parsed === null) return;
   const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);
-  const role = q.get("role") || null; // "" and absent both read all loops
+  const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   const needle = grep === null ? null : grep.toLowerCase();
   const events = readEvents(root, n);
@@ -303,7 +303,7 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
   }
   sendJson(res, 200, { ...detail, text: renderTickDetail(detail), stat: await tickDetailStat(root, detail) });
 }
-/** Handle GET /api/role?role=<id>: one loop's inspection payload — rolePayload's object,
+/** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
  * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next tick
  * prompt sections render what the CLI shows without re-implementing the assembly. The role
  * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
@@ -324,7 +324,7 @@ export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: s
  * carries over unchanged. The role is optional (absent reads the director's queue) and
  * validates exactly like /api/transcript; a file name failing the shared
  * rejectBadQueueFileName guard is a user-input error answered 400 with nothing read. A
- * vanished file answers 200 { ok: true, status: "gone" } — the loop already dequeued
+ * vanished file answers 200 { ok: true, status: "gone" } — the role already dequeued
  * it, which is data for the UI, not a server fault. Reads one file directly, so it works
  * whether or not the team is running. */
 export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, root: string): void {
@@ -381,7 +381,7 @@ export async function handleRetireList(res: http.ServerResponse, root: string): 
     return;
   }
   const roles = [];
-  for (const role of knownRoleIds(config).filter((id) => id !== DIRECTOR_ROLE && !loopEnabled(config, id))) {
+  for (const role of knownRoleIds(config).filter((id) => id !== DIRECTOR_ROLE && !runnerEnabled(config, id))) {
     const { wouldRemove, objections } = await previewRetire(root, role);
     roles.push({ role, wouldRemove, phrases: wouldRemove.map((a) => artifactPhrase(a, role)), objections });
   }

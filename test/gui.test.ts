@@ -252,7 +252,7 @@ test("gui /api/prompt and /api/prompt-role save attached images beside the queue
     assert.ok(names[0]!.endsWith(".md") && names[1]!.endsWith(".png"));
     assert.equal(names[1]!.replace(/\.png$/, ""), names[0]!.replace(/\.md$/, ""), "same stem as the queue file");
 
-    // The per-role endpoint shares the mechanics; the image lands in that loop's own queue.
+    // The per-role endpoint shares the mechanics; the image lands in that role's own queue.
     const rolePost = await postJson(base, "/api/prompt-role", {
       role: "clean",
       text: "clean this shot",
@@ -343,16 +343,16 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
   }
 });
 
-// User-defined loops (tumwater.json's customRoles) are first-class transcript targets: the
+// User-defined roles (tumwater.json's customRoles) are first-class transcript targets: the
 // GUI marks them with an asterisk, so clicking one must open its panel — /api/transcript
 // validates against catalog + customRoles when the config parses.
-test("gui /api/transcript accepts user-defined loop roles listed in tumwater.json", async () => {
+test("gui /api/transcript accepts user-defined role roles listed in tumwater.json", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom transcript test");
   const cfg = loadConfig(repo);
   cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
-  // A log for the custom loop — same shape as a built-in's.
+  // A log for the custom role — same shape as a built-in's.
   writeLogLines(piLogPath(repo, "nightly"), [
       JSON.stringify({ type: "agent_start" }),
       JSON.stringify({
@@ -396,7 +396,7 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   const { lastTickCell } = await import("../src/ui/status-render.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
-  // sortLoops. fmtLastTick is pure (no DOM), so nothing is injected.
+  // sortRoles. fmtLastTick is pure (no DOM), so nothing is injected.
   const m = /\/\/ last-tick-fmt:start\n([\s\S]*?)\n  \/\/ last-tick-fmt:end/.exec(GUI_PAGE);
   assert.ok(m, "last-tick-fmt region found in the page");
   // fmtLastTick now formats its age through the page's shared humanSeconds helper, so the
@@ -696,7 +696,7 @@ test("the poll chain survives a rejected refresh — pollLoop always reschedules
   assert.match(errors[0] ?? "", /render blew up/, "the escape is reported, not swallowed silently");
 });
 
-// Backlog bodies, plans, and bugs are model-written Markdown the loops edit; with
+// Backlog bodies, plans, and bugs are model-written Markdown the roles edit; with
 // --all-interfaces the dashboard is reachable network-wide without auth, so nothing they carry
 // may execute in the operator's browser. The page escapes every dynamic value through its own
 // esc() (the drawer renders bodies through renderMarkdown, which escapes first — pinned in
@@ -750,15 +750,15 @@ test("the dashboard page reloads itself when the serving build sha changes", asy
 test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   const { nextRunCell } = await import("../src/ui/status-render.js");
-  const { freshLoopState } = await import("../src/runner/runner-state.js");
+  const { freshRunnerState } = await import("../src/runner/runner-state.js");
   const { yieldMultiplierFor } = await import("../src/scheduling/backoff.js");
-  type LoopState = ReturnType<typeof freshLoopState>;
+  type RunnerState = ReturnType<typeof freshRunnerState>;
 
   // The status pill's "wakes in 12m" line and the drawer's Next run both render from the
   // payload's raw nextRunAt/backoffSeconds through this helper.
   assert.match(GUI_PAGE, /fmtNextRun\(l, d\.running\)/);
 
-  // Extract the marked region — same regex-extract + new Function pattern as the esc, sortLoops,
+  // Extract the marked region — same regex-extract + new Function pattern as the esc, sortRoles,
   // and fmtLastTick tests. fmtNextRun is pure (no DOM), so nothing is injected.
   const m = /\/\/ next-run-fmt:start\n([\s\S]*?)\n  \/\/ next-run-fmt:end/.exec(GUI_PAGE);
   assert.ok(m, "next-run-fmt region found in the page");
@@ -775,9 +775,9 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
 
   const now = Date.now();
   // Each case pins the TUI helper and the GUI twin to the same output, so the two copies
-  // cannot drift (the sortLoops/fmtLastTick lockstep precedent).
+  // cannot drift (the sortRoles/fmtLastTick lockstep precedent).
   const cases: Array<{
-    state: Partial<LoopState>;
+    state: Partial<RunnerState>;
     phase: string;
     team: boolean;
     want: string;
@@ -789,7 +789,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", team: true, want: "-" },
     // A parked waiter: reserved (running) but holding no permit, rendered "waiting to start" —
     // an INACTIVE phase prefix, so the phase-prefix check alone misclassifies it. The TUI
-    // catches it via s.running; the GUI copy must too, or a parked loop reads "1h" (or
+    // catches it via s.running; the GUI copy must too, or a parked role reads "1h" (or
     // "backoff 1h") while it is actually queued behind a slot and may run at any moment.
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
     { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", team: true, want: "-" },
@@ -807,7 +807,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", team: true, want: "sleeping 3m ×8" },
   ];
   for (const c of cases) {
-    const s = { ...freshLoopState("clean"), ...c.state } as LoopState;
+    const s = { ...freshRunnerState("clean"), ...c.state } as RunnerState;
     const label = `${c.phase} / team ${c.team ? "running" : "stopped"}`;
     assert.equal(nextRunCell(s, c.phase, now, c.team), c.want, `TUI: ${label}`);
     assert.equal(
@@ -816,8 +816,8 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
       `GUI: ${label}`,
     );
   }
-  // A torn loop object — a payload missing `phase` — must not throw and blank the whole loops
-  // table (loopCells runs fmtNextRun for every row). phaseInfo and loopRank already coerce a bad
+  // A torn role object — a payload missing `phase` — must not throw and blank the whole roles
+  // table (roleCells runs fmtNextRun for every row). phaseInfo and roleRank already coerce a bad
   // phase with `String(x || "")`; the untyped browser copy here does too, so the field reads as
   // the empty (inactive) phase instead of `undefined.startsWith` throwing.
   assert.equal(
@@ -850,7 +850,7 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
 });
 
 // Image input, part 5/5 (plans/image-input.md "Attachments" + "Surfaces"): the GUI submit
-// gate. An image to a loop whose seam reads none and that has no reroute target answers 400
+// gate. An image to a role whose seam reads none and that has no reroute target answers 400
 // naming the fix and queues nothing; with a reroute target it accepts and its confirmation
 // names where the prompt will run. The server reads the config per request, so one running
 // server serves both the refused and the accepted submission as the config changes.
@@ -892,8 +892,8 @@ test("gui /api/prompt-role refuses images with no reroute target and names where
 test("the page shell uses the team, role and inbox words but keeps the old ids and hashes", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   assert.match(GUI_PAGE, /<span>Team<\/span>/);
-  assert.match(GUI_PAGE, /<h2 id="loops-title">Roles<\/h2>/);
-  assert.match(GUI_PAGE, /<th class="c-loop">Role<\/th>/);
+  assert.match(GUI_PAGE, /<h2 id="roles-title">Roles<\/h2>/);
+  assert.match(GUI_PAGE, /<th class="c-role">Role<\/th>/);
   assert.match(GUI_PAGE, /placeholder="Tell the team what to do next…"/);
   assert.match(GUI_PAGE, /<option value="">All roles<\/option>/);
   assert.match(GUI_PAGE, /href="#team" id="tab-team"/, "the hash and ids stay for later series");

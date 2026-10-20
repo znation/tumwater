@@ -481,12 +481,3 @@ function displayTokenMetrics(
 
 /** @deprecated Use rolePhase. */
 export const loopPhase = rolePhase;
-
-/** @deprecated Use roleRank. */
-export const loopRank = roleRank;
-
-/** @deprecated Use ROLE_RANK_RULES. */
-export const LOOP_RANK_RULES = ROLE_RANK_RULES;
-
-/** @deprecated Use sortRolesByState. */
-export const sortLoopsByState = sortRolesByState;

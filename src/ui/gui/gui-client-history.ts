@@ -1,12 +1,12 @@
 // vocabulary: plain
 /** The dashboard's History view, browser-side: every completed tick, newest first, as
  * /api/history serves them (the rows `tumwater history` prints). A toolbar narrows it to one
- * loop (server-side, so a quiet loop still gets its full count), searches the rendered row text
+ * role (server-side, so a quiet role still gets its full count), searches the rendered row text
  * (server-side, through the same haystack rule `tumwater history --grep` uses), to an outcome
  * class (changes, no change, problems — client-side over the fetched rows), and picks how many
  * ticks to fetch or a trailing window matching `tumwater history --since`. It refetches when the
  * view opens and, while it stays open, whenever the status poll sees new events — never on a
- * timer of its own. A row opens that loop's drawer. Spliced into gui-client.ts's script,
+ * timer of its own. A row opens that role's drawer. Spliced into gui-client.ts's script,
  * reaching its helpers (esc, getJson, resultInfo, the formatters) through that concatenation. */
 export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to show" picker offers; the recalled count is normalized to one of
   // them at read, so the picker can always represent (and the request always matches) the scope.
@@ -144,9 +144,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     renderHistory();
   }
   // history-detail:end
-  // The loop picker's options follow the team's role list (custom loops included), keyed so a
+  // The role picker's options follow the team's role list (custom roles included), keyed so a
   // poll with no roster change repaints nothing. A role the team dropped falls back to All
-  // loops and persists, exactly as syncRolePicker does for the report and Activity pickers.
+  // roles and persists, exactly as syncRolePicker does for the report and Activity pickers.
   function syncHistoryRoles(d) {
     if (!d) return;
     histRole = syncRolePicker("histrole", (d.roles || []).map((l) => l.role), histRole, "hist-role");
@@ -210,7 +210,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   }
   // The History table for rows (/api/history's, newest first) under a grep (already applied
   // server-side) and an outcome filter; known is
-  // the set of the team's loop ids, whose rows open that loop's drawer. Pure — the view's
+  // the set of the team's role ids, whose rows open that role's drawer. Pure — the view's
   // render paints what this returns.
   function historyTableHtml(rows, filter, known, grep, sinceKey) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
@@ -230,7 +230,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       shown.map((r) => {
         const res = resultInfo(r.result);
         // The drill-down toggle rides the drawer's button style and lives in its own leading
-        // cell; only a team loop's row carries one, the same rows that open the drawer (the
+        // cell; only a team role's row carries one, the same rows that open the drawer (the
         // /api/run endpoint validates the role, so an id the config no longer knows would
         // only ever answer 400).
         const key = histDetailKey(r.role, r.run);
@@ -255,14 +255,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   }
   // history-table:end
   // history-summary:start
-  // The Summary table: one row per loop plus the total, in the same column set the CLI's
+  // The Summary table: one row per role plus the total, in the same column set the CLI's
   // history --summary prints (ticks, changes, none, refused, problems, tokens, cost, time,
   // last change), so the dashboard and the CLI cannot drift column for column. Every number
   // comes from the
   // server's summary (built on the shared summarizeTickRows) — nothing here re-derives a
   // tally — and the cost/token cells reuse the page's report formatters. The time cell is the
-  // sum of the loop's run spans via fmtSpan, a dash when none of its rows carried a span. The
-  // last-change cell is the newest changes-class tick's age via fmtAgo, a dash when the loop had
+  // sum of the role's run spans via fmtSpan, a dash when none of its rows carried a span. The
+  // last-change cell is the newest changes-class tick's age via fmtAgo, a dash when the role had
   // none. Pure — the view's render paints what this returns.
   function histSummaryHtml(summary) {
     const all = summary.roles.concat(summary.total ? [summary.total] : []);
@@ -289,7 +289,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // so it is hidden there; only the body changes, keeping the same fetch path.
     const filterEl = $("histfilter");
     if (filterEl) filterEl.style.display = histMode === "summary" ? "none" : "";
-    // Summary mode shows the per-loop table when the fetch carried a summary over actual rows;
+    // Summary mode shows the per-role table when the fetch carried a summary over actual rows;
     // otherwise (no rows, or a too-old server that answered without a summary) it falls back to
     // the same empty state the table shows.
     const showSummary = histMode === "summary" && histSummary && histRows && histRows.length > 0;

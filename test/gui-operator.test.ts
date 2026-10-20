@@ -9,7 +9,7 @@ import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
 import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { mergeStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
@@ -53,11 +53,11 @@ test("status payload carries the daily budget while enabled and null when disabl
   assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
-  // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
-  const s = freshLoopState("clean");
+  // Today's spend is summed from the roles' persisted daily windows (a stale stamp reads $0).
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp(now.getTime());
   s.dayCostUsd = 12.34;
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   payload = atNoon() as typeof payload;
   assert.equal(payload.budget?.spentUsd, 12.34, "today's spend shows in the badge data");
   assert.equal(payload.budgetBadge, " · budget: $12.34/$50 today", "today's spend shows in the badge text");
@@ -125,20 +125,20 @@ test("status payload carries the merge queue depth and the in-flight merge", asy
 
 // Regression (review of the editable-budget feature): the payload's budget object is now
 // unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
-// spend ≥ 0 = cap would otherwise export every idle role loop as `waiting: budget spent`.
+// spend ≥ 0 = cap would otherwise export every idle role role as `waiting: budget spent`.
 test("a disabled cap never pauses the team in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui no-cap test");
-  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  // A live orchestrator (this process) so rolePhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
   // …cap disabled with today's spend far above zero.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp();
   s.dayCostUsd = 500; // would be "reached" against any positive cap
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
 
   const payload = statusPayload(repo) as {
     budget: { spentUsd: number; capUsd: number; free: boolean };
@@ -147,7 +147,7 @@ test("a disabled cap never pauses the team in the phase payload", async () => {
   };
   assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
-  // No loop reads waiting: budget spent — the gate is off by definition while the cap is 0.
+  // No role reads waiting: budget spent — the gate is off by definition while the cap is 0.
   for (const l of payload.roles) {
     assert.notEqual(l.phase, "waiting: budget spent", `${l.role} must not read waiting: budget spent with the cap disabled`);
   }
@@ -170,30 +170,30 @@ test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splic
   );
 });
 
-test("a paused team's idle role loops read waiting: budget spent in the phase payload", async () => {
+test("a paused team's idle roles read waiting: budget spent in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");
-  // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
+  // A live orchestrator (this process) so rolePhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
   // …and spend at the cap so the team-wide pause flag is set.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
   saveConfig(repo, cfg);
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp();
   s.dayCostUsd = 12.5; // >= cap → paused
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
 
   let payload = statusPayload(repo) as { roles: Array<{ role: string; phase: string }> };
   assert.equal(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
   // The director is exempt from the cap — its phase keeps its own label.
   assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 
-  // Under the cap again: the idle loop goes back to its sleep/queue state.
-  const under = freshLoopState("clean");
+  // Under the cap again: the idle role goes back to its sleep/queue state.
+  const under = freshRunnerState("clean");
   under.dayStamp = todayStamp();
   under.dayCostUsd = 1;
-  saveLoopState(repo, under);
+  saveRunnerState(repo, under);
   payload = statusPayload(repo) as typeof payload;
   assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 });
@@ -414,9 +414,9 @@ test("POST /api/pause with forSeconds writes a timed pause and rejects bad durat
 test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bodies", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui wake test");
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.backoffSeconds = 15;
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   await withGui(repo, async ({ base }) => {
   // One named role: the row's wake link. The message is the CLI's own confirmation text
   // (no harness here, so the not-live form), and the marker + state-file edits match.
@@ -428,7 +428,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   });
   const marker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
-  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
+  assert.equal(loadRunnerState(repo, "feature").backoffSeconds, 0, "the row's backoff cleared");
 
   // `{}` — the empty/missing-role body targets every configured role, like the CLI's
   // all-roles default.
@@ -488,21 +488,21 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
   const repo = makeRepo();
   await initProject(repo, "gui reset test");
   const seed = () => {
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     s.runs = 7;
-    saveLoopState(repo, s);
+    saveRunnerState(repo, s);
   };
   seed();
   await withGui(repo, async ({ base }) => {
     let res = await postJson(base, "/api/reset-counters", { role: "feature" });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true, message: requestResetCounters(repo, ["feature"]) });
-    assert.equal(loadLoopState(repo, "feature").runs, 0);
+    assert.equal(loadRunnerState(repo, "feature").runs, 0);
 
     seed();
     res = await fetch(base + "/api/reset-counters", { method: "POST", body: "{}" });
     assert.equal(res.status, 200);
-    assert.equal(loadLoopState(repo, "feature").runs, 0, "{} targets every configured role");
+    assert.equal(loadRunnerState(repo, "feature").runs, 0, "{} targets every configured role");
 
     seed();
     const bad = await fetch(base + "/api/reset-counters", { method: "POST", body: '{"role": "bogus"}' });
@@ -510,7 +510,7 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
     assert.match(((await bad.json()) as { error: string }).error, /valid ids:/);
     const malformed = await fetch(base + "/api/reset-counters", { method: "POST", body: "not json" });
     assert.equal(malformed.status, 400);
-    assert.equal(loadLoopState(repo, "feature").runs, 7, "rejected bodies leave the counters untouched");
+    assert.equal(loadRunnerState(repo, "feature").runs, 7, "rejected bodies leave the counters untouched");
   });
 });
 
@@ -661,7 +661,7 @@ test("POST /api/pause-role writes the per-role marker, is idempotent, and reject
 // path `tumwater prompt --role <id>` uses (submitRolePrompt + a single-role wake), so the
 // surfaces cannot drift on queue format or wording. Here: the queue merge, the role
 // validation shared with /api/transcript, and the body discipline shared with /api/prompt.
-test("POST /api/prompt-role queues for the named loop and rejects bad bodies like its peers", async () => {
+test("POST /api/prompt-role queues for the named role and rejects bad bodies like its peers", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui prompt-role test");
   await withGui(repo, async ({ base }) => {
@@ -673,7 +673,7 @@ test("POST /api/prompt-role queues for the named loop and rejects bad bodies lik
   assert.match(body.message, /wake requested for feature/);
   // The queue holds the trimmed text — the same files `tumwater prompt --list --role` reads.
   assert.deepEqual(queuedRolePrompts(repo, "feature"), ["tighten the docs"]);
-  // The wake marker names just that loop.
+  // The wake marker names just that role.
   assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["feature"]);
 
   // An unknown role reads the same error text /api/transcript answers with (the shared
@@ -750,7 +750,7 @@ test("the prompt endpoints defer a prompt by duration and reject bad defer field
   });
 });
 
-// The payload's roleInbox: per-role queue counts for every enabled loop except the director
+// The payload's roleInbox: per-role queue counts for every enabled role except the director
 // (its queue IS the shared inbox), matching the on-disk queues the CLI's --list reads.
 test("the status payload carries per-role queue counts (roleInbox)", async () => {
   const repo = makeRepo();

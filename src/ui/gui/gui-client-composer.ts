@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's composer, browser-side — the one input box that steers the director or any
- * single loop: the target selector with its per-target unsent drafts, the character counter,
+ * single role: the target selector with its per-target unsent drafts, the character counter,
  * the image attachments (dropped or pasted onto the box, rendered as removable chips), and
  * the submit that reads the bytes and queues the prompt through the same endpoints the CLI's
  * "prompt" and "prompt --role" use. Split out of gui-client-team.ts, which keeps the
@@ -11,7 +11,7 @@
  * and the team view's activeView/drawer state through that concatenation. */
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../../inbox/inbox-submit.js";
 import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGE_MAX_BYTES, PROMPT_IMAGES_MAX_COUNT } from "../../inbox/inbox-attachments.js";
-export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
+export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single role ----
   const PROMPT_MAX = ${DIRECTOR_PROMPT_MAX_CHARS};
   const promptInput = $("prompt");
   const targetSelect = $("prompttarget");
@@ -31,15 +31,15 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // The last status payload, kept so setTarget can re-render the image note between polls.
   let composerData = null;
   // The image-input notice under the image chips (plans/image-input.md "Surfaces", part 5/5):
-  // when the selected non-director loop's model can't read images but reroutes a blind read
+  // when the selected non-director role's model can't read images but reroutes a blind read
   // to another tier, say so — read from the status payload (imageInput/imageReroute), the same
   // facts the images alert and the submit gate use, so the composer never promises a run the
   // gate would refuse.
   function renderPromptImageNote() {
-    const loop = (composerData && composerData.roles || []).find((l) => l.role === promptTarget);
+    const target = (composerData && composerData.roles || []).find((l) => l.role === promptTarget);
     const note = $("promptimagenote");
-    const text = loop && loop.imageInput === false && loop.imageReroute
-      ? promptTarget + "'s model can't read images; image prompts run on " + loop.imageReroute
+    const text = target && target.imageInput === false && target.imageReroute
+      ? promptTarget + "'s model can't read images; image prompts run on " + target.imageReroute
       : "";
     if (note.textContent !== text) note.textContent = text;
     note.hidden = text === "";
@@ -257,7 +257,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   }
   // composer-images:end
   // composer-send:start
-  // Queue a prompt for the director or for one loop, through the same endpoints the CLI's
+  // Queue a prompt for the director or for one role, through the same endpoints the CLI's
   // "prompt" and "prompt --role" use. Resolves to the confirmation to show; rejects when the
   // server did not take it (the caller keeps the text so it can be fixed and resent). Pending
   // images ride along as { name, dataBase64 } and are named in the confirmation.

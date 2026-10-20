@@ -5,9 +5,9 @@
  * views — Team's carrying a badge while something needs a human — and the team-wide
  * controls: today's spend against the cap, and pause. The main column shows one view at a
  * time: Team (alerts for whatever needs a human, the composer that steers the director or
- * one loop, today's progress, every loop grouped by what it is doing, the backlog, and the
+ * one role, today's progress, every role grouped by what it is doing, the backlog, and the
  * notable activity), History, Usage, Failures, Pending, or Settings. A drawer opens any
- * loop's detail and live transcript, or any backlog entry in full. Kept apart from
+ * role's detail and live transcript, or any backlog entry in full. Kept apart from
  * gui/gui-server.ts so the server module stays about serving. */
 import { GUI_CLIENT_JS } from "./gui-client.js";
 import { GUI_STYLES } from "./gui-styles.js";
@@ -75,17 +75,17 @@ export const GUI_PAGE = `<!doctype html>
       </div>
     </form>
     <div id="stats" class="stats"></div>
-    <section class="card" aria-labelledby="loops-title">
+    <section class="card" aria-labelledby="roles-title">
       <header class="card-head">
-        <h2 id="loops-title">Roles</h2>
+        <h2 id="roles-title">Roles</h2>
         <div class="spacer"></div>
         <button type="button" class="btn btn-sm" id="resetall" title="Zero every role's runs, commits, tokens, and cost — scheduling is untouched">${iconSvg("refresh")}<span>Reset counters</span></button>
         <div class="menu-anchor" id="wakelaterwrap"><button type="button" class="btn btn-sm" id="wakelater" aria-haspopup="menu" title="Wake every role later">${iconSvg("clock")}<span>Wake later</span></button></div>
         <button type="button" class="btn btn-sm" id="wakeall" title="Wake every role now, skipping any sleep">${iconSvg("bolt")}<span>Wake all</span></button>
       </header>
       <div class="table-wrap">
-        <table class="table loops" id="loopstable">
-          <thead><tr><th class="c-loop">Role</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
+        <table class="table roles" id="rolestable">
+          <thead><tr><th class="c-role">Role</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
           <tbody id="rolerows"></tbody>
         </table>
       </div>

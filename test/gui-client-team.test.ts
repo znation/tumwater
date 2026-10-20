@@ -271,7 +271,7 @@ test("the In flight tile counts a running director even though it holds no permi
     ],
   });
   const html = panels["stats"] ?? "";
-  assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 roles<\/small>/, "the tile counts both live loops");
+  assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 roles<\/small>/, "the tile counts both live roles");
   assert.match(html, />2 working</, "the subtitle names both as working");
 });
 
@@ -285,7 +285,7 @@ test("the Merged today tile shows the work/maintenance commit split", () => {
 });
 
 // The Activity card's narrowing (src/ui/gui/gui-client-team.ts's marked activity region): the
-// Loop picker and Search box narrow the event window the card already carries, exactly as the
+// Role picker and Search box narrow the event window the card already carries, exactly as the
 // History view's do. The scope runs the shared format/view-model/panel/role regions renderFeed
 // reaches, with the DOM, persistence, and panel paint stubbed.
 function feedScope(recalled: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
@@ -328,7 +328,7 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
 // settle before the assertions run.
 const feedSettle = () => new Promise((r) => setTimeout(r, 320));
 
-test("the Activity feed narrows to one loop when its Loop picker is set", () => {
+test("the Activity feed narrows to one role when its Role picker is set", () => {
   const { scope, panels } = feedScope({ "feed-role": "feature" });
   scope.renderFeed({
     roles: [{ role: "feature" }, { role: "bugfix" }],
@@ -339,10 +339,10 @@ test("the Activity feed narrows to one loop when its Loop picker is set", () => 
   });
   const html = panels["feed"] ?? "";
   assert.match(html, /did a feature thing/);
-  assert.doesNotMatch(html, /did a bugfix thing/, "the other loop's event is filtered out");
+  assert.doesNotMatch(html, /did a bugfix thing/, "the other role's event is filtered out");
 });
 
-test("the Activity feed's Search matches loop, type, and message case-insensitively", () => {
+test("the Activity feed's Search matches role, type, and message case-insensitively", () => {
   const items = [
     { ts: Date.now(), source: "qa", type: "merged", message: "the suite FAILED" },
     { ts: Date.now(), source: "qa", type: "question_posted", message: "all green" },
@@ -390,7 +390,7 @@ test("a Notable-only cull keeps the notable wording, not the filter empty state"
     eventItems: [{ ts: Date.now(), source: "qa", type: "run_start", message: "working" }],
   });
   const html = panels["feed"] ?? "";
-  assert.match(html, /Nothing notable lately/, "the Notable choice, not the Loop picker, emptied the feed");
+  assert.match(html, /Nothing notable lately/, "the Notable choice, not the Role picker, emptied the feed");
   assert.doesNotMatch(html, /No recent events match this filter/);
 });
 
@@ -428,7 +428,7 @@ test("an active Search fetches /api/logs and paints a slice beyond the carried w
   assert.doesNotMatch(panels["feed"] ?? "", /carried row/);
 });
 
-test("the search query carries only the non-empty Loop and Search filters", async () => {
+test("the search query carries only the non-empty Role and Search filters", async () => {
   const calls: string[] = [];
   const payload = { roles: [{ role: "qa" }], eventItems: [] };
   const { scope } = feedScope({ "feed-role": "qa", "feed-grep": "boom" }, {
@@ -631,7 +631,7 @@ test("the tally chips are buttons carrying data-type, marked active when selecte
   assert.doesNotMatch(html, /start row/);
 });
 
-test("the type chip composes with the Loop and Search filters", () => {
+test("the type chip composes with the Role and Search filters", () => {
   const roleFiltered = feedScope({ feed: "all", "feed-role": "qa", "feed-type": "run_end" });
   roleFiltered.scope.renderFeed({
     roles: [{ role: "qa" }],
@@ -643,7 +643,7 @@ test("the type chip composes with the Loop and Search filters", () => {
   });
   let html = roleFiltered.panels["feed"] ?? "";
   assert.match(html, /keep me/);
-  assert.doesNotMatch(html, /other role/, "the Loop picker still culls first");
+  assert.doesNotMatch(html, /other role/, "the Role picker still culls first");
   assert.doesNotMatch(html, /other type/, "the type chip narrows after the role");
   // A Search that already narrowed one type still narrows to the selected type.
   const grepFiltered = feedScope({ feed: "all", "feed-grep": "alpha", "feed-type": "run_end" });

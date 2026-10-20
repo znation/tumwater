@@ -35,8 +35,8 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /<td class='c-model'><span class='clamp1' title='acme\/m1'>acme\/m1<\/span><\/td>/, "a row that ran on a model shows its selector");
   assert.match(html, /<td class='c-model'><span class='clamp1' title='claude\/x'>claude\/x<\/span><\/td>/);
   assert.match(html, /<td class='c-model'><span class='clamp1' title=''><span class='muted'>—<\/span><\/span><\/td>/, "a row with no model shows a muted dash");
-  assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a team loop's row opens its drawer");
-  assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a loop no longer in the team is plain and carries no toggle");
+  assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a team role's row opens its drawer");
+  assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a role no longer in the team is plain and carries no toggle");
   assert.match(html, /5m ago/);
   assert.match(html, /#5/);
   assert.match(html, /<span class='res t-indigo'>Waiting to merge<\/span>/);
@@ -45,7 +45,7 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /<td class='num c-dur'>—<\/td>/, "a missing duration is a dash, never NaN");
   assert.doesNotMatch(html, /NaN|<script>/);
   assert.match(html, /&lt;script&gt;x&lt;\/script&gt;/);
-  // The per-row drill-down toggle: a team loop's row carries one, addressed by role+tick.
+  // The per-row drill-down toggle: a team role's row carries one, addressed by role+tick.
   assert.match(html, /data-tickdetail='1' data-role='coverage' data-tick='5' aria-expanded='false'/);
   assert.match(html, /data-tickdetail='1' data-role='qa' data-tick='2'/);
   // The outcome filter's buckets.
@@ -76,7 +76,7 @@ test("the History toolbar carries the search field, recalled and persisted", () 
     GUI_CLIENT_HISTORY_JS.indexOf("<div class='card' id='histbody'>"),
   );
   assert.match(toolbar, /id='histgrep'/);
-  // Its pattern persists like the loop and count selections.
+  // Its pattern persists like the role and count selections.
   assert.match(GUI_CLIENT_HISTORY_JS, /recall\("hist-grep"\)/);
   assert.match(GUI_CLIENT_HISTORY_JS, /store\("hist-grep", histGrep\)/);
 });
@@ -317,9 +317,9 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   assert.match(html, /tumwater may not match/, "the card's esc() escapes the message's apostrophe");
 });
 
-test("fetchHistory drops and re-persists a loop scope the team no longer lists", async () => {
-  // A persisted hist-role naming a retired loop: syncHistoryRoles repaints the picker to All
-  // loops, and the scope variable must follow it. Otherwise the picker shows All loops while
+test("fetchHistory drops and re-persists a role scope the team no longer lists", async () => {
+  // A persisted hist-role naming a retired role: syncHistoryRoles repaints the picker to All
+  // roles, and the scope variable must follow it. Otherwise the picker shows All roles while
   // the request keeps `&role=<vanished>`, so the view reads as an empty log the operator cannot
   // explain. The report views' syncRoles already falls back and persists; History must match.
   const paths: string[] = [];
@@ -341,12 +341,12 @@ test("fetchHistory drops and re-persists a loop scope the team no longer lists",
     (title: string) => title,
     async (path: string) => { paths.push(path); return { rows: [] }; },
   ).fetchHistory(false);
-  assert.equal(select.value, "", "the picker falls back to All loops");
+  assert.equal(select.value, "", "the picker falls back to All roles");
   assert.deepEqual(paths, ["/api/history?n=50&summary=1"], "and the request drops the vanished role");
   assert.deepEqual(stored, [["hist-role", ""]], "the fallback persists so a reload does not resurrect it");
 });
 
-test("histSummaryHtml paints one row per loop plus the total, with the report formatters and a dash for a never-changed loop", () => {
+test("histSummaryHtml paints one row per role plus the total, with the report formatters and a dash for a never-changed role", () => {
   const { histSummaryHtml } = clientScope<{ histSummaryHtml(summary: unknown): string }>(
     ["format", "labels", "history-summary"],
     ["histSummaryHtml"],
@@ -362,24 +362,24 @@ test("histSummaryHtml paints one row per loop plus the total, with the report fo
     total: { role: "total", runs: 4, changes: 2, none: 1, refused: 0, problems: 1, tokens: 13_000, costUsd: 0.25, durationMs: 3_600_000, lastChangeTs: now - 5 * 60_000 },
   };
   const html = histSummaryHtml(summary);
-  // The column set mirrors history --summary: loop, ticks, changes, none, refused, problems,
+  // The column set mirrors history --summary: role, ticks, changes, none, refused, problems,
   // tokens, cost, time, last change, so the dashboard and the CLI cannot drift column for column.
   for (const h of ["Role", "Runs", "Merged", "None", "Refused", "Problems", "Tokens", "Cost", "Time", "Last change"]) {
     assert.match(html, new RegExp("<th[^>]*>" + h + "</th>"), "the " + h + " header");
   }
-  // The time cell folds the loop's run spans via fmtSpan (an hour reads "60m", its minute bucket);
-  // a loop whose rows carried no span shows a dash.
-  assert.match(html, /<td class='num'>60m<\/td>/, "the timed loop's run time via fmtSpan");
-  assert.match(html, /<td class='num'>—<\/td>/, "a loop without a timed span shows a dash");
-  // One row per loop plus the total, the total row marked.
-  assert.equal((html.match(/<tr/g) ?? []).length, 5, "the header row, the three loops, and the total");
+  // The time cell folds the role's run spans via fmtSpan (an hour reads "60m", its minute bucket);
+  // a role whose rows carried no span shows a dash.
+  assert.match(html, /<td class='num'>60m<\/td>/, "the timed role's run time via fmtSpan");
+  assert.match(html, /<td class='num'>—<\/td>/, "a role without a timed span shows a dash");
+  // One row per role plus the total, the total row marked.
+  assert.equal((html.match(/<tr/g) ?? []).length, 5, "the header row, the three roles, and the total");
   assert.match(html, /<tr class='hist-total'><td class='mono'>total<\/td>/);
   // Every number comes from the server's summary — never re-derived — and the token/cost cells
   // reuse the report charts' formatters (compact tokens, $).
   assert.match(html, /<td class='num'>12\.5k<\/td>/, "tokens format like the report charts");
   assert.match(html, /<td class='num'>13\.0k<\/td>/);
   assert.match(html, /<td class='num'>\$0\.25<\/td>/);
-  // A changed loop's last change is the newest change's age; a never-changed loop's is a dash.
+  // A changed role's last change is the newest change's age; a never-changed role's is a dash.
   assert.match(html, /<td>5m ago<\/td>/);
   assert.match(html, /<td>—<\/td>/);
 });

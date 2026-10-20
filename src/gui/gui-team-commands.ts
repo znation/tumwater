@@ -131,11 +131,11 @@ export async function handleWakeCancel(req: http.IncomingMessage, res: http.Serv
   sendJson(res, 200, { ok: true, message: cancelWakes(root, body.role as string | undefined) });
 }
 
-/** Resume a row: lift every marker key that pauses this loop id (its own, its base role's, and
- * instance 1's `<role>-1`), since the row shows Resume whenever `loopPaused` holds and the key
+/** Resume a row: lift every marker key that pauses this role id (its own, its base role's, and
+ * instance 1's `<role>-1`), since the row shows Resume whenever `runnerPaused` holds and the key
  * actually in the marker may differ from the row's id. Reports whether any key was lifted. */
-function resumeLoopKeys(root: string, loopId: string): boolean {
-  const keys = new Set([loopId, baseRoleOf(loopId), ...(INSTANCE_ROLES.has(loopId) ? [`${loopId}-1`] : [])]);
+function resumeRunnerKeys(root: string, runnerId: string): boolean {
+  const keys = new Set([runnerId, baseRoleOf(runnerId), ...(INSTANCE_ROLES.has(runnerId) ? [`${runnerId}-1`] : [])]);
   let changed = false;
   for (const key of keys) changed = resumeRole(root, key) || changed;
   return changed;
@@ -158,6 +158,6 @@ export async function handlePauseRole(req: http.IncomingMessage, res: http.Serve
   if (untilMs === null) return;
   const changed = value
     ? pauseRole(root, body.role as string, untilMs)
-    : resumeLoopKeys(root, body.role as string);
+    : resumeRunnerKeys(root, body.role as string);
   sendJson(res, 200, { ok: true, changed, paused: value, ...(untilMs === undefined ? {} : { until: untilMs }) });
 }

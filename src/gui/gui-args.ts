@@ -1,6 +1,6 @@
 /**
  * The request-argument validators behind the dashboard's /api endpoints (gui/gui-endpoints.ts's
- * GET handlers and gui/gui-endpoint-commands.ts's POST handlers call them): loop-targeting role
+ * GET handlers and gui/gui-endpoint-commands.ts's POST handlers call them): role-targeting role
  * validation, integer query parsing, the report
  * endpoints' days window, and the body-field checks the paired operator endpoints
  * (/api/prompt and /api/prompt-role, /api/pause and /api/pause-role) must answer with
@@ -19,7 +19,7 @@ import { typoSuffix } from "../text/suggest.js";
 import { badRequest, sendJson } from "./http-body.js";
 import type http from "node:http";
 
-/** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
+/** The role ids a role-targeting endpoint accepts: when tumwater.json parses, catalog +
  * customRoles (knownRoleIds); a transiently broken file falls back to the built-in catalog
  * rather than refusing every id — the rule config.knownRoleIdsCached owns. Shared by
  * /api/transcript and the two operator endpoints so their validation and 400 wording cannot
@@ -28,7 +28,7 @@ export function validRoleIds(root: string): string[] {
   return knownRoleIdsCached(root);
 }
 
-/** Validate one request's loop-targeting role against validRoleIds, sending the shared 400 on
+/** Validate one request's role-targeting role against validRoleIds, sending the shared 400 on
  * a miss and reporting whether the request should stop: an absent id reads "role required
  * (valid ids: …)" — unless `allowMissing`, the wake endpoint's `{}` → all-roles default,
  * which only a truly absent `undefined` may ride; an explicit null is always rejected — and a

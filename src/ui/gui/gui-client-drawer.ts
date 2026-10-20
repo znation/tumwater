@@ -1,23 +1,23 @@
 // vocabulary: plain
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
- * without losing it. For a loop it shows the state, the loop's controls (prompt, wake now or later,
+ * without losing it. For a role it shows the state, the role's controls (prompt, wake now or later,
  * pause/resume, abort), what it is working on, its last result, the metrics the team table
  * leaves out (tokens, context, cost, timings), its recent ticks (/api/history filtered to the
- * loop), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
+ * role), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
  * to the bottom while the reader is there). For a backlog entry it shows the entry in full
  * (/api/backlog), rendered as Markdown, with a shortcut into the composer — answering a
  * question, or asking the director about a plan or bug — and, for a plan or bug, a two-click
  * Cancel that removes the entry (/api/backlog-cancel). Esc, the close button, or clicking the
  * same row again closes it. Spliced into gui-client.ts's script, reaching its helpers through
  * that concatenation. */
-export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "loop", role } | { kind: "entry", file, index } while open
-  let drawerTicks = null; // the open loop's recent history rows (null until fetched)
+export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "role", role } | { kind: "entry", file, index } while open
+  let drawerTicks = null; // the open role's recent history rows (null until fetched)
   let drawerTicksAt = 0;
-  let drawerChange = null; // the open loop's unmerged change: { role, state: "loading"|"ok"|"error", view, message }
-  let drawerRole = null; // the open loop's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
+  let drawerChange = null; // the open role's unmerged change: { role, state: "loading"|"ok"|"error", view, message }
+  let drawerRole = null; // the open role's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
-  const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null); // vocabulary-ok: the drawer kind stays "loop"
-  // One key/value row builder shared by the loop-metrics table (renderLoopDrawer) and the
+  const openRoleId = () => (drawer && drawer.kind === "role" ? drawer.role : null);
+  // One key/value row builder shared by the role-metrics table (renderRoleDrawer) and the
   // Configuration section (drawerConfigHtml): identical markup, formerly copy-pasted into two
   // local consts (kv and row) so the row shape could drift between the two sections.
   const kvRow = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
@@ -35,7 +35,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     $("scrim").hidden = false;
   }
   function closeDrawer() {
-    const wasLoop = openLoopRole();
+    const wasRole = openRoleId();
     drawer = null;
     entryEditing = null;
     noteEditing = null;
@@ -46,7 +46,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     instancesEditing = null;
     modelEditing = null;
     disarmNoteClear();
-    if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
+    if (wasRole && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
     drawerChange = null;
     drawerRole = null;
@@ -58,8 +58,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (lastStatus) renderTeam(lastStatus); // drop the row highlight
   }
 
-  function openLoop(role) {
-    drawer = { kind: "loop", role }; // vocabulary-ok: the drawer kind stays "loop"
+  function openRole(role) {
+    drawer = { kind: "role", role };
     const hash = "#role/" + encodeURIComponent(role);
     if (location.hash !== hash) history.replaceState(null, "", hash);
     drawerTicks = null;
@@ -70,17 +70,17 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       "<span class='muted' style='margin-left:auto;font-size:13px'>last 200 lines</span></div>" +
       "<pre id='transcript' class='transcript'><span class='muted'>Loading…</span></pre></section>");
     if (lastStatus) {
-      renderLoopDrawer(lastStatus);
+      renderRoleDrawer(lastStatus);
       renderTeam(lastStatus);
     }
-    loadLoopTicks(true);
+    loadRoleRuns(true);
     loadDrawerChange(role);
     loadDrawerRole(role);
     refreshTranscript(true);
   }
-  function toggleLoop(role) {
-    if (openLoopRole() === role) closeDrawer();
-    else openLoop(role);
+  function toggleRole(role) {
+    if (openRoleId() === role) closeDrawer();
+    else openRole(role);
   }
   function openEntry(file, index) {
     drawer = { kind: "entry", file, index: Number(index) };
@@ -101,8 +101,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     return change && change.summary ? change.summary : "";
   }
 
-  function renderLoopDrawer(d) {
-    const role = openLoopRole();
+  function renderRoleDrawer(d) {
+    const role = openRoleId();
     if (!role) return;
     const l = (d.roles || []).find((x) => x.role === role);
     if (!l) {
@@ -190,7 +190,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     paintPanel("drawerrole", drawerRoleSection());
   }
 
-  // The open loop's unmerged change, as /api/diff?role serves it: the full patch the CLI's
+  // The open role's unmerged change, as /api/diff?role serves it: the full patch the CLI's
   // tumwater diff --role prints. Degrades like the collector — a missing worktree, a missing
   // base branch, or no work each get a plain statement, and an unreadable payload says so
   // rather than rendering a half-view. Pure of side effects; the view paints what it returns.
@@ -221,7 +221,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     return "<section><div class='sec-head'><h3>Pending change</h3></div>" + body + "</section>";
   }
   // Fetch one drawer section's payload once when the drawer opens, storing it in the
-  // caller's state cell. A stale answer (the drawer moved to another loop) is dropped;
+  // caller's state cell. A stale answer (the drawer moved to another role) is dropped;
   // later status polls repaint from the stored view. The assign callback writes that cell
   // (drawerChange / drawerRole), so the loading/ok/error contract lives here once for both
   // the pending-change and notebook sections.
@@ -230,22 +230,22 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     assign({ role, state: "loading" });
     try {
       const d = await getJson(url + encodeURIComponent(role), pollSignal());
-      if (openLoopRole() !== role) return;
+      if (openRoleId() !== role) return;
       assign({ role, state: "ok", view: d });
     } catch (err) {
-      if (openLoopRole() !== role) return;
+      if (openRoleId() !== role) return;
       assign({ role, state: "error", message: err && err.message ? err.message : fallbackMessage });
     }
-    if (lastStatus) renderLoopDrawer(lastStatus);
+    if (lastStatus) renderRoleDrawer(lastStatus);
   }
-  // The open loop's unmerged change, as /api/diff?role serves it.
+  // The open role's unmerged change, as /api/diff?role serves it.
   function loadDrawerChange(role) {
     return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
   }
 
-  // The open loop's notebook and next-tick prompt, as /api/role serves them (rolePayload):
+  // The open role's notebook and next-tick prompt, as /api/role serves them (rolePayload):
   // the same note and assembled prompt the CLI's role command shows, so the operator can
-  // diagnose a loop from the page. The note renders in a <pre>; the next prompt sits in a
+  // diagnose a role from the page. The note renders in a <pre>; the next prompt sits in a
   // <details> so it does not push the rest of the drawer down. Both empty cases say so in a
   // muted line. It paints into its own #drawerrole panel, not #drawermeta: the poll rewrites
   // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite would
@@ -272,11 +272,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notes yet.</p>";
       body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
         "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
-        // The loop's recent tick outcomes (rolePayload's recentOutcomes, read from the event
+        // The role's recent tick outcomes (rolePayload's recentOutcomes, read from the event
         // log), rendered like the Recent ticks list above: each with its relative age, result
         // label, summary, and duration. Mirrors the Recent tick outcomes section of
         // tumwater role <id> — no backticks allowed here (this whole script is one big
-        // String.raw template), so the page and the CLI read one loop's outcomes identically.
+        // String.raw template), so the page and the CLI read one role's outcomes identically.
         (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
           "<span class='muted' style='font-size:13px'>· " + outcomes.length + "</span></h3></div>" +
           "<ul class='ticks'>" + outcomes.map((o) => { // vocabulary-ok: the ticks class stays
@@ -292,7 +292,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   // A Configuration section built from the same /api/role payload the CLI's tumwater role
   // <id> renders (rolePayload), so the drawer's and the terminal's rows read one document and
-  // cannot drift: what the loop RUNS ON (model/tier, provider cap, image reading, the
+  // cannot drift: what the role RUNS ON (model/tier, provider cap, image reading, the
   // fallback pairs, billing, min tick interval) and CARRIES (queued prompts, the instructions
   // override, find text). Each row is guarded by a present/own check so an absent field
   // renders no row — a cap-less team shows no Provider row, no fallback shows no fallback
@@ -410,7 +410,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         : "<button type='button' class='btn btn-sm' data-act='instances-edit' data-arg='" + esc(role) + "'>" + (hasInstances ? "Edit" : "Set instances") + "</button>";
       rows.push("<div><dt>Instances</dt><dd title='" + esc(instBody) + "'>" + esc(instBody) + instControl + "</dd></div>");
     }
-    // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
+    // The windows governing the role, worded like role-render.ts's Quiet hours line; the end time
     // mirrors quietWindowEnd (browser code cannot import it). A non-director role's own window
     // is an always-shown editable row (the Daily cap row's rationale: the control sits where
     // the hold is shown) — including when the payload carries no role-scope window ("no own
@@ -438,12 +438,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       rows.push(kvRow("Quiet hours", w.window + " (team window; " + state + ")"));
     });
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
-    // The loop's own spend over its retained event window (rolePayload's usage, summed from the
-    // same run_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+    // The role's own spend over its retained event window (rolePayload's usage, summed from the
+    // same run_end events recentOutcomes reads): how much the role burned on tokens and cost,
     // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
     // — mirroring role-render.ts's Spend line, so the drawer and tumwater role <id> read one
-    // loop's spend identically. Each numeric field is coerced (foreign shapes read as 0) and an
-    // all-zero usage is absent on the payload, so this row never renders for a never-costly loop.
+    // role's spend identically. Each numeric field is coerced (foreign shapes read as 0) and an
+    // all-zero usage is absent on the payload, so this row never renders for a never-costly role.
     if (view.usage && typeof view.usage === "object") {
       const u = view.usage;
       const real = Number(u.costUsd) || 0;
@@ -504,9 +504,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let intervalEditing = null; // { role, value } — value is the seeded override (number) or "" when none
   let instancesEditing = null; // { role, value } — value is the seeded count (number) or "" when none
   let modelEditing = null; // { role, provider, model, thinking } — the seeded raw overrides ("" when unset)
-  function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
+  function repaintDrawerRole() { if (lastStatus) renderRoleDrawer(lastStatus); }
   // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
-  // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
+  // the shared confirmSlot factory (defined in the roles splice, an earlier one), so the arm,
   // guard, and disarm logic lives once.
   const noteClear = confirmSlot(repaintDrawerRole);
   const noteClearArmed = (role) => noteClear.armed(role);
@@ -532,18 +532,18 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     return loadDrawerSection(role, "/api/role?role=", "Notes and prompt unavailable", (v) => { drawerRole = v; });
   }
 
-  async function loadLoopTicks(force) {
-    const role = openLoopRole();
+  async function loadRoleRuns(force) {
+    const role = openRoleId();
     if (!role || (!force && Date.now() - drawerTicksAt < 5000)) return;
     drawerTicksAt = Date.now();
     try {
       const d = await getJson("/api/history?n=8&role=" + encodeURIComponent(role), pollSignal());
-      if (openLoopRole() !== role) return;
+      if (openRoleId() !== role) return;
       drawerTicks = d && Array.isArray(d.rows) ? d.rows : [];
     } catch {
       if (drawerTicks === null) drawerTicks = [];
     }
-    if (lastStatus) renderLoopDrawer(lastStatus);
+    if (lastStatus) renderRoleDrawer(lastStatus);
   }
 
   // Transcript lines by kind (transcript.ts's rendering): run separators, tool calls, thinking,
@@ -555,7 +555,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }).join("\n");
   }
   async function refreshTranscript(initial) {
-    const role = openLoopRole();
+    const role = openRoleId();
     if (!role) return;
     let d;
     try {
@@ -564,7 +564,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       return; // keep the previous content on a failed poll
     }
     const pre = $("transcript");
-    if (openLoopRole() !== role || !pre) return;
+    if (openRoleId() !== role || !pre) return;
     const lines = Array.isArray(d.lines) ? d.lines : [];
     const html = lines.length ? transcriptHtml(lines) : "<span class='muted'>No transcript yet — it fills in once this role's next run starts.</span>";
     // Stay pinned to the newest line while the reader is at the bottom; leave them be if they
@@ -632,8 +632,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
 
   async function refreshDrawer() {
     if (!drawer) return;
-    if (drawer.kind === "loop") { // vocabulary-ok: the drawer kind stays "loop"
-      if (lastStatus) renderLoopDrawer(lastStatus);
+    if (drawer.kind === "role") {
+      if (lastStatus) renderRoleDrawer(lastStatus);
       await refreshTranscript(false);
     } else {
       await refreshEntry();

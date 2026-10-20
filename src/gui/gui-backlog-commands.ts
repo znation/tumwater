@@ -108,7 +108,7 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
 
 /** Handle POST /api/backlog-file: the Plans/Bugs tabs' New control — the same entry and wake
  * `tumwater bug`/`tumwater plan` produce (fileEntryWithBody, then the shared wake text to the
- * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional
+ * bugfix/feature role). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional
  * markdown"}`. The empty-title and wake-length checks run here, before anything is written:
  * the body is normalized and checked by bodyStructureProblem too, and an over-long wake
  * would throw after the entry merged. */
@@ -149,7 +149,7 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
  * `tumwater plan|bug --cancel <n>` through the non-exiting tryCancelEntry. Body `{"kind":
  * "bug"|"plan", "position": <1-based>, "title": "<heading>"}`; a missing position or a
  * different heading there answers 200 { ok: true, status: "gone" } (the list moved since the
- * poll). No wake and no inbox prompt: removing work must not wake a loop. */
+ * poll). No wake and no inbox prompt: removing work must not wake a role. */
 export async function handleBacklogCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;

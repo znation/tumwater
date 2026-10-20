@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { freshLoopState } from "../src/runner/runner-state.js";
-import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
+import { rolePhase, roleRank, sortRolesByState } from "../src/ui/status-model.js";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
@@ -21,63 +21,63 @@ interface Model {
   phaseInfo(phase: string): PhaseInfo;
   resultInfo(result: string | null): { label: string; tone: string };
   resultWhy(l: object): string;
-  loopRank(phase: string): number;
-  sortLoops<T extends { role: string; phase: string; lastRunEndedAt: number | null }>(loops: T[]): T[];
+  roleRank(phase: string): number;
+  sortRoles<T extends { role: string; phase: string; lastRunEndedAt: number | null }>(roles: T[]): T[];
   pageAlerts(d: object | null, offline: boolean): Alert[];
   needsYou(alerts: Alert[]): number;
   eventKind(item: { type: string; result?: string }): string;
   splitTitle(t: string): { title: string; meta: string };
   queuedPrompts(d: object): Array<{ role: string; preview: string; file: string; queuedAtMs: number | null }>;
-  LOOP_GROUPS: Array<Array<string | number>>;
+  ROLE_GROUPS: Array<Array<string | number>>;
   STALL: RegExp;
 }
 const model = clientScope<Model>(["format", "labels", "view-model"],
-  ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS", "STALL"]);
+  ["phaseInfo", "resultInfo", "resultWhy", "roleRank", "sortRoles", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "ROLE_GROUPS", "STALL"]);
 
-test("every phase label loopPhase renders maps to a known status on the page", () => {
+test("every phase label rolePhase renders maps to a known status on the page", () => {
   const now = Date.now();
-  const at = (patch: Partial<ReturnType<typeof freshLoopState>>, role = "clean") => ({ ...freshLoopState(role), ...patch });
+  const at = (patch: Partial<ReturnType<typeof freshRunnerState>>, role = "clean") => ({ ...freshRunnerState(role), ...patch });
   const cases: Array<[string, string, boolean]> = [
-    [loopPhase(at({}), false), "stopped", false],
-    [loopPhase(at({ running: true, lastRunStartedAt: now - 90_000 }), true), "working", true],
-    [loopPhase(at({ running: true, lastRunStartedAt: now - 90_000 }, "director"), true), "working", true],
-    [loopPhase(at({ running: true, phase: "review", lastRunStartedAt: now - 30_000 }), true), "reviewing", true],
-    [loopPhase(at({}), true, undefined, false, null, false, { status: "merging", startedAt: now - 60_000, stage: "build-check" }), "landing", true],
-    [loopPhase(at({}), true, undefined, false, null, false, { status: "approved", startedAt: now }), "vetted", false],
-    [loopPhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],
-    [loopPhase(at({}, "director"), true), "waiting", false],
-    [loopPhase(at({}), true, undefined, false, null, true), "paused", false],
-    [loopPhase(at({}), true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now + 120_000), "paused", false],
-    [loopPhase(at({}), true, undefined, true), "budget", false],
-    [loopPhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
-    [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
-    [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
-    [loopPhase(at({ running: true, parkedSince: now - 120_000, parkedOn: "omlx" }), true, undefined, false, null, false, undefined, undefined, false, undefined, false, false, undefined,
+    [rolePhase(at({}), false), "stopped", false],
+    [rolePhase(at({ running: true, lastRunStartedAt: now - 90_000 }), true), "working", true],
+    [rolePhase(at({ running: true, lastRunStartedAt: now - 90_000 }, "director"), true), "working", true],
+    [rolePhase(at({ running: true, phase: "review", lastRunStartedAt: now - 30_000 }), true), "reviewing", true],
+    [rolePhase(at({}), true, undefined, false, null, false, { status: "merging", startedAt: now - 60_000, stage: "build-check" }), "landing", true],
+    [rolePhase(at({}), true, undefined, false, null, false, { status: "approved", startedAt: now }), "vetted", false],
+    [rolePhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],
+    [rolePhase(at({}, "director"), true), "waiting", false],
+    [rolePhase(at({}), true, undefined, false, null, true), "paused", false],
+    [rolePhase(at({}), true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now + 120_000), "paused", false],
+    [rolePhase(at({}), true, undefined, true), "budget", false],
+    [rolePhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
+    [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
+    [rolePhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
+    [rolePhase(at({ running: true, parkedSince: now - 120_000, parkedOn: "omlx" }), true, undefined, false, null, false, undefined, undefined, false, undefined, false, false, undefined,
       { inUse: 3, limit: 8, reserve: 0, byKey: { omlx: { inUse: 3, limit: 3, waiting: 1 } } }), "awaiting", false],
-    [loopPhase(at({ lastResult: "main_red" }), true), "mainred", false],
-    [loopPhase(at({ consecutiveErrors: 9 }), true), "failing", false],
-    [loopPhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
-    [loopPhase(at({ nextRunAt: now - 1_000 }), true), "queued", false],
-    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "no-free-entry" }, "feature-2"), true), "idle", false],
-    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "claim-hold" }), true), "idle", false],
-    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-backlog" }), true), "deferred", false],
-    [loopPhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-no-work" }), true), "deferred", false],
+    [rolePhase(at({ lastResult: "main_red" }), true), "mainred", false],
+    [rolePhase(at({ consecutiveErrors: 9 }), true), "failing", false],
+    [rolePhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
+    [rolePhase(at({ nextRunAt: now - 1_000 }), true), "queued", false],
+    [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "no-free-entry" }, "feature-2"), true), "idle", false],
+    [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "claim-hold" }), true), "idle", false],
+    [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-backlog" }), true), "deferred", false],
+    [rolePhase(at({ nextRunAt: now - 1_000, skipReason: "deferred-no-work" }), true), "deferred", false],
   ];
   for (const [phase, key, live] of cases) {
     const info = model.phaseInfo(phase);
     assert.equal(info.key, key, `"${phase}" reads as ${key}`);
     assert.equal(info.live, live, `"${phase}" live flag`);
-    assert.equal(model.loopRank(phase), loopRank(phase), `"${phase}" ranks as the server ranks it`);
+    assert.equal(model.roleRank(phase), roleRank(phase), `"${phase}" ranks as the server ranks it`);
     assert.ok(info.label && info.label !== phase || key === "other", `"${phase}" gets a status word`);
   }
   assert.equal(model.phaseInfo("waiting for omlx 2m").detail, "on omlx for 2m", "provider waiter names its key");
-  // A queued loop is not necessarily waiting for a slot; the detail must not claim it is.
+  // A queued role is not necessarily waiting for a slot; the detail must not claim it is.
   assert.ok(!model.phaseInfo("due").detail.includes("free slot"), "due detail does not blame slots");
   assert.doesNotMatch(model.phaseInfo("due").detail, /slot|deferred/);
   assert.equal(model.phaseInfo("idle: no unclaimed plans").detail, "no unclaimed plans");
   assert.equal(model.phaseInfo("deferred (backlog open)").detail, "backlog open");
   for (const p of ["idle: no unclaimed bugs", "idle: another feature instance is working on it", "deferred (no new work)"])
-    assert.equal(model.loopRank(p), loopRank(p), p);
+    assert.equal(model.roleRank(p), roleRank(p), p);
   // The label's tail rides along as the pill's detail line.
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
   assert.equal(model.phaseInfo("merging 1m · checking").detail, "1m · checking");
@@ -112,9 +112,9 @@ test("every phase label loopPhase renders maps to a known status on the page", (
   assert.deepEqual([model.phaseInfo("molting").key, model.phaseInfo("molting").label, model.phaseInfo("molting").tone], ["other", "molting", "gray"]);
 });
 
-test("the page's loop order is status-model's, rank by rank", () => {
+test("the page's role order is status-model's, rank by rank", () => {
   const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60_000;
-  const loops = [
+  const roles = [
     { role: "sleepy", phase: "sleeping (for 5m)", lastRunEndedAt: t(3) },
     { role: "working-b", phase: "working 2m", lastRunEndedAt: t(1) },
     { role: "reviewing-a", phase: "reviewing 1m", lastRunEndedAt: null },
@@ -132,7 +132,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "capped", phase: "waiting: daily cap spent", lastRunEndedAt: t(2) },
     { role: "bootstrapped", phase: "waiting: bootstrap", lastRunEndedAt: t(0) },
   ];
-  const order = model.sortLoops(loops).map((l) => l.role);
+  const order = model.sortRoles(roles).map((l) => l.role);
   assert.deepEqual(order, [
     "director", // its own live work, outside the permit-holder group
     "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
@@ -142,15 +142,15 @@ test("the page's loop order is status-model's, rank by rank", () => {
     "queued-z", "sleepy", "never-ticked", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
-  assert.deepEqual(sortLoopsByState(loops.map((l) => ({ ...l, lastTickEndedAt: l.lastRunEndedAt }))).map((l) => l.role), order);
-  for (const l of loops) assert.equal(model.loopRank(l.phase), loopRank(l.phase), l.phase);
+  assert.deepEqual(sortRolesByState(roles.map((l) => ({ ...l, lastTickEndedAt: l.lastRunEndedAt }))).map((l) => l.role), order);
+  for (const l of roles) assert.equal(model.roleRank(l.phase), roleRank(l.phase), l.phase);
   // Ties break on the name, and the input is left alone.
   const tied = [
     { role: "zeta", phase: "due", lastRunEndedAt: t(4) },
     { role: "alpha", phase: "due", lastRunEndedAt: t(4) },
   ];
-  assert.deepEqual(model.sortLoops(tied).map((l) => l.role), ["alpha", "zeta"]);
-  assert.deepEqual(tied.map((l) => l.role), ["zeta", "alpha"], "sortLoops returns a new array");
+  assert.deepEqual(model.sortRoles(tied).map((l) => l.role), ["alpha", "zeta"]);
+  assert.deepEqual(tied.map((l) => l.role), ["zeta", "alpha"], "sortRoles returns a new array");
 });
 
 // The running director buckets into its own group so it does not join the In-progress rows an
@@ -158,8 +158,8 @@ test("the page's loop order is status-model's, rank by rank", () => {
 // pipeline waiters (rank 1), which the page labels `Waiting to start`.
 test("the running director buckets outside the In-progress group", () => {
   const groupOf = (phase: string): string | number | undefined => {
-    const rank = model.loopRank(phase);
-    return model.LOOP_GROUPS[model.LOOP_GROUPS.findIndex((g) => g.slice(1).includes(rank))]?.[0];
+    const rank = model.roleRank(phase);
+    return model.ROLE_GROUPS[model.ROLE_GROUPS.findIndex((g) => g.slice(1).includes(rank))]?.[0];
   };
   assert.equal(groupOf("director working 1m"), "Director");
   assert.equal(groupOf("working 5s"), "In progress");
@@ -178,7 +178,7 @@ test("tick results read as words with the tone of their outcome", () => {
   assert.deepEqual(model.resultInfo("changed"), { label: "Merged", tone: "green" });
   assert.deepEqual(model.resultInfo("error"), { label: "Error", tone: "red" });
   assert.deepEqual(model.resultInfo("some_future_result"), { label: "Some future result", tone: "gray" });
-  // A problem without a summary explains itself with the loop's last error; a success never
+  // A problem without a summary explains itself with the role's last error; a success never
   // borrows a stale one.
   assert.equal(model.resultWhy({ lastResult: "error", lastSummary: null, lastError: "429 Rate limit exceeded", phase: "due" }), "429 Rate limit exceeded");
   assert.equal(model.resultWhy({ lastResult: "changed", lastSummary: "Add --watch", lastError: "old failure", phase: "due" }), "Add --watch");
@@ -306,7 +306,7 @@ test("Wake later opens a four-choice menu and a choice posts inSeconds", async (
   assert.ok(closes.length > before, "the menu closes on cancel");
 });
 
-test("a loop's controls post explicit states, and an abort needs a confirming second click", async () => {
+test("a role's controls post explicit states, and an abort needs a confirming second click", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   const flashes: string[] = [];
   const calls: string[] = [];
@@ -392,7 +392,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   await scope.rowAction("abort", "feature");
   assert.equal(posts.length, 0, "an armed abort posts nothing yet");
   assert.equal(scope.abortConfirming("feature"), true);
-  assert.equal(scope.abortConfirming("qa"), false, "arming is per loop");
+  assert.equal(scope.abortConfirming("qa"), false, "arming is per role");
   await scope.rowAction("abort", "feature");
   assert.deepEqual(posts.shift(), { path: "/api/abort", body: { role: "feature" } });
   assert.equal(scope.abortConfirming("feature"), false, "firing disarms");
@@ -402,14 +402,14 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   posts.shift();
   assert.match(flashes.pop() ?? "", /^error: \/api\/abort failed: HTTP 409/);
 
-  // Prompt aims the composer at the loop instead of posting.
+  // Prompt aims the composer at the role instead of posting.
   calls.length = 0;
   await scope.rowAction("prompt", "qa");
   assert.deepEqual(calls, ["target qa", "focus"]);
   assert.equal(posts.length, 0);
 });
 
-test("the composer queues for the director or one loop through the CLI's endpoints", async () => {
+test("the composer queues for the director or one role through the CLI's endpoints", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   let fail = false;
   const { sendPrompt } = clientScope<{ sendPrompt(target: string, text: string, images?: unknown): Promise<string> }>(["labels", "composer-send"], ["sendPrompt"], {

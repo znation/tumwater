@@ -1,8 +1,8 @@
 // vocabulary: plain
-/** The dashboard's Pending view, browser-side: every loop's unmerged change as /api/diff
+/** The dashboard's Pending view, browser-side: every role's unmerged change as /api/diff
  * serves it (the same document `tumwater diff` prints from the shared change collectors). The
  * roster shows each role's branch, state, commits ahead of main with their subjects, and its
- * uncommitted-file count; a row opens that loop's drawer, whose Pending change section fetches
+ * uncommitted-file count; a row opens that role's drawer, whose Pending change section fetches
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
  * Refresh button is pressed — never on a timer of its own. Spliced into gui-client.ts's
  * script, reaching its helpers (esc, getJson, icon, errorPanel) through that concatenation. */
@@ -30,7 +30,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<span class='num' title='" + esc(files.join(", ")) + "'>" + esc(plural(files.length, "file")) + "</span>";
   }
   // The Pending roster: one clickable row per known role (the collector's config order), each
-  // opening that loop's drawer. Pure — the view paints what this returns.
+  // opening that role's drawer. Pure — the view paints what this returns.
   function pendingTableHtml(team) {
     if (!team || !Array.isArray(team.roles) || team.roles.length === 0)
       return "<div class='empty'><strong>No roles yet</strong>Roles appear here once the team is configured.</div>";
@@ -44,11 +44,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       "<td>" + pendingAheadHtml(r) + "</td>" +
       "<td class='num'>" + pendingDirtyHtml(r) + "</td></tr>",
     ).join("");
-    return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Role</th><th>Branch</th>" + // vocabulary-ok: CSS class the stylesheet matches
+    return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-role'>Role</th><th>Branch</th>" +
       "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
   // The Merge queue card's body: every queued merge in execution order (oldest first), one
-  // line each mirroring tumwater queue's renderMergeQueue — 1-based position, loop, tick,
+  // line each mirroring tumwater queue's renderMergeQueue — 1-based position, role, tick,
   // short sha, age, summary — so the page and the CLI cannot drift. Painted from the status
   // payload the page already polls; depth counts the unreadable queue files the status reader
   // skips, so a positive depth with no readable list states the count instead of inventing rows.
@@ -92,7 +92,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
   }
   // Load the team-wide change roster. Called when the view opens and by the Refresh button;
-  // no timer of its own, and the roster only changes when a loop merges or edits its worktree.
+  // no timer of its own, and the roster only changes when a role merges or edits its worktree.
   async function fetchPending() {
     buildPendingView();
     try {

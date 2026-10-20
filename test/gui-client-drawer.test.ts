@@ -5,8 +5,8 @@ import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui/gui-client-drawer.js";
 import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui/gui-client-drawer.ts): the open/close
-// state machine over loops and backlog entries with its #role/<role> hash
-// routing, the loop drawer's paint (unknown role, a working loop's actions and metrics), the
+// state machine over roles and backlog entries with its #role/<role> hash
+// routing, the role drawer's paint (unknown role, a working role's actions and metrics), the
 // backlog entry's load with its stale-response guard, and the transcript line classifier.
 // The pattern test/gui-client.test.ts uses: the real format and view-model regions of the
 // served script plus the drawer blob, run in one function scope with stand-ins for the DOM
@@ -23,7 +23,7 @@ interface FakeEl {
 }
 
 interface DrawerScope {
-  openLoopRole(): string | null;
+  openRoleId(): string | null;
   openEntryKey(): string | null;
   startNoteEdit(role: string, text: string): void;
   stopNoteEdit(): void;
@@ -40,13 +40,13 @@ interface DrawerScope {
   startModelEdit(role: string, seed: { provider: string; model: string; thinking: string }): void;
   stopModelEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
-  toggleLoop(role: string): void;
+  toggleRole(role: string): void;
   toggleEntry(file: string, index: number): void;
-  renderLoopDrawer(d: object): void;
+  renderRoleDrawer(d: object): void;
   drawerChangeHtml(view: unknown): string;
   mergeSummary(d: object, role: string): string;
   transcriptHtml(lines: string[]): string;
-  loadLoopTicks(force: boolean): Promise<void>;
+  loadRoleRuns(force: boolean): Promise<void>;
   refreshEntry(): Promise<void>;
   refreshDrawer(): Promise<void>;
 }
@@ -143,7 +143,7 @@ function openDrawer(names: string[], opts: Parameters<typeof drawerEnv>[0] = {})
   return { scope: drawerScope(names, env.env), ...env };
 }
 
-/** A team status whose only loop is a working, in-flight, unpaused "clean". */
+/** A team status whose only role is a working, in-flight, unpaused "clean". */
 function workingStatus() {
   const now = Date.now();
   return {
@@ -159,45 +159,45 @@ function workingStatus() {
   };
 }
 
-test("opening a loop routes the hash, toggling the same role closes it back to the team view", async () => {
-  const t = openDrawer(["toggleLoop", "openLoopRole"], { status: workingStatus() });
-  t.scope.toggleLoop("clean");
-  assert.equal(t.scope.openLoopRole(), "clean");
+test("opening a role routes the hash, toggling the same role closes it back to the team view", async () => {
+  const t = openDrawer(["toggleRole", "openRoleId"], { status: workingStatus() });
+  t.scope.toggleRole("clean");
+  assert.equal(t.scope.openRoleId(), "clean");
   assert.ok(t.historyLog.includes("#role/clean"), `hash not routed: ${t.historyLog}`);
   assert.equal(t.el("drawer").hidden, false);
   assert.equal(t.el("scrim").hidden, false);
   await flush();
 
-  t.scope.toggleLoop("clean");
-  assert.equal(t.scope.openLoopRole(), null);
+  t.scope.toggleRole("clean");
+  assert.equal(t.scope.openRoleId(), null);
   assert.equal(t.el("drawer").hidden, true);
   assert.equal(t.el("scrim").hidden, true);
   assert.ok(t.historyLog.includes("#team"), `hash not restored: ${t.historyLog}`);
 
-  t.scope.toggleLoop("bugfix");
-  assert.equal(t.scope.openLoopRole(), "bugfix");
+  t.scope.toggleRole("bugfix");
+  assert.equal(t.scope.openRoleId(), "bugfix");
   // The scrim's click closes whatever is open — wired at script-eval time.
   t.el("scrim").listeners["click"]?.();
-  assert.equal(t.scope.openLoopRole(), null);
+  assert.equal(t.scope.openRoleId(), null);
 });
 
-test("switching roles while a loop drawer is open moves it without closing", () => {
-  const t = openDrawer(["toggleLoop", "openLoopRole"], { status: workingStatus() });
-  t.scope.toggleLoop("clean");
-  t.scope.toggleLoop("bugfix");
-  assert.equal(t.scope.openLoopRole(), "bugfix");
+test("switching roles while a role drawer is open moves it without closing", () => {
+  const t = openDrawer(["toggleRole", "openRoleId"], { status: workingStatus() });
+  t.scope.toggleRole("clean");
+  t.scope.toggleRole("bugfix");
+  assert.equal(t.scope.openRoleId(), "bugfix");
 });
 
-test("the loop drawer for a role the team no longer has says so, paints no actions, and still renders its pending change", async () => {
-  const t = openDrawer(["toggleLoop"], {
+test("the role drawer for a role the team no longer has says so, paints no actions, and still renders its pending change", async () => {
+  const t = openDrawer(["toggleRole"], {
     status: { roles: [] },
     responses: { "/api/diff?role=gone": { state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff: "diff --git a/x b/x\n", dirtyFiles: [] } },
   });
-  t.scope.toggleLoop("gone");
+  t.scope.toggleRole("gone");
   assert.match(t.paintedFor("drawerhead"), /no longer part of the team/);
   assert.equal(t.paintedFor("draweractions"), "");
-  // The change section renders for a role absent from statusPayload.loops, so a disabled
-  // loop's unmerged patch is still visible in its drawer.
+  // The change section renders for a role absent from statusPayload.roles, so a disabled
+  // role's unmerged patch is still visible in its drawer.
   assert.match(t.paintedFor("drawermeta"), /Pending change/);
   await flush();
   const meta = t.paintedFor("drawermeta");
@@ -206,20 +206,20 @@ test("the loop drawer for a role the team no longer has says so, paints no actio
   assert.match(meta, /<pre class='mono diff'>diff --git a\/x b\/x/);
 });
 
-test("an idle loop's drawer offers Wake later…, and its open chooser lists one button per duration", () => {
+test("an idle role's drawer offers Wake later…, and its open chooser lists one button per duration", () => {
   const idle = () => {
     const status = workingStatus();
     status.roles[0]!.phase = "sleeping";
     status.roles[0]!.inFlight = false;
     return status;
   };
-  const closed = openDrawer(["toggleLoop"], { status: idle() });
-  closed.scope.toggleLoop("clean");
+  const closed = openDrawer(["toggleRole"], { status: idle() });
+  closed.scope.toggleRole("clean");
   const closedActions = closed.paintedFor("draweractions");
   assert.match(closedActions, /data-action='wake-in'/);
   assert.doesNotMatch(closedActions, /data-for=/);
-  const open = openDrawer(["toggleLoop"], { status: idle(), overrides: { roleWakeMenuOpen: () => true } });
-  open.scope.toggleLoop("clean");
+  const open = openDrawer(["toggleRole"], { status: idle(), overrides: { roleWakeMenuOpen: () => true } });
+  open.scope.toggleRole("clean");
   const openActions = open.paintedFor("draweractions");
   assert.match(openActions, /data-action='wake-in' data-for='1800'/);
   assert.match(openActions, /data-action='wake-in' data-for='3600'/);
@@ -227,7 +227,7 @@ test("an idle loop's drawer offers Wake later…, and its open chooser lists one
   assert.match(openActions, />in 1h</);
 });
 
-test("an idle loop's drawer offers Cancel scheduled wake only while a future wake names it", () => {
+test("an idle role's drawer offers Cancel scheduled wake only while a future wake names it", () => {
   const actionsFor = (scheduledWake: unknown, instanceOf?: string, scheduledWakes?: unknown) => {
     const status = workingStatus() as unknown as { roles: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown; scheduledWakes?: unknown };
     if (scheduledWakes !== undefined) status.scheduledWakes = scheduledWakes;
@@ -235,8 +235,8 @@ test("an idle loop's drawer offers Cancel scheduled wake only while a future wak
     status.roles[0]!.phase = "sleeping";
     status.roles[0]!.inFlight = false;
     if (scheduledWake !== undefined) status.scheduledWake = scheduledWake;
-    const t = openDrawer(["toggleLoop"], { status: status as never });
-    t.scope.toggleLoop("clean");
+    const t = openDrawer(["toggleRole"], { status: status as never });
+    t.scope.toggleRole("clean");
     return t.paintedFor("draweractions");
   };
   const soon = Date.now() + 60_000;
@@ -246,15 +246,15 @@ test("an idle loop's drawer offers Cancel scheduled wake only while a future wak
   assert.doesNotMatch(actionsFor({ atMs: Date.now() - 1000, roles: ["clean"] }), /data-action='wake-cancel'/);
   // A wake naming only the base role is not cancelled by an exact-id cancel of the instance.
   assert.doesNotMatch(actionsFor({ atMs: soon, roles: ["base"] }, "base"), /data-action='wake-cancel'/);
-  // A loop named only by a later wake in the list still offers the cancel.
+  // A role named only by a later wake in the list still offers the cancel.
   assert.match(actionsFor({ atMs: soon, roles: ["other"] }, undefined, [{ atMs: soon, roles: ["other"] }, { atMs: soon + 1000, roles: ["clean"] }]), /data-action='wake-cancel'/);
   // An instance row: the earliest wake names only its base, a later one names its own id.
   assert.match(actionsFor(undefined, "base", [{ atMs: soon, roles: ["base"] }, { atMs: soon + 1000, roles: ["clean"] }]), /data-action='wake-cancel'/);
 });
 
-test("the loop drawer paints a working loop's actions, metrics, ticks, and transcript with the real formatters", async () => {
+test("the role drawer paints a working role's actions, metrics, ticks, and transcript with the real formatters", async () => {
   const now = Date.now();
-  const t = openDrawer(["toggleLoop", "loadLoopTicks"], {
+  const t = openDrawer(["toggleRole", "loadRoleRuns"], {
     status: workingStatus(),
     responses: {
       "/api/history?n=8&role=clean": { rows: [
@@ -264,7 +264,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
       "/api/transcript?role=clean&n=200": { lines: ["── tick 3", "→ npm test"] },
     },
   });
-  t.scope.toggleLoop("clean");
+  t.scope.toggleRole("clean");
   await flush();
 
   const actions = t.paintedFor("draweractions");
@@ -276,7 +276,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(actions, /data-action='pause-for'/);
   assert.match(actions, /data-action='reset-counters'/);
   assert.doesNotMatch(actions, /data-action='resume'/);
-  assert.doesNotMatch(actions, /data-action='wake-in'/, "a live loop shows Abort, not a wake control");
+  assert.doesNotMatch(actions, /data-action='wake-in'/, "a live role shows Abort, not a wake control");
   assert.match(actions, /<i:stop>/);
 
   const head = t.paintedFor("drawerhead");
@@ -292,7 +292,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(meta, /Peak context, this run<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
   assert.match(meta, /1m ago/); // the last tick's age, through the real fmtAgo
-  // A loop with no lastMergedAt reports never merged in its drawer kv.
+  // A role with no lastMergedAt reports never merged in its drawer kv.
   assert.match(meta, /Last merged<\/dt><dd title='never'>never</);
   // The fetched tick rows render with the real result/age/span formatters.
   assert.match(meta, /#3 · /);
@@ -310,47 +310,47 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
 
 test("the role drawer shows a two-click Disable on an enabled role and none on the director", async () => {
   // An enabled non-director role carries a Disable button in its action row.
-  const enabled = openDrawer(["toggleLoop"], { status: workingStatus() });
-  enabled.scope.toggleLoop("clean");
+  const enabled = openDrawer(["toggleRole"], { status: workingStatus() });
+  enabled.scope.toggleRole("clean");
   await flush();
   const actions = enabled.paintedFor("draweractions");
   assert.match(actions, /data-action='disable'/);
   assert.match(actions, /Disable/);
   assert.match(actions, /btn-danger/);
   // With the confirm armed, the first-clicked button reads the confirm label.
-  const armed = openDrawer(["toggleLoop"], {
+  const armed = openDrawer(["toggleRole"], {
     status: workingStatus(),
     overrides: { disableConfirming: () => true },
   });
-  armed.scope.toggleLoop("clean");
+  armed.scope.toggleRole("clean");
   await flush();
   assert.match(armed.paintedFor("draweractions"), /Click again to disable/);
   // The director cannot be disabled, so its drawer shows no Disable button.
   const directorStatus = workingStatus();
   directorStatus.roles[0]!.role = "director";
-  const dir = openDrawer(["toggleLoop"], { status: directorStatus });
-  dir.scope.toggleLoop("director");
+  const dir = openDrawer(["toggleRole"], { status: directorStatus });
+  dir.scope.toggleRole("director");
   await flush();
   const dirActions = dir.paintedFor("draweractions");
   assert.doesNotMatch(dirActions, /data-action='disable'/);
   assert.doesNotMatch(dirActions, /Disable/);
 });
 
-test("loadLoopTicks throttles repeat polls to one fetch per 5 s unless forced, and skips when closed", async () => {
-  const t = openDrawer(["toggleLoop", "loadLoopTicks"], { status: workingStatus() });
-  t.scope.toggleLoop("clean");
+test("loadRoleRuns throttles repeat polls to one fetch per 5 s unless forced, and skips when closed", async () => {
+  const t = openDrawer(["toggleRole", "loadRoleRuns"], { status: workingStatus() });
+  t.scope.toggleRole("clean");
   await flush();
   const historyCalls = () => t.jsonCalls.filter((p) => p === "/api/history?n=8&role=clean").length;
-  const afterOpen = historyCalls(); // openLoop's own force=true load
+  const afterOpen = historyCalls(); // openRole's own force=true load
   assert.ok(afterOpen >= 1);
 
-  await t.scope.loadLoopTicks(false);
+  await t.scope.loadRoleRuns(false);
   assert.equal(historyCalls(), afterOpen); // inside the 5 s window: throttled
-  await t.scope.loadLoopTicks(true);
+  await t.scope.loadRoleRuns(true);
   assert.equal(historyCalls(), afterOpen + 1); // force bypasses the window
 
-  t.scope.toggleLoop("clean"); // closed: no role to load for
-  await t.scope.loadLoopTicks(true);
+  t.scope.toggleRole("clean"); // closed: no role to load for
+  await t.scope.loadRoleRuns(true);
   assert.equal(historyCalls(), afterOpen + 1);
 });
 
@@ -532,9 +532,9 @@ test("transcriptHtml classifies run separators, tool calls, thinking, and warnin
   assert.equal(t.scope.transcriptHtml(["── a"]), "<span class='l-sep'>── a</span>");
 });
 
-test("a loop with no notebook or queued prompt shows the placeholder lines", async () => {
-  const t = openDrawer(["toggleLoop"], { status: workingStatus() });
-  t.scope.toggleLoop("clean");
+test("a role with no notebook or queued prompt shows the placeholder lines", async () => {
+  const t = openDrawer(["toggleRole"], { status: workingStatus() });
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Notes<\/h3>/);
@@ -543,20 +543,20 @@ test("a loop with no notebook or queued prompt shows the placeholder lines", asy
   assert.match(role, /Nothing to run \(empty inbox\)\./);
 });
 
-test("the loop drawer renders its notebook and next prompt, refetching when the drawer switches roles", async () => {
-  const loop = (role: string) => ({
+test("the role drawer renders its notebook and next prompt, refetching when the drawer switches roles", async () => {
+  const statusRow = (role: string) => ({
     role, phase: "sleeping", inFlight: false, currentWork: "", lastResult: "changed", lastSummary: "x",
     lastRunEndedAt: Date.now() - 60_000, commits: 1, runs: 2, generated: 100, peakCtx: 100,
     todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
   });
-  const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
-    status: { running: true, pausedRoles: [], pausedLoops: [], roles: [loop("clean"), loop("bugfix")] },
+  const t = openDrawer(["toggleRole", "renderRoleDrawer"], {
+    status: { running: true, pausedRoles: [], pausedLoops: [], roles: [statusRow("clean"), statusRow("bugfix")] },
     responses: {
       "/api/role?role=clean": { notes: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
       "/api/role?role=bugfix": { notes: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
     },
   });
-  t.scope.toggleLoop("clean");
+  t.scope.toggleRole("clean");
   await flush();
   const first = t.paintedFor("drawerrole");
   assert.match(first, /clean keeps the tree tidy/);
@@ -566,15 +566,15 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   // drawerrole: an innerHTML rewrite would collapse an opened Next run's prompt.
   const rolePaints = t.painted.filter(([id]) => id === "drawerrole").length;
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
-  const older = loop("clean");
+  const older = statusRow("clean");
   older.lastRunEndedAt -= 5_000;
-  const polled = { running: true, pausedRoles: [], pausedLoops: [], roles: [older, loop("bugfix")] };
-  t.scope.renderLoopDrawer(polled);
+  const polled = { running: true, pausedRoles: [], pausedLoops: [], roles: [older, statusRow("bugfix")] };
+  t.scope.renderRoleDrawer(polled);
   assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");
   assert.equal(t.painted.filter(([id]) => id === "drawerrole").length, rolePaints, "drawerrole is not repainted");
 
-  // Switching refetches the new loop's payload rather than leaving the first loop's text cached.
-  t.scope.toggleLoop("bugfix");
+  // Switching refetches the new role's payload rather than leaving the first role's text cached.
+  t.scope.toggleRole("bugfix");
   await flush();
   const second = t.paintedFor("drawerrole");
   assert.match(second, /bugfix watches the open bugs/);
@@ -584,8 +584,8 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
 
 test("the drawer's Notebook section offers Edit and Clear with a note, Edit alone without, and an edit holds its captured text", async () => {
   const responses: Record<string, unknown> = { "/api/role?role=clean": { notes: "first note", nextPrompt: null } };
-  const t = openDrawer(["toggleLoop", "renderLoopDrawer", "startNoteEdit", "stopNoteEdit", "loadDrawerRole"], { status: workingStatus(), responses });
-  t.scope.toggleLoop("clean");
+  const t = openDrawer(["toggleRole", "renderRoleDrawer", "startNoteEdit", "stopNoteEdit", "loadDrawerRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
   await flush();
   let role = t.paintedFor("drawerrole");
   assert.match(role, /data-act='note-edit' data-arg='clean'/);
@@ -600,7 +600,7 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   const paints = t.painted.filter(([id]) => id === "drawerrole").length;
   responses["/api/role?role=clean"] = { notes: "someone else's note", nextPrompt: null };
   await t.scope.loadDrawerRole("clean");
-  t.scope.renderLoopDrawer(workingStatus());
+  t.scope.renderRoleDrawer(workingStatus());
   assert.equal(t.paintedFor("drawerrole"), role);
   assert.ok(t.painted.filter(([id]) => id === "drawerrole").length >= paints);
   assert.doesNotMatch(t.paintedFor("drawerrole"), /someone else/);
@@ -617,10 +617,10 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   assert.doesNotMatch(role, /note-clear/);
 });
 
-// Recent tick outcomes (the `tumwater role <id>` section) ripple into the loop drawer's
+// Recent tick outcomes (the `tumwater role <id>` section) ripple into the role drawer's
 // role panel: the payload's recentOutcomes render as a Recent outcomes list with each
 // outcome's relative age, result label, summary, and duration.
-test("the loop drawer shows the recent tick outcomes from the role payload", async () => {
+test("the role drawer shows the recent tick outcomes from the role payload", async () => {
   const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
@@ -632,8 +632,8 @@ test("the loop drawer shows the recent tick outcomes from the role payload", asy
       ],
     },
   };
-  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
-  t.scope.toggleLoop("clean");
+  const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Recent outcomes/);
@@ -644,20 +644,20 @@ test("the loop drawer shows the recent tick outcomes from the role payload", asy
   assert.match(role, /nothing to do/);
 });
 
-test("a loop with no recent outcomes shows no Recent outcomes section", async () => {
-  const t = openDrawer(["toggleLoop"], { status: workingStatus() });
-  t.scope.toggleLoop("clean");
+test("a role with no recent outcomes shows no Recent outcomes section", async () => {
+  const t = openDrawer(["toggleRole"], { status: workingStatus() });
+  t.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(t.paintedFor("drawerrole"), /Recent outcomes/);
 });
 
-// The loop drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
+// The role drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
 // wording family from the same /api/role payload (rolePayload), so the page and the CLI read
-// one loop's configuration identically: model/tier, provider cap, image reading (with the
+// one role's configuration identically: model/tier, provider cap, image reading (with the
 // reroute target), model and budget fallback pairs, billing, min tick interval, queued
 // prompts, and the clamped instructions/find text. Absent fields render no row, so a
 // cap-less or notes-only payload keeps an empty section.
-test("the loop drawer renders the Configuration section from the role payload", async () => {
+test("the role drawer renders the Configuration section from the role payload", async () => {
   const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
@@ -680,8 +680,8 @@ test("the loop drawer renders the Configuration section from the role payload", 
       find: "look for redundant code",
     },
   };
-  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
-  t.scope.toggleLoop("clean");
+  const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Configuration<\/h3>/);
@@ -703,30 +703,30 @@ test("the loop drawer renders the Configuration section from the role payload", 
 // Context-window visibility: the Configuration section names the resolved seam's declared
 // window, guarded so an older payload that lacks the field renders no row.
 test("the Configuration section names the resolved seam's context window", async () => {
-  const mk = (extra: object) => openDrawer(["toggleLoop"], {
+  const mk = (extra: object) => openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/local", modelTier: "default", ...extra } },
   });
 
   const known = mk({ contextWindow: 65536 });
-  known.scope.toggleLoop("clean");
+  known.scope.toggleRole("clean");
   await flush();
   assert.match(known.paintedFor("drawerrole"), /<dt>Context window<\/dt><dd[^>]*>65\.5k tokens<\/dd>/);
 
   const unknown = mk({ contextWindow: null });
-  unknown.scope.toggleLoop("clean");
+  unknown.scope.toggleRole("clean");
   await flush();
   assert.match(unknown.paintedFor("drawerrole"), /<dt>Context window<\/dt><dd[^>]*>unknown<\/dd>/);
 
   // An older payload without the fields renders no Context window row.
   const legacy = mk({});
-  legacy.scope.toggleLoop("clean");
+  legacy.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(legacy.paintedFor("drawerrole"), /Context window/);
 });
 
 test("the Configuration section paints a Quiet hours own-window row and a read-only fleet row", async () => {
-  const mk = (extra: object) => openDrawer(["toggleLoop"], {
+  const mk = (extra: object) => openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", minRunIntervalSeconds: 30, ...extra } },
   });
@@ -734,7 +734,7 @@ test("the Configuration section paints a Quiet hours own-window row and a read-o
     { scope: "role", window: "23:00-07:00", inWindow: true },
     { scope: "fleet", window: "12:00-13:00", inWindow: false },
   ] });
-  t.scope.toggleLoop("clean");
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   // The own window is an always-shown editable row; the fleet window a read-only row.
@@ -742,7 +742,7 @@ test("the Configuration section paints a Quiet hours own-window row and a read-o
   assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(team window; not holding now\)<\/dd>/);
   // A payload with no quiet-hours entries still shows the own-window row ("no own window").
   const none = mk({});
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Quiet hours<\/dt><dd[^>]*>no own window/);
@@ -750,11 +750,11 @@ test("the Configuration section paints a Quiet hours own-window row and a read-o
 });
 
 test("the quiet-hours own-window editor prefills the window and the director has no own-window row", async () => {
-  const t = openDrawer(["toggleLoop", "startQuietEdit", "stopQuietEdit"], {
+  const t = openDrawer(["toggleRole", "startQuietEdit", "stopQuietEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, quietHours: [{ scope: "role", window: "23:00-07:00", inWindow: true }] } },
   });
-  t.scope.toggleLoop("clean");
+  t.scope.toggleRole("clean");
   await flush();
   let role = t.paintedFor("drawerrole");
   assert.match(role, /data-act='quiet-edit' data-arg='clean'>Edit<\/button>/);
@@ -773,11 +773,11 @@ test("the quiet-hours own-window editor prefills the window and the director has
   // The director renders no own-window row (its fleet row stays), unlike a non-director role.
   const directorStatus = workingStatus();
   directorStatus.roles[0]!.role = "director";
-  const dir = openDrawer(["toggleLoop"], {
+  const dir = openDrawer(["toggleRole"], {
     status: directorStatus,
     responses: { "/api/role?role=director": { notes: null, nextPrompt: null, inboxCount: 0, quietHours: [{ scope: "fleet", window: "12:00-13:00", inWindow: false }] } },
   });
-  dir.scope.toggleLoop("director");
+  dir.scope.toggleRole("director");
   await flush();
   const dirRole = dir.paintedFor("drawerrole");
   assert.doesNotMatch(dirRole, /data-act='quiet-edit'/);
@@ -786,13 +786,13 @@ test("the quiet-hours own-window editor prefills the window and the director has
 
 test("the Configuration section omits absent fields (cap-less team, no fallback, image-\nyes, notes-only)", async () => {
   // A cap-less team carries no provider row; no fallbacks, no images-reroute.
-  const partial = openDrawer(["toggleLoop"], {
+  const partial = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": {
       notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", imageInput: true,
     } },
   });
-  partial.scope.toggleLoop("clean");
+  partial.scope.toggleRole("clean");
   await flush();
   let role = partial.paintedFor("drawerrole");
   assert.match(role, /<dt>Images<\/dt><dd[^>]*>yes<\/dd>/);
@@ -807,11 +807,11 @@ test("the Configuration section omits absent fields (cap-less team, no fallback,
   // The Daily
   // cap row always renders for a non-director role (cap or not), so a bare payload still
   // shows a Configuration section built from that one row.
-  const minimal = openDrawer(["toggleLoop"], {
+  const minimal = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: "a note", nextPrompt: null } },
   });
-  minimal.scope.toggleLoop("clean");
+  minimal.scope.toggleRole("clean");
   await flush();
   const minimalRole = minimal.paintedFor("drawerrole");
   assert.match(minimalRole, /<h3>Configuration<\/h3>/);
@@ -819,10 +819,10 @@ test("the Configuration section omits absent fields (cap-less team, no fallback,
   assert.doesNotMatch(minimalRole, /<dt>Model<\/dt>/);
 });
 
-// The loop drawer's Spend row mirrors role-render.ts's Spend line from the same /api/role
-// usage payload: how much the loop burned over its retained event window. Present only when
+// The role drawer's Spend row mirrors role-render.ts's Spend line from the same /api/role
+// usage payload: how much the role burned over its retained event window. Present only when
 // usage is non-zero on the payload; an absent or all-zero usage renders no Spend row.
-test("the loop drawer renders a Spend row from the role payload's usage", async () => {
+test("the role drawer renders a Spend row from the role payload's usage", async () => {
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
       notes: null,
@@ -831,33 +831,33 @@ test("the loop drawer renders a Spend row from the role payload's usage", async 
       usage: { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 },
     },
   };
-  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
-  t.scope.toggleLoop("clean");
+  const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<dt>Spend<\/dt><dd[^>]*>\$0\.05 · 12\.5k tokens · \$0\.05 notional<\/dd>/);
 
   // A zero notional omits the notional suffix.
-  const noNotional = openDrawer(["toggleLoop"], {
+  const noNotional = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, usage: { tokens: 1200, costUsd: 0.01, notionalCostUsd: 0 } } },
   });
-  noNotional.scope.toggleLoop("clean");
+  noNotional.scope.toggleRole("clean");
   await flush();
   assert.match(noNotional.paintedFor("drawerrole"), /<dt>Spend<\/dt><dd[^>]*>\$0\.01 · 1200 tokens<\/dd>/);
 
   // No usage on the payload: no Spend row.
-  const none = openDrawer(["toggleLoop"], {
+  const none = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(none.paintedFor("drawerrole"), /<dt>Spend<\/dt>/);
 });
 
-test("the loop drawer always renders a Daily cap row for a non-director role, and the cap editor replaces it while editing", async () => {
-  const withCap = openDrawer(["toggleLoop", "startCapEdit", "stopCapEdit"], {
+test("the role drawer always renders a Daily cap row for a non-director role, and the cap editor replaces it while editing", async () => {
+  const withCap = openDrawer(["toggleRole", "startCapEdit", "stopCapEdit"], {
     status: workingStatus(),
     responses: {
       "/api/role?role=clean": {
@@ -868,7 +868,7 @@ test("the loop drawer always renders a Daily cap row for a non-director role, an
       },
     },
   });
-  withCap.scope.toggleLoop("clean");
+  withCap.scope.toggleRole("clean");
   await flush();
   let role = withCap.paintedFor("drawerrole");
   // Cap present: the spend sentence and an Edit cap button — the alert's path's end.
@@ -887,11 +887,11 @@ test("the loop drawer always renders a Daily cap row for a non-director role, an
   assert.doesNotMatch(role, /capeditinput/);
 
   // No cap on the payload: the row shows "no cap" and a Set a cap button.
-  const none = openDrawer(["toggleLoop"], {
+  const none = openDrawer(["toggleRole"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Daily cap<\/dt><dd[^>]*>no cap/);
@@ -900,13 +900,13 @@ test("the loop drawer always renders a Daily cap row for a non-director role, an
   // The director shows no cap row.
   const directorStatus = workingStatus();
   directorStatus.roles[0]!.role = "director";
-  const dir = openDrawer(["toggleLoop"], {
+  const dir = openDrawer(["toggleRole"], {
     status: directorStatus,
     responses: {
       "/api/role?role=director": { notes: null, nextPrompt: null, inboxCount: 0, dailyCap: { capUsd: 1, spentUsd: 0, over: false } },
     },
   });
-  dir.scope.toggleLoop("director");
+  dir.scope.toggleRole("director");
   await flush();
   assert.doesNotMatch(dir.paintedFor("drawerrole"), /Daily cap/);
 });
@@ -917,11 +917,11 @@ test("the loop drawer always renders a Daily cap row for a non-director role, an
 // the current text, and a role with no override seeds an empty textarea so Save-with-empty
 // clears.
 test("the instructions row always renders and its editor prefills the override, seeded empty when none", async () => {
-  const withInst = openDrawer(["toggleLoop", "startInstructionsEdit", "stopInstructionsEdit"], {
+  const withInst = openDrawer(["toggleRole", "startInstructionsEdit", "stopInstructionsEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, instructions: "Stay small.\nBe terse." } },
   });
-  withInst.scope.toggleLoop("clean");
+  withInst.scope.toggleRole("clean");
   await flush();
   let role = withInst.paintedFor("drawerrole");
   // The override text is clamped with the verbatim text in the tooltip, plus an Edit button.
@@ -941,11 +941,11 @@ test("the instructions row always renders and its editor prefills the override, 
 
   // A role with no override still shows the row, its Edit control, and — once editing — an
   // empty textarea (so Save with an empty buffer clears).
-  const none = openDrawer(["toggleLoop", "startInstructionsEdit"], {
+  const none = openDrawer(["toggleRole", "startInstructionsEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Instructions override<\/dt><dd title=''>No standing instructions\./);
@@ -960,11 +960,11 @@ test("the instructions row always renders and its editor prefills the override, 
 // drawer edits. Its editor prefills the override, seeded empty when none, so Save-with-empty
 // clears.
 test("the min run interval row tags override vs team default and its editor prefills the override", async () => {
-  const withOv = openDrawer(["toggleLoop", "startIntervalEdit", "stopIntervalEdit"], {
+  const withOv = openDrawer(["toggleRole", "startIntervalEdit", "stopIntervalEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, minRunIntervalSeconds: 300, minRunIntervalOverride: 300 } },
   });
-  withOv.scope.toggleLoop("clean");
+  withOv.scope.toggleRole("clean");
   await flush();
   let role = withOv.paintedFor("drawerrole");
   // An override tags the body and shows an Edit control.
@@ -983,11 +983,11 @@ test("the min run interval row tags override vs team default and its editor pref
 
   // A role with no override tags the team default and offers a Set interval control; once
   // editing, the input is seeded empty (so Save with an empty buffer clears).
-  const none = openDrawer(["toggleLoop", "startIntervalEdit"], {
+  const none = openDrawer(["toggleRole", "startIntervalEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, minRunIntervalSeconds: 20 } },
   });
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Min run interval<\/dt><dd title='20s \(team default\)'>20s \(team default\)<button[^>]*data-act='interval-edit'[^>]*>Set interval<\/button><\/dd>/);
@@ -1011,11 +1011,11 @@ test("the Instances row renders only for split-capable roles, tags set vs defaul
     };
   };
   // With the count in the payload, the body reads `N (set)` and offers an Edit control.
-  const withSet = openDrawer(["toggleLoop", "startInstancesEdit", "stopInstancesEdit"], {
+  const withSet = openDrawer(["toggleRole", "startInstancesEdit", "stopInstancesEdit"], {
     status: splitStatus("feature"),
     responses: { "/api/role?role=feature": { notes: null, nextPrompt: null, instances: 3 } },
   });
-  withSet.scope.toggleLoop("feature");
+  withSet.scope.toggleRole("feature");
   await flush();
   assert.match(withSet.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='3 \(set\)'>3 \(set\)<button[^>]*data-act='instances-edit'[^>]*>Edit<\/button><\/dd>/);
   // Opening the editor seeds the count; the painted input survives a poll repaint.
@@ -1029,28 +1029,28 @@ test("the Instances row renders only for split-capable roles, tags set vs defaul
   assert.match(withSet.paintedFor("drawerrole"), /data-act='instances-edit' data-arg='feature'>Edit<\/button>/);
   assert.doesNotMatch(withSet.paintedFor("drawerrole"), /instanceseditinput/);
   // An instance id splits too: its base strip is feature, so it renders the same row.
-  const inst = openDrawer(["toggleLoop"], {
+  const inst = openDrawer(["toggleRole"], {
     status: splitStatus("feature-2"),
     responses: { "/api/role?role=feature-2": { notes: null, nextPrompt: null, instances: 4 } },
   });
-  inst.scope.toggleLoop("feature-2");
+  inst.scope.toggleRole("feature-2");
   await flush();
   assert.match(inst.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='4 \(set\)'>4 \(set\)<button[^>]*data-act='instances-edit'[^>]*>Edit<\/button><\/dd>/);
   // Without the count the body reads `1 (default)` and offers a Set instances control.
-  const withDefault = openDrawer(["toggleLoop"], {
+  const withDefault = openDrawer(["toggleRole"], {
     status: splitStatus("feature"),
     responses: { "/api/role?role=feature": { notes: null, nextPrompt: null } },
   });
-  withDefault.scope.toggleLoop("feature");
+  withDefault.scope.toggleRole("feature");
   await flush();
   assert.match(withDefault.paintedFor("drawerrole"), /<dt>Instances<\/dt><dd title='1 \(default\)'>1 \(default\)<button[^>]*data-act='instances-edit'[^>]*>Set instances<\/button><\/dd>/);
   // A role that cannot split (steward/director) renders no Instances row at all.
   for (const r of ["steward", "director"]) {
-    const t = openDrawer(["toggleLoop"], {
+    const t = openDrawer(["toggleRole"], {
       status: splitStatus(r),
       responses: { [`/api/role?role=${r}`]: { notes: null, nextPrompt: null, instances: 3 } },
     });
-    t.scope.toggleLoop(r);
+    t.scope.toggleRole(r);
     await flush();
     assert.doesNotMatch(t.paintedFor("drawerrole"), /<dt>Instances<\/dt>/);
   }
@@ -1059,8 +1059,8 @@ test("the Instances row renders only for split-capable roles, tags set vs defaul
 // A default pi team runs on pi's own saved default model: rolePayload sets `piDefault`
 // (a formatted selector) and leaves `provider`/`model` undefined, and the CLI's role view
 // names that default in its Model line (modelLine's `pi default (…)` branch). The
-// Configuration section must render the same model for such a loop, so the page and
-// `tumwater role <id>` agree on what the loop runs on even in the no-explicit-model case.
+// Configuration section must render the same model for such a role, so the page and
+// `tumwater role <id>` agree on what the role runs on even in the no-explicit-model case.
 test("the Configuration Model row names pi's saved default when no explicit model is set", async () => {
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
@@ -1071,8 +1071,8 @@ test("the Configuration Model row names pi's saved default when no explicit mode
       modelTier: "default",
     },
   };
-  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
-  t.scope.toggleLoop("clean");
+  const t = openDrawer(["toggleRole"], { status: workingStatus(), responses });
+  t.scope.toggleRole("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Configuration<\/h3>/);
@@ -1085,11 +1085,11 @@ test("the Configuration Model row names pi's saved default when no explicit mode
 // body names the raw overrides or `no overrides`, and its editor prefills the three inputs
 // from the payload's raw overrides.
 test("the Model overrides row names the raw triple and its editor prefills the raw overrides", async () => {
-  const withOv = openDrawer(["toggleLoop", "startModelEdit", "stopModelEdit"], {
+  const withOv = openDrawer(["toggleRole", "startModelEdit", "stopModelEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "claude/claude-opus-5", modelTier: "strong", providerOverride: "claude", modelOverride: "claude-opus-5", thinkingOverride: "high" } },
   });
-  withOv.scope.toggleLoop("clean");
+  withOv.scope.toggleRole("clean");
   await flush();
   let role = withOv.paintedFor("drawerrole");
   // The body names the payload's raw overrides joined by ·, with an Edit control.
@@ -1110,11 +1110,11 @@ test("the Model overrides row names the raw triple and its editor prefills the r
 
   // A role with no raw overrides says `no overrides` and offers a Set model control; the
   // editor seeds empty inputs.
-  const none = openDrawer(["toggleLoop", "startModelEdit"], {
+  const none = openDrawer(["toggleRole", "startModelEdit"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default" } },
   });
-  none.scope.toggleLoop("clean");
+  none.scope.toggleRole("clean");
   await flush();
   const noneRole = none.paintedFor("drawerrole");
   assert.match(noneRole, /<dt>Model overrides<\/dt><dd title='no overrides'>no overrides<button[^>]*data-act='model-edit'[^>]*>Set model<\/button><\/dd>/);

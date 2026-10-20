@@ -1,33 +1,33 @@
 // vocabulary: plain
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
  * totals (each with its per-day average) over five daily bar charts — merged commits, ticks by
- * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one
- * shared color per loop; a window picker switches between 7, 14, 30, and 90 days and a
- * Loop picker scopes the report to one loop group (`?role=`, the browser twin of
+ * role, output tokens, spend by role, rejections by role — with gridlines, a scale, and one
+ * shared color per role; a window picker switches between 7, 14, 30, and 90 days and a
+ * Role picker scopes the report to one role group (`?role=`, the browser twin of
  * `tumwater report --role`). Both pickers also
  * carry trailing-window buttons (1h/6h/1d, `?sinceMs=`, the browser twin of `tumwater report
  * --since`), so the day and sub-day shapes read through the same collectors and renders as the
  * CLI; the since shape draws the returned Markdown instead of the charts. Failures renders
  * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
- * the page's Markdown renderer, over the same kind of window and Loop pickers. Both fetch when
+ * the page's Markdown renderer, over the same kind of window and Role pickers. Both fetch when
  * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
  * is open. The chart builders are pure (report-chart region), the hover chip is one shared
- * element (report-tip region), and the Loop picker's options are pure (report-role region);
+ * element (report-tip region), and the Role picker's options are pure (report-role region);
  * all are exercised in isolation by the tests. Spliced into gui-client.ts's script, reaching
  * its helpers (esc, getJson, icon, fmtTokens, fmtUsd, renderMarkdown) through that
  * concatenation. */
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 
 export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
-  // One color per loop, assigned in the report's role order so a loop keeps its color across
-  // both per-loop charts and the legend. Chosen to stay distinct on white and on gray-950.
+  // One color per role, assigned in the report's role order so a role keeps its color across
+  // both per-role charts and the legend. Chosen to stay distinct on white and on gray-950.
   const REPORT_PALETTE = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#a855f7", "#f97316", "#14b8a6",
     "#ec4899", "#84cc16", "#06b6d4", "#eab308", "#64748b", "#d946ef"];
 
   // One [key, total][] for a day series, ordered by total desc then name asc — the shared
   // shape of the role/provider/model orderings. sumFields are the fields that contribute a
   // running total (runsByRole, costByProvider, runsByModel); seedFields are fields whose
-  // PRESENCE alone earns a category a 0 row (a loop that only merged or only spent, a
+  // PRESENCE alone earns a category a 0 row (a role that only merged or only spent, a
   // provider that only spent notionally) without adding to its total — the split that lets
   // the real-spend charts read 0 for a notional-only provider while still listing it. Every
   // field's keys also seed a 0 when absent, so a category some day carried keeps its row on
@@ -48,7 +48,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   // Window totals per role — ticks desc, then name — so the legend and the stack order match
   // the Markdown report's "Ticks by role" line. Roles that only spent (no ticks) still count.
-  // Reads and seeds use Object.hasOwn: the custom-loop name charset admits "constructor", an
+  // Reads and seeds use Object.hasOwn: the custom-role name charset admits "constructor", an
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
@@ -242,7 +242,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   // Stacked bars, one color per role in reportRoleOrder's order (the first role at the
-  // bottom), with a legend in the same order. Role names are dynamic (custom loops): escaped
+  // bottom), with a legend in the same order. Role names are dynamic (custom roles): escaped
   // everywhere. The role-keyed form of stackChart.
   function roleStackChart(data, field, fmt, fmtAxis, integer) {
     return stackChart(data, reportRoleOrder(data), field, fmt, fmtAxis, integer);
@@ -256,12 +256,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
-  // The day's output tokens, per loop, the dashboard twin of the CLI "Tokens by role" line.
+  // The day's output tokens, per role, the dashboard twin of the CLI "Tokens by role" line.
   function chartTokensByRole(data) {
     return roleStackChart(data, "tokensByRole", (n) => fmtTokens(Number(n) || 0) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
   }
 
-  // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as
+  // The API-equivalent (notional) spend of subscription runs, per role, on the same axis as
   // the cap spend.
   function chartNotionalByRole(data) {
     return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
@@ -293,34 +293,34 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return stackChart(data, reportProviderOrder(data), "notionalByProvider", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
-  // The team's review friction, per loop, on a tick-like count axis: one segment per
-  // (day, loop) with a rejection, empty when the report has none.
+  // The team's review friction, per role, on a tick-like count axis: one segment per
+  // (day, role) with a rejection, empty when the report has none.
   function chartRejectionsByRole(data) {
     return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);
   }
-  // Revisions (rework rounds after a rejection), per loop, drawn the same way.
+  // Revisions (rework rounds after a rejection), per role, drawn the same way.
   function chartRevisionsByRole(data) {
     return roleStackChart(data, "revisionsByRole", (n) => plural(n, "revision"), countAxis, true);
   }
-  // Runs that deliberately declined their entry (result "refused"), per loop, drawn the same
+  // Runs that deliberately declined their entry (result "refused"), per role, drawn the same
   // way as its rejection/revision siblings.
   function chartRefusalsByRole(data) {
     return roleStackChart(data, "refusalsByRole", (n) => plural(n, "refusal"), countAxis, true);
   }
-  // The team's model-fallback episodes, per loop, on the same count axis: one segment per
-  // (day, loop) with a fallback.
+  // The team's model-fallback episodes, per role, on the same count axis: one segment per
+  // (day, role) with a fallback.
   function chartFallbacksByRole(data) {
     return roleStackChart(data, "fallbacksByRole", (n) => plural(n, "fallback"), countAxis, true);
   }
-  // Image reroutes per loop, drawn the same way: one segment per (day, loop) with a reroute.
+  // Image reroutes per role, drawn the same way: one segment per (day, role) with a reroute.
   function chartImageReroutesByRole(data) {
     return roleStackChart(data, "imageReroutesByRole", (n) => plural(n, "image reroute"), countAxis, true);
   }
-  // Runs that ended in an error, per loop, drawn the same way.
+  // Runs that ended in an error, per role, drawn the same way.
   function chartFailedRunsByRole(data) {
     return roleStackChart(data, "failedRunsByRole", (n) => plural(n, "failed run"), countAxis, true);
   }
-  // Merges that were blocked or conflicted, per loop, drawn the same way.
+  // Merges that were blocked or conflicted, per role, drawn the same way.
   function chartMergeFailuresByRole(data) {
     return roleStackChart(data, "mergeFailedByRole", (n) => plural(n, "merge failure"), countAxis, true);
   }
@@ -344,7 +344,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function chartValidationGaps(data) {
     return stackChart(data, reportValidationGapOrder(data), "validationGapsByTag", (n) => plural(n, "validation gap"), countAxis, true);
   }
-  // The day's merged outcomes per loop, the success sibling of chartMergeFailuresByRole,
+  // The day's merged outcomes per role, the success sibling of chartMergeFailuresByRole,
   // drawn exactly like it (same roleStackChart shape, palette, legend order and integer count
   // axis) so the two read as one pair.
   function chartMergedByRole(data) {
@@ -484,21 +484,21 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   // report-role:start
-  // The Loop picker's options: the team-wide "All loops" empty option plus one option per
+  // The Role picker's options: the team-wide "All roles" empty option plus one option per
   // role, in the team's own order. syncRolePicker escapes every role through it, so the three
-  // Loop pickers (the report views', History's, and the Activity feed's) render role names the
-  // same way — role names are dynamic (custom loops) and the custom-loop charset admits HTML
+  // Role pickers (the report views', History's, and the Activity feed's) render role names the
+  // same way — role names are dynamic (custom roles) and the custom-role charset admits HTML
   // metacharacters. Pure, so a test can drive it without a DOM.
   function rolePickerOptions(roles) {
     return "<option value=''>All roles</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
   }
-  // Repaint one Loop picker from the team's role list, returning the scope to keep filtering
+  // Repaint one Role picker from the team's role list, returning the scope to keep filtering
   // with. Every picker (the report views' syncRoles, History's syncHistoryRoles, the Activity
   // feed's syncFeedRoles) does the same thing: rebuild only when the roster changes, keep the
-  // persisted choice while the team still lists it, and fall back to All loops — persisting
+  // persisted choice while the team still lists it, and fall back to All roles — persisting
   // that fallback — when it does not, so a dimmed picker never scopes the request to a ghost
-  // loop. The last-painted roster is tracked per select id, so the pickers never share a key.
+  // role. The last-painted roster is tracked per select id, so the pickers never share a key.
   const rolePickerKeys = {};
   function syncRolePicker(selectId, roles, current, storeKey) {
     const select = $(selectId);
@@ -514,24 +514,24 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     }
     return current;
   }
-  // The report views' Loop picker offers base roles only: the scoped collectors
+  // The report views' Role picker offers base roles only: the scoped collectors
   // (collectReport/collectFailureReport) fold an instance id (feature-2) into its base role, so
   // an instance option would collect the base role's whole body under the instance's name — the
   // GUI twin of the TUI's Ctrl+G scope cycle (src/ui/tui/tui-keys.ts scopeCycle). The status
   // payload already carries the base role as instanceOf on an instance row (src/status/
   // status-data.ts), so this borrows the server's own fold rather than re-deriving it. History's
-  // picker (gui-client-history.ts) filters by exact loop id and keeps the raw team list. Pure,
+  // picker (gui-client-history.ts) filters by exact role id and keeps the raw team list. Pure,
   // so a test can drive it without a DOM.
-  function reportBaseRoles(loops) {
+  function reportBaseRoles(roles) {
     const bases = [];
-    for (const l of loops || []) {
+    for (const l of roles || []) {
       const base = l.instanceOf || l.role;
       if (!bases.includes(base)) bases.push(base);
     }
     return bases;
   }
-  // Repaint both report views' Loop pickers from a status payload: each view's persisted
-  // choice is kept while the team still lists it and falls back to All loops otherwise. The
+  // Repaint both report views' Role pickers from a status payload: each view's persisted
+  // choice is kept while the team still lists it and falls back to All roles otherwise. The
   // views are defined below; the boot poll and each fetch call this once they exist.
   function syncReportRoles(d) {
     for (const view of [usage, failures]) view.syncRoles(d);
@@ -541,7 +541,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // view-scaffold:start
   // The window pickers' choices and the views' shared head (title, blurb, picker, Refresh).
   function viewHead(title, blurb, pickerId, choices, current, refreshId, rolePickerId, sinceChoices) {
-    // A dropped blurb renders as no subtitle at all, never the string "undefined". The Loop
+    // A dropped blurb renders as no subtitle at all, never the string "undefined". The Role
     // picker rides the toolbar when the view has one (the shared Usage/Failures shape); the
     // options are filled by syncRoles from the team's role list. The trailing-window buttons
     // (a view that configured sinceChoices) sit in the same segmented control after the day
@@ -578,11 +578,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     // fetch still uses it.
     const sinceChoice = o.sinceChoices ? Number(recall(o.sinceKey)) : NaN;
     let sinceMs = (o.sinceChoices || []).some(([ms]) => ms === sinceChoice) ? sinceChoice : null;
-    // The persisted Loop scope for this view: "" is the team-wide report. Only a view that
+    // The persisted Role scope for this view: "" is the team-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
     let fetchedAt = 0;
-    // Keep this view's Loop picker in step with the team's role list (custom loops included).
+    // Keep this view's Role picker in step with the team's role list (custom roles included).
     function syncRoles(d) {
       if (!o.rolePickerId || !d) return;
       role = syncRolePicker(o.rolePickerId, reportBaseRoles(d.roles), role, o.roleKey);

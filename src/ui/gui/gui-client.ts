@@ -2,14 +2,14 @@
 /** The browser-side dashboard app inlined as the GUI page's only <script>. It polls /api/status
  * every second and renders, in the order an operator needs them: the masthead's team status
  * (running, build, main check) and team controls (budget, pause); alerts for whatever needs a
- * human (a failing loop, a red main, a spent budget, an old build, open questions, a pause);
- * the composer that steers the director or one loop; and the team view — today's progress,
- * the loops grouped by what they are doing, the backlog, and the notable activity. The
+ * human (a failing role, a red main, a spent budget, an old build, open questions, a pause);
+ * the composer that steers the director or one role; and the team view — today's progress,
+ * the roles grouped by what they are doing, the backlog, and the notable activity. The
  * view-model, the drawer, the History/Usage/Failures/Pending views, the operator controls, the
  * composer, the Markdown renderer, and the routing/poll boot live in their own modules and
  * are spliced in below; everything shares one scope. The page
  * cannot import the harness modules, so it keeps its own copies of the few display rules it
- * needs (formatters, loop order), each pinned against its TypeScript twin by test. Written as
+ * needs (formatters, role order), each pinned against its TypeScript twin by test. Written as
  * String.raw templates so the served script is exactly the text below — no double escaping. */
 import { GUI_CLIENT_BOOT_JS } from "./gui-client-boot.js";
 import { GUI_CLIENT_COMPOSER_JS } from "./gui-client-composer.js";
@@ -17,7 +17,7 @@ import { GUI_CLIENT_DRAWER_JS } from "./gui-client-drawer.js";
 import { GUI_CLIENT_TEAM_JS } from "./gui-client-team.js";
 import { GUI_CLIENT_HISTORY_JS } from "./gui-client-history.js";
 import { GUI_CLIENT_LABELS_JS } from "./gui-client-labels.js";
-import { GUI_CLIENT_LOOPS_JS } from "./gui-client-roles.js";
+import { GUI_CLIENT_ROLES_JS } from "./gui-client-roles.js";
 import { GUI_CLIENT_MARKDOWN_JS } from "./gui-client-markdown.js";
 import { GUI_CLIENT_MODEL_JS } from "./gui-client-model.js";
 import { GUI_CLIENT_OPERATOR_JS } from "./gui-client-operator.js";
@@ -87,7 +87,7 @@ const CORE_JS = String.raw`  const esc = (s) => String(s).replace(/[&<>"']/g, (c
   // accepts the connection but never answers
   // would otherwise hold the poll open forever, leaving the page frozen on stale data with no
   // offline alert — the catch in refresh() only runs when fetch rejects. The timeout aborts the
-  // request, so the poll fails, the red "Lost contact" alert shows, and the loop keeps polling.
+  // request, so the poll fails, the red "Lost contact" alert shows, and polling continues.
   // AbortSignal.timeout is standard since 2022; where a browser lacks it the fetch stays
   // unbounded, exactly the old behavior.
   const POLL_TIMEOUT_MS = 15000;
@@ -147,7 +147,7 @@ const FORMAT_JS = String.raw`  // format:start
   // count reads 0 here rather than "undefined".
   const workSplit = (t) => (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance";
   // The unmerged-commit list both change views paint — each commit's sha and subject on its
-  // own clamped line. The Pending roster's Ahead cell and the loop drawer's Pending change
+  // own clamped line. The Pending roster's Ahead cell and the role drawer's Pending change
   // section had the byte-identical map; a missing or non-array list paints nothing.
   const commitRowsHtml = (commits) =>
     (Array.isArray(commits) ? commits : []).map((c) => "<div class='mono clamp1'>" + esc(c.sha) + " " + esc(c.subject || "—") + "</div>").join("");
@@ -170,7 +170,7 @@ const FORMAT_JS = String.raw`  // format:start
   };
   // human-seconds-fmt:end
   // active-phase-fmt:start
-  // A PERMIT-HOLDING loop in flight — status-model.ts's isActivePhase. The three prefixes are
+  // A PERMIT-HOLDING role in flight — status-model.ts's isActivePhase. The three prefixes are
   // interpolated from status-model.ts's ACTIVE_PHASE_PREFIXES (String.raw still substitutes),
   // so this copy cannot drift from the server's; the running director's own director-working
   // label is checked beside it rather than folded in, because it holds no permit (BUGS.md
@@ -197,14 +197,14 @@ const FORMAT_JS = String.raw`  // format:start
   };
   // last-tick-fmt:end
   // next-run-fmt:start
-  // When an idle loop may tick again — status-render.ts's nextRunCell: "-" for a loop in flight
+  // When an idle role may tick again — status-render.ts's nextRunCell: "-" for a role in flight
   // or parked awaiting a slot (it has no next run to speak of) and for a stopped team; "now"
   // when due; otherwise the remaining time, prefixed "backoff " while backing off. A yield-scaled
   // clock rides as a " ×N" suffix: a quiet role's effective gap is longer than the countdown.
   const fmtNextRun = (l, teamRunning) => {
-    // A torn loop object — a payload missing its phase field — reads as the empty (inactive)
+    // A torn role object — a payload missing its phase field — reads as the empty (inactive)
     // phase rather than throwing: the browser copy is untyped, and its sibling phaseInfo/
-    // loopRank already coerce the same way, so one bad row must not blank the whole table.
+    // roleRank already coerce the same way, so one bad row must not blank the whole table.
     const phase = String(l.phase || "");
     const active = isActivePhase(phase) || phase.startsWith("waiting to start") || phase.startsWith("waiting for ") || phase.startsWith("director working");
     if (!teamRunning || active) return "-";
@@ -353,5 +353,5 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let activeView = "team";
 `;
 
-export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_TEAM_JS, GUI_CLIENT_COMPOSER_JS,
+export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_ROLES_JS, GUI_CLIENT_TEAM_JS, GUI_CLIENT_COMPOSER_JS,
   GUI_CLIENT_DRAWER_JS, GUI_CLIENT_HISTORY_JS, GUI_CLIENT_PENDING_JS, GUI_CLIENT_REPORT_JS, GUI_CLIENT_SETTINGS_JS, GUI_CLIENT_BOOT_JS].join("\n");

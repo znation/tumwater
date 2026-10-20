@@ -16,7 +16,7 @@ import { SUPERVISED_ENV } from "../src/process/supervisor.js";
 import { cli, spawnCli } from "./helpers/cli-harness.js";
 import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 
-// `tumwater gui` through the real CLI entry point: argument validation, the serve loop
+// `tumwater gui` through the real CLI entry point: argument validation, the serve role
 // (banner, --token gate, --all-interfaces LAN URLs), and the failure paths (port in use,
 // permission errors). The CLI runs main() on import and reports failures via process.exit,
 // so it is tested as a child process through the spawn helpers in cli-harness.ts; gui.test.ts
@@ -537,9 +537,9 @@ test("cmdGui turns a taken port into the friendly port-in-use error and rethrows
 });
 
 test("gui stops on Ctrl+C: SIGINT ends the serve loop instead of wedging the terminal", async () => {
-  // The banner promises "Ctrl+C to stop"; the serve loop relies on node's default SIGINT
+  // The banner promises "Ctrl+C to stop"; the serve role relies on node's default SIGINT
   // disposition (cmdGui's serve promise never resolves on its own). A regression that added a
-  // SIGINT handler which swallows the signal — or a server whose open handles keep the loop
+  // SIGINT handler which swallows the signal — or a server whose open handles keep the role
   // alive after the default termination — would leave the operator's terminal wedged; this
   // bounds it: the child must actually exit once the signal lands, within the exitCode
   // helper's own timeout (a hung gui resolves null and fails the assertion).

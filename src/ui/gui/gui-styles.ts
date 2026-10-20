@@ -252,7 +252,7 @@ export const GUI_STYLES = String.raw`
   .settings-row .field { flex: 1; min-width: 0; }
   .settings-row .btn { flex: none; }
 
-  /* ---- composer: the director prompt (or one loop's), always in reach ---- */
+  /* ---- composer: the director prompt (or one role's), always in reach ---- */
   .composer { padding: 8px; border: 1px solid var(--line); border-radius: 12px;
               background: var(--surface); box-shadow: var(--shadow-sm); }
   .composer:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--accent-bg); }
@@ -338,15 +338,15 @@ export const GUI_STYLES = String.raw`
   .clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
   .clamp1 { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  table.loops .c-loop { width: 15%; }
-  table.loops .c-status { width: 24%; }
-  table.loops .c-today { width: 110px; }
-  table.loops .c-actions { width: 136px; }
-  table.loops.free .c-today { display: none; }
-  .loops tr.loop.selected td { background: var(--accent-bg); }
-  .loops tr.loop.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
-  .loops tr.loop.live td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
-  .loops tr.loop.live.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+  table.roles .c-role { width: 15%; }
+  table.roles .c-status { width: 24%; }
+  table.roles .c-today { width: 110px; }
+  table.roles .c-actions { width: 136px; }
+  table.roles.free .c-today { display: none; }
+  .roles tr.loop.selected td { background: var(--accent-bg); }
+  .roles tr.loop.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
+  .roles tr.loop.live td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+  .roles tr.loop.live.selected td:first-child { box-shadow: inset 3px 0 0 var(--primary); }
   .loop-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
   .loop-name .role { font-family: var(--font-mono); font-weight: 600; font-size: 13.5px; }
   .now { color: var(--text); }
@@ -389,7 +389,7 @@ export const GUI_STYLES = String.raw`
   .feed-tally button.chip { cursor: pointer; }
   .feed-tally .chip.active { border-color: var(--accent); background: var(--accent-bg); color: var(--text); }
 
-  /* ---- drawer: a loop's detail and live transcript, or one backlog entry ---- */
+  /* ---- drawer: a role's detail and live transcript, or one backlog entry ---- */
   .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(660px, 100vw); display: flex;
             flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); box-shadow: var(--shadow-lg);
             animation: slidein 0.16s ease-out; }
@@ -502,7 +502,7 @@ export const GUI_STYLES = String.raw`
     .menu-anchor.up .popover { top: calc(100% + 8px); bottom: auto; }
     .main { padding-left: 16px; padding-right: 16px; }
     .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    table.loops .c-today { display: none; }
+    table.roles .c-today { display: none; }
     .kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .history .c-usage, .history .c-dur, .history .c-model { display: none; }
   }
@@ -510,19 +510,19 @@ export const GUI_STYLES = String.raw`
     .stats.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .stat-value { font-size: 21px; }
     .composer-foot #prompthint { display: none; }
-    table.loops thead { display: none; }
-    table.loops, table.loops tbody { display: block; }
-    table.loops tr.loop { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
+    table.roles thead { display: none; }
+    table.roles, table.roles tbody { display: block; }
+    table.roles tr.loop { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px;
                           padding: 10px 16px; border-bottom: 1px solid var(--line-soft); }
-    table.loops tr.loop td { display: block; width: auto; padding: 0; border: 0; background: none !important; box-shadow: none !important; }
-    table.loops tr.loop td.c-status, table.loops tr.loop td.c-activity { grid-column: 1 / -1; margin-top: 6px; }
-    table.loops tr.loop td.c-actions { grid-row: 1; grid-column: 2; }
-    table.loops tr.loop td.c-today { display: none; }
+    table.roles tr.loop td { display: block; width: auto; padding: 0; border: 0; background: none !important; box-shadow: none !important; }
+    table.roles tr.loop td.c-status, table.roles tr.loop td.c-activity { grid-column: 1 / -1; margin-top: 6px; }
+    table.roles tr.loop td.c-actions { grid-row: 1; grid-column: 2; }
+    table.roles tr.loop td.c-today { display: none; }
     .composer-row { flex-wrap: wrap; }
     .composer textarea { order: -1; flex-basis: 100%; }
     .composer-target { flex: 1; }
     .composer-target select { max-width: none; width: 100%; }
-    table.loops tr.group, table.loops tr.group td { display: block; }
+    table.roles tr.group, table.roles tr.group td { display: block; }
     .history .c-tick, .history .c-detail { display: none; }
     .ticks li { grid-template-columns: minmax(0, 1fr) auto; }
     .ticks .when:first-child { grid-column: 1 / -1; }

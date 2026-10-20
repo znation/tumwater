@@ -27,7 +27,7 @@ import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 test("gui /api/report serves collectReport's JSON and clamps days instead of erroring", async () => {
   const repo = makeRepo();
   await initProject(repo, "report api test");
-  // Seed events with explicit ts values across two roles (the role field is `loop`, as
+  // Seed events with explicit ts values across two roles (the role field is `role`, as
   // collectReport reads it — a line using `role` would bucket under "?") plus one merged;
   // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
   const evFile = eventsLogPath(repo);
@@ -160,7 +160,7 @@ test("the report charts carry a cursor-following hover label", async () => {
   assert.match(GUI_PAGE, /panel\.addEventListener\("pointerleave", /);
   assert.equal(GUI_PAGE.match(/attachReportTip\(\);/g)?.length, 1, "attached once, at start-up");
 });
-test("the Usage charts render bars on a shared scale, stacks per loop, and a labeled today", () => {
+test("the Usage charts render bars on a shared scale, stacks per role, and a labeled today", () => {
   interface Builders {
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
@@ -225,21 +225,21 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   assert.equal(commitRects.length, 13);
   assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2 commits merged"));
 
-  // Ticks by loop: one segment per (day, loop); the busiest loop sits at the bottom and leads
-  // the legend, each loop keeping one palette color.
+  // Ticks by role: one segment per (day, role); the busiest role sits at the bottom and leads
+  // the legend, each role keeping one palette color.
   const stacked = parseRects(chartTicksByRole(data));
   assert.equal(stacked.length, 7 * 2 + 6 * 1);
   const day0 = stacked.filter((r) => r.title.startsWith("2026-09-01 "));
   const feat = day0.find((r) => r.title.includes("feature"))!;
   const bug = day0.find((r) => r.title.includes("bugfix"))!;
-  assert.ok(feat.y > bug.y, "the busiest loop sits at the bottom of the stack");
+  assert.ok(feat.y > bug.y, "the busiest role sits at the bottom of the stack");
   assert.ok(Math.abs(feat.h - 3 * bug.h) < 0.05, "segment heights are proportional to their values");
   assert.equal(feat.title, "2026-09-01 · feature: 3 runs");
   const legend = chartTicksByRole(data);
-  assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[0]}'></span>feature</span>`), "first loop gets the first color");
+  assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[0]}'></span>feature</span>`), "first role gets the first color");
   assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[1]}'></span>bugfix</span>`));
 
-  // Spend by loop shares the ticks chart's order, colors, and legend; its values are money.
+  // Spend by role shares the ticks chart's order, colors, and legend; its values are money.
   const costRects = parseRects(chartCostByRole(data));
   assert.equal(costRects.length, 7 * 2 + 6 * 1);
   const costFeat = costRects.find((r) => r.title.startsWith("2026-09-01 · feature"))!;
@@ -247,14 +247,14 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
   assert.equal(legendOf(chartCostByRole(data)), legendOf(chartTicksByRole(data)));
 
-  // Loop names are dynamic (custom loops): escaped in legend and tooltips.
+  // Role names are dynamic (custom roles): escaped in legend and tooltips.
   const hostile: ReportData = { ...data, series: [mkDay("2026-09-01", 0, { "<b>x</b>": 2 }, 0)] };
   const hostileSvg = chartTicksByRole(hostile);
-  assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a loop name is not rendered");
+  assert.ok(!hostileSvg.includes("<b>x</b>"), "raw HTML in a role name is not rendered");
   assert.match(hostileSvg, /&lt;b&gt;x&lt;\/b&gt;/);
   assert.equal(parseRects(chartCostByRole(hostile)).length, 0, "a day without spend renders no cost segments");
 });
-test("the Usage charts count a loop named after an Object.prototype key", () => {
+test("the Usage charts count a role named after an Object.prototype key", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
     chartTicksByRole(d: ReportData): string;
@@ -263,7 +263,7 @@ test("the Usage charts count a loop named after an Object.prototype key", () => 
     ["format", "report-chart"],
     ["reportRoleOrder", "chartTicksByRole"],
   );
-  // "constructor" is admitted by the custom-loop charset and collides with an
+  // "constructor" is admitted by the custom-role charset and collides with an
   // Object.prototype key; day 2 gives it spend but no ticks, so its runsByRole read is absent.
   const mkDay = (date: string, runsByRole: Record<string, number>, costByRole: Record<string, number>): ReportDay => ({
     date, tokensOut: 0, runsByRole, costByRole, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
@@ -280,17 +280,17 @@ test("the Usage charts count a loop named after an Object.prototype key", () => 
 
   const order = reportRoleOrder(data);
   const entry = order.find(([role]) => role === "constructor");
-  assert.ok(entry, "a constructor-named loop appears in the role order");
+  assert.ok(entry, "a constructor-named role appears in the role order");
   assert.equal(typeof entry![1], "number", "its window total is a number, not the inherited function");
   assert.equal(entry![1], 5);
   // Day 2 has no ticks for it: the absent read must be 0, never the inherited function, so no
   // segment is fabricated and no coordinate is NaN.
   const svg = chartTicksByRole(data);
   assert.ok(!svg.includes("NaN"), "an absent role reads as 0, not Object.prototype's function");
-  assert.match(svg, /style='background:#6366f1'><\/span>constructor<\/span>/, "the loop gets a legend entry");
+  assert.match(svg, /style='background:#6366f1'><\/span>constructor<\/span>/, "the role gets a legend entry");
 });
 test("the dashboard page abbreviates millions with M, in lockstep with compactTokens", async () => {
-  // Regression (2026-09-20): the page's own fmtTokens copy stopped at `k`, so the loop
+  // Regression (2026-09-20): the page's own fmtTokens copy stopped at `k`, so the role
   // table's generated/peak-ctx cells and the report summary's output-tokens block rendered
   // 13,820,300 as "13820.3k" while `tumwater report` printed "13.8M". The page cannot import
   // TypeScript (a separate browser runtime), so its copy is pinned here from the page's own
@@ -454,10 +454,10 @@ test("the scoped Usage render drops the team-only tiles and prints the scope lin
   assert.doesNotMatch(team, /Role scope:/, "and prints no scope line");
 });
 
-test("the report Loop picker offers base roles only, so an instance id never labels another scope's body", async () => {
+test("the report Role picker offers base roles only, so an instance id never labels another scope's body", async () => {
   // The scoped collectors fold an instance id (`feature-2`) into its base role, so offering the
   // instance would collect `feature`'s whole body under `feature-2`'s name — the GUI twin of
-  // the TUI Ctrl+G bug. syncRoles paints rolePickerOptions(reportBaseRoles(loops)), so the
+  // the TUI Ctrl+G bug. syncRoles paints rolePickerOptions(reportBaseRoles(roles)), so the
   // picker offers one `feature` option and no `feature-2`, and a persisted instance scope falls
   // back to All roles instead of collecting the base body under the instance's name.
   const els: Record<string, { dataset: Record<string, string>; innerHTML: string; value?: string; addEventListener(): void }> = {};
@@ -629,10 +629,10 @@ test("the Usage notional chart and Spent-tile figure render only when notional s
     totals: { ...totals, notionalCostUsd: 2 }, coversFullWindow: true,
   };
   const rects = (svg: string) => svg.match(/<rect /g)?.length ?? 0;
-  assert.equal(rects(chartNotionalByRole(data)), 2, "one segment per (day, loop) with notional spend");
+  assert.equal(rects(chartNotionalByRole(data)), 2, "one segment per (day, role) with notional spend");
   const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
   assert.equal(legendOf(chartNotionalByRole(data)), legendOf(chartTicksByRole(data)));
-  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["plan", 0]], "a notional-only loop ranks after loops with ticks");
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["plan", 0]], "a notional-only role ranks after roles with ticks");
   assert.equal(rects(chartCostByRole(data)), 0, "absent costByRole renders no segments");
 
   const render = async (report: unknown): Promise<string> => {

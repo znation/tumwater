@@ -2,20 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 
-// The dashboard's loops table, row by row (src/ui/gui/gui-client-roles.ts's loops-table region):
-// the status pill's second line (what the phase carried, when an idle loop wakes, the
+// The dashboard's roles table, row by row (src/ui/gui/gui-client-roles.ts's roles-table region):
+// the status pill's second line (what the phase carried, when an idle role wakes, the
 // backoff and yield-scaled-clock notes) and each row's cells — the activity line's choice
 // between live work, the merge placeholder, and the last result, the stalled-work red
 // flag, and the per-row operator controls.
 
 interface PhaseInfo { key: string; label: string; tone: string; live: boolean; detail: string }
-interface Loops {
+interface RolesScope {
   phaseDetail(l: object, info: PhaseInfo, d: object): string;
-  loopCells(l: object, d: object): { info: PhaseInfo; cells: string[] };
+  roleCells(l: object, d: object): { info: PhaseInfo; cells: string[] };
   phaseInfo(l: string | null | undefined): PhaseInfo;
 }
-const { phaseDetail, loopCells, phaseInfo } = clientScope<Loops>(
-  ["format", "labels", "view-model", "loops-table"], ["phaseInfo", "phaseDetail", "loopCells"], {
+const { phaseDetail, roleCells, phaseInfo } = clientScope<RolesScope>(
+  ["format", "labels", "view-model", "roles-table"], ["phaseInfo", "phaseDetail", "roleCells"], {
     icon: iconStub,
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
     mergeSummary: (d: { merge?: Record<string, string> }, role: string) => d.merge?.[role] || "",
@@ -25,9 +25,9 @@ const { phaseDetail, loopCells, phaseInfo } = clientScope<Loops>(
   });
 
 const now = Date.now();
-/** A row's cells by name, with the payload defaults loopCells assumes. */
+/** A row's cells by name, with the payload defaults roleCells assumes. */
 const row = (l: object, d: object = {}): { status: string; activity: string; spend: string; actions: string } => {
-  const c = loopCells({ todayUsd: 0, costUsd: 0, ...l }, d).cells.map(String);
+  const c = roleCells({ todayUsd: 0, costUsd: 0, ...l }, d).cells.map(String);
   return { status: c[1] ?? "", activity: c[2] ?? "", spend: c[3] ?? "", actions: c[4] ?? "" };
 };
 
@@ -42,7 +42,7 @@ test("a scheduled operator wake adds a second-line phrase to the rows it targets
   assert.equal(phaseDetail({ phase: "sleeping", role: "feature" }, info, { running: false, scheduledWake: d.scheduledWake }), "your wake in 1h");
 });
 
-test("every pending scheduled wake shows on the loop it names, not only the earliest", () => {
+test("every pending scheduled wake shows on the role it names, not only the earliest", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const d = { running: true, scheduledWakes: [{ roles: ["feature"], atMs: Date.now() + 3_600_000 }, { roles: ["plan"], atMs: Date.now() + 7_200_000 }] };
   const l = (role: string) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, role });
@@ -51,7 +51,7 @@ test("every pending scheduled wake shows on the loop it names, not only the earl
   assert.doesNotMatch(phaseDetail(l("qa"), info, d), /operator wake/);
 });
 
-test("a sleeping loop's second line says when it wakes, and names a backoff", () => {
+test("a sleeping role's second line says when it wakes, and names a backoff", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const l = (patch: object) => ({ phase: "sleeping", ...patch });
   // The countdown, from the payload's nextRunAt.
@@ -74,13 +74,13 @@ test("the second line names a consecutive no-change streak on a resting idle cel
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const l = (patch: object) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, ...patch });
   // Two or more consecutive no_change ticks earn the suffix (status-payload noChangeStreak,
-  // mirrored from status-model loopPhase).
+  // mirrored from status-model rolePhase).
   assert.equal(phaseDetail(l({ noChangeStreak: 2 }), info, { running: true }), "wakes in 2m · no change ×2");
   assert.equal(phaseDetail(l({ noChangeStreak: 5 }), info, { running: true }), "wakes in 2m · no change ×5");
   // N=1 and an absent field are ordinary single quiet ticks — no suffix.
   assert.equal(phaseDetail(l({ noChangeStreak: 1 }), info, { running: true }), "wakes in 2m");
   assert.equal(phaseDetail(l({}), info, { running: true }), "wakes in 2m");
-  // Live work, a pause, and a failure never carry the streak: a running loop's streak is
+  // Live work, a pause, and a failure never carry the streak: a running role's streak is
   // stale until the tick ends, and the status label leaves those cells bare too.
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m · turn 4" };
   assert.equal(phaseDetail({ phase: "working 3m · turn 4", noChangeStreak: 2 }, working, { running: true }), "3m · turn 4");
@@ -89,7 +89,7 @@ test("the second line names a consecutive no-change streak on a resting idle cel
 });
 
 test("a suffixed phase still parses to its real key, and the streak renders once", () => {
-  // The payload's phase already carries the suffix from status-model loopPhase, and the pill
+  // The payload's phase already carries the suffix from status-model rolePhase, and the pill
   // parser feeds phaseDetail its info — so the queued/idle/deferred rows must see the clean
   // phase (no "other" fallback, no swallowed or doubled " · no change ×N").
   assert.equal(phaseInfo("due · no change ×2").key, "queued");
@@ -106,7 +106,7 @@ test("a suffixed phase still parses to its real key, and the streak renders once
     phaseInfo("due · no change ×3"), { running: true }), "starts on the next poll");
 });
 
-test("a queued loop's second line keeps the phase's reason, a working loop's keeps the phase detail", () => {
+test("a queued role's second line keeps the phase's reason, a working role's keeps the phase detail", () => {
   const queued = { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — not running: no work to claim, deferred, or starting on the next poll" };
   assert.equal(phaseDetail({ phase: "due", nextRunAt: now - 5_000, backoffSeconds: 0 }, queued, { running: true }),
     "due — not running: no work to claim, deferred, or starting on the next poll");
@@ -117,7 +117,7 @@ test("a queued loop's second line keeps the phase's reason, a working loop's kee
   assert.equal(phaseDetail({ phase: "working 3m12s · turn 4" }, working, { running: true }), "3m12s · turn 4");
 });
 
-test("a live loop's activity shows its current work, or the stage's placeholder", () => {
+test("a live role's activity shows its current work, or the stage's placeholder", () => {
   // Current work, full text in the title so a clamped line can still be read.
   const working = row({ role: "feature", phase: "working 3m · turn 4", currentWork: "Editing src/a.ts" });
   assert.ok(working.activity.includes(">Editing src/a.ts<"), "activity shows the current work");
@@ -130,17 +130,17 @@ test("a live loop's activity shows its current work, or the stage's placeholder"
     .activity.includes("Merge 3 commits"));
 });
 
-test("a stalled working loop's detail line is flagged red", () => {
+test("a stalled working role's detail line is flagged red", () => {
   const stalled = row({ role: "feature", phase: "working 3m · tool call stalled 90s", currentWork: "x" });
   assert.ok(stalled.status.includes("class='sub t-red'"), "stalled detail carries the red tone");
   assert.ok(stalled.status.includes("tool call stalled 90s"), "the stall rides as the detail");
-  // A healthy working loop stays unflagged.
+  // A healthy working role stays unflagged.
   assert.ok(!row({ role: "feature", phase: "working 3m · turn 4", currentWork: "x" }).status.includes("t-red"));
 });
 
-test("an idle loop's activity is its last result in words with the reason that explains it", () => {
+test("an idle role's activity is its last result in words with the reason that explains it", () => {
   const base = { role: "docs", phase: "sleeping", lastRunEndedAt: now - 90_000 };
-  // A problem result shows the loop's own summary when it has one.
+  // A problem result shows the role's own summary when it has one.
   const summarized = row({ ...base, lastResult: "error", lastSummary: "could not read the log" });
   assert.ok(summarized.activity.includes("<span class='res t-red'>Error</span>"));
   assert.ok(summarized.activity.includes("could not read the log"));
@@ -170,7 +170,7 @@ test("the pause-for control offers duration choices and a timed pause shows its 
   assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"] }).status, /resumes in/);
   const until = Date.now() + 3_600_000;
   assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["docs"], pausedRolesUntil: until, paused: true }).status, /resumes in/, "a team pause overrides the role deadline");
-  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a loop outside the timed set shows no deadline");
+  assert.doesNotMatch(row({ ...idle, phase: "paused" }, { pausedLoops: ["other"], pausedRolesUntil: until }).status, /resumes in/, "a role outside the timed set shows no deadline");
 });
 
 test("each row's actions match its state: wake when idle, abort (two-click) when in flight, resume when paused", () => {
@@ -185,29 +185,29 @@ test("each row's actions match its state: wake when idle, abort (two-click) when
   assert.ok(armed.includes("confirming") && armed.includes("Stop?"));
   const inFlight = row({ role: "feature", phase: "working 3m", inFlight: true }).actions;
   assert.ok(inFlight.includes("data-action='abort'") && !inFlight.includes("Stop?"));
-  assert.ok(!inFlight.includes("data-action='wake'"), "an in-flight loop has no wake button");
+  assert.ok(!inFlight.includes("data-action='wake'"), "an in-flight role has no wake button");
 });
 
-test("a row's name cell tags custom loops and queued prompts, and shows today's spend over the total", () => {
-  const cells = loopCells({ role: "watcher", phase: "sleeping", custom: true, commits: 3, runs: 12,
+test("a row's name cell tags custom roles and queued prompts, and shows today's spend over the total", () => {
+  const cells = roleCells({ role: "watcher", phase: "sleeping", custom: true, commits: 3, runs: 12,
     todayUsd: 1.5, costUsd: 20.25 }, { roleInbox: { watcher: 2 } }).cells.map(String);
   const name = cells[0] ?? "";
-  assert.ok(name.includes("custom"), "a user-defined loop says so");
+  assert.ok(name.includes("custom"), "a user-defined role says so");
   assert.ok(name.includes("2 messages in this role&#39;s inbox"));
   assert.ok(name.includes("3 commits · 12 runs"));
   assert.equal(cells[3], "<div>$1.50</div><div class='sub'>$20.25 total</div>");
 });
 
-test("a row's name line names when the loop last merged, or 'never' when it has not", () => {
-  const mergeDone = loopCells({ role: "feature", phase: "sleeping", runs: 4, commits: 2, todayUsd: 0, costUsd: 0,
+test("a row's name line names when the role last merged, or 'never' when it has not", () => {
+  const mergeDone = roleCells({ role: "feature", phase: "sleeping", runs: 4, commits: 2, todayUsd: 0, costUsd: 0,
     lastMergedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
   assert.match(mergeDone, /merged 3m ago/, "the row names the last-merged age through fmtAgo");
-  const fresh = loopCells({ role: "new", phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
-  assert.match(fresh, /merged never/, "a loop that has never merged says never");
+  const fresh = roleCells({ role: "new", phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+  assert.match(fresh, /merged never/, "a role that has never merged says never");
 });
 
-test("a loop row renders its model tier tag and selector when the payload carries them", () => {
-  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+test("a role row renders its model tier tag and selector when the payload carries them", () => {
+  const cells = (l: object): string => roleCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
   const named = cells({ role: "plan", phase: "sleeping", runs: 2, commits: 1, modelTier: "strong", model: "prov-s/model-s:high" });
   assert.match(named, /<span class='tag' title='[^']*'>strong<\/span>/);
   assert.match(named, /prov-s\/model-s:high/);
@@ -223,8 +223,8 @@ test("a loop row renders its model tier tag and selector when the payload carrie
 
 // The pi-default marker (docs/backends.md): a row whose model is pi's own saved default (not
 // named in tumwater.json) labels it, so a row without the flag renders byte-identical to today.
-test("a loop row marks a model pi's own saved default", () => {
-  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+test("a role row marks a model pi's own saved default", () => {
+  const cells = (l: object): string => roleCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
   const marked = cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov/org/m:route:low", modelFromPi: true });
   assert.match(marked, /prov\/org\/m:route:low/);
   assert.match(marked, /\(pi default\)/);
@@ -233,10 +233,10 @@ test("a loop row marks a model pi's own saved default", () => {
   assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
 });
 
-// Model failure fallback, part 2/2: a loop row carries a fallback tag only while the
+// Model failure fallback, part 2/2: a role row carries a fallback tag only while the
 // payload's active-episode field is present.
-test("a loop row tags an active model-fallback episode", () => {
-  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+test("a role row tags an active model-fallback episode", () => {
+  const cells = (l: object): string => roleCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
   const tagged = cells({ role: "feature", phase: "working 3m", fallback: { provider: "p", model: "m", since: 1, reason: "boom" } });
   assert.match(tagged, /<span class='tag t-amber' title='[^']*'>fallback<\/span>/);
   // No episode: no fallback tag.
@@ -244,9 +244,9 @@ test("a loop row tags an active model-fallback episode", () => {
 });
 
 // PLANS.md "Stop showing leased worktree slots in the TUI and GUI": the payload keeps
-// slot/slotPinned, but a loop row renders no leased/pinned worktree tag.
+// slot/slotPinned, but a role row renders no leased/pinned worktree tag.
 test("a row hides the pooled worktree slot and its pin", () => {
-  const name = loopCells({ role: "clean", phase: "sleeping", slot: "_slot-3", slotPinned: true,
+  const name = roleCells({ role: "clean", phase: "sleeping", slot: "_slot-3", slotPinned: true,
     todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
   assert.doesNotMatch(name, /_slot-3/);
   assert.doesNotMatch(name, /Leased worktree slot/);
@@ -266,7 +266,7 @@ test("an idle instance's activity shows its claimed entry, and its pill the idle
 
 test("the name cell carries the role's label", () => {
   const name = (role: string): string =>
-    loopCells({ role, phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+    roleCells({ role, phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
   for (const role of ["steward", "feature-2", "nightly"]) {
     assert.ok(name(role).includes(role === "feature-2" ? "feature #2" : role), role);
   }
