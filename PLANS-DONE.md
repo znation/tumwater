@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A bare role id given to a `--role` command gets a `did you mean --role <id>?` hint, so `tumwater wake feature` names its fix (planned 2026-10-20 by the plan role; done 2026-10-20 by the feature role)
+
+**Goal.** `tumwater wake feature`, `pause feature`, `resume feature`, `diff feature`, `logs feature`, `status feature`, `abort feature`, `reset-counters feature` and `retire feature` all fail today with only `unknown argument: feature (valid flags for tumwater wake: --role <id>, …)`: the operator typed the right role in the natural shape and the error does not say the one-token fix. `prompt --role featuer` and `role featuer` already end with `— did you mean \`feature\`?`; this gives the positional slip the same treatment: `unknown argument: feature (valid flags for tumwater wake: …) — did you mean \`--role feature\`?`. A near miss gets the corrected id (`wake featuer` → `` did you mean `--role feature`? ``). The command still fails (exit 1, no side effect). Accepting the positional is not part of this plan: one spelling per command, and a hint fixes the slip without adding a second parse path.
+
+**Approach.** All in `src/cli/cli-flag-specs.ts`:
+- `failUnknownArgument(command, arg, specs)` (the generic refusal both `rejectUnknownArgs` and `rejectUnknownDoubleDash` call) picks its suffix as follows. When `specs` includes `ROLE_FLAG` (by identity, `specs.includes(ROLE_FLAG)`), `arg` does not start with `-`, `command !== "role"`, and `suggestClosest(arg, allRoleIds())` (`src/text/suggest.ts`, `src/roles/roles.ts`) returns an id `x`, the suffix is `didYouMean(\`--role ${x}\`)`. Otherwise it keeps today's `typoSuffix(arg, spellings)`. An exact id has distance 0, so `suggestClosest` already returns it, and its first-letter and two-edit rules keep `bogus` from suggesting anything.
+- Why `role` is exempt: `cmdRole` (`src/cli/cli-query-commands.ts`) peels its own positional id via `peelRolePositional` before `rejectUnknownArgs("role", rest, …)` runs. So in `tumwater role feature bugfix` the stray `bugfix` is a second role and not a missing flag, and the hint would mislead. Leave that path's message unchanged.
+- Custom (config-defined) roles get no hint: the parse-time gate has no config. Only built-in ids and `director` (`allRoleIds()`) do. Say so in `failUnknownArgument`'s doc comment.
+- Import `allRoleIds` from `../roles/roles.js` and `suggestClosest`/`didYouMean` from `../text/suggest.js`. Check for a circular import: on 2026-10-20 nothing under `src/roles/`, `src/text/` or `src/verdict/` imported from `src/cli/` (`grep -rln 'from "\.\./cli/' src/roles src/text src/verdict`). Re-run that grep before adding the import.
+- Update `docs/cli.md` only if it already describes the unknown-argument hint (`grep -n "did you mean" docs/cli.md`). Do not add a new row otherwise.
+
+**Files touched.** `src/cli/cli-flag-specs.ts`, `test/cli-arg-strictness.test.ts` (or a unit test beside the existing `rejectUnknownArgs` tests: `grep -ln "rejectUnknownArgs" test/`).
+
+**Acceptance criteria.**
+- `tumwater wake feature` exits 1, and stderr matches `/unknown argument: feature \(valid flags for tumwater wake: .*\) — did you mean `--role feature`\?/`. It writes no wake marker.
+- `tumwater pause featuer` exits 1, stderr ends with `` did you mean `--role feature`? ``, and the team is not paused.
+- `tumwater diff bogus` stderr has no `did you mean` (the id is too far, and it is not a flag near miss).
+- `tumwater role feature bugfix` stderr has no `--role bugfix` (the `role` exemption).
+- `tumwater reset-counters --rol feature` still matches `/unknown argument: --rol/` and still suggests `` `--role` `` (the flag-typo path is unchanged).
+- A command whose specs lack `ROLE_FLAG` (`tumwater queue feature`) gets no `--role` hint.
+- `npm run test:gate` passes.
+
 ### No error message reads `(got undefined)`: `gotSuffix` names only a value that is present, and `tumwater completion` with no shell or extra words says what is wrong (planned 2026-10-20 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/cli/cli-flag-specs.ts, src/config, src/agent/image-input.ts and src/ comments; this one touches src/text/text.ts, the `completion` case in src/cli.ts, eight call sites that guard `gotSuffix` themselves, test/text.test.ts, test/completion.test.ts, test/gui-revert.test.ts and test/gui-endpoints.test.ts — done 2026-10-20 by the feature role)
 
 **Goal.** Running main's built CLI on 2026-10-20 printed `tumwater: completion takes one shell: bash, zsh, or fish (got undefined)` for a bare `tumwater completion`. For `tumwater completion bash extra` it printed `(got "extra")`, which reads as if `extra` were a bad shell name when the real problem is the word count. `gotSuffix(v)` (src/text/text.ts) is `` ` (got ${JSON.stringify(v)})` ``, and its doc comment leaves undefined values to each caller. Some callers add the guard (`x === undefined ? "" : gotSuffix(x)`) in src/gui/gui-args.ts (three sites), src/gui/gui-backlog-commands.ts (three), src/cli/cli-query-commands.ts (`questions answer`) and src/agent/role-notes-write.ts. Others don't add it, so a request that leaves out the field gets `(got undefined)`. From reading the code: `handleRevert` (src/gui/gui-operator-commands.ts) answers `"sha" must be a hex commit id of 4-64 digits (got undefined)` to a body with no `sha`, and `requireStringField` (src/gui/gui-args.ts) answers `"text" must be a string — … (got undefined)` to a body with no `text`/`prompt`/`window`/model key.

@@ -369,3 +369,19 @@ test("rejectUnknownArgs names the equals form of a known flag instead of 'unknow
   assert.match(unknown.stderr, /unknown argument: --rol=feature/);
   assert.match(unknown.stderr, /valid flags for tumwater logs/);
 });
+
+test("rejectUnknownArgs hints `--role <id>` for a bare role id on a --role command", () => {
+  const exact = expectFail(() => rejectUnknownArgs("wake", ["feature"], [ROLE_FLAG]));
+  assert.match(exact.stderr, /unknown argument: feature \(valid flags for tumwater wake: .*\) — did you mean `--role feature`\?/);
+  const near = expectFail(() => rejectUnknownArgs("pause", ["featuer"], [ROLE_FLAG]));
+  assert.match(near.stderr, /did you mean `--role feature`\?$/m);
+  const far = expectFail(() => rejectUnknownArgs("diff", ["bogus"], [ROLE_FLAG]));
+  assert.ok(!far.stderr.includes("did you mean"));
+  const role = expectFail(() => rejectUnknownArgs("role", ["bugfix"], [ROLE_FLAG]));
+  assert.ok(!role.stderr.includes("--role bugfix"));
+  const typo = expectFail(() => rejectUnknownArgs("reset-counters", ["--rol", "feature"], [ROLE_FLAG]));
+  assert.match(typo.stderr, /unknown argument: --rol/);
+  assert.match(typo.stderr, /did you mean `--role`\?/);
+  const noRole = expectFail(() => rejectUnknownArgs("queue", ["feature"], []));
+  assert.ok(!noRole.stderr.includes("--role"));
+});

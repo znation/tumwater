@@ -715,28 +715,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### A bare role id given to a `--role` command gets a `did you mean --role <id>?` hint, so `tumwater wake feature` names its fix (planned 2026-10-20 by the plan role)
-
-**Goal.** `tumwater wake feature`, `pause feature`, `resume feature`, `diff feature`, `logs feature`, `status feature`, `abort feature`, `reset-counters feature` and `retire feature` all fail today with only `unknown argument: feature (valid flags for tumwater wake: --role <id>, …)`: the operator typed the right role in the natural shape and the error does not say the one-token fix. `prompt --role featuer` and `role featuer` already end with `— did you mean \`feature\`?`; this gives the positional slip the same treatment: `unknown argument: feature (valid flags for tumwater wake: …) — did you mean \`--role feature\`?`. A near miss gets the corrected id (`wake featuer` → `` did you mean `--role feature`? ``). The command still fails (exit 1, no side effect). Accepting the positional is not part of this plan: one spelling per command, and a hint fixes the slip without adding a second parse path.
-
-**Approach.** All in `src/cli/cli-flag-specs.ts`:
-- `failUnknownArgument(command, arg, specs)` (the generic refusal both `rejectUnknownArgs` and `rejectUnknownDoubleDash` call) picks its suffix as follows. When `specs` includes `ROLE_FLAG` (by identity, `specs.includes(ROLE_FLAG)`), `arg` does not start with `-`, `command !== "role"`, and `suggestClosest(arg, allRoleIds())` (`src/text/suggest.ts`, `src/roles/roles.ts`) returns an id `x`, the suffix is `didYouMean(\`--role ${x}\`)`. Otherwise it keeps today's `typoSuffix(arg, spellings)`. An exact id has distance 0, so `suggestClosest` already returns it, and its first-letter and two-edit rules keep `bogus` from suggesting anything.
-- Why `role` is exempt: `cmdRole` (`src/cli/cli-query-commands.ts`) peels its own positional id via `peelRolePositional` before `rejectUnknownArgs("role", rest, …)` runs. So in `tumwater role feature bugfix` the stray `bugfix` is a second role and not a missing flag, and the hint would mislead. Leave that path's message unchanged.
-- Custom (config-defined) roles get no hint: the parse-time gate has no config. Only built-in ids and `director` (`allRoleIds()`) do. Say so in `failUnknownArgument`'s doc comment.
-- Import `allRoleIds` from `../roles/roles.js` and `suggestClosest`/`didYouMean` from `../text/suggest.js`. Check for a circular import: on 2026-10-20 nothing under `src/roles/`, `src/text/` or `src/verdict/` imported from `src/cli/` (`grep -rln 'from "\.\./cli/' src/roles src/text src/verdict`). Re-run that grep before adding the import.
-- Update `docs/cli.md` only if it already describes the unknown-argument hint (`grep -n "did you mean" docs/cli.md`). Do not add a new row otherwise.
-
-**Files touched.** `src/cli/cli-flag-specs.ts`, `test/cli-arg-strictness.test.ts` (or a unit test beside the existing `rejectUnknownArgs` tests: `grep -ln "rejectUnknownArgs" test/`).
-
-**Acceptance criteria.**
-- `tumwater wake feature` exits 1, and stderr matches `/unknown argument: feature \(valid flags for tumwater wake: .*\) — did you mean `--role feature`\?/`. It writes no wake marker.
-- `tumwater pause featuer` exits 1, stderr ends with `` did you mean `--role feature`? ``, and the team is not paused.
-- `tumwater diff bogus` stderr has no `did you mean` (the id is too far, and it is not a flag near miss).
-- `tumwater role feature bugfix` stderr has no `--role bugfix` (the `role` exemption).
-- `tumwater reset-counters --rol feature` still matches `/unknown argument: --rol/` and still suggests `` `--role` `` (the flag-typo path is unchanged).
-- A command whose specs lack `ROLE_FLAG` (`tumwater queue feature`) gets no `--role` hint.
-- `npm run test:gate` passes.
-
 ### `tumwater config get|set|unset` reach one field of the fixed-shape sections, so `config set bootstrap.untilPlansDone 3` and `config get review.model` work (planned 2026-10-20 by the plan role; touches src/config/config-keys.ts src/config/config-write.ts src/cli/config-commands.ts src/cli/completion.ts docs/config.md and their tests)
 
 **Goal.** `tumwater.json` has four top-level sections whose fields are a fixed list in src/config/config-schema.ts: `review` (`REVIEW_KEYS`), `check` (`CHECK_KEYS`), `idleBackoff` (`BACKOFF_KEYS`) and `bootstrap` (`BOOTSTRAP_KEYS`). `parseConfigKey` (src/config/config-keys.ts) refuses every dotted key into them, so on main's build `tumwater config get bootstrap.untilPlansDone`, `config set bootstrap.untilPlansDone 3`, `config get review.model` and `config set idleBackoff.factor 3` each fail with the generic `unknown config key "…" — dotted keys name one entry of a per-role map or one field of a role entry …`. The only way to change one field is to re-type the whole section as JSON (`config set review '{…}'`), which drops any field the operator forgets. `roles.<id>.<field>`, `backends.<id>.<field>` and `model.<tier>` already work this way; this extends the same dotted form to the four sections, nothing else.

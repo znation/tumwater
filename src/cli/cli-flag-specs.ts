@@ -11,7 +11,8 @@
 import { fail } from "./cli-output.js";
 import { failOverDurationCap, parseCountFlag, parseDurationFlag, parsePortFlag, rejectRepeatFlag } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
-import { typoSuffix } from "../text/suggest.js";
+import { allRoleIds } from "../roles/roles.js";
+import { didYouMean, suggestClosest, typoSuffix } from "../text/suggest.js";
 import { gotSuffix } from "../text/text.js";
 export interface FlagSpec {
   /** Every accepted spelling, e.g. ["-f", "--follow"]. */
@@ -70,12 +71,19 @@ export function rejectUnknownDoubleDash(
  * (rejectUnknownDoubleDash) print, so the message cannot drift between the two gates. The
  * valid-flags list is followed by text/suggest.ts's did-you-mean hint when the token is a near
  * miss of an accepted spelling (`--rol` → `--role`), the same annotation every other unknown-X
- * error carries; a token far from every flag gets only the list. */
+ * error carries; a token far from every flag gets only the list. A bare token that names (or
+ * nearly names) a role id, on a command taking ROLE_FLAG, instead gets `did you mean \`--role
+ * <id>\`?` (`tumwater wake feature`); `role` is exempt because it peels its own positional id,
+ * so a stray second token there is not a missing flag. Custom (config-defined) roles get no
+ * hint: this parse-time gate has no config, so only allRoleIds() are matched. */
 function failUnknownArgument(command: string, arg: string, specs: readonly FlagSpec[]): never {
   const spellings = specs.flatMap((s) => s.names);
-  fail(
-    `unknown argument: ${arg} (valid flags for tumwater ${command}: ${validFlagsList(specs)})${typoSuffix(arg, spellings)}`,
-  );
+  const roleId =
+    specs.includes(ROLE_FLAG) && !arg.startsWith("-") && command !== "role"
+      ? suggestClosest(arg, allRoleIds())
+      : null;
+  const suffix = roleId !== null ? didYouMean(`--role ${roleId}`) : typoSuffix(arg, spellings);
+  fail(`unknown argument: ${arg} (valid flags for tumwater ${command}: ${validFlagsList(specs)})${suffix}`);
 }
 
 /** A `--flag=value` token's flag name ("--role" from "--role=feature"), or null when the
