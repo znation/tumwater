@@ -540,7 +540,7 @@ test("a labeled run writes exactly one kind+label marker line as the raw log's f
   const dir = tmpdir();
   await withPi(`printf '%s\n' '${assistantLine("VERDICT: approve", { tokens: 5 })}'`, async () => {
     await runPiVerified(runPiFixture(dir, { kind: "gate", label: "review" }));
-    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
+    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8").replace(/,"ts":\d+/, "");
     assert.equal(
       content,
       `{"type":"tumwater_run","kind":"gate","agent":"pi","label":"review"}\n${assistantLine("VERDICT: approve", { tokens: 5 })}\n`,
@@ -553,7 +553,7 @@ test("an unlabeled run writes one kind-only marker and no label", async () => {
   const dir = tmpdir();
   await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
     await runPiVerified(runPiFixture(dir));
-    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
+    const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8").replace(/,"ts":\d+/, "");
     assert.equal(
       content,
       `{"type":"tumwater_run","kind":"author","agent":"pi"}\n${assistantLine("done", { tokens: 5 })}\n`,
@@ -568,9 +568,15 @@ test("a failed labeled run still flushes its marker (the stale-marker case)", as
   // following separator and never leaks past one run — pinned here at the source.
   const dir = tmpdir();
   await withPi("exit 1", async () => {
+    const before = Date.now();
     await runPi(runPiFixture(dir, { kind: "gate", label: "review" }));
+    const after = Date.now();
     const content = fs.readFileSync(path.join(dir, "raw.jsonl"), "utf8");
-    assert.equal(content, `{"type":"tumwater_run","kind":"gate","agent":"pi","label":"review"}\n`);
+    assert.equal(content.endsWith("\n"), true);
+    const marker = JSON.parse(content.trimEnd());
+    const { ts, ...rest } = marker;
+    assert.deepEqual(rest, { type: "tumwater_run", kind: "gate", agent: "pi", label: "review" });
+    assert.ok(ts >= before && ts <= after);
   });
 });
 
@@ -609,7 +615,7 @@ test("runPi resolves only after the raw log has flushed (stalled-stream regressi
     );
     try {
       await runPiVerified(runPiFixture(dir, { rawLogFile: file }));
-      const content = fs.readFileSync(file, "utf8");
+      const content = fs.readFileSync(file, "utf8").replace(/,"ts":\d+/, "");
       assert.equal(
         content,
         `{"type":"tumwater_run","kind":"author","agent":"pi"}\n${assistantLine("done", { tokens: 5 })}\n`,

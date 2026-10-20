@@ -48,7 +48,7 @@ test("a backend that returns stdin gets its prompt written to the child and echo
     nativeLogFile: path.join(dir, "native.jsonl"),
     kind: "author",
   });
-  const content = fs.readFileSync(rawLogFile, "utf8");
+  const content = fs.readFileSync(rawLogFile, "utf8").replace(/,"ts":\d+/, "");
   assert.equal(content, `{"type":"tumwater_run","kind":"author","agent":"fake-stdin"}\nstdin-delivered\n`);
 });
 

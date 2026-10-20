@@ -200,8 +200,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
   renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
-  dispatcher, the read-only command bodies in `src/cli/`, and the dashboard transport in
-  `src/gui/`; `test/layering.test.ts` pins that importer set.
+  dispatcher, the read-only command bodies in `src/cli/`, `src/tick/tick-detail.ts` (the `tick`/`history`
+  command body that prints a run's transcript), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
 - `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`,
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
   `src/tick/tick-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,

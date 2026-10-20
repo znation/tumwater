@@ -47,10 +47,10 @@ test("runRolePi demuxes as author and runMergePi as gate (marker kind, not cwd)"
     // merger's resolver runs via runMergePi. Their markers must name author and gate
     // respectively, since after worktree-pool parts 2/5 and 4/5 the cwd can no longer tell.
     await runnerPi.runRolePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
-    const roleLines = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
+    const roleLines = fs.readFileSync(piLogPath(root, "feature"), "utf8").replace(/,"ts":\d+/g, "").split("\n");
     assert.equal(roleLines[0], JSON.stringify({ type: "tumwater_run", kind: "author", agent: "pi" }));
     await runnerPi.runMergePi(root, "resolve the conflict", "tumwater-feature-1-conflict");
-    const all = fs.readFileSync(piLogPath(root, "feature"), "utf8").split("\n");
+    const all = fs.readFileSync(piLogPath(root, "feature"), "utf8").replace(/,"ts":\d+/g, "").split("\n");
     assert.ok(
       all.includes(JSON.stringify({ type: "tumwater_run", kind: "gate", agent: "pi" })),
       "runMergePi's run writes a gate marker",

@@ -180,12 +180,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // The marker precedes this run's first event in file order — written to the same stream
     // stdout lines flow through, before spawn, so ordering is exact by construction; on a
     // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
-    // kind and agent are always there, the label only when the caller set one.
+    // kind, agent and start time are always there, the label only when the caller set one
+    // (`history <role> <n> --transcript` selects a run's segments by this ts).
     {
-      const marker: { type: "tumwater_run"; kind: PiRunKind; agent: string; label?: string } = {
+      const marker: { type: "tumwater_run"; kind: PiRunKind; agent: string; ts: number; label?: string } = {
         type: "tumwater_run",
         kind: opts.kind,
         agent: backend.id,
+        ts: Date.now(),
       };
       if (opts.label) marker.label = opts.label;
       rawLog.stream.write(JSON.stringify(marker) + "\n");

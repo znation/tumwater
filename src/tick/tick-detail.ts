@@ -16,13 +16,15 @@ import { roleLabel } from "../roles/role-labels.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
+import { piLogPath } from "../paths.js";
+import { readRunTranscript } from "../ui/transcript-run.js";
 import { gitTry } from "../git/git-run.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--json]";
+export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -117,7 +119,25 @@ export function renderTickDetail(d: TickDetail): string {
   return [header, ...trail].join("\n");
 }
 
-/** `tumwater tick <role> [<n>] [--last] [--stat] [--patch] [--json]`: print one completed
+/** The transcript block of `--transcript`: the rendered lines of the agent runs that started in the
+ * run's window, or `found: []` plus the `note` the text view prints in their place. */
+function tickTranscriptLines(
+  root: string,
+  role: string,
+  tick: number,
+  detail: TickDetail,
+): { found: string[]; note: string } {
+  if (detail.startTs === null) {
+    return { found: [], note: `(no transcript: run ${tick}'s start rotated out of the event log)` };
+  }
+  return {
+    found: readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs),
+    note: `(no transcript for ${role} run ${tick}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
+  };
+}
+
+/** `tumwater tick <role> [<n>] [--last] [--stat] [--patch] [--transcript]
+ * [--json]`: print one completed
  * tick's full event trail. Read-only: stdout only, no state file created — a tick the
  * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
  * an absent record is an answer, not a failure), and under --json it prints the JSON document
@@ -131,9 +151,12 @@ export async function cmdTick(
   root: string,
   positionals: string[],
   json: boolean,
-  last = false,
-  stat = false,
-  patch = false,
+  { last = false, stat = false, patch = false, transcript = false }: {
+    last?: boolean;
+    stat?: boolean;
+    patch?: boolean;
+    transcript?: boolean;
+  } = {},
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
   // --json and --last are admitted), so anything left over that does not fit the chosen form
@@ -177,6 +200,14 @@ export async function cmdTick(
   const footer: { stat?: string; patch?: string } = {};
   if (stat) footer.stat = await tickDetailStat(root, detail);
   if (patch) footer.patch = await tickDetailPatch(root, detail);
-  if (json) sayJson({ ...detail, ...footer });
-  else say([renderTickDetail(detail), ...Object.values(footer)].join("\n\n"));
+  const transcriptLines = transcript ? tickTranscriptLines(root, role, tick, detail) : null;
+  if (json) {
+    sayJson({ ...detail, ...footer, ...(transcriptLines === null ? {} : { transcript: transcriptLines.found }) });
+  } else {
+    const transcriptText =
+      transcriptLines === null
+        ? []
+        : [transcriptLines.found.length > 0 ? transcriptLines.found.join("\n") : transcriptLines.note];
+    say([renderTickDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
+  }
 }

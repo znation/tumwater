@@ -31,6 +31,7 @@ import {
   sinceFlagSpec,
   STAT_FLAG,
   PATCH_FLAG,
+  TRANSCRIPT_FLAG,
   SUMMARY_FLAG,
   COUNT_FLAG,
   typeFlagSpec,
@@ -65,17 +66,15 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
   const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
   const { positionals, rest } = peelPositionals(args);
-  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG]);
+  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG]);
   if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
   await requireReadyRepo(root);
-  await cmdTick(
-    root,
-    positionals,
-    rest.includes("--json"),
-    rest.includes("--last"),
-    rest.includes("--stat"),
-    rest.includes("--patch"),
-  );
+  await cmdTick(root, positionals, rest.includes("--json"), {
+    last: rest.includes("--last"),
+    stat: rest.includes("--stat"),
+    patch: rest.includes("--patch"),
+    transcript: rest.includes("--transcript"),
+  });
 }
 
 async function main(): Promise<void> {

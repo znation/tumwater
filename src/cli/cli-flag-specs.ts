@@ -273,6 +273,10 @@ export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
  * Value-less, like STAT_FLAG. */
 export const PATCH_FLAG: FlagSpec = { names: ["--patch"] };
 
+/** The `--transcript` flag spec, accepted by `history <role> <n>`: append that run's agent
+ * transcript to its trail. Value-less, like STAT_FLAG. */
+export const TRANSCRIPT_FLAG: FlagSpec = { names: ["--transcript"] };
+
 /** The `--summary` flag spec, accepted by `history`: tally each role's tick outcomes instead of
  * printing the rows. Value-less, like STAT_FLAG. */
 export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
