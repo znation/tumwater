@@ -13,6 +13,7 @@ import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
 import { canonicalEventType } from "../events/event-legacy.js";
 import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
+import { startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
@@ -89,10 +90,38 @@ function typeEmpty(type: string, pieces: string[]): string {
   return `no events matching "${type}"${hint}`;
 }
 
+/** Test seams for the follow's parent-death watch: they exist so a test can drive it without
+ * reparenting a real process. */
+interface FollowSeams {
+  ppid?: () => number;
+  intervalMs?: number;
+}
+
+/** Follow `file` until Ctrl+C or until the process that started this one is gone (the shape of
+ * a `logs -f` leaked to PPID 1 that polled for days). Resolves once the parent is gone. */
+function followUntilParentGone(
+  file: string,
+  offset: number,
+  onLines: (lines: string[]) => void,
+  seams: FollowSeams,
+): Promise<void> {
+  const stop = followFile(file, offset, onLines);
+  return new Promise((resolve) => {
+    startParentDeathWatch(() => {
+      stop();
+      resolve();
+    }, {
+      ...(seams.ppid ? { ppid: seams.ppid } : {}),
+      ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
+    });
+  });
+}
+
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
- * role's agent transcript (see cmdLogsTranscript). */
-export async function cmdLogs(root: string, args: string[]): Promise<void> {
+ * role's agent transcript (see cmdLogsTranscript). `-f` follows until Ctrl+C or until its
+ * parent process exits. */
+export async function cmdLogs(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
@@ -200,7 +229,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   const showPrompts = rest.includes("--prompt");
   if (showPrompts && role === null) fail("logs --prompt needs --role <id>");
   if (role !== null) {
-    await cmdLogsTranscript(root, role, limit, follow, showPrompts);
+    await cmdLogsTranscript(root, role, limit, follow, showPrompts, seams);
     return;
   }
   // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
@@ -247,15 +276,14 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // log scans to coveredEnd 0, and followFile tolerates a missing file (its poll re-stats
   // every interval), so a read-only command never leaves a harness state file behind — the
   // module contract above promises writes to stdout only.
-  followFile(file, tail.coveredEnd, (lines) => {
+  await followUntilParentGone(file, tail.coveredEnd, (lines) => {
     for (const line of lines.filter(Boolean)) {
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
       if (e && feedFilter(e)) sayEventLine(e, json);
     }
-  });
-  await new Promise(() => {}); // Follow until Ctrl+C.
+  }, seams);
 }
 
 /** `tumwater logs --role <id>`: print (and optionally follow) one role's agent transcript —
@@ -268,6 +296,7 @@ async function cmdLogsTranscript(
   limit: number,
   follow: boolean,
   showPrompts: boolean,
+  seams: FollowSeams,
 ): Promise<void> {
   const file = piLogPath(root, role);
   const opts = { includePrompts: showPrompts };
@@ -295,8 +324,7 @@ async function cmdLogsTranscript(
   // readTranscriptTail's formatTranscript already flushed any pending separator for what
   // was on disk.
   const renderer = createTranscriptRenderer(opts);
-  followFile(file, offset, (lines) => {
+  await followUntilParentGone(file, offset, (lines) => {
     for (const line of lines) printEntry(renderer.feed(line));
-  });
-  await new Promise(() => {}); // Follow until Ctrl+C.
+  }, seams);
 }

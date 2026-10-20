@@ -773,34 +773,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### `tumwater logs -f` ends itself once the process that started it is gone, so a follow orphaned at PPID 1 stops instead of polling for days (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit status, prompt, history, src/tick and the GUI backlog, and none touches src/cli/log-commands.ts's follow loops)
-
-**Goal.** Both follow loops in src/cli/log-commands.ts, the event feed's `followFile(...)` at the end of `cmdLogs` and the transcript's in `cmdLogsTranscript`, end with `await new Promise(() => {}); // Follow until Ctrl+C.`. A follow whose parent shell exits is reparented to launchd/init. Its 500 ms `followFile` poll then keeps it alive forever, because nothing ever sends it Ctrl+C. BUGS.md's open entry "Two `logs -f` processes leaked out of a slot's run and stayed alive for 3½ days" is that shape: two `node …/_slot-8/dist/src/cli.js logs -f` sat at PPID 1 from 2026-10-16 until the doctor flagged them. That bug waits on the spawner's identity before adding any reaper. This plan does not reap anything. It makes `logs -f` itself end when its parent goes, which is the same parent-death watch the run generation (`startParentDeathWatch` in src/process/supervisor.ts) and the dashboards (`watchReloadSupervisor` in src/redeploy/self-reload.ts) already arm. Whoever turns out to spawn a leaked follow, the follow cleans itself up. Leave the bug entry open: its spawner question still stands. The implementer adds one **Progress 2026-MM-DD (feature)** line under it naming this change.
-
-**Decided scope (no open question).**
-- Only `-f`/`--follow`, in both views (the event feed and `--role <id>` transcripts). The bounded views (`-n`, `--since`, `--count`) already return on their own.
-- "Gone" means `process.ppid` differs from its value when the follow started, the rule `startParentDeathWatch` already applies. When it fires, the follow stops its `followFile` poll and `cmdLogs` resolves, so the CLI exits 0 through its normal path in src/cli.ts. Nothing calls `process.exit` from the log module.
-- A deliberate `nohup tumwater logs -f > file &` whose shell then exits also ends. That is intended: the events stay in `.tumwater/events.jsonl` and `tumwater logs --since` reads them back. docs/cli.md says so.
-- The poll uses `startParentDeathWatch`'s default interval (`PARENT_POLL_MS`, 5 s, timer unref'd). No new knob.
-
-**Approach.**
-- **src/cli/log-commands.ts**:
-  - Add an exported `interface FollowSeams { ppid?: () => number; intervalMs?: number }` with a doc comment saying it exists so tests can drive the parent-death watch without reparenting a real process.
-  - Add a module-private `followUntilParentGone(file: string, offset: number, onLines: (lines: string[]) => void, seams: FollowSeams): Promise<void>`. It calls `const stop = followFile(file, offset, onLines)`, then returns a promise. That promise arms `startParentDeathWatch(() => { stop(); resolve(); }, { ...(seams.ppid ? { ppid: seams.ppid } : {}), ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}) })`. Import `startParentDeathWatch` from ../process/supervisor.js. Its doc comment says the follow runs until Ctrl+C or until its parent is gone, and names the leaked-`logs -f` bug's shape.
-  - `cmdLogs(root, args, seams: FollowSeams = {})` passes `seams` to `cmdLogsTranscript` (a new last parameter). Each of the two `followFile(...)` + `await new Promise(() => {})` pairs becomes `await followUntilParentGone(file, <offset>, <same callback>, seams)`. Each callback body stays byte-for-byte the same.
-  - Update `cmdLogs`'s doc comment: `-f` follows until Ctrl+C or until its parent process exits.
-- **src/cli.ts**: unchanged (`cmdLogs(root, args)` takes the default seams).
-- **docs/cli.md**: in the "Check state" row, after `tumwater logs -f` (`--follow`), add: "(ends on its own once the shell or process that started it exits, so a backgrounded follow does not outlive it)".
-- **BUGS.md**: one Progress line under the open leaked-`logs -f` entry, as above. Leave its Waiting note and everything else as they are.
-
-**Files touched.** src/cli/log-commands.ts, docs/cli.md, BUGS.md, test/log-commands.test.ts.
-
-**Acceptance criteria.**
-- test/log-commands.test.ts, "logs -f ends once its parent is gone": in a fresh repo (the existing follow test's setup), `cmdLogs(repo, ["-f"], { ppid: () => parent, intervalMs: 10 })` with `let parent = 4242`. The promise is still pending after an event is appended and printed. After `parent = 1`, it resolves within a bounded wait (poll for up to 5 s). A further appended event is not printed.
-- test/log-commands.test.ts, "logs --role -f ends once its parent is gone": the same shape with `["--role", "clean", "-f"]`.
-- The existing follow tests in test/log-commands.test.ts and test/cli-logs.test.ts pass unchanged (their parent never changes).
-- `npm run test:gate` passes.
-
 ### The dashboard's History drill-down gets a "Revert this change" button that previews, then reverts, the run's merged commit through the same cores as `tumwater revert` (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit src/cli/log-commands.ts, `history --model` and the rename series, and none touches src/operator/revert.ts, `handleTick` or the drill-down card; a blocked part of the runner rename series renames identifiers in src/tick/tick-detail.ts, where this plan adds only one exported function)
 
 **Goal.** `tumwater revert <sha> [--dry-run]` (`cmdRevert` in src/operator/operator-commands.ts) undoes one merged change on main. The dashboard's History drill-down (`histDetailCardHtml` in src/ui/gui/gui-client-history.ts, fed by `GET /api/run`, `handleTick` in src/gui/gui-endpoints.ts) already shows which sha a run landed under (`merged as <sha>`, added by the finished plan "A run's trail names the sha its change landed under on main"). To undo it, though, the operator has to copy that sha into a terminal. This plan adds the button that the finished plan was laying the groundwork for. It runs the same two cores (`previewRevert`, `revertMergedCommit` in src/operator/revert.ts), so the dashboard and the CLI cannot drift on what a revert refuses or how it commits.

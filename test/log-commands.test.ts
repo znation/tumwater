@@ -80,3 +80,46 @@ test("logs --role -f follows a transcript created after startup and skips non-re
     cap.restore();
   }
 });
+
+// A follow whose parent exits is reparented and would poll forever; the parent-death watch
+// ends it. The fake ppid drives the watch without reparenting a real process.
+async function assertFollowEndsWithParent(args: string[], file: (repo: string) => string, line: string, seen: RegExp, later: string) {
+  const repo = makeRepo();
+  const cap = captureStdout();
+  let parent = 4242;
+  let done = false;
+  try {
+    void cmdLogs(repo, args, { ppid: () => parent, intervalMs: 10 }).then(() => (done = true));
+    ensureParentDir(file(repo));
+    fs.appendFileSync(file(repo), line + "\n");
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 500 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+      assert.ok(cond(), "condition met within 5s");
+    };
+    await until(() => seen.test(cap.out()));
+    assert.equal(done, false, "still following while the parent is alive");
+    parent = 1;
+    await until(() => done);
+    const before = cap.out();
+    fs.appendFileSync(file(repo), later + "\n");
+    await new Promise((r) => setTimeout(r, 700));
+    assert.equal(cap.out(), before, "nothing printed after the follow ended");
+  } finally {
+    cap.restore();
+  }
+}
+
+test("logs -f ends once its parent is gone", async () => {
+  const ev = (run: number) => JSON.stringify({ ts: new Date().toISOString(), source: "clean", type: "run_start", run });
+  await assertFollowEndsWithParent(["-f"], eventsLogPath, ev(1), /run #1 started/, ev(2));
+});
+
+test("logs --role -f ends once its parent is gone", async () => {
+  await assertFollowEndsWithParent(
+    ["--role", "clean", "-f"],
+    (repo) => piLogPath(repo, "clean"),
+    assistantLine("first turn"),
+    /first turn/,
+    assistantLine("second turn"),
+  );
+});
