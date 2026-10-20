@@ -102,3 +102,18 @@ test("shortSpanPhrase rounds a near-two-minute span into the minute arm, never 1
   assert.equal(shortSpanPhrase(120_000), "2m");
   assert.equal(shortSpanPhrase(130_000), "2m");
 });
+
+test("describeToolCall drops a leading cd so the label names the command", () => {
+  const cmd = (command: string) => describeToolCall("bash", { command });
+  assert.equal(
+    cmd("cd /Users/zach/tumwater/.tumwater/worktrees/_slot-10 && npm run test:gate > x.log 2>&1"),
+    "bash npm run test:gate > x.log 2>&1",
+  );
+  assert.equal(cmd(`cd /w && ${"x".repeat(40)}`), `bash ${"x".repeat(31)}…`);
+  assert.equal(cmd('cd "/a b" && ls'), "bash ls");
+  assert.equal(cmd("cd a; cd b && make"), "bash make");
+  assert.equal(describeToolCall("bash", { cmd: "cd a && ls" }), "bash ls");
+  assert.equal(cmd("cd /tmp"), "bash cd /tmp");
+  assert.equal(cmd("cd a || exit 1"), "bash cd a || exit 1");
+  assert.equal(describeToolCall("bash", { path: "/x/cd y && z" }), "bash cd y && z");
+});

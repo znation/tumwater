@@ -222,17 +222,31 @@ export function backendKindPhrase(kind: unknown): string {
   }
 }
 
+const LEADING_CD = /^\s*cd\s+(?:"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*/;
+
+function withoutLeadingCd(command: string): string {
+  let rest = command;
+  while (LEADING_CD.test(rest)) rest = rest.replace(LEADING_CD, "");
+  return rest.trim() ? rest : command;
+}
+
 /** One-line description of a tool call from its name and args — shared by live progress data
  * collection (LiveProgress.lastTool), transcript rendering, and the harness's stalled-tool-call
  * warning (src/pi/pi-stream.ts builds the label src/pi/pi-watchdogs.ts renders). Path-like keys
- * reduce to the file name; the other candidate keys are shown verbatim. */
+ * reduce to the file name; the other candidate keys are shown verbatim. A leading `cd <dir> &&`
+ * is dropped from a command, because the run's cwd is implied and the path would use up the
+ * 32-character budget. */
 export function describeToolCall(toolName: string, args: unknown): string {
   let detail = "";
   if (isJsonObject(args)) {
     const candidate = args.path ?? args.file_path ?? args.command ?? args.cmd ?? args.pattern ?? args.url;
     if (typeof candidate === "string") {
       detail =
-        candidate === args.path || candidate === args.file_path ? path.basename(candidate) : candidate;
+        candidate === args.path || candidate === args.file_path
+          ? path.basename(candidate)
+          : candidate === args.command || candidate === args.cmd
+            ? withoutLeadingCd(candidate)
+            : candidate;
     }
   }
   detail = squash(detail, 32);
