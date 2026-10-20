@@ -820,6 +820,7 @@ const MOVE_BODY = `${MOVE_LINES.join("\n")}\n`;
 async function movedFindings(
   base: Record<string, string>,
   head: Record<string, string | null>,
+  keep = "lines moved to",
 ): Promise<string[]> {
   const { wt } = await repoWith(base);
   for (const [file, content] of Object.entries(head)) {
@@ -830,7 +831,7 @@ async function movedFindings(
     }
     writeFileDeep(full, content);
   }
-  return (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes("lines moved to"));
+  return (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes(keep));
 }
 
 const MOVE_BASE = { "src/big.ts": `export const keep = 1;\n${MOVE_BODY}`, "docs/x.md": "The bodies live in src/big.ts.\n" };
@@ -878,6 +879,40 @@ test("a basename-only reference is not reported", async () => {
   );
 
   assert.deepEqual(findings, []);
+});
+
+const movedNameOnly = (base: Record<string, string>, head: Record<string, string | null>): Promise<string[]> =>
+  movedFindings(base, head, "still place it in");
+const NAME_BASE = { "src/a.ts": "export function keepHere() {}\nexport function moveMe() {}\n" };
+const NAME_HEAD = { "src/a.ts": "export function keepHere() {}\n", "src/b.ts": "export function moveMe() {}\n" };
+
+test("a comment placing a moved function in its old file yields the moved-name finding", async () => {
+  const findings = await movedNameOnly(
+    { ...NAME_BASE, "src/c.ts": "// moveMe (src/a.ts) does it\n", "docs/x.md": "See `moveMe` in a.ts.\n" },
+    NAME_HEAD,
+  );
+  const fixed = await movedNameOnly(
+    { ...NAME_BASE, "src/c.ts": "// moveMe (src/a.ts) does it\n", "docs/x.md": "See `moveMe` in a.ts.\n" },
+    { ...NAME_HEAD, "src/c.ts": "// moveMe (src/b.ts) does it\n", "docs/x.md": "See `moveMe` in b.ts.\n" },
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /`moveMe` moved from src\/a\.ts to src\/b\.ts, but docs\/x\.md:1, src\/c\.ts:1 still place it in a\.ts/);
+  assert.deepEqual(fixed, []);
+});
+
+test("a moved name the old file still names, a comma-separated list, and record prose yield no moved-name finding", async () => {
+  const kept = await movedNameOnly(
+    { ...NAME_BASE, "src/c.ts": "// moveMe (src/a.ts) does it\n" },
+    { ...NAME_HEAD, "src/a.ts": 'export function keepHere() {}\nexport { moveMe } from "./b.js";\n' },
+  );
+  const list = await movedNameOnly(
+    { ...NAME_BASE, "src/c.ts": "// keepHere in src/a.ts, moveMe in src/b.ts\n" },
+    NAME_HEAD,
+  );
+  const prose = await movedNameOnly({ ...NAME_BASE, "PLANS.md": "moveMe lived in src/a.ts\n" }, NAME_HEAD);
+
+  assert.deepEqual([kept, list, prose], [[], [], []]);
 });
 
 test("strayPlaceholderFinding flags a placeholder added to a section that still holds entries", () => {

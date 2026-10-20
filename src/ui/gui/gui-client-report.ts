@@ -118,8 +118,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
   // The report views' Role picker offers base roles only: the scoped collectors
   // (collectReport/collectFailureReport) fold an instance id (feature-2) into its base role, so
   // an instance option would collect the base role's whole body under the instance's name — the
-  // GUI twin of the TUI's Ctrl+G scope cycle (src/ui/tui/tui-keys.ts scopeCycle). The status
-  // payload already carries the base role as instanceOf on an instance row (src/status/
+  // GUI twin of the TUI's Ctrl+G scope cycle (src/ui/tui/tui-pane-session.ts scopeCycle).
+  // The status payload already carries the base role as instanceOf on an instance row (src/status/
   // status-data.ts), so this borrows the server's own fold rather than re-deriving it. History's
   // picker (gui-client-history.ts) filters by exact role id and keeps the raw team list. Pure,
   // so a test can drive it without a DOM.

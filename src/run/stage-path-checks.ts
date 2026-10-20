@@ -2,8 +2,9 @@
  * stage-check.ts (which gathers them with the merge gate's own checks): path drift after a
  * rename or delete, added lines naming paths absent from the resulting tree, lost final
  * newlines, a compound name the change removed that a comment still names, doc comments
- * separated from their declaration, a moved-source file whose old path is still named, and
- * garbled run wording or a doubled word in comment and doc prose. `gitLevelFindings` stages the
+ * separated from their declaration, a moved-source file whose old path is still named, a moved
+ * name that a comment still places in its old file, and garbled run wording or a doubled word in
+ * comment and doc prose. `gitLevelFindings` stages the
  * change (`git add -A`) to read the index, then restores the index to HEAD; the checks skip record
  * prose (isRecordProse), where an old or not-yet-created path is correct as written. The gate does
  * not run any of them. */
@@ -103,6 +104,7 @@ export async function gitLevelFindings(wt: string, mainBranch: string): Promise<
     findings.push(...(await detachedDocFindings(wt, diff)));
     findings.push(...(await staleNameFindings(wt, diff)));
     findings.push(...(await movedSourceFindings(wt, diff, entries)));
+    findings.push(...(await movedNameFindings(wt, diff)));
     return findings;
   } finally {
     // Restore the index to HEAD. Without this, the run's change detection (changedFiles and
@@ -393,22 +395,112 @@ async function staleReferenceFindings(
   return findings;
 }
 
+/** The most characters between a moved name and its old file's name for a line to count as
+ * placing it there. */
+const MOVED_NAME_GAP_MAX = 40;
+
+/** (g) A compound name the change moved out of one JS/TS file into another that a comment or doc
+ * still places in the old file: the line has the name within MOVED_NAME_GAP_MAX characters of the
+ * old file's name (full path or basename), with no `,` or `;` between them. An old file that
+ * still names the moved name (a re-export or import) and record prose are skipped. */
+async function movedNameFindings(wt: string, diff: string): Promise<string[]> {
+  const removedIn = new Map<string, Set<string>>();
+  const addedIn = new Map<string, Set<string>>();
+  let file: string | null = null;
+  const note = (map: Map<string, Set<string>>, name: string, f: string): void => {
+    const set = map.get(name) ?? new Set<string>();
+    set.add(f);
+    map.set(name, set);
+  };
+  for (const line of diff.split("\n")) {
+    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
+    if (header) {
+      file = JS_FILE.test(header[1]!) ? header[1]! : null;
+      continue;
+    }
+    if (file === null) continue;
+    const isRemoved = line.startsWith("-") && !line.startsWith("---");
+    const isAdded = line.startsWith("+") && !line.startsWith("+++");
+    if (!isRemoved && !isAdded) continue;
+    for (const n of declaredNames(line.slice(1)).filter(isCompoundName)) {
+      note(isRemoved ? removedIn : addedIn, n, file);
+    }
+  }
+  const moves: { name: string; from: string; to: string[] }[] = [];
+  for (const [name, froms] of removedIn) {
+    const added = addedIn.get(name);
+    if (!added) continue;
+    for (const from of froms) {
+      if (added.has(from)) continue;
+      moves.push({ name, from, to: [...added] });
+      break;
+    }
+  }
+  const picked = moves.slice(0, MAX_STALE_NAMES);
+  if (picked.length === 0) return [];
+  const out = await gitTry(wt, "grep", "-n", "-w", "-I", "--cached", ...picked.flatMap((m) => ["-e", m.name]));
+  if (!out) return [];
+  const lines: { file: string; no: string; text: string }[] = [];
+  for (const line of out.split("\n")) {
+    const m = /^([^:]+):(\d+):(.*)$/.exec(line);
+    if (m) lines.push({ file: m[1]!, no: m[2]!, text: m[3] ?? "" });
+  }
+  const findings: string[] = [];
+  for (const { name, from, to } of picked) {
+    if (findings.length >= MAX_STALE_PATHS) break;
+    const word = new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`, "g");
+    const mine = lines.filter((l) => l.text.search(word) !== -1);
+    if (mine.some((l) => l.file === from)) continue;
+    const base = path.basename(from);
+    const hits: string[] = [];
+    for (const l of mine) {
+      if (isRecordProse(l.file)) continue;
+      const text = l.text.split(from).join(base);
+      const names = [...text.matchAll(word)].map((m) => m.index);
+      const bases = standalonePathIndexes(text, base);
+      const near = names.some((i) =>
+        bases.some((j) => {
+          const gap = j >= i + name.length ? text.slice(i + name.length, j) : text.slice(j + base.length, i);
+          const overlaps = j < i + name.length && i < j + base.length;
+          return !overlaps && gap.length <= MOVED_NAME_GAP_MAX && !/[,;]/.test(gap);
+        }),
+      );
+      if (!near) continue;
+      hits.push(`${l.file}:${l.no}`);
+      if (hits.length >= MAX_STALE_HITS) break;
+    }
+    if (hits.length === 0) continue;
+    findings.push(
+      `\`${name}\` moved from ${from} to ${cappedList(to, MAX_STALE_PATHS)}, but ${hits.join(", ")} ` +
+        `still place it in ${base} — point each at its new file`,
+    );
+  }
+  return findings;
+}
+
 /** True when `needle` appears in `line` as a repo path of its own — not as one segment of a
  * longer path. `git grep -F` matches substrings, so a line naming a rename's destination
  * (`src/<dir>/config.ts`) would otherwise read as a stale reference to an old root `config.ts`.
  * A preceding path character (or a following one that continues the token, as a `.` extension
  * or an alphanumeric does) disqualifies the occurrence; trailing sentence punctuation does not. */
 function hasStandalonePathOccurrence(line: string, needle: string): boolean {
+  return standalonePathIndexes(line, needle).length > 0;
+}
+
+/** Every index at which `needle` appears in `line` as a repo path of its own (see
+ * hasStandalonePathOccurrence). */
+function standalonePathIndexes(line: string, needle: string): number[] {
   const pathChar = /[A-Za-z0-9_./-]/;
+  const found: number[] = [];
   for (let i = line.indexOf(needle); i !== -1; i = line.indexOf(needle, i + 1)) {
     const before = i > 0 ? line[i - 1]! : "";
     if (before && pathChar.test(before)) continue;
     const after = line[i + needle.length] ?? "";
     if (/[A-Za-z0-9_/-]/.test(after)) continue;
     if (after === "." && /[A-Za-z0-9]/.test(line[i + needle.length + 1] ?? "")) continue;
-    return true;
+    found.push(i);
   }
-  return false;
+  return found;
 }
 
 /** Each distinct path-shaped token in `text`, in first-appearance order: at least one slash and
