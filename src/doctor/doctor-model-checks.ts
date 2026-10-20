@@ -34,6 +34,7 @@ import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { formatBytes, usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
+import { parsePiModelImages, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
@@ -278,11 +279,13 @@ export function parsePiModelList(stdout: string): Set<string> | null {
 
 /** The models pi itself lists (`pi --list-models`), which include its built-in catalog that
  * models.json does not repeat. pi lists only the providers it has credentials for. Null when the
- * probe could not run or failed; never throws. */
+ * probe could not run or failed; never throws. Given a `root`, it also records the images column
+ * for `seamImageInput` (src/pi/pi-listed-models.ts). */
 export async function piListedModels(
   config: TumwaterConfig,
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+  root?: string,
 ): Promise<Set<string> | null> {
   const result = await boundedProbe(
     resolveAgentBin(config).bin,
@@ -292,6 +295,12 @@ export async function piListedModels(
     AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
   if (result?.code !== 0) return null;
+  const images = root === undefined ? null : parsePiModelImages(result.stdout);
+  if (root !== undefined && images !== null) {
+    try {
+      writePiListedModels(root, images);
+    } catch {} // A failed write never changes the check.
+  }
   return parsePiModelList(result.stdout);
 }
 
@@ -465,7 +474,7 @@ export async function checkTierModels(
     piProviderAuth(loadConfigSafe(root).config ?? defaultConfig(), provider),
   env: NodeJS.ProcessEnv = process.env,
   listModels: () => Promise<Set<string> | null> = () =>
-    piListedModels(loadConfigSafe(root).config ?? defaultConfig()),
+    piListedModels(loadConfigSafe(root).config ?? defaultConfig(), envPath(), AUTH_CHECK_TIMEOUT_MS, root),
 ): Promise<CheckOutcome> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;

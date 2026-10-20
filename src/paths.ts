@@ -123,6 +123,12 @@ export function imageProbesPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "image-probes.json");
 }
 
+/** The images column `tumwater doctor` last read from `pi --list-models`, keyed provider/model.
+ * Runtime state under .tumwater/state/, never committed. */
+export function piListedModelsPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "pi-listed-models.json");
+}
+
 /** The `qa` flow-coverage ledger (tick/qa-coverage.ts): which flow each observer tick exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
  * must leave the repo untouched, or every cheap pass would move main and wake the team. */

@@ -752,38 +752,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/config.md: the `roles.<id>` table's `model` row adds that a value one or two letters off a tier name (in any case) is rejected as a misspelled tier.
 - `npm run test:gate` passes.
 
-### Pi built-in image capability, part 1/2: `tumwater doctor` saves the images column of `pi --list-models` to `.tumwater/state/pi-listed-models.json` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Part 2/2 reads the file. The in-flight entries touch src/doctor/doctor.ts, src/cli/*, src/config/config-field-checks.ts and src/ comments. This part touches src/doctor/doctor-model-checks.ts, src/paths.ts, a new src/pi/pi-listed-models.ts, test/doctor-model-checks.test.ts and a new test/pi-listed-models.test.ts)
-
-**Goal.** pi's built-in catalog says which models read images. `pi --list-models` prints that in an `images` column (`yes`/`no`). tumwater never keeps it. `seamImageInput` (src/agent/image-input.ts) answers `null` (unknown) for any pi pair missing from models.json, and the runner's attachment preflight (`src/runner/runner-run.ts`, `seamImageInput(cfg, providers) !== true`) treats unknown as blind. So a role on a built-in vision model gets its image prompt rerouted to another tier, or the run errors with "no configured tier can read it". Measured 2026-10-19 on this machine: `pi --list-models` lists `huggingface google/gemma-3-12b-it … images yes`, and main's `piModelImageInput(readPiProviders(piModelsPath()), "huggingface", "google/gemma-3-12b-it")` returns `null`. plans/image-input.md "Capability" chose `null` because "the doctor's tier check already fails such pairs". That stopped being true when the doctor started accepting models from `pi --list-models` (PLANS-DONE.md, 2026-10-19). This part saves the facts. Part 2/2 reads them. `seamImageInput` stays the only capability resolver.
-
-**Approach.**
-- **src/paths.ts.** Add `piListedModelsPath(root)` → `path.join(tumwaterDir(root), "state", "pi-listed-models.json")`, beside `imageProbesPath`.
-- **src/pi/pi-listed-models.ts** (new). Imports only node built-ins, src/paths.ts, and the JSON file helpers image-probe.ts already uses (`readJsonFile`, `writeJsonAtomic`).
-  - `export interface PiListedModels { checkedAt: number; images: Record<string, boolean> }`. Keys are `provider/model`.
-  - `export function parsePiModelImages(stdout: string): Record<string, boolean> | null`. Use the same row split and header guard as `parsePiModelList`: the first non-blank row must start `provider model`, else return null. Find the `images` column with `header.indexOf("images")` and return null when it is missing. For each row that has a model, `yes` maps to true and `no` to false. Skip any other value.
-  - `export function readPiListedModels(root: string): PiListedModels | null`. Return null for a missing or torn file, or when `images` is not an object.
-  - `export function writePiListedModels(root: string, images: Record<string, boolean>, now: number = Date.now()): void`. Write atomically.
-  - `export function piListedImageInput(listed: PiListedModels | null | undefined, provider: string | undefined, model: string | undefined): boolean | null`. Return null when an argument is missing or the key is not listed, else the boolean. There is no TTL: every doctor run that lists the models rewrites the file, and an unlisted pair still reads as unknown, as it does today.
-- **src/doctor/doctor-model-checks.ts.**
-  - `piListedModels` takes a fourth parameter `root?: string`. After a code-0 run, when `root` is given and `parsePiModelImages(result.stdout)` is not null, call `writePiListedModels(root, images)` inside `try { … } catch {}`, so a failed write never changes the check. The return value stays `parsePiModelList(result.stdout)`.
-  - `checkTierModels`' default `listModels` passes `root`. The listing stays lazy: it only runs when a pair is missing from models.json, which is the only case the file is needed. Add one line to `piListedModels`' doc comment saying it records the images column for `seamImageInput`.
-  - `parsePiModelList` is unchanged.
-
-**Acceptance criteria.**
-- New test/pi-listed-models.test.ts, "parsePiModelImages reads the images column and refuses anything else":
-  - On the two-row table from the existing `parsePiModelList` test, it returns `{"huggingface/deepseek-ai/DeepSeek-V3.1": false, "anthropic/claude-x": true}`.
-  - It returns null for `'No models matching "x"'`, for `""`, and for a `provider model context` header with no `images` column.
-- Same file, "readPiListedModels round-trips writePiListedModels and piListedImageInput answers per pair":
-  - write then read returns the same `images` and `checkedAt`.
-  - `piListedImageInput` returns true and false for listed pairs, and null for an unlisted pair, an undefined model, and a null `listed`.
-  - On a fresh tmp root, before any write, `readPiListedModels` returns null.
-- test/doctor-model-checks.test.ts, new "piListedModels saves the images column under the root it is given". Use a fake `pi` made with `writeScript` (test/fakes/fake-commands.ts) that prints the two-row table on `--list-models`, on a temp PATH dir:
-  - `piListedModels(config, dir, 5000, root)` resolves to the same Set as before, and `readPiListedModels(root)?.images["anthropic/claude-x"] === true`.
-  - Without `root`, no file appears at `piListedModelsPath(root)`.
-  - A fake that exits 1 writes nothing.
-- The existing `parsePiModelList` and `checkTierModels` tests pass unchanged.
-- `npm run test:gate` passes.
-
 ### Pi built-in image capability, part 2/2: `seamImageInput` answers from the saved `pi --list-models` images column for a pi pair missing from models.json, so a built-in vision model keeps its image prompts (planned 2026-10-19 by the plan role; "requires part 1/2 landed". Touches src/agent/image-input.ts, src/runner/runner-run.ts, src/tick/tick-verdict.ts, src/inbox/inbox-submit.ts, src/roles/role-view.ts, src/status/status-roles.ts, src/doctor/doctor-model-checks.ts, plans/image-input.md, test/image-input.test.ts, test/tick-verdict.test.ts)
 
 **Goal.** Part 1/2 saves pi's own images column per `provider/model`. This part has the one resolver read it. A pi pair missing from models.json gets the listing's answer instead of `null`. With that, the preflight keeps an image prompt on a role whose built-in model reads images, and a reroute can target a built-in vision tier. The status, role and submit surfaces say what pi says, and the doctor's `image input` check probes the built-in claim like any other.

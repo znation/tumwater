@@ -12,6 +12,7 @@ import {
   checkOpencode,
   checkTierModels,
   parsePiModelList,
+  piListedModels,
   piProviderAuth,
 } from "../src/doctor/doctor-model-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -28,7 +29,8 @@ import { saveRunnerState, loadRunnerState } from "../src/runner/runner-state.js"
 import { allRoleIds } from "../src/roles/roles.js";
 import type { ImageProbeResult } from "../src/doctor/image-probe.js";
 import { envPath } from "../src/files/files.js";
-import { imageProbesPath } from "../src/paths.js";
+import { imageProbesPath, piListedModelsPath } from "../src/paths.js";
+import { readPiListedModels } from "../src/pi/pi-listed-models.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -1079,6 +1081,29 @@ test("parsePiModelList reads pi's list-models table and refuses anything else", 
   assert.equal(parsePiModelList('No models matching "x"'), null);
   assert.equal(parsePiModelList(""), null);
   assert.equal(parsePiModelList("some arbitrary text\nmore"), null);
+});
+
+test("piListedModels saves the images column under the root it is given", async () => {
+  const root = tmpdir("doctor-listed-root-");
+  const binDir = tmpdir("doctor-listed-bins-");
+  const table = [
+    "provider     model                      context  max-out  thinking  images",
+    "huggingface  deepseek-ai/DeepSeek-V3.1  131.1K  8.2K  yes  no",
+    "anthropic    claude-x  200K  8K  yes  yes",
+  ];
+  writeScript(path.join(binDir, "pi"), table.map((row) => `printf '%s\\n' '${row}'`).join("\n"));
+  const expected = new Set(["huggingface/deepseek-ai/DeepSeek-V3.1", "anthropic/claude-x"]);
+  assert.deepEqual(await piListedModels({} as TumwaterConfig, binDir, 5000), expected);
+  assert.equal(fs.existsSync(piListedModelsPath(root)), false);
+  assert.deepEqual(await piListedModels({} as TumwaterConfig, binDir, 5000, root), expected);
+  assert.equal(readPiListedModels(root)?.images["anthropic/claude-x"], true);
+  assert.equal(readPiListedModels(root)?.images["huggingface/deepseek-ai/DeepSeek-V3.1"], false);
+
+  const failRoot = tmpdir("doctor-listed-fail-");
+  const failBin = tmpdir("doctor-listed-failbin-");
+  writeScript(path.join(failBin, "pi"), "exit 1");
+  assert.equal(await piListedModels({} as TumwaterConfig, failBin, 5000, failRoot), null);
+  assert.equal(fs.existsSync(piListedModelsPath(failRoot)), false);
 });
 
 test("checkTierModels accepts a model pi lists but models.json does not declare", async () => {
