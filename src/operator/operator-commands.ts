@@ -1,11 +1,15 @@
 // vocabulary: plain
-import { knownRoleIds, loadConfig } from "../config/config.js";
+import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
+import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { previewRevert, revertMergedCommit } from "./revert.js";
+import { tickMergedSha, tickNotFoundMessage } from "../tick/tick-detail.js";
+import { readTickDetail } from "../tick/tick-detail-data.js";
+import { readTickRows } from "../history/history-data.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { shortSha } from "../text/format.js";
@@ -446,25 +450,58 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
     say(`nothing to remove for role ${role}`);
 }
 
-/** `tumwater revert <sha>`: undo one merged change on main, committing the inverse as
- * `tumwater(operator): Revert <short sha>` under the primary-worktree lock. The lock, branch
- * guard, and fail-closed ref/conflict handling live in src/operator/revert.ts; this renderer
- * names the new main head and reminds the caller the reverted role may redo the work. */
+const REVERT_USAGE = "usage: tumwater revert <sha>|<role> <n>|<role> --last [--dry-run]";
+
+/** The sha the run `<role> <n>` (or the newest completed run of `<role>` under `last`) merged
+ * under, resolved the way `tumwater history <role> <n>` and the dashboard's revert resolve it
+ * (`tickMergedSha`). Fails, exit 1, when the run is unknown or did not merge: revert is an
+ * action, so a miss is an error rather than history's exit-0 "not found". */
+function revertRunSha(root: string, positionals: string[], last: boolean): { sha: string; line: string } {
+  const role = canonicalRoleId(positionals[0]!);
+  const ids = knownRoleIdsCached(root);
+  if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (${REVERT_USAGE})`);
+  const run = last
+    ? (readTickRows(root, 1, role)[0]?.run ?? null)
+    : parseCountFlag("revert <n>", positionals[1]);
+  if (run === null) fail(`no completed run of ${role} in the event log`);
+  const detail = readTickDetail(root, role, run);
+  if (detail === null) fail(tickNotFoundMessage(role, run));
+  if (detail.result !== "merged")
+    fail(`${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert`);
+  const sha = tickMergedSha(detail);
+  if (sha === null)
+    fail(`${role} run #${run} merged but the event log no longer names its commit; pass the sha from git log instead`);
+  return { sha, line: `run ${role} #${run} merged as ${shortSha(sha)}` };
+}
+
+/** `tumwater revert <sha>|<role> <n>|<role> --last`: undo one merged change on main,
+ * committing the inverse as `tumwater(operator): Revert <short sha>` under the primary-worktree
+ * lock. The lock, branch guard, and fail-closed ref/conflict handling live in
+ * src/operator/revert.ts; this renderer names the new main head and reminds the caller the
+ * reverted role may redo the work. */
 export async function cmdRevert(root: string, args: string[]): Promise<void> {
-  // `--dry-run` is the only flag; exactly one positional names the commit to undo. A flag or
-  // extra positional fails before anything is looked up or written.
+  // `--dry-run` and `--last` are the only flags; the positionals select a sha (one), a run
+  // (`<role> <n>`) or the newest run of a role (`<role>` with --last). A flag or any other
+  // shape fails before anything is looked up or written.
   const dryRun = args.includes("--dry-run");
-  const rest = args.filter((a) => a !== "--dry-run");
-  if (rest.length !== 1) fail("revert needs a commit (e.g. run tumwater revert 1a2b3c4)");
+  const last = args.includes("--last");
+  const rest = args.filter((a) => a !== "--dry-run" && a !== "--last");
   // A flag-shaped token is a dropped flag, not a commit: refuse it before rev-parse turns a
   // lone `--json` into the misleading "no such commit". Mirrors `config set`'s
   // flag-looking-value gate and gui-command.ts's --token gate, and a real sha never starts
   // with `-`.
-  if (rest[0]!.startsWith("-"))
-    fail(`revert takes only --dry-run (got ${rest[0]}); pass the commit to undo as the only argument`);
+  const flagged = rest.find((a) => a.startsWith("-"));
+  if (flagged !== undefined)
+    fail(`revert takes only --dry-run and --last (got ${flagged}); pass the commit or run to undo as the argument`);
+  if (last ? rest.length !== 1 : rest.length < 1 || rest.length > 2)
+    fail(`revert needs a commit or a run (${REVERT_USAGE})`);
+  const run = last || rest.length === 2 ? revertRunSha(root, rest, last) : null;
+  const sha = run?.sha ?? rest[0]!;
+  const runLine = run?.line ?? null;
   if (dryRun) {
-    const p = await previewRevert(root, rest[0]!);
+    const p = await previewRevert(root, sha);
     if (!p.ok) fail(p.error);
+    if (runLine !== null) say(runLine);
     say(`would revert ${shortSha(p.sha)} ${p.subject}`);
     for (const path of p.paths) say(`  ${path}`);
     const on = `on ${p.primary} (HEAD ${shortSha(p.head)}); nothing was written`;
@@ -475,8 +512,9 @@ export async function cmdRevert(root: string, args: string[]): Promise<void> {
     if (!p.applies || p.dirty) process.exitCode = 1;
     return;
   }
-  const result = await revertMergedCommit(root, rest[0]!);
+  const result = await revertMergedCommit(root, sha);
   if (!result.ok) fail(result.error);
+  if (runLine !== null) say(runLine);
   say(`main is now ${shortSha(result.headSha)}`);
   say("the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not");
 }

@@ -448,12 +448,15 @@ Usage:
   tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age
                                    and ignored-path count and cleans nothing
-  tumwater revert <sha> [--dry-run]  Undo one merged change on main, committing the inverse
+  tumwater revert <sha>|<role> <n>|<role> --last [--dry-run]
+                                   Undo one merged change on main, committing the inverse
                                    under the primary-worktree lock; refuses off the base
                                    branch, on an unknown or unmerged ref, and on a conflict;
                                    --dry-run names the commit and the paths its inverse touches
                                    and says whether it applies cleanly on main, writing nothing
-                                   (exit 1 when the revert would conflict or refuse)
+                                   (exit 1 when the revert would conflict or refuse); the run
+                                   forms revert the commit the run merged as, the sha
+                                   'history <role> <n>' names
   tumwater abort --role <id>[,<id>...]
                                    Stop each named role's run in progress (work discarded; the
                                    role keeps going)

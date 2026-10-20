@@ -12,11 +12,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
-import { commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
+import { tickNotFoundMessage } from "../src/tick/tick-detail.js";
 import { spawnSync } from "node:child_process";
-import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 // --- abort --role <id>: request to kill one role's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
@@ -1183,7 +1184,7 @@ test("revert rejects a flag-shaped token as a flag, before a lookup or a write",
 
   const r = await cli(repo, "revert", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /revert takes only --dry-run \(got --json\)/);
+  assert.match(r.stderr, /revert takes only --dry-run and --last \(got --json\)/);
   assert.equal(headSha(repo), before, "no commit was written");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "the tree is clean");
 });
@@ -1212,19 +1213,111 @@ test("revert --dry-run previews without writing", async () => {
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
-test("revert with zero or multiple positionals fails with usage and writes no commit", async () => {
+const REVERT_USAGE_RE = /revert needs a commit or a run \(usage: tumwater revert <sha>\|<role> <n>\|<role> --last \[--dry-run\]\)/;
+
+test("revert with zero or three positionals fails with usage, and a sha plus extra is an unknown role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli revert arity");
   const before = headSha(repo);
 
   let r = await cli(repo, "revert");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /revert needs a commit \(e.g. run tumwater revert 1a2b3c4\)/);
+  assert.match(r.stderr, REVERT_USAGE_RE);
+
+  r = await cli(repo, "revert", before, "extra", "more");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, REVERT_USAGE_RE);
+
+  r = await cli(repo, "revert", before, "--last");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /unknown role/);
 
   r = await cli(repo, "revert", before, "extra");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /revert needs a commit \(e.g. run tumwater revert 1a2b3c4\)/);
+  assert.match(r.stderr, /unknown role: [0-9a-f]{40}/);
 
-  assert.equal(headSha(repo), before, "neither usage error moved HEAD");
+  assert.equal(headSha(repo), before, "no usage error moved HEAD");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "no commit was written");
+});
+
+/** A repo whose `clean` run 1 merged a real commit on main, run 2 was rejected and (when
+ * `zeroRun3`) run 3 merged a sha git does not have. */
+async function revertRunRepo(zeroRun3: boolean): Promise<{ repo: string; merged: string }> {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert run");
+  seedCommit(repo, "to-undo.txt", "work\n", "work to undo");
+  const merged = headSha(repo);
+  const events: unknown[] = [
+    { ts: 1000, source: "clean", type: "run_start", run: 1 },
+    { ts: 1100, source: "clean", type: "merge_done", run: 1, commit: merged },
+    { ts: 1200, source: "clean", type: "run_end", run: 1, result: "merged" },
+    { ts: 2000, source: "clean", type: "run_start", run: 2 },
+    { ts: 2100, source: "clean", type: "merge_queued", run: 2, commit: "1".repeat(40) },
+    { ts: 2200, source: "clean", type: "run_end", run: 2, result: "rejected" },
+  ];
+  if (zeroRun3)
+    events.push(
+      { ts: 3000, source: "clean", type: "run_start", run: 3 },
+      { ts: 3100, source: "clean", type: "merge_done", run: 3, commit: "0".repeat(40) },
+      { ts: 3200, source: "clean", type: "run_end", run: 3, result: "merged" },
+    );
+  writeEvents(repo, events);
+  return { repo, merged };
+}
+
+test("revert <role> <n> reverts the commit that run merged as", async () => {
+  const { repo, merged } = await revertRunRepo(true);
+  const short = merged.slice(0, 8);
+  const r = await cli(repo, "revert", "clean", "1");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.startsWith(`run clean #1 merged as ${short}`), r.stdout);
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), `tumwater(operator): Revert ${short}`);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
+test("revert <role> <n> --dry-run previews the run's commit and writes nothing", async () => {
+  const { repo, merged } = await revertRunRepo(true);
+  const before = headSha(repo);
+  const r = await cli(repo, "revert", "clean", "1", "--dry-run");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, new RegExp(`^run clean #1 merged as ${merged.slice(0, 8)}\\nwould revert ${merged.slice(0, 8)}`));
+  assert.equal(headSha(repo), before);
+});
+
+test("revert <role> --last takes the newest completed run", async () => {
+  const { repo } = await revertRunRepo(true);
+  let r = await cli(repo, "revert", "clean", "--last", "--dry-run");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no such commit/);
+
+  const one = await revertRunRepo(false);
+  // Run 2 (rejected) is the newest here, so --last refuses it rather than skipping to run 1.
+  r = await cli(one.repo, "revert", "clean", "--last", "--dry-run");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /run #2 did not merge/);
+
+  writeEvents(one.repo, [
+    { ts: 1000, source: "clean", type: "run_start", run: 1 },
+    { ts: 1100, source: "clean", type: "merge_done", run: 1, commit: one.merged },
+    { ts: 1200, source: "clean", type: "run_end", run: 1, result: "merged" },
+  ]);
+  r = await cli(one.repo, "revert", "clean", "--last", "--dry-run");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, new RegExp(`^run clean #1 merged as ${one.merged.slice(0, 8)}\\nwould revert`));
+});
+
+test("revert refuses a run that did not merge, an unknown run and an unknown role, writing nothing", async () => {
+  const { repo } = await revertRunRepo(true);
+  const before = headSha(repo);
+  let r = await cli(repo, "revert", "clean", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /did not merge \(result: rejected\)/);
+  r = await cli(repo, "revert", "clean", "9");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes(tickNotFoundMessage("clean", 9)), r.stderr);
+  r = await cli(repo, "revert", "nosuchrole", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /nosuchrole/);
+  assert.equal(headSha(repo), before);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });

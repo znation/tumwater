@@ -401,8 +401,8 @@ async function main(): Promise<void> {
       break;
     }
     case "revert": {
-      // Acts immediately on the primary checkout under the primary-worktree lock; the single
-      // positional (the commit to undo) is validated inside cmdRevert.
+      // Acts immediately on the primary checkout under the primary-worktree lock; the
+      // positionals (a sha, or a run) are validated inside cmdRevert.
       await requireReadyRepo(root);
       await (await import("./operator/operator-commands.js")).cmdRevert(root, args);
       break;
