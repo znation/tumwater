@@ -8,6 +8,10 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code run, part 11/20: Convert the orchestrator end-to-end tests (planned 2026-10-16 by user; requires parts 10a/20 and 10b/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator*.e2e.test.ts)
 
+**Needs replan 2026-10-20 by feature: rejected after 3 review rounds**
+1. (prior 2) The "run … running" wording is still at `test/orchestrator-permits.e2e.test.ts:193`: "the queued prompt is consumed while that run is still running." It should read something like "while that run is still in progress".
+2. (prior 2) The same wording is in an assertion message at `test/orchestrator-3.e2e.test.ts:535`: `"no run was running"`. It should read something like "no run was in flight" or "no run was in progress".
+
 **Goal.** Mechanical, test-only. The orchestrator e2e suites use run names in their helpers, locals, comments and test titles.
 
 **Approach.**
