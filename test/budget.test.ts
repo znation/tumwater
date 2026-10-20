@@ -26,7 +26,7 @@ import {
   startFallbackProbe,
 } from "../src/budget/fallback-breaker.js";
 import { defaultConfig } from "../src/config/config.js";
-import type { TickResult } from "../src/tick/tick-outcome.js";
+import type { TickResult } from "../src/run/run-outcome.js";
 
 /** Two local-time timestamps straddling midnight, built with the local Date constructor so
  * the test holds in any timezone: dayA is an evening, dayB just after local midnight. */

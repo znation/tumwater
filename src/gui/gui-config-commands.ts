@@ -217,7 +217,7 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
 /** Handle POST /api/role-instructions: the role drawer's standing-instructions editor — the
  * `Instructions override` row's Edit/Save. Same body discipline as /api/role-cap (readPostBody
  * → 400 malformed/non-object, 413 oversized); an empty role id is a 400, and a bare `feature-2`
- * role id maps to its base role's override (baseRoleOf), the key tick-prompt reads — so an
+ * role id maps to its base role's override (baseRoleOf), the key run-prompt reads — so an
  * instance edits the instructions its runs carry (readRoleBody's shared guard is not used
  * because it rejects instance ids, and the unknown-role check is validateConfig's, below).
  * The director is editable here (its override reaches its runs), unlike handleRoleNotes'

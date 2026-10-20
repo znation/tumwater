@@ -3,11 +3,11 @@ import { dropMerge, enqueueMerge, queuedMerges, type MergeEntry } from "./merge-
 import { RETRIABLE_MERGE_RESULTS } from "./merge-core.js";
 import { pinnedRetrySha } from "../runner/leftover.js";
 import { branchHead } from "../git/git.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
-import { applyMergeOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { applyMergeOutcome, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -363,7 +363,7 @@ export function writeMergeOutcome(
   applyMergeOutcome(state, result, entry);
   saveRunnerState(root, state);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
-  // feeds the same streak the tick-side warn reads (src/tick/tick-finalize.ts), but it resolves
+  // feeds the same streak the tick-side warn reads (src/run/run-finalize.ts), but it resolves
   // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
   if (result === "rejected" && (state.consecutiveErrors ?? 0) === ERROR_STREAK_WARN) {
     warnEventBestEffort(
@@ -453,7 +453,7 @@ export function mergeUsage(author: RoleRunner, root: string): {
       // A claude reviewer's or resolver's billing/window readings reach the account file the
       // moment this run folds, not at the author's next tick end — so a pi-author team's
       // claude reviewer still updates the five-hour window before the author's next tick
-      // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like tick-finalize.ts's
+      // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like run-finalize.ts's
       // call; the file is a cache and an unwritable state dir must not fail the merge.
       if (run.billing !== undefined || run.rateWindows !== undefined) {
         try {

@@ -6,7 +6,7 @@ import { truncate } from "../text/text.js";
  * off at the context ceiling (real work, unfulfilled) and the diagnostic notes for the warning
  * event logged when no nothing-to-do sentinel appeared anywhere in the reply. Split out of
  * runner.ts so the classification — with its own data model — has a single testable home; the
- * tick verdict (tick-verdict.ts) logs the warning and re-queues unfulfilled prompts from it. */
+ * tick verdict (run-verdict.ts) logs the warning and re-queues unfulfilled prompts from it. */
 
 interface NoChangeDiagnosis {
   /** True when the run did real work but was truncated before it could declare its outcome:

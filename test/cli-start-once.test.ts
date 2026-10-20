@@ -8,10 +8,10 @@ import { loadRunnerState } from "../src/runner/runner-state.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The scoped `run --once --role` happy path through the real CLI. The pre-boot `--role` guards
-// live in cli-run-guards.test.ts; this is the round they gate. Split out of the run-live family
+// live in cli-start-guards.test.ts; this is the round they gate. Split out of the run-live family
 // so the once round's own startup/exit is measured apart from the long-running lifecycle and
-// forced-exit/sigint files (cli-run-shutdown.test.ts, cli-run-sigint.test.ts,
-// cli-run-force-exit.test.ts).
+// forced-exit/sigint files (cli-start-shutdown.test.ts, cli-start-sigint.test.ts,
+// cli-start-force-exit.test.ts).
 
 test("run --once --role ticks only the scoped role through the real CLI and exits 0", async () => {
   // The scoped round's happy path. Until now only the e2e tier pinned a successful --once

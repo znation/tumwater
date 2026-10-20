@@ -12,14 +12,14 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { exitCode, spawnCli } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
-import { onlyCleanRole } from "./helpers/run-live-harness.js";
+import { onlyCleanRole } from "./helpers/start-live-harness.js";
 
 // `tumwater run`'s two live run modes: the `--for` bounded window that stops itself at its
 // deadline, and `--gui`, which serves the browser dashboard from the supervisor so it outlives
 // orchestrator generations. Both boot a real team; the pre-boot guards live in
-// cli-run-guards.test.ts, the lifecycle and shutdown tests in cli-run-shutdown.test.ts, the
-// terminal-Ctrl+C handling in cli-run-sigint.test.ts, the forced second-Ctrl+C exit in
-// cli-run-force-exit.test.ts, and the scoped --once round in cli-run-once.test.ts.
+// cli-start-guards.test.ts, the lifecycle and shutdown tests in cli-start-shutdown.test.ts, the
+// terminal-Ctrl+C handling in cli-start-sigint.test.ts, the forced second-Ctrl+C exit in
+// cli-start-force-exit.test.ts, and the scoped --once round in cli-start-once.test.ts.
 
 /** `run --gui`'s default dashboard port. The live test skips when it is already taken, because
  * a second binder would fail to bind and prove nothing about `run --gui`. */

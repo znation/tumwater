@@ -23,7 +23,7 @@ import { cli } from "./helpers/cli-harness.js";
 // parser-wide unknown-argument gate, cli-flag-value-errors.test.ts for malformed/missing flag
 // values, and cli-prompt-/cli-questions-/cli-tui-strictness.test.ts per command, with
 // cli-questions-list.test.ts for the list surface), cli-gui.test.ts
-// (gui), the cli-run-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
+// (gui), the cli-start-*.test.ts family (run's pre-boot guards, lifecycle, forced exit, live
 // window/gui, and scoped once round), doctor.test.ts, report.test.ts, and
 // tui.test.ts.
 

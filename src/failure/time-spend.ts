@@ -5,7 +5,7 @@
  * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas,
  * clustered sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
  * src/failure/failure-render.ts as a pure function of the collected data. */
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
@@ -17,7 +17,7 @@ import { getOrCreate, groupBy, rankByCount } from "../collections.js";
  * "merged" made progress, "no_change" spent a tick and merged nothing, and every remaining
  * result is "error-class" — it burned agent time without merge, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
- * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
+ * src/run/run-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
 export const OUTCOME_CLASS: Record<TickResult, "merged" | "no_change" | "error"> = {
   changed: "merged",
@@ -252,7 +252,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       kind = "no_change";
     } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
       // A clustered result with no error text still owns its time: an abort's run_end never
-      // carries one (planTickStart clears s.lastError, tick-finalize logs error: undefined),
+      // carries one (planTickStart clears s.lastError, run-finalize logs error: undefined),
       // and a malformed error tick can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
       ({ key, example } = pooledClusterCause(ev.error));

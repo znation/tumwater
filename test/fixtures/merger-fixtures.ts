@@ -9,7 +9,7 @@ import { defaultConfig } from "../../src/config/config.js";
 import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { readEvents } from "../../src/events/event-read.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { TickResult } from "../../src/tick/tick-outcome.js";
+import type { TickResult } from "../../src/run/run-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
 import type { RunnerState } from "../../src/runner/runner-state.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";

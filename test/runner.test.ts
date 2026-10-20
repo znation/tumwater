@@ -14,7 +14,7 @@ import { defaultConfig, customLoopNames, loadConfig } from "../src/config/config
 import { enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { loadRunnerState } from "../src/runner/runner-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
-import { readQaCoverage, recordFlow } from "../src/tick/qa-coverage.js";
+import { readQaCoverage, recordFlow } from "../src/run/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";

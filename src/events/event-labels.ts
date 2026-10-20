@@ -3,7 +3,7 @@
  * result codes (the result cells). Pure, no I/O, so core modules and the UI may both import it. */
 
 import type { HarnessEvent } from "./events.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 
 /** The words for each event type. The `Record` type makes the compiler demand a label for every
  * type in the union, so a new event type cannot ship without one; renaming a type renames its key

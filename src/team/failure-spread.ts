@@ -1,7 +1,7 @@
 /** The team-wide wide-shallow storm alarm (BUGS.md 2026-09-30, part (2) of the
  * 2026-09-29 connection-storm entry): when many roles each fail a few times on one provider
  * failure kind, no existing bar trips — the per-role streak alarm needs one role DEEP
- * (ERROR_STREAK_WARN consecutive, src/tick/tick-apply.ts), the error-storm warning needs several
+ * (ERROR_STREAK_WARN consecutive, src/run/run-apply.ts), the error-storm warning needs several
  * roles deep at once (src/team/error-storm.ts), and the team hold needs failures COALESCED within
  * a two-minute window (src/team/team-hold.ts). A degraded backend that fails the team widely and
  * shallowly — six ticks across as many roles, each failure minutes apart — rides all three

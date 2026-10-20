@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { drainInFlightWork, type AfterDelay } from "../src/tick/tick-timing.js";
+import { drainInFlightWork, type AfterDelay } from "../src/run/run-timing.js";
 import { writeMergeMarker, readMergeMarker } from "../src/merge/merge-slot.js";
 import type { InFlightMerge } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

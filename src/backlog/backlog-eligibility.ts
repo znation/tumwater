@@ -536,7 +536,7 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
   const parts = plannedPartKeys(planned);
   // The cross-role in-flight hold (BUGS.md 2026-10-09): an entry another role's base has
   // claimed is not eligible here. Same-base claims are excluded from the hold — the scheduling
-  // pass's claim groups and tick-stage's staged claims already hold those — so the queried
+  // pass's claim groups and run-stage's staged claims already hold those — so the queried
   // role's own claim (and a sibling instance's) stays eligible and its release rules are
   // unchanged; only a plan another base currently owns is taken off this base's hands.
   const ownBase = baseRoleOf(role);

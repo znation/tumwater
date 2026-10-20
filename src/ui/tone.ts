@@ -24,7 +24,7 @@ export function phaseTone(phase: string): Tone | undefined {
   return rank <= 1 ? "blue" : rank === 2 ? "red" : rank === 3 ? "yellow" : undefined;
 }
 
-/** A tick result's tone (tick-outcome.ts TickResult): a completed merge (changed) green,
+/** A tick result's tone (run-outcome.ts TickResult): a completed merge (changed) green,
  * queued to merge cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
  * quiet_killed) yellow. */
 export function resultTone(result: string | undefined | null): Tone | undefined {

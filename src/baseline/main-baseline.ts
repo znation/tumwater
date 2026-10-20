@@ -160,7 +160,7 @@ function saveGreens(): void {
 }
 
 /** Load the verdicts a previous generation saved under `root` and keep mirroring them
- * there (saveGreens). Called once at team startup (cli/cli-run.ts). An entry the cache already
+ * there (saveGreens). Called once at team startup (cli/cli-start.ts). An entry the cache already
  * holds is left as it is, and a malformed file or entry reads as no data. */
 export function persistBaselineVerdicts(root: string): void {
   const file = baselineVerdictsPath(root);

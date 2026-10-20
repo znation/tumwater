@@ -35,7 +35,7 @@ import { checkWaitStage, setMergeStage } from "./merge-slot.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { resolverConfig } from "../config/config-views.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import type { RunsPi } from "../runner/runner-pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 

@@ -40,7 +40,7 @@ import {
   drainInFlightWork,
   HANDOFF_MERGE_WINDOW_MS,
   sleepInterruptible,
-} from "../tick/tick-timing.js";
+} from "../run/run-timing.js";
 import { newTeamGateStates, type TeamGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../team/reclaim.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";

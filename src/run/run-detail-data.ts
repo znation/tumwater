@@ -3,11 +3,11 @@
  * distilled from the event log into a TickDetail payload. The collector-in-core convention
  * beside history-data.ts and src/report/report-data.ts — a pure read over root, so core
  * modules can serve the same payload without reaching into ui/, and the CLI
- * (`tick-detail.ts`) and the GUI History drill-down (`src/gui/gui-endpoints.ts`) cannot
+ * (`run-detail.ts`) and the GUI History drill-down (`src/gui/gui-endpoints.ts`) cannot
  * drift on what one tick's block contains.
  * Every datum rides the events the harness already writes, so this is a distillation of the
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
- * CLI command — lives in tick-detail.ts. */
+ * CLI command — lives in run-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS, bucketMergeEvents, resolveQueuedResult } from "../history/history-data.js";
 import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";

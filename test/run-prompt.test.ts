@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
-import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { assembleTickPrompt } from "../src/run/run-prompt.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
@@ -14,10 +14,10 @@ import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
-import { applyMergeOutcome } from "../src/tick/tick-apply.js";
+import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-/** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one role's tick actually runs
+/** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's tick actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
  * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
  * (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
@@ -447,7 +447,7 @@ test("an exhausted feature rejection carries the replan instruction on the next 
 
 // Feature is told to merge a markdown-only Needs-replan note when a change exhausts its revision
 // rounds. That merge is review-exempt, so it records no verdict; the merge fold clears the
-// standing rejection instead (clearSupersededRejection, tick-apply.ts). This pins that the
+// standing rejection instead (clearSupersededRejection, run-apply.ts). This pins that the
 // instruction retires after the note merges rather than re-injecting and letting feature re-mark
 // an entry the plan role has already replanned.
 test("the exhausted-feature replan instruction retires once the markdown-only note merges", () => {

@@ -2,7 +2,7 @@
 import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
-import type { TickDetail } from "../../tick/tick-detail-data.js";
+import type { TickDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";

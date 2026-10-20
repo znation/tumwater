@@ -20,7 +20,7 @@ import { baseRoleOf, runnerIds, runnerPaused } from "./runner-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
-import { assembleTickPrompt } from "../tick/tick-prompt.js";
+import { assembleTickPrompt } from "../run/run-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
@@ -419,7 +419,7 @@ export function rolePayload(
     ...(cfg.roles[base]?.instances !== undefined ? { instances: cfg.roles[base].instances } : {}),
     // The roles.<base>.instructions override verbatim — resolved through the base role like
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
-    // carry (tick-prompt reads config.roles[base]); null when unset.
+    // carry (run-prompt reads config.roles[base]); null when unset.
     instructions: cfg.roles[baseRoleOf(role)]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     notes: note,
@@ -429,7 +429,7 @@ export function rolePayload(
     // declared window) — the same seam `- Next run:` previews. Independent of the fallback.
     contextWindow,
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
-    // never costs the role its queued work — the property the tick-prompt test pins.
+    // never costs the role its queued work — the property the run-prompt test pins.
     nextPrompt:
       assembleTickPrompt({
         root,

@@ -13,7 +13,7 @@ import { sessionDir } from "../src/paths.js";
 import { initializedRepo, initializedWorktree, makeMainRed, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { assembleTickPrompt } from "../src/run/run-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assistantLine, errorLine, thinkingOnlyLine } from "./fixtures/pi-events.js";
 

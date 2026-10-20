@@ -25,7 +25,7 @@ import "../agent/run-agent.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
- * three askers and they must get one answer: cmdRun (cli/cli-run.ts) fails fast on it at startup,
+ * three askers and they must get one answer: cmdRun (cli/cli-start.ts) fails fast on it at startup,
  * the self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the team and again right
  * before its swap, and the supervisor (src/process/supervisor.ts) asks it to name why a generation
  * died. On 2026-09-22 only the first existed: a redeploy swapped onto a build whose child found

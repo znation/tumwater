@@ -147,7 +147,7 @@ export function squash(s: string, max: number): string {
  * `…[<label> truncated at <max> chars]` note naming what was capped and how much survived, so
  * the loss is never silent. The single home of that marker format — the PRINCIPLES.md cap
  * (principles.ts's readPrinciples), the initial-prompt backstop (brief.ts's extractPrompt), and
- * the role-notebook read (tick-prompt.ts) all render through it, so the defensive caps cannot
+ * the role-notebook read (run-prompt.ts) all render through it, so the defensive caps cannot
  * drift apart in wording. A plain slice at `max` (not truncate's ellipsis-and-trim cut): the
  * marker carries the ellipsis, and the cut boundary must stay a stable, predictable prefix of
  * the original text. A cut that would split a surrogate pair (an astral character such as

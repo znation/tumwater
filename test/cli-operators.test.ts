@@ -15,7 +15,7 @@ import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesP
 import { commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
-import { tickNotFoundMessage } from "../src/tick/tick-detail.js";
+import { tickNotFoundMessage } from "../src/run/run-detail.js";
 import { spawnSync } from "node:child_process";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
@@ -380,7 +380,7 @@ test("pause and resume accept --role to gate one role, with per-role wording and
 // Like backlog, the command gates on nothing: its collector degrades to empty answers on a
 // missing read, so it works with the team stopped. The queue-survival assertion here is the
 // end-to-end half of the preview seam's contract (test/role-view.test.ts and
-// test/tick-prompt.test.ts pin the unit halves): an inspection must never consume a queued
+// test/run-prompt.test.ts pin the unit halves): an inspection must never consume a queued
 // prompt.
 
 test("role prints one role's standing prompt, and a queued prompt survives inspection", async () => {

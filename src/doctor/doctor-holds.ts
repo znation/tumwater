@@ -12,7 +12,7 @@ import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
-import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";

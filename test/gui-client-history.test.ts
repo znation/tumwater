@@ -298,7 +298,7 @@ test("the fetched tick detail keeps the server's stat, and an older server's mis
   }
 });
 
-test("a malformed tick-detail payload errors naming the endpoint, the tick, and the likely cause", async () => {
+test("a malformed run-detail payload errors naming the endpoint, the tick, and the likely cause", async () => {
   const scope = clientScope<{
     histDetails: Map<string, { state: string; message?: string }>;
     toggleHistDetail(role: string, tick: string): void;

@@ -29,7 +29,7 @@ export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
  * orchestrator generation, so a self-redeploy continues the window instead of opening a new one. */
 export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START";
 
-/** The exit code of a `run --once` round that finished and found failed ticks (cli-run.ts's
+/** The exit code of a `run --once` round that finished and found failed ticks (cli-start.ts's
  * onceFailures): an asked-for ending, so the supervisor passes it through without paging the
  * team-down hook. */
 export const ONCE_FAILED_EXIT_CODE = 3;

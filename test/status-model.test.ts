@@ -1,5 +1,5 @@
 /** The status-model suite: rolePhase and the per-role display model, plus the moved
- * workingDetail's tests (the helper now lives in src/ui/tick-progress-model.ts, its suite
+ * workingDetail's tests (the helper now lives in src/ui/run-progress-model.ts, its suite
  * kept here beside rolePhase's, which consumes it). Split
  * out of status-render.test.ts, whose name promised the rendered table but also carried this
  * whole suite — src/ui/status-model.ts now has its tests under its own name and its own
@@ -20,7 +20,7 @@ import {
   sortRolesByState,
 } from "../src/ui/status-model.js";
 import { phaseTone } from "../src/ui/tone.js";
-import { workingDetail } from "../src/ui/tick-progress-model.js";
+import { workingDetail } from "../src/ui/run-progress-model.js";
 import { teamAlerts } from "../src/ui/team-alerts.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

@@ -33,7 +33,7 @@ export function execFileAsync(
  * added after the abort event never fires, so `addEventListener` alone would leave the caller
  * waiting on a shutdown that has come and gone. A missing signal (no shutdown wiring)
  * registers nothing. Shared by spawnSupervised (supervisor.ts), runPi's child spawn
- * (src/agent/run-agent.ts), sleepInterruptible (tick-timing.ts), and abortOnShutdown
+ * (src/agent/run-agent.ts), sleepInterruptible (run-timing.ts), and abortOnShutdown
  * (merge-pipeline.ts).
  *
  * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the

@@ -2,7 +2,7 @@
 /** What a finished tick or merge is (the TickResult/TickOutcome vocabulary), shared by the
  * runner that produces it, the dashboards that render it, and the state machine that applies
  * it. The application policy — which outcomes count which streaks, when a session resumes,
- * how the next run is scheduled — lives next door in tick-apply.ts; the clock arithmetic it
+ * how the next run is scheduled — lives next door in run-apply.ts; the clock arithmetic it
  * drives in backoff.ts. This module holds only the shared types. Split out of runner-state.ts —
  * the persisted state file's load/save — and later of the types.ts grab-bag, as RunnerState and
  * HarnessEvent were before it. */
@@ -46,7 +46,7 @@ export type TickResult =
   | "skipped";
 
 /** The outcome of one full tick: its result plus what the harness learned from it.
- * Consumed by the orchestrator's dashboards and by tick-apply.ts's post-tick
+ * Consumed by the orchestrator's dashboards and by run-apply.ts's post-tick
  * scheduling (applyTickOutcome). */
 export interface TickOutcome {
   result: TickResult;
@@ -95,7 +95,7 @@ export interface TickOutcome {
 }
 
 /** Record the review gate's verdict on a HEAD into `lastReview` — the field the author's next
- * tick prompt injects (tick-prompt.ts's buildRejectedReviewNote) and the same-head strike
+ * tick prompt injects (run-prompt.ts's buildRejectedReviewNote) and the same-head strike
  * counter reads (review.ts's unreviewFailures). Mutates `s` in place; the timestamp is
  * stamped here so every call site shares one Date.now() read and the shape stays in one place
  * (runner-state.ts's lastReview). */

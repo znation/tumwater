@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { planTickStart } from "../src/tick/tick-resume.js";
+import { planTickStart } from "../src/run/run-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
@@ -10,8 +10,8 @@ import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
-import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
-import { applyTickOutcome } from "../src/tick/tick-apply.js";
+import { resolveTickVerdict } from "../src/run/run-verdict.js";
+import { applyTickOutcome } from "../src/run/run-apply.js";
 import { slotPinnedForResume } from "../src/runner/runner-run.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fallbackRoleConfig } from "../src/config/config-fallbacks.js";
@@ -28,7 +28,7 @@ import { setEnv } from "./helpers/env.js";
 registerAgentBackend(piBackend);
 registerAgentBackend(claudeBackend);
 
-// tick-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
+// run-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
 // the interrupted session (and under which cause), what prompt it runs, and which side effects
 // (flag consumption, lastError capture, prompt reclaim) happen even on the paths that skip the
 // work. runner.ts consumes the plan verbatim, so a wrong decision here misroutes whole ticks.
@@ -388,7 +388,7 @@ test("an aborted resumeMissing run records the missing session for the next run'
     });
     assert.equal(outcome?.result, "aborted");
     assert.equal(s.resumeMissing, true, "the killed run's missing-session verdict is remembered");
-    // applyTickOutcome arms the resume for an aborted tick (tick-apply.ts); the next tick must
+    // applyTickOutcome arms the resume for an aborted tick (run-apply.ts); the next tick must
     // hand off over the kept worktree rather than re-resume the session claude just rejected.
     s.resumePending = true;
     assert.ok(fs.existsSync(claudeTranscriptPath(fs.realpathSync(wt), "c1")), "the transcript lingers");

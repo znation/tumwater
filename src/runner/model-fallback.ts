@@ -65,7 +65,7 @@ export function modelFallbackProbe(state: ModelFallbackState | undefined, now: n
   return state !== undefined && state.since > 0 && now >= state.probeAt;
 }
 
-/** Classify one authoring run's verdict about the primary (src/tick/tick-usage.ts records the
+/** Classify one authoring run's verdict about the primary (src/run/run-usage.ts records the
  * same flags for the team-wide hold). A run that was aborted, quiet-killed, or timed out — or
  * that read an image its model cannot see (the runner killed it, plans/image-input.md) — is
  * inconclusive even when it also reports provider evidence: the harness killed it, so it is

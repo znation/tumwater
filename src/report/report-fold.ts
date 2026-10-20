@@ -17,7 +17,7 @@ import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.
 import { addTo, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { commitTier } from "../roles/roles.js";
 
@@ -130,7 +130,7 @@ export interface UsageFold {
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
- * shape tick-finalize.ts's run_end and merge-slot.ts's merge_done/merge_failed emit) into the
+ * shape run-finalize.ts's run_end and merge-slot.ts's merge_done/merge_failed emit) into the
  * per-provider tallies, one addTo per provider per nonzero figure so zero stays absent. A
  * missing, foreign, or empty map folds nothing, so old logs render byte-identically. */
 function foldProviderCost(target: UsageFold, providerCost: unknown): void {
@@ -183,7 +183,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
-    // The tick's own runs' per-provider spend (tick-finalize.ts emits providerCost on run_end)
+    // The tick's own runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
     // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
     // line names the expensive seam.
     foldProviderCost(target, ev.providerCost);

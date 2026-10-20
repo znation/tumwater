@@ -32,7 +32,7 @@ import {
   type ApprovedMerge,
 } from "./merge-pipeline.js";
 import { drainVerify, VERIFY_TIER } from "./merge-verify.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 
 /** The tier the merge slot's conflict-resolution runs wait at: ahead of any verification parked for
  * a permit, because the merge is the one serial step every queued change waits on. (Nothing that

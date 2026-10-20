@@ -110,7 +110,7 @@ export interface PiRunOptions {
    * src/review/review-followup.ts, BUGS.md 2026-09-29), the two author-side follow-up turns
    * requestSummary and requestStageFix (both via the shared requestFollowUp, to ask for a
    * missing SUMMARY or to fix the pre-queue self-check's findings), and the authoring resume
-   * of a tick a harness interruption cut short (src/tick/tick-resume.ts's `resuming`).
+   * of a tick a harness interruption cut short (src/run/run-resume.ts's `resuming`).
    * Every other run starts a fresh session, so context never accumulates across ticks. */
   continueSession?: boolean;
   /** Raw pi JSON event lines are appended here for observability. */

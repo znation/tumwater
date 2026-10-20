@@ -139,7 +139,7 @@ const DETAIL_MAX = 72;
  * more, and this bounds the worst case — readTailText reads bytes proportional to the limit's
  * line count, so the cap is also the largest byte read one command can cost. Comfortably
  * above the dilution a whole role catalog can impose on HISTORY_MAX_TICKS rows. Exported as
- * the one ceiling every read-only view's single ask scans under: tick-detail-data.ts's
+ * the one ceiling every read-only view's single ask scans under: run-detail-data.ts's
  * readTickDetail reads the same bound, so no ask can re-read more log than any other and the
  * cap cannot drift per consumer. */
 export const HISTORY_SCAN_MAX_EVENTS = 20_000;
@@ -278,7 +278,7 @@ export function tickRowsOnModels(rows: TickRow[], models: string[]): TickRow[] {
 /** The merge bookkeeping resolveQueuedResult joins over: per role, the `merge_queued` pins
  * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly three call sites — readTickRows' history-row join, the failure
- * digest's time-and-spend fold (time-spend.ts), and tick-detail-data.ts — so the collectors
+ * digest's time-and-spend fold (time-spend.ts), and run-detail-data.ts — so the collectors
  * cannot disagree about which events feed the join or in what order they sit: a fourth
  * merge-bookkeeping event
  * type, or a changed order rule, is edited once here. Callers bucket only the events they

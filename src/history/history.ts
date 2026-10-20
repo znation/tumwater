@@ -13,7 +13,7 @@ import { typoSuffix } from "../text/suggest.js";
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
- * every datum rides the `run_end` events src/tick/tick-finalize.ts already writes, so this
+ * every datum rides the `run_end` events src/run/run-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
  * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts), and
  * the aligned table/summary text they print is rendered by history-render.ts (beside

@@ -3,8 +3,8 @@
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
  * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
- * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_MS) lives in tick/telemetry-digest.ts. */
-import type { TickResult } from "../tick/tick-outcome.js";
+ * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_MS) lives in run/telemetry-digest.ts. */
+import type { TickResult } from "../run/run-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
@@ -19,7 +19,7 @@ import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 const ROLES_SHOWN = 4;
 
 /** Every `TickResult`, mapped to its display/column rank. Typed as a `Record<TickResult, …>`,
- * so adding a result to src/tick/tick-outcome.ts and forgetting it here is a compile error — the
+ * so adding a result to src/run/run-outcome.ts and forgetting it here is a compile error — the
  * vocabulary is closed by the type checker, not by a comment. Order runs from "made progress"
  * through "did not" to the operator/shutdown outcomes. */
 const RESULT_ORDER: Record<TickResult, number> = {
@@ -118,7 +118,7 @@ function hoursPhrase(ms: number): string {
 
 /** Render the digest as bounded Markdown. Byte bound: for a given team the tables grow only with
  * the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed by
- * src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
+ * src/run/run-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
  * the cut), the merge-failure section's MERGE_FAILURE_TOP clusters (src/failure/failure-data.ts),
  * and every free string is capped — cluster examples at 120 chars (plus a `… (+N
  * chars)` cut marker when truncated, so a marked cut can never read as a complete message —

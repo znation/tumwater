@@ -15,7 +15,7 @@ import { groupBy } from "../collections.js";
  * src/team/failure-spread.ts): each poll gathers
  * the observations its alarm's pure reducer steps with, steps it, and logs exactly one event
  * per episode crossing, so the alarm modules stay unit-testable without a team and these
- * own the only event emission. Split out of tick-timing.ts — which had grown from the
+ * own the only event emission. Split out of run-timing.ts — which had grown from the
  * orchestrator's timing/scheduling seams into also carrying this polling family — so the
  * timing seams read as timing again and the team-health polls read as one family. */
 

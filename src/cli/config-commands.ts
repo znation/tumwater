@@ -34,7 +34,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
 /** The config command's malformed-shapes usage line: cli.ts's arity gate fails a non-get/set
  * or wrongly-shaped subcommand with it, and cmdConfig repeats it as the defensive tail for an
  * argument the gate somehow missed. One constant so the synopsis cannot drift between the two
- * sites (mirrors tick-detail.ts's TICK_USAGE). */
+ * sites (mirrors run-detail.ts's TICK_USAGE). */
 export const CONFIG_USAGE =
   "usage: tumwater config [get <key> | set <key> <value> | unset <key>] (bare config prints the whole resolved config)";
 

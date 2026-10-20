@@ -22,7 +22,7 @@ import { attributeRedCheck } from "./merge-check-failures.js";
 import { errorMessage } from "../text/text.js";
 import type { MergeChangeStatus } from "./merge-slot.js";
 import { mergeStack, type StackEntry, type StackOutcome } from "./merge-stack.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
 import type { RunnerState } from "../runner/runner-state.js";
 

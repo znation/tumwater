@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-run.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-start.js";
 import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
@@ -11,7 +11,7 @@ import type { RunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 
-// Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
+// Unit seam for cli/cli-start.ts's onceSummary — the one-line `tumwater run --once` summary a cron
 // log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
 // deferred included) is pinned end to end by test/orchestrator-once.e2e.test.ts; these tests
 // pin the summary's own accounting at unit level: tick counting against the pre-round

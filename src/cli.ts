@@ -66,7 +66,7 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
  * Arity is gated before the ready-repo check so a malformed call fails with its usage in any
  * directory; cmdTick owns the value validation and the --last/numbered rivals. */
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
-  const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
+  const { cmdTick, TICK_USAGE } = await import("./run/run-detail.js");
   const { positionals, rest } = peelPositionals(args);
   rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG]);
   if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
@@ -110,16 +110,16 @@ async function main(): Promise<void> {
   const root = (await repoToplevel(process.cwd())) ?? process.cwd();
   switch (command) {
     case "init":
-      // Imported lazily: cli/cli-run.ts pulls the whole team-booting subgraph (orchestrator,
+      // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
       // supervisor, redeploy, launch-services — the run path's machinery), and every other
       // command's spawn pays module compilation for it unless the dispatch defers that load
       // to the commands that actually boot or serve a team.
-      await (await import("./cli/cli-run.js")).cmdInit(root, args);
+      await (await import("./cli/cli-start.js")).cmdInit(root, args);
       break;
     case "start":
     case "run":
       rejectUnknownArgs("start", args, RUN_FLAG_SPECS);
-      await (await import("./cli/cli-run.js")).cmdRun(root, args);
+      await (await import("./cli/cli-start.js")).cmdRun(root, args);
       break;
     case "tui":
       rejectUnknownArgs("tui", args, []);

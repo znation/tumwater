@@ -10,7 +10,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { exitCode } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
-import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
+import { onlyCleanRole, withRunningTeam } from "./helpers/start-live-harness.js";
 
 // A terminal Ctrl+C reaches BOTH processes (same foreground group), so `run` splits the
 // handling: the supervisor's SIGINT handler only marks stopping (it must not forward or abort,
@@ -18,8 +18,8 @@ import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
 // saw the signal), while the orchestrator generation's own handler runs the graceful stop
 // (announce, abort in-flight ticks) and exits cleanly. These two tests pin that split end to
 // end. The forced second Ctrl+C, which must outwait terminateChild's 10 s SIGKILL grace, has
-// its own file (cli-run-force-exit.test.ts); the rest of the running-team lifecycle and
-// SIGTERM shutdown live in cli-run-shutdown.test.ts.
+// its own file (cli-start-force-exit.test.ts); the rest of the running-team lifecycle and
+// SIGTERM shutdown live in cli-start-shutdown.test.ts.
 
 test("run survives a SIGINT aimed at the supervisor alone and still stops on SIGTERM", async () => {
   const repo = makeRepo();

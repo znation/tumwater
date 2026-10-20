@@ -9,7 +9,7 @@ import { labeledLine } from "../verdict/reply-contract.js";
  * with tick metadata. Split out of prompt.ts — which keeps building the prompts that declare
  * this contract (the machine-detectable half — sentinel and verdict-line detection — lives in
  * reply-contract.ts) — because turning a reply into what `git commit` receives is the git side
- * of the contract, consumed by the tick pipeline (tick-stage.ts, tick-verdict.ts) and
+ * of the contract, consumed by the tick pipeline (run-stage.ts, run-verdict.ts) and
  * refusal.ts. */
 
 /** Cap on the commit subject's summary portion (the SUMMARY line), so a verbose model cannot
@@ -49,7 +49,7 @@ const COMMIT_BODY_FIELD_MAX = 200;
 /** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
  * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still
  * commits (subject + trailer). Module-private: every consumer — extractCommitBody,
- * formatCommitBody, buildCommitMessage — lives in this file, and tick-stage.ts works with the
+ * formatCommitBody, buildCommitMessage — lives in this file, and run-stage.ts works with the
  * extracted values structurally rather than naming the type. */
 interface CommitBody {
   why?: string;
@@ -173,12 +173,12 @@ export interface CommitMetadata {
   revisionRound?: number;
 }
 
-/** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part tick-stage.ts (and
+/** The harness-stamped commit-subject prefix — the `tumwater(<role>):` part run-stage.ts (and
  * refusal.ts) adds before the SUMMARY line, space included when a summary follows. */
 const SUBJECT_PREFIX = /^tumwater\([^)]+\):(?:\s|$)/;
 
 /** Build a harness-stamped commit subject: `tumwater(<role>): <summary>` — the exact shape
- * SUBJECT_PREFIX below matches, so the stamp's writers (tick-stage.ts's normal tick commit and
+ * SUBJECT_PREFIX below matches, so the stamp's writers (run-stage.ts's normal tick commit and
  * refusal.ts's refusal note) and its parser live in one file and cannot drift apart. */
 export function stampedSubject(role: string, summary: string): string {
   return `tumwater(${role}): ${summary}`;

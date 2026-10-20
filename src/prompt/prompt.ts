@@ -300,19 +300,19 @@ interface TickPromptInput {
   /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when
    * unreadable. */
   digest?: string;
-  /** Rendered flow-coverage block (see tick/qa-coverage.ts); qa only, omitted when unreadable. */
+  /** Rendered flow-coverage block (see run/qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
   /** Rendered actionable backlog index (see backlog-index.ts); every tick carries it. */
   backlogIndex?: string;
-  /** The role's notebook (roleNotesPath, read by tick-prompt.ts): the note its own earlier
+  /** The role's notebook (roleNotesPath, read by run-prompt.ts): the note its own earlier
    * ticks wrote. A missing/empty/whitespace-only note is passed as undefined, so the
    * <role-notes> block is omitted; the write instruction is always present. The director
    * never reaches buildTickPrompt, so it never carries either. */
   notes?: string;
-  /** The note file's mtime as a local YYYY-MM-DD (read by tick-prompt.ts). Omitted: the notes
+  /** The note file's mtime as a local YYYY-MM-DD (read by run-prompt.ts). Omitted: the notes
    * heading carries no age. */
   notesSavedDay?: string;
   extraInstructions?: string;
@@ -321,7 +321,7 @@ interface TickPromptInput {
    * here by the caller that holds the config; a role payload's `nextPrompt` therefore shows the
    * resolved number, never a placeholder. Omitted: every role but plan. */
   planTargetNote?: string;
-  /** The bugfix run's flake tally, rendered by tick-prompt.ts; omitted for every other role and
+  /** The bugfix run's flake tally, rendered by run-prompt.ts; omitted for every other role and
    * when no flake was excused in the window. */
   flakyChecks?: string;
   /** A per-role prompt the user queued for this role's next tick (`tumwater prompt --role <id>`),

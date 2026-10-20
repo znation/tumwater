@@ -21,7 +21,7 @@ import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
-import type { TickOutcome } from "../src/tick/tick-outcome.js";
+import type { TickOutcome } from "../src/run/run-outcome.js";
 import type { TeamGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";

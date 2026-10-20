@@ -16,7 +16,7 @@ import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { revertedPendingPath, rejectedRefName } from "../src/paths.js";
 import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
-import { clearSupersededRejection } from "../src/tick/tick-apply.js";
+import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";

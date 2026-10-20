@@ -134,7 +134,7 @@ export interface HarnessEventInput {
 export const TUMWATER_SOURCE = "tumwater";
 
 /** The usage fields an event carries, as a fragment with both omitted when zero — the
- * omit-when-zero convention the two usage-emitters apply (tick-finalize.ts's run_end,
+ * omit-when-zero convention the two usage-emitters apply (run-finalize.ts's run_end,
  * merge-slot.ts's merge_done/merge_failed): a zero-token, zero-cost run (a free model, an abort
  * before any tokens) renders without usage, so event-format's usage fragment and
  * `tumwater history` show nothing rather than "$0.00". Spreading the fragment keeps the
@@ -267,5 +267,5 @@ function appendEventLine(file: string, line: string): void {
 // and its own stat-keyed cache. Human-facing formatting of events lives in event-format.ts;
 // the windowed reader in event-window.ts; both beside this module because each is used by
 // both display surfaces (src/ui/) and core consumers (the `run` banner's live stream,
-// cli/cli-run.ts), and src/ui/ is imported only by itself and the CLI command layer that
+// cli/cli-start.ts), and src/ui/ is imported only by itself and the CLI command layer that
 // drives it (cli.ts and the src/ command bodies — DEVELOPMENT.md Layout).

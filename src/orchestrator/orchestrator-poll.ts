@@ -39,7 +39,7 @@ import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import type { RetentionPruner } from "./retention.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
-import { p75TickDurationMs } from "../tick/tick-timing.js";
+import { p75TickDurationMs } from "../run/run-timing.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import type { ReclaimController } from "../team/reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";

@@ -58,7 +58,7 @@ function inspectBodyLines(p: RoleViewPayload): string[] {
     ),
   );
   lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
-  // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
+  // run-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the
   // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {

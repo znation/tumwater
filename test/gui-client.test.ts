@@ -5,7 +5,7 @@ import { rolePhase, roleRank, sortRolesByState } from "../src/ui/status-model.js
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
-import { inFlightDetail } from "../src/ui/tick-progress-model.js";
+import { inFlightDetail } from "../src/ui/run-progress-model.js";
 import type { LiveProgress } from "../src/ui/progress-data.js";
 import { eventKind as tsEventKind } from "../src/ui/tone.js";
 import { parseBudgetInput } from "../src/ui/tui/tui-input.js";

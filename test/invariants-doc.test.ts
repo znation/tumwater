@@ -91,7 +91,7 @@ const HERMETIC_ALLOWLIST: Record<string, string> = {
   "test/run-marker.test.ts": "reads /proc through an injected fs seam, never the host",
   "test/host-sleep.test.ts": "reads the uptime pseudo-file through an injected fs seam, never the host",
   "test/cli-gui.test.ts": "binds a loopback listener to prove the GUI's port probe sees it taken",
-  "test/cli-run-window.test.ts": "binds a loopback listener to hold the run window's port",
+  "test/cli-start-window.test.ts": "binds a loopback listener to hold the run window's port",
 };
 
 /** `/proc` is assembled, not written, so this guard's own source does not match the needle it

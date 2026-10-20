@@ -8,7 +8,7 @@ import type { PriorReview } from "../merge/merge-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
-import { recordReview } from "../tick/tick-apply.js";
+import { recordReview } from "../run/run-apply.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { errorMessage } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";

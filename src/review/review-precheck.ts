@@ -14,7 +14,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
-import { recordReview } from "../tick/tick-apply.js";
+import { recordReview } from "../run/run-apply.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";

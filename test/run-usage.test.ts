@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TickUsage } from "../src/tick/tick-usage.js";
+import { TickUsage } from "../src/run/run-usage.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
-// TickUsage's accounting (src/tick/tick-usage.ts): the once-per-run choke point every pi run of a
+// TickUsage's accounting (src/run/run-usage.ts): the once-per-run choke point every pi run of a
 // tick folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned
 // directly: lifetime totals on RunnerState, per-tick windows on the TickUsage itself, the daily
 // budget fold, and the 429 stamp the orchestrator's team-wide hold consumes.

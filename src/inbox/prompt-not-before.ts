@@ -5,7 +5,7 @@
  * format migrates. Composed by notBeforeMarker, parsed by notBeforeMs — the two live together
  * so format and parser cannot drift. inbox.ts (the prompt-queue store) writes the marker into
  * enqueueRolePrompt's single atomic write and filters on deliverableNow; the display surfaces
- * (prompt-commands.ts, tick-prompt.ts) strip it with stripNotBeforeMarker. */
+ * (prompt-commands.ts, run-prompt.ts) strip it with stripNotBeforeMarker. */
 
 /** The marker line a deferred prompt's queue file starts with. */
 const NOT_BEFORE_PREFIX = "tumwater:not-before ";

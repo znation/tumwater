@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** Rendering + command half of `tumwater tick <role> <n>`: one completed tick's full event
  * block printed as a short summary header followed by the tick's events through the shared
- * formatEvent. The payload itself is collected by tick-detail-data.ts (the collector-in-core
+ * formatEvent. The payload itself is collected by run-detail-data.ts (the collector-in-core
  * convention beside history-data.ts / history.ts), so the CLI and the GUI History drill-down
  * serve the same payload; this module renders it for the terminal. Read-only over the event
  * log, stdout only. */
@@ -9,7 +9,7 @@ import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { readTickRows } from "../history/history-data.js";
-import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
+import { readTickDetail, type TickDetail } from "./run-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";

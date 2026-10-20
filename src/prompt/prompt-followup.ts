@@ -6,7 +6,7 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
 /** The prompts that pick a pi session back up where prompt.ts's builders start one: the resume
  * bridge sent into the SAME pi session as an interrupted tick, the summary-recovery follow-up
  * sent into a tick's own session when its reply lacked the closing block, and the cut-off note
- * that carries the same memory into a role's next FRESH tick prompt (assembled by tick-prompt.ts).
+ * that carries the same memory into a role's next FRESH tick prompt (assembled by run-prompt.ts).
  * Split out of prompt.ts — which keeps the tick/director prompt assembly and the shared rule
  * fragments these builders quote verbatim — because a one-turn bridge into a running session is
  * a different concern from declaring a fresh run's full contract, and the tests already read them
@@ -136,7 +136,7 @@ ${SUMMARY_BLOCK}`;
 
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
  * off at the context ceiling without merging anything (the role gave up resuming — see
- * tick-apply.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
+ * run-apply.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
  * cross-tick memory that the last attempt was too big for the window. */
 export function buildCutOffNote(streak: number): string {
   const runs = streak === 1 ? "run" : `${streak} runs`;

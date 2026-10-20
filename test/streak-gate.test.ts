@@ -11,7 +11,7 @@ import {
   applyMergeOutcome,
   applyTickOutcome,
   ERROR_STREAK_BREAKER,
-} from "../src/tick/tick-apply.js";
+} from "../src/run/run-apply.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { pauseRole, resumeRole, pausedRoles } from "../src/team/team-state.js";

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import type { TickResult } from "../src/tick/tick-outcome.js";
+import type { TickResult } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";

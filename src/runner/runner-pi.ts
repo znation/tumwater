@@ -243,7 +243,7 @@ export class RunnerPi {
    * backend no longer holds (`PiRunResult.resumeMissing`) is not retried here: continuing is
    * impossible and this layer has no fresh tick prompt to hand a new session, so the failed
    * run is returned and its kept worktree resumes as a `handoff` on the next tick
-   * (src/tick/tick-resume.ts).
+   * (src/run/run-resume.ts).
    * Extracted verbatim from runRolePi so the rule lives in one place
    * (574a14c's runnerPiOpts move was the wiring half of the same single-source-of-truth).
    */

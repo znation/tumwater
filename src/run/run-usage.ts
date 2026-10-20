@@ -170,7 +170,7 @@ export class TickUsage {
 
   /** Serialize the per-provider split for the run_end payload: a `Record<provider,
    * {costUsd, notionalCostUsd}>`, or `{}` when no run carried a provider — the
-   * omit-when-empty idiom tick-finalize.ts applies, so a tick whose runs never resolved a
+   * omit-when-empty idiom run-finalize.ts applies, so a tick whose runs never resolved a
    * provider renders no providerCost field at all. */
   serializeProviderCost(): Record<string, { costUsd: number; notionalCostUsd: number }> {
     const out: Record<string, { costUsd: number; notionalCostUsd: number }> = {};

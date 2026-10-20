@@ -13,7 +13,7 @@ import { buildReviewPrompt, buildReviewResumePrompt } from "../prompt/gate-promp
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
-import { recordReview } from "../tick/tick-apply.js";
+import { recordReview } from "../run/run-apply.js";
 import { shortSha } from "../text/format.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setMergeStage } from "../merge/merge-slot.js";

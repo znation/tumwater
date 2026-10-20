@@ -3,7 +3,7 @@ import { writePiListedModels } from "../src/pi/pi-listed-models.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
+import { resolveTickVerdict } from "../src/run/run-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";

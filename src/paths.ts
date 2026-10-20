@@ -129,7 +129,7 @@ export function piListedModelsPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "pi-listed-models.json");
 }
 
-/** The `qa` flow-coverage ledger (tick/qa-coverage.ts): which flow each observer tick exercised
+/** The `qa` flow-coverage ledger (run/qa-coverage.ts): which flow each observer tick exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
  * must leave the repo untouched, or every cheap pass would move main and wake the team. */
 export function qaCoveragePath(root: string): string {

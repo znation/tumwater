@@ -10,8 +10,8 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
-import { renderTickDetail } from "../src/tick/tick-detail.js";
-import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
+import { renderTickDetail } from "../src/run/run-detail.js";
+import { readTickDetail, type TickDetail } from "../src/run/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { scheduledStopAt } from "../src/team/team-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
@@ -856,7 +856,7 @@ test("handleRoleInstructions writes the base role's override through setConfigKe
   const { captured, data } = await serveRoleInstructions(root, { role: "feature", text: "Prefer small plans." });
   assert.equal(captured.status, 200);
   assert.deepEqual(data, { ok: true, role: "feature", message: "feature: instructions saved (19 chars)" });
-  // The file on disk is what tick-prompt reads — the write went through setConfigKey.
+  // The file on disk is what run-prompt reads — the write went through setConfigKey.
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   const rolesOnDisk = onDisk.roles as { feature: Record<string, unknown>; director: Record<string, unknown> };
   assert.equal(rolesOnDisk.feature.instructions, "Prefer small plans.");

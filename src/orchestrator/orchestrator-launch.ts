@@ -30,7 +30,7 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
-import { runTimedRoleTick } from "../tick/tick-timing.js";
+import { runTimedRoleTick } from "../run/run-timing.js";
 
 /** How many recent work-bearing tick durations the p75 sample keeps (drainInFlightWork's
  * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent tick pace, not all-time

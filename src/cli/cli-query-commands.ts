@@ -496,7 +496,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     return;
   }
   // The instructions-override write: the file-shaped twin of the notes flags, but the value
-  // lands in roles.<base>.instructions (tick-prompt reads config.roles[base]) through the
+  // lands in roles.<base>.instructions (run-prompt reads config.roles[base]) through the
   // same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig
   // enforces the 4096-char cap and the write is atomic. The director is allowed here (its
   // override reaches its own runs), unlike the notes branch's director refusal.

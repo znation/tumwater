@@ -209,9 +209,9 @@ test("cli-run statically imports the swap repair so its code is loaded before di
   // under dist/ — the directory an interrupted swap has just moved away — so it failed
   // ERR_MODULE_NOT_FOUND and recovery never ran. A static import loads the code at boot, before
   // any swap. This scan pins the wiring itself: it fails if a call-time import of build-stage
-  // returns to cli-run. (Reading the source, not the compiled copy, so the check states the
+  // returns to cli-start. (Reading the source, not the compiled copy, so the check states the
   // intent even if tsc output changes.)
-  const cliRun = fs.readFileSync(new URL("../../src/cli/cli-run.ts", import.meta.url), "utf8");
+  const cliRun = fs.readFileSync(new URL("../../src/cli/cli-start.ts", import.meta.url), "utf8");
   assert.match(
     cliRun,
     /import \{[^}]*\brepairInterruptedSwap\b[^}]*\} from "\.\.\/build\/build-stage\.js";/,

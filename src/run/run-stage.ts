@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickOutcome } from "./tick-outcome.js";
+import type { TickOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { commitAll, foldCommitsSince, headOf } from "../git/git.js";

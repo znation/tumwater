@@ -15,7 +15,7 @@ import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
-import { STALL_RE, duration } from "./tick-progress-model.js";
+import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp, humanUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";

@@ -12,14 +12,14 @@ import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fi
 import { fakePi, fakePiIdle, withPi } from "./fakes/fake-pi.js";
 import { cli, exitCode } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
-import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
+import { onlyCleanRole, withRunningTeam } from "./helpers/start-live-harness.js";
 
 // A running team's boot output and SIGTERM shutdown: the banner and roster, the
 // supervisor_exit trace when a generation dies unasked, SIGTERM forwarded to the child, kill()'s
 // whole-tree teardown, and the agentBin startup path. The pre-boot guards live in
-// cli-run-guards.test.ts, the terminal-Ctrl+C handling in cli-run-sigint.test.ts, the forced
-// second Ctrl+C in cli-run-force-exit.test.ts, the --for/--gui live modes in
-// cli-run-window.test.ts, and the scoped --once round in cli-run-once.test.ts.
+// cli-start-guards.test.ts, the terminal-Ctrl+C handling in cli-start-sigint.test.ts, the forced
+// second Ctrl+C in cli-start-force-exit.test.ts, the --for/--gui live modes in
+// cli-start-window.test.ts, and the scoped --once round in cli-start-once.test.ts.
 
 test("a generation that dies unasked leaves a supervisor_exit event: the team is never down without a trace", async () => {
   // BUGS.md 2026-09-23: a respawned child exited "not initialized" and events.jsonl simply ended.

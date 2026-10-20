@@ -182,7 +182,7 @@ stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `que
 marker first. A fresh unsupervised `tumwater start` clears a stale marker. `scheduledStopAt` never
 throws: a missing, torn, or non-finite marker reads as no stop.
 
-**Binds.** `src/team/team-state.ts` (`scheduleStop`, `scheduledStopAt`, `cancelScheduledStop`), `src/cli/cli-run.ts` (`armScheduledStopWatch`).
+**Binds.** `src/team/team-state.ts` (`scheduleStop`, `scheduledStopAt`, `cancelScheduledStop`), `src/cli/cli-start.ts` (`armScheduledStopWatch`).
 
 **Pinned by.** `test/scheduled-stop.test.ts`.
 
@@ -259,7 +259,7 @@ requires the `passed|bug` verdict — so the qa rotation records nothing rather 
 `killedPhrase` names the signal, and `tscVerdict` returns a signal-death rejection rather than a
 timeout.
 
-**Binds.** `src/verdict/reply-contract.ts` (`extractFlow`), `src/tick/tick-verdict.ts` (the
+**Binds.** `src/verdict/reply-contract.ts` (`extractFlow`), `src/run/run-verdict.ts` (the
 `ctx.flow && !diagnosis.cutOff` guard around `recordFlow`), `src/build/build-check-events.ts`
 (`killedPhrase`, `timedOutPhrase`), `src/build/build-stage.ts` (`tscVerdict`).
 
@@ -296,10 +296,10 @@ crash guard tripped), it runs the `notify` command from tumwater.json once, with
 throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
 A once round's `ONCE_FAILED_EXIT_CODE` is an asked-for ending and pages nothing.
 
-**Binds.** `src/events/notify.ts` (`notifyTeamDown`) and `src/cli/cli-run.ts`
+**Binds.** `src/events/notify.ts` (`notifyTeamDown`) and `src/cli/cli-start.ts`
 (`superviseRunCommand`'s `onTeamDown`).
 
-**Pinned by.** `test/cli-run-shutdown.test.ts` — "a team that goes down unasked runs the notify
+**Pinned by.** `test/cli-start-shutdown.test.ts` — "a team that goes down unasked runs the notify
 hook once"; `test/notify.test.ts` — the `notifyTeamDown` tests; `test/supervisor.test.ts` — "a
 once round's failed exit code passes through without paging".
 
@@ -358,7 +358,7 @@ markers of README.md or TUMWATER.md (a block that merely moves passes), or that 
 PRINCIPLES.md from a role whose base is neither `director` nor `steward`, is rejected before
 review — md-only diffs included — and flagged at staging for one fix-up turn.
 
-**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/tick/stage-check.ts`.
+**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
 
 **Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
 rejects an md-only edit to the initial prompt block with no pi run" and "gate rejects an md-only
@@ -375,7 +375,7 @@ content did not hold is rejected before review —
 md-only diffs included — and flagged at staging for one fix-up turn. The reason names the file and
 variable or pi source, never the value.
 
-**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/tick/stage-check.ts`.
+**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
 
 **Pinned by.** `test/secret-leaks.test.ts` — "piCredentialValues returns literal apiKey, header,
 key, access and refresh values", "piCredentialValues skips interpolations, commands and short dummy
@@ -391,11 +391,11 @@ file holding a secret env value is a finding".
 (`git reset --soft` to the pre-run HEAD) before the verdict is read, so they end up inside the
 run's single tumwater-stamped commit, and a clean tree after such a run is not `no_change`.
 
-**Binds.** `src/git/git.ts`, `src/runner/runner-run.ts`, `src/tick/tick-stage.ts`.
+**Binds.** `src/git/git.ts`, `src/runner/runner-run.ts`, `src/run/run-stage.ts`.
 
 **Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits becomes
 one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
-two `foldCommitsSince` unit tests; `test/tick-stage.test.ts` — "a commit made in the missing-SUMMARY
+two `foldCommitsSince` unit tests; `test/run-stage.test.ts` — "a commit made in the missing-SUMMARY
 follow-up folds into the harness commit" and "a commit made in the over-long-SUMMARY follow-up folds
 into the harness commit".
 
@@ -427,12 +427,12 @@ blind read logs `image_blind` with `action: "fail"`, and `modelFallbackVerdict` 
 inconclusive (never a provider failure or an "answered").
 
 **Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-agent.ts`
-(the kill + result), `src/tick/tick-verdict.ts` (the fail branch),
+(the kill + result), `src/run/run-verdict.ts` (the fail branch),
 `src/runner/model-fallback.ts` (`modelFallbackVerdict`).
 
 **Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
 "an authoring run that reads an image on a blind model is killed and fails" and "a gate run
-that reads an image on a blind model is logged, not killed"; `test/tick-verdict.test.ts` — "a
+that reads an image on a blind model is logged, not killed"; `test/run-verdict.test.ts` — "a
 blind image read fails the tick with an error naming the file and the model";
 `test/runner-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
 
@@ -453,12 +453,12 @@ reaches planTickStart's image-reroute branch). A queued prompt attaching an imag
 to the target at model choice when the role's model reads no images (`image_reroute`,
 `preflight: true`); with no target the run errors without spawning pi.
 
-**Binds.** `src/tick/tick-verdict.ts` (the reroute arm), `src/runner/runner-run.ts` (model choice
-+ attachment preflight), `src/runner/runner.ts` (`runConfig`), `src/tick/tick-resume.ts` (the
+**Binds.** `src/run/run-verdict.ts` (the reroute arm), `src/runner/runner-run.ts` (model choice
++ attachment preflight), `src/runner/runner.ts` (`runConfig`), `src/run/run-resume.ts` (the
 image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s image-reroute
 note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
 
-**Pinned by.** `test/tick-verdict.test.ts` — the reroute verdict tests (target + one-hop);
+**Pinned by.** `test/run-verdict.test.ts` — the reroute verdict tests (target + one-hop);
 `test/runner-2.test.ts` — "a blind read on a text-only role reroutes to the vision target, then
 back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
 delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;

@@ -4,11 +4,11 @@ import { hasOutstandingWork, saveRunnerState, type RunnerState } from "../runner
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./tick-apply.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./run-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
-import type { TickOutcome, TickResult } from "./tick-outcome.js";
-import type { TickUsage } from "./tick-usage.js";
+import type { TickOutcome, TickResult } from "./run-outcome.js";
+import type { TickUsage } from "./run-usage.js";
 
 /** What finalizeTick needs from the runner: everything the post-outcome bookkeeping reads,
  * passed explicitly so the policy below stays a free function over plain state. */
@@ -29,7 +29,7 @@ interface FinalizeTickDeps {
   /** When this tick started (the runner stamps state.lastRunStartedAt at tick start);
    * captured once so the run_end span measures the tick's own wall clock. */
   tickStartedAt: number;
-  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the run_end
+  /** The tick's usage accumulator (src/run/run-usage.ts): its costUsd rides the run_end
    * event. */
   usage: TickUsage;
   /** The merge failure this tick's leftover recovery is retrying, if any (set by
@@ -77,7 +77,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
   // the previous value rather than waking on "main moved" to nowhere.
   s.lastMainHead = (await branchHead(root, mainBranch)) ?? s.lastMainHead;
-  // Record the outcome on state and schedule the next run (see src/tick/tick-apply.ts for the
+  // Record the outcome on state and schedule the next run (see src/run/run-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
   applyTickOutcome(s, config, role, outcome);
   // A tick that ends without producing or keeping work releases this instance's backlog claim

@@ -3,7 +3,7 @@
  * entry each runner of a multi-instance base role may take, whether it must drop the entry, and
  * which entry a staged diff moved. The pure policies live here — assignment is the first free
  * entry in file order, release is `left` / `ineligible` / `disabled` / `stale` — so
- * orchestrator-scheduling.ts and tick-stage.ts share one definition and the rules are unit
+ * orchestrator-scheduling.ts and run-stage.ts share one definition and the rules are unit
  * tested without a team. The claim itself is persisted on RunnerState, so it survives a crash,
  * resume, revision and leftover recovery. */
 

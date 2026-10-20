@@ -11,11 +11,11 @@ import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { exitCode } from "./helpers/cli-harness.js";
 import { sleep, waitForFile } from "./helpers/wait.js";
-import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
+import { onlyCleanRole, withRunningTeam } from "./helpers/start-live-harness.js";
 
 // The forced second Ctrl+C, the one Ctrl+C test that must outwait a grace: the graceful
 // terminal-Ctrl+C handling (supervisor-only and generation SIGINT) is pinned in
-// cli-run-sigint.test.ts; the forced second Ctrl+C lives here alone. It is the one test in
+// cli-start-sigint.test.ts; the forced second Ctrl+C lives here alone. It is the one test in
 // the run-live family that must outwait terminateChild's 10 s SIGTERM → SIGKILL grace — the
 // detached pipe-holder it needs to keep the stop in flight until the second signal — so it is
 // split into its own file rather than serializing every faster lifecycle test behind that wait.

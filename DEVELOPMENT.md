@@ -180,9 +180,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/merge/merge-to-main.ts`: the rebase, fast-forward, and conflict-resolution merge flow,
   on top of the git plumbing in `src/merge/merge-git.ts` (rebase, conflict inspection,
   fast-forward).
-- `src/tick/`: the per-run pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
-  `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
-  `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
+- `src/run/`: the per-run pipeline (`run-stage.ts`, `run-prompt.ts`, `run-timing.ts`,
+  `run-usage.ts`, `run-verdict.ts`, `run-finalize.ts`, `run-apply.ts`, `run-resume.ts`,
+  `run-detail.ts`, `run-detail-data.ts`, `run-outcome.ts`).
 - `src/pi-extension/`: the bundled pi extensions, loaded on every pi run in this order:
   bounded-output (head+tail cap on oversized tool results), context-shake (reclaims old bulky
   results at 70% of the window), context-budget (context-usage notes at 50/70/85%),
@@ -200,11 +200,11 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
   renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
-  dispatcher, the read-only command bodies in `src/cli/`, `src/tick/tick-detail.ts` (the `tick`/`history`
+  dispatcher, the read-only command bodies in `src/cli/`, `src/run/run-detail.ts` (the `tick`/`history`
   command body that prints a run's transcript), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
-- `src/history/history.ts`, `src/tick/tick-detail.ts`, `src/report/report.ts`: the `history`,
+- `src/history/history.ts`, `src/run/run-detail.ts`, `src/report/report.ts`: the `history`,
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
-  `src/tick/tick-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
+  `src/run/run-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
   `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies).
 - `src/status/`: the `status` collector behind the status table, TUI, and dashboard

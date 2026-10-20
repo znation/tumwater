@@ -58,7 +58,7 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * comparison false, so the daily budget's safety valve would never trip. The call sites, by
  * the fallback each passes: budget/budget.ts's spendNumber (dayCostUsd/usd → 0),
  * runner/runner-state.ts's healNumber (every numeric RunnerState field → 0),
- * tick/tick-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
+ * run/run-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
  * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
  * previous context, output and its peak floor → 0), time-spend.ts's tickDurationMs (an event's
  * durationMs → null, the "no own duration" marker), pi-extension/context-budget.ts's

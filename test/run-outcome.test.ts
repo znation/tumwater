@@ -3,14 +3,14 @@ import { test } from "node:test";
 // Side-effect imports: both modules hold only shared types, so no value import anywhere
 // reaches their compiled JS and the suite's coverage table shows them as never loaded. The
 // imports here load the modules, and the registry below pins the vocabulary they name.
-import "../src/tick/tick-outcome.js";
+import "../src/run/run-outcome.js";
 import "../src/pi/pi-run-result.js";
-import type { TickResult } from "../src/tick/tick-outcome.js";
+import type { TickResult } from "../src/run/run-outcome.js";
 
-// The TickResult vocabulary (tick-outcome.ts), one human meaning each. `Record<TickResult, …>`
+// The TickResult vocabulary (run-outcome.ts), one human meaning each. `Record<TickResult, …>`
 // makes this a two-way exhaustive pin at compile time: adding a TickResult without a row here
 // fails the gate's tsc pass, and removing or renaming one fails the same way — exactly the
-// nudge the shared vocabulary deserves, since the dashboards, tick-apply's state machine, and
+// nudge the shared vocabulary deserves, since the dashboards, run-apply's state machine, and
 // the merge wiring all branch on these literals.
 const MEANING: Record<TickResult, string> = {
   changed: "a merge completed: the change is merged to main",

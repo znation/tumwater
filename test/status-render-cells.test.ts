@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { lastTickCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { rolePhase } from "../src/ui/status-model.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { applyMergeOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
+import { applyMergeOutcome, applyTickOutcome } from "../src/run/run-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

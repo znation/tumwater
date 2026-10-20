@@ -2,16 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { eventsLogPath } from "../src/paths.js";
-import { finalizeTick } from "../src/tick/tick-finalize.js";
+import { finalizeTick } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, loadRunnerState, zeroCounters } from "../src/runner/runner-state.js";
-import { TickUsage } from "../src/tick/tick-usage.js";
-import type { TickOutcome } from "../src/tick/tick-outcome.js";
+import { TickUsage } from "../src/run/run-usage.js";
+import type { TickOutcome } from "../src/run/run-outcome.js";
 import {
   applyMergeOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
-} from "../src/tick/tick-apply.js";
+} from "../src/run/run-apply.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";

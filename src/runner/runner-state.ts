@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -14,7 +14,7 @@ import { allRoleIds } from "../roles/roles.js";
 /** The runner's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic
  * save, and zeroCounters. The scheduling POLICY that mutates this state from tick outcomes
- * and operator wakes — the outcome application and resume limits in tick-apply.ts, the
+ * and operator wakes — the outcome application and resume limits in run-apply.ts, the
  * clock arithmetic (backoff ladders, wakes, yield ring) in backoff.ts; the generic file
  * helpers are src/files/files.ts and the JSON convention
  * itself is src/files/json-files.ts. */
@@ -49,7 +49,7 @@ export interface RunnerState {
    * multiplier 1. */
   recentOutcomes?: string;
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
-   * renders. A `queued` tick never writes it (tick-apply.ts's applyTickOutcome): its change is
+   * renders. A `queued` tick never writes it (run-apply.ts's applyTickOutcome): its change is
    * still in flight, which the state column already shows, so the pair keeps the prior outcome
    * until the merge resolves and applyMergeOutcome records the merge's own. */
   lastResult?: TickResult;
@@ -134,7 +134,7 @@ export interface RunnerState {
   quietKillStreak?: number;
   /** Consecutive failed ticks: an `error`-result tick OR one whose leftover recovery left a
    * merge pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
-   * (tick-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
+   * (run-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
    * identical tick failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
    * backend left every recovery merge failing silently and reset this streak each tick).
@@ -207,7 +207,7 @@ export interface RunnerState {
    * edits, appends the hand-back note, and deletes the merge ref. The record then lives
    * exactly as long as the resolved change: while it is queued or pinned for its merge, a
    * conflict at the cap discards it rather than handing it back a second time. It is cleared
-   * when that change merges or is rejected (tick-apply.ts), and when a tick neither commits the
+   * when that change merges or is rejected (run-apply.ts), and when a tick neither commits the
    * marker edits nor leaves a session to resume them (no_change, a deliberate user_aborted, or
    * an error/quiet-kill with no resume), nor while a rejected change's revision still owes
    * them. Absent for a runner with no hand-back, so older state files read unchanged. */
@@ -288,7 +288,7 @@ export interface RunnerState {
   dayCostByPair?: Record<string, number>;
   lastError?: string;
   /** Epoch ms (Date.now()) of the last time this runner merged a change on main (set only in
-   * applyMergeOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
+   * applyMergeOutcome's `changed` branch, src/run/run-apply.ts). Absent until the first
    * merge, and absent on state files written before the field existed, so the last-merged
    * age reads "never" until then. Mirrors lastRunEndedAt: an observational timestamp that
    * reset-counters deliberately leaves alone — the dry-spell question it answers is about
@@ -360,7 +360,7 @@ export function freshRunnerState(role: string): RunnerState {
 /** A persisted numeric field, healed to a finite non-negative number (the fallback when it is
  * absent, foreign, NaN/±Infinity, or negative). Every numeric field on RunnerState — top-level or
  * inside one of the nested records below — is a count, a duration, an epoch-ms stamp, or an
- * amount, so zero is the only sensible repair; the `tick-usage.ts` and `budget.ts` writers floor
+ * amount, so zero is the only sensible repair; the `run-usage.ts` and `budget.ts` writers floor
  * the same three quantities they own. A guard count (mergeConflicts, mergeCheckFailures,
  * unreviewFailures) heals to 0 like the rest: a corrupt strike tally re-accumulates from the
  * next attempt, the same "the field is unusable, start the count over" repair the top-level heal
@@ -585,7 +585,7 @@ export function zeroCounters(s: RunnerState): RunnerState {
 
 /** The skip reason a runner's persisted state yields when it does not run this round: a pending
  * resume wait outranks backoff, anything else is idle. The shared tail of the two skip
- * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli/cli-run.ts's
+ * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli/cli-start.ts's
  * once-summary (which adds the team-pause arm) — so the two surfaces cannot drift on which
  * reason wins when several conditions hold at once. */
 export function stateSkipReason(
@@ -599,7 +599,7 @@ export function stateSkipReason(
 /** True when the runner still owes follow-up work for its current task after a tick: a rejected
  * change it must revise (state.revision) or a session it must resume (state.resumePending).
  * Both keep the instance bound to the same task, so the claim-release rule
- * (tick/tick-finalize.ts), the conflict-handback rule (tick/tick-apply.ts), and claims.ts's
+ * (run/run-finalize.ts), the conflict-handback rule (run/run-apply.ts), and claims.ts's
  * idle test all read this one predicate instead of repeating the revision/resume conjunction. */
 export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePending">): boolean {
   return s.revision !== undefined || s.resumePending === true;

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workMerged } from "../src/scheduling/scheduling.js";
 import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
-import { applyTickOutcome } from "../src/tick/tick-apply.js";
+import { applyTickOutcome } from "../src/run/run-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { defaultConfig } from "../src/config/config.js";

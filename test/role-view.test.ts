@@ -157,7 +157,7 @@ test("the payload carries the raw model-triple overrides only when the file sets
 test("an instance id resolves the instructions override through its base role", () => {
   const dir = root();
   writeConfig(dir, { roles: { feature: { instructions: "Stay small.", enabled: true, instances: 2 } } });
-  // An instance id reads roles.feature.instructions (the key tick-prompt reads), so the
+  // An instance id reads roles.feature.instructions (the key run-prompt reads), so the
   // drawer and `tumwater role feature-2` show — and can edit — the override its runs carry.
   const inst = rolePayload(dir, "feature-2", NO_MODELS);
   assert.equal(inst.instructions, "Stay small.");
@@ -312,7 +312,7 @@ test("with several prompts queued, the next-run block discloses that only the ol
   assert.match(
     md,
     /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
-  ); // tick-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
+  ); // run-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
 });
 
 test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkdown splices in place", () => {

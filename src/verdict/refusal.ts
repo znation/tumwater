@@ -17,8 +17,8 @@ import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
 import { labeledLine } from "./reply-contract.js";
 import { logEventBestEffort } from "../events/events.js";
-import { clearSupersededRejection } from "../tick/tick-apply.js";
-import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
+import { clearSupersededRejection } from "../run/run-apply.js";
+import type { TickOutcome, TickResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
 
@@ -95,7 +95,7 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
 }
 
 /** What handleRefusal needs from its owning runner: identity, this tick's assistant-turn count
- * (deliberately not on RunnerState — see TickUsage.turns, src/tick/tick-usage.ts), and the
+ * (deliberately not on RunnerState — see TickUsage.turns, src/run/run-usage.ts), and the
  * runner's shared merge step so a conflict-resolution run folds into the same tick counters as
  * an authoring run. */
 export interface RefusalContext {

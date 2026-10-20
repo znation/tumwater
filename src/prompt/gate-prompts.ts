@@ -12,7 +12,7 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
  * roles' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
  * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
- * gate's verdicts back to the role that authored the change (runner-run.ts, tick-prompt.ts,
+ * gate's verdicts back to the role that authored the change (runner-run.ts, run-prompt.ts,
  * main-red.ts). The machine-detectable half of the gate's reply contract — verdict constants
  * and detection for parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
@@ -393,7 +393,7 @@ export function buildRejectedReviewNote(review: {
   // unhandled, then takes a different theme on the next tick. Re-authoring the same purpose
   // from the same objections is what restarted the round and produced the long rejection
   // runs this note exists to end. The markdown-only replan note merges review-exempt, but a
-  // merged change clears the standing rejection (clearSupersededRejection, tick-apply.ts), so
+  // merged change clears the standing rejection (clearSupersededRejection, run-apply.ts), so
   // the instruction does not re-inject once the note has merged.
   let finality = "";
   if (review.exhausted) {

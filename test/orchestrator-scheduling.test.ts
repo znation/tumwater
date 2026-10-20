@@ -14,7 +14,7 @@ import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
 import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
-import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
+import { assembleTickPrompt } from "../src/run/run-prompt.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";

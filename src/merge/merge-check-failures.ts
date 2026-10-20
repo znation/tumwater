@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
-import { recordReview } from "../tick/tick-apply.js";
+import { recordReview } from "../run/run-apply.js";
 import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
@@ -14,7 +14,7 @@ import { MERGE_FLAKY_WARNING_PREFIX, isKnownFlake } from "../review/known-flakes
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import type { MergerContext } from "./merge-core.js";
 
 /** Consecutive red in-lock merge checks of one patch (RunnerState.mergeCheckFailures) before

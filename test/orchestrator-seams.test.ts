@@ -6,7 +6,7 @@ import {
   p75TickDurationMs,
   runTimedRoleTick,
   sleepInterruptible,
-} from "../src/tick/tick-timing.js";
+} from "../src/run/run-timing.js";
 import { pollTeamHold, type HoldInputs } from "../src/team/team-polls.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -24,7 +24,7 @@ function stepHolds(
   return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
 import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
-import type { TickOutcome } from "../src/tick/tick-outcome.js";
+import type { TickOutcome } from "../src/run/run-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 

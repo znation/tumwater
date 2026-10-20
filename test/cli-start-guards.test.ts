@@ -14,10 +14,10 @@ import { cli } from "./helpers/cli-harness.js";
 // spawns: the detached-primary-checkout and already-running refusals, the --gui/--once and
 // --role flag guards, the role-id validation, and the startup gate that is asked first. Each
 // is a fast, deterministic child exit with nothing to reap. The running-team lifecycle and
-// shutdown tests live in cli-run-shutdown.test.ts, the terminal-Ctrl+C handling in
-// cli-run-sigint.test.ts, the forced second-Ctrl+C exit in cli-run-force-exit.test.ts, the
-// --for/--gui live modes in cli-run-window.test.ts, and the scoped --once round in
-// cli-run-once.test.ts.
+// shutdown tests live in cli-start-shutdown.test.ts, the terminal-Ctrl+C handling in
+// cli-start-sigint.test.ts, the forced second-Ctrl+C exit in cli-start-force-exit.test.ts, the
+// --for/--gui live modes in cli-start-window.test.ts, and the scoped --once round in
+// cli-start-once.test.ts.
 
 test("run refuses a detached primary checkout", async () => {
   const repo = makeRepo();

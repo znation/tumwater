@@ -79,7 +79,7 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
 /** Pair the run_start events of `events` by tick, keyed `${role}#${tick}` → the start event
  * itself — the one home of that pairing and its key format, shared by the timestamps
  * (tickStartMap), the models (tickStartModelMap), and the tick drill-down's duration
- * (tick-detail-data.ts uses tickSpanMs' key). A run_start whose `ts` is not a finite number is
+ * (run-detail-data.ts uses tickSpanMs' key). A run_start whose `ts` is not a finite number is
  * as unusable as an absent one and adds no entry either (the same "a torn or hand-edited line
  * carries no usable timestamp" policy eventTick/eventUsage apply to their fields), so every
  * entry is a real start the projections below can trust. Private: external consumers read one
@@ -96,7 +96,7 @@ function runStartMap(events: HarnessEvent[]): Map<string, HarnessEvent> {
 /** The run_start pairing's start epoch ms: `${role}#${tick}` → start epoch ms, the projection
  * of runStartMap onto each event's `ts` — shared by `tumwater history`'s row spans
  * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
- * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
+ * drill-down's duration (run-detail-data.ts), so those consumers cannot drift into different
  * notions of a tick's span. A run_end whose start is not in `events` (log rotation cut it, or
  * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
  * end costs. Lives in the read module, not in a ui module, so core collectors can share it

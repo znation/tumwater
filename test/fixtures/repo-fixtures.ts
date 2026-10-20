@@ -214,7 +214,7 @@ export async function initializedRepo(): Promise<string> {
 }
 
 /** An initializedRepo'd repo plus a role's worktree off main — the base the merge-git,
- * merge-pipeline, refusal, retire, tick-stage, and tick-verdict tests stage their scenarios on,
+ * merge-pipeline, refusal, retire, tick-stage, and run-verdict tests stage their scenarios on,
  * several of which used to carry their own identical initializedRoot/setup copy. The role
  * defaults to improve; pass one for tests that need a specific role's worktree. */
 export async function initializedWorktree(role = "improve"): Promise<{ root: string; wt: string }> {

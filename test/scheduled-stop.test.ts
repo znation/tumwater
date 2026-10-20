@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { cmdStop } from "../src/operator/operator-commands.js";
-import { armScheduledStopWatch } from "../src/cli/cli-run.js";
+import { armScheduledStopWatch } from "../src/cli/cli-start.js";
 import { cancelScheduledStop, scheduleStop, scheduledStopAt } from "../src/team/team-state.js";
 import { scheduledStopPath } from "../src/paths.js";
 import { orchestratorStatePath } from "../src/paths.js";

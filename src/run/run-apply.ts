@@ -10,14 +10,14 @@ import {
   scheduleAtMinInterval,
   scheduleBackoff,
 } from "../scheduling/backoff.js";
-import type { TickOutcome, TickResult } from "./tick-outcome.js";
+import type { TickOutcome, TickResult } from "./run-outcome.js";
 import { firstReason } from "../text/phrases.js";
 
 /** The state machine that applies a finished tick or merge to the role's state: the
  * outcome application (applyTickOutcome — which outcomes count which streaks, when a
  * cut-off or quiet-killed session resumes and when it is abandoned), its merge sibling
  * (applyMergeOutcome), the error-streak thresholds, the resume limits, and the
- * review-verdict record the next tick's prompt reads. Split out of tick-outcome.ts — which
+ * review-verdict record the next tick's prompt reads. Split out of run-outcome.ts — which
  * keeps the TickResult/TickOutcome vocabulary the dashboards and call sites share — because
  * "what an outcome is" and "what applying it records" are different concerns that happen to
  * touch the same RunnerState object. The role's CLOCK side of the same policy — the wake
@@ -97,7 +97,7 @@ export function applyTickOutcome(
   // recovery re-queued a pin its last merge failed counts too, even though the tick
   // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
   // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21).
-  // tick-finalize.ts emits one warning when the streak crosses ERROR_STREAK_WARN — once per
+  // run-finalize.ts emits one warning when the streak crosses ERROR_STREAK_WARN — once per
   // episode, since the reset re-arms it — and the dashboards read "failing" from the same field.
   // A plain `queued` tick is not yet a verdict about anything: it committed and enqueued, and
   // its MERGE resolves the streak — applyMergeOutcome resets it when the change merges and
@@ -111,13 +111,13 @@ export function applyTickOutcome(
   if (failed) s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
   else if (outcome.result !== "queued") s.consecutiveErrors = 0;
   // The quiet-kill streak counts consecutive watchdog kills; any other result resets it.
-  // tick-finalize.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
+  // run-finalize.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
   // The no-change streak counts consecutive completed ticks that ended `no_change` (the
   // resting state cell's ` · no change ×N` suffix — status-model.ts rolePhase). Any other
   // completed result resets it, so a role that merges between no-ops never shows a stale
-  // streak. Every completed result reaches this block (tick-finalize.ts calls
+  // streak. Every completed result reaches this block (run-finalize.ts calls
   // applyTickOutcome for every outcome), so `changed`/`queued`/`error`/`aborted`/
   // `quiet_killed`/`user_aborted` all reset it and only a `no_change` tick grows it.
   // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately

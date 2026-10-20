@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { TickOutcome } from "../tick/tick-outcome.js";
+import type { TickOutcome } from "../run/run-outcome.js";
 import type { RunnerState } from "./runner-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { setRef } from "../git/git.js";

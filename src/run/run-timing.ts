@@ -5,9 +5,9 @@ import { removeQuiet } from "../files/files.js";
 import type { InFlightMerge } from "../merge/merge-pipeline.js";
 import { mergeStatePath } from "../paths.js";
 import { runOnAbort } from "../process/process.js";
-import type { TickOutcome } from "./tick-outcome.js";
+import type { TickOutcome } from "./run-outcome.js";
 
-/** The orchestrator's tick-timing and scheduling seams (src/orchestrator/orchestrator.ts
+/** The orchestrator's run-timing and scheduling seams (src/orchestrator/orchestrator.ts
  * keeps the poll loop itself — the control flow that calls these). Each is exported as a
  * unit-test seam (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an
  * abort-interruptible sleep, and the restart hand-off's bounded wait on the in-flight merge.
@@ -109,7 +109,7 @@ export function sleepInterruptible(ms: number, signal: AbortSignal): Promise<voi
 /** A one-shot deadline scheduler: run `fn` once after `ms`, returning a cancel that clears it if
  * it has not fired yet. The hand-off's window timers go through this seam, so a test can fire a
  * window by hand and reach the deadline without living through it; the production default is the
- * real `setTimeout`. (`armDeadlineTimer` in src/cli/cli-run.ts is the chunked sibling for the
+ * real `setTimeout`. (`armDeadlineTimer` in src/cli/cli-start.ts is the chunked sibling for the
  * multi-day `run --for` window; a hand-off window is always sub-32-bit.) */
 export type AfterDelay = (ms: number, fn: () => void) => () => void;
 

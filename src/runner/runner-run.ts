@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
+import type { TickOutcome, TickResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "./runner-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -34,26 +34,26 @@ import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
-import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
+import { planTickStart, type TickStartPlan } from "../run/run-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { seamAgent } from "../config/model-selector.js";
 import { modelTrailerLine } from "../git/commit-message.js";
-import { stageTickMerge, foldAgentCommitsSince } from "../tick/tick-stage.js";
-import { stageCheckFindings } from "../tick/stage-check.js";
+import { stageTickMerge, foldAgentCommitsSince } from "../run/run-stage.js";
+import { stageCheckFindings } from "../run/stage-check.js";
 import { planBacklogFull } from "../scheduling/claims.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
-import { finalizeTick } from "../tick/tick-finalize.js";
+import { finalizeTick } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote } from "../text/format.js";
-import type { TickUsage } from "../tick/tick-usage.js";
+import type { TickUsage } from "../run/run-usage.js";
 import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
-import { resolveTickVerdict } from "../tick/tick-verdict.js";
+import { resolveTickVerdict } from "../run/run-verdict.js";
 import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a tick start resolves (src/runner/model-fallback.ts): the
@@ -304,7 +304,7 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   ctx.pending.settleImages();
   // Everything after the pi run — the outcome folds, the main-head read, next-run
   // scheduling, the episode warnings, and the run_end event — is the tick's per-result
-  // bookkeeping policy, not runner lifecycle: it lives in src/tick/tick-finalize.ts, which owns
+  // bookkeeping policy, not runner lifecycle: it lives in src/run/run-finalize.ts, which owns
   // the ordering (the folds land on state before the schedule, the head read happens while
   // `running` is still true) and the per-episode warning crossings. The tick number and
   // start time are passed through as captured above: both must describe the tick run_start
@@ -338,7 +338,7 @@ export async function runTickPhase(
 ): Promise<TickOutcome> {
   const s = ctx.state;
   // How this tick starts — resume the interrupted session or run fresh, and which prompt —
-  // is the resume policy, not runner mechanics: it lives in src/tick/tick-resume.ts, which also
+  // is the resume policy, not runner mechanics: it lives in src/run/run-resume.ts, which also
   // consumes the resume flags and reclaims the interrupted tick's re-queued prompt. A null
   // plan means the runner has nothing to run.
   const plan = planTickStart({
@@ -425,7 +425,7 @@ async function runTickInLeasePhase(
     return outcome;
   } finally {
     // The slot is pinned for the next tick's resume when the verdict armed `resumePending`
-    // inside the tick (the error-dirty and rate-limit arms in src/tick/tick-verdict.ts), or
+    // inside the tick (the error-dirty and rate-limit arms in src/run/run-verdict.ts), or
     // when the outcome is an abort, quiet kill, or context cut-off. applyTickOutcome sets
     // `resumePending` for the other outcomes only after runTick returns, so those are read off
     // the outcome here instead.
@@ -618,7 +618,7 @@ async function tickWithWorktreePhase(
       revisionRound = round;
       if (handoff) {
         // A handoff is a FRESH session: it has none of the interrupted run's context, and
-        // tick-prompt.ts suppresses the rejected-review note whenever state.revision is set,
+        // run-prompt.ts suppresses the rejected-review note whenever state.revision is set,
         // so without this the fresh run would see neither the objections nor the revision
         // instructions. A resume keeps its session context and must not see the note twice.
         prompt = appendPromptNote(prompt, revisionNote);
@@ -715,7 +715,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
 /** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so each
  * half reads on its own screen — the setup above ends at the pi return. The verdict
  * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change) lives
- * in resolveTickVerdict (src/tick/tick-verdict.ts), and the fulfillable path — staging —
+ * in resolveTickVerdict (src/run/run-verdict.ts), and the fulfillable path — staging —
  * stays here. `userPrompt` is the raw director prompt this tick is executing (null for role
  * runners) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this tick holds
  * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
@@ -732,7 +732,7 @@ export async function handlePiResultPhase(
 ): Promise<TickOutcome> {
   // Everything that decides the run left nothing mergeable — abort, config request,
   // quiet kill, timeout, refusal, failure without changes, no change — lives in
-  // resolveTickVerdict (src/tick/tick-verdict.ts); null means the run IS fulfillable.
+  // resolveTickVerdict (src/run/run-verdict.ts); null means the run IS fulfillable.
   const modelLine = modelTrailerLine(seamAgent(cfg), cfg.provider, cfg.model);
   const verdict = await resolveTickVerdict({
     modelLine,
@@ -758,7 +758,7 @@ export async function handlePiResultPhase(
   });
   if (verdict) return verdict;
 
-  // The commit is pinned and the worktree is free (src/tick/tick-stage.ts): stage it for the
+  // The commit is pinned and the worktree is free (src/run/run-stage.ts): stage it for the
   // merge queue and END the tick — the orchestrator drains the queue on its single merge
   // slot, outside the author semaphore, so this slot is free the moment the work is
   // committed (plans/merge-queue.md 3/5). Staging derives the commit message from the reply's

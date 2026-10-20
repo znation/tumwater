@@ -5,7 +5,7 @@ import {
   applyTickOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
-} from "../src/tick/tick-apply.js";
+} from "../src/run/run-apply.js";
 import {
   clearBackoff,
   ERROR_BACKOFF,
@@ -20,7 +20,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget/budget.js";
 
-/** The per-role scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
+/** The per-role scheduling policy's tests (src/run/run-apply.ts for the outcome application,
  * src/scheduling/backoff.ts for the clock): what a finished tick or merge does to the role's
  * state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
@@ -301,7 +301,7 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
 
 // A stale reject must not outlive the merge that supersedes it: a review-exempt (or
 // review-disabled) merge records no verdict, so before this fix lastReview stayed "reject"
-// and tick-prompt.ts injected the rejected note on every later tick, long after main had moved
+// and run-prompt.ts injected the rejected note on every later tick, long after main had moved
 // past the objection (BUGS.md 2026-10-07). The clear is conditional on no revision being owed:
 // a merge that left a rejected change's revision pending did not resolve it, so its next
 // revision tick still needs the objections.

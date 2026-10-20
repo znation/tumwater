@@ -15,8 +15,8 @@ import {
 } from "../../history/history-data.js";
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
-import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js";
-import { renderTickDetail, tickTranscriptLines } from "../../tick/tick-detail.js";
+import { readTickDetail, type TickDetail } from "../../run/run-detail-data.js";
+import { renderTickDetail, tickTranscriptLines } from "../../run/run-detail.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";

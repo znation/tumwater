@@ -9,7 +9,7 @@ import { shortSha, usd } from "./format.js";
  * of $y", main's red-tip naming, a tool call's one-line label, the plural helper) shared by the
  * event feed (event-format.ts), the failure digest (src/failure/failure-render.ts and
  * src/failure/failure-state-change.ts), the status surfaces (ui/), and the CLI messages
- * (operator/operator-commands.ts, cli/cli-run.ts), so their phrasing cannot drift per consumer.
+ * (operator/operator-commands.ts, cli/cli-start.ts), so their phrasing cannot drift per consumer.
  * Pure presentation: every phrase composes the shared formats format.ts pins (shortSha, usd,
  * squash) into words. Pure value formats — the token a number or hash renders as (compactTokens,
  * shortSha, usd, usdCap) — stay in format.ts; this module is where those tokens become words. */
@@ -28,7 +28,7 @@ export const PREFILL_REASON = "it rides into every run's prefill";
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned
  * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
- * rejection clusters (failure-data.ts), and the error a role's next tick records (tick-apply.ts).
+ * rejection clusters (failure-data.ts), and the error a role's next tick records (run-apply.ts).
  * Sites that render the whole reason list, or intentionally omit the fallback (time-spend.ts's
  * first-reason example, review.ts's rejection event `reason`), keep their own handling. */
 export function firstReason(reasons: readonly unknown[] | undefined): string {
@@ -36,14 +36,14 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
   return typeof first === "string" ? first : NO_REASONS_GIVEN;
 }
 
-/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of
- * the singular/plural selection the CLI's once summary (cli/cli-run.ts), the day window's day label
+/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of the
+ * singular/plural selection the CLI's once summary (cli/cli-start.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
  * team alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
  * build_stale lines' "N commit(s) ahead" (event-format.ts, src/failure/failure-state-change.ts —
  * the singular/plural wording their tests pin, once "N commit(s)" with the old literal, now "N
  * commits"/"1 commit"), and the stage self-check and dropped-attachment notes
- * (src/tick/tick-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
+ * (src/run/run-stage.ts, inbox/inbox-attachments.ts) all rendered inline before. `many` accepts a
  * whole replacement form (`plural(n, "role is", "roles are")`) so verb-agreement titles share the
  * helper; the plural-by-`s` default covers regular nouns. (The GUI keeps its own JS copy in
  * gui-client.ts: a separate runtime that cannot import TypeScript.) */
@@ -97,7 +97,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
 }
 
 /** The harness warning a role crossing the error-streak threshold raises — `3 consecutive
- * tick failures: <reason>` — shared by the tick-side crossing (tick-finalize.ts, an error or
+ * tick failures: <reason>` — shared by the tick-side crossing (run-finalize.ts, an error or
  * recovery failure) and the merge-side crossing a review rejection resolves
  * (merge-slot.ts), the two sites that build the message, so the operator-facing wording
  * their tests pin cannot drift between them. */
@@ -244,7 +244,7 @@ export function describeToolCall(toolName: string, args: unknown): string {
 /** The ` (+N more)` remainder suffix a capped list appends when `count` entries were omitted —
  * empty when none were, so the item fits an already-built line either way. The single home of that
  * parenthesized remainder, shared by the reviewer suite-rerun warning (review/suite-rerun.ts) and
- * the stage self-check's missing-path and lost-final-newline findings (tick/stage-check.ts), so the
+ * the stage self-check's missing-path and lost-final-newline findings (run/stage-check.ts), so the
  * three cannot drift on the spacing or the parenthesized form. The other remainder phrasings keep
  * their own wording: the failure digest's bare `+N more` role list and its `_+N more …_` lines
  * (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts), the TUI alert

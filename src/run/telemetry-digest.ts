@@ -1,7 +1,7 @@
 /** The `telemetry` role's tick-time evidence: the failure digest rendered over the role's own
  * trailing 24 h window. Split out of src/failure/failure-render.ts — which stays the pure
  * renderer — so every observer role's evidence builder has its own module the way
- * qa-coverage.ts and backlog-structure.ts do, and the tick lifecycle (tick-prompt.ts) injects
+ * qa-coverage.ts and backlog-structure.ts do, and the tick lifecycle (run-prompt.ts) injects
  * it from there instead of reaching into a report module. */
 import { collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";

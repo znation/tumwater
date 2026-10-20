@@ -23,7 +23,7 @@ import { ensureParentDir } from "../src/files/files.js";
  * load,
  * the atomic save, the counter reset — and the orchestrator info file, whose readers live in
  * team/orchestrator-info.ts but whose shape is pinned beside the state convention it mirrors. The
- * tick-apply.ts scheduling policy's tests live in tick-apply.test.ts. */
+ * run-apply.ts scheduling policy's tests live in run-apply.test.ts. */
 
 /** Every field a fresh state has must hold its default value (extra junk keys are allowed). */
 function assertFreshFields(s: RunnerState, role: string): void {
@@ -144,8 +144,8 @@ test("loadRunnerState fills fields missing from an older or partial file", () =>
   const s = loadRunnerState(dir, "clean");
   assert.equal(s.runs, 3);
   assert.equal(s.commits, 1);
-  // tick-usage.ts folds generatedTokens/peakContextTokens; scheduling/backoff.ts advances
-  // backoffSeconds; tick-finalize.ts records lastMainHead. Undefined would turn numbers to NaN.
+  // run-usage.ts folds generatedTokens/peakContextTokens; scheduling/backoff.ts advances
+  // backoffSeconds; run-finalize.ts records lastMainHead. Undefined would turn numbers to NaN.
   assert.equal(s.generatedTokens, 0);
   assert.equal(s.peakContextTokens, 0);
   assert.equal(s.backoffSeconds, 0);
@@ -285,7 +285,7 @@ test("loadRunnerState drops a nested record that is not a plain object, keeping 
   const file = statePath(dir, "torn");
   ensureParentDir(file);
   // A scalar/array in a nested slot would throw on the first property write (merge-core
-  // sets lastReview.exhausted; tick-apply adds to mergeConflicts.count), so it reads as absent
+  // sets lastReview.exhausted; run-apply adds to mergeConflicts.count), so it reads as absent
   // — the same no-data policy readJsonFile applies to the file as a whole.
   fs.writeFileSync(
     file,

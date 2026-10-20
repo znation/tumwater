@@ -1,5 +1,5 @@
 /** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
- * consecutively is warned at ERROR_STREAK_WARN (src/tick/tick-apply.ts) and named by the team-wide
+ * consecutively is warned at ERROR_STREAK_WARN (src/run/run-apply.ts) and named by the team-wide
  * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
  * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
  * spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
@@ -30,7 +30,7 @@
  * listing a breaker-paused role until the streak clears; the role cell's paused badge explains why
  * it is not ticking, and the role_streak_paused event tells the operator why. */
 
-import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
+import { ERROR_STREAK_BREAKER } from "../run/run-apply.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { runnerPaused } from "../roles/runner-ids.js";
 import { pauseRole } from "../team/team-state.js";

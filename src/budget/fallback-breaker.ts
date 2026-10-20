@@ -6,7 +6,7 @@
  * orchestrator can hold it in memory and fold tick outcomes into it without importing the
  * budget. The gate reads its verdict through fallbackServing (budget.ts's budgetGate). */
 
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 
 /** How the fallback breaker trips and retries. A test seam (the orchestrator's RunOptions
  * accepts an override, like pollMs); production uses FALLBACK_BREAKER_POLICY. */
@@ -19,7 +19,7 @@ export interface FallbackBreakerPolicy {
   maxCooldownMs: number;
 }
 
-/** failureLimit 3 is a single role's failing-streak threshold (tick-apply.ts ERROR_STREAK_WARN)
+/** failureLimit 3 is a single role's failing-streak threshold (run-apply.ts ERROR_STREAK_WARN)
  * applied team-wide: consecutive across every role, so any tick that served in between resets
  * it — a healthy backend with one flaky tick never trips it, while a dead one trips on its
  * first three ticks (on 2026-09-19 the third failure landed 24 minutes into the hour; the 30

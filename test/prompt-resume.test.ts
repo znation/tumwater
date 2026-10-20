@@ -55,7 +55,7 @@ test("buildResumePrompt names a quiet-kill so the session does not re-run the hu
 });
 
 // The fourth resume cause — a run the tick time limit stopped while it was still making
-// progress (src/tick/tick-verdict.ts's quiet_killed with resumeCause "timeout"). Its bridge
+// progress (src/run/run-verdict.ts's quiet_killed with resumeCause "timeout"). Its bridge
 // differs from a restart's in the load-bearing way: the limit will bite again, so the resumed run
 // must budget against it rather than only verifying a cut-off tool call.
 test("buildResumePrompt names a run timeout and asks for a finish that fits the limit", () => {

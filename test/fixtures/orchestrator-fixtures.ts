@@ -21,7 +21,7 @@ import { assistantLine } from "./pi-events.js";
 import { writeModelsFile } from "./models-fixtures.js";
 import { waitFor } from "../helpers/wait.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { TickResult } from "../../src/tick/tick-outcome.js";
+import type { TickResult } from "../../src/run/run-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its merge pipeline: fast configs and repos, a start/stop wrapper around

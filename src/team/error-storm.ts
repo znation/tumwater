@@ -11,10 +11,10 @@
 
 import { getOrCreate, rankByCount } from "../collections.js";
 import { normalizeClusterKey, poolTimeoutKey, sortedRoles, TICK_TIMEOUT_KEY } from "../failure/failure-cluster.js";
-import { ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { ERROR_STREAK_WARN } from "../run/run-apply.js";
 
 /** Distinct roles whose consecutive error streaks share one normalized cause that trip the
- * storm warning. Three, matching the per-role warn bar (ERROR_STREAK_WARN, src/tick/tick-apply.ts):
+ * storm warning. Three, matching the per-role warn bar (ERROR_STREAK_WARN, src/run/run-apply.ts):
  * a role only reports a cause once it has failed that many times running, so three roles at or
  * past that bar on one normalized key is three independent voices agreeing — the same evidence
  * standard the 2026-09-22 storm's diagnosis needed. Two would cry wolf on a pair of roles that

@@ -31,7 +31,7 @@ import { logEvent, subscribeEvents } from "../events/events.js";
 import { notifyTeamDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
-import type { TickResult } from "../tick/tick-outcome.js";
+import type { TickResult } from "../run/run-outcome.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
 import { loadRunnerState, stateSkipReason, type RunnerState } from "../runner/runner-state.js";
 import { plural } from "../text/phrases.js";

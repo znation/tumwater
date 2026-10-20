@@ -7,7 +7,7 @@
  * gui/gui-endpoint-commands.ts. Each handler answers its request and touches no socket beyond
  * its own `res`; server lifecycle, routing, the static page, and the token gate stay in
  * gui/gui-server.ts. The domain work itself lives one layer down (transcript.ts, backlog.ts,
- * report-data.ts, src/failure/failure-data.ts, history-data.ts, tick-detail-data.ts, config.ts)
+ * report-data.ts, src/failure/failure-data.ts, history-data.ts, run-detail-data.ts, config.ts)
  * — this module only adapts HTTP onto it.
  */
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
@@ -31,7 +31,7 @@ import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSin
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
-import { readTickDetail, type TickDetail } from "../tick/tick-detail-data.js";
+import { readTickDetail, type TickDetail } from "../run/run-detail-data.js";
 import {
   renderTickDetail,
   tickCommitSha,
@@ -40,7 +40,7 @@ import {
   tickMergedSha,
   tickNotFoundMessage,
   tickTranscriptLines,
-} from "../tick/tick-detail.js";
+} from "../run/run-detail.js";
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

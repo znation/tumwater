@@ -9,7 +9,7 @@ import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type Base
 import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-prompts.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import type { TickOutcome } from "../tick/tick-outcome.js";
+import type { TickOutcome } from "../run/run-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
 import { mainRedPhrase } from "../text/phrases.js";
@@ -231,7 +231,7 @@ export async function mainRedGate(
       result: "main_red",
       summary: "code merges blocked until main is green",
       // The cause rides the outcome so the tick's `run_end` carries it
-      // (tick-finalize.ts folds it into state.lastError before logging): the digest itemizes
+      // (run-finalize.ts folds it into state.lastError before logging): the digest itemizes
       // the outcome that blocks every merge, instead of leaving it a bare count behind a
       // once-per-SHA warning (BUGS.md 2026-09-28).
       error: redMainMessage(red, "authoring skipped until main is green"),

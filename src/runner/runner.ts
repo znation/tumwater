@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickOutcome } from "../tick/tick-outcome.js";
+import type { TickOutcome } from "../run/run-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadRunnerState, saveRunnerState, zeroCounters, type RunnerState } from "./runner-state.js";
@@ -7,7 +7,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { promptPreview } from "../inbox/inbox.js";
-import { assembleTickPrompt } from "../tick/tick-prompt.js";
+import { assembleTickPrompt } from "../run/run-prompt.js";
 import { RunnerPi } from "./runner-pi.js";
 import {
   configForRole,
@@ -19,7 +19,7 @@ import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { modelFallbackActive } from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";
-import { TickUsage } from "../tick/tick-usage.js";
+import { TickUsage } from "../run/run-usage.js";
 import {
   runTickPhase,
   tickPhase,
@@ -43,19 +43,19 @@ export class RoleRunner {
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
   /** The 429 observation from this runner's usage accounting (TickUsage.lastRateLimit,
-   * src/tick/tick-usage.ts): the orchestrator's team-wide hold wiring reads it through the
+   * src/run/run-usage.ts): the orchestrator's team-wide hold wiring reads it through the
    * runner (src/team/team-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
     return this.usage.lastRateLimit;
   }
-  /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick/tick-usage.ts): the
+  /** The backend-failure observation (TickUsage.lastBackendFailure, src/run/run-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
    * kinds the team-wide hold groups storms by (src/team/team-hold.ts). Same runner surface,
    * same consumer. */
   get lastBackendFailure(): { at: number; kind: BackendFailureKind; provider?: string } | undefined {
     return this.usage.lastBackendFailure;
   }
-  /** Per-tick and lifetime usage accounting (src/tick/tick-usage.ts): the turns/cost windows the
+  /** Per-tick and lifetime usage accounting (src/run/run-usage.ts): the turns/cost windows the
    * commit trailer and run_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
@@ -247,7 +247,7 @@ export class RoleRunner {
     return this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal;
   }
 
-  /** Assemble this tick's prompt via src/tick/tick-prompt.ts (the prompt-content concern lives
+  /** Assemble this tick's prompt via src/run/run-prompt.ts (the prompt-content concern lives
    * there); the dequeued user request — the director's, or a per-role one — rides back so the
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
    * the runner has nothing to run (an empty director inbox); a role runner's assembly never
@@ -283,7 +283,7 @@ export class RoleRunner {
   }
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
-   * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
+   * accounting itself lives in TickUsage.fold (src/run/run-usage.ts); this keeps the once-per-run
    * choke point and the foldMergeUsage face on the runner, where RunnerPi and the merge
    * wiring (src/merge/merge-slot.ts) reach them. */
   private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {
@@ -316,7 +316,7 @@ export class RoleRunner {
    * work — no new counter semantics, just the same fold runner.ts applies to its tick runs. */
   foldMergeUsage(run: PiRunResult, provider?: string, pair?: string): void {
     // authoring=false: a merge/review run's usage counts toward cost and prompt tokens, but
-    // never toward the tick's pre-edit counter (src/tick/tick-usage.ts fold).
+    // never toward the tick's pre-edit counter (src/run/run-usage.ts fold).
     this.usage.fold(this.state, run, false, provider, pair);
   }
 

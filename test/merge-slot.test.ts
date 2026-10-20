@@ -28,7 +28,7 @@ import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
-import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
+import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
@@ -107,7 +107,7 @@ test("a subscription merge run folds as notional, and rides the event's notional
 // A claude reviewer's (or resolver's) five-hour window must reach claude-account.json when the
 // merge fold sees it, not wait for the pi author's next tick end — otherwise a mixed team's
 // reviewer readings are lost every time (PLANS.md "Mixed claude + pi fleets, part 3/4"). The
-// fold is best-effort like tick-finalize.ts's: a run with no billing/window reading leaves the
+// fold is best-effort like run-finalize.ts's: a run with no billing/window reading leaves the
 // file untouched.
 test("a merge run's five_hour reading reaches claude-account.json at fold time", () => {
   const root = makeRepo();

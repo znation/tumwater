@@ -11,7 +11,7 @@
  * ENTRY_STAMP_META_SOURCE — String.raw interpolates substitutions normally — so the
  * browser regex cannot drift from the server twin the tests pin it against. */
 import { ENTRY_STAMP_META_SOURCE } from "../../backlog/backlog-structure.js";
-import { STALL_SOURCE } from "../tick-progress-model.js";
+import { STALL_SOURCE } from "../run-progress-model.js";
 import { PROBLEM_EVENTS, PROBLEM_RESULTS, ROUTINE_BUILD_RESULTS, ROUTINE_EVENTS } from "../tone.js";
 import { ROLE_RANK_RULES } from "../status-model.js";
 
@@ -59,12 +59,12 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the team is not running" };
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
-  // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
+  // A stalled tool call or a long silence, as the phase label names them (run-progress-model.ts's
   // inFlightDetail) — the cue that a working role may be stuck. The pattern is that module's
   // STALL_SOURCE (interpolated at module build), shared with team-alerts.ts's server-side
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
-  // A tick result (tick-outcome.ts TickResult) in words, with the tone of its outcome.
+  // A tick result (run-outcome.ts TickResult) in words, with the tone of its outcome.
   const RESULT_TONES = {
     changed: "green",
     queued: "indigo",

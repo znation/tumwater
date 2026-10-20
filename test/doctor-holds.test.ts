@@ -8,7 +8,7 @@ import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { humanSeconds } from "../src/text/datetime.js";
-import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
+import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 test("checkPause: no markers is ok", () => {

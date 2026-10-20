@@ -2,7 +2,7 @@
 /** The UNFULFILLED-VERDICT half of a finished pi run's classification (see runner-run.ts's
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
- * with the staging handoff (src/tick/tick-stage.ts) staying in the tick pipeline. Returns null when
+ * with the staging handoff (src/run/run-stage.ts) staying in the tick pipeline. Returns null when
  * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of runner.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
@@ -10,7 +10,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
-import type { TickOutcome } from "./tick-outcome.js";
+import type { TickOutcome } from "./run-outcome.js";
 import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -75,7 +75,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // returns: the resume guard the next tick consults is the transcript FILE, which can outlive
   // the conversation (a torn/empty file, or the fake's planted one), so this verdict must
   // outrank it. The failed-dirty arm below is the common case, but an aborted, quiet-killed, or
-  // progressing-timeout run keeps the same session and arms the same resume (tick-apply.ts), so
+  // progressing-timeout run keeps the same session and arms the same resume (run-apply.ts), so
   // recording it once here covers every path that resumes (BUGS.md 2026-10-09). Director ticks
   // never resume, so the flag is role-only.
   if (pi.resumeMissing && ctx.role !== DIRECTOR_ROLE) s.resumeMissing = true;

@@ -62,7 +62,7 @@ export interface MergeEntry {
    * repeated objection or the backstop (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change
-   * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from RunnerState.lastReview only
+   * (plans/revise-rejected.md part 2/2). Filled by run-stage.ts from RunnerState.lastReview only
    * on a tick that held the rejected diff; a recovery merge never carries one. */
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at
@@ -91,7 +91,7 @@ export function enqueueMerge(root: string, entry: MergeEntry): void {
 }
 
 /** The revision fields of a queue entry, serialized only when present — the shape merge
- * surfaces (drain, verify) and the tick-stage enqueue re-emit when they build their own
+ * surfaces (drain, verify) and the run-stage enqueue re-emit when they build their own
  * entry/request objects, so the `revisionRound`/`priorReview` names live in one place and
  * cannot drift. */
 export function entryRevisionFields(e: { revisionRound?: number; priorReview?: PriorReview }): { revisionRound?: number; priorReview?: PriorReview } {

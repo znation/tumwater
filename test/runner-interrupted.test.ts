@@ -266,7 +266,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
     assert.equal((await resumed.tick()).result, "queued");
     assert.equal(eventsOfType(repo, "revision").length, 0, "no re-apply runs on a handoff");
-    // The handoff is a FRESH session and tick-prompt suppresses the rejected-review note while
+    // The handoff is a FRESH session and run-prompt suppresses the rejected-review note while
     // state.revision is set, so the revision note must ride this tick's prompt.
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising the rejected change");
