@@ -235,9 +235,16 @@ function tryClaim(
   count: number,
 ): string | null {
   let chosen: string | null = null;
+  const key = rootKey(root);
+  const unsaved = unsavedReleases.get(key);
   updateSlotsState(root, (state) => {
+    for (const slot of state.slots) {
+      if (unsaved?.has(slot.dir) && slot.lease?.pid === process.pid) slot.lease = null;
+    }
     chosen = chooseSlot(root, state, role, purpose, count, Date.now(), process.pid);
   });
+  // The write landed, so the reclaim of every unsaved release is on disk.
+  unsavedReleases.delete(key);
   return chosen;
 }
 
@@ -301,6 +308,32 @@ function liveCount(root: string): number {
  * (retireLegacyRoleWorktrees and releaseSlot). */
 function isCanonicalSlotDir(dir: string): boolean {
   return /^_slot-\d+$/.test(path.basename(dir));
+}
+
+/** Slot dirs per root whose release write to slots.json failed in this process; the next claim
+ * clears their stale lease. */
+const unsavedReleases = new Map<string, Set<string>>();
+
+/** `releaseSlot` that never throws: a failed slots.json write (ENOSPC, EACCES, a lock timeout)
+ * warns and remembers the slot so the next `tryClaim` here reclaims it, instead of masking the
+ * caller's own outcome and leaving the slot leased by this live pid. The pin and `lastRole` the
+ * failed release would have recorded are not replayed; a lost pin only means the next resume
+ * gets a fresh checkout. */
+function freeSlot(root: string, dir: string, role: string, count: number, pin: boolean): string[] {
+  try {
+    return releaseSlot(root, dir, role, count, pin);
+  } catch (err) {
+    const key = rootKey(root);
+    const dirs = unsavedReleases.get(key) ?? new Set<string>();
+    dirs.add(dir);
+    unsavedReleases.set(key, dirs);
+    warnEventBestEffort(
+      root,
+      TUMWATER_SOURCE,
+      `could not free slot ${path.basename(dir)}: ${errorMessage(err)}; the next lease reclaims it`,
+    );
+    return [];
+  }
 }
 
 /** Free `dir` in slots.json, record `lastRole`/`lastReleasedAt`, and return the idle unpinned
@@ -509,7 +542,7 @@ async function prepareLeased(
       // Free the claim without shrinking. releaseSlot retires a migrated legacy slot on this
       // unpinned release, so hand its removal to removeDroppedSlots; a canonical slot survives
       // for reuse on the next lease.
-      const toRemove = releaseSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
+      const toRemove = freeSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
       wakeWaiters(root);
       void removeDroppedSlots(root, toRemove);
       throw err;
@@ -523,7 +556,7 @@ async function prepareLeased(
       if (released) return;
       released = true;
       releaseUse();
-      const toRemove = releaseSlot(root, dir, role, liveCount(root), options?.pin === true);
+      const toRemove = freeSlot(root, dir, role, liveCount(root), options?.pin === true);
       wakeWaiters(root);
       // Best-effort: a slot whose directory is already gone is unregistered by the prune.
       void removeDroppedSlots(root, toRemove);

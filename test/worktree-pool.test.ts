@@ -14,6 +14,8 @@ import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
@@ -154,6 +156,25 @@ test("a release whose use-record write fails still frees the slot", async () => 
   lease.release();
   const after = readSlotsState(root).slots.find((slot) => slot.dir === lease.dir);
   assert.equal(after?.lease, null, "the slot stayed leased after a release whose use-record write failed");
+});
+
+test("a release whose slots.json write fails warns instead of throwing, and the next lease reclaims the slot", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  const undo = failRenameSyncOn(slotsStatePath(root), "EACCES fake");
+  try {
+    assert.doesNotThrow(() => lease.release());
+  } finally {
+    undo();
+  }
+  assert.ok(
+    warningMessages(root).some((m) => m.includes("could not free slot") && m.includes("EACCES fake")),
+  );
+  const next = await tryLeaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
+  assert.equal(next?.dir, lease.dir);
+  assert.equal(slotForDir(root, lease.dir)?.lease?.role, "bugfix");
+  next!.release();
 });
 
 test("a lease whose prepare and use-record write both fail still frees the slot", async () => {

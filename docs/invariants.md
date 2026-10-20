@@ -4066,3 +4066,13 @@ did not, starts one catalog refresh per root per process. That refresh never blo
 
 **Pinned by.** `test/config-live.test.ts` — "a live edit routing a seam to opencode seeds the models
 catalog once" and "a failed live catalog seed warns instead of crashing the poll".
+
+## Worktree pool release: a failed slots.json write never throws out of a release
+
+### INV-CC1: a release whose slots.json write fails warns, and the next claim in this process reclaims the slot
+
+**Guarantee.** A lease's `release` (and the prepare-failure path of `prepareLeased`) does not throw when the slots.json write or its lock fails: it warns that it could not free the slot and remembers the slot, and the next `tryClaim` in this process clears that stale lease so the slot is leasable again. The pin and `lastRole` the failed release would have recorded are not replayed.
+
+**Binds.** `src/git/worktree-pool.ts` (`freeSlot`, `tryClaim`, `prepareLeased`).
+
+**Pinned by.** `test/worktree-pool.test.ts` — "a release whose slots.json write fails warns instead of throwing, and the next lease reclaims the slot"; "a release whose use-record write fails still frees the slot".

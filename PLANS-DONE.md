@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Worktree pool: a release whose slots.json write fails warns instead of throwing, and the next claim reclaims the slot (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/git/worktree-pool.ts + test/worktree-pool.test.ts + docs/invariants.md; done 2026-10-20)
+
+**Goal.** A lease handle's `release` (the handle `prepareLeased` builds in src/git/worktree-pool.ts) calls `releaseSlot`. `releaseSlot` is an `updateSlotsState` read-modify-write (src/git/slots-state.ts), and its `writeJsonAtomic` and the slots lock's `withStateLock` timeout run with no try. A failed write (ENOSPC, EACCES, a lock timeout) causes three problems:
+- `release` throws. `wakeWaiters` and `removeDroppedSlots` never run.
+- The slot stays leased on disk under this live pid. `clearDeadLeases` only clears another pid's lease, so the pool loses that slot until the team restarts.
+- The callers release in a `finally` (`runOnceInLeasePhase` in src/runner/runner-run.ts, and `.finally(() => lease.release())` in src/review/review.ts). A throw there replaces the run's own outcome or error.
+
+`prepareLeased`'s prepare-failure path calls `releaseSlot` before `throw err`, so a failed write there also masks the real checkout error. On 2026-10-20 the plan role confirmed this with a scratch test (since deleted). It took `leaseSlot` on a `worktreeSlots: 1` repo, installed `failRenameSyncOn(slotsStatePath(root), "EACCES fake")` and called `release()`. The call threw `Error: EACCES fake`, slots.json still held the lease with `process.pid`, and a following `tryLeaseSlot` returned null. The precedent is "a release whose use-record write fails still frees the slot" (test/worktree-pool.test.ts), which guarded the use-registry half of the same release.
+
+**Approach.**
+1. src/git/worktree-pool.ts:
+   - Add a module-level `const unsavedReleases = new Map<string, Set<string>>()`, keyed by `rootKey(root)`. It holds the slot dirs whose release write failed in this process.
+   - Add `function freeSlot(root, dir, role, count, pin): string[]`. It returns `releaseSlot(...)`. On a catch, it adds `dir` to the root's set, calls `warnEventBestEffort(root, TUMWATER_SOURCE, \`could not free slot ${path.basename(dir)}: ${errorMessage(err)}; the next lease reclaims it\`)` and returns `[]`. All three imports already exist in the file.
+   - In `prepareLeased`, replace both `releaseSlot(` calls (the prepare-failure path and the handle's `release`) with `freeSlot(`. `wakeWaiters` and `removeDroppedSlots` then run on every path.
+   - In `tryClaim`, inside the `updateSlotsState` callback and before `chooseSlot`, read the root's set. For each `state.slots` entry whose `dir` is in it and whose `lease?.pid === process.pid`, set `lease = null`. After `updateSlotsState` returns, delete the root's key: the write landed, so the reclaim is on disk. If it throws, the set stays and the next claim retries.
+   - Note in the doc comment that the pin and `lastRole` the failed release would have recorded are not replayed. A lost pin only means the next resume gets a fresh checkout.
+2. test/worktree-pool.test.ts: add the test "a release whose slots.json write fails warns instead of throwing, and the next lease reclaims the slot". Import `failRenameSyncOn` from ./helpers/fs-faults.js and `warningMessages` from ./fixtures/log-fixtures.js. The test does the following:
+   - Set up with `makeRepo()`, `writeConfig(root, { worktreeSlots: 1 })` and `const lease = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" })`.
+   - Install `const undo = failRenameSyncOn(slotsStatePath(root), "EACCES fake")`, assert `doesNotThrow(() => lease.release())`, then `undo()`.
+   - Assert that some `warningMessages(root)` entry includes both `could not free slot` and `EACCES fake`.
+   - Call `const next = await tryLeaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" })`. Assert `next?.dir === lease.dir`, and that slots.json's record for that dir now has `lease.role === "bugfix"`. Then `next!.release()`.
+3. docs/invariants.md: append the section "## Worktree pool release: a failed slots.json write never throws out of a release" after the last section. Use the Guarantee / Binds / Pinned by layout, with `### INV-CC1: a release whose slots.json write fails warns, and the next claim in this process reclaims the slot`. Binds: `src/git/worktree-pool.ts` (`freeSlot`, `tryClaim`, `prepareLeased`). Pinned by: the new test, plus the existing "a release whose use-record write fails still frees the slot". On 2026-10-20 CA had merged and CB was taken by the live-reload opencode plan, so CC was free. Re-check with `grep -n '^### INV-' docs/invariants.md | tail` and the Planned entries before writing it, and take the next free pair if CC is gone.
+
+**Acceptance criteria.**
+- With `freeSlot`'s try/catch removed, the new test fails (`release()` throws `EACCES fake`).
+- With the reclaim loop in `tryClaim` removed, the new test fails (`tryLeaseSlot` returns null).
+- The existing tests in test/worktree-pool.test.ts pass unchanged.
+- `npm run test:gate` passes.
+- `git diff --stat` shows src/git/worktree-pool.ts as the only changed src/ file.
+- Each test name cited in INV-CC1 exists verbatim (`grep -rF` it in test/).
+
 ### Flake quarantine: a failed `quarantine.json` write warns instead of throwing out of a check whose re-run just passed (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/review/known-flakes.ts + test/known-flakes-quarantine.test.ts + docs/invariants.md) — done 2026-10-20
 
 **Goal.** `quarantineTests` (src/review/known-flakes.ts) ends with `saveQuarantine(root, entries)`, a bare `writeJsonAtomic(quarantinePath(root), …)` with no try. It has three callers, and each one runs it right after a re-run of the same tree **passed** (checked with `grep -rn 'quarantineTests(' src`):
