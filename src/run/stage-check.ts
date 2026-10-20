@@ -39,8 +39,9 @@
  * the broken participles and doubled "run" wording a word-swap rename leaves (has/have/had … ran,
  * a hyphen before ran, "run" repeated back to back or followed by "running", a possessive run
  * followed by "run", "run" joined to "run" by and/or, including a phrase split across two added
- * lines). Like the path checks, the gate does not
- * run it.
+ * lines). It also reports any word doubled back to back in comment or doc prose (case-sensitive,
+ * not after `-`, `.` or `/`, "that that" and "had had" excepted). Like the path checks, the gate
+ * does not run it.
  *
  * The backlog-record findings named below (`planDependencyFinding`, `waitingNoteFinding`,
  * `finishedDuplicateFindings`, `strayPlaceholderFinding`) live in stage-backlog-checks.ts, which

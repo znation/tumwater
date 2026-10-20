@@ -1,6 +1,6 @@
 /** The worktree-use registry (plans/disk-floor.md, "Reclaiming build outputs", part 2/4): which
  * harness worktrees are in use right now, and when each was last used. The orchestrator is the one
- * process that runs runs and merges, so a plain in-process map is enough for the "in use" half;
+ * process that launches runs and merges, so a plain in-process map is enough for the "in use" half;
  * the "last used" half is persisted to `.tumwater/state/worktree-use.json` so least-recently-used
  * reclaim ordering survives a restart.
  *

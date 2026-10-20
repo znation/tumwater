@@ -950,6 +950,59 @@ test("the prescribed agent-run wording yields no garbled-wording finding", async
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
 
+test("added comment and doc lines with a doubled word yield the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n// every idle role" + " role is waiting\nexport const b = 2; // the merge" + " merge resolver\n",
+  );
+  fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "docs/a.md"), "the role" + " role table\n");
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+    f.includes("garbled rename wording"),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.ok(findings[0]!.includes("src/a.ts:2 "));
+  assert.ok(findings[0]!.includes("src/a.ts:3 "));
+  assert.ok(findings[0]!.includes("docs/a.md:1 "));
+});
+
+test("a doubled word split across two added comment lines yields the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(path.join(wt, "src/a.ts"), "export const a = 1;\n// the idle role" + "\n// role is waiting\n");
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+    f.includes("garbled rename wording"),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/a\.ts:2-3/);
+});
+
+test("doubled words in code, in mixed case, after a hyphen, dot or slash, and that/had yield no garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n", "PLANS.md": "# Plans\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    [
+      "export const a = 1;",
+      'export const cls = "btn btn-sm";',
+      "// it printed [object Object] once",
+      "// the team-wide wide-shallow alarm",
+      "// the Readable.read read call",
+      "// 40 chars/line line cap",
+      "// so that that holds; it had had one",
+      "",
+    ].join("\n"),
+  );
+  fs.writeFileSync(path.join(wt, "PLANS.md"), "the role" + " role\n");
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
+});
+
 test("a finished plan whose matches-nothing grep still matches yields the acceptance-grep finding", async () => {
   const entry = `### Rename it\n\n\`grep -rn oldName src\` ${"finds" + " nothing"}.`;
   const planned = "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n";

@@ -3,9 +3,10 @@
  * rename or delete, added lines naming paths absent from the resulting tree, lost final
  * newlines, a compound name the change removed that a comment still names, doc comments
  * separated from their declaration, a moved-source file whose old path is still named, and
- * garbled run wording. `gitLevelFindings` stages the change (`git add -A`) to read the index,
- * then restores the index to HEAD; the checks skip record prose (isRecordProse), where an old
- * or not-yet-created path is correct as written. The gate does not run any of them. */
+ * garbled run wording or a doubled word in comment and doc prose. `gitLevelFindings` stages the
+ * change (`git add -A`) to read the index, then restores the index to HEAD; the checks skip record
+ * prose (isRecordProse), where an old or not-yet-created path is correct as written. The gate does
+ * not run any of them. */
 
 import path from "node:path";
 import { changeBaseRev } from "../git/git.js";
@@ -522,9 +523,24 @@ const GARBLED_WORDING: readonly RegExp[] = [
   /\bruns?\s+(?:and|or)\s+runs?\b/i,
 ];
 
-/** The first GARBLED_WORDING match in `joined` that starts before `joinAt` and ends after it. */
-function spanningGarbled(joined: string, joinAt: number): string | null {
-  for (const re of GARBLED_WORDING) {
+/** A word doubled back to back (`role role`), the mark of a word-swap rename. Case-sensitive, so
+ * `[object Object]` does not match; the lookbehind skips a word after `-`, `.` or `/`, the
+ * lookahead skips `NaN NaN:NaN` and `not not-ready`, and "that that" and "had had" are grammatical.
+ * Only ever tested against prose (proseOf), never code. */
+const DOUBLED_WORD = /(?<![-./\w])(?!(?:that|had)\b)([A-Za-z]{2,})\s+\1\b(?![-:])/;
+
+/** The comment or doc prose of an added line, or null for code: the whole line of a `.md` file or
+ * of a line whose trimmed start is `//`, `/*` or `*`, and the text from the first ` // ` of a
+ * trailing comment. */
+function proseOf(file: string, line: string): string | null {
+  if (file.endsWith(".md") || /^\s*(?:\/\/|\/\*|\*)/.test(line)) return line;
+  const at = line.indexOf(" // ");
+  return at >= 0 ? line.slice(at) : null;
+}
+
+/** The first `patterns` match in `joined` that starts before `joinAt` and ends after it. */
+function spanningGarbled(joined: string, joinAt: number, patterns: readonly RegExp[]): string | null {
+  for (const re of patterns) {
     const g = new RegExp(re.source, re.flags + "g");
     for (const m of joined.matchAll(g)) {
       if (m.index < joinAt && m.index + m[0].length > joinAt) return m[0];
@@ -569,10 +585,21 @@ function garbledWordingFindings(diff: string): string[] {
           break;
         }
       }
+      const prose = proseOf(file, cur);
+      if (!hit && prose !== null) {
+        const m = DOUBLED_WORD.exec(prose);
+        if (m) {
+          hits.push(`${file}:${lineNo} "${m[0]}"`);
+          hit = true;
+        }
+      }
       if (!hit && prevAdded !== null) {
         const head = prevAdded.trimEnd();
         const joined = head + " " + cur.replace(/^\s*(?:\/\/+|\*|#)\s*/, "");
-        const split = spanningGarbled(joined, head.length);
+        let split = spanningGarbled(joined, head.length, GARBLED_WORDING);
+        if (!split && prose !== null && proseOf(file, prevAdded) !== null) {
+          split = spanningGarbled(joined, head.length, [DOUBLED_WORD]);
+        }
         if (split) hits.push(`${file}:${lineNo - 1}-${lineNo} "${split}"`);
       }
     }
@@ -580,6 +607,6 @@ function garbledWordingFindings(diff: string): string[] {
     lineNo++;
   }
   if (hits.length === 0) return [];
-  const lead = 'added lines carry garbled rename wording (reword them; a rote "tick" → "run" swap reads wrong here): '; // vocabulary-ok: quotes the retired word
+  const lead = 'added lines carry garbled rename wording (reword them; a rote word swap such as "tick" → "run" reads wrong here or leaves a word doubled): '; // vocabulary-ok: quotes the retired word
   return [lead + cappedList(hits, MAX_STALE_HITS)];
 }

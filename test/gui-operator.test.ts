@@ -126,7 +126,7 @@ test("status payload carries the merge queue depth and the in-flight merge", asy
 
 // Regression (review of the editable-budget feature): the payload's budget object is now
 // unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
-// spend ≥ 0 = cap would otherwise export every idle role role as `waiting: budget spent`.
+// spend ≥ 0 = cap would otherwise export every idle role as `waiting: budget spent`.
 test("a disabled cap never pauses the team in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui no-cap test");
