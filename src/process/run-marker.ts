@@ -12,6 +12,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+import type { PiRunKind } from "../pi/pi-event-line.js";
+import { plural } from "../text/phrases.js";
 import { execFileAsync, withoutLaunchServicesCheckIn } from "./process.js";
 
 /** Every lookup normally finishes in well under a second; a wedged one must not hang
@@ -185,6 +187,17 @@ async function findMarkedPids(marker: string): Promise<number[]> {
     return pids;
   }
   return pidsMarkedInPs(await psEnvironTable(), marker);
+}
+
+/** The warning a run logs when its end-of-run sweep had to signal `count` processes it left
+ * running, or undefined when there is nothing to report. A run tumwater killed (abort, deadline,
+ * quiet watchdog, blind image read) is excluded: its process group got SIGTERM moments before
+ * the sweep scans, so members still exiting would be counted and every killed run would raise
+ * a false leak. */
+export function leftoversSweptMessage(kind: PiRunKind, count: number, killed: boolean): string | undefined {
+  if (count === 0 || killed) return undefined;
+  const verb = count === 1 ? "was" : "were";
+  return `run sweep: ${plural(count, "process", "processes")} the ${kind} run started ${verb} still running after pi exited; sent SIGTERM`;
 }
 
 /** SIGTERM every same-user process whose environment names `marker`, escalating to SIGKILL

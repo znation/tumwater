@@ -16,7 +16,7 @@ import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
 import { agentBinConfigKey, agentBinSourceLabel, type ResolvedAgentBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
-import { makeRunMarker, sweepRunMarker } from "../process/run-marker.js";
+import { leftoversSweptMessage, makeRunMarker, sweepRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
@@ -135,6 +135,9 @@ export interface PiRunOptions {
    * while the quiet watchdog still counts down (the dashboards derive their own flag from the
    * raw log, so only the event needs wiring). */
   onToolCallStalled?: (message: string) => void;
+  /** Called once after the end-of-run sweep when a run tumwater did not kill left marked
+   * processes running, with the warning naming the run kind and the count signaled. */
+  onLeftoversSwept?: (message: string) => void;
   /** Called once per translator warning after the run ends — a native event type the backend
    * could not map, and a result-less run's `cost_unknown` — and once mid-run when an over-long
    * native line (MAX_NATIVE_LINE_CHARS with no newline) is discarded, so the caller can surface
@@ -347,6 +350,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     });
 
     let aborted = false;
+    // A blind image read on an authoring run deliberately kills it, like the watchdogs do.
+    const wasKilled = (): boolean => aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;
     const onAbort = () => {
       aborted = true;
       terminateChild(child);
@@ -541,7 +546,12 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     //    (10 s) is unref'd like signalTree's.
     child.on("exit", () => {
       terminateChild(child);
-      void sweepRunMarker(runMarker).catch(() => {});
+      void sweepRunMarker(runMarker)
+        .then((n) => {
+          const msg = leftoversSweptMessage(opts.kind, n, wasKilled());
+          if (msg) opts.onLeftoversSwept?.(msg);
+        })
+        .catch(() => {});
     });
 
     child.on("close", (code) => {
@@ -553,7 +563,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       for (const canonical of translator.finalize?.() ?? []) parser.feed(canonical + "\n", onLine);
       // A blind image read on an authoring run deliberately killed it (terminateRun above),
       // so its exit is a kill like the watchdogs' — the half-done work is discarded.
-      const killed = aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;
+      const killed = wasKilled();
       // The backend's post-run reconciliation (opencode's authoritative session export), only
       // when the run is not already settled (a failed spawn settles in the 'error' handler
       // before 'close') and was not killed — a killed run's session is half-done and no export

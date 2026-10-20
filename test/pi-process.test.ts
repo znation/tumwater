@@ -202,8 +202,9 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
     }
   };
   let swept = false;
+  const messages: string[] = [];
   try {
-    const result = await runPi(runPiFixture(dir, { config }));
+    const result = await runPi(runPiFixture(dir, { config, onLeftoversSwept: (m) => messages.push(m) }));
     assert.equal(result.ok, true, "the run ends normally — no kill path is involved");
     const pid = readPid();
     assert.ok(pid > 0, "the orphan recorded its pid");
@@ -215,6 +216,8 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
       15_000,
     );
     swept = true;
+    await waitFor(() => messages.length === 1, "the sweep's leftover warning", 15_000);
+    assert.match(messages[0] ?? "", /^run sweep: 1 process the author run started/);
   } finally {
     // Never leak the orphan, whichever assertion failed: SIGKILL it unless the sweep already
     // reaped it (its pid may then be recycled — never signal a swept pid again).

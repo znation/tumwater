@@ -9,6 +9,7 @@ import { pidAlive } from "../src/process/process.js";
 import { systemProcessProbe } from "../src/process/process-table.js";
 import {
   agentBaseEnv,
+  leftoversSweptMessage,
   makeRunMarker,
   pidsMarkedInPs,
   procEnvironCarriesMarker,
@@ -388,4 +389,14 @@ test("the orphan helper arms its kill the moment the victim exists, and the hook
     "the armed hook to kill the victim",
     10_000,
   );
+});
+
+test("leftoversSweptMessage words the sweep's count and stays silent for a killed or clean run", () => {
+  assert.equal(
+    leftoversSweptMessage("author", 1, false),
+    "run sweep: 1 process the author run started was still running after pi exited; sent SIGTERM",
+  );
+  assert.match(leftoversSweptMessage("gate", 2, false) ?? "", /2 processes the gate run started were/);
+  assert.equal(leftoversSweptMessage("author", 0, false), undefined);
+  assert.equal(leftoversSweptMessage("author", 3, true), undefined);
 });

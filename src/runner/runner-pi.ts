@@ -170,6 +170,7 @@ export class RunnerPi {
       // a hung command was invisible until the kill. The dashboards derive their own flag from
       // the raw log, so only the harness event needs wiring here.
       onToolCallStalled: (message) => this.host.warn(message),
+      onLeftoversSwept: (message) => this.host.warn(message),
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
       // as their own warning events, once per run.
       onAgentWarning: (warning) => this.host.warn(`agent_unknown_event: ${warning}`),
