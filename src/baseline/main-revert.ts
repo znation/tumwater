@@ -3,7 +3,7 @@ import { gateCommandOf } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { withLock } from "../concurrency/lock.js";
-import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
 import { branchHead } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
@@ -47,6 +47,31 @@ export async function revertSkipReason(root: string, mainBranch: string, c: Main
   if (merged.split("\n").some((s) => REVERT_PREFIXES.some((p) => s === `${p} ${shortSha(c.commit)}`)))
     return "a revert of it already merged";
   return null;
+}
+
+/** The main watch's culprit hand-off: starts the automatic revert, or falls back to bugfix's heal
+ * prompt when the revert is skipped. Never rejects, because its caller discards the promise and an
+ * unhandled rejection would end the orchestrator: a heal prompt that cannot be queued is warned. */
+export async function routeMainCulprit(
+  root: string,
+  mainBranch: string,
+  c: MainCulprit,
+  startRevert: (c: MainCulprit) => void,
+): Promise<void> {
+  const skip = await revertSkipReason(root, mainBranch, c);
+  if (skip === null) {
+    startRevert(c);
+    return;
+  }
+  try {
+    queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests });
+  } catch (err) {
+    warnEventBestEffort(
+      root,
+      TUMWATER_SOURCE,
+      `not reverting ${shortSha(c.commit)} (${skip}) and could not queue the heal prompt for bugfix: ${errorMessage(err)}`,
+    );
+  }
 }
 
 /** Run one revert task on main's current tip in the shared `_merge` checkout: revert the culprit,

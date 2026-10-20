@@ -4224,3 +4224,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/agent/run-agent.ts` (`runAgent`, `setupFailureResult`).
 
 **Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting" and "an agent run whose scratch dir cannot be created resolves as a failed run".
+
+## Main watch: a culprit hand-off never rejects
+
+### INV-CR1: a culprit the main watch names whose revert is skipped and whose heal prompt cannot be queued resolves and warns once that it was not queued
+
+**Guarantee.** `routeMainCulprit` starts the automatic revert for a revertable culprit and otherwise queues bugfix's heal prompt. A heal prompt that cannot be queued (full disk, EACCES) is caught and warned once, so the promise the orchestrator discards never rejects and ends the process.
+
+**Binds.** `src/baseline/main-revert.ts` (`routeMainCulprit`) and its one caller in `src/orchestrator/orchestrator.ts`.
+
+**Pinned by.** `test/main-revert.test.ts` — "a skipped culprit whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a named culprit starts its revert, and a skipped one queues the heal prompt instead".

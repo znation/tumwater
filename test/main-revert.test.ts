@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
-import { revertSkipReason, runMainRevert, type MainCulprit } from "../src/baseline/main-revert.js";
+import { revertSkipReason, routeMainCulprit, runMainRevert, type MainCulprit } from "../src/baseline/main-revert.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assignPendingReverts, drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
@@ -98,6 +98,40 @@ test("a conflicting revert whose heal prompt cannot be queued resolves and warns
   const warnings = warningMessages(root);
   assert.equal(warnings.filter((m) => m.includes("could not revert") && /could not queue the heal prompt for bugfix: .*ENOSPC/.test(m)).length, 1);
   assert.equal(warnings.filter((m) => m.includes("queued the heal prompt") && !m.includes("could not queue")).length, 0);
+});
+
+test("a skipped culprit whose heal prompt cannot be queued resolves and warns once that it was not queued", async () => {
+  const { root, found } = await redMain(undefined);
+  const inbox = roleInboxDir(root, "bugfix");
+  const restore = patchFsMethod("writeFileSync", (orig) => (target, ...rest) => {
+    if (String(target).startsWith(inbox)) throw errnoError("ENOSPC");
+    return orig(target, ...rest);
+  });
+  const started: MainCulprit[] = [];
+  try {
+    await routeMainCulprit(root, "main", found[0]!, (c) => started.push(c));
+  } finally {
+    restore();
+  }
+  assert.equal(started.length, 0);
+  assert.equal(queuedFiles(root, "bugfix").length, 0);
+  const warnings = warningMessages(root);
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0]!.includes("no role runner merged it"));
+  assert.match(warnings[0]!, /could not queue the heal prompt for bugfix: .*ENOSPC/);
+});
+
+test("a named culprit starts its revert, and a skipped one queues the heal prompt instead", async () => {
+  const named = await redMain("improve");
+  const started: MainCulprit[] = [];
+  await routeMainCulprit(named.root, "main", named.found[0]!, (c) => started.push(c));
+  assert.deepEqual(started, [named.found[0]]);
+  assert.equal(queuedFiles(named.root, "bugfix").length, 0);
+  const skipped = await redMain(undefined);
+  const none: MainCulprit[] = [];
+  await routeMainCulprit(skipped.root, "main", skipped.found[0]!, (c) => none.push(c));
+  assert.equal(none.length, 0);
+  assert.equal(queuedFiles(skipped.root, "bugfix").length, 1);
 });
 
 test("a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent", async () => {
