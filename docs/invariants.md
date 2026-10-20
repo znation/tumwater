@@ -3005,3 +3005,42 @@ file untouched", "resolveBacklogInsertConflicts ignores non-backlog and non-root
 "resolveBacklogInsertConflicts leaves the conflicted file intact when a write dies mid-way";
 `test/backlog-conflicts-entries.test.ts` — "resolveBacklogInsertConflicts leaves an archive
 conflict the hunk settler cannot settle to the resolver".
+
+## Red-main healer: a red main pages once per SHA and queues bugfix once per failing set
+
+### INV-AZ1: `main_red_hold` logs at most once per red SHA per process
+
+**Guarantee.** Whichever of `mainRedGate`, `bugfixMainRedNote` or `mainTipVerdict` sees a red SHA
+first logs the `main_red_hold` event; the others stay silent for that SHA.
+
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`).
+
+**Pinned by.** `test/main-red.test.ts` — "mainRedGate warns once per red SHA: a repeat run on the
+same HEAD re-blocks silently" and "mainTipVerdict reports red with the team-wide warning, once per
+SHA".
+
+### INV-AZ2: a heal prompt is queued once per failing set, and again after green
+
+**Guarantee.** bugfix is queued one heal prompt per failing set, keyed order-blind (by the SHA when
+the red names no complete set). A green main clears the key, so a set that returns is healed again.
+A red that bugfix found itself queues nothing.
+
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`, `bugfixMainRedNote`).
+
+**Pinned by.** `test/main-red.test.ts` — "mainRedGate lets a role run on a red main that names its
+failing tests, once per failing set", "bugfix's own red-main note queues nothing and still returns
+the note and warning" and "green main and a non-blocked role leave bugfix's inbox empty";
+`test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
+another after main turns green".
+
+### INV-AZ3: the heal prompt is one self-limiting line, with clauses only when it has them
+
+**Guarantee.** A culprit prompt names the culprit's short SHA and adds the failing-tests and
+output-tail clauses only when it has them.
+
+**Binds.** `src/baseline/main-red.ts` (`mainRedHealPrompt`, `queueCulpritHeal`).
+
+**Pinned by.** `test/main-red.test.ts` — "mainRedHealPrompt returns one self-limiting line naming
+the short SHA"; `test/main-revert.test.ts` — "a revert that conflicts leaves main alone and queues
+the heal prompt naming the culprit"; `test/main-red-heal.test.ts` — "mainRedHealPrompt with a
+culprit names it and adds the failing and tail clauses only when it has them".
