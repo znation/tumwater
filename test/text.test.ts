@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
+import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, squash, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -102,6 +102,15 @@ test("truncate with a non-positive max fits nothing and returns the empty string
   assert.equal(truncate("a much longer string than the budget", 0), "");
   assert.equal(truncate("abc", -1), "");
   assert.equal(truncate("", 0), "");
+});
+
+test("squash collapses whitespace before it bounds the line", () => {
+  // Reversed (collapse after truncate) this input would give "a…".
+  assert.equal(squash("a\n\n\n\nbcd", 5), "a bcd");
+  assert.equal(squash("  x  ", 10), "x");
+  const long = squash("first line of text\nsecond line of text\n\nthird line", 20);
+  assert.ok(!long.includes("\n"));
+  assert.ok(long.length <= 20);
 });
 
 test("truncateWithNote passes short text through and appends its marker past the cap", () => {

@@ -1792,3 +1792,72 @@ no skip for an empty note, so the separator lives in one place.
 
 **Pinned by.** `test/format.test.ts` — "appendPromptNote joins a note to the prompt with one blank
 line, even an empty note".
+
+## Text shaping: a bounded line never overflows or splits a character, and a count is plain decimal
+
+`src/text/text.ts` is the single home of these one-line text rules, so a display surface, a prompt
+cap and an input parser cannot drift apart. It is presentation and parsing only: it uses node
+built-ins alone and can be imported from any layer.
+
+### INV-AD1: a truncated line is at most max characters and never ends on a lone surrogate
+
+**Guarantee.** `truncate` returns `s` unchanged when it fits. Otherwise it cuts to `max - 1` code
+units, backing off one more when the cut would split a surrogate pair (`cutSplitsSurrogatePair`),
+drops trailing whitespace the cut leaves behind, and appends `…`. A non-positive `max` gives `""`.
+
+**Binds.** `src/text/text.ts` (`truncate`, `cutSplitsSurrogatePair`).
+
+**Pinned by.** `test/text.test.ts` — "truncate leaves a string unchanged when it fits, including the
+exact boundary", "truncate cuts to at most max characters, ellipsis included", "truncate drops a
+trailing space the cut leaves behind before appending the ellipsis", "truncate never splits a
+surrogate pair (no lone surrogates in clipped labels)", "truncate never returns a string longer than
+max (the display-width invariant)" and "truncate with a non-positive max fits nothing and returns the
+empty string".
+
+### INV-AD2: a squashed detail is one line, collapsed before it is bounded
+
+**Guarantee.** `squash` is `truncate(collapseWhitespace(s), max)`. Every whitespace run becomes one
+space and both ends are trimmed before the cut, so the budget is spent on words, not on newlines.
+
+**Binds.** `src/text/text.ts` (`squash`, `collapseWhitespace`).
+
+**Pinned by.** `test/text.test.ts` — "collapseWhitespace folds runs of spaces, tabs, and newlines to
+single spaces" and "squash collapses whitespace before it bounds the line".
+
+### INV-AD3: a capped prompt text keeps a plain prefix and always says it was cut
+
+**Guarantee.** `truncateWithNote` returns text of at most `max` characters unchanged. Past that it
+keeps exactly the first `max` code units (`max - 1` when that cut would split a surrogate pair),
+with no ellipsis or trim, and then appends `\n…[<label> truncated at <max> chars]`, which names
+`max`, not the number of units kept.
+
+**Binds.** `src/text/text.ts` (`truncateWithNote`, `cutSplitsSurrogatePair`).
+
+**Pinned by.** `test/text.test.ts` — "truncateWithNote passes short text through and appends its
+marker past the cap" and "truncateWithNote never splits a surrogate pair at the cut boundary".
+
+### INV-AD4: a count parses only as a plain decimal digit run that is a safe integer
+
+**Guarantee.** `parsePositiveInt` and `parseNonNegativeInt` accept only `^\d+$` with no leading zero
+(a lone `"0"` is allowed) that `Number()` gives as a safe integer. Hex, exponent, sign, whitespace
+padding, a decimal point, zero-padding and an overflowing run all give null. `parsePositiveInt` also
+rejects 0, and `parseNonNegativeInt` accepts it.
+
+**Binds.** `src/text/text.ts` (`parsePositiveInt`, `parseNonNegativeInt`).
+
+**Pinned by.** `test/text.test.ts` — "parsePositiveInt accepts plain decimal only — hex, scientific,
+signed, and padded forms are null" and "parseNonNegativeInt accepts plain decimal only and allows
+zero".
+
+### INV-AD5: untrusted text reaches the terminal without control characters except newline and tab
+
+**Guarantee.** `stripTerminalControls` removes every C0 control except `\n` and `\t`, plus DEL and
+the C1 block U+0080–U+009F. ESC goes with the rest, so no OSC or CSI sequence survives. The CLI's
+output helpers (`src/cli/cli-output.ts`) and the composed TUI frame (`src/ui/tui/tui-frame.ts`)
+apply it, as do several stderr diagnostics and the notify command's message text; event JSON is
+not stripped, so machine-readable output stays byte-exact.
+
+**Binds.** `src/text/text.ts` (`stripTerminalControls`).
+
+**Pinned by.** `test/text.test.ts` — "stripTerminalControls removes ESC/C0/C1/DEL and keeps only
+newline and tab".
