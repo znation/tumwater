@@ -4,6 +4,7 @@ import {
   gateRoleConfig,
   newBudgetGateState,
   pollBudgetGate,
+  seamIsClaude,
   tickOnPair,
   type BudgetGateState,
 } from "./budget-gates.js";
@@ -52,7 +53,7 @@ import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { roleSeamTier } from "../config/config-views.js";
+import { configForRole, roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget
@@ -150,7 +151,8 @@ interface TeamGatePoll {
    * configured or the latch has ended it. */
   bootstrapHeld: ReadonlySet<string>;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
-   * reached (part 5c/8): a role whose own `model` tier (roleSeamTier) has no usable free pair
+   * reached (part 5c/8) or while a usage-window move holds the tier on a demoted fallback: a
+   * role whose own `model` tier (roleSeamTier) has no usable free pair
    * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
    * beside `capPaused` (the scheduling pass folds the sets the same way). Roles on tiers that
    * DID resolve keep ticking under the same poll, so a demoted strong pair no longer pauses
@@ -167,6 +169,10 @@ interface TeamGatePoll {
   priceResolved: TierFallbackMap;
   /** Whether the cap is reached this poll: the budget hold only holds while it is. */
   budgetActive: boolean;
+  /** The roles (the director excluded) a usage-window move put on a fallback pair — their tier
+   * moved and their own seam is claude, so a role pinned to another model is not in it: their run
+   * outcomes fold into the fallback breaker even below the cap. Empty while no window moved. */
+  windowMovedRoles: ReadonlySet<string>;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
    * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
    * (the pause marker is anonymous and must never masquerade as an operator's schedule). */
@@ -342,11 +348,17 @@ export function pollTeamGates(
   // The demoted pair's probe pierces the set for its own tier's roles only — probeRoles in the
   // orchestrator's scheduling pass.
   const budgetPausedRoles = new Set<string>();
-  if (budgetActive) {
-    for (const r of runners) {
-      if (r.role === DIRECTOR_ROLE) continue;
-      if (servingResolved[roleSeamTier(liveConfig, r.role)].pair === null) budgetPausedRoles.add(r.role);
-    }
+  const windowMovedRoles = new Set<string>();
+  const movedTiers = Object.keys(windowTiers);
+  for (const r of runners) {
+    if (r.role === DIRECTOR_ROLE) continue;
+    const tier = roleSeamTier(liveConfig, r.role);
+    // A role pinned to a non-claude model keeps it through a window move (it is not on a pair).
+    if (movedTiers.includes(tier) && seamIsClaude(configForRole(liveConfig, r.role)))
+      windowMovedRoles.add(r.role);
+    // Below the cap only a window-moved role can sit on a demoted fallback.
+    if (!budgetActive && !windowMovedRoles.has(r.role)) continue;
+    if (servingResolved[tier].pair === null) budgetPausedRoles.add(r.role);
   }
 
   // The per-role daily cost cap (src/gates/role-cap-gates.ts): a role whose local-day spend has
@@ -547,6 +559,7 @@ export function pollTeamGates(
     servingResolved,
     priceResolved,
     budgetActive,
+    windowMovedRoles,
     roleQuietHeld,
     quietNow,
     diskHeld,

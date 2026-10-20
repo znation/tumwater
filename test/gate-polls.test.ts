@@ -208,6 +208,60 @@ test("pollTeamGates: a used-up claude window moves claude roles to the fallback 
   assert.equal(cfgOf(1), config, "the director's too");
 });
 
+test("pollTeamGates: a used-up window's demoted fallback holds the moved tier's roles below the cap", () => {
+  const root = tmpdir("gate-polls-window-demoted-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  const claudeWindow = {
+    billing: "subscription" as const,
+    observedAt: now,
+    windows: { five_hour: { status: "rejected" as const, resetsAt: now + 3_600_000, observedAt: now } },
+  };
+  writeClaudeAccount(root, claudeWindow);
+  const runners = [
+    fakeRunner("feature", spentRunnerState("feature", 1), { provider: "free", model: "qwen-free" }, [], "claude"),
+    fakeRunner("bugfix", spentRunnerState("bugfix", 1), { provider: "free", model: "qwen-free" }, [], "claude"),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "claude"),
+  ];
+  const config = paidFallbackConfig(10);
+  config.provider = undefined;
+  config.backend = "claude"; config.model = "claude-sonnet-5-5";
+  config.roles = { ...config.roles, bugfix: { enabled: true, model: "free/qwen-free" } };
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", DIRECTOR_ROLE] },
+  };
+  const demoted = {
+    ...IDLE_FALLBACK_BREAKER,
+    pair: "free/qwen-free",
+    capUsd: 10,
+    failures: 3,
+    probeAt: now + 60_000,
+  };
+
+  const states = newTeamGateStates(config);
+  states.budget.breakers = { "free/qwen-free": demoted };
+  const held = pollTeamGates(states, ctx);
+  assert.equal(held.budgetActive, false, "the cap is not reached");
+  assert.ok(held.windowMovedRoles.has("feature"));
+  assert.ok(held.budgetPausedRoles.has("feature"), "the demoted window fallback holds the moved role");
+  assert.ok(!held.windowMovedRoles.has("bugfix"), "a role pinned to a non-claude model is not moved");
+  assert.ok(!held.budgetPausedRoles.has("bugfix"), "nor held by the demoted fallback");
+  assert.ok(!held.windowMovedRoles.has(DIRECTOR_ROLE) && !held.budgetPausedRoles.has(DIRECTOR_ROLE));
+
+  const trusted = pollTeamGates(newTeamGateStates(config), ctx);
+  assert.ok(trusted.windowMovedRoles.has("feature"));
+  assert.ok(!trusted.budgetPausedRoles.has("feature"), "a trusted fallback keeps the moved role running");
+
+  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
+  const none = pollTeamGates(newTeamGateStates(config), ctx);
+  assert.equal(none.windowMovedRoles.size, 0, "no used-up window, no moved roles");
+});
+
 test("pollTeamGates: fallback_switched is logged once per chain change and orchestrator info carries chain", () => {
   const root = tmpdir("gate-polls-chain-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);

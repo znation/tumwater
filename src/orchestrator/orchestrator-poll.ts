@@ -382,6 +382,7 @@ export async function pollSchedule(
     probePair: inputs.probePair,
     probeRoles: inputs.probeRoles,
     budgetActive: gates.budgetActive,
+    windowMovedRoles: gates.windowMovedRoles,
     semaphore: ctx.semaphore,
     piDefault: ctx.piDefault,
     rolePermitHolders: ctx.rolePermitHolders,

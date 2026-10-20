@@ -65,6 +65,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueRuns>[0]>) {
     probePair: null,
     probeRoles: new Set<string>(),
     budgetActive: false,
+    windowMovedRoles: new Set<string>(),
     semaphore: new Semaphore(4),
     piDefault: null,
     rolePermitHolders: new Set<RoleRunner>(),

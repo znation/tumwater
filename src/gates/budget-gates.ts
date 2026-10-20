@@ -174,7 +174,7 @@ function claudeOverageRefused(account: ClaudeAccount): boolean {
 }
 
 /** Does this model seam route to the claude backend? */
-function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
+export function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
   return seamAgent(seam) === "claude";
 }
 

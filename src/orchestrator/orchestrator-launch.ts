@@ -71,10 +71,12 @@ interface LaunchContext {
    * whose tier has no due runner from deadlocking the pass (an objection to an earlier
    * draft, which continued every non-director runner). */
   probeRoles: ReadonlySet<string>;
-  /** Whether the cap is reached this poll (gate-polls.ts's budgetActive): only a budget
-   * hold puts role runs on fallback pairs, so only then does a run's outcome fold as
-   * evidence into the breakers. */
+  /** Whether the cap is reached this poll (gate-polls.ts's budgetActive): a budget hold puts
+   * role runs on fallback pairs, so then a run's outcome folds as evidence into the breakers. */
   budgetActive: boolean;
+  /** The roles a usage-window move put on a fallback pair (gate-polls.ts's windowMovedRoles):
+   * their run outcomes fold into the breakers even below the cap. */
+  windowMovedRoles: ReadonlySet<string>;
   /** The team's run semaphore; the director never queues behind it. */
   semaphore: Semaphore;
   /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
@@ -113,6 +115,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
     probePair,
     probeRoles,
     budgetActive,
+    windowMovedRoles,
     semaphore,
     piDefault,
     rolePermitHolders,
@@ -246,7 +249,7 @@ export function launchDueRuns(ctx: LaunchContext): void {
           // the team-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
           // fallback run demotes the `claude/<model>` breaker entry, never `?/…`.
           const ranPair =
-            budgetActive && cfg?.model !== undefined
+            (budgetActive || windowMovedRoles.has(runner.role)) && cfg?.model !== undefined
               ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
