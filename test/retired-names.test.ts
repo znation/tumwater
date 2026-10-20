@@ -11,6 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { repoRoot } from "./helpers/repo-root.js";
+
 interface RetiredFamily {
   family: string;
   /** Identifier words (lowercase) that fail. */
@@ -60,16 +62,6 @@ const LEGACY_FILES: readonly string[] = [
 ];
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-// Runs from test/ and from dist/test/: walk up to the directory with package.json and src/.
-function repoRoot(from: string): string {
-  let dir = from;
-  for (;;) {
-    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src"))) return dir;
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, `no repo root above ${from}`);
-    dir = parent;
-  }
-}
 const ROOT = repoRoot(TEST_DIR);
 
 function walk(dir: string): string[] {

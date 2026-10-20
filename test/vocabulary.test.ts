@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { repoRoot } from "./helpers/repo-root.js";
 
 /** The retired words, as regex sources; later series append here. This is the only list.
  * `dry(?![- ]run)` keeps `--dry-run` and "dry run" legal. */
@@ -156,16 +157,6 @@ function vocabularyFindings(fileName: string, text: string): string[] {
   return out;
 }
 
-function findRepoRoot(start: string): string {
-  let dir = start;
-  for (;;) {
-    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) throw new Error(`could not locate the project root above ${start}`);
-    dir = parent;
-  }
-}
-
 function walk(dir: string, out: string[]): void {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, e.name);
@@ -177,7 +168,7 @@ function walk(dir: string, out: string[]): void {
 const H = "// vocabulary: plain\n";
 
 test("opted-in src modules use only plain terms", () => {
-  const root = findRepoRoot(fileURLToPath(new URL(".", import.meta.url)));
+  const root = repoRoot(fileURLToPath(new URL(".", import.meta.url)));
   const files: string[] = [];
   walk(path.join(root, "src"), files);
   assert.ok(files.length > 0, "the vocabulary scan found no sources under src/");

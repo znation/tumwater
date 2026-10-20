@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { repoRoot } from "./helpers/repo-root.js";
 
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
  * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, log-commands.ts,
@@ -25,22 +26,6 @@ const COMMAND_LAYER = new Set([
   "gui/gui-server.ts",
   "gui/gui-endpoints.ts",
 ]);
-
-/** Walk up from `start` to the project root — the directory holding both package.json and src/ —
- * so the source tree is located identically whether this test runs from its `.ts` source (test/)
- * or its compiled output (dist/test/). The earlier fixed `../src` resolved to dist/src under the
- * compiled runner, where every file is `.js`, so the `.ts` filter in the walk selected nothing
- * and the guard passed vacuously. Throws rather than falling back to a wrong tree: a silent
- * empty scan is the failure this guard exists to catch. */
-function findRepoRoot(start: string): string {
-  let dir = start;
-  for (;;) {
-    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src"))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) throw new Error(`could not locate the project root above ${start}`);
-    dir = parent;
-  }
-}
 
 /** The relative paths (posix-style, under `srcDir`) of `.ts` modules that import src/ui/ without
  * being allowed to, plus how many `.ts` files the walk actually saw. Returned together so the
@@ -71,8 +56,7 @@ function scanUiImports(srcDir: string): { offenders: string[]; scanned: number }
 }
 
 test("no core module outside the CLI command layer imports src/ui/", () => {
-  const repoRoot = findRepoRoot(fileURLToPath(new URL(".", import.meta.url)));
-  const srcDir = path.join(repoRoot, "src");
+  const srcDir = path.join(repoRoot(fileURLToPath(new URL(".", import.meta.url))), "src");
   const { offenders, scanned } = scanUiImports(srcDir);
   // A scan of zero files is a vacuous pass, not a green guard: it is exactly the shape the
   // fixed-path regression took, so assert the tree was actually read.

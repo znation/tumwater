@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { repoRoot } from "./helpers/repo-root.js";
 
 /** The pointer guard behind PLANS.md's citation convention: a comment in `src/` or `test/` that
  * cites a PLANS.md entry must cite one the file — or PLANS-DONE.md, where finished plans are
@@ -24,19 +25,6 @@ import { test } from "node:test";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-// The suite runs both from test/ (node --test on the source) and from dist/test/ (the compiled
-// runner), so find the repo root by walking up to the directory that has package.json and src/.
-function repoRoot(from: string): string {
-  let dir = from;
-  for (;;) {
-    if (fs.existsSync(path.join(dir, "package.json")) && fs.existsSync(path.join(dir, "src"))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, `no repo root above ${from}`);
-    dir = parent;
-  }
-}
 const ROOT = repoRoot(TEST_DIR);
 
 /** The status parenthetical every PLANS.md entry carries (`(planned …`, `(done …`). */

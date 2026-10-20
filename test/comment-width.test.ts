@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { repoRoot } from "./helpers/repo-root.js";
 
 // Comments in this tree wrap at 100 columns; code lines have no limit. This test makes that
 // a deterministic gate: a new long comment line fails the commit that adds it, and the clean
@@ -13,23 +14,6 @@ import { test } from "node:test";
 const MAX_COMMENT_COLUMNS = 100;
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-// The suite runs both from test/ (node --test on the source) and from dist/test/ (the compiled
-// runner), so find the repo root by walking up to the directory that has package.json and src/.
-function repoRoot(from: string): string {
-  let dir = from;
-  for (;;) {
-    if (
-      fs.existsSync(path.join(dir, "package.json")) &&
-      fs.existsSync(path.join(dir, "src"))
-    ) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, `no repo root above ${from}`);
-    dir = parent;
-  }
-}
-
 function tsFiles(root: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {

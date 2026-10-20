@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { repoRoot } from "./helpers/repo-root.js";
 
 // Comments cite plans by quoted title, by quoted title (the file name, then the title in
 // double quotes). This test fails when such a citation matches no heading or one-line Done
@@ -11,21 +12,6 @@ import { test } from "node:test";
 // citations (PLANS.md 2026-09-30, part 1/3) are out of scope.
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-// The suite runs both from test/ and from dist/test/, so walk up to the repo root.
-function repoRoot(from: string): string {
-  let dir = from;
-  for (;;) {
-    if (
-      fs.existsSync(path.join(dir, "package.json")) &&
-      fs.existsSync(path.join(dir, "src"))
-    ) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, `no repo root above ${from}`);
-    dir = parent;
-  }
-}
 const ROOT = repoRoot(TEST_DIR);
 
 function normalize(text: string): string {

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { repoRoot } from "./helpers/repo-root.js";
 
 // A deterministic unused-export check: tsconfig's noUnusedLocals does not cover exports, so an
 // exported symbol nothing outside its own file uses would otherwise cost a clean tick per case.
@@ -10,22 +11,6 @@ import { test } from "node:test";
 // legitimate.
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
-// The suite runs both from test/ (node --test on the source) and from dist/test/ (the compiled
-// runner), so find the repo root by walking up to the directory that has package.json and src/.
-function repoRoot(from: string): string {
-  let dir = from;
-  for (;;) {
-    if (
-      fs.existsSync(path.join(dir, "package.json")) &&
-      fs.existsSync(path.join(dir, "src"))
-    ) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    assert.notEqual(parent, dir, `no repo root above ${from}`);
-    dir = parent;
-  }
-}
 const SCAN_ROOTS = ["src", "test", "scripts"].map((dir) => path.join(repoRoot(TEST_DIR), dir));
 
 // Genuine entry points with no in-tree user yet, as "src/file.ts: Name". Keep it short and
