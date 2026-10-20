@@ -530,6 +530,31 @@ test("handleHistory ?summary also folds the served rows per model", async () => 
   assert.ok(!("modelSummary" in (bare.data as object)));
 });
 
+test("handleHistory ?model keeps exact selectors in both shapes, before the summaries fold", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" },
+    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
+    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" },
+    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
+    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 },
+  ]);
+  type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
+  interface Body { rows: Rows & { role: string }[]; modelSummary: unknown }
+  const get = async (q: string) => (await serveHistory(root, q)).data as Body;
+  assert.deepEqual((await get("?n=50&model=m-a")).rows.map((r) => r.role), ["clean"]);
+  const two = await get("?n=50&model=m-a,m-b&summary=1");
+  assert.equal(two.rows.length, 2);
+  assert.deepEqual(two.modelSummary, summarizeTickRowsByModel(two.rows));
+  assert.deepEqual((await get("?sinceMs=3600000&model=m-a")).rows.map((r) => r.role), ["clean"]);
+  assert.equal((await get("?n=50&model=")).rows.length, 3);
+  assert.equal((await get("?n=50&model=,")).rows.length, 3);
+  const none = await serveHistory(root, "?n=50&model=nope");
+  assert.equal(none.captured.status, 200);
+  assert.deepEqual((none.data as Body).rows, []);
+});
+
 function serveTick(root: string, query: string) {
   return captureJson((res) => handleTick(new URLSearchParams(query), res, root));
 }

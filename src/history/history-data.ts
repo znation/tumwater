@@ -267,6 +267,14 @@ export function tickRowsMatchingGrep(rows: TickRow[], pattern: string): TickRow[
   return rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
 }
 
+/** The shared model filter: keeps the rows whose run_start named exactly one of `models`
+ * (case-sensitive, the strings `history --summary --by model` prints); a null-model row never
+ * matches. Two call sites apply it — `tumwater history --model` and /api/history?model — so the
+ * CLI and the dashboard cannot disagree on what a model selector matches. */
+export function tickRowsOnModels(rows: TickRow[], models: string[]): TickRow[] {
+  return rows.filter((r) => r.model !== null && models.includes(r.model));
+}
+
 /** The merge bookkeeping resolveQueuedResult joins over: per loop, the `merge_queued` pins
  * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly three call sites — readTickRows' history-row join, the failure

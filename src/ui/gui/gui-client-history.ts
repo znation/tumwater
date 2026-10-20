@@ -15,6 +15,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   let histCount = HIST_COUNTS.includes(Number(recall("hist-n"))) ? Number(recall("hist-n")) : 50;
   let histGrep = recall("hist-grep") || "";
   let histSinceKey = recall("hist-since") || "";
+  let histModel = ""; // view state, not persisted: set by clicking a By model row
   let histNote = "";
   let histFilter = "all";
   const m = recall("hist-mode");
@@ -29,7 +30,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed run, newest first.</p></div>" +
       "<div class='toolbar'>" +
       "<label><span class='sr-only'>Role</span><select class='field' id='histrole'><option value=''>All roles</option></select></label>" +
-      "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
+      "<button type='button' class='btn btn-sm' id='histmodel' style='display:none'></button>" +      "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
       "<div class='seg' id='histsum'>" + HIST_MODES.map((m) => "<button type='button' data-histsum='" + m[0] + "'>" + m[1] + "</button>").join("") + "</div>" +
       "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search runs…' autocomplete='off'></label>" +
       "<label><span class='sr-only'>Runs to show</span><select class='field' id='histcount'>" +
@@ -42,6 +43,10 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     $("histrole").addEventListener("change", (ev) => {
       histRole = ev.target.value;
       store("hist-role", histRole);
+      fetchHistory();
+    });
+    $("histmodel").addEventListener("click", () => {
+      histModel = "";
       fetchHistory();
     });
     $("histgrep").addEventListener("change", (ev) => {
@@ -78,6 +83,15 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // The drill-down's details toggle: the button alone expands or collapses (the row's own
     // click still opens the drawer — gui-client-boot's data-open handler skips clicks on a
     // data-tickdetail button).
+    // A By model row's label drills into that model's runs: the table, filtered to the selector.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-histmodel]") : null;
+      if (!b) return;
+      histModel = b.dataset.histmodel;
+      histMode = "table";
+      store("hist-mode", "table");
+      fetchHistory();
+    });
     $("histbody").addEventListener("click", (ev) => {
       const b = ev.target instanceof Element ? ev.target.closest("button[data-tickdetail]") : null;
       if (!b) return;
@@ -215,7 +229,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     buildHistoryView();
     syncHistoryRoles(lastStatus);
     try {
-      const d = await getJson(historyQuery(histCount, histRole, histSinceKey, histGrep));
+      const d = await getJson(historyQuery(histCount, histRole, histSinceKey, histGrep, histModel));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
       // The summary rides the same fetch (the endpoint folds the exact rows it served into
       // its additive summary), so toggling to Summary never refetches; a server too old to
@@ -245,9 +259,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // is set, the count shape otherwise, role and grep appended only when chosen. summary=1 rides
   // every ask — the endpoint's additive summary folds the exact served rows, so the Summary
   // mode renders from already-fetched data and the toggle swaps only the body.
-  function historyQuery(count, role, sinceKey, grep) {
+  function historyQuery(count, role, sinceKey, grep, model) {
     const w = HIST_WINDOWS[sinceKey];
-    return (w ? "/api/history?sinceMs=" + w[0] : "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "") + "&summary=1";
+    return (w ? "/api/history?sinceMs=" + w[0] : "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "") + (model ? "&model=" + encodeURIComponent(model) : "") + "&summary=1";
   }
   // The window options, the phrase capitalized for the select ("The last day").
   function histWindowOptions() {
@@ -271,12 +285,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // server-side) and an outcome filter; known is
   // the set of the team's role ids, whose rows open that role's drawer. Pure — the view's
   // render paints what this returns.
-  function historyTableHtml(rows, filter, known, grep, sinceKey) {
+  function historyTableHtml(rows, filter, known, grep, sinceKey, model) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
     if (!shown.length) {
       const hasRows = Boolean(rows && rows.length);
       if (hasRows)
         return "<div class='empty'><strong>No runs match this filter</strong>Try another outcome or role.</div>";
+      if (model)
+        return "<div class='empty'><strong>No runs on this model</strong>Clear the model chip to see every run.</div>";
       if (grep)
         return "<div class='empty'><strong>No runs match this search</strong>Try another search.</div>";
       const w = HIST_WINDOWS[sinceKey];
@@ -327,7 +343,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
     const rowsHtml = entries.map((e) => { const r = e.row; return (
       "<tr" + (e.total ? " class='hist-total'" : "") + ">" +
-      "<td class='mono'>" + esc(e.label) + "</td>" +
+      "<td class='mono'>" + (e.labelHtml || esc(e.label)) + "</td>" +
       cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "refused") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td class='num'>" + durCell(r.durationMs) + "</td>" +
@@ -342,7 +358,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   }
   // The By model table: one row per model (the null bucket reads "(unknown)"), then the total.
   function histModelSummaryHtml(summary) {
-    const entries = summary.models.map((r) => ({ label: r.model === null ? "(unknown)" : r.model, row: r }));
+    const entries = summary.models.map((r) => ({
+      label: r.model === null ? "(unknown)" : r.model,
+      row: r,
+      labelHtml: r.model === null ? "" : "<button type='button' class='linkish mono' data-histmodel='" + esc(r.model) + "'>" + esc(r.model) + "</button>",
+    }));
     if (summary.total) entries.push({ label: "total", row: summary.total, total: true });
     return summaryTableHtml("Model", entries);
   }
@@ -351,6 +371,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const body = $("histbody");
     if (!body) return;
     markActive($("histfilter"), "hist", histFilter);
+    const chip = $("histmodel");
+    if (chip) {
+      chip.style.display = histModel ? "" : "none";
+      chip.textContent = "Model: " + histModel + " ×";
+    }
     const sum = $("histsum");
     if (sum) sum.style.display = "";
     markActive(sum, "histsum", histMode);
@@ -366,7 +391,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       ? histSummaryHtml(histSummary)
       : histMode === "models" && histModelSummary && hasRows
       ? histModelSummaryHtml(histModelSummary)
-      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey);
+      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey, histModel);
     body.innerHTML = historyNoteHtml(histNote) + bodyHtml;
   }
 `;

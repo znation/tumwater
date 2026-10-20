@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowCells, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
+import { readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowCells, tickRowGrepHaystack, tickRows, tickRowsOnModels, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
 import { renderSummary } from "../src/history/history-render.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -743,4 +743,13 @@ test("summarizeTickRowsByModel tallies per model with the null bucket last and t
   assert.deepEqual(summary.models.map((m) => m.model), ["a/m1", "b/m2", null]);
   assert.deepEqual(summary.models[0], { model: "a/m1", runs: 2, changes: 1, none: 1, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: 0 });
   assert.deepEqual(summary.total, summarizeTickRows(rows).total);
+});
+
+test("tickRowsOnModels keeps exact, case-sensitive matches and drops null-model rows", () => {
+  const row = (model: string | null): TickRow => ({ ts: 0, time: "t", role: "r", run: 1, result: "changed", model, durationMs: null, usage: "", detail: "" }) as unknown as TickRow;
+  const rows = [row("m-a"), row("m-b"), row(null), row("m-c")];
+  assert.deepEqual(tickRowsOnModels(rows, ["m-a"]).map((r) => r.model), ["m-a"]);
+  assert.deepEqual(tickRowsOnModels(rows, ["m-a", "m-c"]).map((r) => r.model), ["m-a", "m-c"]);
+  assert.deepEqual(tickRowsOnModels(rows, ["M-A"]), [], "a case-different selector matches nothing");
+  assert.equal(tickRowsOnModels(rows, ["null"]).length, 0);
 });

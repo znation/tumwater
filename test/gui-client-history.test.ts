@@ -396,8 +396,9 @@ test("histModelSummaryHtml paints one row per model, (unknown) for null, an esca
     total: { role: "total", ...z, runs: 3 },
   });
   assert.match(html, /<th>Model<\/th>/);
-  assert.match(html, /<td class='mono'>a&lt;b<\/td>/, "the model id is escaped");
-  assert.match(html, /<td class='mono'>claude<\/td>/);
+  assert.match(html, /<td class='mono'><button type='button' class='linkish mono' data-histmodel='a&lt;b'>a&lt;b<\/button><\/td>/, "the model id is escaped");
+  assert.match(html, /data-histmodel='claude'>claude<\/button>/);
+  assert.equal((html.match(/data-histmodel=/g) ?? []).length, 2, "no button for (unknown) or the total");
   assert.match(html, /<td class='mono'>\(unknown\)<\/td>/);
   assert.equal((html.match(/<tr/g) ?? []).length, 5, "header, three models, total");
   assert.match(html, /<tr class='hist-total'><td class='mono'>total<\/td>/);
@@ -512,4 +513,61 @@ test("the drill-down's revert button previews, then reverts, through /api/revert
   answer = { error: "abc is not on main" };
   await previewHistRevert("clean#9");
   assert.match(card(), /abc is not on main/);
+});
+
+test("historyQuery appends an encoded model after grep and before summary", () => {
+  const { historyQuery } = clientScope<{ historyQuery(...a: unknown[]): string }>(HISTORY_REGIONS, ["historyQuery"], { icon: iconStub });
+  assert.equal(historyQuery(50, "", "", "", "m-a"), "/api/history?n=50&model=m-a&summary=1");
+  assert.equal(historyQuery(50, "", "", "x", "acme/m:1"), "/api/history?n=50&grep=x&model=acme%2Fm%3A1&summary=1");
+  assert.equal(historyQuery(50, "", "", ""), "/api/history?n=50&summary=1");
+});
+
+test("clicking a By model button fetches that model's table; the chip clears it", async () => {
+  type Listener = (ev: unknown) => void;
+  const els = new Map<string, { listeners: Record<string, Listener[]>; style: Record<string, string>; textContent: string; value: string; innerHTML: string; addEventListener(t: string, f: Listener): void }>();
+  const el = (id: string) => {
+    let e = els.get(id);
+    if (!e) {
+      const listeners: Record<string, Listener[]> = {};
+      e = { listeners, style: {}, textContent: "", value: "", innerHTML: "", addEventListener: (t, f) => { (listeners[t] ??= []).push(f); } };
+      els.set(id, e);
+    }
+    return e;
+  };
+  let built = false;
+  const paths: string[] = [];
+  const stored: Array<[string, string]> = [];
+  class FakeElement {
+    constructor(private readonly b: unknown) {}
+    closest(sel: string) { return sel.startsWith("button[data-histmodel") ? this.b : null; }
+  }
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson", "Element"];
+  const code = [ESC_LINE, clientRegion("report-role"), GUI_CLIENT_HISTORY_JS, "return { fetchHistory, mode: () => histMode };"].join("\n");
+  const scope = (new Function(...keys, code) as (...a: unknown[]) => { fetchHistory(): Promise<void>; mode(): string })(
+    (k: string) => (k === "hist-mode" ? "models" : null),
+    (k: string, v: string) => { stored.push([k, v]); },
+    () => !built && (built = true), // true once: the builder wires the listeners a single time
+    el,
+    iconStub,
+    null,
+    () => {},
+    (t: string) => t,
+    async (p: string) => { paths.push(p); return { rows: [] }; },
+    FakeElement,
+  );
+  await scope.fetchHistory();
+  assert.equal(scope.mode(), "models");
+  assert.equal(el("histmodel").style.display, "none", "the chip is hidden with no model");
+  for (const f of el("histbody").listeners.click ?? []) f({ target: new FakeElement({ dataset: { histmodel: "acme/m1" } }) });
+  // Every histbody click listener sees the event; only the data-histmodel one acts here.
+  await sleep(0);
+  assert.match(paths[paths.length - 1] ?? "", /&model=acme%2Fm1&/);
+  assert.equal(scope.mode(), "table");
+  assert.deepEqual(stored[stored.length - 1], ["hist-mode", "table"]);
+  assert.equal(el("histmodel").textContent, "Model: acme/m1 ×");
+  assert.equal(el("histmodel").style.display, "");
+  for (const f of el("histmodel").listeners.click ?? []) f({});
+  await sleep(0);
+  assert.ok(!(paths[paths.length - 1] ?? "").includes("model="), "the chip refetches without model=");
+  assert.equal(el("histmodel").style.display, "none");
 });
