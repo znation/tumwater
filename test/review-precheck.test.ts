@@ -21,7 +21,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
 import { loadQuarantine } from "../src/review/known-flakes.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
-import { createMainWatch } from "../src/baseline/main-watch.js";
+import { createMainWatch, knownMainFailures } from "../src/baseline/main-watch.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
@@ -952,6 +952,66 @@ test("a gate failure of a known failure plus another test is handled as before",
     assert.equal(result.decision, "failed");
     assert.equal(result.mainRed, true);
     assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+  });
+});
+
+// A branch behind a fix: its base was red with X (the watch recorded it), main's tip is green now.
+
+const FIXED_ON_MAIN_TOOL =
+  "#!/bin/sh\nout=0\n[ -f x-broken.txt ] && { echo '✖ X (1ms)'; out=1; }\n[ -f y.txt ] && { echo '✖ Y (1ms)'; out=1; }\nexit $out\n";
+
+/** The base commit has `x-broken.txt` (check fails X) and the change branches from it; main then
+ * removes it and the watch records the tip green. `alsoY` makes the change fail Y too. */
+async function fixedOnMainFixture(alsoY: boolean): Promise<{ root: string; wt: string }> {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
+  writeScript(path.join(root, "node_modules", ".bin", "buildcheck-tool"), FIXED_ON_MAIN_TOOL);
+  fs.writeFileSync(path.join(root, "package.json"), projManifest({ build: "buildcheck-tool" }));
+  fs.writeFileSync(path.join(root, "x-broken.txt"), "x\n");
+  sh(root, "git", "add", "x-broken.txt", "package.json");
+  sh(root, "git", "commit", "-m", "main breaks X");
+  uniqueMain(root);
+  const watch = createMainWatch(root, "main");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "buildcheck-tool" }));
+  fs.appendFileSync(path.join(wt, "seed.txt"), "change\n");
+  if (alsoY) fs.writeFileSync(path.join(wt, "y.txt"), "y\n");
+  commitIn(wt, "wip change");
+  sh(root, "git", "rm", "x-broken.txt");
+  sh(root, "git", "commit", "-m", "main fixes X");
+  watch.poll(mainSha(root), false, defaultConfig());
+  await watch.idle();
+  assert.deepEqual(knownMainFailures(root), [], "the newest verdict is green");
+  return { root, wt };
+}
+
+test("a gate failure of only tests the change's base already failed goes on to review once main is green", async () => {
+  const { root, wt } = await fixedOnMainFixture(false);
+  const base = sh(wt, "git", "merge-base", "HEAD", "main").trim();
+  const marker = piRanMarker();
+  await withPi(reviewerStub(marker), async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "approved");
+    assert.ok(fs.existsSync(marker), "the reviewer ran");
+    assert.equal(result.verifiedHead, undefined);
+    assert.ok(
+      warningMessages(root).includes(
+        `gate check fails only tests its base ${shortSha(base)} already failed, and main ${shortSha(mainSha(root))} is green: X; going on to review`,
+      ),
+    );
+    assert.equal(eventsOfType(root, "review_rejected").length, 0);
+  });
+});
+
+test("a gate failure beyond the base's red failures is still rejected on a green main", async () => {
+  const { root, wt } = await fixedOnMainFixture(true);
+  await withPi(reviewerStub(), async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.match(String(eventsOfType(root, "review_rejected")[0]?.reasons), /Y/);
+    assert.ok(!warningMessages(root).some((m) => m.includes("already failed")));
   });
 });
 

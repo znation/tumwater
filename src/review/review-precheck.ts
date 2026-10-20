@@ -11,7 +11,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
+import { checkFailureReasons, describeCheck, failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { sleptPhrase, UNVERIFIED_TREE, unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../run/run-apply.js";
@@ -20,6 +20,8 @@ import { shortSha } from "../text/format.js";
 import { checkWaitStage, setMergeStage } from "../merge/merge-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
+import { watchedBaseline } from "../baseline/main-baseline.js";
+import { changeBaseRev } from "../git/git.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake, quarantineTests } from "./known-flakes.js";
 
 /** What the pre-check decided: either the gate is resolved without a reviewer run
@@ -35,6 +37,32 @@ interface GatePrecheckResult {
    * onlyKnownMainFailures): the change goes on to review unverified by a green run, and the
    * reviewer's prompt names these as main's. */
   knownMainFailures?: string[];
+}
+
+/** The tests a gate failure shares with the change's own base, when that base is not main's tip:
+ * the main watch recorded the base red with every one of them. A branch behind a fix fails the
+ * old test on its base while main's tip is green (2026-10-20, report --role), so the tip verdict
+ * alone is the wrong question. Null when the failures are not all the base's, the list may have
+ * been cut short (the cap onlyKnownMainFailures uses), or git cannot say. */
+async function staleBaseFailures(
+  wt: string,
+  mainBranch: string,
+  head: string,
+  mainTip: string,
+  failingTests: readonly string[] | undefined,
+): Promise<{ base: string; tests: string[] } | null> {
+  if (!failingTests || failingTests.length === 0 || failingTests.length >= FAILING_TESTS_MAX) return null;
+  try {
+    const base = await changeBaseRev(wt, mainBranch, head);
+    if (base === mainTip) return null;
+    const verdict = await watchedBaseline(wt, base);
+    if (verdict?.status !== "red") return null;
+    const baseFailed = verdict.failingTests ?? [];
+    if (!failingTests.every((t) => baseFailed.includes(t))) return null;
+    return { base, tests: [...failingTests] };
+  } catch {
+    return null;
+  }
 }
 
 /** Run the gate's deterministic build pre-check. `reject` is the gate's one shared rejection
@@ -158,6 +186,19 @@ export async function gateBuildPrecheck(
         recordReview(state, "failed", [detail], head);
         warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
         return { resolved: { decision: "failed", detail, mainRed: true } };
+      }
+      if (main.status === "green") {
+        const stale = await staleBaseFailures(wt, mainBranch, head, main.sha, outcome.failingTests);
+        if (stale) {
+          // Same hand-off as the known-failure branch: no verifiedHead, so the merge check on the
+          // rebased tree still judges it.
+          warnEventBestEffort(
+            root,
+            role,
+            `gate check fails only tests its base ${shortSha(stale.base)} already failed, and main ${shortSha(main.sha)} is green: ${stale.tests.join(", ")}; going on to review`,
+          );
+          return { knownMainFailures: stale.tests };
+        }
       }
       // Main green: the change broke the check — rejected deterministically through the shared
       // reject path, no pi run consumed, reasons injected into the author's next tick. With no

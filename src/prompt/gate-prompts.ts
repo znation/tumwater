@@ -219,7 +219,7 @@ not back, work left half-done.`,
   if (knownMainFailures && knownMainFailures.length > 0)
     parts.push(
       `Tumwater ran the project's own check on this tree and it failed, but only on tests main already
-fails — main's known failures, not this change's:\n${knownMainFailures.map((t) => `- ${t}`).join("\n")}
+fails, or that failed at this change's base and pass on main's tip now — not this change's failures:\n${knownMainFailures.map((t) => `- ${t}`).join("\n")}
 Do not count them against the change unless the diff touches what they test.`,
     );
   if (principles) {
