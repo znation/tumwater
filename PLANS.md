@@ -805,4 +805,33 @@ Replanned 2026-10-19 by the plan role. The single 14/14 sweep was rejected after
 - A grep for each moved name over src/, test/ and the markdown docs finds no stale reference.
 - `npm run test:gate` passes with no test edits beyond import paths.
 
+### The dashboard role drawer's Live transcript gets a "Show prompts" toggle, through `GET /api/transcript?…&prompt=1`, the dashboard twin of `tumwater logs --transcript <id> --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Touches src/ui/transcript.ts, src/gui/gui-endpoints.ts, src/ui/gui/gui-client-drawer.ts, docs/how-it-works.md and tests)
+
+**Goal.** `tumwater logs --transcript <id> --prompt` shows a role's live transcript with each agent run's prompt. The dashboard's run History can do the same for a past run ("Show prompts", through `/api/run?…&prompt=1`). The role drawer's "Live transcript" cannot: `handleTranscript` ignores any `prompt` parameter, and `readTranscript` always renders with `createTranscriptRenderer()`, which drops user messages. An operator watching a role in the browser cannot see what it was asked to do.
+
+**Approach.**
+- **src/ui/transcript.ts.** `readTranscript(root, role, limit = 50, opts: { includePrompts?: boolean } = {})`. Keep a second module-level map, `promptTails`, beside `tails`, and use it when `opts.includePrompts` is true. Its `fresh` callback builds `createTranscriptRenderer({ includePrompts: true })`. A separate map is needed because `withTail` keys its state by file only. Sharing one map would let a prompts reader and a plain reader overwrite each other's renderer. Everything else (`MAX_ENTRIES`, the pending-separator handling, the `take > 0` guard) stays shared. Update the doc comment above `tails` to say there are two caches.
+- **src/gui/gui-endpoints.ts.** In `handleTranscript`, pass `{ includePrompts: q.get("prompt") !== null }` to `readTranscript`. This is the same presence test `handleTick` uses for `/api/run`'s `prompt`. Extend the doc comment: "a present `prompt` flag also renders each agent run's prompt, the text `logs --transcript <id> --prompt` prints".
+- **src/ui/gui/gui-client-drawer.ts.**
+  - Add `let transcriptPrompts = false;` next to the other drawer state. `openRole` resets it to false, so each drawer open starts plain.
+  - In `openRole`'s static section head, add `<button type='button' class='btn btn-sm' id='transcriptprompts' data-transcript-prompts>Show prompts</button>` before the "last 200 lines" span.
+  - `refreshTranscript` captures `const prompts = transcriptPrompts;` before it fetches. It appends `&prompt=1` to the URL when `prompts` is true. After the await, it returns without painting when `transcriptPrompts !== prompts`, the same way it already drops a response for a role that is no longer open.
+  - New `function toggleTranscriptPrompts()`. It flips `transcriptPrompts` and sets `$("transcriptprompts").textContent` to "Hide prompts" or "Show prompts". It then calls `refreshTranscript(true)`, so the repainted panel scrolls to the bottom.
+  - In the existing `$("drawer")` click listener, add a branch: a click whose `clickClosest(ev, "button[data-transcript-prompts]")` matches calls `toggleTranscriptPrompts()`.
+  - `transcriptHtml` needs no change: prompt lines render as plain text under their run separator.
+  - Update the file's header comment, which describes the live transcript.
+- **docs/how-it-works.md.** In the dashboard paragraph that mentions the role drawer's live transcript, add one sentence. It says a "Show prompts" button re-reads the transcript through `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints.
+
+**Acceptance criteria.**
+- test/transcript.test.ts: a new test writes a pi log with a user `message_end` ("asked-one") and then an assistant one ("said-one"). `readTranscript(root, "feature")` contains "said-one" but not "asked-one". `readTranscript(root, "feature", 50, { includePrompts: true })` contains both, with "asked-one" first. A plain call made after the prompts call still omits "asked-one", which proves the two caches do not share a renderer.
+- test/gui.test.ts, "gui /api/transcript serves rendered lines and validates role/n": its log already has a "tick prompt" user message. Assert that `/api/transcript?role=feature&n=10` has no line containing "tick prompt", and that `…&n=10&prompt=1` has one, placed before "did the thing".
+- test/gui-client-drawer.test.ts: a new test opens the `clean` drawer with responses for both `/api/transcript?role=clean&n=200` and `/api/transcript?role=clean&n=200&prompt=1` (different lines). It asserts:
+  - the painted transcript shows the plain lines;
+  - after `toggleTranscriptPrompts()` and a flush, it shows the prompt lines and the button reads "Hide prompts";
+  - a second toggle returns to the plain lines and "Show prompts";
+  - reopening the drawer (`toggleRole` twice, or `openRole`) starts plain again.
+  Expose `toggleTranscriptPrompts` the same way the harness already exposes `toggleRole`.
+- Every existing `/api/transcript` and drawer test passes unchanged. In particular, the plain URL `/api/transcript?role=clean&n=200` is still the one fetched while the toggle is off.
+- `npm run test:gate` passes.
+
 ## Done
