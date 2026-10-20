@@ -1099,3 +1099,74 @@ state.
 **Pinned by.** `test/status-data.test.ts` — "snapshot serves unchanged runner state from the
 stat-keyed cache without re-reading" (it pins the cache hit and the per-poll copy; the missing-file
 case is not pinned by a test).
+
+## Runner ids: only feature and bugfix split, and everything about a role resolves through its base
+
+A base role may run several runner ids (`feature`, `feature-2`, `bugfix-3`, …), each keying its own
+state, branch and session, while every lookup about the role resolves through `baseRoleOf`. The id
+arithmetic lives in `src/roles/runner-ids.ts`; scheduling, the gate polls, doctor's holds, status,
+the pause commands and config validation all go through it.
+
+### INV-U1: only a feature or bugfix id with an index of 2 or more is an instance
+
+**Guarantee.** `baseRoleOf` maps `<feature|bugfix>-N` (N ≥ 2) to its base and returns every other id
+unchanged, including `feature-1`, `clean-2` and custom names. `instanceIndex` is N for an instance
+and 1 for anything else. Both read the one `INSTANCE_ID_SOURCE` pattern.
+
+**Binds.** `src/roles/runner-ids.ts` (`INSTANCE_ROLES`, `INSTANCE_ID_SOURCE`, `baseRoleOf`,
+`instanceIndex`).
+
+**Pinned by.** `test/runner-ids.test.ts` — "baseRoleOf and instanceIndex map only a base role's -N
+ids".
+
+### INV-U2: the runner set is the enabled roles in config order, with twice the instances once a role splits
+
+**Guarantee.** `runnerIds` lists each enabled role's bare id in `config.roles` order. For an
+`INSTANCE_ROLES` base at `instances: N > 1` it then lists `-2` through `-2N`. At the default count
+it is exactly the enabled bare ids. A disabled base contributes no id. `runnerEnabled` agrees: an
+id runs only while its base is enabled and its index is within that runner count, so lowering the
+count turns the surplus off.
+
+**Binds.** `src/roles/runner-ids.ts` (`runnerIds`, `runnerEnabled`, `runnerCount`,
+`RUNNERS_PER_INSTANCE`).
+
+**Pinned by.** `test/runner-ids.test.ts` — "runnerEnabled reads the base role and its configured
+instance count", "runnerIds enumerates enabled roles and each instance base's extra runners" and
+"runnerIds omits disabled roles and their instances".
+
+### INV-U3: instance 1 pauses under <role>-1 only while the role has siblings, and a base pause stops every instance
+
+**Guarantee.** `instancePauseKey` gives the bare id of a split role the key `<role>-1`, and every
+other id its own id. `runnerPaused` is true for the runner's own key, its base role's key, or (for
+an instance role's bare id) `<role>-1`. A `<role>-1` pause therefore stops instance 1 and not its
+siblings.
+
+**Binds.** `src/roles/runner-ids.ts` (`instancePauseKey`, `runnerPaused`); callers include
+`src/orchestrator/orchestrator-scheduling.ts` (`runnerPaused`).
+
+**Pinned by.** `test/runner-ids.test.ts` — "instancePauseKey and runnerPaused give instance 1 its
+own pause key only while the role has siblings".
+
+### INV-U4: an instance shares its base role's catalog entry, tier, model and spend cap
+
+**Guarantee.** `roleById`, `roleTier`, `yieldScaledRole` and `baselineBlocked`
+(`src/roles/roles.ts`) and `configForRole` (`src/config/config-views.ts`) answer for an instance
+exactly as for its base. `pollRoleCapGate` sums the instances' spend against the base role's cap,
+pauses every instance together, and emits one `role_cap_paused` naming the base.
+
+**Binds.** `src/roles/roles.ts`, `src/config/config-views.ts`, `src/gates/role-cap-gates.ts`
+(`pollRoleCapGate`, `roleCapVerdicts`).
+
+**Pinned by.** `test/runner-ids.test.ts` — "role helpers resolve an instance id through its base
+role", "configForRole resolves an instance id's model through its base role" and "the per-role cap
+groups instances: their spend sums against the base role's cap".
+
+### INV-U5: a custom role cannot take an instance-shaped name
+
+**Guarantee.** `validateConfig` rejects a custom role whose name `baseRoleOf` maps to a different
+id, so a custom role can never shadow a feature or bugfix instance's state.
+
+**Binds.** `src/config/config-validation.ts` (`validateConfig`).
+
+**Pinned by.** `test/runner-ids.test.ts` — "a custom role name shaped like an instance id is a
+validation error".
