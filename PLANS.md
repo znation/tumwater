@@ -527,4 +527,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   A fourth event of 600 000 ms with `heldBy: ["a check"]` makes the level `warn`. The detail then contains `other checks 10m` ranked first, followed by ` — raise maxConcurrentChecks above 2`.
 - `npm run test:gate` passes.
 
+### A `role_paused` event carries a timed role pause's deadline, so `logs` and the failure digest say until when a role is paused (planned 2026-10-20 by the plan role)
+
+**Goal.** `tumwater pause --role <id> --for <duration>` writes one shared deadline into the paused-roles marker. `team_paused` already carries a timed pause's `until`, and `role_resumed` already says `expired` when that shared deadline ran out. `role_paused` carries only `role`, so `logs` and the failure digest show `role docs paused — it starts no new runs` with no hint that the pause lifts by itself. `pollPauseGates` (src/gates/pause-gates.ts) already reads the deadline each poll (`standingRolePause(root).until`) but only stores it in `state.prevRolesUntil` for the `expired` mark. Put it on the event too.
+
+**Approach.**
+- src/gates/pause-gates.ts, `pollPauseGates`: the `role_paused` event spreads `...(rolesUntil !== undefined ? { until: rolesUntil } : {})`, the same shape as `team_paused`. `standingRolePause` returns `until` only while the set is non-empty, and `readPausedRoles` reads an expired marker as empty, so a logged `until` is the live deadline. Update the doc comment on `pollPauseGates` to say so.
+- src/events/events.ts: extend the `role_paused` union comment to "carries role, and `until` (ms epoch, the set's shared deadline, timed pause only) — events logged before carry no `until`".
+- src/events/event-format.ts, `case "role_paused"`: render `${rolePausePhrase(role)}${pauseSuffix(e.until, undefined)} (the rest of the team keeps running)`. `pauseSuffix` already drops a missing or non-numeric `until`.
+- src/failure/failure-state-change.ts, `case "role_paused"`: append ` until ${formatTime(new Date(until))}` when `finiteNumber(ev.until, null)` is non-null, the same as the `team_paused` case.
+
+**Out of scope.** A `--for` that moves the deadline of an already-paused set (re-pausing a member, or a timed join that overwrites the shared deadline) crosses no edge, so it logs no new event for the roles already paused; this plan adds no event for a deadline change. A per-role pause reason stays out (refused earlier). The streak breaker's pauses still log `role_streak_paused`, not `role_paused`: the fold in `pollTeamGates` (src/gates/gate-polls.ts) is unchanged. Notify paging and src/events/event-labels.ts are unchanged.
+
+**Files touched.** src/gates/pause-gates.ts, src/events/events.ts, src/events/event-format.ts, src/failure/failure-state-change.ts, test/pause-gates.test.ts, test/event-format-team.test.ts, test/failure-state-change.test.ts.
+
+**Acceptance criteria.**
+- test/pause-gates.test.ts, new test "pollPauseGates: role_paused carries the shared deadline of a timed role pause": `pauseRole(root, "tests", until)` with `until = Date.now() + 60_000`, then poll; the one `role_paused` event has `role: "tests"` and `until` equal to `until`. The existing "pollPauseGates: per-role pause/resume logs role events per crossing" test gains an assertion that its standing `pauseRole(root, "tests")` logs a `role_paused` with no `until` key.
+- test/event-format-team.test.ts "formatEvent renders the per-role pause and resume events with the role named" keeps its bare-event assertion; add one that a `role_paused` with `role: "docs"` and a numeric `until` matches `role docs paused — it starts no new runs until <formatTime(new Date(until))> (the rest of the team keeps running)`, and that `until: "soon"` renders the same as the bare event.
+- test/failure-state-change.test.ts: the existing `role_paused` assertions pass unchanged; add `describeStateChange(ev({ type: "role_paused", role: "steward", until }))` equals `role steward paused — it starts no new runs until <formatTime(new Date(until))>`.
+- `npm run test:gate` passes.
+
 ## Done
