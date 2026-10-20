@@ -7,7 +7,7 @@ import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js"
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsLogPath } from "../paths.js";
-import { gotSuffix, splitCommaList } from "../text/text.js";
+import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed run, newest first. The
@@ -142,7 +142,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   let models: string[] | null = null;
   if (modelRaw !== null) {
     if (modelRaw === undefined || modelRaw === "") fail(HISTORY_MODEL_VALUE_ERROR);
-    const pieces = [...new Set(splitCommaList(modelRaw))];
+    const pieces = splitCommaListUnique(modelRaw);
     if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
     models = pieces;
     rows = runRowsOnModels(rows, pieces);

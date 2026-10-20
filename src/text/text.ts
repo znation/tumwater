@@ -105,6 +105,13 @@ export function splitCommaList(raw: string): string[] {
   return raw.split(",").map((p) => p.trim()).filter((p) => p !== "");
 }
 
+/** splitCommaList with repeated pieces dropped (first occurrence kept) — the `--model` history
+ * filter and the GUI's `role` and `model` query parameters, each of which treats a repeat as
+ * the same selector. */
+export function splitCommaListUnique(raw: string): string[] {
+  return [...new Set(splitCommaList(raw))];
+}
+
 /** Drop the blank lines at the start of `lines`, in place — the one home of the
  * leading-blank trim loop shared by the backlog writer's section-content rebuild and
  * `questions answer`'s tail slice (the lines after the moved answer). Blank means
