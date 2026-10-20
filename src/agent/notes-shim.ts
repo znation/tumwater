@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { distDir } from "../build/build-info.js";
-import { writeTextAtomic } from "../files/files.js";
+import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { notesShimDir } from "../paths.js";
 
 /** The shim's file name — the command name every run sees on its PATH. */
@@ -29,12 +29,7 @@ export function ensureNotesShim(root: string): string {
   const dir = notesShimDir(root);
   const target = path.join(dir, NOTES_SHIM_NAME);
   const content = `#!/bin/sh\nexec "${process.execPath}" "${path.join(distDir(), "src", "notes-cli.js")}" "$@"\n`;
-  let needsWrite = true;
-  try {
-    needsWrite = fs.readFileSync(target, "utf8") !== content;
-  } catch {
-    // Absent or unreadable — write it.
-  }
+  const needsWrite = readTextOrNull(target) !== content; // absent or unreadable — write it
   if (needsWrite) {
     writeTextAtomic(target, content);
   }

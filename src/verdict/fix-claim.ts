@@ -205,14 +205,8 @@ export function sourceHaystack(root: string): string {
       skipDirs,
     );
   for (const file of ["package.json", "tsconfig.json"]) {
-    const p = join(root, file);
-    if (existsSync(p)) {
-      try {
-        parts.push(readFileSync(p, "utf8"));
-      } catch {
-        // Unreadable: contributes nothing.
-      }
-    }
+    const text = readTextOrNull(join(root, file));
+    if (text !== null) parts.push(text); // Missing or unreadable contributes nothing.
   }
   return parts.join("\n");
 }

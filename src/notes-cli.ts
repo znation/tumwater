@@ -18,6 +18,7 @@
  * TUMWATER_NOTES_PATH), and 2 with usage for anything else. */
 
 import fs from "node:fs";
+import { readTextOrNull } from "./files/files.js";
 import { validateRoleNote, writeRoleNote } from "./agent/role-notes-write.js";
 
 /** The note's path, read ONLY from the environment — never from an argument. */
@@ -36,11 +37,7 @@ function readStdin(): string {
 
 /** Read the note's current text; a missing note reads as empty (show prints nothing). */
 function readNote(): string {
-  try {
-    return fs.readFileSync(NOTES_PATH!, "utf8");
-  } catch {
-    return "";
-  }
+  return readTextOrNull(NOTES_PATH!) ?? "";
 }
 
 /** Refuse with `message` on stderr and exit 1 — the exit code for every expected refusal. */

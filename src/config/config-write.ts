@@ -11,6 +11,7 @@ import fs from "node:fs";
 import { modelTierMap, type TumwaterConfig } from "./config-schema.js";
 import { configPath, configLockPath, configRequestPath, CONFIG_BASENAME } from "../paths.js";
 import { errorMessage } from "../text/text.js";
+import { readTextOrNull } from "../files/files.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
@@ -531,12 +532,8 @@ export function applyConfigRequest(
   wt: string,
 ): { applied: string[]; ignored: string[]; error?: string } | null {
   const requestFile = configRequestPath(wt);
-  let raw: string;
-  try {
-    raw = fs.readFileSync(requestFile, "utf8");
-  } catch {
-    return null; // no request this tick
-  }
+  const raw = readTextOrNull(requestFile);
+  if (raw === null) return null; // no request this tick
 
   const ignored: string[] = [];
   let applied: string[] = [];

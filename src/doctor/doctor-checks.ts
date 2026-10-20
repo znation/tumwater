@@ -17,7 +17,7 @@ import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { envPath, findOnPath, subdirectoryNames } from "../files/files.js";
+import { envPath, findOnPath, readTextOrNull, subdirectoryNames } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -500,13 +500,7 @@ export function checkFunes(
   config: TumwaterConfig | undefined,
   pathEnv: string = envPath(),
   homeDir: string = os.homedir(),
-  readPath: (file: string) => string | null = (file) => {
-    try {
-      return fs.readFileSync(file, "utf8");
-    } catch {
-      return null;
-    }
-  },
+  readPath: (file: string) => string | null = readTextOrNull,
 ): CheckOutcome | null {
   if (!config) return null;
   if (findOnPath("funes", pathEnv) === null) return null;

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
-import { writeBytesAtomic } from "../files/files.js";
+import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
@@ -137,12 +137,8 @@ export function hasConflictMarkers(wt: string, files: string[]): boolean {
   // leaves only a separator line behind is treated as resolved; its stray line is content the
   // project's own tests can catch.
   return files.some((f) => {
-    const p = path.join(wt, f);
-    try {
-      return MARKER_EDGE.test(fs.readFileSync(p, "utf8"));
-    } catch {
-      return false;
-    }
+    const text = readTextOrNull(path.join(wt, f));
+    return text !== null && MARKER_EDGE.test(text);
   });
 }
 
@@ -188,12 +184,8 @@ export function conflictHunkRanges(text: string): Array<{ start: number; end: nu
  * file counts, backlog or code; a deleted, unreadable or binary (NUL-bearing) file lists none. */
 export function conflictedFileHunks(wt: string, files: readonly string[]): ConflictedFile[] {
   return files.map((f) => {
-    let text = "";
-    try {
-      text = fs.readFileSync(path.join(wt, f), "utf8");
-    } catch {
-      // Deleted or unreadable: no ranges to name.
-    }
+    // Deleted or unreadable reads as empty: no ranges to name.
+    const text = readTextOrNull(path.join(wt, f)) ?? "";
     const all = text.includes("\0") ? [] : conflictHunkRanges(text);
     return { path: f, hunks: all.slice(0, MAX_LISTED_HUNKS), more: Math.max(0, all.length - MAX_LISTED_HUNKS) };
   });

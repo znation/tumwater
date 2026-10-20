@@ -18,6 +18,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { readTextOrNull } from "../../files/files.js";
 import { isJsonObject } from "../../files/json-object.js";
 
 /** The operator's global opencode config lives in `$XDG_CONFIG_HOME/opencode/` (or
@@ -127,12 +128,8 @@ export function operatorMcpNames(env: NodeJS.ProcessEnv, homeDir: string): strin
   const configHome = env.XDG_CONFIG_HOME ?? path.join(homeDir, ".config");
   const dir = path.join(configHome, "opencode");
   for (const file of OPERATOR_CONFIG_FILES) {
-    let text: string;
-    try {
-      text = fs.readFileSync(path.join(dir, file), "utf8");
-    } catch {
-      continue;
-    }
+    const text = readTextOrNull(path.join(dir, file));
+    if (text === null) continue;
     let parsed: unknown;
     try {
       parsed = JSON.parse(file.endsWith(".jsonc") ? stripJsonc(text) : text);

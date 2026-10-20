@@ -22,10 +22,9 @@
  * Anything else — the same entry edited on both sides, a code file, a file one side deleted —
  * goes to the pi resolver untouched. */
 
-import fs from "node:fs";
 import path from "node:path";
 import { BACKLOG_FILES, FINISHED_ARCHIVES } from "../backlog/backlog-md.js";
-import { writeTextAtomic } from "../files/files.js";
+import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { git } from "../git/git-run.js";
 
 /** A parsed diff3 conflict hunk: the three sides between `<<<<<<<`, `|||||||`, `=======` and
@@ -168,10 +167,8 @@ export async function resolveBacklogInsertConflicts(
       continue;
     }
     const p = path.join(wt, file);
-    let text: string;
-    try {
-      text = fs.readFileSync(p, "utf8");
-    } catch {
+    const text = readTextOrNull(p);
+    if (text === null) {
       remaining.push(file); // deleted side or unreadable path — leave it to the resolver
       continue;
     }
