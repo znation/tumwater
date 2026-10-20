@@ -134,7 +134,7 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
 /** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
- * role can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
+ * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
  * clause cannot drift. */
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
@@ -147,7 +147,7 @@ export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
 /** The markdown note the feature role appends under a plan whose change was rejected after its
  * final revision round, carrying the reviewer's objections back to the strong-tier plan role
  * instead of letting feature re-author the same plan. Same convention as NEEDS_REVIEW_NOTE: a
- * note a later fresh tick reads, with no code parsing it. */
+ * note a later fresh run reads, with no code parsing it. */
 export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds**`;
 
 /** The literal prefix every Waiting-for-the-next-failure note starts with. Exported so a reader
@@ -157,17 +157,17 @@ export const WAITING_FOR_FAILURE_PREFIX = `**Waiting for the next failure `;
 
 /** The markdown note the bugfix role writes under an open bug it cannot reproduce once it has made
  * the failure explain itself, so bugfix stops spending runs without new evidence. Same convention
- * as NEEDS_REPLAN_NOTE: a note a later fresh tick reads. It lifts when whoever records the next
+ * as NEEDS_REPLAN_NOTE: a note a later fresh run reads. It lifts when whoever records the next
  * occurrence deletes the line, or by `tumwater bug --release <n>`. */
 export const WAITING_FOR_FAILURE_NOTE = `${WAITING_FOR_FAILURE_PREFIX}<YYYY-MM-DD> by bugfix: <what the next failure's message will show>**`;
 
 /** How a role with no backlog (organize, clean, dedupe, perf, security, robustness, improve) finds
  * its one task, as numbered steps. Written against the observed failure: with nothing to point
  * at, a local model reads the codebase file by file — thirty whole-file reads, ~300 KB of tool
- * output — and then either fills its window or declares nothing-to-do (improve: 41 of 44 ticks in
+ * output — and then either fills its window or declares nothing-to-do (improve: 41 of 44 runs in
  * the first week of September landed nothing). Cheap signals shortlist candidates; a decision
  * deadline ends the search; the harness's own commit subjects (`tumwater(<role>): …`) are the
- * only cross-tick memory of what the role did lately, so the text names them. Takes the role id
+ * only cross-run memory of what the role did lately, so the text names them. Takes the role id
  * so the git command is literal, not a placeholder the model has to fill in. */
 export function searchGuidance(roleId: string): string {
   return `How to search — do not read the codebase file by file: a whole-tree survey costs most of

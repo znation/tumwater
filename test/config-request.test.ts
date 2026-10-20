@@ -1,5 +1,5 @@
 // Tests for src/config/config-write.ts's director config-request path
-// (applyConfigRequest) — the request file the director writes and the tick applies.
+// (applyConfigRequest) — the request file the director writes and the run applies.
 
 import test from "node:test";
 import assert from "node:assert/strict";

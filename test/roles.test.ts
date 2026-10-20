@@ -37,7 +37,7 @@ test("every catalog role has a unique, non-empty id, title, and find text", () =
 
 test("catalog order is scheduling priority: shipping work outranks hygiene", () => {
   // The orchestrator starts roles in catalog order (the startup burst), so the head of ROLES
-  // decides which roles get their first tick when everything wakes at once.
+  // decides which roles get their first run when everything wakes at once.
   assert.ok(ROLES.length >= 2, "catalog has at least the two shipping roles");
   assert.equal(ROLES[0]!.id, "feature");
   assert.equal(ROLES[1]!.id, "bugfix");
@@ -89,7 +89,7 @@ test("roleById resolves every catalog id; the director and unknown ids yield und
     assert.ok(found?.id === role.id, `roleById(${JSON.stringify(role.id)})`);
   }
   // The director is user-prompt-driven and has no find prompt by design — a Role for it
-  // would let a tick prompt be built as if it were an ordinary role.
+  // would let a run prompt be built as if it were an ordinary role.
   assert.equal(roleById(DIRECTOR_ROLE), undefined);
   assert.equal(roleById("no-such-role"), undefined);
 });

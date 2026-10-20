@@ -36,7 +36,7 @@ export function parseJsonConfig(
 }
 
 /** Build the default TumwaterConfig: every role enabled except the opt-in selfcheck (steward on its
- * slow ~6 h tick, qa and selfcheck on ~2 h, readme on 30 min, plan and organize on 1 h), with
+ * slow ~6 h run, qa and selfcheck on ~2 h, readme on 30 min, plan and organize on 1 h), with
  * defaults for concurrency, timeouts, log size, retention, thrash detection, idle backoff,
  * self-redeploy, and review settings. The return type is the resolved view (config-views.ts): a
  * freshly defaulted config has no model map to resolve — only a loaded file can carry one — so
@@ -52,7 +52,7 @@ export function defaultConfig(): ResolvedModelConfig {
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
   roles.qa = { enabled: true, minRunIntervalSeconds: 7200 };
   // Selfcheck reads the event log on the same slow clock: the digest is a windowed view, so a
-  // tick a couple of hours apart reads a new window rather than re-filing the same cluster.
+  // run a couple of hours apart reads a new window rather than re-filing the same cluster.
   // It is the one opt-in role: its evidence is this harness's own event log and its charter
   // files only harness misbehavior, so on any other project every finding is a tumwater bug
   // filed into the wrong backlog, which that project's bugfix role rightly rejects. Tumwater's
@@ -60,7 +60,7 @@ export function defaultConfig(): ResolvedModelConfig {
   roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
-  // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
+  // 20% of every run: readme woke on every merge to restamp one line, and plan re-audited plans
   // nobody had touched. A 30 min readme clock batches a burst of merges into one sync; a 1 h
   // plan clock leaves the slots to the roles that ship. Both still wake early when main moves —
   // the clock only bounds how often.
@@ -88,7 +88,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,
     minRunIntervalSeconds: 20,
-    // Four hours: the largest tick a hosted model legitimately took and still merged work
+    // Four hours: the largest run a hosted model legitimately took and still merged work
     // measured 185 minutes (BUGS.md 2026-09-29), so 30 minutes discarded real work and burned
     // every resume before the task could finish. A run that stops making progress is still
     // bounded earlier by the quiet watchdog, not by this cap.
@@ -112,7 +112,7 @@ export function defaultConfig(): ResolvedModelConfig {
     maintenancePerWorkMerge: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
     // below this many GB free, the team holds new work until it climbs 5 GB back above it.
-    // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.
+    // 10 GB leaves room for an in-flight run to finish and a state write to land. 0 disables.
     diskHoldGB: 10,
     // Pressure reclaim (plans/disk-floor.md, part 2/4): below this many GB free, a background
     // pass deletes gitignored build outputs from idle worktrees before the 10 GB hold engages.
@@ -123,9 +123,9 @@ export function defaultConfig(): ResolvedModelConfig {
     // whatever the free space. A day catches paused, retired and rarely due roles without
     // sweeping a worktree that merely slept through the night. 0 disables idle reclaim.
     worktreeIdleReclaimHours: 24,
-    // Friction is flagged only when a changed tick burns BOTH thresholds
+    // Friction is flagged only when a changed run burns BOTH thresholds
     // (src/run/run-stage.ts): the absolute turn count alone measures model speed, so a fast
-    // model's ordinary 40+ turn / few-minute tick stays unflagged, while a genuinely hard tick
+    // model's ordinary 40+ turn / few-minute run stays unflagged, while a genuinely hard run
     // that burned 40+ turns over half an hour or more still is (BUGS.md 2026-09-19). Tuned for
     // the ~27B local model at 24-35 tok/s, where 40 turns is half an hour of work.
     thrashTurns: 40,
@@ -138,7 +138,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // writes a request file the harness applies to the live config before any commit, so no
     // diff can ever touch tumwater.json and the exemption — once the only thing keeping an
     // explicit user instruction from being discarded by a rejected review — has nothing left
-    // to exempt. Removing it also closes the path where a director tick could merge a mixed
+    // to exempt. Removing it also closes the path where a director run could merge a mixed
     // doc-plus-config diff unreviewed.
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
     customRoles: [],
@@ -182,7 +182,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
   };
   // Seed each user-defined role into roles BEFORE the overlay loop so a file's `roles` section
   // overrides per-key for a custom exactly like for built-ins (enabled, instructions,
-  // tickInterval, provider/model); seeding after would silently ignore those overrides.
+  // runInterval, provider/model); seeding after would silently ignore those overrides.
   // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
   // array order — the display and startup tie-break order.
   for (const c of merged.customRoles) {

@@ -80,11 +80,11 @@ test("reviewRunConfig gives the reviewer its own time budget over the reviewer w
   config.runTimeoutSeconds = 54_000;
   config.review.model = "strong-model";
   const run = reviewRunConfig(config);
-  assert.equal(run.runTimeoutSeconds, REVIEW_TIMEOUT_S, "the tick's hours-long budget never reaches the reviewer");
+  assert.equal(run.runTimeoutSeconds, REVIEW_TIMEOUT_S, "the run's hours-long budget never reaches the reviewer");
   assert.equal(run.model, "strong-model", "the run keeps the reviewer's model wiring");
   assert.equal(run.quietTimeoutSeconds, config.quietTimeoutSeconds, "only the wall-clock budget changes");
 
-  // A configured review.timeoutSeconds replaces the default; a smaller tick budget still wins.
+  // A configured review.timeoutSeconds replaces the default; a smaller run budget still wins.
   config.review.timeoutSeconds = 120;
   assert.equal(reviewRunConfig(config).runTimeoutSeconds, 120);
   config.runTimeoutSeconds = 60;
@@ -153,7 +153,7 @@ test("applyFallbackModel raises the reviewer's time budget to the fallback floor
   assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 7200);
   assert.equal(config.review.timeoutSeconds, 7200, "the source config is untouched");
 
-  // The tick's own budget still caps the reviewer, fallback or not.
+  // The run's own budget still caps the reviewer, fallback or not.
   config.runTimeoutSeconds = 600;
   assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 600);
 });
@@ -354,9 +354,9 @@ test("a map-form fallback engages its default entry until part 5/8 tiers it", ()
 
 test("a non-pi fallback pair is keyed by its backend, in both selector forms", () => {
   // PLANS.md "Mixed claude + pi fleets, part 2/4": the budget gate's handback matches the
-  // tick's seamHoldKey capture against the fallback pair, so a fallback that routes to a
+  // run's seamHoldKey capture against the fallback pair, so a fallback that routes to a
   // non-pi backend must carry that backend as its provider — a namespaced `claude/<id>` and
-  // a bare `<id>` on a claude team both read `claude`, so a tick on either form is handed
+  // a bare `<id>` on a claude team both read `claude`, so a run on either form is handed
   // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
   const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
   assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {

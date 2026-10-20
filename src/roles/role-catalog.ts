@@ -38,7 +38,7 @@ export interface Role {
    * tumwater.json roles.<id> config key, and what every --role CLI flag names. Built-in ids
    * are fixed; a custom role's id is whatever its config declares. */
   id: string;
-  /** Human-readable role name used only in the tick prompt's self-description
+  /** Human-readable role name used only in the run prompt's self-description
    * ("You are the "<id>" role (<title>)"), where it glosses a custom role's
    * arbitrary id; the status surfaces render the id, not this. */
   title: string;
@@ -46,17 +46,17 @@ export interface Role {
   find: string;
   /** The model tier this role's pi runs resolve to when neither the top-level `model` nor
    * `roles.<id>.model` names one (plans/model-tiers.md): `strong` where an error costs the
-   * most and runs are rare or gate everything (plan steers many ticks), `small` where the
+   * most and runs are rare or gate everything (plan steers many runs), `small` where the
    * work is bounded and low-stakes (readme), `default` everywhere else. */
   tier: ModelTier;
   /** The run's Scope rules in place of the shared small-and-self-contained ones
    * (src/prompt/prompt.ts's DEFAULT_SCOPE). Set only where the role's work is a different
-   * size by nature: organize, whose restructures merge whole instead of one module per tick. */
+   * size by nature: organize, whose restructures merge whole instead of one module per run. */
   scope?: string;
 }
 
 /** The opinionated role catalog. Every role has one job; a role's `find` text is
- * the role-specific "find something to do" half of the tick prompt.
+ * the role-specific "find something to do" half of the run prompt.
  *
  * Order matters: it is the scheduling priority when roles are otherwise tied
  * (e.g. the startup burst), so shipping work (feature, bugfix) outranks hygiene. */
@@ -196,7 +196,7 @@ edit the brief between the tumwater:prompt markers.`,
     title: "code organizer",
     // Written against the 2026-10-05/06 churn: with minor fixes exhausted and the shared
     // small-and-self-contained scope rule in force, organize reorganized the whole tree one
-    // directory per tick (45 of 86 merges in four hours) with no target structure ever
+    // directory per run (45 of 86 merges in four hours) with no target structure ever
     // stated. Major refactors stay welcome; they must be considered whole and merge whole.
     find: `Find ONE way the code could be better organized, and restructure it.
    1. First rank the production source files (not the tests) by \`wc -l\`. A production module

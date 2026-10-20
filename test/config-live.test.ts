@@ -276,7 +276,7 @@ test("a broken tumwater.json still reloads when the event log is unwritable", ()
   assert.deepEqual(live.poll(), config);
 });
 
-test("enabling a role mid-run appends a runner; disabling one warns that its ticks stop", () => {
+test("enabling a role mid-run appends a runner; disabling one warns that its runs stop", () => {
   const config = cloneConfig(defaultConfig());
   const qaRole = config.roles.qa ?? { enabled: true };
   config.roles.qa = { ...qaRole, enabled: false };
@@ -358,7 +358,7 @@ test("raising an instance count appends the new role's runner; lowering keeps it
   assert.ok(runners.some((r) => r.role === "feature-2"), "the new instance gains a runner");
   assert.equal(warnMessages(root).filter((m) => m.includes("role feature-2 enabled")).length, 1);
 
-  // A lowered count keeps the runner (runnerEnabled skips its future ticks) and warns once.
+  // A lowered count keeps the runner (runnerEnabled skips its future runs) and warns once.
   config.roles.feature = { ...config.roles.feature, instances: 1 };
   writeConfig(root, config);
   live.poll();

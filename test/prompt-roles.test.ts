@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
+import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
@@ -39,7 +39,7 @@ test("the perf role hunts measured wins and refuses speculative micro-optimizati
   const role = roleById("perf");
   assert.ok(role, "perf role exists");
   assert.equal(role.title, "performance optimizer");
-  const prompt = oneLine(buildTickPrompt({ role }));
+  const prompt = oneLine(buildRunPrompt({ role }));
   assert.match(prompt, /"perf" role/);
   assert.match(prompt, /CLEAR performance win/);
   assert.match(prompt, /measure or reason from actual data/);
@@ -50,7 +50,7 @@ test("the security role traces a reachable source-to-sink path and proves it wit
   const role = roleById("security");
   assert.ok(role, "security role exists");
   assert.equal(role.title, "security reviewer");
-  const prompt = oneLine(buildTickPrompt({ role }));
+  const prompt = oneLine(buildRunPrompt({ role }));
   assert.match(prompt, /"security" role/);
   assert.match(prompt, /Find ONE real, reachable security weakness/);
   assert.match(prompt, /Start from the trust boundaries, not from a file listing/);
@@ -67,7 +67,7 @@ test("the robustness role injects a concrete fault and refuses to silence errors
   const role = roleById("robustness");
   assert.ok(role, "robustness role exists");
   assert.equal(role.title, "robustness hardener");
-  const prompt = oneLine(buildTickPrompt({ role }));
+  const prompt = oneLine(buildRunPrompt({ role }));
   assert.match(prompt, /"robustness" role/);
   assert.match(prompt, /fails halfway, returns garbage, or never returns/);
   assert.match(prompt, /write-to-temp-then-rename/);
@@ -91,7 +91,7 @@ test("security and robustness sit between the observers and improve in catalog o
 test("the feature find text refuses rather than forces and skips refused plans", () => {
   const role = roleById("feature");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role }));
+  const prompt = oneLine(buildRunPrompt({ role }));
   assert.match(prompt, /A plan that resists implementation is a finding/);
   assert.match(prompt, /refuse it with the objection recorded rather than forcing it/);
   assert.match(prompt, /Skip plans whose entry carries a Refused note/);
@@ -99,7 +99,7 @@ test("the feature find text refuses rather than forces and skips refused plans",
 test("the bugfix find text refuses harmful fixes and skips refused bugs", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = oneLine(buildTickPrompt({ role }));
+  const prompt = oneLine(buildRunPrompt({ role }));
   assert.match(prompt, /A "bug" whose fix would harm the project is refused, not force-fixed/);
   assert.match(prompt, /Skip BUGS\.md entries the index block marks/);
 });
@@ -137,7 +137,7 @@ test("the director's request-file contract replaces the tumwater.json edit excep
   // worktree root, so the boundary is untouched.
   assert.match(d, /Never touch the \.tumwater directory or tumwater\.json/);
   for (const role of ROLES) {
-    const p = oneLine(buildTickPrompt({ role }));
+    const p = oneLine(buildRunPrompt({ role }));
     assert.match(p, /Never touch the \.tumwater directory or tumwater\.json/, `${role.id} keeps the ban`);
     assert.ok(!p.includes("config-request"), `${role.id} carries no request-file contract`);
   }
@@ -211,7 +211,7 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
   const find = qa!.find;
   assert.match(find, /prefer a deterministic offline mode \(a fake\/shim\)/);
   // Otherwise ONE real bounded run — minimal scope (constrained nested team), wall-capped,
-  // and killed with its whole process tree so no orphaned child survives the tick.
+  // and killed with its whole process tree so no orphaned child survives the run.
   assert.match(find, /exactly one enabled role and maxConcurrent 1/);
   assert.match(find, /wall-cap it \(~10 min including prefill\)/);
   assert.match(find, /kill its whole process tree when done/);
@@ -220,23 +220,23 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
   assert.match(find, /## Verified section at the end of BUGS\.md/);
   assert.match(find, /- 2026-08-28 run \(real\): init \+ one run merged; status\/logs confirm/);
 });
-test("buildTickPrompt for qa carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: qa! });
+test("buildRunPrompt for qa carries the find text plus the shared rules", () => {
+  const prompt = buildRunPrompt({ role: qa! });
   assert.match(prompt, /"qa" role \(product QA\)/);
   assert.ok(prompt.includes(qa!.find.trim()), "the full find text is embedded");
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
 });
-test("buildTickPrompt renders the coverage block only when one is passed", () => {
-  const withCoverage = buildTickPrompt({
+test("buildRunPrompt renders the coverage block only when one is passed", () => {
+  const withCoverage = buildRunPrompt({
     role: qa!,
     coverage: "Flow coverage (from this team's own record; least recently exercised first):\n  init — never exercised",
   });
   assert.ok(withCoverage.includes("Flow coverage (from this team's own record"));
   assert.match(withCoverage, /init — never exercised/);
-  const without = buildTickPrompt({ role: qa! });
+  const without = buildRunPrompt({ role: qa! });
   assert.ok(!without.includes("least recently exercised first"), "no coverage block when none is supplied");
   // The injection is qa-scoped by the caller, so a non-qa prompt must not carry it either.
-  const improve = buildTickPrompt({ role: roleById("improve")! });
+  const improve = buildRunPrompt({ role: roleById("improve")! });
   assert.ok(!improve.includes("least recently exercised first"));
 });
 test("the selfcheck role exists after qa in catalog order", () => {
@@ -256,7 +256,7 @@ test("the selfcheck find text carries tumwater-response rule, one bug, and the d
   assert.match(find, /no duplicate filings/);
 });
 test("a selfcheck prompt renders the injected digest in a <failure-digest> block", () => {
-  const prompt = buildTickPrompt({
+  const prompt = buildRunPrompt({
     role: selfcheck!,
     digest: "# Failure digest\n- cluster",
   });
@@ -269,7 +269,7 @@ test("prompts omit the <failure-digest> block when no digest is injected", () =>
   for (const id of ["qa", "feature"]) {
     const role = roleById(id);
     assert.ok(role);
-    assert.ok(!buildTickPrompt({ role }).includes("<failure-digest>"));
+    assert.ok(!buildRunPrompt({ role }).includes("<failure-digest>"));
   }
 });
 test("the readme prompt rewrites the status section wholesale instead of appending", () => {
@@ -283,7 +283,7 @@ test("the readme prompt names the state-only content: summary, backlog pointer �
     find,
     /one-line version\/capability summary — no command or flag lists, which belong in the usage docs/,
   );
-  // Open work is pointed at, never copied: PLANS.md/BUGS.md/QUESTIONS.md are read every tick
+  // Open work is pointed at, never copied: PLANS.md/BUGS.md/QUESTIONS.md are read every run
   // anyway, so a mirrored list in the brief is duplicate prefill that drifts.
   assert.match(
     find,
@@ -326,8 +326,8 @@ test("the readme prompt keeps the brief short and moves detail into linked docs"
   assert.match(find, /Keep the brief short: a summary, the status, and brief usage/);
   assert.match(find, /move detail there instead of growing the brief/);
 });
-test("buildTickPrompt for readme carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: readme! });
+test("buildRunPrompt for readme carries the find text plus the shared rules", () => {
+  const prompt = buildRunPrompt({ role: readme! });
   assert.match(prompt, /"readme" role \(brief and README keeper\)/);
   assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
 });
@@ -350,7 +350,7 @@ test("the coverage role locates gaps from evidence, not by reading every module"
   // example inside a generic instruction (BUGS.md 2026-10-04).
   assert.match(find, /node's own table above it can flip between runs on the same tree/);
   assert.match(find, /then read only that file and its existing tests/i);
-  // The fallback model's longest coverage tick (2026-10-01, 97 turns) wrote its own V8
+  // The fallback model's longest coverage run (2026-10-01, 97 turns) wrote its own V8
   // instrumentation scripts instead of reading the project's coverage table.
   assert.match(find, /do not write your own coverage instrumentation/);
 });
@@ -520,6 +520,6 @@ test("the steward's tally query stands as its own sentence, not inside a parenth
 });
 
 test("the common rules send scratch files to $TMPDIR, not a fixed /tmp path", () => {
-  const prompt = oneLine(buildTickPrompt({ role: roleById("bugfix")! }));
+  const prompt = oneLine(buildRunPrompt({ role: roleById("bugfix")! }));
   assert.match(prompt, /Put scratch files under `\$TMPDIR` \(made with `mktemp`\), never at a fixed `\/tmp` path/);
 });

@@ -407,9 +407,6 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   return parts.join("\n\n");
 }
 
-/** @deprecated Use buildRunPrompt. */
-export const buildTickPrompt = buildRunPrompt;
-
 /** The prompt for a director run, which routes a user request into the project. */
 export function buildDirectorPrompt(
   userPrompt: string,

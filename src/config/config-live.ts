@@ -35,7 +35,7 @@ export function newLiveConfigReload(deps: {
   mainBranch: string;
   /** The signal every runner watches — the orchestrator's roleSignal (the caller's stop plus
    * both internal stops), NOT the full harness signal: a role enabled mid-run must be cut off
-   * by the restart drain's role-tick abort exactly like a startup runner (BUGS.md 2026-09-30). */
+   * by the restart drain's role-run abort exactly like a startup runner (BUGS.md 2026-09-30). */
   runnerSignal: AbortSignal;
   /** The orchestrator's runner list, mutated in place: a role enabled mid-run gets a runner
    * appended here (its persisted state survives). */
@@ -151,7 +151,7 @@ export function newLiveConfigReload(deps: {
         prevLive = reloaded.config;
         for (const r of deps.runners) r.config = reloaded.config;
         // Live-resize the concurrency cap: a mid-run edit changes how many pi runs execute
-        // concurrently within this poll — no restart. Growing admits already-queued ticks;
+        // concurrently within this poll — no restart. Growing admits already-queued runs;
         // shrinking never preempts in-flight work, it only caps future grants.
         const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
         if (newMaxConcurrent !== lastMaxConcurrent) {
@@ -182,7 +182,7 @@ export function newLiveConfigReload(deps: {
         const nowEnabled = runnerIds(reloaded.config);
         // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
         // runner for each newly present role id (its persisted state survives). A lowered
-        // instance count keeps its runner; `runnerEnabled` skips its future ticks. A scoped round
+        // instance count keeps its runner; `runnerEnabled` skips its future runs. A scoped round
         // skips every other id: the enabling is logged (the warn loop below), but its runner
         // waits for the next unscoped round.
         for (const role of nowEnabled) {

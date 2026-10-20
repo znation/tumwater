@@ -144,7 +144,7 @@ export async function initProject(
   const tpl = template ?? getTemplate("blank")!;
   // The brief records the template's preamble ahead of the operator's words, so their words
   // remain the tail ("latest instruction wins" reads naturally). The combined text rides into
-  // every tick's prefill, so it obeys the same cap as a bare prompt — reject before any side
+  // every run's prefill, so it obeys the same cap as a bare prompt — reject before any side
   // effect so an overflowing preamble never lands in README.md.
   const combinedPrompt = tpl.briefPreamble
     ? `${tpl.briefPreamble}\n\n${initialPrompt.trim()}`
@@ -197,7 +197,7 @@ export async function initProject(
     );
   }
   // The roles read the project's reason to exist back out of the project brief on every
-  // tick (readInitialPrompt). A README.md without the managed section is the project's own
+  // run (readInitialPrompt). A README.md without the managed section is the project's own
   // documentation, so it is never rewritten: the repo is adopted instead, with the brief in
   // TUMWATER.md (plans/portability.md §7/7) — the same path `--adopt` asks for explicitly.
   // A brief that is already marked (in either file) wins over both: nothing brief-shaped is
@@ -215,7 +215,7 @@ export async function initProject(
   }
   // The same loss one step later: a brief that already owns the managed sections is never
   // rewritten (init only creates what is absent), so a DIFFERENT prompt given here would be
-  // silently dropped while every tick keeps running the old one. Refuse it and name the file
+  // silently dropped while every run keeps running the old one. Refuse it and name the file
   // that owns the brief — TUMWATER.md resolves ahead of README.md (plans/portability.md §7a/7),
   // so pointing at README.md would send the user to edit a file nobody reads. A re-run with the
   // same prompt, or a bare init, is the idempotent re-seed and passes.
@@ -293,7 +293,7 @@ export async function initProject(
     write("TUMWATER.md", briefTemplate(name, combinedPrompt));
   } else write("README.md", readmeTemplate(name, combinedPrompt));
   // A template with starter plans seeds the backlog with them, rendered as `### ` entries —
-  // the primary entry format every backlog reader parses — so the team's first ticks land on
+  // the primary entry format every backlog reader parses — so the team's first runs land on
   // real work. blank keeps the `_None yet._` placeholder byte-identical to today.
   const plansContent =
     tpl.starterPlans.length > 0
@@ -319,8 +319,8 @@ export async function initProject(
   }
   if (ensureGitignore(root, dryRun)) created.push(".gitignore");
   else if (fs.existsSync(path.join(root, ".gitignore"))) leftAlone.push(".gitignore");
-  // The template's starter directories: empty ones only, before the first tick — the team's
-  // own ticks write any code. Existing directories are left alone, like existing files above.
+  // The template's starter directories: empty ones only, before the first run — the team's
+  // own runs write any code. Existing directories are left alone, like existing files above.
   for (const dir of tpl.starterDirs) {
     claim(dir, path.join(root, dir), () => fs.mkdirSync(path.join(root, dir), { recursive: true }));
   }

@@ -217,7 +217,7 @@ test("the director is special-cased: no find text, and its inbox is its queue", 
   const idle = rolePayload(dir, "director", NO_MODELS);
   assert.equal(idle.find, null);
   assert.equal(idle.inboxCount, 0);
-  assert.equal(idle.nextPrompt, null); // empty inbox: nothing to run, like the tick itself
+  assert.equal(idle.nextPrompt, null); // empty inbox: nothing to run, like the run itself
   enqueuePrompt(dir, "add a changelog");
   const busy = rolePayload(dir, "director", NO_MODELS);
   assert.equal(busy.inboxCount, 1);
@@ -312,7 +312,7 @@ test("with several prompts queued, the next-run block discloses that only the ol
   assert.match(
     md,
     /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
-  ); // run-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
+  ); // run-prompt dequeues exactly one per run — the block says so rather than reading as a contradiction
 });
 
 test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkdown splices in place", () => {
@@ -324,7 +324,7 @@ test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkd
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const p = rolePayload(dir, "feature", NO_MODELS);
   const lines = inspectMarkdownLines(p);
-  // The Notebook block is verbatim and fenced, then the Next tick prompt block, then the
+  // The Notebook block is verbatim and fenced, then the Next run prompt block, then the
   // "more waits" disclosure when several prompts are queued.
   assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in team.ts", "```"]);
   assert.ok(lines.includes("## Next run's prompt"));
@@ -333,7 +333,7 @@ test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkd
     /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
   );
   // The extraction is in place: the full document still shows Find text before Notebook
-  // before Next tick prompt, with the same fenced notebook body.
+  // before Next run prompt, with the same fenced notebook body.
   const md = renderRoleMarkdown(p);
   const findAt = md.indexOf("## Find text");
   const notebookAt = md.indexOf("## Notes");
@@ -473,7 +473,7 @@ test("an active model-fallback episode is reported with its pair and reason", ()
     /- Model fallback: fp\/fm — on fallback since .* \(primary failing: Request timed out\.\)/,
   );
 
-  // A probe is due: the next tick runs the primary, so the episode line is gone.
+  // A probe is due: the next run uses the primary, so the episode line is gone.
   state.modelFallback.probeAt = Date.now() - 1;
   saveRunnerState(dir, state);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).modelFallback, null);
@@ -750,7 +750,7 @@ test("a torn run_end line (no usable ts/result/duration) contributes no recent o
   assert.equal(o.length, 2); // only the two with a usable ts + result survive
   assert.ok(o.every((x) => Number.isFinite(x.ts) && typeof x.result === "string" && x.result.length > 0));
   const newest = o[0]!;
-  assert.equal(newest.result, "no_change"); // newest valid survivor = tick 4
+  assert.equal(newest.result, "no_change"); // newest valid survivor = run 4
   assert.equal(newest.ts, now - 30_000);
   assert.equal(newest.durationMs, 10_000); // a valid duration rides along
 });
@@ -789,13 +789,13 @@ test("role payload sums the role's usage and renders a Spend line", () => {
   assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Spend: \$0\.01 · 1200 tokens$/m);
 });
 
-test("a never-costly or never-ticked role carries no usage field or Spend line", () => {
+test("a never-costly or never-run role carries no usage field or Spend line", () => {
   const dir = root();
-  // Never ticked: no usage at all, and the render stays byte-identical (no Spend line).
-  const neverTicked = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(neverTicked.usage, undefined);
-  assert.doesNotMatch(renderRoleMarkdown(neverTicked), /- Spend:/);
-  // Ticked but with all-zero usage: the zero-means-absent convention drops the field.
+  // Never ran: no usage at all, and the render stays byte-identical (no Spend line).
+  const neverRan = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(neverRan.usage, undefined);
+  assert.doesNotMatch(renderRoleMarkdown(neverRan), /- Spend:/);
+  // Ran but with all-zero usage: the zero-means-absent convention drops the field.
   writeEvents(dir, [
     { ts: Date.now() - 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
   ]);
@@ -811,7 +811,7 @@ test("a torn run_end line contributes nothing to the usage sum", () => {
     { ts: now - 120_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
     // A non-numeric cost reads as 0 via eventUsage's finiteness guard; its tokens still count.
     { ts: now - 60_000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 200, costUsd: "not-a-number" }, // retired-name-ok: legacy event field in a fixture
-    // A torn ts (no usable timestamp) is as unusable as an absent tick and spends nothing.
+    // A torn ts (no usable timestamp) is as unusable as an absent run and spends nothing.
     { ts: "not-a-number", loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 999, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
@@ -834,13 +834,13 @@ test("role markdown renders the Recent runs section before the instructions", ()
 });
 
 // The role's schedule (PLANS.md): the role view says when the role next runs and when it
-// last ticked, derived from the persisted nextRunAt/backoffSeconds/lastRunEndedAt and in
-// the same words and wording family as the status `next run`/`last tick` cells. The clock is
+// last ran, derived from the persisted nextRunAt/backoffSeconds/lastRunEndedAt and in
+// the same words and wording family as the status `next run`/`last run` cells. The clock is
 // injected so every line is pinned by a fixed now (the renderer stays a pure function).
 test("role payload and render surface the role's schedule from persisted state", () => {
   const dir = root();
   const now = 1_700_000_000_000;
-  // A scheduled role in backoff with a last tick: a future nextRunAt with backoffSeconds > 0.
+  // A scheduled role in backoff with a last run: a future nextRunAt with backoffSeconds > 0.
   const state = freshRunnerState("feature");
   state.nextRunAt = now + 300_000; // 5m away
   state.backoffSeconds = 120;
@@ -852,7 +852,7 @@ test("role payload and render surface the role's schedule from persisted state",
   assert.equal(p.lastRunEndedAt, now - 180_000);
   const md = renderRoleMarkdown(p, now);
   assert.match(md, /- Next run: sleeping in 5m/); // sleeping prefix while backing off
-  // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
+  // Last run: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
   assert.match(md, /- Last run: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
 
   // A due role (nextRunAt at/past now) reads `due now`.
@@ -868,7 +868,7 @@ test("role payload and render surface the role's schedule from persisted state",
   assert.match(plain, /- Next run: in 1m/);
   assert.doesNotMatch(plain, /backoff/);
 
-  // A never-ticked, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
+  // A never-run, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
   // payload omits lastRunEndedAt (and reads nextRunAt 0) until the role has been scheduled.
   const freshDir = root();
   const fresh = rolePayload(freshDir, "feature", NO_MODELS);
@@ -882,8 +882,8 @@ test("role payload and render surface the role's schedule from persisted state",
 
 // The role view's Schedule must not understate a quiet yield-scaled role's effective gap: a
 // scalable role (bugfix here) whose recent-yield ring holds a run of empties earns a ×N
-// multiplier (yieldMultiplier 2 at 10 empties) that stretches its min-tick gap beyond what
-// nextRunAt's countdown shows, so the `Next tick` line rides the same `×N` suffix the status
+// multiplier (yieldMultiplier 2 at 10 empties) that stretches its min-run gap beyond what
+// nextRunAt's countdown shows, so the `Next run` line rides the same `×N` suffix the status
 // `next run` cell and the GUI twin carry (nextRunCell/fmtNextRun). Work roles (feature, plan,
 // director) are not scalable and never show the suffix.
 test("role schedule surfaces the yield multiplier a quiet scalable role is serving", () => {

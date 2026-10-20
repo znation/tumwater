@@ -212,16 +212,16 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
   };
 }
 
-/** The config a role's ticks SCHEDULE from: configForRole, except that while PLANS.md still
+/** The config a role's runs SCHEDULE from: configForRole, except that while PLANS.md still
  * has planning room (planBacklogOpen — below the plan role's eligible-plan target, or holding
  * a plan that needs review/needs replan) the plan role schedules with a ZERO min gap, so a
- * productive plan tick reruns on the next poll and an unproductive one drops to the idle
+ * productive plan run reruns on the next poll and an unproductive one drops to the idle
  * backoff. The plan role's own machine signal is `planBacklogFull` (src/scheduling/claims.ts):
  * a fresh project's empty backlog is not full, so this subsumes the old placeholder-status
  * trigger. One home for the rule: isEligible enforces the same gap when it decides whether
- * plan may start, and runner-run.ts hands this config to applyTickOutcome so nextRunAt is
+ * plan may start, and runner-run.ts hands this config to applyRunOutcome so nextRunAt is
  * scheduled from the same figure instead of the role default. Every other role, and the plan
- * role once the target is met (which already holds the tick via the plans-full deferral),
+ * role once the target is met (which already holds the run via the plans-full deferral),
  * schedule configForRole unchanged. */
 export function scheduleConfigForRole(
   config: TumwaterConfig,
@@ -263,10 +263,10 @@ export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
 }
 
 /** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
- * the merge slot the whole queue waits on, and its only other limits were the tick's budget
+ * the merge slot the whole queue waits on, and its only other limits were the run's budget
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
  * 24.6 min max, while earlier days had 1.5–3.5 h reviews. 15 min clears the ordinary review and
- * kills a wedged one in minutes instead of the tick's hours. */
+ * kills a wedged one in minutes instead of the run's hours. */
 export const REVIEW_TIMEOUT_S = 900;
 
 /** The reviewer's wall-clock floor while the budget fallback carries the team. The free model
@@ -281,7 +281,7 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
- * the tick's. A smaller runTimeoutSeconds still wins. A still-progressing gate run gets one
+ * the run's. A smaller runTimeoutSeconds still wins. A still-progressing gate run gets one
  * extension of the same length (src/pi/pi-watchdogs.ts), so the effective ceiling on a large
  * diff's review is twice this budget. */
 export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {

@@ -184,8 +184,8 @@ test("thinking values are checked against pi's accepted levels", () => {
 });
 
 test("role instructions are capped like a custom role's task", () => {
-  // Both strings ride into every tick's prefill, so both must be bounded: an unbounded
-  // instructions string is a standing per-tick cost, not just a one-off prompt edit.
+  // Both strings ride into every run's prefill, so both must be bounded: an unbounded
+  // instructions string is a standing per-run cost, not just a one-off prompt edit.
   const long = "x".repeat(4097);
   assert.match(
     validationError({ roles: { feature: { instructions: long } } }),
@@ -297,7 +297,7 @@ test("validateConfig reports every invalid value in one error", () => {
     "idleBackoff.factor must be a number of at least 1 (got 0)",
     'roles.clean.enabled must be true or false (got "false")',
     // AC3 (plans/steward-role.md): the per-role slow clock is validated like its siblings —
-    // a negative interval would schedule ticks in the past and spin the loop.
+    // a negative interval would schedule runs in the past and spin the loop.
     "roles.feature.minRunIntervalSeconds must be a number of 0 or more, at most 2147483 (got -5)",
   ]) {
     assert.ok(msg.includes(field), `error message should mention: ${field}`);
@@ -355,7 +355,7 @@ test("validateConfig accepts a reserved agent id and rejects an unknown or blank
 
 test("validateConfig rejects piArgs entries that repeat a harness-managed flag", () => {
   // pi-args.ts appends config.piArgs AFTER its own flags and pi's parser is last-wins, so a
-  // repeated flag silently overrides the harness: `--mode text` makes every tick's stream
+  // repeated flag silently overrides the harness: `--mode text` makes every run's stream
   // unparseable and `--model` spends on a model tumwater.json never named. Reject the
   // collision and point at the setting that owns it.
   assert.match(
@@ -416,7 +416,7 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   );
   assert.doesNotThrow(() => validateConfig({ backends: { claude: { configDir: "/team/claude" } } }));
   assert.doesNotThrow(() => validateConfig({ backends: { claude: { configDir: "~/.claude-team" } } }));
-  // A relative config dir is refused: claude would resolve it against the tick's cwd.
+  // A relative config dir is refused: claude would resolve it against the run's cwd.
   assert.match(
     validationError({ backends: { claude: { configDir: "rel/claude" } } }),
     /backends\.claude\.configDir must be an absolute path after ~ expansion \(got "rel\/claude"\)/,

@@ -2,7 +2,7 @@
 /** One role's read-only inspection payload — the collector behind `tumwater role <id>`:
  * what the role IS (catalog entry or custom, enabled, paused, tier), what it RUNS ON
  * (resolved provider/model, the budget fallback pair), what it CARRIES (the instructions
- * override and the role's own find text verbatim), and what its NEXT tick's prompt will
+ * override and the role's own find text verbatim), and what its NEXT run's prompt will
  * read like, assembled through the preview seam so nothing queued is consumed. Split out
  * of cli.ts like backlogPayload and status/status-data.ts's snapshot so the collector is testable
  * without the CLI and one renderer consumes exactly this shape. Every read degrades like
@@ -47,7 +47,7 @@ export interface RoleViewPayload {
   title: string;
   /** True when the id resolves through config.customRoles, not the built-in catalog. */
   custom: boolean;
-  /** Whether the role is enabled in tumwater.json (a disabled role never ticks). */
+  /** Whether the role is enabled in tumwater.json (a disabled role never runs). */
   enabled: boolean;
   /** Whether a per-role pause marker currently holds the role. */
   paused: boolean;
@@ -68,7 +68,7 @@ export interface RoleViewPayload {
   backend: string;
   /** The provider key this role's admission lease acquires (seamConcurrencyKey, the same
    * pure call the orchestrator's admission uses) — the key whose cap bounds the role's
-   * concurrent ticks (plans/provider-concurrency.md §8). Absent for a seam whose key
+   * concurrent runs (plans/provider-concurrency.md §8). Absent for a seam whose key
    * cannot be resolved (a cap-less default team). */
   providerKey?: string;
   /** The `maxConcurrentPerProvider` cap for `providerKey`, present only while such a map is
@@ -85,7 +85,7 @@ export interface RoleViewPayload {
    * willing to engage it. Meaningful only when `fallback` is non-null. */
   fallbackFree: boolean;
   /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
-   * the role's ticks are not running off-model. */
+   * the role's runs are not running off-model. */
   modelFallback: ModelFallbackView | null;
   /** The claude billing for a claude seam (plans/agent-backends.md §7/§8, PLANS.md part
    * 6d/7): "subscription" or "api" from the account file, absent for a pi seam or when no
@@ -108,9 +108,9 @@ export interface RoleViewPayload {
   /** Where the running orchestrator has this role's tier moved on its fallback chain (its
    * `chain` block), or null when no orchestrator is alive or the tier is on its primary. */
   chainStep: ChainTierInfo | null;
-  /** The effective min-tick interval: the role's override or the global value. */
+  /** The effective min-run interval: the role's override or the global value. */
   minRunIntervalSeconds: number;
-  /** The role's own min-tick-interval override (roles.<base>.minRunIntervalSeconds), present
+  /** The role's own min-run-interval override (roles.<base>.minRunIntervalSeconds), present
    * only when set — so a payload without one renders the team default and every existing
    * `role --json` golden stays byte-identical. */
   minRunIntervalOverride?: number;
@@ -132,13 +132,13 @@ export interface RoleViewPayload {
   /** The role's own find-something-to-do text verbatim (a custom role's `task`), or null
    * for the director — it has no find text; its queued prompts ARE its work. */
   find: string | null;
-  /** The role's notebook (PLANS.md "Role notebook"): the note its own earlier ticks wrote, or
+  /** The role's notebook (PLANS.md "Role notebook"): the note its own earlier runs wrote, or
    * null when there is none (missing, empty, or unreadable). Always null for the director. */
   notes: string | null;
   /** Prompts currently queued for this role (the director's count includes the shared
    * inbox, which IS its queue). */
   inboxCount: number;
-  /** The next tick's assembled prompt, verbatim, through the preview seam — or null when
+  /** The next run's assembled prompt, verbatim, through the preview seam — or null when
    * the role has nothing to run (a director with an empty inbox). */
   nextPrompt: string | null;
   /** The role's persisted schedule (runner-state.ts): the epoch-ms instant before which it
@@ -159,13 +159,13 @@ export interface RoleViewPayload {
    * yield-scaled role's effective gap. 1 for every role outside the scalable set and
    * for a scalable role whose recent ring still holds a merge. */
   yieldMultiplier: number;
-  /** When the role's last tick ended, epoch ms — absent for a never-ticked role, so the
+  /** When the role's last run ended, epoch ms — absent for a never-run role, so the
    * JSON shape stays unchanged until the role has acted. */
   lastRunEndedAt?: number;
-  /** The role's recent tick outcomes — the newest up to 8 `run_end` results read from the
+  /** The role's recent run outcomes — the newest up to 8 `run_end` results read from the
    * event log, ordered newest-first, each with its time, result, duration, and summary.
    * Absent when the role has no `run_end` events, so the JSON shape is unchanged for a
-   * never-ticked role. Read straight from the event log so the command runs with the team
+   * never-run role. Read straight from the event log so the command runs with the team
    * stopped and never touches the live state. */
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
   /** The role's own spend over its retained event window — tokens, real cost, and notional
@@ -279,26 +279,26 @@ export function rolePayload(
   const opencodeCatalog = readOpencodeCache(root);
   const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, readClaudeAccount(root), opencodeCatalog) : null;
   const fallback = freeFallback ?? declaredFallback;
-  // One state read serves both the model-fallback episode and the next-tick preview below.
+  // One state read serves both the model-fallback episode and the next-run preview below.
   const state = loadRunnerState(root, role);
   const episode = state.modelFallback;
-  // The role's recent tick outcomes, read from the event log (readEvents) so the command
+  // The role's recent run outcomes, read from the event log (readEvents) so the command
   // answers with the team stopped and never touches live state. readEvents returns the log's
   // newest events in file (chronological) order, so filtering to this role's run_end events
   // and taking the last 8 yields the newest 8, reversed to newest-first. Durations and
   // summaries ride along only when the event carried them (a torn or empty line drops them),
-  // and an empty result is omitted so a never-ticked role carries no `recentOutcomes` at all.
+  // and an empty result is omitted so a never-run role carries no `recentOutcomes` at all.
   // One event-log read serves both per-role facts — the recent outcomes and the spend sum — so
   // the two cannot drift on what they cover: filtered to this role's run_end events once, then
   // the outcome projection keeps the newest valid 8 while the usage fold sums the whole window.
   const events = readEvents(root);
-  const tickEnds = events.filter((ev) => ev.type === "run_end" && eventRole(ev) === role);
+  const runEnds = events.filter((ev) => ev.type === "run_end" && eventRole(ev) === role);
   // The event log is read without a shape filter, so a torn or hand-edited run_end line can
   // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
   // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
   // an absent one (the same "a torn line carries no usable timestamp" rule eventRun/runStartMap
   // apply), so it contributes no outcome; a non-numeric durationMs is dropped like a missing one.
-  const recentOutcomes = tickEnds
+  const recentOutcomes = runEnds
     .filter((ev) => {
       return finiteNumber(ev.ts, null) !== null && typeof ev.result === "string" && ev.result !== "";
     })
@@ -313,10 +313,10 @@ export function rolePayload(
   // The role's own spend over the same retained window, summed per-run_end through the shared
   // eventUsage guard (a torn or hand-edited run_end line contributes nothing: a non-numeric
   // field reads as 0, and a line without a usable ts is as unusable as an absent one, matching
-  // recentOutcomes's drop rule so a torn tick never silently spends). Omitted when all three
+  // recentOutcomes's drop rule so a torn run never silently spends). Omitted when all three
   // sums are 0, keeping a never-costly role's JSON unchanged (the report's zero-means-absent
   // convention).
-  const usage = tickEnds.reduce<{ tokens: number; costUsd: number; notionalCostUsd: number }>(
+  const usage = runEnds.reduce<{ tokens: number; costUsd: number; notionalCostUsd: number }>(
     (acc, ev) => {
       if (finiteNumber(ev.ts, null) === null) return acc;
       const u = eventUsage(ev);
@@ -439,9 +439,9 @@ export function rolePayload(
         preview: true,
       })?.prompt ?? null,
     // The role's schedule — surfaced read-only from the same persisted state rolePayload
-    // already loaded for the model-fallback episode and the next-tick preview, so no new
+    // already loaded for the model-fallback episode and the next-run preview, so no new
     // read path exists and the collector stays one loadRunnerState per role. `lastRunEndedAt`
-    // is omitted (JSON unchanged) until the role has actually ticked.
+    // is omitted (JSON unchanged) until the role has actually run.
     nextRunAt: state.nextRunAt,
     backoffSeconds: state.backoffSeconds,
     yieldMultiplier: yieldMultiplierFor(state),

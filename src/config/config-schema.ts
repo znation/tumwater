@@ -4,13 +4,13 @@
  * value shapes (`TOP_LEVEL_KEYS` and friends) that say what a valid file may hold at each
  * level — the schema facts, single-homed here so adding a key edits one file: its type,
  * its default (config.ts), and its allow-list entry sit beside each other. Split out of the former
- * types.ts grab-bag — the runtime types a tick produces now live beside their consumers
- * (TickResult and TickOutcome in run-outcome.ts, RunnerState in runner-state.ts, HarnessEvent
+ * types.ts grab-bag — the runtime types a run produces now live beside their consumers
+ * (RunResult and RunOutcome in run-outcome.ts, RunnerState in runner-state.ts, HarnessEvent
  * in events.ts, MergeEntry in merge-queue.ts, and the pi-run types in run-agent.ts and
  * pi-run-result.ts) — so the schema the file on disk is validated against and the runtime
  * state the harness runs with
  * are two layers, changed for different reasons by different readers: a tumwater.json knob
- * hunt starts here, a tick-lifecycle trace starts beside the type it traces. Sibling
+ * hunt starts here, a run-lifecycle trace starts beside the type it traces. Sibling
  * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
  * (writes). */
 
@@ -88,7 +88,7 @@ export interface RoleConfig {
   backend?: string;
   /** pi thinking-level override for this role; falls back to the top-level value. */
   thinking?: string;
-  /** Minimum seconds between two ticks of THIS role, overriding the top-level value — a
+  /** Minimum seconds between two runs of THIS role, overriding the top-level value — a
    * slow clock for roles that should act rarely (the steward curates on ~6 h). */
   minRunIntervalSeconds?: number;
   /** How many parallel runners this role may have (plans/parallel-work-instances.md, part
@@ -99,7 +99,7 @@ export interface RoleConfig {
 
 /** A user-defined role in tumwater.json's `customRoles` array
  * (plans/user-defined-loops.md): each entry becomes a full-citizen role — persistent worktree +
- * branch, tick lifecycle, review gate, merge to main. Only the director may write this key; every
+ * branch, run lifecycle, review gate, merge to main. Only the director may write this key; every
  * other role's prompt keeps the blanket tumwater.json ban. */
 interface CustomLoop {
   /** The role id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
@@ -108,7 +108,7 @@ interface CustomLoop {
    * within the list. */
   name: string;
   /** The role's standing instruction — its entire find-something-to-do prompt. Capped at
-   * 4096 chars because it rides into every one of that role's tick prefills. */
+   * 4096 chars because it rides into every one of that role's run prefills. */
   task: string;
 }
 
@@ -139,7 +139,7 @@ interface ReviewConfig {
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
    * runTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
-   * so one wedged reviewer cannot hold the merge queue for a whole authoring tick. A reviewer
+   * so one wedged reviewer cannot hold the merge queue for a whole authoring run. A reviewer
    * (and the merge conflict resolver, which shares the gate's wiring) that is still making
    * progress at the deadline receives one extension of the same length before it is killed. */
   timeoutSeconds?: number;
@@ -166,11 +166,11 @@ export interface FallbackModelConfig {
   extraUsage?: boolean;
 }
 
-/** Idle backoff: how long a role sleeps after a tick that changed nothing. */
+/** Idle backoff: how long a role sleeps after a run that changed nothing. */
 export interface BackoffConfig {
-  /** Seconds to sleep after the first no-change tick. */
+  /** Seconds to sleep after the first no-change run. */
   initialSeconds: number;
-  /** Multiplier applied on each consecutive no-change tick. */
+  /** Multiplier applied on each consecutive no-change run. */
   factor: number;
   /** Ceiling in seconds. */
   maxSeconds: number;
@@ -262,7 +262,7 @@ export interface TumwaterConfig {
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time
    * (src/pi/pi-bin.ts resolveAgentBin), so a relative path names the same file to the run
-   * preflight, doctor, and the spawn itself — which runs with each tick's worktree as
+   * preflight, doctor, and the spawn itself — which runs with each run's worktree as
    * cwd; a bare name is left to PATH resolution exactly as before. */
   agentBin?: string;
   /** Extra argv passed straight to pi. Must not repeat a flag the harness sets itself
@@ -281,12 +281,12 @@ export interface TumwaterConfig {
   /** Max pi runs in flight at once across all roles, merges included: every merge verify run
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
-   * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
+   * waiting role run (land-queue speed 2c). Only the director's own runs sit outside it. */
   maxConcurrent: number;
   /** Per-provider concurrency caps (plans/provider-concurrency.md §1): how many runs each
    * model provider serves at once, beside the team-wide `maxConcurrent`. A map from provider
    * key (§2: a backend's own id for claude, else the pi provider) to a positive integer. A
-   * role tick, a merge verify run or a conflict resolver starts when BOTH its provider and the
+   * role run, a merge verify run or a conflict resolver starts when BOTH its provider and the
    * team have headroom; providers never wait on each other. An absent key is uncapped —
    * bounded by `maxConcurrent` alone — and a config without the key behaves exactly as
    * before. Unknown provider names are accepted (doctor warns in part 5/5); an entry at or
@@ -307,12 +307,12 @@ export interface TumwaterConfig {
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
   /** How many pooled worktree slots exist (plans/worktree-pool.md, "Config"): the fixed set of
-   * `.tumwater/worktrees/_slot-<n>` checkouts ticks and verify runs lease. Omitted, it
+   * `.tumwater/worktrees/_slot-<n>` checkouts runs and verify runs lease. Omitted, it
    * resolves through slotCount (src/config/config.ts) to `maxConcurrent + 1`. Must be at
    * least 1; a value below `maxConcurrent` is allowed — permit holders then wait for a
    * slot to free. */
   worktreeSlots?: number;
-  /** Minimum seconds between two ticks of the same role, even when woken early. */
+  /** Minimum seconds between two runs of the same role, even when woken early. */
   minRunIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
   runTimeoutSeconds: number;
@@ -331,12 +331,12 @@ export interface TumwaterConfig {
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
   /** Daily cost budget in USD for the team's autonomous spend: while the sum of every role's
-   * spend for the local day has reached this, roles stop starting new ticks until the next
+   * spend for the local day has reached this, roles stop starting new runs until the next
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
   maxDailyCostUsd: number;
   /** Per-role daily cost caps in USD, keyed by role id (the per-role sibling of
-   * `maxDailyCostUsd`): a role whose local-day spend has reached its cap starts no new ticks
+   * `maxDailyCostUsd`): a role whose local-day spend has reached its cap starts no new runs
    * until local midnight or a live edit raises/removes it. 0 disables that role's cap; an
    * absent key means uncapped. The director is exempt — an explicit human prompt outranks the
    * autonomous-spend cap. Keys must name known roles (built-in or customRoles) — a typo is a
@@ -347,10 +347,10 @@ export interface TumwaterConfig {
    * merge, on top of the fixed 12-merge floor. A number of 0 or more, default 2; there is no
    * off switch because a large value effectively disables the allowance. Once the window reaches
    * the allowance the scheduler holds maintenance roles until it rolls under (part 1b/4), except
-   * a fresh `tumwater wake` or queued prompt admits one tick. */
+   * a fresh `tumwater wake` or queued prompt admits one run. */
   maintenancePerWorkMerge: number;
   /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
-   * which roles start no new ticks (in-flight ticks finish; a tick due inside the
+   * which roles start no new runs (in-flight runs finish; a run due inside the
    * window starts at window end). A window may wrap midnight (start > end); an empty string
    * or an absent key means off. The director is exempt — a human steering outranks a
    * schedule, exactly as under the budget gate and the operator pause. */
@@ -358,13 +358,13 @@ export interface TumwaterConfig {
   /** Per-role quiet hours (PLANS.md): the scheduled sibling of `maxDailyCostUsdPerRole` —
    * keyed by role id, each value the same "HH:MM-HH:MM" window the team-wide `quietHours`
    * takes (wrapping included; an empty string or an absent key means off for that role). A
-   * role whose own window covers the local wall clock starts no new ticks — in-flight ticks
+   * role whose own window covers the local wall clock starts no new runs — in-flight runs
    * finish — while the team-wide window keeps working unchanged: a role is held when
    * EITHER window covers now. The director is exempt, exactly as under the team window. */
   quietHoursPerRole?: Record<string, string>;
   /** Disk floor (plans/disk-floor.md, "Disk floor 1/4"): the free-space floor in GB
    * (10^9 bytes) for the volume holding `.tumwater/worktrees`. When free space drops below
-   * it, no new work starts — role ticks, the director, merge verify runs and merges — until free
+   * it, no new work starts — role runs, the director, merge verify runs and merges — until free
    * space climbs back to `diskHoldGB` + 5 GB (the hysteresis that keeps a team hovering at
    * the line from flapping). In-flight work runs on. 0 disables the hold, lifting an active
    * one on the next poll. Default 10. */
@@ -410,7 +410,7 @@ export interface TumwaterConfig {
    * applyFallbackModel on the derived view only so a run's per-run budget cap can read its
    * step's limit; never read from tumwater.json. */
   fallbackStepCaps?: Record<string, number>;
-  /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
+  /** Friction threshold in assistant turns: a changed run is flagged high-friction only when it
    * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on
    * its commit, warning event, and extra review scrutiny) — difficulty is a signal that the work
    * may not fit; requiring both keeps the absolute turn count from flagging a fast model's
@@ -553,7 +553,7 @@ export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high
  * --session-dir …`, the provider/model/thinking triple, and the session resume/name flags).
  * A piArgs entry equal to one of these is appended AFTER the harness's own copy, and pi's
  * argument parser is last-wins — so it silently overrides the harness: `--mode text` makes
- * every tick's stream unparseable, `--model` spends on a model tumwater.json never named, and
+ * every run's stream unparseable, `--model` spends on a model tumwater.json never named, and
  * `--continue` resumes a session the harness did not choose. Each flag maps to why it is
  * refused; the model triple points at the setting that owns it. */
 export const HARNESS_PI_FLAGS = new Map<string, string>([
@@ -579,11 +579,11 @@ export const CUSTOM_LOOP_KEYS = ["name", "task"];
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
 export const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
-/** A custom role's task rides into every one of that role's tick prefills, so it is capped:
- * unbounded text would be a standing per-tick cost. */
+/** A custom role's task rides into every one of that role's run prefills, so it is capped:
+ * unbounded text would be a standing per-run cost. */
 export const CUSTOM_TASK_MAX_CHARS = 4096;
 
-/** A role's extra instructions ride into every one of that role's tick prefills, so they are
- * capped like a custom role's task: unbounded text would be a standing per-tick cost (and
+/** A role's extra instructions ride into every one of that role's run prefills, so they are
+ * capped like a custom role's task: unbounded text would be a standing per-run cost (and
  * could crowd the prompt toward the model's context ceiling). */
 export const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;

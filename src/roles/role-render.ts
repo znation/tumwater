@@ -36,7 +36,7 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
   return [`## ${label}`, "", fence, text.replace(/\n+$/, ""), fence, ""];
 }
 
-/** The Notebook and Next tick prompt blocks and the "more waits" disclosure, as Markdown
+/** The Notebook and Next run prompt blocks and the "more waits" disclosure, as Markdown
  * lines — the read-only inspection the TUI's notebook view and `tumwater role <id>` share,
  * so the terminal and the CLI show one role's notebook and assembled prompt identically.
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
@@ -58,7 +58,7 @@ function inspectBodyLines(p: RoleViewPayload): string[] {
     ),
   );
   lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
-  // run-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
+  // run-prompt.ts dequeues exactly one queued prompt per run, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the
   // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
@@ -147,7 +147,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
   return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason, p.billingWindow)}${resets})`;
 }
 
-/** One recent tick outcome as a Markdown bullet line — `<time> · <result> · <span> —
+/** One recent run outcome as a Markdown bullet line — `<time> · <result> · <span> —
  * <summary>` — so `tumwater role <id>` and the TUI notebook view read a role's discrete
  * outcomes at a glance. `time` is the same local `YYYY-MM-DD HH:MM:SS` stamp the model-
  * fallback `since` prints (formatTimestamp); `span` is the same short-duration phrasing
@@ -169,7 +169,7 @@ function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): 
   return `- Quiet hours: ${w.window} (${whose}; ${state})`;
 }
 
-/** The role's schedule as Markdown bullet lines — `Next tick`, `Last tick`, then one
+/** The role's schedule as Markdown bullet lines — `Next run`, `Last run`, then one
  * `Quiet hours` line per governing window (none when the payload carries no windows) — in the
  * same words and wording family as the team surface's `next run` cell (status-render.ts's
  * nextRunCell), so the role view and the status table cannot drift on when a role acts next:
@@ -177,8 +177,8 @@ function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): 
  * a future one reads `in <Ns>` through humanSeconds, prefixed `backoff ` while backoffSeconds
  * > 0 (the wake row-action clears exactly that) — the shared nextRunPhrase, so the role view
  * and the status `next run` cell cannot drift on the backoff prefix or the humanSeconds
- * bucketing. `Last tick` reuses formatTimestamp and the same `humanSeconds … ago` phrasing the
- * status `last tick` cell ages with, or `never` for a role that has not ticked. `now` is
+ * bucketing. `Last run` reuses formatTimestamp and the same `humanSeconds … ago` phrasing the
+ * status `last run` cell ages with, or `never` for a role that has not run. `now` is
  * injected (default Date.now()) so the renderer stays a pure function of the payload and the
  * test can pin a fixed clock. */
 function scheduleLine(p: RoleViewPayload, now: number): string[] {
@@ -215,14 +215,14 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // unresolvable pair, a model with no declared window).
   lines.push(`- Context window: ${p.contextWindow === null ? "unknown" : `${compactTokens(p.contextWindow)} tokens`}`);
   // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
-  // bounds the role's concurrent ticks, plus the cap itself. Present only while
+  // bounds the role's concurrent runs, plus the cap itself. Present only while
   // `maxConcurrentPerProvider` maps this seam's key — a cap-less default team has no
   // resolvable key entry, so its role view renders no new line and stays byte-identical.
   if (p.providerKey !== undefined && p.providerCap !== undefined) {
     lines.push(`- Provider: ${p.providerKey} (cap ${p.providerCap})`);
   }
   // Image input (plans/image-input.md "Surfaces", part 5/5): whether this role's own model
-  // reads images, and — when it cannot — where a tick that reads an image reroutes. Not just
+  // reads images, and — when it cannot — where a run that reads an image reroutes. Not just
   // `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
   // explains the team alert without running doctor. Unknown (null) renders `unknown` rather
   // than guessing.
@@ -278,13 +278,13 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     lines.push(cap);
   }
   // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
-  // the same persisted state): when it may tick again, and when it last did — the one
-  // place the team's `next run`/`last tick` vocabulary was absent. Rendered from the
+  // the same persisted state): when it may run again, and when it last did — the one
+  // place the team's `next run`/`last run` vocabulary was absent. Rendered from the
   // injected `now`, so the lines stay a pure function of the payload.
   lines.push(...scheduleLine(p, now));
-  // The role's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):
+  // The role's recent run outcomes (role-view.ts's recentOutcomes, read from the event log):
   // one line per outcome so `tumwater role <id>` shows what the role has been DOING, not just
-  // what it is. Absent (never ticked) renders nothing new, so old goldens are byte-identical.
+  // what it is. Absent (never run) renders nothing new, so old goldens are byte-identical.
   if (p.recentOutcomes && p.recentOutcomes.length > 0) {
     lines.push("", "## Recent runs", "");
     for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);

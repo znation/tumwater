@@ -9,7 +9,7 @@ import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePromptEntry, dequeueRolePromptEntry, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
 import { briefFile } from "../brief/brief.js";
-import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
+import { buildDirectorPrompt, buildRunPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
@@ -63,7 +63,7 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
 
 /** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
  * step — or undefined when it is missing or unreadable (an empty or whitespace-only note is
- * left for buildTickPrompt to omit). The degradation is deliberate: a torn or absent
+ * left for buildRunPrompt to omit). The degradation is deliberate: a torn or absent
  * runtime-state file must never fail a run.
  *
  * The note is bounded on read as well as on write: the write path rejects text over
@@ -192,7 +192,7 @@ export function assembleRunPrompt(
     const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
     // The role's notebook (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
     // empty, or unreadable file yields undefined, so the block is omitted; the write
-    // instruction in buildTickPrompt is present either way. The director branch above never
+    // instruction in buildRunPrompt is present either way. The director branch above never
     // reads this path, so it carries no notebook.
     const notes = readRoleNote(root, role);
     // The note file's mtime is when the notes were last saved (writes replace the file), so the
@@ -215,7 +215,7 @@ export function assembleRunPrompt(
     // note below). Such a run reads that entry first, so the backlog index — what an unassigned
     // run chooses its task from — stays out.
     const assigned = state.claim !== undefined && request === null;
-    prompt = buildTickPrompt({
+    prompt = buildRunPrompt({
       role: resolved,
       principles,
       digest,

@@ -123,7 +123,7 @@ function checkPerRoleMap(
  * of misbehaving at runtime — e.g. a non-numeric runTimeoutSeconds becomes NaN and kills
  * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
  * unknown role id (a misspelled entry under `roles`) spawns a phantom role that errors every
- * tick, and an unknown key is silently ignored so the intended setting never takes effect.
+ * run, and an unknown key is silently ignored so the intended setting never takes effect.
  * Collects every problem so one edit can fix them all; throws a single Error listing them.
  * `label` names the file in the thrown messages — validateConfig also gates the tracked
  * example template, whose problems must not be misreported as tumwater.json's.
@@ -228,7 +228,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkStringArray(entry, `${prefix}.`, "args");
       // claude's per-backend config dir (plans/notes-command.md "Keeping funes out of team runs"):
       // a leading `~` expands; the value must be an absolute path after expansion, or claude would
-      // resolve a relative CLAUDE_CONFIG_DIR from the tick's cwd and write transcripts somewhere
+      // resolve a relative CLAUDE_CONFIG_DIR from the run's cwd and write transcripts somewhere
       // unexpected. Only claude accepts the key (CLAUDE_AGENT_KEYS), so it is inert nowhere.
       if (id === "claude") {
         checkString(entry, `${prefix}.`, "configDir", false);
@@ -474,7 +474,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         }
         const task = entry.task;
         // A whitespace-only task is as inert as an empty one — it rides into every one of
-        // this role's tick prefills as blank text, so the role has nothing to do and ticks
+        // this role's run prefills as blank text, so the role has nothing to do and runs
         // no_change forever. Reject both shapes with the same message; the model-triple
         // checkString rule uses the same trim-based emptiness test.
         if (!isNonBlankString(task)) {
@@ -500,7 +500,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     } else {
       for (const [id, rc] of Object.entries(roles)) {
         // An id outside the catalog and customRoles cannot work: runPrompt has no prompt for
-        // it and the role would error every tick forever (checkKnownRoleId).
+        // it and the role would error every run forever (checkKnownRoleId).
         if (!checkKnownRoleId("roles", id, customNames, problems)) continue;
         if (!isJsonObject(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
@@ -509,7 +509,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         // Empty is a deliberate "no extra instructions". A non-empty value rides into every
-        // one of this role's tick prefills, so it is capped like a custom role's task.
+        // one of this role's run prefills, so it is capped like a custom role's task.
         checkString(o, `roles.${id}.`, "instructions");
         const instructions = o.instructions;
         if (typeof instructions === "string" && instructions.length > ROLE_INSTRUCTIONS_MAX_CHARS)

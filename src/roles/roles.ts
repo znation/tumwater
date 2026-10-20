@@ -4,7 +4,7 @@
  * role-catalog.ts (split out 2026-10-01, organize); this module re-exports ROLES and Role so
  * every importer keeps the single roles.js import path, and derives from them the scheduling
  * registries (work/maintenance/observer tiers, deferrable and baseline-blocked sets) and the
- * lookup helpers the CLI, GUI, and tick prompt share. */
+ * lookup helpers the CLI, GUI, and run prompt share. */
 
 import { ROLES, type Role } from "./role-catalog.js";
 import { baseRoleOf } from "./runner-ids.js";
@@ -25,14 +25,14 @@ export const DIRECTOR_ROLE = "director";
 export const BUGFIX_ROLE = "bugfix";
 
 /** Work-tier roles (need-based prioritization): they
- * ship work — feature and bugfix merge code on main, plan feeds them — so their due ticks are
+ * ship work — feature and bugfix merge code on main, plan feeds them — so their due runs are
  * never deferred and slot allocation always orders them ahead of maintenance. */
 const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
 /** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not a
  * commit, and for which `no_change` means "checked, all well" rather than "found nothing to do".
  * The idle ladder's premise — a role that keeps finding nothing stops burning model time — does
- * not hold for these, so their no_change tick schedules at `minRunIntervalSeconds` and leaves
+ * not hold for these, so their no_change run schedules at `minRunIntervalSeconds` and leaves
  * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
  * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `selfcheck`) is not a function of whether main moved. */
@@ -54,8 +54,8 @@ const CODE_MAINTENANCE_ROLES: readonly string[] = [
 ];
 
 /** Maintenance-tier roles (need-based prioritization): exactly the ten built-ins whose due
- * ticks are deferrable while no feature, bugfix, director, operator or human commit has merged
- * into main since their last tick and that tick did nothing. Unknown/custom roles are
+ * runs are deferrable while no feature, bugfix, director, operator or human commit has merged
+ * into main since their last run and that run did nothing. Unknown/custom roles are
  * deliberately NOT in this
  * set — the harness cannot judge what an arbitrary custom role needs, so they never defer (they
  * still sort into tier 1 for fairOrder via roleTier). Observers are excluded: an unmoved tree
@@ -66,12 +66,12 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
   "steward",
 ]);
 
-/** Does this role's recent yield scale its min-tick gap (yield-scaled clocks, PLANS.md)?
+/** Does this role's recent yield scale its min-run gap (yield-scaled clocks, PLANS.md)?
  * The search/maintenance roles — the deferrable ten, the observers, and bugfix on its
  * empty-backlog search duty (it is the one work role that defers like maintenance, so its
  * idle clock stretches like one too; the open-bugs state is deferRun's concern, not the
- * clock's: ten consecutive empty ticks are empty-yield evidence however many bugs are
- * recorded). Never the work roles whose ticks follow demand — feature, plan, director — a
+ * clock's: ten consecutive empty runs are empty-yield evidence however many bugs are
+ * recorded). Never the work roles whose runs follow demand — feature, plan, director — a
  * role with a queued prompt or a fresh wake bypasses the gap entirely (isEligible), and the
  * multiplier is computed from counted results only (backoff.ts), so feature's errors
  * and quiet kills never stretch anything. */
@@ -93,7 +93,7 @@ export function roleTier(role: string): number {
  * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically
  * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
  * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
- * — its tick runs the suite per "leave the project working" and can fix a red main through the
+ * — its run executes the suite per "leave the project working" and can fix a red main through the
  * existing pre-merge gate; blocking it would leave only humans able to unblock the team), and
  * plan/readme/steward/qa/selfcheck (markdown-only charter — their diffs are exempt from the build
  * pre-check via review.exemptPaths, so a red main does not block them). */
@@ -138,7 +138,7 @@ export function roleById(id: string): Role | undefined {
  * the same treatment unknownConfigKeyError gives config keys, so a mistyped `--role feautre`
  * names its fix instead of only the valid list. parseRoleFlag, the operator commands, and
  * run-prompt's defensive runner path share it so the wording cannot drift between the CLI,
- * the GUI, and a tick's internal error. The hint is text/suggest.ts's typoSuffix —
+ * the GUI, and a run's internal error. The hint is text/suggest.ts's typoSuffix —
  * suggestClosest plus didYouMean composed once, the pairing every other unknown-X error
  * renders through. */
 export function unknownRoleMessage(role: string, validIds: readonly string[]): string {

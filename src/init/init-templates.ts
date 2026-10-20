@@ -3,7 +3,7 @@
  * (docs/feature-project-templates.md). Static string data, no file reads and no runtime
  * dependencies: a template is a brief preamble (the operator's own words stay appended after
  * it) plus a seeded PLANS.md backlog and a starter directory layout — never code scaffolds,
- * since the team's own first ticks write any code.
+ * since the team's own first runs write any code.
  * `blank` is the default and reproduces today's init output byte-identically. */
 
 import { typoSuffix } from "../text/suggest.js";
@@ -20,7 +20,7 @@ interface InitTemplate {
    * the existing `## Planned` before `## Done` convention so the seeded file never trips the
    * gate's structure checks. */
   starterPlans: readonly string[];
-  /** Empty directories created before the first tick (empty for blank) — no files, ever. */
+  /** Empty directories created before the first run (empty for blank) — no files, ever. */
   starterDirs: readonly string[];
 }
 

@@ -24,15 +24,15 @@ import { validationError } from "./fixtures/config-fixtures.js";
 import { patchFsMethod, withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
-// The longest tick a hosted model legitimately took and still merged work (BUGS.md 2026-09-29:
-// selfcheck at 185 minutes). A shipped default at or below it re-kills every such tick and
+// The longest run a hosted model legitimately took and still merged work (BUGS.md 2026-09-29:
+// selfcheck at 185 minutes). A shipped default at or below it re-kills every such run and
 // restarts the same long task from scratch — the 2026-09-22 meltdown shape.
-const LONGEST_LEGITIMATE_TICK_S = 185 * 60;
+const LONGEST_LEGITIMATE_RUN_S = 185 * 60;
 
-test("the shipped tick budget clears the longest legitimate observed tick", () => {
+test("the shipped run budget clears the longest legitimate observed run", () => {
   assert.ok(
-    defaultConfig().runTimeoutSeconds > LONGEST_LEGITIMATE_TICK_S,
-    `runTimeoutSeconds ${defaultConfig().runTimeoutSeconds}s must exceed the longest legitimate tick (${LONGEST_LEGITIMATE_TICK_S}s)`,
+    defaultConfig().runTimeoutSeconds > LONGEST_LEGITIMATE_RUN_S,
+    `runTimeoutSeconds ${defaultConfig().runTimeoutSeconds}s must exceed the longest legitimate run (${LONGEST_LEGITIMATE_RUN_S}s)`,
   );
 });
 
@@ -54,7 +54,7 @@ test("defaultConfig enables every role including director, except the opt-in sel
 });
 
 test("defaultConfig gives the slow-clock roles their clocks and no other role one", () => {
-  // Regression: feature tick 49 set this via `roles.steward.minRunIntervalSeconds = …`,
+  // Regression: feature run 49 set this via `roles.steward.minRunIntervalSeconds = …`,
   // which does not compile under noUncheckedIndexedAccess — a broken build merged on main.
   const config = defaultConfig();
   assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
@@ -65,7 +65,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   assert.equal(configForRole(config, "readme").minRunIntervalSeconds, 1800);
   assert.equal(configForRole(config, "plan").minRunIntervalSeconds, 3600);
   // Organize restructures at most hourly — at the global clock it reorganized the whole tree
-  // one directory per tick.
+  // one directory per run.
   assert.equal(configForRole(config, "organize").minRunIntervalSeconds, 3600);
   const slow = new Set(["steward", "qa", "selfcheck", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
@@ -451,7 +451,7 @@ test("validateConfig rejects invalid customRoles entries with named errors", () 
   );
 
   // Empty, whitespace-only, and over-long tasks. A blank-but-non-empty task is rejected the
-  // same way an empty one is: it rides into every tick prefill as blank text.
+  // same way an empty one is: it rides into every run prefill as blank text.
   assert.match(validationError({ customRoles: [{ name: "docs", task: "" }] }), /customRoles\[0\]\.task must be a non-empty string \(got ""\)/);
   assert.match(
     validationError({ customRoles: [{ name: "docs", task: "   " }] }),

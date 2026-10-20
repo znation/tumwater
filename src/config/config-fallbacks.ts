@@ -69,7 +69,7 @@ function fallbackSelectorFields(
  * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
  * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
  * team both read `claude` — so the budget gate's handback (gate-polls.ts's runOnPair
- * against the tick's seamHoldKey capture, runner-run.ts's setRunPair) matches a tick on
+ * against the run's seamHoldKey capture, runner-run.ts's setRunPair) matches a run on
  * either selector form. The same routing rule as routeModel: a provider naming an agent is
  * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
  * its own provider (a bare pi selector keeps undefined, exactly as before). */
@@ -233,7 +233,7 @@ export function resolveTierFallbacks(
   return { small: resolve("small"), default: resolve("default"), strong: resolve("strong") };
 }
 
-/** The config a role's ticks run on while a model-fallback episode is active (PLANS.md "Model
+/** The config a role's runs use while a model-fallback episode is active (PLANS.md "Model
  * failure fallback, part 1/2"): the role's tier pair from resolveTierFallbacks (the tier's own
  * pair, else BORROW_ORDER's borrow), shaped like configForRole — provider/model/thinking over
  * the role's own and top-level values, plus the role's minRunIntervalSeconds. Null when the
@@ -303,7 +303,7 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
 }
 
 /** The active model-fallback episode (RunnerState.modelFallback) resolved for display: the
- * pair the role's ticks run on, when the episode began, and the provider-class failure that
+ * pair the role's runs use, when the episode began, and the provider-class failure that
  * tripped it. */
 export interface ModelFallbackView {
   provider?: string;

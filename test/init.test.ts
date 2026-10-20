@@ -293,7 +293,7 @@ test("initProject --adopt against an already-marked TUMWATER.md brief is a plain
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
 
   // A checkout that lost its untracked tumwater.json re-seeds the config — still no README.md,
-  // and the adopted brief keeps answering every tick.
+  // and the adopted brief keeps answering every run.
   fs.rmSync(path.join(repo, "tumwater.json"));
   const reseed = await initProject(repo, "", undefined, { adopt: true });
   assert.ok(reseed.created.includes("tumwater.json"));
@@ -385,7 +385,7 @@ test("initProject accepts an existing README that already carries the prompt", a
 
 test("initProject refuses a prompt that differs from the one a README-owned brief carries", async () => {
   // The existing brief is never rewritten, so a different prompt used to be accepted and
-  // silently dropped ("already initialized; nothing to do") while every tick kept the old one.
+  // silently dropped ("already initialized; nothing to do") while every run kept the old one.
   const repo = makeRepo();
   const readme = `# mine\n${PROMPT_START}\nmy prompt\n${PROMPT_END}\n`;
   fs.writeFileSync(path.join(repo, "README.md"), readme);
@@ -444,7 +444,7 @@ test("a marked TUMWATER.md silences init's marker-less-README throw", async () =
 test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it into a new README.md", async () => {
   // The bug (BUGS.md 2026-09-23): TUMWATER.md passed the marker guard, then the unconditional
   // README.md write created a README carrying the NEW prompt — but readInitialPrompt resolves
-  // TUMWATER.md first, so every tick kept running the old one. The refusal names the file that
+  // TUMWATER.md first, so every run kept running the old one. The refusal names the file that
   // actually owns the brief, and nothing is created or committed.
   const repo = makeRepo();
   const brief = `# mine — project brief\n${PROMPT_START}\nthe original prompt\n${PROMPT_END}\n`;

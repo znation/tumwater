@@ -605,7 +605,7 @@ export function applyConfigRequest(
 ): { applied: string[]; ignored: string[]; error?: string; unchanged?: true } | null {
   const requestFile = configRequestPath(wt);
   const raw = readTextOrNull(requestFile);
-  if (raw === null) return null; // no request this tick
+  if (raw === null) return null; // no request this run
 
   const ignored: string[] = [];
   let applied: string[] = [];
