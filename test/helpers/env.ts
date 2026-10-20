@@ -28,3 +28,15 @@ export function withEnv<T>(name: string, value: string | undefined, body: () => 
     restore();
   }
 }
+
+/** Run a synchronous `body` with the process's working directory set to `dir`, restoring the
+ * prior directory afterward. For production code that resolves its root from `process.cwd()`. */
+export function withCwd<T>(dir: string, body: () => T): T {
+  const prev = process.cwd();
+  process.chdir(dir);
+  try {
+    return body();
+  } finally {
+    process.chdir(prev);
+  }
+}

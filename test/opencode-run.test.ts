@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { withCwd } from "./helpers/env.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { opencodeBackend } from "../src/agent/opencode/opencode-backend.js";
 import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
@@ -116,14 +117,10 @@ test("the catalog supplies the thinking variant and the image-input answer (part
     assert.equal(argValue(readRunBlocks(fake.argvFile)[1]!, "--model"), "opencode/deepseek-v4.1-flash-free");
 
     // The same cache answers imageInput, read from the process's cwd at that root.
-    const cwd = process.cwd();
-    try {
-      process.chdir(fs.realpathSync(dir));
+    withCwd(fs.realpathSync(dir), () => {
       assert.equal(opencodeBackend.imageInput!("deepseek-v4.1-flash-free"), true, "a cataloged image model reads images");
       assert.equal(opencodeBackend.imageInput!("deepseek-v4.1-flash-unknown"), false, "a model missing from the cache is blind");
-    } finally {
-      process.chdir(cwd);
-    }
+    });
   });
 });
 

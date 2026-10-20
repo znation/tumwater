@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { withCwd } from "./helpers/env.js";
 import {
   ELIDED_PREFIX,
   SHAKE_MAX_PERCENT,
@@ -558,7 +559,6 @@ test("the adapter writes a bash result's full output and points the edit at it",
   // a temp `.tumwater/` fixture keeps the write off the repository's own state directory.
   const dir = tmpdir();
   fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
-  const prevCwd = process.cwd();
   const handlers = capture();
   const bashEntry = {
     sourceEntry: { id: "b" },
@@ -569,8 +569,7 @@ test("the adapter writes a bash result's full output and points the edit at it",
   };
   const fillerEntry = (i: number) => ({ sourceEntry: { id: `f${i}` }, messages: [{ role: "user", content: [{ type: "text", text: big(16_000) }] }] });
   const event = { context: { contextEntries: [bashEntry, ...[0, 1, 2, 3, 4].map(fillerEntry)] } };
-  process.chdir(dir);
-  try {
+  withCwd(dir, () => {
     const result = handlers.turn_end!(event, { getContextUsage: () => atPercent(72) }) as
       | { entries: Array<{ type: string; targetId?: string; replacement?: { content: string } }> }
       | undefined;
@@ -579,9 +578,7 @@ test("the adapter writes a bash result's full output and points the edit at it",
     assert.match(result.entries[0]!.replacement!.content, /60000 chars; full output in .*t9\.log\]/);
     const written = fs.readFileSync(path.join(dir, ".tumwater", "log", "tool-output", "t9.log"), "utf8");
     assert.equal(written, big(60_000));
-  } finally {
-    process.chdir(prevCwd);
-  }
+  });
 });
 
 // ---- window-scaled limits ---------------------------------------------------

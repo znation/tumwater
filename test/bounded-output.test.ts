@@ -13,6 +13,7 @@ import {
 } from "../src/pi-extension/bounded-output.js";
 import { REFERENCE_WINDOW_TOKENS } from "../src/pi-extension/context-window.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { withCwd } from "./helpers/env.js";
 
 const cps = (text: string): number => Array.from(text).length;
 const MARKER_RE = /\.\.\.(\d+) chars/;
@@ -330,9 +331,8 @@ test("adapter persists the full output itself when pi's bash tool left no file",
   fs.mkdirSync(path.join(dir, ".tumwater"));
   const wt = path.join(dir, "worktrees", "feature"); // finds the root three levels up
   fs.mkdirSync(wt, { recursive: true });
-  const prevCwd = process.cwd();
-  process.chdir(wt); // the adapter's writer resolves the harness root from the process cwd
-  try {
+  // the adapter's writer resolves the harness root from the process cwd
+  withCwd(wt, () => {
     const text = bigFileText(700);
     const patched = captureHandler().handler({
       toolName: "bash",
@@ -345,9 +345,7 @@ test("adapter persists the full output itself when pi's bash tool left no file",
     assert.ok(cps(bounded) <= BASH_LIMIT_CHARS, `bounded to ${cps(bounded)} code points`);
     assert.match(bounded, /complete output in /);
     assert.match(bounded, /call-7\.log/, "the marker names the persisted full-output file");
-  } finally {
-    process.chdir(prevCwd); // leave the process where the other tests expect it
-  }
+  });
 });
 
 test("adapter leaves a non-array content payload untouched", () => {
