@@ -404,16 +404,22 @@ test("abortSync survives a worktree pointer whose target is not a directory", as
   );
 });
 
-test("ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128", async () => {
+/** A repo with a detached slot worktree and a loose ref at `refPath` (under .git/) naming a
+ * missing object, plus one empty commit in the slot so the next `ensureDetachedWorktree` must
+ * move it. update-ref refuses to write a missing object, so the ref is written as a loose file. */
+async function slotWithDanglingRef(refPath: string): Promise<{ repo: string; dir: string; refFile: string }> {
   const repo = makeRepo();
-  const first = headSha(repo);
   const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
-  await ensureDetachedWorktree(repo, dir, first);
-  // A merge pin whose object is gone: update-ref refuses to write it, so write the loose ref.
-  const refFile = path.join(repo, ".git", "refs", "tumwater", "merge", "feature-5");
+  await ensureDetachedWorktree(repo, dir, headSha(repo));
+  const refFile = path.join(repo, ".git", refPath);
   fs.mkdirSync(path.dirname(refFile), { recursive: true });
   fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
-  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  sh(dir, "git", "commit", "--allow-empty", "-m", "wip");
+  return { repo, dir, refFile };
+}
+
+test("ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128", async () => {
+  const { repo, dir, refFile } = await slotWithDanglingRef("refs/tumwater/merge/feature-5");
   await ensureDetachedWorktree(repo, dir, mainSha(repo));
   assert.equal(headSha(dir), mainSha(repo));
   assert.equal(fs.existsSync(refFile), false);
@@ -425,13 +431,7 @@ test("ensureDetachedWorktree drops a dangling merge ref that makes `checkout --d
 });
 
 test("ensureDetachedWorktree drops a dangling rejected pin too", async () => {
-  const repo = makeRepo();
-  const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
-  await ensureDetachedWorktree(repo, dir, headSha(repo));
-  const refFile = path.join(repo, ".git", "refs", "tumwater", "rejected", "feature-5");
-  fs.mkdirSync(path.dirname(refFile), { recursive: true });
-  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
-  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  const { repo, dir, refFile } = await slotWithDanglingRef("refs/tumwater/rejected/feature-5");
   await ensureDetachedWorktree(repo, dir, mainSha(repo));
   assert.equal(headSha(dir), mainSha(repo));
   assert.equal(fs.existsSync(refFile), false);
@@ -441,12 +441,7 @@ test("ensureDetachedWorktree drops a dangling rejected pin too", async () => {
 });
 
 test("ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/", async () => {
-  const repo = makeRepo();
-  const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
-  await ensureDetachedWorktree(repo, dir, headSha(repo));
-  const refFile = path.join(repo, ".git", "refs", "heads", "broken");
-  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
-  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  const { repo, dir, refFile } = await slotWithDanglingRef("refs/heads/broken");
   await assert.rejects(ensureDetachedWorktree(repo, dir, mainSha(repo)), /bad object/);
   assert.equal(fs.existsSync(refFile), true);
   assert.deepEqual(readEvents(repo).filter((e) => e.type === "warning"), []);
