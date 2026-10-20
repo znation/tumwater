@@ -207,6 +207,24 @@ export function requireRoleField(res: http.ServerResponse, body: Record<string, 
   return role;
 }
 
+/** Pull a required string field out of a POST body — the shared 400 for the editors whose body
+ * carries a full replacement text that may be "" to clear it (role instructions, quiet-hours
+ * window, role notes, the brief). `meaning` completes the message after the em dash. Returns the
+ * string as sent, or null once the 400 is sent. */
+export function requireStringField(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+  key: string,
+  meaning: string,
+): string | null {
+  const value = body[key];
+  if (typeof value !== "string") {
+    badRequest(res, `"${key}" must be a string — ${meaning}${gotSuffix(value)}`);
+    return null;
+  }
+  return value;
+}
+
 /** Pull the required `paused` boolean out of a pause endpoint's body — the shared validator
  * for /api/pause and /api/pause-role, which must reject a missing or non-boolean target state
  * with the same 400 wording: the target state is explicit (`paused: true|false`), so a retried

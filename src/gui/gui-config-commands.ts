@@ -10,7 +10,7 @@
 import { setConfigKey, setDailyBudgetUsd, setRoleModelFields, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd, checkMinRunInterval } from "../config/config-keys.js";
 import { testNotifyHook } from "../cli/notify-command.js";
-import { rejectBadRole, requireConfigKey, requireRoleField } from "./gui-args.js";
+import { rejectBadRole, requireConfigKey, requireRoleField, requireStringField } from "./gui-args.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -235,7 +235,8 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   if (!body) return;
   const role = requireRoleField(res, body);
   if (role === null) return;
-  if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement instructions, or "" to clear it${gotSuffix(body.text)}`);
+  const text = requireStringField(res, body, "text", `the full replacement instructions, or "" to clear it`);
+  if (text === null) return;
   const base = baseRoleOf(role);
   // An empty or whitespace-only buffer clears the override, like the CLI's --clear-instructions;
   // otherwise the same JSON.stringify wrapper --instructions-file uses (setConfigKey takes raw
@@ -244,7 +245,7 @@ export async function handleRoleInstructions(req: http.IncomingMessage, res: htt
   // clear arm carries no role guard (the director may clear, and the unknown-role clear gap is
   // pre-existing).
   writeRoleJsonKey(
-    res, root, base, `roles.${base}.instructions`, "instructions", body.text,
+    res, root, base, `roles.${base}.instructions`, "instructions", text,
     (v) => JSON.stringify(v),
     (v) => `${base}: instructions saved (${v.length} chars)`,
   );
@@ -310,7 +311,8 @@ export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.
   const role = requireRoleField(res, body);
   if (role === null) return;
   if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no quiet hours");
-  if (typeof body.window !== "string") return badRequest(res, `"window" must be a string — a window like 23:00-07:00, or "" to clear it${gotSuffix(body.window)}`);
+  const window = requireStringField(res, body, "window", `a window like 23:00-07:00, or "" to clear it`);
+  if (window === null) return;
   const base = baseRoleOf(role);
   // An empty or whitespace-only window clears the hold, like the CLI's --clear-quiet-hours;
   // the clear arm carries rejectBadRole because unsetConfigKey's no-op map path (a role the
@@ -319,7 +321,7 @@ export async function handleRoleQuietHours(req: http.IncomingMessage, res: http.
   // "cleared" (mirrors the CLI's knownRoleIds guard). The set arm runs setConfigKey raw, its
   // map branch checking the dotted key as the label and validateConfig owning the unknown role.
   writeRoleJsonKey(
-    res, root, base, `quietHoursPerRole.${base}`, "quiet hours", body.window,
+    res, root, base, `quietHoursPerRole.${base}`, "quiet hours", window,
     (v) => JSON.stringify(v),
     (v) => `${base}: quiet hours set to ${v}`,
     () => rejectBadRole(root, res, role),

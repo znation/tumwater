@@ -15,7 +15,7 @@ import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertMergedCommit } from "../operator/revert.js";
 import { shortSha } from "../text/format.js";
 import { editInitialPrompt } from "../brief/brief-edit.js";
-import { validRoleIds } from "./gui-args.js";
+import { requireStringField, validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
@@ -101,9 +101,10 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
   if (!body) return;
   const role = body.role as string;
   if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no notes");
-  if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement note, or "" to clear it${gotSuffix(body.text)}`);
+  const text = requireStringField(res, body, "text", `the full replacement note, or "" to clear it`);
+  if (text === null) return;
   try {
-    sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), body.text) });
+    sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), text) });
   } catch (err) {
     badRequest(res, errorMessage(err));
   }
@@ -157,8 +158,9 @@ export async function handleRevert(req: http.IncomingMessage, res: http.ServerRe
 export async function handleBriefEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"prompt": "…"}');
   if (!body) return;
-  if (typeof body.prompt !== "string") return badRequest(res, `"prompt" must be a string — the full replacement brief${gotSuffix(body.prompt)}`);
-  const outcome = await editInitialPrompt(root, body.prompt);
+  const prompt = requireStringField(res, body, "prompt", "the full replacement brief");
+  if (prompt === null) return;
+  const outcome = await editInitialPrompt(root, prompt);
   if (!outcome.ok) return badRequest(res, outcome.error);
   sendJson(res, 200, { file: outcome.file, changed: outcome.changed, committed: outcome.committed });
 }
