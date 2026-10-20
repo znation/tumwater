@@ -18,7 +18,8 @@ Each entry:
 **Keep it honest.** A merge that adds or changes a guarantee updates this file in the same
 commit, and every invariant keeps a resolvable test citation: a stale citation is a visible
 broken link, not silent drift. Do not state a guarantee here that no test pins — add the test
-with the entry, or leave the guarantee out.
+with the entry, or leave the guarantee out. Each title quoted after a cited test path must name
+a test in that file, and a trailing `…` cites by prefix.
 
 ## Cross-surface agreement: one fact, one computation
 
@@ -203,7 +204,7 @@ table never vanishes from the section built to itemize it.
 (`renderFailureMarkdown`), `src/failure/failure-cluster.ts`.
 
 **Pinned by.** `test/failure-render.test.ts` — "a main_red tick's cause is clustered with the
-tick errors, not left a bare count" (asserts the section total equals the Outcome tables' error
+run errors, not left a bare count" (asserts the section total equals the Outcome tables' error
 column plus `main_red` cells).
 
 ### INV-C2: every failed merge prices its authoring span as error-class
@@ -433,7 +434,7 @@ inconclusive (never a provider failure or an "answered").
 **Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
 "an authoring run that reads an image on a blind model is killed and fails" and "a gate run
 that reads an image on a blind model is logged, not killed"; `test/run-verdict.test.ts` — "a
-blind image read fails the tick with an error naming the file and the model";
+blind image read fails the run with an error naming the file and the model";
 `test/runner-2.test.ts` — "a run whose agent reads an image on a blind model stops and fails".
 
 ### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted run never hops twice

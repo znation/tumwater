@@ -32,9 +32,58 @@ function citedPaths(body: string): string[] {
   return paths;
 }
 
+/** A `test(`/`it(`/`describe(` call (optionally `.skip`/`.only`/`.todo`) whose first argument is
+ * a string or template literal; group 1 is the quote, group 2 the title. */
+const TITLE_RE = /\b(?:test|it|describe)(?:\.(?:skip|only|todo))?\(\s*(["'`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+const collapse = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/** Every test title in a test source, whitespace collapsed; a template title keeps its
+ * `${…}` placeholders. */
+function testTitles(source: string): string[] {
+  return [...source.matchAll(TITLE_RE)].map((m) => collapse(m[2] ?? ""));
+}
+
+/** Whether a cited title names `title`: equal, a prefix cite ending in `…`, or a citation of a
+ * template title with each `${…}` placeholder read as a non-empty wildcard. */
+function titleMatches(cited: string, title: string): boolean {
+  if (cited === title) return true;
+  if (cited.endsWith("…") && title.startsWith(cited.slice(0, -1))) return true;
+  if (!title.includes("${")) return false;
+  const parts = title.split(/\$\{[^}]*\}/).map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^${parts.join(".+")}$`).test(cited);
+}
+
+/** Each quoted title that follows a cited `test/….test.ts` path in a **Pinned by.** field. A
+ * backtick code span is consumed whole (a path sets the current file, anything else is skipped),
+ * and a quote before any test path is ignored. */
+function citedTitles(pinned: string): { file: string; title: string }[] {
+  const cited: { file: string; title: string }[] = [];
+  let file: string | undefined;
+  for (const match of pinned.matchAll(/`([^`]*)`|"([^"]+)"/g)) {
+    if (match[1] !== undefined) {
+      if (/^test\/.*\.test\.ts$/.test(match[1])) file = match[1];
+    } else if (file !== undefined && match[2] !== undefined) {
+      cited.push({ file, title: collapse(match[2]) });
+    }
+  }
+  return cited;
+}
+
+function readRepoFile(rel: string): string | undefined {
+  try {
+    return fs.readFileSync(path.join(ROOT, rel), "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 /** Every way the register breaks its own promise, as one message per problem; empty means
  * honest. Names the entry and the field so a failure points at the edit that broke it. */
-function invariantProblems(md: string): string[] {
+function invariantProblems(
+  md: string,
+  readTest: (rel: string) => string | undefined = readRepoFile,
+): string[] {
   const problems: string[] = [];
   const matches = [...md.matchAll(HEADING_RE)];
   if (matches.length === 0) {
@@ -77,6 +126,18 @@ function invariantProblems(md: string): string[] {
     for (const cited of paths) {
       if (!fs.existsSync(path.join(ROOT, cited))) {
         problems.push(`${label}: cited path does not exist: ${cited}`);
+      }
+    }
+    const titlesByFile = new Map<string, string[] | undefined>();
+    for (const { file, title } of citedTitles(pinnedAt >= 0 ? body.slice(pinnedAt) : "")) {
+      if (!titlesByFile.has(file)) {
+        const source = readTest(file);
+        titlesByFile.set(file, source === undefined ? undefined : testTitles(source));
+      }
+      const titles = titlesByFile.get(file);
+      if (titles === undefined) continue;
+      if (!titles.some((t) => titleMatches(title, t))) {
+        problems.push(`${label}: cited test title not found in ${file}: "${title}"`);
       }
     }
   }
@@ -221,6 +282,56 @@ test("a test path cited outside **Pinned by.** does not satisfy the pin check", 
   ].join("\n");
   const problems = invariantProblems(md);
   assert.ok(problems.some((p) => p.includes("cites no test/*.test.ts path")), problems.join("; "));
+});
+
+const PIN = "test/backlog-structure.test.ts";
+const stub = (source: string) => (rel: string) => (rel === PIN ? source : undefined);
+const pinnedEntry = (pinned: string): string =>
+  register(
+    [
+      "### INV-A1: synthetic",
+      "",
+      "**Guarantee.** Something holds.",
+      "",
+      "**Binds.** `src/backlog/backlog-structure.ts`.",
+      "",
+      `**Pinned by.** ${pinned}`,
+      "",
+    ].join("\n"),
+  );
+
+test("a quoted title that no test in the cited file carries is reported", () => {
+  const readTest = stub('test("the real title", () => {});');
+  const problems = invariantProblems(pinnedEntry(`\`${PIN}\` — "the old title"`), readTest);
+  assert.equal(problems.length, 1, problems.join("; "));
+  assert.ok(
+    problems[0]?.includes("INV-A1") && problems[0].includes(PIN) && problems[0].includes('"the old title"'),
+    problems.join("; "),
+  );
+  assert.deepEqual(invariantProblems(pinnedEntry(`\`${PIN}\` — "the real title"`), readTest), []);
+});
+
+test("a wrapped, truncated or template-expanded citation matches its test", () => {
+  const readTest = stub(
+    'test("the real title", () => {});\ntest(`a commit made in the ${label} follow-up folds`, () => {});',
+  );
+  const check = (cite: string): string[] => invariantProblems(pinnedEntry(`\`${PIN}\` — ${cite}`), readTest);
+  assert.deepEqual(check('"the real\n  title"'), []);
+  assert.deepEqual(check('"the real…"'), []);
+  assert.deepEqual(check('"a commit made in the missing-SUMMARY follow-up folds"'), []);
+  assert.equal(check('"a commit made in the  follow-up folds"').length, 1);
+});
+
+test("quotes inside a code span and before any test path are not titles", () => {
+  const readTest = stub('test("the real title", () => {});');
+  assert.deepEqual(
+    invariantProblems(pinnedEntry(`\`${PIN}\` — "the real title" (reads \`helpTopic("config")\`)`), readTest),
+    [],
+  );
+  assert.deepEqual(
+    invariantProblems(pinnedEntry(`"not a title" then \`${PIN}\` — "the real title"`), readTest),
+    [],
+  );
 });
 
 test("this repo's docs/invariants.md is honest", () => {
