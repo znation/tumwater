@@ -15,7 +15,7 @@ import { modelLabel } from "./backend-traits.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { piListedImageInput, type PiListedModels } from "../pi/pi-listed-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
-import { agentBackend } from "./agent-backend.js";
+import { backendById } from "./agent-backend.js";
 import { imageProbeEntryFresh, imageProbeKey, type ImageProbeCache } from "../doctor/image-probe.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
@@ -46,18 +46,18 @@ export function seamImageInput(
   probes?: ImageProbeCache,
   listed: PiListedModels | null = null,
 ): boolean | null {
-  const agent = seamAgent(seam);
-  const backend = agentBackend(agent);
+  const backendId = seamAgent(seam);
+  const backend = backendById(backendId);
   // A backend with an imageInput hook owns the answer outright (claude: true for every model).
   if (backend?.imageInput !== undefined) return backend.imageInput(seam.model);
   // An unknown backend without a hook has no catalog to consult — unknown, never assume.
-  if (agent !== "pi") return null;
+  if (backendId !== "pi") return null;
   const base =
     piModelImageInput(providers, seam.provider, seam.model) ?? piListedImageInput(listed, seam.provider, seam.model);
   if (base !== true) return base;
   // A claimed pi seam whose live probe failed (fresh, claim unchanged) reads false. Only pi is
-  // probed, so the probe key carries the pi agent.
-  const entry = probes?.[imageProbeKey(agent, seam.provider, seam.model)];
+  // probed, so the probe key carries the pi backend.
+  const entry = probes?.[imageProbeKey(backendId, seam.provider, seam.model)];
   if (entry?.verdict === "fail" && imageProbeEntryFresh(entry)) return false;
   return true;
 }
@@ -142,11 +142,11 @@ export function imageRerouteTarget(
  * the surface strings (the images alert, the role page, the status rows) and the doctor report
  * cannot drift, and delegates to backend-traits' modelLabel. */
 export function seamImageLabel(
-  agent: string | undefined,
+  backend: string | undefined,
   provider: string | undefined,
   model: string | undefined,
 ): string {
-  return modelLabel(agent, provider, model);
+  return modelLabel(backend, provider, model);
 }
 
 /** The per-role image-input surface (plans/image-input.md "Surfaces"): one call gives a caller

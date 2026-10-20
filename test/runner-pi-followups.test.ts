@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { nativeLogPath, roleNotesPath, sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
-import { agentSessionResumable } from "../src/agent/agent-backend.js";
+import { backendSessionResumable } from "../src/agent/agent-backend.js";
 import { claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
@@ -135,7 +135,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       recordSession(dir, { agent: "claude", id: "followup-session", kind: "author", name: "n", cwd: root, at: Date.now() });
       fs.mkdirSync(path.dirname(claudeTranscriptPath(root, "followup-session")), { recursive: true });
       fs.writeFileSync(claudeTranscriptPath(root, "followup-session"), "{}");
-      assert.equal(agentSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
+      assert.equal(backendSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
       // The SUMMARY follow-up now continues that claude session.
       const result = await runnerPi.requestSummary(root, claudeSeam);
       assert.ok(result, "a resumable claude session produces an agent run");

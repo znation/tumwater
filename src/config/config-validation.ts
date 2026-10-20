@@ -1,9 +1,9 @@
 // vocabulary: plain
 import {
-  AGENT_IDS,
+  BACKEND_IDS,
   SELECTOR_ENTRY_KEYS,
   THINKING_LEVELS,
-  AGENT_KEYS,
+  BACKEND_KEYS,
   CLAUDE_AGENT_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
@@ -29,7 +29,7 @@ import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
-import { isAgentId } from "./model-selector.js";
+import { isBackendId } from "./model-selector.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import { reservedPassthroughFlag } from "../agent/backend-traits.js";
 import {
@@ -201,8 +201,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // non-blank id from the schema's reserved set. An unknown id would fall back to pi at run
   // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
   checkString(r, "", "backend", false);
-  if (typeof r.backend === "string" && !isAgentId(r.backend))
-    problems.push(`backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.backend)})${typoSuffix(r.backend, AGENT_IDS)}`);
+  if (typeof r.backend === "string" && !isBackendId(r.backend))
+    problems.push(`backend must name a backend (${BACKEND_IDS.join(", ")}; got ${show(r.backend)})${typoSuffix(r.backend, BACKEND_IDS)}`);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the
@@ -223,7 +223,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
         continue;
       }
-      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : AGENT_KEYS, prefix, problems);
+      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : BACKEND_KEYS, prefix, problems);
       checkString(entry, `${prefix}.`, "bin", false);
       checkStringArray(entry, `${prefix}.`, "args");
       // claude's per-backend config dir (plans/notes-command.md "Keeping funes out of team runs"):
@@ -248,7 +248,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // field both ways. This is a property of the FILE's own keys — the merged config always
   // carries a default `piArgs`, so only the raw pass (rawFile) can tell an explicit legacy
   // value from the default. The effective value resolves through config-views.ts
-  // resolvedAgentConfig; a load-time mirror into `agents` would instead leak a duplicate
+  // resolvedBackendConfig; a load-time mirror into `agents` would instead leak a duplicate
   // spelling into every later config write.
   if (rawFile && isJsonObject(r.backends)) {
     const pi = r.backends.pi;

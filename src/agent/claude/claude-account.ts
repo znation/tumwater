@@ -11,7 +11,7 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import type { TumwaterConfig } from "../../config/config-schema.js";
-import { resolvedAgentConfig } from "../../config/config-views.js";
+import { resolvedBackendConfig } from "../../config/config-views.js";
 
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { finiteNumber, isJsonObject, parseJsonObject } from "../../files/json-object.js";
@@ -335,7 +335,7 @@ export function claudeAuthUsesSubscription(auth: ClaudeAuthStatus): boolean {
  * short deadline. Null when the probe could not run or its reply was unreadable. */
 function probeAuthStatus(config: TumwaterConfig): ClaudeAuthStatus | null {
   const resolved = claudeBackend.resolveBin(config);
-  const configDir = resolvedAgentConfig(config, "claude").configDir;
+  const configDir = resolvedBackendConfig(config, "claude").configDir;
   const env = claudeEnv(process.env, {
     quietTimeoutSeconds: 0,
     // The seed probes auth under the same env a real run gets, so a team config dir's login

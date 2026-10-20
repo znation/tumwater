@@ -135,8 +135,8 @@ export function seamContextWindow(
   projectRoot: string,
   modelsPath: string = piModelsPath(),
 ): number | null {
-  const agent = seamAgent(seam);
-  switch (agent) {
+  const backend = seamAgent(seam);
+  switch (backend) {
     case "pi":
       let { provider, model } = seam;
       if (!provider || !model) {
@@ -256,12 +256,12 @@ export function seamFree(
   account: ClaudeAccount | null = null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
-  const agent = seamAgent(seam);
+  const backend = seamAgent(seam);
   // One free-ness rule per backend: pi's pair price, claude's subscription, opencode's catalog,
   // and nothing for any other backend (its spend could still reach the cap, so the badge must
   // not read n/a). The opencode arm reads the gateway-qualified id (part 6b/7) and changes the
   // pi and claude arms nothing.
-  switch (agent) {
+  switch (backend) {
     case "pi":
       return pairFree(providers, seam.provider, seam.model);
     case "claude":
@@ -283,7 +283,7 @@ export function seamFree(
 /** Whether a fallback-config pair may be called free: a `claude/<id>` pair is free while the
  * account bills a subscription and is not using overage, a pi provider/model is free when
  * models.json prices it at zero, and an opencode pair is free when the catalog prices it at
- * zero (part 6b/7). Any other agent namespace, or an unresolvable pair, is refused — the badge
+ * zero (part 6b/7). Any other backend namespace, or an unresolvable pair, is refused — the badge
  * must not read n/a while a backend whose billing it cannot see runs. Exported so the budget
  * gate (src/gates/budget-gates.ts), the status pause set (src/status/status-data.ts) and the
  * free-ness view judge fallback pairs with the same predicate — neither may engage a backend

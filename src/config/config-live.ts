@@ -9,7 +9,7 @@ import { RoleRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
-import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all roles,
  * polled once per scheduler cycle (src/orchestrator/orchestrator.ts). A broken file keeps the
@@ -134,16 +134,16 @@ export function newLiveConfigReload(deps: {
         // seeded, exactly as startup would — so a claude reviewer added to a pi team does not
         // start uncheckable. A missing binary is a warning event, never a crash; a present one
         // logs its verdict as a backend_binary event. The seed is attempted once per root.
-        const prevAgents = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));
-        for (const agent of new Set(seamsInUse(reloaded.config).map((s) => s.agent ?? "pi"))) {
-          if (prevAgents.has(agent)) continue;
-          const resolved = resolveAgentBin(reloaded.config, agent);
-          if (findAgentBinary(resolved)) {
-            emit({ source: TUMWATER_SOURCE, type: "backend_binary", agent, found: true });
+        const prevBackends = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));
+        for (const backend of new Set(seamsInUse(reloaded.config).map((s) => s.agent ?? "pi"))) {
+          if (prevBackends.has(backend)) continue;
+          const resolved = resolveBackendBin(reloaded.config, backend);
+          if (findBackendBinary(resolved)) {
+            emit({ source: TUMWATER_SOURCE, type: "backend_binary", agent: backend, found: true });
           } else {
-            warn(`newly routed ${agent} backend: ${agentMissingMessage(resolved, agent)}`);
+            warn(`newly routed ${backend} backend: ${backendMissingMessage(resolved, backend)}`);
           }
-          if (agent === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
+          if (backend === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
             liveClaudeSeedAttempted.add(deps.root);
             seedClaudeAccount(deps.root, reloaded.config);
           }

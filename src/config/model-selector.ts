@@ -5,7 +5,7 @@
  * (src/pi/pi-args.ts) still passes `--provider` / `--model` / `--thinking` separately. Pure
  * string algebra — no I/O, no config knowledge beyond THINKING_LEVELS. */
 
-import { AGENT_IDS, THINKING_LEVELS, type AgentId, type ModelTier } from "./config-schema.js";
+import { BACKEND_IDS, THINKING_LEVELS, type BackendId, type ModelTier } from "./config-schema.js";
 
 /** The parsed form of one selector: the triple piArgs consumes. `provider` is absent for a
  * bare model pattern (pi resolves it itself), `thinking` for a selector without a level
@@ -51,8 +51,8 @@ export function parseModelSelector(s: string, legacyProvider?: string): ModelSel
 /** True when `s` names a registered agent backend — the reserved selector provider namespace
  * (`claude/<id>` always runs on claude). Validation restricts the config's `agent` key to the
  * same ids; a `provider/id` selector's provider is checked here. */
-export function isAgentId(s: string | undefined): s is AgentId {
-  return s !== undefined && (AGENT_IDS as readonly string[]).includes(s);
+export function isBackendId(s: string | undefined): s is BackendId {
+  return s !== undefined && (BACKEND_IDS as readonly string[]).includes(s);
 }
 
 /** Resolve a seam's backend identity: its own `agent` when it carries one (configForRole,
@@ -63,14 +63,14 @@ export function isAgentId(s: string | undefined): s is AgentId {
  * context-window lookups, and the image-input seam all read a seam's backend through it, so
  * no two sites can disagree on which backend a selector runs. */
 export function seamAgent(seam: { agent?: string; provider?: string }): string {
-  return seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+  return seam.agent ?? (isBackendId(seam.provider) ? seam.provider : "pi");
 }
 
 /** Each agent backend's per-tier default model, applied only when the config resolves no model
  * id for a seam (plans/agent-backends.md "Config" decision 5). pi has none — its own default
  * applies. It lives here, in the pure config layer, because `routeModel` runs at config-
  * resolution time and must not import the runtime backend registry. */
-const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> = {
+const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string>>> = {
   pi: {},
   claude: {
     small: "claude-haiku-5-5",
@@ -85,13 +85,13 @@ const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> 
 
 /** The backend and concrete model a resolved seam's provider/model pair routes to
  * (plans/agent-backends.md "Config"). The provider segment decides the backend: a provider
- * naming a registered agent id runs that agent (and its provider field is cleared, since it is
+ * naming a registered backend id runs that backend (and its provider field is cleared, since it is
  * a namespace, not a pi provider); any other provider runs on pi, the one backend with
  * providers; no provider at all runs on the config's `agent`. When no model id survives the
  * resolution, the backend's tier default fills in (pi supplies none).
  *
  * Rule 3a (plans/provider-concurrency.md "Routing a bare Claude model id to claude"): a bare id
- * (no provider) that starts with `claude-` runs on claude, whatever `configAgent` says — the one
+ * (no provider) that starts with `claude-` runs on claude, whatever `configBackend` says — the one
  * prefix where the model id decides the backend. A named provider still wins
  * (`anthropic/claude-…` stays pi); bare aliases (`sonnet`, `opus`) keep today's routing.
  *
@@ -100,7 +100,7 @@ const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> 
 export function routeModel(
   provider: string | undefined,
   model: string | undefined,
-  configAgent: string,
+  configBackend: string,
   tier: ModelTier,
   explicitBackend?: string,
 ): { agent: string; model?: string } {
@@ -112,20 +112,20 @@ export function routeModel(
         ? `${provider}/${model}`
         : model;
     if (whole !== undefined) return { agent: explicitBackend, model: whole };
-    const def = AGENT_DEFAULT_MODELS[explicitBackend as AgentId]?.[tier];
+    const def = BACKEND_DEFAULT_MODELS[explicitBackend as BackendId]?.[tier];
     return def !== undefined ? { agent: explicitBackend, model: def } : { agent: explicitBackend };
   }
-  const agent =
+  const backend =
     provider === undefined
       ? model?.startsWith("claude-")
         ? "claude"
-        : configAgent
-      : isAgentId(provider)
+        : configBackend
+      : isBackendId(provider)
         ? provider
         : "pi";
-  if (model !== undefined) return { agent, model };
-  const def = AGENT_DEFAULT_MODELS[agent as AgentId]?.[tier];
-  return def !== undefined ? { agent, model: def } : { agent };
+  if (model !== undefined) return { agent: backend, model };
+  const def = BACKEND_DEFAULT_MODELS[backend as BackendId]?.[tier];
+  return def !== undefined ? { agent: backend, model: def } : { agent: backend };
 }
 
 /** The inverse of parseModelSelector (in its no-legacyProvider form): the selector string a
@@ -134,3 +134,6 @@ export function formatModelSelector(triple: ModelSelector): string {
   const base = triple.provider ? `${triple.provider}/${triple.model}` : triple.model;
   return triple.thinking ? `${base}:${triple.thinking}` : base;
 }
+
+/** @deprecated Use isBackendId. */
+export const isAgentId = isBackendId;

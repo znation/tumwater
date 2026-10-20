@@ -41,8 +41,8 @@ type FallbackChain = FallbackStep | FallbackStep[];
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
  * ids so validation rejects a typo'd backend at load time instead of falling back to pi. The
  * agent id doubles as the selector provider namespace: `claude/<id>` always routes to claude. */
-export const AGENT_IDS = ["pi", "claude", "opencode"] as const;
-export type AgentId = (typeof AGENT_IDS)[number];
+export const BACKEND_IDS = ["pi", "claude", "opencode"] as const;
+export type BackendId = (typeof BACKEND_IDS)[number];
 
 /** The tier-map key list validation feeds checkKnownKeys: a `model` or `fallback` map whose
  * keys are not exactly these tiers is a typo that would silently never resolve. */
@@ -246,7 +246,7 @@ export interface TumwaterConfig {
   /** The agent backend for bare selectors and the no-model default (plans/agent-backends.md
    * "Config"): `"pi"` (the default) or `"claude"`. A `provider/id` selector whose provider
    * names a backend always runs that backend; any other provider runs on pi. Typed as a string
-   * so a test or later backend can register an id outside the schema's reserved AGENT_IDS;
+   * so a test or later backend can register an id outside the schema's reserved BACKEND_IDS;
    * validation still rejects an unknown id in a loaded file. */
   backend?: string;
   /** The branch the team merges into and bases every role worktree on — the resolved
@@ -261,7 +261,7 @@ export interface TumwaterConfig {
   /** The agent binary to spawn (plans/portability.md §5/7): TUMWATER_PI_BIN overrides it
    * for one invocation, "pi" is the default. A value containing a path separator is
    * normalized to an absolute path against the harness process's cwd at resolution time
-   * (src/pi/pi-bin.ts resolveAgentBin), so a relative path names the same file to the run
+   * (src/pi/pi-bin.ts resolveBackendBin), so a relative path names the same file to the run
    * preflight, doctor, and the spawn itself — which runs with each run's worktree as
    * cwd; a bare name is left to PATH resolution exactly as before. */
   agentBin?: string;
@@ -272,12 +272,12 @@ export interface TumwaterConfig {
   piArgs: string[];
   /** Per-agent-backend overrides (plans/agent-backends.md "Config"): the binary and extra
    * argv each backend runs, keyed by the reserved agent id (`pi`, `claude`). Both backends
-   * resolve their binary through resolveAgentBin (pi-bin.ts), which reads this entry's `bin`
+   * resolve their binary through resolveBackendBin (pi-bin.ts), which reads this entry's `bin`
    * via config-views.ts; the claude adapter reads `.args` through that same view. The pi entry
    * resolves the legacy `agentBin`/`piArgs` as its `bin`/`args` when the new form leaves a
    * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds
    * an empty map. */
-  backends?: Record<string, AgentConfig>;
+  backends?: Record<string, BackendConfig>;
   /** Max pi runs in flight at once across all roles, merges included: every merge verify run
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
@@ -497,7 +497,7 @@ export const BACKOFF_KEYS = ["initialSeconds", "factor", "maxSeconds"];
  * directory to force. Every field is optional, so an entry may override only one of them.
  * `configDir` becomes `CLAUDE_CONFIG_DIR` for every claude process tumwater spawns; only the
  * claude adapter reads it (plans/notes-command.md "Keeping funes out of team runs"). */
-export interface AgentConfig {
+export interface BackendConfig {
   /** The backend binary; absent leaves the backend's own default. */
   bin?: string;
   /** Extra argv appended last, like piArgs; absent means none. */
@@ -511,11 +511,11 @@ export interface AgentConfig {
 /** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
  * field (`backends.claude.binary`) is a load error rather than a silently inert entry.
  * `configDir` is claude-only (CLAUDE_AGENT_KEYS), so it is not silently inert on pi/opencode. */
-export const AGENT_KEYS = ["bin", "args"];
+export const BACKEND_KEYS = ["bin", "args"];
 
 /** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`,
  * the one per-backend field only the claude adapter reads. */
-export const CLAUDE_AGENT_KEYS = [...AGENT_KEYS, "configDir"];
+export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];
@@ -587,3 +587,9 @@ export const CUSTOM_TASK_MAX_CHARS = 4096;
  * capped like a custom role's task: unbounded text would be a standing per-run cost (and
  * could crowd the prompt toward the model's context ceiling). */
 export const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;
+
+/** @deprecated Use BACKEND_IDS. */
+export const AGENT_IDS = BACKEND_IDS;
+
+/** @deprecated Use BACKEND_KEYS. */
+export const AGENT_KEYS = BACKEND_KEYS;

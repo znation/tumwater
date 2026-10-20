@@ -6,8 +6,8 @@
  * resolveTierFallbacks, applyFallbackModel, …) — lives in config-fallbacks.ts, which builds on
  * this module one-way. No I/O and no caching — the persistence side (defaults, loading,
  * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts. */
-import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
-import { formatModelSelector, isAgentId, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
+import { MODEL_TIERS, type BackendConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
+import { formatModelSelector, isBackendId, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
@@ -31,12 +31,12 @@ export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & {
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
  * values back into `config.backends`, so a config write that re-serializes the merged config
  * cannot leak a second spelling into the file (which validateConfig would then reject).
- * pi-backend.ts and claude-backend.ts read `.bin` through resolveAgentBin (pi-bin.ts);
+ * pi-backend.ts and claude-backend.ts read `.bin` through resolveBackendBin (pi-bin.ts);
  * claude-backend.ts reads `.args` for passthrough argv. */
-export function resolvedAgentConfig(
-  config: { backends?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
+export function resolvedBackendConfig(
+  config: { backends?: Record<string, BackendConfig>; agentBin?: string; piArgs?: string[] },
   id: string,
-): AgentConfig {
+): BackendConfig {
   const entry = config.backends?.[id];
   // A view must own its array: returning the config's own `args` reference would let a caller
   // that appends passthrough argv silently mutate the loaded config, breaking the
@@ -138,14 +138,14 @@ export function withModelOverrides(
   const top = resolveTopTier(config, tier);
   const ownSel =
     o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
-  const configAgent = config.backend ?? "pi";
+  const configBackend = config.backend ?? "pi";
   // A role's own `backend` binds only to its own model; alone it inherits the tier's model only
   // when the tier already routes there, else the backend's tier default fills in. A role's
   // `model` without `backend` routes by the legacy rules, never by the tier entry's backend.
   const inherit =
     o.model === undefined &&
     (o.backend === undefined ||
-      routeModel(top.sel?.provider, top.sel?.model, configAgent, tier, top.backend).agent === o.backend);
+      routeModel(top.sel?.provider, top.sel?.model, configBackend, tier, top.backend).agent === o.backend);
   // The tier's thinking level rides every path but a backend-only role whose tier routes elsewhere.
   const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
   const topSel = inherit ? top.sel : undefined;
@@ -154,7 +154,7 @@ export function withModelOverrides(
   const model = ownSel ? ownSel.model : topSel?.model;
   // The routed backend decides whether the provider half survives: a pi provider name is kept,
   // a backend namespace such as `claude` is dropped (that backend takes no provider).
-  const routed = routeModel(provider, model, configAgent, tier, backend);
+  const routed = routeModel(provider, model, configBackend, tier, backend);
   return {
     ...config,
     provider: routed.agent === "pi" ? provider : undefined,
@@ -318,22 +318,22 @@ export function resolvedModelFields(
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
  * that assembly and guard, shared by the two run-start event writers (runner-run.ts's run_start,
  * review.ts's review_start) and the per-role status snapshot (status-data.ts) so the three
- * observability surfaces cannot disagree about which model a run starts on. A non-pi agent is
- * named as the selector's provider namespace (agentQualifiedSelector), so a claude run reads
+ * observability surfaces cannot disagree about which model a run starts on. A non-pi backend is
+ * named as the selector's provider namespace (backendQualifiedSelector), so a claude run reads
  * `claude/claude-sonnet-5-5` in every surface instead of a bare model id. */
 export function modelSelectorField(
   cfg: Pick<ResolvedModelConfig, "provider" | "model" | "thinking" | "agent">,
 ): { model?: string } {
   const { model } = cfg;
-  return model ? { model: agentQualifiedSelector({ ...cfg, model }) } : {};
+  return model ? { model: backendQualifiedSelector({ ...cfg, model }) } : {};
 }
 
-/** The resolved seam as one selector string, agent-qualified: a non-pi backend id is the
+/** The resolved seam as one selector string, backend-qualified: a non-pi backend id is the
  * selector's provider namespace (`claude/claude-sonnet-5-5`), the form routeModel parses back
- * into that agent; a pi seam keeps `provider/model[:thinking]` byte-identical to before, since
+ * into that backend; a pi seam keeps `provider/model[:thinking]` byte-identical to before, since
  * pi's providers are real model providers, not a backend namespace. `model` is required — the
  * caller has already guarded that a model resolved (modelSelectorField). */
-export function agentQualifiedSelector(cfg: {
+export function backendQualifiedSelector(cfg: {
   provider?: string;
   model: string;
   thinking?: string;
@@ -385,7 +385,7 @@ export function seamConcurrencyKey(
  * event: null when no tier resolves to a model (pi's own default), the single selector when
  * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`
  * list when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the
- * label. Each tier's label is agent-qualified (agentQualifiedSelector), so flipping the
+ * label. Each tier's label is agent-qualified (backendQualifiedSelector), so flipping the
  * top-level `agent` over a bare-id model relabels every tier and the reload now emits
  * `model_changed` — a team's backend is part of what it runs (PLANS.md "Mixed claude + pi
  * fleets, part 3/4"), and an edit that moves a bare id to another backend must not read as
@@ -401,7 +401,7 @@ export function teamModelLabel(config: TumwaterConfig): string | null {
     const provider = routed.agent === "pi" ? sel?.provider : undefined;
     return {
       tier,
-      label: agentQualifiedSelector({
+      label: backendQualifiedSelector({
         provider,
         model: routed.model,
         thinking: sel?.thinking ?? thinking,
@@ -424,11 +424,17 @@ export function teamModelLabel(config: TumwaterConfig): string | null {
  * surfaces cannot render one fallback two ways. */
 export function fallbackDisplayPair(
   pair: { provider?: string; model?: string } | null,
-  agentDefault: string,
+  backendDefault: string,
 ): string {
   const p = pair ?? {};
   if (p.model !== undefined)
-    return p.provider !== undefined && isAgentId(p.provider) ? `${p.provider}/${p.model}` : p.model;
+    return p.provider !== undefined && isBackendId(p.provider) ? `${p.provider}/${p.model}` : p.model;
   if (p.provider !== undefined) return p.provider;
-  return agentDefault;
+  return backendDefault;
 }
+
+/** @deprecated Use resolvedBackendConfig. */
+export const resolvedAgentConfig = resolvedBackendConfig;
+
+/** @deprecated Use backendQualifiedSelector. */
+export const agentQualifiedSelector = backendQualifiedSelector;

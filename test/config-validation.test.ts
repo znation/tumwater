@@ -336,7 +336,7 @@ test("validateConfig rejects blank string-array entries and names their position
 });
 
 test("validateConfig accepts a reserved agent id and rejects an unknown or blank one", () => {
-  // The schema reserves AGENT_IDS; an unknown id would silently fall back to pi at run time
+  // The schema reserves BACKEND_IDS; an unknown id would silently fall back to pi at run time
   // (src/agent/run-agent.ts), running the wrong backend against a named one.
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "pi" }));
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "claude" }));

@@ -552,7 +552,7 @@ test("setConfigKey merges backends.<id>.bin/.args, dropping the legacy alias for
 
 // The other direction of the one-spelling rule: setting a LEGACY top-level key drops the
 // new-form backends.pi field it would collide with in the file, rather than relying on
-// collapseAgentAliases (which drops the legacy side, so the value just set would vanish).
+// collapseBackendAliases (which drops the legacy side, so the value just set would vanish).
 test("setConfigKey's legacy top-level pi keys replace the new-form field they collide with", () => {
   const dir = tmpdir();
   const base = defaultConfig();

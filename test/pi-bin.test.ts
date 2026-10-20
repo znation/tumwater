@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  agentBinSourceLabel,
-  agentMissingMessage,
-  findAgentBinary,
+  backendBinSourceLabel,
+  backendBinSourceLabelFor,
+  backendMissingMessage,
+  findBackendBinary,
   piMissingMessage,
-  resolveAgentBin,
+  resolveBackendBin,
 } from "../src/pi/pi-bin.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -17,13 +18,13 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 // drift between the surfaces that quote it. cli.test.ts and doctor.test.ts pin the wording
 // end-to-end through the CLI/doctor surfaces; these tests pin the shared source directly,
 // including the "default" label whose case the other surfaces never reach (cli.ts and run-agent.ts
-// short-circuit a default source before calling agentBinSourceLabel, and doctor returns early
+// short-circuit a default source before calling backendBinSourceLabel, and doctor returns early
 // — so a regression there is invisible to every surface test).
 
-test("agentBinSourceLabel names each resolution source the way operators see it quoted", () => {
-  assert.equal(agentBinSourceLabel("env"), "TUMWATER_PI_BIN");
-  assert.equal(agentBinSourceLabel("config"), "agentBin in tumwater.json");
-  assert.equal(agentBinSourceLabel("default"), "the PATH default");
+test("backendBinSourceLabel names each resolution source the way operators see it quoted", () => {
+  assert.equal(backendBinSourceLabel("env"), "TUMWATER_PI_BIN");
+  assert.equal(backendBinSourceLabel("config"), "agentBin in tumwater.json");
+  assert.equal(backendBinSourceLabel("default"), "the PATH default");
 });
 
 test("piMissingMessage for the default source is the plain pi-missing install message", () => {
@@ -54,27 +55,27 @@ test("piMissingMessage for a configured source names the resolved value and wher
 // job); a path-shaped value is normalized against the process cwd AT RESOLUTION TIME, so
 // the spawn — which runs with each run's worktree as cwd — lands on the same file the run
 // preflight and doctor checked.
-test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", () => {
-  assert.deepEqual(resolveAgentBin({}), { bin: "pi", source: "default" });
-  assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+test("resolveBackendBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", () => {
+  assert.deepEqual(resolveBackendBin({}), { bin: "pi", source: "default" });
+  assert.deepEqual(resolveBackendBin({ agentBin: "/opt/pi/bin/pi" }), {
     bin: "/opt/pi/bin/pi",
     source: "config",
   });
 
   process.env.TUMWATER_PI_BIN = "/x/pi-override";
   try {
-    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+    assert.deepEqual(resolveBackendBin({ agentBin: "/opt/pi/bin/pi" }), {
       bin: "/x/pi-override",
       source: "env",
     });
     // A whitespace value falls through to config, so an empty export cannot wedge the team.
     process.env.TUMWATER_PI_BIN = "  ";
-    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+    assert.deepEqual(resolveBackendBin({ agentBin: "/opt/pi/bin/pi" }), {
       bin: "/opt/pi/bin/pi",
       source: "config",
     });
     process.env.TUMWATER_PI_BIN = "";
-    assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
+    assert.deepEqual(resolveBackendBin({ agentBin: "/opt/pi/bin/pi" }), {
       bin: "/opt/pi/bin/pi",
       source: "config",
     });
@@ -83,15 +84,15 @@ test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", (
   }
 });
 
-test("resolveAgentBin normalizes a path-shaped value against the process cwd; a bare name is left to PATH", () => {
-  const rel = resolveAgentBin({ agentBin: "bin/pi" });
+test("resolveBackendBin normalizes a path-shaped value against the process cwd; a bare name is left to PATH", () => {
+  const rel = resolveBackendBin({ agentBin: "bin/pi" });
   assert.equal(rel.source, "config");
   assert.equal(rel.bin, path.resolve("bin/pi")); // absolute, so the worktree cwd cannot redirect it
 
-  const envRel = resolveAgentBin({});
+  const envRel = resolveBackendBin({});
   process.env.TUMWATER_PI_BIN = "./scripts/pi";
   try {
-    const r = resolveAgentBin({});
+    const r = resolveBackendBin({});
     assert.equal(r.source, "env");
     assert.equal(r.bin, path.resolve("scripts/pi"));
   } finally {
@@ -99,26 +100,26 @@ test("resolveAgentBin normalizes a path-shaped value against the process cwd; a 
   }
   assert.equal(envRel.bin, "pi"); // sanity: no env leak into the default case
 
-  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).bin, "pi-wrapper");
-  assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).source, "config");
+  assert.equal(resolveBackendBin({ agentBin: "pi-wrapper" }).bin, "pi-wrapper");
+  assert.equal(resolveBackendBin({ agentBin: "pi-wrapper" }).source, "config");
 });
 
 // plans/agent-backends.md "Config": each backend reads its own `backends.<id>.bin`, while the
 // legacy `agentBin` remains pi's alias and `TUMWATER_<ID>_BIN` outranks both.
-test("resolveAgentBin reads each agent's own entry; agentBin stays pi's legacy alias", () => {
-  assert.deepEqual(resolveAgentBin({ backends: { pi: { bin: "/opt/pi" } }, agentBin: "/legacy" }), {
+test("resolveBackendBin reads each agent's own entry; agentBin stays pi's legacy alias", () => {
+  assert.deepEqual(resolveBackendBin({ backends: { pi: { bin: "/opt/pi" } }, agentBin: "/legacy" }), {
     bin: "/opt/pi",
     source: "config",
   });
   assert.deepEqual(
-    resolveAgentBin({ backends: { claude: { bin: "/opt/claude" } }, agentBin: "/legacy" }, "claude"),
+    resolveBackendBin({ backends: { claude: { bin: "/opt/claude" } }, agentBin: "/legacy" }, "claude"),
     { bin: "/opt/claude", source: "config" },
   );
   // The default binary is the agent's own name, so an unconfigured claude does not resolve as pi.
-  assert.deepEqual(resolveAgentBin({}, "claude"), { bin: "claude", source: "default" });
+  assert.deepEqual(resolveBackendBin({}, "claude"), { bin: "claude", source: "default" });
   process.env.TUMWATER_CLAUDE_BIN = "/env/claude";
   try {
-    assert.deepEqual(resolveAgentBin({ backends: { claude: { bin: "/opt/claude" } } }, "claude"), {
+    assert.deepEqual(resolveBackendBin({ backends: { claude: { bin: "/opt/claude" } } }, "claude"), {
       bin: "/env/claude",
       source: "env",
     });
@@ -127,38 +128,44 @@ test("resolveAgentBin reads each agent's own entry; agentBin stays pi's legacy a
   }
 });
 
-test("agentMissingMessage names the agent and its own source, not pi's", () => {
+test("backendMissingMessage names the agent and its own source, not pi's", () => {
   assert.equal(
-    agentMissingMessage({ bin: "claude", source: "default" }, "claude"),
+    backendMissingMessage({ bin: "claude", source: "default" }, "claude"),
     "claude not found on PATH — install it or add its bin directory to your PATH",
   );
-  const configured = agentMissingMessage({ bin: "/opt/claude", source: "config" }, "claude");
+  const configured = backendMissingMessage({ bin: "/opt/claude", source: "config" }, "claude");
   assert.match(configured, /^claude not found — resolved "\/opt\/claude" from backends\.claude\.bin in tumwater\.json/);
   assert.match(configured, /point backends\.claude\.bin in tumwater\.json at a working claude binary/);
   assert.match(
-    agentMissingMessage({ bin: "/env/claude", source: "env" }, "claude"),
+    backendMissingMessage({ bin: "/env/claude", source: "env" }, "claude"),
     /from TUMWATER_CLAUDE_BIN/,
   );
   // pi keeps its pinned wording through the shared function.
   assert.equal(
-    agentMissingMessage({ bin: "pi", source: "default" }, "pi"),
+    backendMissingMessage({ bin: "pi", source: "default" }, "pi"),
     piMissingMessage({ bin: "pi", source: "default" }),
   );
 });
 
-test("findAgentBinary rejects a path-shaped bin that is a directory, which X_OK alone passes", () => {
+test("findBackendBinary rejects a path-shaped bin that is a directory, which X_OK alone passes", () => {
   // A directory is X_OK (traversable) but can never be spawned. Without the regular-file
   // requirement a directory bin passes the preflight gate and doctor, then dies at the spawn
   // with no clear message — the very case findOnPath's bare-name branch already guards. A real
   // +x file must still resolve, so the file requirement cannot reject legitimate bins.
   const dir = tmpdir("pi-bin-dir-");
   try {
-    assert.equal(findAgentBinary({ bin: dir, source: "config" }), null);
+    assert.equal(findBackendBinary({ bin: dir, source: "config" }), null);
     const exe = path.join(dir, "pibin");
     fs.writeFileSync(exe, "#!/bin/sh\nexit 0\n");
     fs.chmodSync(exe, 0o755);
-    assert.equal(findAgentBinary({ bin: exe, source: "config" }), exe);
+    assert.equal(findBackendBinary({ bin: exe, source: "config" }), exe);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("backendBinSourceLabelFor keeps pi's pinned wording and names another backend's own key", () => {
+  assert.equal(backendBinSourceLabelFor("pi", "env"), "TUMWATER_PI_BIN");
+  assert.equal(backendBinSourceLabelFor("claude", "env"), "TUMWATER_CLAUDE_BIN");
+  assert.equal(backendBinSourceLabelFor("claude", "config"), "backends.claude.bin in tumwater.json");
 });

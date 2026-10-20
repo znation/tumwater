@@ -16,7 +16,7 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { formatModelSelector, isAgentId, parseModelSelector, routeModel } from "./model-selector.js";
+import { formatModelSelector, isBackendId, parseModelSelector, routeModel } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -77,8 +77,8 @@ function seamKeyedFallbackProvider(
   config: TumwaterConfig,
   provider: string | undefined,
 ): string | undefined {
-  const agent = provider === undefined ? config.backend : isAgentId(provider) ? provider : "pi";
-  return agent !== "pi" ? agent : provider;
+  const backend = provider === undefined ? config.backend : isBackendId(provider) ? provider : "pi";
+  return backend !== "pi" ? backend : provider;
 }
 
 /** The team-level fallback pair: the `default` tier's resolved pair under

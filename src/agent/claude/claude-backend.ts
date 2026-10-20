@@ -18,11 +18,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { resolvedAgentConfig } from "../../config/config-views.js";
+import { resolvedBackendConfig } from "../../config/config-views.js";
 import { MODEL_TIERS } from "../../config/config-schema.js";
 import { routeModel } from "../../config/model-selector.js";
 import { agentBaseEnv, withNotesPath } from "../../process/run-marker.js";
-import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { expandHomeTilde } from "../../files/files.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv, claudeThirdPartyProvider } from "./claude-env.js";
@@ -30,7 +30,7 @@ import { claudeTranslator } from "./claude-stream.js";
 import { resumableSession, type SessionRecord } from "../session-ledger.js";
 import type {
   AgentBackend,
-  AgentBinConfig,
+  BackendBinConfig,
   AgentExitClassification,
   AgentExitInfo,
   AgentInvocation,
@@ -85,7 +85,7 @@ export function claudeTranscriptPath(
 /** The CLI version every gated claude model needs (plans/agent-backends.md finding 9): on
  * 2.1.216 Opus 5.5 is refused outright and Haiku 5.5 is mispriced about 250×, and team runs
  * set DISABLE_AUTOUPDATER so they never update themselves. The gated models are the three
- * tier defaults, derived from AGENT_DEFAULT_MODELS through the same routing the config uses
+ * tier defaults, derived from BACKEND_DEFAULT_MODELS through the same routing the config uses
  * rather than listed again, so this table cannot drift from the models a seam resolves. */
 const CLAUDE_MIN_VERSION = "2.1.280";
 
@@ -161,8 +161,8 @@ export const claudeBackend: AgentBackend = {
 
   minVersion: claudeMinVersion,
 
-  resolveBin(config: AgentBinConfig): ResolvedAgentBin {
-    return resolveBackendBin(config, this);
+  resolveBin(config: BackendBinConfig): ResolvedBackendBin {
+    return resolveBinForBackend(config, this);
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
@@ -173,7 +173,7 @@ export const claudeBackend: AgentBackend = {
     }
     // The configured team config dir (plans/notes-command.md "Keeping funes out of team runs"):
     // the run's env, its resume lookup, and the account seed all follow it; unset, nothing changes.
-    const claudeCfg = resolvedAgentConfig(run.config, "claude");
+    const claudeCfg = resolvedBackendConfig(run.config, "claude");
     const configDir = claudeCfg.configDir;
     const expandedConfigDir =
       configDir !== undefined ? claudeConfigDir(process.env, os.homedir(), configDir) : undefined;
@@ -184,7 +184,7 @@ export const claudeBackend: AgentBackend = {
       thinking: run.config.thinking,
       ...(resumeSessionId !== undefined ? { resumeSessionId } : { sessionId }),
       // The operator's `backends.claude.args` passthrough, appended after the harness flags (the
-      // builder rejects any entry that repeats a harness-managed flag). resolvedAgentConfig
+      // builder rejects any entry that repeats a harness-managed flag). resolvedBackendConfig
       // owns the view so a caller cannot mutate the loaded config through the returned array.
       args: claudeCfg.args,
       prompt: run.prompt,

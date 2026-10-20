@@ -24,13 +24,13 @@ import os from "node:os";
 import path from "node:path";
 import { ensureParentDir } from "../../files/files.js";
 import { loadConfigSafe } from "../../config/config.js";
-import { resolvedAgentConfig } from "../../config/config-views.js";
+import { resolvedBackendConfig } from "../../config/config-views.js";
 import { agentBaseEnv, withNotesPath } from "../../process/run-marker.js";
-import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { opencodeDbPath, teamRootOf } from "../../paths.js";
 import type {
   AgentBackend,
-  AgentBinConfig,
+  BackendBinConfig,
   AgentExitClassification,
   AgentExitInfo,
   AgentInvocation,
@@ -181,8 +181,8 @@ export const opencodeBackend: AgentBackend = {
   defaultBin: "opencode",
   binEnv: "TUMWATER_OPENCODE_BIN",
 
-  resolveBin(config: AgentBinConfig): ResolvedAgentBin {
-    return resolveBackendBin(config, this);
+  resolveBin(config: BackendBinConfig): ResolvedBackendBin {
+    return resolveBinForBackend(config, this);
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
@@ -223,7 +223,7 @@ export const opencodeBackend: AgentBackend = {
       ...(variant !== undefined ? { variant } : {}),
       sessionId,
       title: run.sessionName,
-      args: resolvedAgentConfig(run.config, "opencode").args,
+      args: resolvedBackendConfig(run.config, "opencode").args,
       prompt: run.prompt,
     });
     return { args, stdin, env, sessionId };

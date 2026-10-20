@@ -78,7 +78,7 @@ export function defaultConfig(): ResolvedModelConfig {
     piArgs: [],
     // Agent backends (plans/agent-backends.md, part 4a/7): empty until a file names one.
     // Keeping the map always present means read sites need no `?? {}`; the legacy
-    // agentBin/piArgs are read as pi's entry through resolvedAgentConfig (config-views.ts).
+    // agentBin/piArgs are read as pi's entry through resolvedBackendConfig (config-views.ts).
     backends: {},
     maxConcurrent: 6,
     // Three is the team's realistic concurrent-role count: a busy queue coalesces the
@@ -167,7 +167,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     review: { ...base.review, ...(cfg.review ?? {}) },
     piArgs: cfg.piArgs ?? base.piArgs,
     // Clone each backend entry (and its args array) so the result owns its data like every
-    // other section. The legacy agentBin/piArgs stay beside it; resolvedAgentConfig picks
+    // other section. The legacy agentBin/piArgs stay beside it; resolvedBackendConfig picks
     // between them.
     backends: Object.fromEntries(
       Object.entries(cfg.backends ?? base.backends ?? {}).map(([id, a]) => [
@@ -310,7 +310,7 @@ export function liveConfig(root: string): TumwaterConfig {
  * dropped from the serialized candidate. A merged config always carries the default `piArgs`,
  * so without this a whole-config write would put both spellings on disk and the next load's
  * raw pass would reject the file; a config that uses only the legacy spellings is unchanged. */
-export function collapseAgentAliases(config: TumwaterConfig): TumwaterConfig {
+export function collapseBackendAliases(config: TumwaterConfig): TumwaterConfig {
   const pi = config.backends?.pi;
   if (pi === undefined) return config;
   const record = config as unknown as Record<string, unknown>;
@@ -328,7 +328,7 @@ export function collapseAgentAliases(config: TumwaterConfig): TumwaterConfig {
  * and at config-write.ts, the file's other writers): the config-live poller re-reads the file
  * every ~2 s, so a plain overwrite could hand it a torn read mid-write. */
 export function saveConfig(root: string, config: TumwaterConfig): void {
-  const collapsed = collapseAgentAliases(config);
+  const collapsed = collapseBackendAliases(config);
   validateConfig(collapsed);
   writeJsonAtomic(configPath(root), collapsed, true);
 }

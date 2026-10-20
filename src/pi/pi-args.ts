@@ -45,7 +45,7 @@ interface PiArgOptions {
   sessionDir: string;
   sessionName: string;
   continueSession?: boolean;
-  /** The resolved agent binary (from resolveAgentBin); defaults to "pi". A non-pi
+  /** The resolved agent binary (from resolveBackendBin); defaults to "pi". A non-pi
    * agent gets no `-e` flags — the bundled extensions are pi-specific. */
   agentBin?: string;
 }

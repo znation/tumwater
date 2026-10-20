@@ -20,7 +20,7 @@ import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { canonicalConfigKey, normalizeConfigKeys } from "./config-aliases.js";
 import { unknownRoleMessage } from "../roles/roles.js";
-import { loadConfig, parseJsonConfig, collapseAgentAliases, knownRoleIdsCached } from "./config.js";
+import { loadConfig, parseJsonConfig, collapseBackendAliases, knownRoleIdsCached } from "./config.js";
 import {
   checkDailyBudgetUsd,
   checkProviderConcurrencyCap,
@@ -80,7 +80,7 @@ function writeConfigMutation(
       if (mutated === cfg) return { ok: true };
       // Collapse legacy/new pi spellings before writing so a merged config (which always
       // carries the default piArgs) never lands both forms in the file.
-      const candidate = collapseAgentAliases(mutated);
+      const candidate = collapseBackendAliases(mutated);
       try {
         validateConfig(candidate); // throws listing every problem — nothing is written on failure
       } catch (err) {
@@ -230,16 +230,16 @@ export function setConfigKey(
         // Merge one field of one backend's entry, preserving the other field and the other
         // backends. validateConfig in writeConfigMutation owns the value type, so a bad
         // value fails there and nothing is written.
-        const agents = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
-        const entry = { ...(agents[parsed.id] ?? {}) };
+        const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
+        const entry = { ...(backends[parsed.id] ?? {}) };
         oldValue = entry[parsed.field];
         if (isDeepStrictEqual(oldValue, value)) {
           unchanged = true;
           return cfg;
         }
         entry[parsed.field] = value;
-        agents[parsed.id] = entry;
-        const next = { ...cfg, backends: agents } as unknown as TumwaterConfig;
+        backends[parsed.id] = entry;
+        const next = { ...cfg, backends: backends } as unknown as TumwaterConfig;
         // Writers keep one spelling: the new pi form drops its legacy alias so the file can
         // never hold both (validateConfig's raw pass rejects a file that does).
         if (parsed.id === "pi") {
@@ -325,19 +325,19 @@ export function setConfigKey(
     // legacy aliases the new pi form now carries, so the file can never hold both.
     // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
     // legacy agentBin/piArgs aliases the new pi form now carries, so the file can never hold
-    // both — the same collapseAgentAliases rule the whole-config writers (above and in
+    // both — the same collapseBackendAliases rule the whole-config writers (above and in
     // config.ts) use, so the alias policy cannot drift between the per-key arm and the others.
-    if (key === "backends") return collapseAgentAliases(next);
+    if (key === "backends") return collapseBackendAliases(next);
     // Writers keep one spelling: a legacy top-level set drops the matching backends.pi field, so
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
     if (key === "agentBin" || key === "piArgs") {
       const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
-      const agents = { ...(record.backends ?? {}) };
-      const entry = { ...(agents.pi ?? {}) };
+      const backends = { ...(record.backends ?? {}) };
+      const entry = { ...(backends.pi ?? {}) };
       delete entry[key === "agentBin" ? "bin" : "args"];
-      if (Object.keys(entry).length === 0) delete agents.pi;
-      else agents.pi = entry;
-      return { ...next, backends: agents };
+      if (Object.keys(entry).length === 0) delete backends.pi;
+      else backends.pi = entry;
+      return { ...next, backends: backends };
     }
     return next;
   });
@@ -537,17 +537,17 @@ export function unsetConfigKey(
       // Presence is judged against the FILE, so unsetting a field only the default (or the
       // legacy alias's resolved view) carries is a no-op success. The entry and the `backends`
       // section are dropped when they empty, so the file never keeps an empty object.
-      const rawAgents = objectOrEmpty(raw.backends);
-      const rawEntryCandidate = rawAgents[parsed.id];
+      const rawBackends = objectOrEmpty(raw.backends);
+      const rawEntryCandidate = rawBackends[parsed.id];
       const rawEntry = objectOrEmpty(rawEntryCandidate);
       if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
       oldValue = rawEntry[parsed.field];
-      const agents = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
-      const entry = { ...(agents[parsed.id] ?? {}) };
+      const backends = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
+      const entry = { ...(backends[parsed.id] ?? {}) };
       delete entry[parsed.field];
-      if (Object.keys(entry).length === 0) delete agents[parsed.id];
-      else agents[parsed.id] = entry;
-      return withSectionOrDropped(root, cfg, "backends", agents);
+      if (Object.keys(entry).length === 0) delete backends[parsed.id];
+      else backends[parsed.id] = entry;
+      return withSectionOrDropped(root, cfg, "backends", backends);
     }
     const rawRolesCandidate = raw.roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate);
@@ -660,7 +660,7 @@ export function applyConfigRequest(
       // Collapse legacy/new pi spellings before writing so a merged config (which always
       // carries the default piArgs) never lands both forms in the file — the next load's raw
       // pass rejects a file holding both `piArgs` and `backends.pi.args`.
-      const collapsed = collapseAgentAliases(candidate);
+      const collapsed = collapseBackendAliases(candidate);
       validateConfig(collapsed); // throws listing every problem — nothing is written on failure
       writeJsonAtomic(configPath(root), collapsed, true);
       applied = collapsed.customRoles.map((c) => c.name);

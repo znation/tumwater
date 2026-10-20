@@ -6,12 +6,12 @@ import type { ModelSelectorEntry, TumwaterConfig } from "../src/config/config-sc
 import {
   FALLBACK_REVIEW_TIMEOUT_S,
   REVIEW_TIMEOUT_S,
-  agentQualifiedSelector,
+  backendQualifiedSelector,
   configForRole,
   fallbackDisplayPair,
   teamModelLabel,
   modelSelectorField,
-  resolvedAgentConfig,
+  resolvedBackendConfig,
   resolverConfig,
   reviewConfig,
   reviewRunConfig,
@@ -545,36 +545,36 @@ test("fallbackRoleConfig resolves the role's tier pair and is null when it pause
   assert.equal(fallbackRoleConfig(none, "feature"), null);
 });
 
-test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
+test("resolvedBackendConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
   // A config with only the legacy spellings resolves them under backends.pi.
   const legacy: TumwaterConfig = defaultConfig();
   legacy.agentBin = "/opt/pi";
   legacy.piArgs = ["--no-skills"];
-  assert.deepEqual(resolvedAgentConfig(legacy, "pi"), { bin: "/opt/pi", args: ["--no-skills"] });
+  assert.deepEqual(resolvedBackendConfig(legacy, "pi"), { bin: "/opt/pi", args: ["--no-skills"] });
   // The new form wins where it is present; a plain default resolves to pi's own binary and
   // an empty argv, matching the seams' current defaults.
   const mixed: TumwaterConfig = defaultConfig();
   mixed.agentBin = "/legacy";
   mixed.piArgs = ["--legacy"];
   mixed.backends = { pi: { bin: "/new", args: ["--new"] } };
-  assert.deepEqual(resolvedAgentConfig(mixed, "pi"), { bin: "/new", args: ["--new"] });
-  assert.deepEqual(resolvedAgentConfig(defaultConfig(), "pi"), { bin: undefined, args: [] });
+  assert.deepEqual(resolvedBackendConfig(mixed, "pi"), { bin: "/new", args: ["--new"] });
+  assert.deepEqual(resolvedBackendConfig(defaultConfig(), "pi"), { bin: undefined, args: [] });
   // A non-pi backend reads its own entry and never falls back to the pi legacy fields.
   const claude: TumwaterConfig = defaultConfig();
   claude.agentBin = "/legacy";
   claude.backends = { claude: { bin: "claude", args: ["--verbose"] } };
-  assert.deepEqual(resolvedAgentConfig(claude, "claude"), { bin: "claude", args: ["--verbose"] });
-  assert.deepEqual(resolvedAgentConfig(claude, "unknown"), {});
+  assert.deepEqual(resolvedBackendConfig(claude, "claude"), { bin: "claude", args: ["--verbose"] });
+  assert.deepEqual(resolvedBackendConfig(claude, "unknown"), {});
 });
 
-test("resolvedAgentConfig returns args detached from the config it reads", () => {
+test("resolvedBackendConfig returns args detached from the config it reads", () => {
   // The view is documented pure: a consumer appending passthrough argv to the returned
   // `args` must not write back into the loaded config.
   const config: TumwaterConfig = defaultConfig();
   config.piArgs = ["--no-skills"];
   config.backends = { claude: { args: ["--verbose"] } };
-  resolvedAgentConfig(config, "pi").args!.push("--evil");
-  resolvedAgentConfig(config, "claude").args!.push("--evil");
+  resolvedBackendConfig(config, "pi").args!.push("--evil");
+  resolvedBackendConfig(config, "claude").args!.push("--evil");
   assert.deepEqual(config.piArgs, ["--no-skills"], "the pi view's args do not alias config.piArgs");
   assert.deepEqual(
     config.backends.claude!.args,
@@ -705,19 +705,19 @@ test("seamConcurrencyKey reuses the hold key, and a no-model pi seam takes pi's 
   );
 });
 
-test("agentQualifiedSelector names a non-pi backend as the selector namespace", () => {
+test("backendQualifiedSelector names a non-pi backend as the selector namespace", () => {
   // Part 4f/7: a claude seam's selector carries the backend id (`claude/claude-sonnet-5-5`),
   // the form routeModel parses back; pi keeps the historical `provider/model` byte-for-byte.
   assert.equal(
-    agentQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: undefined, agent: "claude" }),
+    backendQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: undefined, agent: "claude" }),
     "claude/claude-sonnet-5-5",
   );
   assert.equal(
-    agentQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: "high", agent: "claude" }),
+    backendQualifiedSelector({ provider: undefined, model: "claude-sonnet-5-5", thinking: "high", agent: "claude" }),
     "claude/claude-sonnet-5-5:high",
   );
   assert.equal(
-    agentQualifiedSelector({ provider: "omlx", model: "Qwen", thinking: undefined, agent: "pi" }),
+    backendQualifiedSelector({ provider: "omlx", model: "Qwen", thinking: undefined, agent: "pi" }),
     "omlx/Qwen",
   );
   assert.deepEqual(

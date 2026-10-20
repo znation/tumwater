@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  agentBackend,
+  backendById,
   registerAgentBackend,
   type AgentBackend,
 } from "../src/agent/agent-backend.js";
@@ -17,10 +17,10 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 // exercised without a real agent.
 
 test("the registry returns the registered pi adapter and undefined for an unknown id", () => {
-  const pi = agentBackend("pi");
+  const pi = backendById("pi");
   assert.ok(pi, "pi is registered by src/agent/run-agent.ts");
   assert.equal(pi.label, "pi");
-  assert.equal(agentBackend("no-such-agent"), undefined);
+  assert.equal(backendById("no-such-agent"), undefined);
 });
 
 test("a backend that returns stdin gets its prompt written to the child and echoed to the raw log", async () => {

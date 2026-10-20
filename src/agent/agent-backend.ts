@@ -9,15 +9,15 @@
  * registers both adapters at load), so a test can register a fake backend without importing a
  * real one. */
 
-import type { AgentConfig } from "../config/config-schema.js";
+import type { BackendConfig } from "../config/config-schema.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
-import type { ResolvedAgentBin } from "../pi/pi-bin.js";
+import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { hasResumableSession } from "./session-ledger.js";
 
 /** The backend id used when a config names none: pi, the harness's default backend. */
-export const DEFAULT_AGENT = "pi";
+export const DEFAULT_BACKEND = "pi";
 
 /** Backend-neutral description of one run, handed to `invocation`. The runner has already
  * resolved the binary and minted the run's TUMWATER_RUN mark, so the backend only shapes the
@@ -65,9 +65,9 @@ export interface AgentInvocation {
 
 /** The config fields a backend's resolveBin reads (plans/agent-backends.md "Config"): the
  * per-agent entries plus pi's legacy aliases. Every field is optional, so a bare `{}` or
- * pi-bin.ts's resolvedAgentConfig view both type-check. */
-export interface AgentBinConfig {
-  backends?: Record<string, AgentConfig>;
+ * pi-bin.ts's resolvedBackendConfig view both type-check. */
+export interface BackendBinConfig {
+  backends?: Record<string, BackendConfig>;
   agentBin?: string;
   piArgs?: string[];
 }
@@ -129,8 +129,8 @@ export interface AgentBackend {
    * below a configured model's floor. Optional — a backend with no version gate omits it. */
   minVersion?(model: string): string | undefined;
   /** Resolve which binary this backend spawns and where the value came from, reading its own
-   * `backends.<id>.bin` entry through pi/pi-bin.ts's resolveBackendBin. */
-  resolveBin(config: AgentBinConfig): ResolvedAgentBin;
+   * `backends.<id>.bin` entry through pi/pi-bin.ts's resolveBinForBackend. */
+  resolveBin(config: BackendBinConfig): ResolvedBackendBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;
   /** A fresh, per-run native-to-canonical line translator. */
@@ -174,7 +174,7 @@ export function registerAgentBackend(backend: AgentBackend): void {
 
 /** The backend registered under `id`, or undefined when none is — the caller decides whether
  * an unknown id is a hard error. */
-export function agentBackend(id: string): AgentBackend | undefined {
+export function backendById(id: string): AgentBackend | undefined {
   return registry.get(id);
 }
 
@@ -183,12 +183,21 @@ export function agentBackend(id: string): AgentBackend | undefined {
  * "Sessions"), so a claude author or gate run resumes through its ledger id instead of being
  * read as having no session. Falls back to the backend-neutral session-file check when the
  * backend is unregistered or supplies no `resumable` hook. */
-export function agentSessionResumable(
+export function backendSessionResumable(
   dir: string,
   opts: { kind: string; agent: string; cwd?: string },
   configDir?: string,
 ): boolean {
-  const backend = agentBackend(opts.agent);
+  const backend = backendById(opts.agent);
   if (backend?.resumable) return backend.resumable(dir, opts, configDir);
   return hasResumableSession(dir);
 }
+
+/** @deprecated Use DEFAULT_BACKEND. */
+export const DEFAULT_AGENT = DEFAULT_BACKEND;
+
+/** @deprecated Use backendById. */
+export const agentBackend = backendById;
+
+/** @deprecated Use backendSessionResumable. */
+export const agentSessionResumable = backendSessionResumable;

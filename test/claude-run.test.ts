@@ -11,7 +11,7 @@ import { runAgent } from "../src/agent/run-agent.js";
 import type { AgentRunSpec } from "../src/agent/agent-backend.js";
 import { claudeBackend, claudeConfigDir, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
-import { agentBinSourceLabel } from "../src/pi/pi-bin.js";
+import { backendBinSourceLabel } from "../src/pi/pi-bin.js";
 import { defaultConfig } from "../src/config/config.js";
 import { configForRole } from "../src/config/config-views.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
@@ -410,7 +410,7 @@ test("claude resolves its binary from TUMWATER_CLAUDE_BIN or backends.claude.bin
   const restore = setEnv("TUMWATER_CLAUDE_BIN", "/opt/claude");
   try {
     assert.deepEqual(claudeBackend.resolveBin({}), { bin: "/opt/claude", source: "env" });
-    assert.equal(agentBinSourceLabel("env", "TUMWATER_CLAUDE_BIN"), "TUMWATER_CLAUDE_BIN");
+    assert.equal(backendBinSourceLabel("env", "TUMWATER_CLAUDE_BIN"), "TUMWATER_CLAUDE_BIN");
   } finally {
     restore();
   }

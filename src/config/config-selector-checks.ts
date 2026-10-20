@@ -1,10 +1,10 @@
 // vocabulary: plain
-import { AGENT_IDS, FALLBACK_STEP_KEYS, MODEL_TIERS } from "./config-schema.js";
+import { BACKEND_IDS, FALLBACK_STEP_KEYS, MODEL_TIERS } from "./config-schema.js";
 import { checkKnownKeys, show } from "./config-field-checks.js";
 import { isJsonObject } from "../files/json-object.js";
 import { isNonBlankString } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { isAgentId, parseModelSelector } from "./model-selector.js";
+import { isBackendId, parseModelSelector } from "./model-selector.js";
 
 /** Model-selector and fallback-chain checks that validateConfig (config-validation.ts) runs
  * on each model-choosing section: empty selector halves, `fallback` lists and steps, and an
@@ -74,8 +74,8 @@ export function checkEntryBackend(o: Record<string, unknown>, at: string, proble
     else problems.push(`${at}.backend must be a string (got ${show(b)})`);
     return;
   }
-  if (!isAgentId(b)) {
-    problems.push(`${at}.backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(b)})${typoSuffix(b, AGENT_IDS)}`);
+  if (!isBackendId(b)) {
+    problems.push(`${at}.backend must name a backend (${BACKEND_IDS.join(", ")}; got ${show(b)})${typoSuffix(b, BACKEND_IDS)}`);
     return;
   }
   const m = o.model;
@@ -85,7 +85,7 @@ export function checkEntryBackend(o: Record<string, unknown>, at: string, proble
     problems.push(`${at}.model ${show(m)} has a "/" but ${at}.backend is "claude" — claude takes its own model ids (e.g. "claude-sonnet-5-5")`);
   if (b === "pi" && sel.provider === undefined)
     problems.push(`${at}.model ${show(m)} has no provider but ${at}.backend is "pi" — pi needs \`provider/id\``);
-  if (b === "pi" && isAgentId(sel.provider))
+  if (b === "pi" && isBackendId(sel.provider))
     problems.push(`${at}.model ${show(m)} names the backend "${sel.provider}" as its provider but ${at}.backend is "pi" — drop the "${sel.provider}/" namespace`);
 }
 

@@ -5,6 +5,41 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code cleanup, part 3/7: Rename the backend selector types and helpers in config and agent and pi (planned 2026-10-16 by user; requires part 2/7 landed; design in plans/terminology.md "Code names" and "Commands and config"; touches src/config/ + src/agent/ + src/pi/ + their tests) — done 2026-10-20 by the feature role
+
+**Goal.** The code that names which backend runs a role, pi or claude, says "backend" instead of "agent": `BackendId`, `BACKEND_IDS`, `DEFAULT_BACKEND`, `resolveBackendBin` and so on. Deprecated aliases stay for the callers part 4/7 migrates.
+
+**Approach.**
+- Rules for this part:
+  - plans/terminology.md "Code names" row "agent": rename only "agent" meaning the backend selector (pi/claude). "Agent" meaning the model or process doing the work stays: `runAgent`, `AgentRunSpec`, `AgentInvocation`, `AgentExitInfo`, `AgentExitClassification`, `AgentBackend` and `registerAgentBackend` (an agent's backend), `foldAgentCommitsSince`, pi's protocol events `agent_start`/`agent_end` and `agentStart`, `PI_CODING_AGENT_DIR`, `piAgentDir`/`agentDir`/`getAgentDir`, `CLAUDE_AGENT_SDK_*`, `AGENT_WRAPPER_RAN`, `onAgentWarning`, and everything about the `AGENTS.md` file (`shouldAppendAgents`). "Agent run" (one invocation) stays.
+  - Legacy config keys stay where they are aliases: `agent`, `agents`, `agentBin` and `piArgs` in `CONFIG_KEY_RENAMES` (src/config/config-aliases.ts) and the code that drops or maps them (`dropAgentBin`, a `raw.agents` read). Rename nothing inside legacy readers; the retired-names guard exempts them through `LEGACY_FILES`, `legacy`-prefixed identifiers and `retired-name-ok` lines or regions.
+  - Serialized names were renamed by Plain terms commands and scripting (`backend`, `backends`, `budget.backend`); do not touch string literals.
+  - A bare `agent`/`agents` binding that holds a backend id → `backend`/`backends`, never shadowing an existing binding.
+  - Comments: "the role's agent (pi or claude)" → "the role's backend"; leave "agent" meaning the model at work. Rewrap comment lines past 100 columns (test/comment-width.test.ts).
+  - An export used outside this part's files keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members (interface fields, methods, parameters) get no alias: rename all their uses in this part, even outside these directories. Delete any alias no other file names (test/exports.test.ts).
+- Renames, with aliases where callers outside src/config, src/agent and src/pi remain:
+  - src/config/config-schema.ts: `AGENT_IDS` → `BACKEND_IDS`, `AgentId` → `BackendId`, `AgentConfig` → `BackendConfig` (if Plain terms commands did not already rename them).
+  - src/config/model-selector.ts: `isAgentId` → `isBackendId`, and `routeModel`'s `configAgent` parameter → `configBackend`.
+  - src/config/config-keys.ts: `AGENT_KEYS` → `BACKEND_KEYS`.
+  - src/config/config-views.ts: `resolvedAgentConfig` → `resolvedBackendConfig`, `agentQualifiedSelector` → `backendQualifiedSelector`, `agentDefault` → `backendDefault`.
+  - src/config/config-live.ts: `resolveAgentBin` → `resolveBackendBin`, `findAgentBinary` → `findBackendBinary`, `agentMissingMessage` → `backendMissingMessage`, and the local `prevAgents` → `prevBackends`.
+  - src/config/config.ts and config-write.ts: `collapseAgentAliases` → `collapseBackendAliases`.
+  - src/agent/agent-backend.ts: `DEFAULT_AGENT` → `DEFAULT_BACKEND`, `AgentBinConfig` → `BackendBinConfig`, `agentBackend(id)` → `backendById(id)`, `agentSessionResumable` → `backendSessionResumable`, `ResolvedAgentBin` → `ResolvedBackendBin`.
+  - src/agent/claude/claude-backend.ts and src/config/model-selector.ts: `AGENT_DEFAULT_MODELS` → `BACKEND_DEFAULT_MODELS`. src/agent/claude/claude-backend.ts and src/pi/pi-backend.ts: `agentBaseEnv` → `backendBaseEnv`.
+  - src/pi/pi-bin.ts: `agentBinSourceLabel`/`agentBinSourceLabelFor` → `backendBinSourceLabel`/`backendBinSourceLabelFor`, `AgentBinSource` → `BackendBinSource`, `agentBinConfigKey` → `backendBinConfigKey`, `agentBinEnv` → `backendBinEnv`, `agentsInUse` → `backendsInUse`.
+  - Also rename bare backend-id bindings and comments in these three directories (src/config has about 20 such declarations, src/agent 13, src/pi 11).
+- Tests: test/config*.test.ts, test/pi-bin.test.ts (about 30 lines), test/session-ledger.test.ts, test/claude-*.test.ts, test/agent-backend.test.ts and test/model-selector*.test.ts.
+
+**Files touched.** src/config/*.ts except config-aliases.ts's legacy table, src/agent/**/*.ts, src/pi/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- The new names above are declared; each old name exists only as a deprecated alias that some file outside src/config, src/agent and src/pi still uses.
+- `grep -rnE '\b(AgentId|AGENT_IDS|isAgentId|DEFAULT_AGENT|AgentConfig|AgentBinConfig|AGENT_KEYS|resolveAgentBin|findAgentBinary|agentsInUse|collapseAgentAliases)\b' src/config src/agent src/pi` lists only the alias lines.
+- A config using the legacy `agent`/`agents`/`agentBin` keys still loads (the alias tests pass unchanged).
+- `npm run test` passes.
+
+**Landed differently.** `agentBaseEnv` is declared in src/process/run-marker.ts, outside this part, so it keeps its name (part 4/7). The existing pi-bin.ts `resolveBackendBin(config, backend)` wrapper became `resolveBinForBackend` to free the name for the renamed `resolveAgentBin`. `agentsInUse` is declared in src/gates/startup-gate.ts and was not renamed. Interface members `opts.agent`, `seam.agent` and the `seamAgent` helper stay, since their uses span modules outside these directories. New names with an outside user only through a test: `backendSessionResumable` (test/runner-pi-followups.test.ts), `backendBinSourceLabelFor` (test/pi-bin.test.ts).
+
 ### docs/invariants.md gains a team-hold section, and two tests pin that the first provider+kind to storm in a poll wins and that a failure stamped at the re-open poll never re-trips the hold (planned 2026-10-20 by the plan role; independent of every eligible plan; touches docs/invariants.md + a new test/team-hold-edges.test.ts; done 2026-10-20)
 
 **Goal.** src/team/team-hold.ts holds the team's backend-failure policy. `teamHold` steps one provider's `TeamHold` per poll. Two distinct roles (`HOLD_STORM_ROLES`) failing on the same provider and kind within `HOLD_STORM_WINDOW_MS` trip a hold. The hold lasts `HOLD_BASE_MS`, doubles on a same-provider, same-kind relapse within `HOLD_RELAPSE_MS`, honors a 429's Retry-After, and is capped at `HOLD_CAP_MS`. It re-opens by itself at its deadline. A rejected subscription window holds its provider until `resetsAt`. `heldProviders`, `standingHolds` and `windowHeldProviders` read the map. Before this entry, docs/invariants.md did not name the module, `teamHold` or any `HOLD_*` constant (`grep -n -i 'team hold\|teamHold\|storm' docs/invariants.md` printed nothing). test/team-hold.test.ts covers most clauses. Two clauses of `teamHold` have no test:

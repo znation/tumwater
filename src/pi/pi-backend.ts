@@ -5,13 +5,13 @@
  * backend-neutral. The claude adapter registers alongside it in src/agent/run-agent.ts. */
 
 import { piArgs } from "./pi-args.js";
-import { resolveBackendBin, type ResolvedAgentBin } from "./pi-bin.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "./pi-bin.js";
 import { agentBaseEnv, withNotesPath } from "../process/run-marker.js";
 import { isPermanentConfigError, matchBackendFailure } from "./pi-failure.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
 import type {
   AgentBackend,
-  AgentBinConfig,
+  BackendBinConfig,
   AgentExitClassification,
   AgentExitInfo,
   AgentInvocation,
@@ -45,8 +45,8 @@ export const piBackend: AgentBackend = {
   defaultBin: "pi",
   binEnv: "TUMWATER_PI_BIN",
 
-  resolveBin(config: AgentBinConfig): ResolvedAgentBin {
-    return resolveBackendBin(config, this);
+  resolveBin(config: BackendBinConfig): ResolvedBackendBin {
+    return resolveBinForBackend(config, this);
   },
 
   invocation(run: AgentRunSpec): AgentInvocation {
