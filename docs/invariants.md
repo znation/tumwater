@@ -3611,3 +3611,44 @@ the worktree.
 **Pinned by.** `test/stage-check.test.ts` — "a git failure yields no findings instead of
 throwing", "the git-level check leaves the index clean, so change detection still sees the
 worktree" and "a clean change yields no findings".
+
+## Run timing: a drain sample counts only a run's own work, and a restart's hand-off waits on every merge task for at most two windows
+
+### INV-BL1: a run's drain sample is its own work
+
+**Guarantee.** A run's drain sample is null when the run never started (the signal had already
+aborted, or `held()` was true when the permit was granted), when it ended `aborted`/`user_aborted`,
+or when it ended `no_change`/`skipped`. Otherwise it is the time from the permit grant to the end
+of the run, and the permit is released on every path, including a throw. `p75RunDurationMs` is null
+below `DRAIN_P75_MIN_SAMPLES` (10) samples.
+
+**Binds.** `src/run/run-timing.ts` (`runTimedRoleRun`, `p75RunDurationMs`).
+
+**Pinned by.** `test/orchestrator.e2e.test.ts` — "runTimedRoleRun measures the run, not its
+semaphore queue wait" (the clock starts at the permit grant); `test/orchestrator-seams.test.ts` —
+"runTimedRoleRun returns the run's
+wall-clock duration measured by the now seam", "runTimedRoleRun skips an already-aborted run but
+still releases its permit", "runTimedRoleRun returns null for an aborted run outcome so it cannot
+drag the p75 window", "runTimedRoleRun returns null for a run that ended without work so the window
+is not sized to re-checks", "runTimedRoleRun releases its permit when the run throws",
+"p75RunDurationMs: null below the sample floor, then the p75 of the samples" and "a waiter parked
+before a restart hold is turned away at its permit, which it hands on unused".
+
+### INV-BL2: a restart's hand-off waits on every merge task for at most two windows
+
+**Guarantee.** An operator stop waits for the runs and every merge task without a bound and never
+aborts. A restart folds every merge task into one hand-off that names all of their roles. The
+hand-off gets one window, then an abort, then one more window. After that it clears the merge
+marker and hands off without waiting on the reserved runs.
+
+**Binds.** `src/run/run-timing.ts` (`drainInFlightWork`, `awaitMergeForHandoff`,
+`HANDOFF_MERGE_WINDOW_MS`).
+
+**Pinned by.** `test/run-timing-edges.test.ts` — "a restart's hand-off waits for every merge task
+and names all their roles"; `test/run-timing.test.ts` — "drainInFlightWork on an operator stop waits
+out runs and merges, announcing the merge", "drainInFlightWork on a restart with a merge inside its
+window waits out the runs too" and "drainInFlightWork hands off without a wedged merge and without
+waiting on reserved runs"; `test/orchestrator-seams.test.ts` — "awaitMergeForHandoff announces the
+wait and lets a merge that finishes in time complete", "awaitMergeForHandoff aborts a merge past its
+window and waits for it to stop" and "awaitMergeForHandoff hands off without a merge still running
+after the abort, clearing its marker".
