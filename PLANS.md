@@ -752,4 +752,59 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/tui-frame.test.ts: the history hint contains `Ctrl+P older run` with `trail: true` and does not contain it with `trail: false`.
 - `npm run test:gate` passes.
 
+### Logs role filter, part 1/2: `tumwater logs --transcript <id> [--prompt]` becomes the agent-transcript view, freeing `logs --role` for the event feed (planned 2026-10-19 by the plan role, from the user's 2026-10-19 answer in QUESTIONS.md "What flag should scope `tumwater logs`' event feed to some roles?" (option 2); no dependency on any Planned entry. Part 2/2 below gives `--role` its new meaning. The in-flight `history <role> <n> --transcript` plan adds a boolean `TRANSCRIPT_FLAG` to src/cli/cli-flag-specs.ts for `history`; this part's spec is a separate valued constant, so whichever lands second rebases and keeps both. Touches src/cli.ts src/cli/cli-flag-specs.ts src/cli/cli-args.ts src/cli/log-commands.ts src/cli/help.ts docs/cli.md, comment-only edits in src/ui/transcript-tail.ts src/gui/gui-endpoints.ts src/config/config-field-checks.ts src/operator/operator-commands.ts, and the tests listed below)
+
+**Goal.** The user chose to make `tumwater logs --role` filter the event feed and to move the transcript view to its own flag. This part does the move: `tumwater logs --transcript <id> [-f] [-n N] [--prompt]` prints and follows one role's agent transcript exactly as `logs --role <id>` does today. After this part, `logs` no longer accepts `--role`; the `rejectUnknownArgs` gate reports it as an unknown flag. Part 2/2 then adds `--role` back as the event-feed filter. Each part merges and works on its own.
+
+**Approach.**
+- **src/cli/cli-flag-specs.ts**: add `export const LOGS_TRANSCRIPT_VALUE_ERROR = "--transcript needs a role id (e.g. \`--transcript feature\`)";` and `export const LOGS_TRANSCRIPT_FLAG: FlagSpec = { names: ["--transcript"], value: true, valueName: "<id>", missingValue: LOGS_TRANSCRIPT_VALUE_ERROR };`. Document it like `ROLE_FLAG`. Do not reuse `ROLE_FLAG`, because its missing-value text names `--role`.
+- **src/cli/cli-args.ts**: give `parseRoleScope` and `parseRoleFlag` optional trailing parameters `flag = "--role"` and `missingValue = ROLE_VALUE_ERROR` (`parseRoleScope`'s presence check becomes `args.includes(flag)`), so `parseRoleScope(root, rest, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR)` resolves one id with the same canonicalisation, cached-config fallback and `unknownRoleMessage` as today. Look at `parseRoleFlag` (it reads `flagValue(args, "--role")` and fails with `ROLE_VALUE_ERROR`) and thread the flag name and error through the same way. The `report` and `history` callers keep the defaults and do not change.
+- **src/cli.ts** `case "logs"`: replace `ROLE_FLAG` with `LOGS_TRANSCRIPT_FLAG` in the `rejectUnknownArgs` list.
+- **src/cli/log-commands.ts**: `rejectRoleViewRival` checks `--transcript` instead of `--role`. Rename it `rejectTranscriptViewRival`. Its `failRivalShapes` call names `--transcript` and says "the --transcript view is the role's agent transcript, not the event log; --prompt requires --transcript". In `cmdLogs`, resolve `role` from `--transcript`, and change the prompt failure to `logs --prompt needs --transcript <id>`. Update every comment and doc comment in the file that says `--role` means the transcript (`cmdLogs`, `cmdLogsTranscript`, the module header). `cmdLogsTranscript` itself does not change.
+- **Comments elsewhere** that cite `` `tumwater logs --role <id>` `` as the transcript view now cite `--transcript`. They are in src/ui/transcript-tail.ts (two doc comments), src/gui/gui-endpoints.ts (the `/api/transcript` doc), src/config/config-field-checks.ts and src/operator/operator-commands.ts. Leave the comment in src/ui/gui/gui-client-team.ts alone: it talks about filtering the feed by role, which part 2/2 makes true again.
+- **src/cli/help.ts**: change the usage line `tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]` to `tumwater logs --transcript <id> [-f/--follow] [-n N] [--prompt]`. Completion takes its flags from HELP, so `--transcript` completes as a flag name. Do not make `--transcript` complete role ids: once the in-flight history plan lands, `history … --transcript` is a boolean flag.
+- **docs/cli.md** "Check state" row: change `` `tumwater logs --role <id> [--prompt]` (that role's pi transcript; …) `` to `` `tumwater logs --transcript <id> [--prompt]` (that role's agent transcript; …) ``.
+
+**Tests.** Change every logs transcript-view call from `--role` to `--transcript`, and change the expected rival texts. Each test keeps its name, with `--role` changed to `--transcript`:
+- test/cli-logs.test.ts: the missing, bogus and valid id cases, `-n 1`, `--prompt`, and `--prompt` without the view. The missing value is now matched by `/--transcript needs a role id/`.
+- test/log-commands-views.test.ts: "logs --role prints a one-shot transcript…", "logs --prompt with --role…", and the rival assertions for `--grep`, `--since`, `--count` and `--prompt`.
+- test/log-commands.test.ts: "logs --role -f follows a transcript…" and "logs --role -f ends once its parent is gone".
+- test/cli-logs-filtering.test.ts: the `--since`, `--grep`, `--json`, `--type` and `--count` rival cases, where the `--role clean` argument becomes `--transcript clean`.
+- test/cli-args.test.ts: `LOGS_SPECS` and its expected flag-list message (`--transcript <id>` replaces `--role <id>`). test/cli-arg-strictness.test.ts: the `logs -n 3 --role clean` case.
+- New in test/cli-logs.test.ts: "logs --role is no longer the transcript view" checks that `logs --role clean` exits non-zero with the unknown-flag error. Part 2/2 replaces this test.
+
+**Acceptance criteria.**
+- `tumwater logs --transcript clean`, `-n 1`, `-f` and `--prompt` print what `logs --role clean` printed before, and the moved tests pass with only the flag name changed.
+- `logs --grep x --transcript clean` (and the same with `--since`, `--json`, `--type` or `--count`) fails with a message that names `--transcript`. `logs --prompt` alone fails with `logs --prompt needs --transcript <id>`.
+- `grep -rn "logs --role" src docs/cli.md` finds only the gui-client-team.ts filter comment.
+- `npm run test:gate` passes.
+
+### Logs role filter, part 2/2: `tumwater logs --role <id>[,<id>...]` filters the event feed to those roles' events, composing with `-f`, `-n`, `--since`, `--grep`, `--type`, `--count` and `--json` (planned 2026-10-19 by the plan role; "requires part 1/2 landed": part 1/2, `logs --transcript <id>`, above. Touches src/cli.ts src/cli/log-commands.ts src/cli/help.ts docs/cli.md test/cli-logs-filtering.test.ts test/cli-logs.test.ts test/cli-args.test.ts)
+
+**Goal.** The dashboard's event search (`GET /api/logs?role=`, `handleLogs` in src/gui/gui-endpoints.ts) and the TUI Activity pane's role scope filter the event feed by role. The CLI cannot do this, and `--grep feature` also matches other roles' lines that mention the word. With part 1/2 landed, `--role` is free. This part makes `tumwater logs --role clean,dedupe -f` show only events filed under those roles. A comma list works as in `history --role`.
+
+**Approach.**
+- **src/cli.ts** `case "logs"`: add `ROLE_FLAG` back to the `rejectUnknownArgs` list, beside `LOGS_TRANSCRIPT_FLAG`.
+- **src/cli/log-commands.ts** `cmdLogs`:
+  - Parse with `parseRoleListScope(root, rest)` (src/cli/cli-args.ts). It returns null without reading config when the flag is absent, it accepts a comma list, and it fails on an unknown id with `unknownRoleMessage`.
+  - Build `roleFilter`: an event passes when `eventRole(e)` (src/events/event-read.ts) is in the list, or when `baseRoleOf(eventRole(e))` (src/roles/runner-ids.ts) is in it. So `--role feature` also covers `feature-2`'s events, as `status --role` covers instances.
+  - Add `roleFilter` to `feedFilter` with the same absent-or-matches rule, so the -n view, its follow and the tally all use it.
+  - `--role` is a rival of the `--transcript` view: call `rejectTranscriptViewRival(rest, "--role", true)` when the flag is present.
+  - It composes with everything else. That includes `--since`: the window path filters `events` through `roleFilter` as well as `typeFilter`, so `--role` does not join `--grep`'s `--since` rival list.
+  - Update the `cmdLogs` doc comment and the feed comments. As with `--grep`, `-n` bounds the scan, not the print.
+- **Empty-match text** (prose only, nothing under `--json`). The existing grep/type lines keep their wording when either of those flags is given. When `--role` is the only filter and nothing matches, the -n view and `--count` print `no events from <ids joined with ", ">`. The `--since` view prints `no events from <ids> in <durationLabel(ms)>`.
+- **src/cli/help.ts**: add `[--role <id>[,<id>...]]` to the event-feed usage line, after `[--since <duration>]`.
+- **docs/cli.md** "Check state" row: after the `--type` item, add `` `tumwater logs --role <id>` (only events filed under that role, a base role id taking its instances too; a comma list such as `--role clean,dedupe` shows either; composes with `-f`, `--since`, `--grep`, `--type`, `--count` and `--json`) ``.
+
+**Tests.**
+- test/cli-logs-filtering.test.ts, new "logs --role keeps only the listed roles' events". Seed events from `clean`, `dedupe`, `feature` and `feature-2`. Check that `--role clean` prints only clean's rows, that `--role clean,dedupe` prints both, that `--role feature` includes `feature-2`'s row, and that each composes with `--since 1h`, `--type`, `--grep`, `--count` and `--json`, the last printing only the matching raw events.
+- The same file, new "logs --role with no match names the roles": `--role qa` prints `no events from qa`, `--since 1h --role qa` prints `no events from qa in 1h`, and `--json --role qa` prints nothing.
+- test/cli-logs.test.ts: replace part 1/2's "logs --role is no longer the transcript view" with "logs --role rejects an unknown id and the --transcript view". `--role bogus` fails with the unknown-role message, `--role` with no value fails with `/--role needs a role id/`, and `--role clean --transcript clean` fails with a message that names `--transcript`.
+- test/cli-args.test.ts: `LOGS_SPECS` gains `ROLE_FLAG` again, and the expected flag-list message names both.
+
+**Acceptance criteria.**
+- The new tests pass. Every part 1/2 transcript test still passes unchanged.
+- `logs --role clean -f` streams only clean's events as they land. The follow already goes through `feedFilter`, and the composition test above covers that rule.
+- `npm run test:gate` passes.
+
 ## Done
