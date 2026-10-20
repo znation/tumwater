@@ -61,6 +61,12 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(paused, /tumwater\s+budget paused — \$50\.12 of \$50\.00 daily cost reached/);
   assert.ok(!paused.includes("warning"), "a routine state change is not a warning");
 
+  const topRoles = [{ role: "feature", spentUsd: 40 }, { role: "plan", spentUsd: 10.12 }];
+  const pausedTop = formatEvent({ ts: 0, source: "tumwater", type: "budget_paused", spentUsd: 50.12, capUsd: 50, topRoles } as never);
+  assert.match(pausedTop, /budget paused — \$50\.12 of \$50\.00 daily cost reached \(most by feature \$40\.00, plan \$10\.12\); roles start no new runs/);
+  const fallbackTop = formatEvent({ ts: 0, source: "tumwater", type: "budget_fallback", spentUsd: 50.12, capUsd: 50, topRoles } as never);
+  assert.match(fallbackTop, /daily cost reached \(most by feature \$40\.00, plan \$10\.12\); roles continue on /);
+
   const resumed = formatEvent({
     ts: 0,
     source: "tumwater",

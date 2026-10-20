@@ -12,6 +12,18 @@ import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
+/** The " (most by feature $30.00, plan $10.01)" phrase for `topRoles`; "" if none is usable. */
+function mostByPhrase(value: unknown): string {
+  const top = Array.isArray(value)
+    ? value.flatMap((r: unknown) =>
+        isJsonObject(r) && typeof r.role === "string" && Number.isFinite(r.spentUsd)
+          ? [`${r.role} ${usd(r.spentUsd as number)}`]
+          : [],
+      )
+    : [];
+  return top.length > 0 ? ` (most by ${top.join(", ")})` : "";
+}
+
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (run_end,
  * merge_done): the usage numbers arrive via eventUsage (the loose-typing coercion every usage
  * consumer shares), rendered through the shared token/money formats (compactTokens, usd) in one
@@ -305,15 +317,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
       // operator still has room to raise it or fix the fallback before the team stops.
-      const top = Array.isArray(e.topRoles)
-        ? e.topRoles.flatMap((r: unknown) =>
-            isJsonObject(r) && typeof r.role === "string" && Number.isFinite(r.spentUsd)
-              ? [`${r.role} ${usd(r.spentUsd as number)}`]
-              : [],
-          )
-        : [];
-      const mostBy = top.length > 0 ? ` (most by ${top.join(", ")})` : "";
-      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent${mostBy}; runs still start`;
+      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent${mostByPhrase(e.topRoles)}; runs still start`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the team stopped instead of
@@ -327,7 +331,7 @@ export function eventMessage(e: HarnessEvent): string {
         : e.fallbackDemoted
           ? ` (over-cap model ${textOr(e.fallbackDemoted)} is not serving — ${textOr(e.failures)} runs failed in a row on it; one trial run retries it after a cool-down)`
           : "";
-      return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`;
+      return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}${refused}; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`;
     }
     case "budget_fallback": {
       // The cap is spent but the team keeps working: name the free model it switched to, the
@@ -337,8 +341,8 @@ export function eventMessage(e: HarnessEvent): string {
       // strong-tier borrow at a glance; a tier-free event keeps today's single-pair text.
       const tierEntries = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
       if (tierEntries.length >= 2)
-        return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${tierEntries.join(", ")} (cost n/a)`;
-      return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${providerModelPair(e, "pi's default provider", "pi's default model")} (cost n/a)`;
+        return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}; roles continue on ${tierEntries.join(", ")} (cost n/a)`;
+      return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${mostByPhrase(e.topRoles)}; roles continue on ${providerModelPair(e, "pi's default provider", "pi's default model")} (cost n/a)`;
     }
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;

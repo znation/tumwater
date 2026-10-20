@@ -350,8 +350,9 @@ export function pollBudgetGate(
   // engages fallback/paused already logs its own transition event, so the warning never
   // doubles the page on the poll the cap itself is reached.
   const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
+  // Who spent the most today, read once for whichever of the warning or a transition fires.
+  const topRoles = (warn && !state.warned) || gate !== state.prevGate ? topDailySpenders(states, now) : [];
   if (warn && !state.warned) {
-    const topRoles = topDailySpenders(states, now);
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
       type: "budget_warning",
@@ -369,6 +370,10 @@ export function pollBudgetGate(
       type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
       spentUsd,
       capUsd,
+      // The cap pages say where the money went, since a poll can jump past the cap with no
+      // warning first; a resume does not (midnight reads zero spend, a cap raise is the
+      // operator's own act).
+      ...(gate !== "open" && topRoles.length > 0 ? { topRoles } : {}),
       // On the way into a gate the fallback's identity is the operator's answer to "why
       // this and not the other one": which free pair took over, which configured pair was
       // refused because pi's definitions do not price it at zero, or which free pair the

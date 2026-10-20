@@ -82,6 +82,7 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   // One fallback pair resolves every tier to it (small and strong borrow default's own), so
   // the event stays tier-free (part 7b/8): today's single-pair readers keep today's text.
   assert.equal(ev.tiers, undefined);
+  assert.deepEqual(ev.topRoles, [{ role: "feature", spentUsd: 10 }]);
   assert.equal(ev.capUsd, 10);
   assert.ok(typeof ev.spentUsd === "number" && ev.spentUsd >= 10);
 
@@ -159,6 +160,7 @@ test("raising the cap resumes the gate: one budget_resumed event and the live co
   assert.equal(p.onFallback, false);
   assert.equal(p.roleConfig, raised); // the fallback view is dropped at once
   assert.deepEqual(eventTypes(root), ["budget_fallback", "budget_resumed"]);
+  assert.equal("topRoles" in readEvents(root)[1]!, false);
 });
 
 test("resumed is true on exactly the reopening poll, with the fallback pair it left", () => {
@@ -299,6 +301,7 @@ test("a fallback pi prices above zero cannot engage: the gate pauses and the eve
   const events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_paused"]);
   assert.equal(events[0]!.fallbackRejected, "free/qwen-free"); // the pair the operator asked for
+  assert.deepEqual(events[0]!.topRoles, [{ role: "feature", spentUsd: 10 }]);
   assert.equal(events[0]!.capUsd, 10);
 });
 
