@@ -288,8 +288,11 @@ Usage:
   tumwater plan --show <n> --done [--json]
                                    Print the Nth entry of \`plan --list --done\` (newest first) in
                                    full; --json prints {position, title, body, completedOn}
-  tumwater questions [--json]      List open questions numbered (the read half of the
-                                   question outbox); --json prints the {questions}
+  tumwater questions [--grep <text>] [--json]
+                                   List open questions numbered (the read half of the
+                                   question outbox); --grep keeps the questions whose
+                                   heading or body contains the text, case-insensitively,
+                                   numbered as without it; --json prints the {questions}
                                    array — position, title, body — as data
   tumwater questions --answered [-n <count>] [--grep <text>] [--json]
                                    List the newest answered questions, numbered, newest first

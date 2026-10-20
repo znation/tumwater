@@ -115,10 +115,33 @@ test("questions --answered --grep lists matches under their unfiltered numbers",
   assert.deepEqual(j.questions.map((q) => q.position), [1, 3]);
   assert.equal((await cli(repo, "questions", "--answered", "--grep", "zzz")).stdout, 'no answered questions match "zzz"\n');
   const bare = await cli(repo, "questions", "--grep", "x");
-  assert.equal(bare.code, 1);
-  assert.match(bare.stderr, /--grep needs --answered/);
+  assert.equal(bare.code, 0);
+  assert.equal(bare.stdout, 'no open questions match "x"\n');
   const show = await cli(repo, "questions", "--show", "1", "--answered", "--grep", "x");
   assert.equal(show.code, 1);
+});
+
+test("questions --grep lists matching open questions under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions open grep");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Raise the Budget?\n\na\n\n### Other\n\nb\n\n### Third\n\nabout budget\n\n## Answered\n\n_None._\n",
+  );
+  const r = await cli(repo, "questions", "--grep", "BUDGET");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. Raise the Budget\?.*\n3\. Third.*\n$/);
+  const j = JSON.parse((await cli(repo, "questions", "--grep", "budget", "--json")).stdout) as {
+    questions: { position: number }[];
+  };
+  assert.deepEqual(j.questions.map((q) => q.position), [1, 3]);
+  const none = await cli(repo, "questions", "--grep", "zzz");
+  assert.equal(none.code, 0);
+  assert.equal(none.stdout, 'no open questions match "zzz"\n');
+  const ans = await cli(repo, "questions", "--grep", "x", "answer", "1", "d");
+  assert.equal(ans.code, 1);
+  assert.match(ans.stderr, /--grep only applies to listing questions/);
+  assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /### Raise the Budget\?/);
 });
 
 const SHOW_QUESTIONS =

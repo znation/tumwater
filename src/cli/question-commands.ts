@@ -65,7 +65,7 @@ export function sayAnswered(position: number, title: string, json: boolean, deci
 /** One entry point for the list modes so cli.ts stays a dispatcher: --json prints the payload
  * document (an empty outbox still prints it), prose prints the numbered lines or the empty
  * line. */
-export function sayQuestionList(root: string, json: boolean): void {
-  if (json) sayJson(questionListPayload(root));
-  else say(openQuestionList(root));
+export function sayQuestionList(root: string, json: boolean, pattern?: string): void {
+  if (json) sayJson(questionListPayload(root, pattern));
+  else say(openQuestionList(root, pattern));
 }

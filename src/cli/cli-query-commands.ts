@@ -262,7 +262,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     if (!numbered && arg === "--grep") {
       rejectRepeatFlag(grep !== undefined, "--grep");
       const text = args[++i];
-      if (text === undefined || text === "") fail("--grep needs text (usage: tumwater questions --answered --grep <text>)");
+      if (text === undefined || text === "") fail("--grep needs text (usage: tumwater questions [--answered] --grep <text>)");
       grep = text;
       continue;
     }
@@ -290,7 +290,6 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     words.push(arg);
   }
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
-  if (grep !== undefined && !answeredFlag) fail("--grep needs --answered (it searches the answered questions)");
   if (show !== undefined) {
     if (grep !== undefined) fail("--grep does not apply to --show");
     if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
@@ -326,9 +325,10 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   }
   if (words.length === 0 && file !== undefined) fail("--file only applies to questions answer <n>");
   if (words.length === 0) {
-    sayQuestionList(root, jsonFlag);
+    sayQuestionList(root, jsonFlag, grep);
     return;
   }
+  if (grep !== undefined) fail("--grep only applies to listing questions");
   if (words[0] !== "answer")
     fail(
       `unknown questions subcommand: ${words[0]} (use "answer <n> <decision>", or run \`tumwater questions\` with no subcommand to list them)${typoSuffix(words[0]!, ["answer"])}`,

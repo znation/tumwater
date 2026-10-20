@@ -73,11 +73,16 @@ export function questionAgeSuffix(title: string, now: number = Date.now()): stri
 /** `tumwater questions` with no arguments: the open questions numbered from 1 in file order,
  * one line each (`prompt --list`'s shape), or one line when none are open. Reads through
  * openQuestionEntries, so a missing or unreadable QUESTIONS.md degrades to "no open
- * questions" like every backlog reader. */
-export function openQuestionList(root: string): string {
+ * questions" like every backlog reader. A `pattern` keeps the entries whose heading or body
+ * contains it (entryMatches), under their unfiltered numbers. */
+export function openQuestionList(root: string, pattern?: string): string {
   const questions = openQuestionEntries(root);
-  if (questions.length === 0) return "no open questions";
-  return numberedList(questions.map((q) => `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}`));
+  if (questions.length === 0) return pattern === undefined ? "no open questions" : `no open questions match "${pattern}"`;
+  const line = (q: { title: string; body: string }): string => `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}`;
+  if (pattern === undefined) return numberedList(questions.map(line));
+  const kept = questions.map((entry, i) => ({ entry, position: i + 1 })).filter((e) => entryMatches(e.entry, pattern));
+  if (kept.length === 0) return `no open questions match "${pattern}"`;
+  return kept.map((e) => `${e.position}. ${line(e.entry)}`).join("\n");
 }
 
 /** The Nth (1-based) open question in the shape of one `questionListPayload` entry, or null
@@ -95,11 +100,12 @@ export function renderShownQuestion(q: { title: string; body: string }): string 
 /** The same list as data for `--json` (the backlog --json pattern: a JSON document in every
  * exit-0 case, never prose): each entry's 1-based position (the number `answer` consumes),
  * its verbatim heading text, and its full body. */
-export function questionListPayload(root: string): {
+export function questionListPayload(root: string, pattern?: string): {
   questions: { position: number; title: string; body: string; since?: string; ageDays?: number }[];
 } {
+  const entries = openQuestionEntries(root);
   return {
-    questions: openQuestionEntries(root).map((q, i) => {
+    questions: entries.map((q, i) => {
       const sent: { position: number; title: string; body: string; since?: string; ageDays?: number } = {
         position: i + 1,
         title: q.title,
@@ -111,7 +117,7 @@ export function questionListPayload(root: string): {
         sent.ageDays = ageInDays(since);
       }
       return sent;
-    }),
+    }).filter((_, i) => pattern === undefined || entryMatches(entries[i] as BacklogEntry, pattern)),
   };
 }
 

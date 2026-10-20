@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater questions --grep <text>` searches the open questions, the open-list twin of `questions --answered --grep` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — part 10/14 edits config/roles/init, the wake entry src/cli wake parsing, the report entry src/gui/gui-endpoints.ts; none touches src/backlog/question-answer.ts or `cmdQuestions`; done 2026-10-19 by the feature role)
+
+**Goal.** Every other backlog listing searches by text with the shared `entryMatches` (`src/backlog/backlog.ts`): `plan|bug --list --grep`, their `--done` forms, `tumwater backlog --grep`, and `questions --answered --grep`. The open-question list is the exception. `tumwater questions --grep x` exits 1 with `--grep needs --answered (it searches the answered questions)` (`cmdQuestions`, src/cli/cli-query-commands.ts). The parser already reads `--grep`; only that refusal and the list readers lack the filter. Let the bare list take `--grep` with the same matcher and the same unfiltered numbering, so a printed number still reaches `questions --show <n>` and `questions answer <n>`.
+
+**Approach.**
+- **src/backlog/question-answer.ts**: `openQuestionList(root, pattern?: string)` numbers every open entry first (`{ entry, position: i + 1 }`), then keeps those where `entryMatches(entry, pattern)` when a pattern is given. With no pattern its output is unchanged (`numberedList`, or `no open questions`). With a pattern it prints `${position}. ${title}${questionAgeSuffix(title)}${firstBodySuffix(body)}` lines under each entry's unfiltered position, or `no open questions match "<pattern>"` when nothing matches (the wording `answeredQuestionList` uses). `questionListPayload(root, pattern?: string)` filters its mapped entries by the same `entryMatches` after assigning `position`, so `--json` keeps each match's original position. `openQuestionAt` keeps calling it with no pattern.
+- **src/cli/question-commands.ts** `sayQuestionList(root, json, pattern?: string)`: pass the pattern to both readers.
+- **src/cli/cli-query-commands.ts** `cmdQuestions`: drop the `grep !== undefined && !answeredFlag` refusal. The bare-list branch (`words.length === 0`) calls `sayQuestionList(root, jsonFlag, grep)`. When `grep` is set and `words` is non-empty (the `answer` subcommand), fail `--grep only applies to listing questions`. The `--grep does not apply to --show` refusal stays. The `--grep` missing-value message becomes `--grep needs text (usage: tumwater questions [--answered] --grep <text>)`.
+- **src/cli/help.ts**: the `tumwater questions [--json]` stanza becomes `tumwater questions [--grep <text>] [--json]` and gains the clause `--grep keeps the questions whose heading or body contains the text, case-insensitively, numbered as without it`. Shell completion reads its flags from these stanzas (`helpStanzas` in src/cli/completion.ts), so it needs no edit.
+- **docs/cli.md**: in the "Answer open questions" row, `tumwater questions` gains `[--grep <text>]` with the same clause, named as the open twin of `--answered --grep`.
+
+**Files touched.** src/backlog/question-answer.ts, src/cli/question-commands.ts, src/cli/cli-query-commands.ts, src/cli/help.ts, docs/cli.md, test/cli-questions-list.test.ts.
+
+**Acceptance criteria.**
+- New test in test/cli-questions-list.test.ts, "questions --grep lists matching open questions under their unfiltered numbers". QUESTIONS.md has three open entries, and the first and third hold `budget` in different case (one in a heading, one in a body). `questions --grep BUDGET` exits 0 and prints exactly lines `1. …` and `3. …`. `--grep budget --json` gives `questions` positions `[1, 3]`. `--grep zzz` prints `no open questions match "zzz"` and exits 0.
+- In "questions --answered --grep lists matches under their unfiltered numbers", the `bare` assertion that `questions --grep x` fails with `--grep needs --answered` is replaced: on that fixture (no open entries) it exits 0 and prints `no open questions match "x"`. The `--show … --grep` refusal assertion stays.
+- `questions answer 1 --grep x` is refused with `--grep only applies to listing questions` before anything is written. Check this with the --grep before the number (`questions --grep x answer 1 "d"`), since a token after the number is decision prose.
+- `questions` with no flag, and `questions --json`, print the same output as before (the existing list tests pass unchanged). `tumwater help questions` names `--grep` on the open-list stanza.
+- `npm run test:gate` passes.
+
 ### Plain terms code runner, part 10/14: Convert config and roles and init (planned 2026-10-16 by user; requires part 9/14 landed; design in plans/terminology.md "Code names"; touches src/config/ + src/roles/ + src/init/ + their tests); done 2026-10-19 by the feature role
 
 **Goal.** The config, role-catalog and init modules use runner and role wording; this part is mostly comments.
