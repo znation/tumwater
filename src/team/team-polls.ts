@@ -224,9 +224,10 @@ export function pollClaudeWindowReserve(
 }
 
 /** One poll of the subscription-window warning: the first `allowed_warning` window logs
- * `claude_window_warning` once, and `prevWarnedKey` is the window key (`type:resetsAt`) it was
- * logged for, so many polls across one window warn once while a later window's warning is its
- * own crossing. Returns the key to keep; null before any warning and until the first. */
+ * `claude_window_warning` once (carrying the window's utilization when the account reported
+ * one), and `prevWarnedKey` is the window key (`type:resetsAt`) it was logged for, so many polls
+ * across one window warn once while a later window's warning is its own crossing. Returns the
+ * key to keep; null before any warning and until the first. */
 export function pollClaudeWindowWarning(
   root: string,
   prevWarnedKey: string | null,
@@ -239,6 +240,7 @@ export function pollClaudeWindowWarning(
       source: TUMWATER_SOURCE,
       type: "claude_window_warning",
       windowType: type,
+      ...(typeof w.utilization === "number" ? { utilization: w.utilization } : {}),
       ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),
     };
   });

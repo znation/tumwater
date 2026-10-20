@@ -1,4 +1,5 @@
 // vocabulary: plain
+import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
 import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -440,10 +441,13 @@ export function eventMessage(e: HarnessEvent): string {
         return `backend recovered (${backendKindPhrase(e.kind)})${providerAt(e)} — roles on ${providerScope(e)} run again`;
       return `provider limit lifted${providerAt(e)} — roles on ${providerScope(e)} run again`;
     }
-    case "claude_window_warning":
+    case "claude_window_warning": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
       // telling us the window is filling, not failing. It names the window and when it resets.
-      return `claude subscription window ${textOr(e.windowType)} near its limit${windowResetPhrase(e)} — subscription claude model jobs keep running`;
+      const used = finiteNumber(e.utilization, null);
+      const fill = used === null ? "" : ` (at ${claudeUtilizationPct(used)}% used)`;
+      return `claude subscription window ${textOr(e.windowType)} near its limit${fill}${windowResetPhrase(e)} — subscription claude model jobs keep running`;
+    }
     case "claude_window_reserved": {
       const used = finiteNumber(e.utilization, null);
       const line = finiteNumber(e.reserve, null);

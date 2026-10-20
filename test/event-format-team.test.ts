@@ -402,6 +402,19 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     new RegExp(`tumwater\\s+claude subscription window five_hour near its limit, resets ${clock} — subscription claude model jobs keep running`),
     `warning line: ${warning}`,
   );
+  const filled = formatEvent({
+    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt, utilization: 0.82,
+  } as never);
+  assert.match(
+    filled,
+    new RegExp(`near its limit \\(at 82% used\\), resets ${clock} — subscription claude model jobs keep running`),
+    `filled warning line: ${filled}`,
+  );
+  const bad = formatEvent({
+    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt, utilization: "x",
+  } as never);
+  assert.match(bad, /near its limit, resets/);
+  assert.ok(!bad.includes("NaN"), `bad line: ${bad}`);
   const limited = formatEvent({
     ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour", resetsAt,
   } as never);

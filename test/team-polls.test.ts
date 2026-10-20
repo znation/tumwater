@@ -387,6 +387,7 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   assert.equal(warnings().length, 1);
   assert.equal(warnings()[0]!.windowType, "five_hour");
   assert.equal(warnings()[0]!.resetsAt, resetsAt);
+  assert.ok(!("utilization" in warnings()[0]!), "no reading, no utilization key");
   // The same window on later polls is not re-announced…
   assert.equal(pollClaudeWindowWarning(root, key, acct, T0 + 1_000), key);
   assert.equal(warnings().length, 1, "once per window, not per poll");
@@ -395,6 +396,10 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   const nextKey = pollClaudeWindowWarning(root, key, next, T0 + 1_000);
   assert.notEqual(nextKey, key);
   assert.equal(warnings().length, 2);
+  // A reading with utilization rides on the event.
+  const filled = tmpdir("tumwater-team-polls-");
+  pollClaudeWindowWarning(filled, null, account({}, { status: "allowed_warning", resetsAt, utilization: 0.82 } as never), T0);
+  assert.equal(readEvents(filled).find((e) => e.type === "claude_window_warning")!.utilization, 0.82);
   // API billing and no account warn nothing.
   const api = tmpdir("tumwater-team-polls-");
   assert.equal(pollClaudeWindowWarning(api, null, account({ billing: "api" }), T0), null);
