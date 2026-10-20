@@ -304,10 +304,7 @@ function toplevelFromFiles(dir: string): string | undefined {
 
 /** True when the local branch `<branch>` exists in the repo. */
 export async function branchExists(root: string, branch: string): Promise<boolean> {
-  const ref = `refs/heads/${branch}`;
-  if (refShaFromFiles(root, ref) !== undefined) return true;
-  if (refAbsentFromFiles(root, ref)) return false;
-  return (await gitTry(root, "rev-parse", "--verify", ref)) !== null;
+  return (await refSha(root, `refs/heads/${branch}`)) !== null;
 }
 
 /** The revision a worktree's change should be judged against: the merge-base of its HEAD with
