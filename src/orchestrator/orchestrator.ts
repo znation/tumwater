@@ -1,39 +1,30 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { loopEnabled, loopIds } from "../roles/runner-ids.js";
+import { writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
+import { loopIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
   type FallbackBreakerPolicy,
-  fallbackProbeDuePair,
 } from "../budget/fallback-breaker.js";
-import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { modelPairName } from "../budget/budget.js";
-import { roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
-import { launchDueTicks } from "./orchestrator-launch.js";
-import { pollRunnerReasons, reviewHoldKey } from "./orchestrator-scheduling.js";
-import { openBugs } from "../backlog/backlog.js";
-import { eligibleEntries } from "../backlog/backlog-eligibility.js";
+import {
+  newPollState,
+  pollGatesAndHolds,
+  pollMergeDrain,
+  pollRedeploy,
+  pollRequestsAndWatch,
+  pollReserveAndExit,
+  pollSchedule,
+  type PollContext,
+} from "./orchestrator-poll.js";
 import { LoopRunner } from "../runner/runner.js";
-import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
-import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
-import { requeueMainRedPin } from "../merge/merge-slot.js";
-import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
-import { abortableMerges, mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
+import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
-import {
-  consumeAbortRequests,
-  consumeReclaimRequest,
-  consumeRestartRequest,
-  consumeResetRequest,
-  consumeWakeRequest,
-} from "../operator/operator-requests.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
@@ -41,7 +32,6 @@ import { orchestratorStatePath } from "../paths.js";
 import { createMainWatch } from "../baseline/main-watch.js";
 import { revertSkipReason } from "../baseline/main-revert.js";
 import { queueCulpritHeal } from "../baseline/main-red.js";
-import { redeployTarget } from "../baseline/main-baseline.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
@@ -49,13 +39,10 @@ import { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,
   HANDOFF_MERGE_WINDOW_MS,
-  p75TickDurationMs,
   sleepInterruptible,
 } from "../tick/tick-timing.js";
-import { newTeamGateStates, pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
+import { newTeamGateStates, type TeamGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../team/reclaim.js";
-import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
-import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
 import { archiveAtTeamStart } from "../backlog/backlog-archive.js";
 
@@ -173,7 +160,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the disk gate's poll below. In-process state (the use registry) is enough, because this
   // process is the one that runs ticks and merges.
   const reclaim = new ReclaimController(root);
-  let restart = false;
 
   // The shared concurrency cap: role ticks and the merges (each verify, and the merge's conflict
   // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
@@ -274,14 +260,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The live config the last successful reload produced (last-known-good while the file is
   // broken or missing). The reload bookkeeping itself lives in src/config/config-live.ts.
   const liveReload = newLiveConfigReload({ root, config, mainBranch, runnerSignal: roleSignal, runners, semaphore, roleFilter: opts.roleFilter });
-  // The pause gates (src/gates/pause-gates.ts owns the concern): the operator pause's and the
-  // per-role pause's cross-poll bookkeeping, so each pause/resume crossing logs exactly one
-  // event instead of once per ~2s poll.
-  // The primary checkout's branch, for the edge-triggered divergence warning: the team
-  // resolved its target branch at startup, and a human checking out something else mid-run
-  // must not silently change what the team merges into — every role worktree is based on
-  // the resolved branch. One warning per episode, re-armed when the checkout returns.
-  let warnedBranchDivergence = false;
 
   // Need-based deferral: whether qualifying work has merged
   // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
@@ -298,20 +276,6 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // In-memory only: a restart mid-episode can re-log at most one event.
   const deferredDue = new Map<string, boolean>();
 
-  // Whether the last poll found a self-redeploy pending (`hold`). Hoisted out of the poll loop
-  // because it is read at two points: at scheduling (no new tick is reserved) and — through
-  // tickStartHeld — whenever a parked waiter is granted its permit, which happens between polls.
-  let holdForRestart = false;
-  // Whether the last poll's disk gate held new work (plans/disk-floor.md, part 1/4). Hoisted
-  // beside holdForRestart because tickStartHeld reads it at permit time, between polls — the
-  // disk hold closes the same gate point every team-wide hold uses.
-  let diskHeld = false;
-  // The start gate every reserved tick passes the moment its permit is granted
-  // (runTimedRoleTick's `held`): closed while a restart is pending, and after one is decided so
-  // no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
-  // so another team-wide hold on new ticks can close the same gate point.
-  const tickStartHeld = () => holdForRestart || restart || diskHeld;
-
   // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
   // command run on notable events (budget_paused, role_streak_paused, merge_failed,
   // restart_blocked). Subscribed here so it sees every event this process logs from start;
@@ -325,331 +289,51 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // and the shutdown still run.
   const { emit, warn } = bestEffortEventLogger(root);
 
-  // The maintenance permits withheld for work loops that have work to take (part 7/7), carried
-  // across polls so the event logs only the crossings into and out of a reserved state.
-  let lastReserve = 0;
+  const ctx: PollContext = {
+    root,
+    mainBranch,
+    onceMode: opts.once === true,
+    signal,
+    roleSignal,
+    internalStop,
+    internalRoleStop,
+    runners,
+    semaphore,
+    merges,
+    gateStates,
+    once,
+    info,
+    modelsPath,
+    piDefault,
+    redeploy,
+    launchServicesWatch,
+    reclaim,
+    liveReload,
+    notifier,
+    retentionPruner,
+    mainWatch,
+    workMergedSince,
+    deferredDue,
+    breakerPolicy,
+    breakerNow,
+    roleInFlight,
+    rolePermitHolders,
+    directorInFlight,
+    roleTickDurationsMs,
+    emit,
+    warn,
+  };
+  // The flags that outlive one poll (orchestrator-poll.ts's PollState).
+  const state = newPollState();
 
   try {
     while (!signal.aborted) {
-      // Live-reload tumwater.json — the single reload point shared by all loops.
-      // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
-      // warnings/events around it.
-      const liveConfig = liveReload.poll();
-      // The notify command rides the same last-known-good reload (src/events/notify.ts): a live
-      // `config set notify` edit takes effect on the next poll, no restart.
-      notifier.update(liveConfig);
-
-      // Live session retention (the last restart-only setting): the edge-triggered
-      // retention_changed event, the once-per-day gate, and the prune itself live in
-      // src/orchestrator/retention.ts. The live config (last-known-good while the file is broken or
-      // missing) drives the check, like the budget gate.
-      retentionPruner.poll(root, liveConfig.sessionRetentionDays);
-
-      // launchservicesd's Mach-port budget (src/process/launch-services.ts owns it):
-      // a background sample at most every 15 minutes, and a warning days before the kernel
-      // kills the daemon and wedges the Mac's GUI session. Never awaited — a poll does not
-      // wait on `top`.
-      void launchServicesWatch?.poll();
-
-      // Consume CLI request markers: a reset-counters request, a wake request, a forced-restart
-      // request, and per-role abort requests.
-      consumeResetRequest(root, runners);
-      consumeWakeRequest(root, runners);
-      consumeRestartRequest(root, redeploy);
-      consumeReclaimRequest(root, reclaim);
-      consumeAbortRequests(root, runners, abortableMerges(merges));
-      await settleAbortedApproved(root, merges);
-
-      // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
-      // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
-      // yet — isEligible treats an empty head as "no wake".
-      const mainHead = (await branchHead(root, mainBranch)) ?? "";
-      // Branch-divergence watch, once per poll (see warnedBranchDivergence above): the
-      // team keeps fast-forwarding the branch it resolved at startup — the safe behavior,
-      // since role worktrees are based on it — and one warning names the divergence
-      // instead of leaving it mysterious. Back on the target branch re-arms the check.
-      const liveBranch = await currentBranch(root);
-      if (liveBranch !== null && liveBranch !== mainBranch) {
-        if (!warnedBranchDivergence) {
-          warnedBranchDivergence = true;
-          warn(`your checkout moved to ${liveBranch} — the team keeps merging into ${mainBranch}`);
-        }
-      } else {
-        warnedBranchDivergence = false;
-      }
-      const now = Date.now();
-
-      // The team's gates and alarms, one poll of the family (src/gates/gate-polls.ts): the daily
-      // budget gate — with its derived-state publish and the fallback handback to the
-      // primary — the operator and per-role pause gates, quiet hours, the team-wide failure
-      // hold, and the two observational storm alarms. The family's cross-poll memory lives
-      // in gateStates, advanced in place; this returns this poll's verdicts for the
-      // scheduling and start passes. The failure hold is deliberately not among them — the
-      // start gate and the merges' startHeld read the LATEST poll's verdict at permit
-      // time from gateStates.teamHold, so a waiter granted its permit after later polls
-      // ran meets the hold as it stands then, not as this poll left it.
-      const {
-        roleConfig,
-        directorConfig,
-        userPaused,
-        pausedRoles: pausedRolesSet,
-        capPaused,
-        maintenanceQuota,
-        bootstrapHeld,
-        budgetPausedRoles,
-        servingResolved,
-        priceResolved,
-        budgetActive,
-        roleQuietHeld,
-        quietNow,
-        diskHeld: polledDiskHeld,
-      } = pollTeamGates(gateStates, {
-        root,
-        runners,
-        liveConfig,
-        modelsPath,
-        now,
-        info,
-        reclaim,
-      });
-      // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
-      // (plans/disk-floor.md, part 1/4).
-      diskHeld = polledDiskHeld;
-      // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
-      // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the team
-      // line shows per-provider counts only while a cap map is configured. Written only when
-      // it changes, like budget and disk; a map-less team publishes `byKey` empty, which
-      // renders exactly as before.
-      publishInfoFields(root, info, [["permits", semaphore.snapshot()]]);
-
-      // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
-      // tick model's provider stands under a hold, and every role is held when the
-      // reviewer's provider is (with the review gate on, nothing could merge — and the merge
-      // queue below reads the same reviewHeld verdict). Key presence in the map is relapse
-      // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
-      // so a lifted hold never keeps blocking. Read fresh from gateStates.teamHold — the
-      // permit-time closures below see the latest poll's verdicts, not this poll's snapshot.
-      const teamHeldProviders = heldProviders(gateStates.teamHold);
-      // Fresh reads for the permit-time closures: they run after later polls have advanced
-      // gateStates.teamHold, so they re-derive from the LATEST poll's map, not this snapshot.
-      const teamHeldNow = () => heldProviders(gateStates.teamHold);
-      // The reviewer's seam is read from the config merges actually review under — the poll's
-      // roleConfig, which a used-up claude window or the cap has already moved to a fallback —
-      // so a reviewer that left claude no longer holds the whole team on the claude hold.
-      const reviewSeamKey = reviewHoldKey(roleConfig);
-      const reviewHeldNow = () => liveConfig.review.enabled && teamHeldNow().has(reviewSeamKey);
-      const reviewHeld = liveConfig.review.enabled && teamHeldProviders.has(reviewSeamKey);
-      const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
-
-      // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
-      // machine observe it. `hold` starts no new ticks at all — director included; a restart
-      // takes effect within the drain's window plus a bounded merge hand-off, and its prompt waits
-      // in the inbox for the new build — while the green check/compile/drain run in the
-      // background. That covers ticks
-      // reserved before the hold too: a waiter parked in the semaphore queue that is granted a
-      // permit mid-drain meets the closed start gate (tickStartHeld), releases the permit, and
-      // hands its reservation back so it re-schedules once the hold lifts or on the new build.
-      // `restart` means dist/ already holds the new
-      // build: stop scheduling, abort whatever role ticks the drain gave up waiting for — the
-      // permit holders; they resume on the new build — and return. A director tick can never be
-      // in flight here — poll only returns `restart` once it has finished. (holdForRestart keeps
-      // the previous poll's verdict until this one's is in: resetting it before the await
-      // would open the gate for a waiter granted a permit while poll runs.)
-      // Main watch (src/baseline/main-watch.ts): records the full check's verdict on main's new
-      // tip in the background; nothing here waits for it.
-      if (!opts.once) mainWatch.poll(mainHead, holdForRestart || diskHeld, liveConfig);
-      if (redeploy) {
-        const action = await redeploy.poll(
-          await redeployTarget(root, mainHead, redeploy.build.sha),
-          {
-            roleInFlight: rolePermitHolders.size,
-            directorInFlight: directorInFlight.size,
-            roleTickP75Ms: p75TickDurationMs(roleTickDurationsMs),
-          },
-          liveConfig.autoRestart,
-          now,
-        );
-        const build = redeploy.status(now);
-        publishInfoFields(root, info, [["build", build]]);
-        if (action === "restart") {
-          restart = true;
-          // Only permit holders have a pi run to cut off (the director is guaranteed finished by
-          // then): a parked waiter meets the closed start gate whenever the shutdown hands it a
-          // permit, so it needs no abort — and aborting for it alone would also cut off an
-          // in-flight merge that no permit-holding tick put at stake. The role-only controller
-          // keeps that promise: the merge, wired to the full signal, runs on into the hand-off
-          // window the wait announces (BUGS.md 2026-09-30).
-          if (rolePermitHolders.size > 0) internalRoleStop.abort();
-          break;
-        }
-        holdForRestart = action === "hold";
-      }
-
-      // Merge queue 3/5 — drain the durable merge queue while neither a restart nor a failure
-      // hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the verification
-      // stage, its merge slot, and the dedupe against main). A held poll starts no verify and no
-      // merge, exactly as it starts no tick; what is already in flight runs on, and a verify
-      // parked for its permit meets the same start gate as a parked tick when the permit comes.
-      if (!holdForRestart && !reviewHeld && !diskHeld) {
-        // A `main_red` pin the pipeline kept goes back on the queue once main's head has moved.
-        for (const r of runners) await requeueMainRedPin(root, mainBranch, r.state, mainHead);
-        await drainMergeQueue(
-          {
-            root,
-            mainBranch,
-            signal,
-            semaphore,
-            runners,
-            liveConfig,
-            roleConfig,
-            directorConfig,
-            piDefault,
-            startHeld: () => tickStartHeld() || reviewHeldNow(),
-          },
-          merges,
-        );
-      }
-
-      // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
-      // holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks
-      // stay deferred — queued feature/bugfix work outranks
-      // them regardless of what merged. Stat-cached reads (backlog.ts): one stat per file per
-      // poll while the files are unchanged. bugfix is not a maintenance role, but while BUGS.md
-      // `## Open` is empty it defers like one (deferTick) — openBugsNow is that emptiness, read
-      // once here and reused for both predicates.
-      const openBugsNow = openBugs(root).length > 0;
-      const workBacklogOpen = eligibleEntries(root, "feature").length > 0 || eligibleEntries(root, "bugfix").length > 0;
-      const plansFull = planBacklogFull(root, liveConfig);
-
-      // A demoted fallback's half-open window (part 5c/8): the pair whose probe is due, and
-      // the roles whose model tier WOULD run on that pair absent the demotion (the price-based
-      // resolution — the serving resolution has already dropped the pair, which is exactly
-      // why it is being probed). Only those roles pierce the budget hold, and the launch pass
-      // admits exactly one of them as the probe — a probe blind to the pair's tier would lift
-      // the pause for every role (objection to an earlier draft), and a probe with no
-      // eligible runner must not hijack the poll's other launches (the launch pass continues
-      // only the eligible runners it cannot admit, never the rest of the team).
-      const probePair = fallbackProbeDuePair(gateStates.budget.breakers, breakerNow());
-      const probeRoles = new Set<string>();
-      if (probePair !== null) {
-        for (const r of runners) {
-          if (r.role === DIRECTOR_ROLE) continue;
-          const p = priceResolved[roleSeamTier(liveConfig, r.role)].pair;
-          if (p !== null && modelPairName(p) === probePair) probeRoles.add(r.role);
-        }
-      }
-      // The review-on strong pause (budgetGate): with the review gate on, an unresolvable
-      // strong tier means nothing could merge, so EVERY role is held — the per-tier pause set
-      // alone would let small/default roles author changes no reviewer could judge. The probe
-      // of the strong pair pierces this hold for exactly the probed tier's roles too.
-      const reviewStrongPaused =
-        budgetActive && liveConfig.review.enabled && servingResolved.strong.pair === null;
-      const reasons = await pollRunnerReasons({
-        root,
-        runners,
-        once,
-        now,
-        mainHead,
-        userPaused,
-        quietNow,
-        pausedRoles: pausedRolesSet,
-        capPaused,
-        maintenanceQuota,
-        bootstrapHeld,
-        budgetPausedRoles,
-        probeRoles,
-        reviewStrongPaused,
-        roleQuietHeld,
-        holdForRestart,
-        diskHeld,
-        heldProviders: teamHeldProviders,
-        windowHeldProviders: windowHeldProviders(gateStates.teamHold),
-        reviewHeld,
-        roleProviders,
-        openBugsNow,
-        workBacklogOpen,
-        planBacklogFull: plansFull,
-        deferredDue,
-        workMergedSince,
-      });
-      launchDueTicks({
-        root,
-        reasons,
-        // roleSignal, not signal: the timed tick wrapper watches the full signal PLUS the
-        // role-only stop, exactly as the pre-extraction inline pass did — the restart drain's
-        // give-up abort must also turn away a waiter granted its permit at that moment.
-        signal: roleSignal,
-        gateStates,
-        breakerPolicy,
-        breakerNow,
-        probePair,
-        probeRoles,
-        budgetActive,
-        semaphore,
-        piDefault,
-        rolePermitHolders,
-        roleInFlight,
-        directorInFlight,
-        roleTickDurationsMs,
-        startHeld: (role) =>
-          tickStartHeld() ||
-          (role !== DIRECTOR_ROLE
-            ? reviewHeldNow() || teamHeldNow().has(roleProviders.get(role))
-            : windowHeldProviders(gateStates.teamHold).has(roleProviders.get(role))),
-      });
-
-      // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
-      // from maintenance while a work loop has work to take, so a due work tick never waits out
-      // a whole maintenance tick. Sized after the launch pass, so a runner launched this poll
-      // already reads as running and reserves nothing for itself.
-      const poolSnapshot = semaphore.snapshot();
-      // The provider-headroom predicate receives the structural ClaimRunner; the config that
-      // names the provider lives on the real LoopRunners, so look the runner up by role.
-      const runnerByRole = new Map(runners.map((r) => [r.role, r]));
-      const reserve = workReserveCount(root, runners, {
-        maxConcurrent: liveConfig.maxConcurrent,
-        enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
-        queuedMergeRoles: queuedMergeRoles(root),
-        instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
-        // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
-        // permit only when its own provider could use it — capped and full, it would only idle
-        // the slot another provider's maintenance tick could take. Read from the pool's live
-        // snapshot; an uncapped key (or the team-total-only case) always has headroom.
-        providerHasHeadroom: (r) => {
-          const runner = runnerByRole.get(r.role);
-          const cfg = runner && runner.role !== DIRECTOR_ROLE ? runner.runConfig(now) : null;
-          const key = cfg ? seamConcurrencyKey(cfg, piDefault) : undefined;
-          if (key === undefined) return true;
-          const k = poolSnapshot.byKey[key];
-          if (k?.limit === undefined) return true;
-          return k.inUse < k.limit;
-        },
-      });
-      semaphore.setReserve(reserve);
-      if ((lastReserve === 0) !== (reserve === 0)) {
-        emit({ source: TUMWATER_SOURCE, type: "permit_reserve", reserve });
-      }
-      lastReserve = reserve;
-
-      // Once mode's exit: every enabled role settled, no tick in flight, and the merge queue
-      // empty with no merge in flight for one full poll cycle — then fire the internal
-      // stop, the same graceful shutdown the restart drain uses (the `finally` awaits
-      // in-flight merge tasks to the end). The one-poll-cycle requirement is the guard
-      // against dropping a queued-but-not-yet-started merge: a stop that arrives during the
-      // shutdown drain drops the queue entry, so the slot gets its poll to pick the entry up
-      // before the stop is trusted.
-      if (
-        once.exitReady({
-          roleTicks: roleInFlight.size,
-          directorTicks: directorInFlight.size,
-          merges: mergeTasks(merges).length,
-          queuedMerges: queuedMergeFiles(root).length,
-        })
-      ) {
-        internalStop.abort();
-        break;
-      }
-
+      const inputs = await pollRequestsAndWatch(ctx, state);
+      const gates = pollGatesAndHolds(ctx, state, inputs);
+      if (await pollRedeploy(ctx, state, inputs)) break;
+      await pollMergeDrain(ctx, state, inputs, gates);
+      await pollSchedule(ctx, state, inputs, gates);
+      if (pollReserveAndExit(ctx, state, inputs)) break;
       await sleepInterruptible(pollMs, signal);
     }
   } finally {
@@ -658,7 +342,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       roleInFlight,
       directorInFlight,
       mergeTasks(merges),
-      restart,
+      state.restart,
       opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
       () => internalStop.abort(),
     );
@@ -671,9 +355,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // feed.
   return once.active
     ? {
-        restart,
+        restart: state.restart,
         settled: once.reasons,
         ticksRun: new Map(runners.map((r) => [r.role, once.ticksRun(r)] as const)),
       }
-    : { restart };
+    : { restart: state.restart };
 }

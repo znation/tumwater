@@ -239,7 +239,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
   - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
   - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
-- src/orchestrator/orchestrator.ts, orchestrator-scheduling.ts, orchestrator-launch.ts and retention.ts: migrate `LoopRunner` → `RoleRunner`, `loopEnabled` → `runnerEnabled`, `loopIds` → `runnerIds`, `saveLoopState` → `saveRunnerState` and `LoopState` → `RunnerState`, and convert comments ("the LoopRunners above" → "the RoleRunners above"). The poll loop stays the poll loop.
+- src/orchestrator/orchestrator.ts, orchestrator-poll.ts, orchestrator-scheduling.ts, orchestrator-launch.ts and retention.ts: migrate `LoopRunner` → `RoleRunner`, `loopEnabled` → `runnerEnabled`, `loopIds` → `runnerIds`, `saveLoopState` → `saveRunnerState` and `LoopState` → `RunnerState`, and convert comments ("the LoopRunners above" → "the RoleRunners above"). The poll loop stays the poll loop.
 - Tests: every test/orchestrator*.test.ts and test/orchestrator*.e2e.test.ts (`loadLoopState` alone is about 170 lines here), plus test/fixtures/orchestrator-fixtures.ts. Rename test locals per the series rules; test/orchestrator-2.e2e.test.ts's `loopOrder` → `roleOrder`.
 - Locals such as `dryTicks` and `dryFailedAt` carry role-id and tick words, which belong to later series; leave them.
 
@@ -638,6 +638,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
   - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
   - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/orchestrator/orchestrator-poll.ts (the poll steps split out of `runOrchestrator`) reads `tickStartHeld` and `roleTickDurationsMs`: rename those uses with the members below.
 - src/orchestrator/orchestrator-launch.ts: `launchDueTicks` → `launchDueRuns`, `ROLE_TICK_DURATION_SAMPLES` → `ROLE_RUN_DURATION_SAMPLES`, member `roleTickDurationsMs` → `roleRunDurationsMs`, `tickStartHeld` → `runStartHeld` and `roleTickP75Ms` → `roleRunP75Ms` (a member read by src/redeploy/; rename those uses here). Locals `tickIdx`, `tickCalls` and `roleTicksInFlight` → run forms.
 - src/orchestrator/orchestrator.ts: the exit-info member `ticksRun` → `runsDone`, renamed with its uses in src/cli/cli-start.ts (`onceSummary`/`onceFailures` parameters) and src/scheduling/once-round.ts (the `ticksRun(runner)` method → `runsDone(runner)`); `recordFallbackTickAt` and `deferTick` uses as they stand. orchestrator-scheduling.ts and retention.ts: comments.
 - test/fixtures/orchestrator-fixtures.ts: `awaitSettledTick` → `awaitSettledRun` (aliased: the e2e tests in part 11/20 use it about 38 times), `timedTickHarness` → `timedRunHarness`, `awaitFirstTick` → `awaitFirstRun`.
@@ -1153,25 +1154,5 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The migrated form of the team's config in the note above, loaded in a test, resolves `seamsInUse` to claude for every primary seam and `qwenrunner/qwen3.8-27b` on pi for the fallback.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
-
-### Split runOrchestrator's 540-line poll closure into per-step modules (planned 2026-10-19 by the organize role; lands after the blocked plain-terms series' orchestrator parts, runner 8/14 and run 10/20-11/20, so it does not fight them; touches src/orchestrator/orchestrator.ts + new src/orchestrator/orchestrator-poll.ts + src/orchestrator/orchestrator-scheduling.ts)
-
-**Goal.** `runOrchestrator` in src/orchestrator/orchestrator.ts is 662 lines, about 3.5 times the 184-line median source file, and almost all of it is one function: about 200 lines of setup, then a `while (!signal.aborted)` poll loop of about 315 lines that runs live-reload, request markers, branch watch, gates, redeploy, merge drain, deferral inputs, scheduling and the once-mode exit in sequence, sharing the closure's `let` flags (`restart`, `holdForRestart`, `diskHeld`, `warnedBranchDivergence`, `lastReserve`) and the permit-time closures (`tickStartHeld`, `teamHeldNow`, `reviewHeldNow`). A reader cannot see one step's inputs and outputs apart from the rest.
-
-**Target structure.** Keep `runOrchestrator` as setup, the loop skeleton and the shutdown drain. Move the per-poll steps into functions in a new orchestrator-poll.ts that take an explicit `PollContext` (the setup's constants and collaborators: root, runners, semaphore, merges, gateStates, notifier, emit/warn) and a `PollState` object that owns the cross-poll flags above, so each step names what it reads and writes:
-- a request-and-watch step (live-reload poll, notify/retention/launchservices, request markers, abort settling, branch-divergence watch);
-- a redeploy step that returns the poll's `hold`/`restart` verdict;
-- a merge-drain step (the "Merge queue 3/5" block);
-- a deferral-inputs step (open bugs, work backlog, plans-full, probe pair, review strong pause) feeding the existing `pollRunnerReasons` in orchestrator-scheduling.ts;
-- a reserve-and-exit step (priority headroom, `lastReserve` edge, once-mode exit).
-Move only code: no step changes its order, its awaits or its event output, and the permit-time closures keep reading `gateStates.teamHold` fresh.
-
-**Why not now.** The blocked plain-terms parts rename `LoopRunner`, `ticksRun` and `deferTick` inside this function, so splitting it first makes every one of those parts conflict.
-
-**Acceptance criteria.**
-- `runOrchestrator` is under 250 lines and no poll step is inline in its loop body beyond calls.
-- The orchestrator, once-mode, redeploy and e2e tests pass unchanged, and no test file other than imports changes.
-- Event order and content are the same as before for the e2e fixtures (the suite asserts them).
-- `npm test` passes.
 
 ## Done

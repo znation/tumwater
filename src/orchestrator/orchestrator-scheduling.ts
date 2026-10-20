@@ -4,11 +4,15 @@
  * gates, the merge-queue interlock, need-based deferral, and once-mode settlement —
  * producing the reasons map orchestrator-launch.ts's launchDueTicks starts ticks from.
  * Split out of runOrchestrator's poll body so the WHY-due policy reads on its own screen;
- * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
+ * orchestrator-poll.ts keeps the poll's other passes (config reload, markers, gates, redeploy,
  * merge drain) and the launch call itself. */
 import { increment } from "../collections.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
+import { reviewRunConfig, roleSeamTier, seamHoldKey } from "../config/config-views.js";
+import { openBugs } from "../backlog/backlog.js";
+import { fallbackProbeDuePair } from "../budget/fallback-breaker.js";
+import { modelPairName } from "../budget/budget.js";
+import type { pollTeamGates, TeamGateStates } from "../gates/gate-polls.js";
 import type { LoopRunner } from "../runner/runner.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
@@ -26,6 +30,7 @@ import {
   CLAIM_IDLE_MAX_MS,
   assignNext,
   claimReleaseReason,
+  planBacklogFull,
   heldKeys,
   listedKeys,
   type ClaimReleaseReason,
@@ -544,4 +549,55 @@ export async function pollRunnerReasons(
  * a reviewer that left claude no longer holds the whole team on the claude hold. */
 export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {
   return seamHoldKey(reviewRunConfig(roleConfig));
+}
+
+/** The deferral inputs one poll computes for pollRunnerReasons and the launch pass. */
+interface DeferralInputs {
+  openBugsNow: boolean;
+  workBacklogOpen: boolean;
+  plansFull: boolean;
+  probePair: string | null;
+  probeRoles: Set<string>;
+  reviewStrongPaused: boolean;
+}
+
+/** Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
+ * holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks
+ * stay deferred — queued feature/bugfix work outranks them regardless of what merged.
+ * Stat-cached reads (backlog.ts): one stat per file per poll while the files are unchanged.
+ * bugfix is not a maintenance role, but while BUGS.md `## Open` is empty it defers like
+ * one (deferTick) — openBugsNow is that emptiness, read once here and reused for both
+ * predicates. Also the demoted fallback's half-open window (part 5c/8): the pair whose probe
+ * is due, and the roles whose model tier WOULD run on that pair absent the demotion (the
+ * price-based resolution — the serving resolution has already dropped the pair, which is
+ * exactly why it is being probed). Only those roles pierce the budget hold, and the launch
+ * pass admits exactly one of them as the probe — a probe blind to the pair's tier would lift
+ * the pause for every role, and a probe with no eligible runner must not hijack the poll's
+ * other launches. The review-on strong pause (budgetGate): with the review gate on, an
+ * unresolvable strong tier means nothing could merge, so EVERY role is held — the per-tier
+ * pause set alone would let small/default roles author changes no reviewer could judge. The
+ * probe of the strong pair pierces this hold for exactly the probed tier's roles too. */
+export function pollDeferralInputs(
+  root: string,
+  runners: readonly LoopRunner[],
+  liveConfig: TumwaterConfig,
+  gateStates: TeamGateStates,
+  gates: Pick<ReturnType<typeof pollTeamGates>, "priceResolved" | "servingResolved" | "budgetActive">,
+  breakerNowMs: number,
+): DeferralInputs {
+  const openBugsNow = openBugs(root).length > 0;
+  const workBacklogOpen = eligibleEntries(root, "feature").length > 0 || eligibleEntries(root, "bugfix").length > 0;
+  const plansFull = planBacklogFull(root, liveConfig);
+  const probePair = fallbackProbeDuePair(gateStates.budget.breakers, breakerNowMs);
+  const probeRoles = new Set<string>();
+  if (probePair !== null) {
+    for (const r of runners) {
+      if (r.role === DIRECTOR_ROLE) continue;
+      const p = gates.priceResolved[roleSeamTier(liveConfig, r.role)].pair;
+      if (p !== null && modelPairName(p) === probePair) probeRoles.add(r.role);
+    }
+  }
+  const reviewStrongPaused =
+    gates.budgetActive && liveConfig.review.enabled && gates.servingResolved.strong.pair === null;
+  return { openBugsNow, workBacklogOpen, plansFull, probePair, probeRoles, reviewStrongPaused };
 }

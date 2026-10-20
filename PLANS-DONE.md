@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split runOrchestrator's 540-line poll closure into per-step modules (planned 2026-10-19 by the organize role; lands after the blocked plain-terms series' orchestrator parts, runner 8/14 and run 10/20-11/20, so it does not fight them; touches src/orchestrator/orchestrator.ts + new src/orchestrator/orchestrator-poll.ts + src/orchestrator/orchestrator-scheduling.ts) — done 2026-10-19
+
+**Goal.** `runOrchestrator` in src/orchestrator/orchestrator.ts is 662 lines, about 3.5 times the 184-line median source file, and almost all of it is one function: about 200 lines of setup, then a `while (!signal.aborted)` poll loop of about 315 lines that runs live-reload, request markers, branch watch, gates, redeploy, merge drain, deferral inputs, scheduling and the once-mode exit in sequence, sharing the closure's `let` flags (`restart`, `holdForRestart`, `diskHeld`, `warnedBranchDivergence`, `lastReserve`) and the permit-time closures (`tickStartHeld`, `teamHeldNow`, `reviewHeldNow`). A reader cannot see one step's inputs and outputs apart from the rest.
+
+**Target structure.** Keep `runOrchestrator` as setup, the loop skeleton and the shutdown drain. Move the per-poll steps into functions in a new orchestrator-poll.ts that take an explicit `PollContext` (the setup's constants and collaborators: root, runners, semaphore, merges, gateStates, notifier, emit/warn) and a `PollState` object that owns the cross-poll flags above, so each step names what it reads and writes:
+- a request-and-watch step (live-reload poll, notify/retention/launchservices, request markers, abort settling, branch-divergence watch);
+- a redeploy step that returns the poll's `hold`/`restart` verdict;
+- a merge-drain step (the "Merge queue 3/5" block);
+- a deferral-inputs step (open bugs, work backlog, plans-full, probe pair, review strong pause) feeding the existing `pollRunnerReasons` in orchestrator-scheduling.ts;
+- a reserve-and-exit step (priority headroom, `lastReserve` edge, once-mode exit).
+Move only code: no step changes its order, its awaits or its event output, and the permit-time closures keep reading `gateStates.teamHold` fresh.
+
+**Why not now.** The blocked plain-terms parts rename `LoopRunner`, `ticksRun` and `deferTick` inside this function, so splitting it first makes every one of those parts conflict.
+
+**Acceptance criteria.**
+- `runOrchestrator` is under 250 lines and no poll step is inline in its loop body beyond calls.
+- The orchestrator, once-mode, redeploy and e2e tests pass unchanged, and no test file other than imports changes.
+- Event order and content are the same as before for the e2e fixtures (the suite asserts them).
+- `npm test` passes.
+
+**Done.** Steps landed in orchestrator-poll.ts as `pollRequestsAndWatch`, `pollGatesAndHolds` (the gates call plus the failure-hold views the permit-time closures read), `pollRedeploy`, `pollMergeDrain`, `pollSchedule` and `pollReserveAndExit`; the deferral inputs are `pollDeferralInputs` in orchestrator-scheduling.ts. The cross-poll flags live in `PollState`; the setup constants in `PollContext`.
+
 ### `tumwater history --result` takes a comma-separated list of outcome classes, so one listing or summary shows every run of the outcomes an operator is chasing (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — touches only `src/history/history.ts`, `src/cli/help.ts`, docs/cli.md and `test/cli-history-filtering.test.ts`); done 2026-10-19 by the feature role
 
 **Goal.** `history --result` narrows to ONE outcome class today (`cmdHistory`, `src/history/history.ts`), so "every run that did not merge" (`none` + `refused` + `problems`) or "merged and refused runs" takes one command per class, and `--summary`/`--json` cannot cover the union in one document. Accept `--result a,b`: a row passes when `historyClass(r.result)` is any listed class, composing with `--role`, `-n`, `--since`, `--grep`, `--summary` and `--json` as the single class does. A single class behaves exactly as now. This mirrors the `logs --type` comma-list plan (feature-3's entry above) on the other observing view; the two share no file.
