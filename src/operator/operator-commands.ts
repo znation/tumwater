@@ -170,17 +170,24 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   say(requestWake(root, targetRoles(root, args), inMs));
 }
 
-/** `tumwater reclaim [--dry-run]`: run one manual reclaim pass over every harness worktree
- * (plans/disk-floor.md, part 3/4). `--dry-run` lists each candidate with its idle age and how
- * many ignored paths `git clean -ndX` would remove, and changes nothing — it neither cleans a
- * worktree nor writes the worktree-use registry. With a live team the
- * pass is requested through the marker the orchestrator consumes, so in-use worktrees are
- * respected; with none running it runs in-process, since nothing is in use. */
+/** `tumwater reclaim [--dry-run [--json]]`: run one manual reclaim pass over every harness
+ * worktree (plans/disk-floor.md, part 3/4). `--dry-run` lists each candidate with its idle
+ * age and how many ignored paths `git clean -ndX` would remove, and changes nothing — it
+ * neither cleans a worktree nor writes the worktree-use registry; `--json` prints those rows
+ * as data. With a live team the pass is requested through the marker the orchestrator
+ * consumes, so in-use worktrees are respected; with none running it runs in-process, since
+ * nothing is in use. */
 export async function cmdReclaim(root: string, args: string[]): Promise<void> {
   const dryRun = args.includes("--dry-run");
+  const json = args.includes("--json");
+  if (json && !dryRun) fail("reclaim --json requires --dry-run");
   const idleHours = loadConfig(root).worktreeIdleReclaimHours;
   if (dryRun) {
     const candidates = await inspectReclaimCandidates(root, idleHours);
+    if (json) {
+      sayJson({ dryRun: true, idleReclaimHours: idleHours, candidates });
+      return;
+    }
     if (candidates.length === 0) {
       say("nothing to reclaim — no reclaimable worktrees");
       return;

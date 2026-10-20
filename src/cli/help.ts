@@ -455,9 +455,10 @@ Usage:
                                    --cancel drops pending scheduled wakes (the named roles' share);
                                    --list shows every pending scheduled wake, earliest first
                                    (--json for scripts)
-  tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every
+  tumwater reclaim [--dry-run [--json]]
+                                   Reclaim gitignored build outputs from every
                                    workspace; --dry-run lists each candidate with its idle age
-                                   and ignored-path count and cleans nothing
+                                   and ignored-path count and cleans nothing (--json for scripts)
   tumwater revert <sha>|<role> <n>|<role> --last [--dry-run] [--json]
                                    Undo one merged change on main, committing the inverse
                                    under the primary-worktree lock; refuses off the base

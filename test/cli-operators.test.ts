@@ -11,8 +11,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
-import { commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
+import { writeJsonAtomic } from "../src/files/json-files.js";
+import { reclaimRequestPath, worktreeUsePath, abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
+import { worktreeAt, commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
 import { runNotFoundMessage } from "../src/run/run-detail.js";
@@ -1436,4 +1437,56 @@ test("revert refuses a run that did not merge, an unknown run and an unknown rol
   assert.match(r.stderr, /nosuchrole/);
   assert.equal(headSha(repo), before);
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
+// --- reclaim --dry-run --json: the candidate list as data ---
+
+test("reclaim --dry-run --json prints the candidates as data and cleans nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reclaim json");
+  const wt = worktreeAt(repo, "feature");
+  fs.writeFileSync(path.join(wt, ".gitignore"), "build/\n");
+  fs.mkdirSync(path.join(wt, "build"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "build", "out.bin"), "x");
+  writeJsonAtomic(worktreeUsePath(repo), { feature: { lastUsedAt: Date.now() - 25 * 3_600_000 } });
+
+  const text = await cli(repo, "reclaim", "--dry-run");
+  assert.equal(text.code, 0);
+  assert.match(text.stdout, /feature: idle /);
+
+  const r = await cli(repo, "reclaim", "--dry-run", "--json");
+  assert.equal(r.code, 0);
+  const out = JSON.parse(r.stdout) as {
+    dryRun: boolean;
+    idleReclaimHours: number;
+    candidates: { name: string; paths: number; reclaimable: boolean; idleHours: number }[];
+  };
+  assert.equal(out.dryRun, true);
+  assert.equal(out.idleReclaimHours, 24);
+  assert.equal(out.candidates.length, 1);
+  const c = out.candidates[0]!;
+  assert.equal(c.name, "feature");
+  assert.ok(c.paths >= 1);
+  assert.equal(c.reclaimable, true);
+  assert.ok(c.idleHours >= 24 && c.idleHours <= 26);
+  assert.ok(fs.existsSync(path.join(wt, "build", "out.bin")));
+});
+
+test("reclaim --dry-run --json with no workspaces prints an empty list", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reclaim json empty");
+  const r = await cli(repo, "reclaim", "--dry-run", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual((JSON.parse(r.stdout) as { candidates: unknown[] }).candidates, []);
+  assert.doesNotMatch(r.stdout, /nothing to reclaim/);
+});
+
+test("reclaim --json without --dry-run is refused before any pass", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli reclaim json refused");
+  const r = await cli(repo, "reclaim", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /reclaim --json requires --dry-run/);
+  assert.equal(r.stdout, "");
+  assert.equal(fs.existsSync(reclaimRequestPath(repo)), false);
 });

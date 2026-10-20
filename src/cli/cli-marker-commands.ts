@@ -42,9 +42,9 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
   // `pause` alone accepts `--for <duration>` (the timed pause) and `--reason <text>` (the
   // operator pause's why); `wake` alone accepts `--in <duration>` (the scheduled wake) and
   // `--cancel` (drop the pending scheduled wakes), `--list` (show them), and `--json`
-  // (with --list); `reclaim` alone accepts `--dry-run`; the other marker commands keep the
-  // plain --role vocabulary, so a stray --for, --reason, --in, --cancel, or --dry-run fails
-  // fast instead of being silently ignored.
+  // (with --list); `reclaim` alone accepts `--dry-run` (and `--json` with it); the other
+  // marker commands keep the plain --role vocabulary, so a stray --for, --reason, --in,
+  // --cancel, or --dry-run fails fast instead of being silently ignored.
   const perCommandFlags: Record<MarkerCommand, FlagSpec[]> = {
     "reset-counters": [ROLE_FLAG],
     wake: [ROLE_FLAG, WAKE_IN_FLAG, WAKE_CANCEL_FLAG, WAKE_LIST_FLAG, JSON_FLAG],
@@ -55,7 +55,7 @@ export async function runMarkerCommand(root: string, command: MarkerCommand, arg
       REASON_FLAG,
     ],
     resume: [ROLE_FLAG],
-    reclaim: [DRY_RUN_FLAG],
+    reclaim: [DRY_RUN_FLAG, JSON_FLAG],
     restart: [],
   };
   rejectUnknownArgs(command, args, perCommandFlags[command] ?? [ROLE_FLAG]);
