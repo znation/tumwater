@@ -1420,3 +1420,88 @@ unknown-name error that uses it spells the hint the same way.
 **Pinned by.** `test/suggest.test.ts` — "didYouMean wraps a suggestion in the pinned wording, empty
 string for none" and "typoSuffix appends the did-you-mean wording for a close typo, nothing
 otherwise".
+
+## Thinking strip and context notes: a small window sends no old thinking, and each threshold warns once
+
+`src/pi-extension/strip-thinking.ts` and `src/pi-extension/context-budget.ts` are pi extensions
+loaded on every pi run. Their rules are pure exported functions (`stripsThinking`, `stripThinking`,
+`contextNote`) behind a thin default-export adapter. The strip edits only what one request sends
+(pi's `context` event), never the session file.
+
+### INV-Y1: only a small-window chat-completions model loses its thinking
+
+**Guarantee.** `stripsThinking` holds only when the model's `api` is `STRIP_THINKING_API`
+(`openai-completions`) and `declaredWindow` gives a positive window of at most
+`STRIP_THINKING_MAX_WINDOW` (262,144). Any other API keeps its thinking whatever the window, and a
+missing model, or a missing, non-finite, negative or zero window, keeps it too.
+
+**Binds.** `src/pi-extension/strip-thinking.ts` (`stripsThinking`, `STRIP_THINKING_API`,
+`STRIP_THINKING_MAX_WINDOW`), `src/pi-extension/context-window.ts` (`declaredWindow`).
+
+**Pinned by.** `test/strip-thinking.test.ts` — "stripsThinking holds for a chat-completions model at
+or under the 256k window", "stripsThinking keeps the thinking of a large-window model",
+"stripsThinking keeps signed thinking on every other API, whatever the window" and "stripsThinking
+keeps the thinking when the model or its window is unknown or unusable".
+
+### INV-Y2: the strip removes every thinking block, copies only what it changes, and says when it changed nothing
+
+**Guarantee.** `stripThinking` drops every `thinking` block from every assistant message, the newest
+included. Messages it does not change come back as the same objects, the input is never mutated, an
+assistant message that only thought stays with empty content, and it returns null when no message
+carried thinking.
+
+**Binds.** `src/pi-extension/strip-thinking.ts` (`stripThinking`).
+
+**Pinned by.** `test/strip-thinking.test.ts` — "stripThinking removes every thinking block, the
+newest message's included", "stripThinking passes untouched messages through as the same objects and
+never mutates", "stripThinking returns null when no message carries thinking" and "stripThinking
+leaves an assistant message that only thought with empty content".
+
+### INV-Y3: each stripped request is a prefix of the next
+
+**Guarantee.** Because every thought is stripped, not all but the newest, the messages sent for
+request k are a prefix of those sent for request k+1, so a server that can only rewind its prompt
+cache to a checkpoint never re-reads the transcript. The adapter reads the model per request and
+leaves the context untouched (returns undefined) for a non-qualifying model, no model, no message
+list, or nothing to strip.
+
+**Binds.** `src/pi-extension/strip-thinking.ts` (`stripThinking`, default export
+`stripThinkingExtension`).
+
+**Pinned by.** `test/strip-thinking.test.ts` — "each request's stripped history is a prefix of the
+next request's" and "the extension strips a qualifying model's request and leaves the rest alone".
+
+### INV-Y4: a context note fires once per threshold, for the highest one crossed
+
+**Guarantee.** `contextNote` returns null below the first of `CONTEXT_THRESHOLDS` (50, 70, 85), for
+a null, undefined or non-finite percent, and for a threshold at or below `lastWarned`. When several
+are crossed at once it names only the highest. The note's advice depends only on the threshold, not
+the role, and an unusable token count or window drops the count parenthetical rather than printing
+half a reading.
+
+**Binds.** `src/pi-extension/context-budget.ts` (`contextNote`, `CONTEXT_THRESHOLDS`).
+
+**Pinned by.** `test/context-budget.test.ts` — "contextNote stays silent below the first threshold
+and on unknown usage", "contextNote fires once per threshold and names the numbers", "contextNote
+jumps to the highest crossed threshold instead of replaying the lower ones", "contextNote advice is
+role-agnostic, so the reviewer and conflict runs can carry it" and "contextNote omits the token
+counts when they are unknown".
+
+### INV-Y5: the note follows the tool result, and usage is never asked for once nothing is left to say
+
+**Guarantee.** The extension appends the note after the result's own content (a result with no
+content array gets the note alone), and composed after bounded-output it follows the bounded result.
+A context without usage or with a throwing getter yields no note and no throw (`readContextUsage`).
+With no thresholds, or once the last threshold has fired, it returns without calling
+`getContextUsage`.
+
+**Binds.** `src/pi-extension/context-budget.ts` (default export `contextBudget`),
+`src/pi-extension/context-usage.ts` (`readContextUsage`), `src/pi-extension/tool-result-content.ts`
+(`appendToolResultNote`).
+
+**Pinned by.** `test/context-budget.test.ts` — "the extension appends the note after the tool
+result's own content, once per threshold", "a tool result with no content array still gets the note
+alone", "the extension tolerates a context without usage or a throwing getter", "empty thresholds
+warn at nothing and never ask for a projection", "the extension stops asking for usage once the last
+threshold has fired" and "composed after bounded-output the way pi composes handlers, the note
+follows the bounded result".
