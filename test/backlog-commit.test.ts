@@ -2,13 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { EventEmitter } from "node:events";
-import type http from "node:http";
 import { loadConfig } from "../src/config/config.js";
 import { commitOperatorBacklogEdit } from "../src/backlog/backlog-commit.js";
 import { handleBacklogFile } from "../src/gui/gui-endpoint-commands.js";
 import { assertClean, initializedRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
-import { captureJson } from "./fakes/fake-res.js";
+import { captureJson, fakeReq } from "./fakes/fake-res.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // INV-B5: an operator-filed entry is committed on main under the primary-worktree lock.
@@ -58,11 +56,7 @@ test("off the base branch the entry stays uncommitted, and the helper returns fa
 
 test("POST /api/backlog-file commits the entry on main", async () => {
   const repo = await initializedRepo();
-  const req = new EventEmitter() as unknown as http.IncomingMessage;
-  process.nextTick(() => {
-    req.emit("data", Buffer.from(JSON.stringify({ kind: "bug", title: "dash" })));
-    req.emit("end");
-  });
+  const req = fakeReq(JSON.stringify({ kind: "bug", title: "dash" }));
   const { captured } = await captureJson((res) => handleBacklogFile(req, res, repo));
   assert.equal(captured.status, 200);
   assertClean(repo);
