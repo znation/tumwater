@@ -54,9 +54,9 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | Key | Default | What it does |
 | --- | --- | --- |
 | `provider` | none | The pi provider name; unset leaves pi's own default. |
-| `model` | none | The model for runs: one selector `provider/id[:thinking]`, or a map of tiers `small`/`default`/`strong`; unset leaves pi's own default. |
+| `model` | none | The model for runs: one selector `provider/id[:thinking]`, or a map of tiers `small`/`default`/`strong` whose entries may be selector objects `{ "backend", "model", "thinking" }`; unset leaves pi's own default. |
 | `thinking` | none | The pi thinking level; unset leaves pi's own default. |
-| `backend` | `"pi"` | The agent backend for bare model ids and the no-model default: `"pi"`, `"claude"` or `"opencode"`; see [backends.md](backends.md). |
+| `backend` | `"pi"` | The default backend for every selector that names none: `"pi"`, `"claude"` or `"opencode"`; a tier entry, role, review or fallback step names its own beside its `model`. The spellings `claude/<id>`, `opencode/<id>` and a bare `claude-…` id under pi still load until part 5/5 of the backend/model split retires them. See [backends.md](backends.md). |
 | `baseBranch` | none | The branch the team merges into and bases every role's worktree on; unset targets whichever branch the primary checkout has checked out, and an explicit value must exist. |
 | `agentBin` | none | The agent binary to spawn (`TUMWATER_PI_BIN` overrides it for one invocation); unset means `pi`, and a value with a path separator is resolved to an absolute path. |
 | `backends` | `{}` | Per-backend overrides of the binary (`bin`), extra arguments (`args`), and, for claude, a team config dir (`backends.claude.configDir`), keyed by `pi`, `claude` or `opencode`; see [backends.md](backends.md). `backends.claude.configDir` becomes `CLAUDE_CONFIG_DIR` for every claude process, so team transcripts and login live outside `~/.claude` (keeps a personal `funes` hook from indexing the team; it needs a one-time `claude auth login` in that dir). `backends.opencode.bin` names the OpenCode CLI (`TUMWATER_OPENCODE_BIN` overrides it for one invocation), and `backends.opencode.args` appends extra argv. An opencode passthrough arg is appended last and a positional value would be joined into OpenCode's message, so pass flag values as `--flag=value`. |
@@ -83,7 +83,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `diskReclaimGB` | `40` | Below this many GB free, idle worktrees drop their gitignored build outputs before the hold engages; 0 disables. |
 | `worktreeIdleReclaimHours` | `24` | Hours a worktree may sit unused before its gitignored build outputs are dropped; 0 disables. |
 | `notify` | none | A shell command run when the team needs a human; empty or unset disables. |
-| `fallback` | none | The budget fallback as one selector or a map by tier (values may be `"pause"`); see [backends.md](backends.md). |
+| `fallback` | none | The budget fallback as one selector, a step object `{ "backend", "model", "thinking", "maxDailyCostUsd" }`, a list of those, or a map by tier (values may be `"pause"`); see [backends.md](backends.md). |
 | `fallbackModel` | none | The free model roles switch to when `maxDailyCostUsd` is reached, as `provider`/`model`/`thinking`; mutually exclusive with `fallback`. |
 | `thrashTurns` | `40` | A run is flagged high-friction only when it used more than this many assistant turns and ran longer than `thrashMinutes`. |
 | `thrashMinutes` | `30` | The wall-clock minutes half of the high-friction test; see `thrashTurns`. |
@@ -102,7 +102,7 @@ The fields of a `roles.<id>` entry:
 | `instructions` | none | Extra instructions appended to this role's prompt. The director's entry is honored like any role's (its notes stay unset, the `role` command's `--clear-notes` refusal). |
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; unset uses the role's catalog tier. |
-| `backend` | none | The backend (`pi`, `claude`, `opencode`) that runs this role's `model`; the id passes to it as written. Alone, it inherits the tier's model only when that tier already routes to the same backend, otherwise the backend's tier default applies. Docs for the whole backend/model split follow in a later part. |
+| `backend` | none | The backend (`pi`, `claude`, `opencode`) that runs this role's `model`; the id passes to it as written. Alone, it inherits the tier's model only when that tier already routes to the same backend, otherwise the backend's tier default applies. See [backends.md](backends.md). |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
 | `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and selfcheck, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan loop's eligible-plan target, or holding a plan that needs review/needs replan), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan loop defers (`plans-full`) and this interval applies. |
 | `instances` | `1` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. |
@@ -110,10 +110,11 @@ The fields of a `roles.<id>` entry:
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in
 [backends.md](backends.md).
 
-A bare model id that starts with `claude-` (such as `"strong": "claude-opus-5-5"`) routes to the
-claude CLI even under the default `backend: "pi"`, so a Claude model runs on the claude CLI's
-included usage beside models from other providers on pi; `anthropic/claude-…` keeps pi (see
-[plans/agent-backends.md §3](../plans/agent-backends.md) rule 3a).
+A Claude model beside models from other providers on pi is a selector object with the backend
+named: `"strong": { "backend": "claude", "model": "claude-opus-5-5" }` runs on the claude CLI's
+included usage, while `anthropic/claude-…` stays on pi (see
+[plans/agent-backends.md §3](../plans/agent-backends.md)). A fallback step takes the same keys
+(`{ "backend", "model", "thinking", "maxDailyCostUsd" }`).
 
 ## Notify events
 

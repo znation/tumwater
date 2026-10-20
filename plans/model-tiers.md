@@ -91,6 +91,9 @@ itself, because pricing (src/pi/pi-models.ts) needs the provider and id apart, a
    see Backward compatibility.)
 3. A selector with no `/` is a bare model pattern for pi to resolve with no `--provider`, as a
    `model` without `provider` is today. It cannot be priced, so it never counts as free.
+   A tier entry may also be a selector object `{ "backend", "model", "thinking" }`: the explicit
+   `backend` runs the `model` id as written (`{ "backend": "claude", "model": "claude-opus-5-5" }`),
+   which replaces the `claude/<id>` and bare `claude-…` spellings (now retiring).
 4. `small`, `default`, `strong` are tier references, valid only as the value of
    `roles.<id>.model` or `review.model`. `pause` is valid only as a `fallback` map value.
 

@@ -8,11 +8,12 @@ source, docs and issues on 2026-10-17 (see "Sources") · verified live the same 
 
 Let the team run model jobs on the OpenCode CLI, so it can use OpenCode's free
 `deepseek-v4.1-flash-free` model. That is DeepSeek V4.1 Flash, which the team pays Hugging Face
-for today. A model id that starts with `opencode/` sends the job to OpenCode:
+for today. A selector with `backend: "opencode"` beside its `model` sends the job to OpenCode
+(the `opencode/<id>` spelling still loads but is retiring):
 
 ```json
 {
-  "model": "opencode/deepseek-v4.1-flash-free",
+  "model": { "backend": "opencode", "model": "deepseek-v4.1-flash-free" },
   "fallback": [
     { "model": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", "maxDailyCostUsd": 10 },
     "qwenrunner/qwen3.8-27b"
@@ -296,11 +297,13 @@ either shares or lacks:
     OpenCode.
   - `backends.opencode.bin` / `.args` work like claude's; `TUMWATER_OPENCODE_BIN` comes with the
     adapter (part 5).
-- **Model ids.** Everything after `opencode/` is passed to `--model`.
+- **Model ids.** With `backend: "opencode"` the `model` is passed to `--model` as written; a bare
+  id gets OpenCode's own `opencode/` provider. (The `opencode/<id>` namespace spelling, retiring,
+  means the same with the prefix stripped first.)
   - With no further `/`, it is a model on OpenCode's own gateway, whose OpenCode provider id is
-    also `opencode`. So `opencode/deepseek-v4.1-flash-free` becomes
-    `--model opencode/deepseek-v4.1-flash-free`: the tumwater id reads exactly like OpenCode's.
-  - With one, it is any provider OpenCode knows: `opencode/anthropic/claude-sonnet-5-5` becomes
+    also `opencode`. So `{ "backend": "opencode", "model": "deepseek-v4.1-flash-free" }` becomes
+    `--model opencode/deepseek-v4.1-flash-free`.
+  - With one, it is any provider OpenCode knows: `{ "backend": "opencode", "model": "anthropic/claude-sonnet-5-5" }` becomes
     `--model anthropic/claude-sonnet-5-5`.
   - A thinking suffix such as `:low` becomes `#<variant>` (§3).
 - **This hides pi's built-in `opencode` provider** (the paid gateway through pi). From now on
@@ -539,7 +542,7 @@ through the backend's `imageInput` hook.
   `brew install opencode`.
 - Each OpenCode model is in the catalog. Doctor shows "free" or its per-M prices, the context
   window, and any thinking level the model has no effort for.
-- A model on a provider other than the gateway (`opencode/anthropic/…`) has a credential
+- A model on a provider other than the gateway (`{ "backend": "opencode", "model": "anthropic/…" }`) has a credential
   (`opencode auth list --format json`).
 - The operator's global opencode config (`~/.config/opencode/{config.json,opencode.json,
   opencode.jsonc}`) or `~/.config/opencode/AGENTS.md`: any MCP server (disabled for team runs),

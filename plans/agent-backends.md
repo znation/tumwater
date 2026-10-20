@@ -208,7 +208,7 @@ hold).
 {
   "agent": "claude",                       // default "pi"; the backend for bare selectors and the no-model default
   "model": { "default": "claude-sonnet-5-5",
-             "strong":  "claude/claude-opus-5-5:high" },
+             "strong":  { "backend": "claude", "model": "claude-opus-5-5", "thinking": "high" } },
   "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp",  // a non-claude provider ⇒ runs on pi
   "agents": {
     "claude": { "bin": "claude", "args": [] },  // args: user passthrough, last (like piArgs)
@@ -217,21 +217,24 @@ hold).
 }
 ```
 
-Routing a selector to a backend:
+Routing a selector to a backend. A selector object's explicit `backend` beside `model` (tier
+entry, role, review, fallback step) decides first and the id reaches that backend as written; the
+rules below apply to a selector that names none. Rules 1 and 3a are the retiring namespace
+spellings: they still load, and part 5/5 of the backend/model split turns them into load errors.
 
-1. If the provider segment is a registered agent id, that agent runs it, so `claude/<id>[:level]`
-   always runs on claude. The ids are reserved; doctor warns if `~/.pi/agent/models.json` has a
+1. (Retiring.) If the provider segment is a registered agent id, that agent runs it, so
+   `claude/<id>[:level]` runs on claude; write `{ "backend": "claude", "model": "<id>" }` instead. The ids are reserved; doctor warns if `~/.pi/agent/models.json` has a
    provider of the same name.
 2. Any other `provider/id` runs on **pi**, the one backend with providers. That is what keeps
    `fallback: "omlx/…"` working under `agent: "claude"`.
 3. A bare id (no `/`) runs on the top-level `agent`. With `agent: "pi"` that is today's bare
    pi pattern.
-3a. A bare id starting with `claude-` runs on claude whatever the top-level `agent` says — the
+3a. (Retiring; write `backend: "claude"` beside the id.) A bare id starting with `claude-` runs on claude whatever the top-level `agent` says — the
     one prefix where the model id, not the agent, decides the backend
     (plans/provider-concurrency.md §9). So `"strong": "claude-opus-5-5"` under the default
     `agent: "pi"` routes the strong seam to the claude CLI while the rest of the fleet stays on
     pi; `anthropic/claude-…` keeps pi, because a named provider still wins (rule 2). The docs'
-    "Mixing providers" example relies on it.
+    "Mixing providers" example now spells it `{ "backend": "claude", "model": "claude-opus-5-5" }`.
 4. With **no `model` key at all**, each seam uses `agent`'s default model for its tier. For
    claude those are `small` → `claude-haiku-5-5`, `default` → `claude-sonnet-5-5` and `strong` →
    `claude-opus-5-5`; pi has none, and pi's own default applies as today.

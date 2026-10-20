@@ -379,7 +379,10 @@ plan's included usage. The operator confirmed on 2026-10-15: keep both backends,
 models and pi for every other provider.
 
 The operator's expectation is the natural one: a Claude model runs on the Claude CLI, and every
-other provider runs on pi. So `routeModel` gets a new rule 3a, ahead of the top-level `agent`:
+other provider runs on pi. So `routeModel` gets a new rule 3a, ahead of the top-level `agent`. **Rule 3a is retiring**: the
+backend/model split (an explicit `backend` beside `model`) replaces it, so the examples below that
+rely on a bare `claude-…` id now read `{ "backend": "claude", "model": "claude-opus-5-5" }`, and
+the bare spelling still loads only until part 5/5 of that split.
 
 - **New rule:** a bare id that starts with `claude-` runs on `claude`.
 - **Unchanged:** `anthropic/claude-…` and `openrouter/anthropic/claude-…` stay explicit pi
@@ -389,7 +392,7 @@ other provider runs on pi. So `routeModel` gets a new rule 3a, ahead of the top-
 
   ```json
   { "model": { "default": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
-               "strong": "claude-opus-5-5" },
+               "strong": { "backend": "claude", "model": "claude-opus-5-5" } },
     "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp" }
   ```
 

@@ -140,7 +140,7 @@ and never removed.
 | `tickTimeoutSeconds` | `runTimeoutSeconds` |
 | `landBatchMax` | `mergeBatchMax` |
 | `maintenancePerWorkLanding` | `maintenancePerWorkMerge` |
-| `agent` | `backend` |
+| `agent` | `backend` (the top-level default for selectors that name none; a tier entry, role, review or fallback step also takes `backend` beside `model`) |
 | `agents` (and `agents.<id>.bin`/`.args`) | `backends` |
 
 The supervisor keeps spawning its child generations with the `run` word. Every build accepts it,

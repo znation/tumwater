@@ -107,7 +107,7 @@ on the subscription):
 ```json
 "fallback": {
   "default": [
-    { "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 },
+    { "backend": "claude", "model": "claude-sonnet-5-5", "maxDailyCostUsd": 10 },
     { "model": "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731:deepinfra", "maxDailyCostUsd": 5 },
     "qwenrunner/qwen3.8-27b"
   ],
@@ -118,6 +118,11 @@ on the subscription):
 },
 "maxDailyCostUsd": 15
 ```
+
+A step names its own backend with `backend` beside `model` (`{ "backend": "pi", "model":
+"qwenrunner/qwen3.8-27b" }` is the explicit form of the last string step); a step without one keeps
+the routing it has under the team's top-level `backend`. The `claude/<id>` step spelling still
+loads but is retiring.
 
 The default tier's primary is Sonnet on the subscription, so it is that chain's first Claude model.
 Listing Sonnet again as the first fallback step makes it the chain's extra-usage step. When the

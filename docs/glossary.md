@@ -44,6 +44,7 @@ current one, so history, old logs and old scripts stay readable.
 | fallback | The model used when the first choice is unavailable. |
 | model jobs | The things a model does for tumwater: role runs, the reviewer and the conflict resolver. Doctor's routing header reads `job · model · backend`. |
 | model id | The string naming a model. |
+| backend and model | Two axes: `model` names the model, `backend` (`pi`, `claude`, `opencode`) names the program that runs it; a tier entry, role, review or fallback step sets both, and the top-level `backend` is the default for any that names none. |
 | workspace | A working copy where a role does its run (config key `worktreeSlots`). |
 | running N of M | How many runs are in progress out of the most allowed at once. |
 | waiting to start | A run is due but all workspaces or run slots are busy. |

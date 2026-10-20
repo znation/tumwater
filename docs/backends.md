@@ -1,8 +1,10 @@
 # Backends
 
 tumwater drives pi, and pi drives a model backend. Nothing in tumwater is tied to a
-particular one: any OpenAI-compatible endpoint pi can reach will do. A second backend, Claude
-Code, is selectable with `backend` (see [Claude Code](#claude-code-backend-claude) below).
+particular one: any OpenAI-compatible endpoint pi can reach will do. Claude
+Code and OpenCode are selectable with `backend` beside `model` — `model` names the model, `backend`
+names the program that runs it (see [Claude Code](#claude-code-backend-claude) and
+[OpenCode](#opencode-backend-opencode) below).
 
 ## What a backend must provide
 
@@ -96,7 +98,7 @@ A role reads an image (an `--attach` on a message in its inbox, or a file the ru
 at) only when its model job can. Capability has one source of truth — `seamImageInput`
 (`src/agent/image-input.ts`):
 
-- **Claude model jobs** can always read images (every Claude model does), so `backend: "claude"`
+- **Claude model jobs** can always read images (every Claude model does), so a job on the claude backend
   answers `true` for any model, never probed.
 - **pi model jobs** read the model's `input` list in pi's `models.json` — `"image"` present means
   capable, and *absent* means text-only. A pair missing from `models.json` is *unknown* (the
@@ -122,8 +124,8 @@ when the role reroutes, the prompt is accepted and the command says where it wil
 
 ## Claude Code (`backend: "claude"`)
 
-`backend` in `tumwater.json` names the backend bare model ids and the no-model default run on;
-`claude` runs on the Claude Code CLI instead of pi:
+`backend` in `tumwater.json` is the default for every selector that names none: the backend
+bare model ids and the no-model default run on. `claude` runs on the Claude Code CLI instead of pi:
 
 ```json
 "backend": "claude",
@@ -146,9 +148,12 @@ A fresh config dir reports `loggedIn: false`, so it needs a one-time login in th
 `CLAUDE_CONFIG_DIR=<dir> claude auth login`, or alternatively `claude setup-token` exporting
 `CLAUDE_CODE_OAUTH_TOKEN` (which tumwater already passes through). The configured dir wins over
 an inherited `CLAUDE_CONFIG_DIR`, never the other way.
-A model id whose provider names a backend
-id always routes there regardless of the top-level `backend`: `claude/claude-opus-5-5` runs on
-claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
+A tier entry, a role (`roles.<id>`), the review and a fallback step each take their own
+`backend` beside `model`, and that backend runs the id as written, whatever the top-level
+`backend` says: `{ "backend": "claude", "model": "claude-opus-5-5" }` runs on claude,
+`huggingface/…` ids stay on pi. The spellings `claude/<id>`, `opencode/<id>` and a bare `claude-…`
+id under pi still load, but are retiring: write the explicit form instead.
+Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
 default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
 per job; the director runs at the strong tier. The observability surfaces name the backend in the model id (`claude/claude-sonnet-5-5`
 in `tumwater status`, the dashboards, and the event feed), and a job with no model at all reads
@@ -179,7 +184,7 @@ model listed after it in the same chain may spend extra usage, within its own `m
 and the team cap, and only while no window is rejected and the account's `overageStatus` is not
 `rejected`. A step borrowed from another tier keeps the position it has in the chain that
 declares it. For example, with a Sonnet primary,
-`"fallback": [{ "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 }, "qwenrunner/qwen3.8-27b"]`
+`"fallback": [{ "backend": "claude", "model": "claude-sonnet-5-5", "maxDailyCostUsd": 10 }, { "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }]`
 means Sonnet on the subscription, then up to $10 of Sonnet extra usage, then local. The run that
 crosses into overage finishes there, because tumwater cannot stop the CLI mid-run, and its whole
 cost counts toward the step. **Behavior change:** an account that allows extra usage, with no
@@ -218,14 +223,14 @@ verify run therefore raises no false alarm.
 
 See [plans/agent-backends.md](../plans/agent-backends.md) for the series' full design.
 
-## OpenCode (`opencode/…` model ids)
+## OpenCode (`backend: "opencode"`)
 
-A model id that starts with `opencode/` runs the job on the OpenCode CLI for its free DeepSeek
+A selector with `backend: "opencode"` runs the job on the OpenCode CLI for its free DeepSeek
 model, instead of pi:
 
 ```json
 {
-  "model": "opencode/deepseek-v4.1-flash-free",
+  "model": { "backend": "opencode", "model": "deepseek-v4.1-flash-free" },
   "fallback": [
     { "model": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra", "maxDailyCostUsd": 10 },
     "qwenrunner/qwen3.8-27b"
@@ -237,8 +242,9 @@ model, instead of pi:
 `backends.opencode.bin` overrides the binary (`TUMWATER_OPENCODE_BIN` overrides it for one run);
 `backends.opencode.args` appends extra argv. The team targets OpenCode V2 at **2.0.32 or later**
 (the H1-verified version); `tumwater doctor` fails an older (or a 1.x) binary and names
-`brew install opencode`. A model id whose provider names a backend id always routes there,
-so `opencode/deepseek-v4.1-flash-free` runs on the OpenCode CLI; pi's own built-in `opencode`
+`brew install opencode`. A bare id such as `deepseek-v4.1-flash-free` runs on OpenCode's own gateway, and a
+provider-qualified id reaches any provider OpenCode knows:
+`{ "backend": "opencode", "model": "anthropic/claude-sonnet-5-5" }`. pi's own built-in `opencode`
 gateway provider is not reachable from tumwater.
 
 **The free model and its catch.** `deepseek-v4.1-flash-free` sits on OpenCode's pay-as-you-go

@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backend/model split, part 3/5: Document the two axes (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches README.md docs/backends.md docs/config.md docs/glossary.md plans/agent-backends.md plans/model-tiers.md plans/opencode-backend.md plans/provider-concurrency.md plans/fallback-chain.md plans/terminology.md; done 2026-10-19 by the feature role)
+
+**Goal.** The docs teach `backend` beside `model` as the way to pick a backend per tier, role or fallback step, and name the namespace spellings only as retiring. Series goal and siblings: part 1/5.
+
+**Approach.** README.md `Backends` and `Mixing providers` (the `anthropic/`-prefix hack and `backend: "pi"` clause become the two-axis story); docs/backends.md (the intro, "How the config points at it", the `Claude Code (backend: "claude")` sample and its "provider names a backend id always routes there" paragraph, the image-input bullet, the opencode model-ids paragraph — its example becomes `{ "backend": "opencode", "model": "anthropic/claude-sonnet-5-5" }`); docs/config.md (the `backend` row becomes the default for selectors that name none; the `model` row and the bare-`claude-` note; the `fallback` step keys); docs/glossary.md (one row for the two axes); plans/agent-backends.md §3's config rules, plans/model-tiers.md (tier entries may be selector objects), plans/opencode-backend.md §2, plans/provider-concurrency.md §9 (rule 3a marked retiring), plans/fallback-chain.md (a step may name its backend), plans/terminology.md's config-key rows. Each spot that today teaches `claude/<id>`, `opencode/<id>`, a bare `claude-…` under pi, or `opencode/<provider>/<id>` shows the explicit form instead, plus one sentence (in docs/config.md's `backend` row and docs/backends.md's config section only) that those spellings still load until part 5/5 retires them.
+
+**Acceptance criteria.**
+- `grep -rnE 'opencode/[a-z-]+/' README.md docs plans/opencode-backend.md` finds no nested opencode id; every example config in README.md and docs/backends.md picks a non-default backend with a `backend` key.
+- The docs' statements match the code as of part 2/5 (each documented routing case is one a part 1/5 or 2/5 test covers); `npm test` passes.
+
 ### `tumwater revert <sha> --dry-run` previews the revert: the commit it would undo, the paths the inverse touches, and whether it applies cleanly on main, without writing anything (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only src/operator/revert.ts, `cmdRevert`, the revert help line and docs/cli.md's revert clause) — done 2026-10-19
 
 **Goal.** `tumwater revert <sha>` acts at once. It commits the inverse on main, and the only way to learn whether a revert conflicts is to try it. An operator weighing a revert of a change merged a few commits back has no way to see first what it would undo, or whether later commits have built on it. `--dry-run` answers both from git's object store. It runs the same refusals as the real revert, then a three-way merge with `git merge-tree`. It never touches the index, the worktree or a ref, and it takes no lock. This is the same preview idea that `reclaim --dry-run` and `retire --dry-run` already offer.

@@ -884,16 +884,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### Backend/model split, part 3/5: Document the two axes (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches README.md docs/backends.md docs/config.md docs/glossary.md plans/agent-backends.md plans/model-tiers.md plans/opencode-backend.md plans/provider-concurrency.md plans/fallback-chain.md plans/terminology.md)
-
-**Goal.** The docs teach `backend` beside `model` as the way to pick a backend per tier, role or fallback step, and name the namespace spellings only as retiring. Series goal and siblings: part 1/5.
-
-**Approach.** README.md `Backends` and `Mixing providers` (the `anthropic/`-prefix hack and `backend: "pi"` clause become the two-axis story); docs/backends.md (the intro, "How the config points at it", the `Claude Code (backend: "claude")` sample and its "provider names a backend id always routes there" paragraph, the image-input bullet, the opencode model-ids paragraph — its example becomes `{ "backend": "opencode", "model": "anthropic/claude-sonnet-5-5" }`); docs/config.md (the `backend` row becomes the default for selectors that name none; the `model` row and the bare-`claude-` note; the `fallback` step keys); docs/glossary.md (one row for the two axes); plans/agent-backends.md §3's config rules, plans/model-tiers.md (tier entries may be selector objects), plans/opencode-backend.md §2, plans/provider-concurrency.md §9 (rule 3a marked retiring), plans/fallback-chain.md (a step may name its backend), plans/terminology.md's config-key rows. Each spot that today teaches `claude/<id>`, `opencode/<id>`, a bare `claude-…` under pi, or `opencode/<provider>/<id>` shows the explicit form instead, plus one sentence (in docs/config.md's `backend` row and docs/backends.md's config section only) that those spellings still load until part 5/5 retires them.
-
-**Acceptance criteria.**
-- `grep -rnE 'opencode/[a-z-]+/' README.md docs plans/opencode-backend.md` finds no nested opencode id; every example config in README.md and docs/backends.md picks a non-default backend with a `backend` key.
-- The docs' statements match the code as of part 2/5 (each documented routing case is one a part 1/5 or 2/5 test covers); `npm test` passes.
-
 ### Backend/model split, part 4/5: Move test fixtures from namespace ids to the explicit `backend` form (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches the test files that write `"claude/…"` or `"opencode/…"` selectors in a config — today test/opencode-catalog.test.ts test/budget-gates.test.ts test/doctor-model-checks.test.ts test/pi-models.test.ts test/config-views.test.ts test/opencode-run.test.ts test/startup-gate.test.ts and about fifteen more, found by `grep -rlE '"(claude|opencode)/' test`)
 
 **Goal.** Part 5/5 makes the namespace spellings load errors; this part moves every test config that relies on them to the explicit form first, so 5/5's diff is only the behavior change. Series goal and siblings: part 1/5.
