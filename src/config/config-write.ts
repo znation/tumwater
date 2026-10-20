@@ -101,19 +101,26 @@ function writeConfigMutation(
 
 /** Set the daily cost budget cap in tumwater.json through the shared writer idiom (see
  * writeConfigMutation), after checkDailyBudgetUsd has screened the value with its own
- * actionable message — the one both dashboards flash. */
+ * actionable message — the one both dashboards flash. A cap the config already resolves to
+ * (an omitted key resolves to the default) returns `unchanged: true` and writes nothing. */
 export function setDailyBudgetUsd(
   root: string,
   value: number,
-): { ok: true } | { ok: false; error: string } {
+): { ok: true; unchanged?: true } | { ok: false; error: string } {
   const problem = checkDailyBudgetUsd(value);
   if (problem) return fail(problem);
-  return writeConfigMutation(root, (cfg) => {
+  let unchanged = false;
+  const result = writeConfigMutation(root, (cfg) => {
+    if (cfg.maxDailyCostUsd === value) {
+      unchanged = true;
+      return cfg; // the loaded config itself: writeConfigMutation skips the write
+    }
     const next = { ...cfg, maxDailyCostUsd: value };
     // A whole-config write: keep the file's own roles section (see preserveFileRoles).
     preserveFileRoles(root, next);
     return next;
   });
+  return result.ok && unchanged ? { ok: true, unchanged: true } : result;
 }
 
 /** The loaded config viewed as an indexable record: the two known section shapes (a role's

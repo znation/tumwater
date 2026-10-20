@@ -68,6 +68,20 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
   });
 });
 
+test("Ctrl+B then Enter on the pre-filled cap says it is already set and writes nothing", async () => {
+  const repo = await makeTuiRepo(); // maxDailyCostUsd 50
+  const file = path.join(repo, "tumwater.json");
+  const before = fs.readFileSync(file, "utf8");
+  await withTui(repo, async (tui) => {
+    for (const ch of "draft prompt") tui.key(ch, ch);
+    tui.key(undefined, "b", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /budget is already \$50, so tumwater\.json was not written/);
+    assert.equal(fs.readFileSync(file, "utf8"), before);
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+  });
+});
+
 // Free-state budget (BUGS.md, 2026-09-14): a team whose models are all free has no spend
 // a cap could bind, so Ctrl+B flashes a notice instead of opening the editor — the prompt
 // line stays byte-for-byte (no pre-filled cap, nothing to save on Enter).

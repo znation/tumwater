@@ -86,14 +86,15 @@ test("budget mode opens pre-filled, saves the cap on Enter, and Esc cancels unch
   assert.equal(keys.state().input, "50");
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().budgetMode, false, "a saved cap leaves edit mode");
-  const cfg = readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsd: number };
-  assert.equal(cfg.maxDailyCostUsd, 50);
+  assert.equal(keys.state().flash, "budget is already $50, so tumwater.json was not written");
+  // The cap already resolves to the default 50, so no tumwater.json is created.
+  assert.equal(fs.existsSync(path.join(root, "tumwater.json")), false);
 
   // Esc cancels: the pre-filled value never reaches config.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   keys.handleKey(undefined, { name: "escape" });
   assert.equal(keys.state().budgetMode, false);
-  assert.equal((readJson(path.join(root, "tumwater.json")) as { maxDailyCostUsd: number }).maxDailyCostUsd, 50);
+  assert.equal(fs.existsSync(path.join(root, "tumwater.json")), false);
 
   // An invalid value flashes and STAYS in edit mode.
   keys.handleKey(undefined, { ctrl: true, name: "b" });
@@ -138,6 +139,7 @@ test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team bu
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().budgetMode, false, "a saved cap leaves edit mode");
   assert.equal(keys.state().flash, "feature: cap set to $60");
+  const afterSet = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
   const cfg = readJson(path.join(root, "tumwater.json")) as {
     maxDailyCostUsd?: number;
     maxDailyCostUsdPerRole?: Record<string, number>;
@@ -149,6 +151,12 @@ test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team bu
   // A re-open pre-fills the file's cap value (the snapshot's $50 team figure is not read).
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().input, "60", "the role's own cap pre-fills the line");
+  // Enter on the pre-filled value is a no-op: says so and leaves the file alone.
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().flash, "feature: cap is already $60, so tumwater.json was not written");
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), afterSet);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
   // An empty line removes the cap.
   keys.handleKey(undefined, { ctrl: true, name: "u" });
   keys.handleKey(undefined, { name: "return" });
@@ -159,6 +167,13 @@ test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team bu
     0,
     "an empty line writes 0 (the cap-off value)",
   );
+  const afterRemove = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().budgetMode, false);
+  assert.equal(keys.state().flash, "feature: cap is already removed, so tumwater.json was not written");
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), afterRemove);
 
   // An invalid value flashes and STAYS open.
   keys.handleKey(undefined, { ctrl: true, name: "b" });

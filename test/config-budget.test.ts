@@ -61,6 +61,23 @@ test("setDailyBudgetUsd persists only the cap, atomically, and rejects invalid v
   assert.equal(fs.readFileSync(path.join(dir, "tumwater.json"), "utf8"), "{ still editing");
 });
 
+test("setDailyBudgetUsd leaves tumwater.json byte-identical when the cap is already that value", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "tumwater.json");
+  saveConfig(dir, defaultConfig());
+  assert.deepEqual(setDailyBudgetUsd(dir, 25), { ok: true });
+  const bytes = fs.readFileSync(file);
+  assert.deepEqual(setDailyBudgetUsd(dir, 25), { ok: true, unchanged: true });
+  assert.deepEqual(fs.readFileSync(file), bytes);
+
+  // A hand-written file omitting the key resolves to the default, so saving it is unchanged.
+  const minimal = tmpdir();
+  const minimalFile = path.join(minimal, "tumwater.json");
+  fs.writeFileSync(minimalFile, "{}\n");
+  assert.deepEqual(setDailyBudgetUsd(minimal, 50), { ok: true, unchanged: true });
+  assert.equal(fs.readFileSync(minimalFile, "utf8"), "{}\n");
+});
+
 // The write-side failure path: when the config directory cannot take a new file (disk full,
 // permissions), the error surfaces as a string instead of throwing, the old file is left
 // byte-for-byte intact, and the atomic writer's tmp file does not linger. Skipped under root,

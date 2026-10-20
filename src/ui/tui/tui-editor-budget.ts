@@ -143,6 +143,13 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
         return true;
       }
       exitBudgetMode();
+      if (result.unchanged) {
+        const off = role !== null ? "removed" : "disabled";
+        const what = parsed.value === 0 ? off : usdCap(parsed.value);
+        const subject = role !== null ? `${role}: cap` : "budget";
+        session.flashMessage(`${subject} is already ${what}, so tumwater.json was not written`);
+        return true;
+      }
       if (role !== null) {
         // A role-cap write does not move the team cap the snapshot feeds, so the
         // currentCapUsd next-render hint stays put.
