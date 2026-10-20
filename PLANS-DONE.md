@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backend/model split, part 2/5: A fallback step takes `backend` beside `model` (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 1/5 landed; touches src/config/config-schema.ts src/config/config-fallbacks.ts src/config/config-validation.ts src/config/config-views.ts test/config-views.test.ts test/config-validation.test.ts test/config-live.test.ts test/config-write.test.ts) — done 2026-10-19 by the feature role
+
+**Goal.** A fallback step can cross backends by saying so — `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` — instead of by the shape of its model id. Series goal and siblings: part 1/5.
+
+**Approach.**
+- `FallbackStep`'s object form becomes `{ backend?, model, thinking?, maxDailyCostUsd? }`; `FALLBACK_STEP_KEYS` gains `"backend"` (src/config/config-schema.ts). `checkFallbackStep` (src/config/config-validation.ts) checks `backend` against `AGENT_IDS` and applies part 1/5's explicit-claude and explicit-pi id checks to the step's `model`.
+- src/config/config-fallbacks.ts: where a step's selector is parsed into a pair, an explicit step `backend` decides the pair's backend through `routeModel`'s `explicitBackend` (claude/opencode take the id verbatim); a step without one keeps `seamKeyedFallbackProvider`'s rule exactly as today. The pair's provider field keeps its current seam-keyed meaning (a non-pi pair carries its backend name), so gate-polls' `tickOnPair` handback and `fallbackDisplayPair` (src/config/config-views.ts) need no new case — add one test proving the display label of a `{ backend: "claude", model: "claude-sonnet-5-5" }` step equals today's `claude/claude-sonnet-5-5` step's.
+- A whole-config write (config-write's object path) round-trips a `{ backend, model, maxDailyCostUsd }` step unchanged.
+
+**Acceptance criteria.**
+- `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` and the string `"qwenrunner/qwen3.8-27b"` resolve to the same fallback pair under a claude team; `{ "backend": "claude", "model": "claude-sonnet-5-5" }` resolves to the same pair (and display label, and `maxDailyCostUsd` spend key) as `"claude/claude-sonnet-5-5"`.
+- A step's unknown `backend`, a `/` id under a claude step and a provider-less id under a pi step fail validation naming `fallback.<tier>[i].backend`/`.model`.
+- Every existing fallback test passes unmodified; `npm test` passes.
+
 ### Plain terms code runner, part 7/14: Rename the dashboard's role card and drawer code (planned 2026-10-16 by user; requires parts 6a/14, 6b/14 and 6c/14 landed; design in plans/terminology.md "Code names"; touches src/ui/gui/ + src/gui/ + test/gui*.test.ts + test/cli-gui.test.ts + test/helpers/gui-client-scope.ts; done 2026-10-19 by the feature role)
 
 **Goal.** The dashboard's browser code and server glue name the Roles card, drawer and rank by role, including `GUI_CLIENT_ROLES_JS` and the DOM ids and CSS classes the card uses.

@@ -16,7 +16,7 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { formatModelSelector, isAgentId, parseModelSelector } from "./model-selector.js";
+import { formatModelSelector, isAgentId, parseModelSelector, routeModel } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -45,8 +45,19 @@ import {
 function fallbackSelectorFields(
   selector: string,
   config: TumwaterConfig,
+  backend?: string,
 ): Pick<FallbackModelConfig, "provider" | "model" | "thinking"> {
   const parsed = parseModelSelector(selector);
+  if (backend !== undefined) {
+    // An explicit step backend is the pair's agent and takes the id as written (routeModel);
+    // the provider keeps its seam-keyed meaning: pi's own provider, else the backend's name.
+    const routed = routeModel(parsed.provider, parsed.model, config.backend ?? "pi", "default", backend);
+    return resolvedModelFields(
+      backend !== "pi" ? backend : parsed.provider,
+      routed.model,
+      parsed.thinking ?? config.thinking,
+    );
+  }
   return resolvedModelFields(
     seamKeyedFallbackProvider(config, parsed.provider),
     parsed.model,
@@ -166,8 +177,9 @@ function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelCon
   return (Array.isArray(raw) ? raw : [raw])
     .filter((s) => s !== "pause")
     .map((s) => {
-      const step = typeof s === "string" ? { model: s } : s;
-      const fields = fallbackSelectorFields(step.model, config);
+      const step: { backend?: string; model: string; maxDailyCostUsd?: number } =
+        typeof s === "string" ? { model: s } : s;
+      const fields = fallbackSelectorFields(step.model, config, step.backend);
       const extraUsage = fields.provider === "claude" && claudeSeen;
       if (fields.provider === "claude") claudeSeen = true;
       return {

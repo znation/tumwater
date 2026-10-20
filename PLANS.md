@@ -884,20 +884,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### Backend/model split, part 2/5: A fallback step takes `backend` beside `model` (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 1/5 landed; touches src/config/config-schema.ts src/config/config-fallbacks.ts src/config/config-validation.ts src/config/config-views.ts test/config-views.test.ts test/config-validation.test.ts test/config-live.test.ts test/config-write.test.ts)
-
-**Goal.** A fallback step can cross backends by saying so — `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` — instead of by the shape of its model id. Series goal and siblings: part 1/5.
-
-**Approach.**
-- `FallbackStep`'s object form becomes `{ backend?, model, thinking?, maxDailyCostUsd? }`; `FALLBACK_STEP_KEYS` gains `"backend"` (src/config/config-schema.ts). `checkFallbackStep` (src/config/config-validation.ts) checks `backend` against `AGENT_IDS` and applies part 1/5's explicit-claude and explicit-pi id checks to the step's `model`.
-- src/config/config-fallbacks.ts: where a step's selector is parsed into a pair, an explicit step `backend` decides the pair's backend through `routeModel`'s `explicitBackend` (claude/opencode take the id verbatim); a step without one keeps `seamKeyedFallbackProvider`'s rule exactly as today. The pair's provider field keeps its current seam-keyed meaning (a non-pi pair carries its backend name), so gate-polls' `tickOnPair` handback and `fallbackDisplayPair` (src/config/config-views.ts) need no new case — add one test proving the display label of a `{ backend: "claude", model: "claude-sonnet-5-5" }` step equals today's `claude/claude-sonnet-5-5` step's.
-- A whole-config write (config-write's object path) round-trips a `{ backend, model, maxDailyCostUsd }` step unchanged.
-
-**Acceptance criteria.**
-- `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` and the string `"qwenrunner/qwen3.8-27b"` resolve to the same fallback pair under a claude team; `{ "backend": "claude", "model": "claude-sonnet-5-5" }` resolves to the same pair (and display label, and `maxDailyCostUsd` spend key) as `"claude/claude-sonnet-5-5"`.
-- A step's unknown `backend`, a `/` id under a claude step and a provider-less id under a pi step fail validation naming `fallback.<tier>[i].backend`/`.model`.
-- Every existing fallback test passes unmodified; `npm test` passes.
-
 ### Backend/model split, part 3/5: Document the two axes (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches README.md docs/backends.md docs/config.md docs/glossary.md plans/agent-backends.md plans/model-tiers.md plans/opencode-backend.md plans/provider-concurrency.md plans/fallback-chain.md plans/terminology.md)
 
 **Goal.** The docs teach `backend` beside `model` as the way to pick a backend per tier, role or fallback step, and name the namespace spellings only as retiring. Series goal and siblings: part 1/5.

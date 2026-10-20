@@ -689,3 +689,10 @@ test("validateConfig refuses a custom role named tumwater, naming why", () => {
     /customRoles\[0\]\.name "tumwater" is reserved: .*indistinguishable/,
   );
 });
+
+test("a fallback step's backend and model are checked together", () => {
+  const err = (step: unknown) => validationError({ ...defaultConfig(), fallback: { default: [step] } });
+  assert.match(err({ backend: "nope", model: "a/b" }), /fallback\.default\[0\]\.backend must name a backend/);
+  assert.match(err({ backend: "claude", model: "a/b" }), /fallback\.default\[0\]\.model "a\/b" has a "\/"/);
+  assert.match(err({ backend: "pi", model: "plain" }), /fallback\.default\[0\]\.model "plain" has no provider/);
+});

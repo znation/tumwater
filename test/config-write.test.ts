@@ -753,3 +753,11 @@ test("setConfigKey model.<tier> over an object entry replaces it and names the d
   const raw = readJson(path.join(dir, "tumwater.json")) as { model: Record<string, unknown> };
   assert.equal(raw.model.strong, "qwenrunner/qwen3.8-27b");
 });
+
+test("a whole-config write round-trips a fallback step with backend and a spend cap", () => {
+  const dir = tmpdir();
+  const config = defaultConfig();
+  config.fallback = [{ backend: "pi", model: "qwenrunner/qwen3.8-27b", maxDailyCostUsd: 2 }];
+  saveConfig(dir, config);
+  assert.deepEqual(loadConfig(dir).fallback, config.fallback);
+});

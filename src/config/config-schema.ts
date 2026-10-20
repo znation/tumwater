@@ -22,13 +22,16 @@ import { objectOrEmpty } from "../files/json-object.js";
 export const MODEL_TIERS = ["small", "default", "strong"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
 
-/** One fallback step: a selector string, or `{ model, maxDailyCostUsd? }` — the object form
+/** One fallback step: a selector string, or `{ backend?, model, maxDailyCostUsd? }` — an
+ * explicit `backend` runs the model id on that agent as written; the object form also
  * caps the real spend on that step's model per local day, summed over roles (plans/
  * fallback-chain.md "Spend per step"). A string is the same as `{ model }`. */
-export type FallbackStep = string | { model: string; maxDailyCostUsd?: number };
+export type FallbackStep =
+  | string
+  | { backend?: string; model: string; maxDailyCostUsd?: number };
 
 /** The keys an object fallback step may carry (validation's checkKnownKeys list). */
-export const FALLBACK_STEP_KEYS: readonly string[] = ["model", "maxDailyCostUsd"];
+export const FALLBACK_STEP_KEYS: readonly string[] = ["backend", "model", "maxDailyCostUsd"];
 
 /** One tier's fallback: a step, or an ordered list of them tried first to last (the first
  * usable step runs; plans/fallback-chain.md "Terms"). */

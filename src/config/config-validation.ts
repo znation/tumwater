@@ -443,7 +443,7 @@ function checkSelectorHalves(
 
 /** Validate a `fallback` list (a tier's ordered chain): non-empty, each element a step — a
  * non-blank model id that is not `"pause"` (a whole-tier value only) and parses to both
- * halves, or a `{ model, maxDailyCostUsd? }` object (checkFallbackStep). */
+ * halves, or a `{ backend?, model, maxDailyCostUsd? }` object (checkFallbackStep). */
 function checkFallbackList(name: string, list: unknown[], problems: string[]): void {
   if (list.length === 0) problems.push(`${name} list must not be empty — name at least one model id`);
   list.forEach((el, i) => {
@@ -457,10 +457,12 @@ function checkFallbackList(name: string, list: unknown[], problems: string[]): v
   });
 }
 
-/** Validate one object step `{ model, maxDailyCostUsd? }`: only those keys, `model` a non-blank
+/** Validate one object step `{ backend?, model, maxDailyCostUsd? }`: only those keys, `backend` as
+ * checkEntryBackend checks it, `model` a non-blank
  * selector (not `"pause"`) and `maxDailyCostUsd`, when present, a positive finite number. */
 function checkFallbackStep(at: string, step: Record<string, unknown>, problems: string[]): void {
   checkKnownKeys(step, FALLBACK_STEP_KEYS, at, problems);
+  checkEntryBackend(step, at, problems);
   const m = step.model;
   if (!isNonBlankString(m)) problems.push(`${at}.model must be a non-empty model id (got ${show(m)})`);
   else if (m === "pause") problems.push(`${at}.model is "pause" — "pause" is only valid as a whole-tier value`);

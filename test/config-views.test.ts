@@ -1017,3 +1017,22 @@ test("applyFallbackModel drops a paid backend pinned beside a tier-name role mod
   assert.equal(out.roles.feature?.model, "strong", "the tier reference stays");
   assert.equal(out.roles.feature?.backend, undefined, "the paid backend does not survive the cap");
 });
+
+test("an explicit fallback step backend resolves to the pair its namespace spelling does", () => {
+  const withFallback = (backend: "pi" | "claude", fallback: TumwaterConfig["fallback"]): TumwaterConfig => ({
+    ...defaultConfig(),
+    backend,
+    fallback,
+  });
+  const pi = fallbackPair(withFallback("claude", [{ backend: "pi", model: "qwenrunner/qwen3.8-27b" }]));
+  assert.deepEqual(pi, fallbackPair(withFallback("claude", ["qwenrunner/qwen3.8-27b"])));
+  assert.equal(pi?.provider, "qwenrunner");
+  const explicit = fallbackPair(withFallback("pi", [{ backend: "claude", model: "claude-sonnet-5-5" }]));
+  assert.deepEqual(explicit, fallbackPair(withFallback("pi", ["claude/claude-sonnet-5-5"])));
+  assert.equal(explicit && fallbackDisplayPair(explicit, "pi default"), "claude/claude-sonnet-5-5");
+  const capped = { backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 2 };
+  const a = tierChainSteps(withFallback("pi", [capped]))[0]?.pair;
+  const b = tierChainSteps(withFallback("pi", [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 2 }]))[0]?.pair;
+  assert.deepEqual(a, b);
+  assert.equal(a?.maxDailyCostUsd, 2);
+});
