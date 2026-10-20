@@ -6,7 +6,9 @@
  * the only implementations living in the dispatcher itself. */
 import type { StdioOptions } from "node:child_process";
 import { compareCodeUnits, increment } from "../collections.js";
-import { runnerIds, runnerPaused } from "../roles/runner-ids.js";
+import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
+import { knownRoleIds } from "../config/config.js";
+import { unknownRoleMessage } from "../roles/roles.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,
@@ -118,14 +120,23 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   if ("problem" in startup) fail(startup.problem);
   const { config, mainBranch } = startup;
   // A scoped once round: `--role <id>[,<id>...]` names the runners that run. Parsed here, where the
-  // live config is readable, and validated against the ENABLED ids — not the full catalog —
-  // so an unknown id and a disabled one fail fast with the same wording (a scoped round that
-  // booted a disabled role's runner would run nothing while claiming to serve the operator
-  // who just queued that role a prompt). Custom roles are valid targets: knownRoleIds
-  // accepts them, and an enabled custom passes this check like any built-in. Daemon
-  // `run --role` stays an error: scoping is a once-round concept.
-  const roleFilter = parseRoleListFlag(args, runnerIds(config));
+  // live config is readable. The parser accepts every known id (custom roles included, enabled
+  // or not) so a typo still fails with the did-you-mean hint; an id that is known but has no
+  // runner is then named as disabled rather than read as unknown — a scoped round that booted
+  // a disabled role's runner would run nothing while claiming to serve the operator who just
+  // queued that role a prompt. Daemon `run --role` stays an error: scoping is a once-round concept.
+  const roleFilter = parseRoleListFlag(args, knownRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
+  if (roleFilter !== null) {
+    const runners = runnerIds(config);
+    const missing = roleFilter.find((id) => !runners.includes(id));
+    if (missing !== undefined) {
+      const base = baseRoleOf(missing);
+      if (config.roles[base]?.enabled === false)
+        fail(`${missing} is disabled, so a --once round cannot run it — enable it with \`tumwater role ${base} --enable\``);
+      fail(unknownRoleMessage(missing, runners));
+    }
+  }
   // The refusal an operator hits by trying to start a second team in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
   // separate `tumwater status`/help lookup. The info file is read once and reused for the

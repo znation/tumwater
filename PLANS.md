@@ -721,30 +721,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The wake marker's `roles` and the cleared state files are unchanged: a bare wake still names every config role, disabled ones included.
 - `npm run test:gate` passes.
 
-### `tumwater start --once --role <id>` calls a disabled role disabled, not unknown, so `start --once --role selfcheck` names the fix instead of denying the role exists (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the config get/set/unset entries edit src/cli/config-commands.ts and src/config, the wake entry edits src/operator/operator-intent.ts, part 16/16 edits test/ comments only; this one touches src/cli/cli-run.ts, docs/cli.md and test/cli-run-guards.test.ts)
-
-**Goal.** On a fresh project, `tumwater start --once --role selfcheck` prints `tumwater: unknown role: selfcheck (valid ids: feature, bugfix, …, director)`, with selfcheck missing from the list (checked against main's built CLI on 2026-10-20). Yet `tumwater role selfcheck` shows the role (`State: disabled, not paused`), and `tumwater report --role selfcheck` accepts it. The refusal is right: a scoped round that booted a disabled role's runner would run nothing. The wording is wrong, though: the role exists and is disabled, and the operator needs the one-line fix. An id that is unknown keeps today's message.
-
-**Approach.** All of it goes in `cmdRun`'s scoped-round parse in src/cli/cli-run.ts, where `parseRoleListFlag(args, runnerIds(config))` validates `--role` today.
-- Parse against `knownRoleIds(config)` (src/config/config.ts) instead. It holds every catalog and custom id, enabled or not, plus enabled roles' instance ids. That way a known id gets past the parser, and a typo still fails there with `unknownRoleMessage` and its `did you mean` hint.
-- Then check each parsed id against `runnerIds(config)` (src/roles/runner-ids.ts), in the order given. For the first id not among them:
-  - When `config.roles[baseRoleOf(id)]?.enabled === false`, fail with `` `<id> is disabled, so a --once round cannot run it — enable it with \`tumwater role <base> --enable\`` ``. Here `<base>` is `baseRoleOf(id)`, and the `tumwater role <id> --enable` command lives in src/cli/cli-query-commands.ts.
-  - Otherwise fail with `unknownRoleMessage(id, runnerIds(config))`. This branch is defensive: every id in `knownRoleIds` that is not a runner belongs to a disabled role. An instance id beyond the configured count, such as `feature-5` with two instances, is not in `knownRoleIds` at all, so the parser already refuses it.
-- Keep the check before booting and after `runStartupCheck`, where it is now. `--role is only valid with --once` keeps its position. Rewrite the comment above the parse so it says that a disabled id is named as disabled rather than read as unknown.
-
-**Docs.** docs/cli.md, in the `tumwater start --once` comment line that reads `# add --role <id>[,<id>...] to scope the round to the listed roles`, append `(enabled roles only)`.
-
-**Tests (test/cli-run-guards.test.ts).**
-- Rename and update "run --once --role validates against enabled ids: a disabled built-in reads as unknown" to "run --once --role names a disabled built-in as disabled". It runs `cli(repo, "run", "--once", "--role", "clean")` with `roles.clean.enabled` false and expects exit 1, stderr matching `/clean is disabled, so a --once round cannot run it — enable it with `tumwater role clean --enable`/`, stderr not matching `/unknown role/`, and no events.
-- Update "run --once --role rejects a list naming a disabled role before booting" (`clean,readme`, readme disabled) to expect `/readme is disabled/` and still no events.
-- New test: `run --once --role cleen` still fails with `/unknown role: cleen \(valid ids: /` and `` /did you mean `clean`/ ``, with no events.
-
-**Acceptance criteria.**
-- With `roles.selfcheck.enabled` false, `tumwater start --once --role selfcheck` exits 1 with `tumwater: selfcheck is disabled, so a --once round cannot run it — enable it with \`tumwater role selfcheck --enable\``, and writes no events.
-- An id outside `knownRoleIds(config)` still fails with `unknownRoleMessage`'s text and typo hint. Its valid-ids list is now `knownRoleIds(config)`, so it names disabled roles too (selfcheck included), the same list `tumwater role <typo>` prints.
-- An enabled id or list still scopes the round as before. The existing scoped-round tests in test/orchestrator-once.e2e.test.ts and test/cli-run-guards.test.ts pass, apart from the two updated above.
-- `npm run test:gate` passes.
-
 ### `tumwater role <id>` refuses an instance id the config does not run, so `tumwater role feature-9` no longer shows a made-up role card (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — part 16/16 edits test/ comments only, the wake entry edits src/operator/operator-intent.ts, the `start --once --role` entry edits src/cli/cli-run.ts; this one touches src/roles/role-view.ts and test/role-view.test.ts)
 
 **Goal.** On a fresh project (feature at its default single instance), `tumwater role feature-9` exits 0 and prints `# tumwater role: feature-9`, `- Role: "feature-9" (feature implementer)`, `- State: disabled, not paused` and the rest of a role card (checked against main's built CLI on 2026-10-20). No such runner exists. Every other surface refuses the id: `tumwater role feature-9 --enable`, `logs --role feature-9`, `report --role feature-9`, `pause --role feature-3` and `wake --role feature-3` all exit 1 with `unknown role: … — did you mean \`feature\`?`. The GUI's `/api/role` validates through `rejectBadRole` before it calls `rolePayload`. The read-only view should give the same answer.

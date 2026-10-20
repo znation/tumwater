@@ -126,21 +126,21 @@ test("run --once --role rejects an unknown id with the shared unknown-role wordi
   });
 });
 
-test("run --once --role validates against enabled ids: a disabled built-in reads as unknown", async () => {
+test("run --once --role names a disabled built-in as disabled", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run role disabled");
 
   // A scoped round that booted a disabled role's runner would run nothing while claiming to
   // serve the operator who just queued that role a prompt — so a disabled id must fail here,
-  // with the same wording as a wholly unknown id (the catalog is not the target list).
+  // naming the role as disabled, not unknown.
   const cfg = defaultConfig();
   cfg.roles.clean!.enabled = false;
   writeConfig(repo, cfg);
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /unknown role: clean \(valid ids: /,
-      "a disabled id is not a role this round can run");
+    assert.match(r.stderr, /clean is disabled, so a --once round cannot run it — enable it with `tumwater role clean --enable`/);
+    assert.doesNotMatch(r.stderr, /unknown role/);
     assert.equal(readEvents(repo).length, 0, "no events — the round never started");
   });
 });
@@ -154,7 +154,7 @@ test("run --once --role rejects a list naming a disabled role before booting", a
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean,readme");
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /unknown role: readme \(valid ids: /);
+    assert.match(r.stderr, /readme is disabled/);
     assert.equal(readEvents(repo).length, 0, "no events — the round never started");
   });
 });
@@ -168,4 +168,16 @@ test("the startup gate is asked before the --role guards: a not-ready repo repor
   assert.equal(r.code, 1);
   assert.match(r.stderr, /not initialized/, "the gate's verdict, not the flag's");
   assert.equal(readEvents(repo).length, 0, "no events — nothing booted to trace");
+});
+
+test("run --once --role keeps the unknown-role wording and hint for a typo", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run role typo");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--once", "--role", "cleen");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /unknown role: cleen \(valid ids: /);
+    assert.match(r.stderr, /did you mean `clean`/);
+    assert.equal(readEvents(repo).length, 0, "no events — the round never started");
+  });
 });
