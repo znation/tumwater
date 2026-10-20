@@ -279,7 +279,13 @@ export function mainTipVerdict(
   config: TumwaterConfig,
   forceFresh = false,
 ): Promise<MainTipVerdict> {
-  const run = gateMainQueue.then(() => verdictAtMainTip(root, role, mainBranch, config, forceFresh));
+  return queueBehindMainGates(() => verdictAtMainTip(root, role, mainBranch, config, forceFresh));
+}
+
+/** Run `task` after every earlier gate-main task has settled, and make it the queue's new tail. A
+ * task's rejection reaches only its own caller; the next task still runs. */
+function queueBehindMainGates<T>(task: () => Promise<T>): Promise<T> {
+  const run = gateMainQueue.then(task);
   gateMainQueue = run.catch(() => undefined);
   return run;
 }
@@ -293,15 +299,13 @@ export function withMainTipWorktree<T>(
   mainBranch: string,
   fn: (wt: string) => Promise<T>,
 ): Promise<T> {
-  const run = gateMainQueue.then(() =>
+  return queueBehindMainGates(() =>
     useWorktree(root, gateMainWorktreePath(root), async () => {
       const tip = await branchHead(root, mainBranch);
       if (!tip) throw new Error(`${mainBranch} is unreadable`);
       return fn(await ensureDetachedWorktree(root, gateMainWorktreePath(root), tip));
     }),
   );
-  gateMainQueue = run.catch(() => undefined);
-  return run;
 }
 
 async function verdictAtMainTip(
