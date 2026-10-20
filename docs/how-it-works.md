@@ -223,6 +223,15 @@ discards a role's in-flight merge.
   `reverted after merge: turned main red — <failing tests>` as the review to revise against. With no
   free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
   once assigned.
+- A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
+  deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
+  is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
+  over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
+  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection goes to the revert
+  slot as above, with the reviewer's reasons in place of the failing tests, and the commit goes
+  back to its role as a revision. A revert that conflicts leaves the commit on main and puts the
+  reasons in the role's inbox. A review that ends three times with no verdict is dropped with a
+  warning.
 - A test that fails and then passes on the same tree is quarantined at once: the gate's re-run, a
   red in-lock merge check's one immediate re-run (the change then merges), and the watch's
   confirming re-run each add the failing tests the failed run named to

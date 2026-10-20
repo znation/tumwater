@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.
+
+**Approach.**
+- Config: `review.afterMerge?: string[]` of base role ids (src/config/config-schema.ts; validated in src/config/config-validation.ts as known role ids, never `director`).
+- Verify (src/merge/merge-verify.ts): for a listed role, the deterministic rejects and the gate still run, and the reviewer is skipped, so the change goes on to merge.
+- After the merge:
+  - Record a post-merge review for the merged commit C in `.tumwater/state/post-review.json`. The verify drain runs it at `VERIFY_TIER` when permits allow, with the usual reviewer prompt over `git diff C^ C`.
+  - An approval ends it. `review_verdict` and `review_rejected` carry `afterMerge: true`.
+  - A rejection reverts C through part 4b/14's revert task and hands it back through part 4c/14 as a revision with the reviewer's reasons.
+  - A revert that conflicts leaves C on main and sends the reasons to the role's inbox (`enqueueRolePrompt`).
+- tumwater.json: `"afterMerge": ["clean", "dedupe", "coverage"]`.
+- docs/config.md (the `review` row) and docs/how-it-works.md.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/review/review.ts, src/merge/merge-verify.ts, src/merge/merge-drain.ts, src/merge/merge-core.ts.
+- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md.
+- Tests: the config validation tests, plus a merge test with a fake reviewer.
+
+**Acceptance criteria.**
+- A listed role's change merges with no `review_start` before its `merged` event. An `afterMerge` review follows it.
+- A rejecting post-merge review puts a revert commit on main and gives the role's runner a revision with the reviewer's reasons.
+- An unlisted role is reviewed before merging, as today.
+- `npm test` passes.
+
+**What changed.** `review.afterMerge` is validated in src/config/config-validation.ts. The gate (src/review/review.ts) returns `approved` for a listed role once its pre-check passes, with no reviewer run. The merge drain (src/merge/merge-drain.ts) records each merged commit in `post-review.json` (src/review/post-merge-review.ts); src/merge/merge-post-review.ts runs the review and starts the revert through `runMainRevert`, which takes the reviewer's reasons in `MainCulprit.postReview` and an `onFailed` callback that sends them to the role's inbox. src/merge/merge-core.ts needed no change; src/merge/merge-verify.ts only exports `resolveAuthor` for the post-review drain. A post-merge review is queued only when `review.enabled` is on and the merged diff is not exempt (`review.exemptPaths`), matching the pre-merge gate. tumwater.json is not edited by this run (roles never touch it): add `"afterMerge": ["clean", "dedupe", "coverage"]` under `review` there; tumwater.example.json is unchanged. Tests are in test/post-merge-review.test.ts.
+
 ### `tumwater start --once --role` takes a comma-separated list of role ids, so one scoped round runs exactly the roles an operator names (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 touches src/status/ and src/scheduling/, the TUI History, wake and report entries touch other commands; this one touches src/cli/cli-args.ts, src/cli/cli-run.ts, src/orchestrator/orchestrator.ts, src/config/config-live.ts, src/cli/help.ts, docs/cli.md and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** `start --once --role <id>` scopes a once round to ONE role (`cmdRun`, src/cli/cli-run.ts, via `parseRoleFlag`). A cron job or CI step that wants a round of just the maintenance roles (`clean,dedupe,organize`) has to start three rounds one after another, and each one pays the full startup cost (startup check, baseline, orchestrator boot). `start --once --role clean,dedupe` fails today with `unknown role: clean,dedupe`. Accept the comma list, as `history --role` and `pause --role` already do: the round runs exactly the listed enabled runners. A single id behaves exactly as now.

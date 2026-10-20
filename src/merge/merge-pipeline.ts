@@ -114,19 +114,22 @@ export interface MergePipeline {
    * before any merge pick; src/baseline/main-revert.ts). One at a time: a later one replaces an
    * earlier one that has not started, since the watch names the newest red head's culprit. */
   revert: MainCulprit | null;
+  /** The one post-merge review in flight (src/merge/merge-post-review.ts), for a commit of a role
+   * listed in review.afterMerge. It holds a permit but no role, queue entry or the merge slot. */
+  postReview: InFlightMerge | null;
 }
 
 /** A fresh pipeline: nothing in flight anywhere — no verification running, no approved change
  * waiting, no merge holding main. The orchestrator builds one per team start (orchestrator.ts). */
 export function newMergePipeline(): MergePipeline {
-  return { verifying: new Map(), approved: new Map(), merge: null, revert: null };
+  return { verifying: new Map(), approved: new Map(), merge: null, revert: null, postReview: null };
 }
 
 /** Every merge task in flight — each verification holding its permit, and the merge — for the
  * shutdown and restart waits. A parked verification is not one of them: it has started nothing, and
  * a shutdown (its controller) or a closed start gate (at its grant) settles it without a run. */
 export function mergeTasks(p: MergePipeline): InFlightMerge[] {
-  return [...[...p.verifying.values()].filter((v) => !v.parked), ...(p.merge ? [p.merge] : [])];
+  return [...[...p.verifying.values()].filter((v) => !v.parked), ...(p.merge ? [p.merge] : []), ...(p.postReview && !p.postReview.parked ? [p.postReview] : [])];
 }
 
 /** Everything `tumwater abort --role` can reach: every task in flight, plus each approved change

@@ -46,7 +46,7 @@ export function verifyLimit(maxConcurrent: number): number {
  * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
  * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
  * by it every poll). */
-function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunner {
+export function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunner {
   const { root, mainBranch, signal, runners, liveConfig, roleConfig, directorConfig } = ctx;
   return (
     runners.find((r) => r.role === role) ??

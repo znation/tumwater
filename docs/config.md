@@ -90,7 +90,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `idleBackoff` | `{"initialSeconds":120,"factor":2,"maxSeconds":3600}` | How long a role sleeps after a run that changed nothing: the first sleep, the multiplier for each further idle run, and the ceiling. |
 | `autoRestart` | `true` | Rebuild and restart onto new code when main's build inputs move past the running build and main is green; off, the dashboards only flag the stale build. |
 | `bootstrap` | none | Set by `tumwater init` on a new project: `untilPlansDone` holds the maintenance roles until that many plans are Done; removing it ends bootstrap early. |
-| `review` | `{"enabled":true,"exemptPaths":["*.md","docs/**"]}` | The adversarial pre-merge review (`enabled`, `exemptPaths`, `provider`, `model`, `thinking`, `timeoutSeconds`). |
+| `review` | `{"enabled":true,"exemptPaths":["*.md","docs/**"]}` | The adversarial pre-merge review (`enabled`, `exemptPaths`, `afterMerge`, `provider`, `model`, `thinking`, `timeoutSeconds`). `afterMerge` lists base role ids (never `director`) whose changes merge once the gate passes and are reviewed after merging; a rejection reverts the commit and hands it back as a revision. |
 | `customRoles` | `[]` | Your own roles; each is merged into `roles` as enabled at load. |
 | `roles` | the built-in catalog | Per-role entries merged over the built-in catalog; the fields are in the next table. |
 

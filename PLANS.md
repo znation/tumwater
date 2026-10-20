@@ -6,32 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
-
-**Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.
-
-**Approach.**
-- Config: `review.afterMerge?: string[]` of base role ids (src/config/config-schema.ts; validated in src/config/config-validation.ts as known role ids, never `director`).
-- Verify (src/merge/merge-verify.ts): for a listed role, the deterministic rejects and the gate still run, and the reviewer is skipped, so the change goes on to merge.
-- After the merge:
-  - Record a post-merge review for the merged commit C in `.tumwater/state/post-review.json`. The verify drain runs it at `VERIFY_TIER` when permits allow, with the usual reviewer prompt over `git diff C^ C`.
-  - An approval ends it. `review_verdict` and `review_rejected` carry `afterMerge: true`.
-  - A rejection reverts C through part 4b/14's revert task and hands it back through part 4c/14 as a revision with the reviewer's reasons.
-  - A revert that conflicts leaves C on main and sends the reasons to the role's inbox (`enqueueRolePrompt`).
-- tumwater.json: `"afterMerge": ["clean", "dedupe", "coverage"]`.
-- docs/config.md (the `review` row) and docs/how-it-works.md.
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/review/review.ts, src/merge/merge-verify.ts, src/merge/merge-drain.ts, src/merge/merge-core.ts.
-- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md.
-- Tests: the config validation tests, plus a merge test with a fake reviewer.
-
-**Acceptance criteria.**
-- A listed role's change merges with no `review_start` before its `merged` event. An `afterMerge` review follows it.
-- A rejecting post-merge review puts a revert commit on main and gives the role's runner a revision with the reviewer's reasons.
-- An unlisted role is reviewed before merging, as today.
-- `npm test` passes.
-
 ### Plain terms code runner, part 9/14: Convert status data and scheduling (planned 2026-10-16 by user; requires part 8/14 landed; design in plans/terminology.md "Code names"; touches src/status/ + src/scheduling/ + their tests + test/fixtures/status-fixtures.ts)
 
 **Goal.** The status collectors and the scheduler use runner and role names: `StatusLoopRow` becomes `StatusRoleRow`, and `loopStateForPoll` becomes `runnerStateForPoll`.

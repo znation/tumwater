@@ -17,6 +17,7 @@ import { agentSessionResumable } from "../agent/agent-backend.js";
 import { requestNoRerun, requestVerdict } from "./review-followup.js";
 import { parseVerdict } from "./review-verdict.js";
 import { recordReview } from "../tick/tick-apply.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
@@ -387,9 +388,10 @@ async function reviewAttempt(
   // part 12): it starts here, in its own checkout of this head, while the reviewer run below
   // starts in the change's own slot. An already-approved patch has no reviewer to overlap, and
   // with no free slot (or no way to lease one) the check runs first, as it always did.
+  const afterMerge = (config.review.afterMerge ?? []).includes(baseRoleOf(role));
   let overlap: CheckOverlap | undefined;
   if (!retry.pre) {
-    const lease = patchApproved ? null : await leaseCheckSlot(ctx, head);
+    const lease = patchApproved || afterMerge ? null : await leaseCheckSlot(ctx, head);
     if (lease) overlap = startOverlappedCheck(ctx, state, head, lease);
     else {
       const pre = await gateBuildPrecheck(ctx, state, head, reject);
@@ -401,6 +403,14 @@ async function reviewAttempt(
     }
   }
   const knownMainFailures = retry.pre?.knownMainFailures;
+  // A role listed in review.afterMerge merges on its gate alone: the deterministic rejects and the
+  // pre-check above still ran, and the merged commit is reviewed after it lands
+  // (reviewMergedCommit, run by the merge pipeline's post-review drain).
+  if (afterMerge && retry.pre) {
+    state.reviewResume = undefined;
+    state.lastApprovedHead = head;
+    return { decision: "approved", verifiedHead: retry.pre.verifiedHead };
+  }
   if (patchApproved && retry.pre) {
     state.reviewResume = undefined;
     state.lastApprovedHead = head;

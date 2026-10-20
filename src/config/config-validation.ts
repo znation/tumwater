@@ -21,7 +21,7 @@ import {
   ROLE_INSTRUCTIONS_MAX_CHARS,
   TIER_MAP_KEYS,
 } from "./config-schema.js";
-import { allRoleIds } from "../roles/roles.js";
+import { DIRECTOR_ROLE, allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
 import { isJsonObject } from "../files/json-object.js";
 import { expandHomeTilde } from "../files/files.js";
@@ -351,6 +351,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkKnownKeys(o, REVIEW_KEYS, "review", problems);
     checkBoolean(o, "review.", "enabled");
     checkStringArray(o, "review.", "exemptPaths");
+    checkStringArray(o, "review.", "afterMerge");
     // An exemption pattern is matched against a repo-relative path (exemptions.ts), so a
     // pattern shaped like something git never emits can never match: the diff it was meant
     // to exempt gets a model review anyway, and the operator never learns the pattern was
@@ -632,6 +633,16 @@ function checkSelectorValue(
         }
       }
     }
+  }
+
+  // review.afterMerge names roles, so a typo'd id would silently keep that role reviewed before
+  // merging; the director is refused because its changes always merge on a review first.
+  if (isJsonObject(r.review) && Array.isArray(r.review.afterMerge)) {
+    r.review.afterMerge.forEach((id: unknown, i) => {
+      if (typeof id !== "string" || id.trim() === "") return; // Already reported by checkStringArray.
+      if (id === DIRECTOR_ROLE) problems.push(`review.afterMerge[${i}] must not be "${DIRECTOR_ROLE}" — its changes are always reviewed before merging`);
+      else checkKnownRoleId("review.afterMerge", id, customNames, problems);
+    });
   }
 
   // Per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a known role —

@@ -153,6 +153,18 @@ export function revertedPendingPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "reverted.json");
 }
 
+/** Merged commits awaiting their review after merging (src/review/post-merge-review.ts), for roles
+ * listed in `review.afterMerge`: `{ pending: PostReview[] }`. Runtime state, never committed. */
+export function postReviewPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "post-review.json");
+}
+
+/** The detached checkout a post-merge review reads the merged commit in; the leading underscore
+ * keeps it from colliding with a role worktree. */
+export function postReviewWorktreePath(root: string): string {
+  return path.join(worktreesDir(root), "_post-review");
+}
+
 /** The merge marker's old file, deleted by the startup migration (the marker is display-only,
  * so a previous generation's is stale and is not read). */
 export function legacyLandingStatePath(root: string): string {

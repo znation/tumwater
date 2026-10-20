@@ -11,6 +11,14 @@ import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { recordRevertedChange } from "./merge-core.js";
 import { revertedPendingPath } from "../paths.js";
+import { enqueueRolePrompt } from "../inbox/inbox.js";
+import { addPostReview, isAfterMergeRole, settlePostReview } from "../review/post-merge-review.js";
+import { drainPostReviews } from "./merge-post-review.js";
+import { subscribeEvents } from "../events/events.js";
+import { gitTry } from "../git/git-run.js";
+import { isExemptDiff } from "../review/exemptions.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { shortSha } from "../text/format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { RoleRunner } from "../runner/runner.js";
 import {
@@ -32,6 +40,17 @@ import type { TickResult } from "../tick/tick-outcome.js";
  * runs outside it — merge-to-main.ts's mergeToMain — so this cannot deadlock.) */
 const MERGE_TIER = VERIFY_TIER - 1;
 
+/** Whether a merged change from `role` still needs a post-merge review: the pre-merge gate skips
+ * review when it is disabled or the diff is exempt, so those changes queue none either. A
+ * diff that cannot be read queues the review. */
+async function postReviewDue(config: TumwaterConfig, root: string, commit: string, role: string): Promise<boolean> {
+  if (!config.review.enabled || !isAfterMergeRole(config, role)) return false;
+  const out = await gitTry(root, "diff-tree", "--no-commit-id", "--name-only", "-r", commit);
+  if (out === null) return true;
+  const files = out.split("\n").filter((f) => f !== "");
+  return !isExemptDiff(files, config.review.exemptPaths);
+}
+
 /** One poll of the merge queue (the scheduler's WHEN: after the gates, never while a restart or
  * a team hold is pending): start a verification for every queued change the pipeline does not
  * already hold (drainVerify, in merge-verify.ts), and start the merge when the slot is free and
@@ -42,6 +61,7 @@ const MERGE_TIER = VERIFY_TIER - 1;
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   await drainVerify(ctx, p);
   await assignPendingReverts(ctx);
+  drainPostReviews(ctx, p);
   drainMerge(ctx, p);
 }
 
@@ -54,6 +74,7 @@ interface PendingRevert {
 
 /** The reasons a reverted change goes back with. */
 function revertReasons(c: MainCulprit): string[] {
+  if (c.postReview) return c.postReview.reasons.map((r) => `reverted after merge: a post-merge review rejected it — ${r}`);
   const tests = c.failingTests.length > 0 ? c.failingTests.join("; ") : "no failing test was named";
   return [`reverted after merge: turned main red — ${tests}`];
 }
@@ -92,6 +113,18 @@ async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Prom
 function pendingReverts(root: string): PendingRevert[] {
   const saved = readJsonFile<{ reverted?: PendingRevert[] }>(revertedPendingPath(root));
   return Array.isArray(saved?.reverted) ? saved.reverted : [];
+}
+
+/** A rejected commit whose revert failed stays on main: its role gets the reviewer's reasons in its
+ * inbox instead. */
+function sendReviewToRole(ctx: MergePipelineContext, c: MainCulprit, reason: string): void {
+  if (c.runner === undefined || c.postReview === undefined) return;
+  const reasons = c.postReview.reasons.map((r) => `- ${r}`).join("\n");
+  enqueueRolePrompt(
+    ctx.root,
+    c.runner,
+    `A review after merging rejected your commit ${shortSha(c.commit)} on ${ctx.mainBranch}, and it could not be reverted (${reason}). It is still on main. Fix what the reviewer found in a new change:\n\n${reasons}`,
+  );
 }
 
 /** Each poll: assign the parked reverted changes to runners that have freed up, dropping each
@@ -173,7 +206,8 @@ function startRevert(ctx: MergePipelineContext, p: MergePipeline, culprit: MainC
     roles: [],
     userAborted: false,
   };
-  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c)).finally(() => {
+  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c), (c, reason) => sendReviewToRole(ctx, c, reason)).finally(() => {
+    if (culprit.postReview) settlePostReview(ctx.root, culprit.commit, null);
     p.merge = null;
   });
   merge.promise = guardMergeTask(ctx.root, "main revert", task);
@@ -241,12 +275,22 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
   const task = (async () => {
     let results: Array<TickResult | undefined>;
     let threw = false;
+    // The commit each merged role produced, from its `merged` event: the post-merge review of a
+    // role listed in review.afterMerge is queued once the change settles as merged.
+    const mergedCommits = new Map<string, string>();
+    const unsubscribe = subscribeEvents((e) => {
+      if (e.type === "merged" && typeof e.commit === "string") mergedCommits.set(e.source, e.commit);
+    });
     // A result reaches settleMergeOutcome the moment mergeApproved finalizes it, not after the
     // whole batch; this set lets the end-of-batch loop skip what is already written back.
     const settled = new Set<number>();
     const settleOne = async (s: number, result: TickResult): Promise<void> => {
       const v = picks[s]!;
       settled.add(s);
+      const mergedCommit = mergedCommits.get(v.entry.role);
+      if (result === "changed" && mergedCommit !== undefined && (await postReviewDue(ctx.liveConfig, root, mergedCommit, v.entry.role))) {
+        addPostReview(root, { commit: mergedCommit, role: v.entry.role, summary: v.entry.summary, ...(v.entry.body !== undefined ? { body: v.entry.body } : {}) });
+      }
       await settleMergeOutcome(root, v.entry, v.author.state, result, Date.now() - v.startedAt, v.usage, v.file, mainBranch);
     };
     try {
@@ -310,6 +354,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
         }
       }
     } finally {
+      unsubscribe();
       detachShutdown();
       if (merge.userAborted) await discardPinnedRefs(root, merge.roles);
       p.merge = null;

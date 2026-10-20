@@ -542,7 +542,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
   // to point its reviewers at a strong model would review with the default and never know.
   assert.match(
     validationError({ review: { modle: "strong" } }),
-    /unknown key "modle" in review \(valid keys: enabled, exemptPaths, provider, model, backend, thinking, timeoutSeconds\)/,
+    /unknown key "modle" in review \(valid keys: enabled, exemptPaths, afterMerge, provider, model, backend, thinking, timeoutSeconds\)/,
   );
 
   // Inner values are type-checked like their siblings elsewhere in the file.

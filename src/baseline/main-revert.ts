@@ -29,6 +29,9 @@ export interface MainCulprit {
   runner?: string;
   failingTests: string[];
   tip: string;
+  /** Set when a post-merge review rejected the commit (review.afterMerge) instead of main
+   * turning red: the reviewer's reasons. A revert that fails goes to `onFailed`, not to bugfix. */
+  postReview?: { reasons: string[] };
 }
 
 const REVERT_PREFIXES = ["tumwater(operator): Revert", "tumwater(tumwater): Revert"]; // vocabulary-ok: commit prefixes are machine strings
@@ -57,8 +60,12 @@ export async function runMainRevert(
   config: TumwaterConfig,
   c: MainCulprit,
   onReverted?: (c: MainCulprit) => Promise<void>,
+  onFailed?: (c: MainCulprit, reason: string) => void,
 ): Promise<void> {
-  const heal = (outputTail?: string[]): void => queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
+  const heal = (reason: string, outputTail?: string[]): void => {
+    if (c.postReview && onFailed) onFailed(c, reason);
+    else queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
+  };
   try {
     const failure = await useWorktree(root, mergeWorktreePath(root), async () => {
       const tip = await branchHead(root, mainBranch);
@@ -66,7 +73,10 @@ export async function runMainRevert(
       const wt = await ensureDetachedWorktree(root, mergeWorktreePath(root), tip);
       const subject = ((await gitTry(wt, "log", "-1", "--format=%s", c.commit)) ?? "").trim();
       const tests = c.failingTests.length > 0 ? `\n\nFailing tests: ${c.failingTests.join("; ")}` : "";
-      const message = `${stampedSubject("tumwater", `Revert ${shortSha(c.commit)}`)}\n\nReverts ${c.commit} (${subject}), which turned main red.${tests}`;
+      const why = c.postReview
+        ? `which a post-merge review rejected.\n\nReasons: ${c.postReview.reasons.join("; ")}`
+        : `which turned main red.${tests}`;
+      const message = `${stampedSubject("tumwater", `Revert ${shortSha(c.commit)}`)}\n\nReverts ${c.commit} (${subject}), ${why}`;
       const reverted = await revertCommitIn(wt, c.commit, message);
       if (!reverted.ok) return { reason: reverted.error };
       if (gateCommandOf(config) !== undefined) {
@@ -97,16 +107,16 @@ export async function runMainRevert(
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "warning",
-        message: `could not revert ${shortSha(c.commit)}: ${failure.reason} — queued the heal prompt for bugfix`,
+        message: `could not revert ${shortSha(c.commit)}: ${failure.reason} — ${c.postReview ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix"}`,
       });
-      heal(failure.tail);
+      heal(failure.reason, failure.tail);
     }
   } catch (err) {
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
       type: "warning",
-      message: `revert of ${shortSha(c.commit)} failed: ${errorMessage(err)} — queued the heal prompt for bugfix`,
+      message: `revert of ${shortSha(c.commit)} failed: ${errorMessage(err)} — ${c.postReview ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix"}`,
     });
-    heal();
+    heal(errorMessage(err));
   }
 }

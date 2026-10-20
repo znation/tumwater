@@ -121,6 +121,11 @@ interface ReviewConfig {
    * the basename at any depth; one with "/" matches the full path (* within a segment,
    * ** across segments). */
   exemptPaths: string[];
+  /** Base role ids whose changes merge once the gate passes, with no review first; a review of
+   * the merged commit follows, and a rejection reverts it and hands it back to its author
+   * (plans/fast-merge.md, Lever 7). Never `director`. Absent means every role is reviewed
+   * before merging. */
+  afterMerge?: string[];
   /** pi provider override for reviewer runs; falls back to the top-level value. */
   provider?: string;
   /** pi model override for reviewer runs — a selector `provider/id[:thinking]`, or a tier
@@ -526,7 +531,7 @@ export const ROLE_ENTRY_KEYS = [
   "instances",
 ];
 
-export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "backend", "thinking", "timeoutSeconds"];
+export const REVIEW_KEYS = ["enabled", "exemptPaths", "afterMerge", "provider", "model", "backend", "thinking", "timeoutSeconds"];
 
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
  * command, the optional cheaper gate-only command, their
