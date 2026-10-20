@@ -24,7 +24,7 @@ import {
   writeMergeMarker,
   writeMergeOutcome,
 } from "../src/merge/merge-slot.js";
-import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
+import { eventsLogPath, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -32,8 +32,8 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { applyRunOutcome, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
-import { warningEvents } from "./fixtures/log-fixtures.js";
-import { withReadOnlyDir } from "./helpers/fs-faults.js";
+import { warningEvents, warningMessages } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn, withReadOnlyDir } from "./helpers/fs-faults.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
@@ -185,6 +185,26 @@ test("an unwritable events feed still drops the settled entry — the queue neve
 
   assert.equal(queueDepth(root), 0, "the outcome drops the entry even when its event cannot be logged");
   assert.equal(loadRunnerState(root, "improve").commits, 1, "the state write still persisted before the event");
+});
+
+test("a failed role-state save still logs the outcome and drops the settled entry", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const state = freshRunnerState("improve");
+  const undo = failRenameSyncOn(statePath(root, "improve"), "EACCES fake");
+  try {
+    writeMergeOutcome(root, entry, state, "changed", 7, { tokens: 0, cost: 0, providerCost: {} }, file);
+  } finally {
+    undo();
+  }
+
+  assert.equal(queueDepth(root), 0, "the entry drops even when the state cannot be saved");
+  assert.equal(fs.existsSync(file), false, "the queue file is gone");
+  assert.equal(state.commits, 1, "the in-memory state holds the outcome");
+  assert.equal(readEvents(root, 10).filter((e) => e.type === "merge_done").length, 1);
+  const warnings = warningMessages(root);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] ?? "", /could not save the role's state: EACCES fake/);
 });
 
 test("an unexpected throw inside the merge degrades to an error outcome — the queue drains", async () => {

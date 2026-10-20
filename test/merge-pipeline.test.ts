@@ -587,7 +587,7 @@ test("an aborted approved change settles despite an unwritable state file: no th
     assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, "beta's pin was untouched");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && String(e.message).includes('the stopped merge for alpha could not be settled'),
+        (e) => e.type === "warning" && String(e.message).includes("could not save the role's state"),
       ),
       "the failed state write is warned about, not swallowed",
     );
@@ -935,7 +935,7 @@ test("an unwritable state file on a settling merge warns instead of rejecting th
     assert.equal(settled?.status, "fulfilled", "the task promise settles rather than rejecting");
     assert.ok(
       readEvents(root).some(
-        (e) => e.type === "warning" && String(e.message).includes('merge task for improve'),
+        (e) => e.type === "warning" && String(e.message).includes("could not save the role's state"),
       ),
       "the state-write failure is warned about, not swallowed",
     );

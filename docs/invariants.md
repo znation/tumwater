@@ -3988,3 +3988,17 @@ and keeps the valid ones", "opencodeModelFree: free and unbilled is free; priced
 billed are not" and "observeOpencodeRun demotes a cached free model on a priced run, once" (a valid
 entry still round-trips); `test/status-budget.test.ts` — "a foreign entry in the opencode catalog
 cache leaves collectBudget standing, read as not free".
+
+## Merge write-back: a settled entry is always dropped
+
+### INV-BX1: writeMergeOutcome drops the entry's queue file for every result
+
+**Guarantee.** `writeMergeOutcome` drops the entry's queue file for every result, even when the role's
+state save or the event write fails; each failure warns and nothing throws.
+
+**Binds.** `src/merge/merge-slot.ts` (`writeMergeOutcome`), `src/runner/runner-state.ts`
+(`saveRunnerStateBestEffort`).
+
+**Pinned by.** `test/merge-slot.test.ts` — "a failed role-state save still logs the outcome and drops
+the settled entry", "an unwritable events feed still drops the settled entry — the queue never
+retries" and "a merge's nonzero usage rides its merge_done event and the entry is dropped".

@@ -370,8 +370,10 @@ export function mergeFailureReason(state: RunnerState, result: RunResult, starte
  * 4/5 idiom, so review-exempt merges render bare), and drop the entry: EVERY defined result
  * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
  * skip the drop, or the settled entry would stay queued and be re-verified and re-merged on
- * the next drain — the queue's "drop after EVERY outcome" contract (merge-queue.ts). The
- * change's marker record is the caller's concern (removeMergeChange). */
+ * the next drain — the queue's "drop after EVERY outcome" contract (merge-queue.ts). A failed
+ * state save warns and does not skip the drop either: the in-memory state already holds the
+ * outcome and the runner's next save writes it. The change's marker record is the caller's
+ * concern (removeMergeChange). */
 export function writeMergeOutcome(
   root: string,
   entry: MergeEntry,
@@ -382,7 +384,7 @@ export function writeMergeOutcome(
   file: string,
 ): void {
   applyMergeOutcome(state, result, entry);
-  saveRunnerState(root, state);
+  saveRunnerStateBestEffort(root, state);
   const reason = result === "changed" ? undefined : mergeFailureReason(state, result, Date.now() - durationMs);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
   // feeds the same streak the run-side warn reads (src/run/run-finalize.ts), but it resolves
