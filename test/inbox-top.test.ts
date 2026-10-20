@@ -49,7 +49,7 @@ test("movePromptToTop moves the Nth queued prompt to the head, text byte-identic
   assert.equal(queueFileStamp(path.basename(movedFile)), minStamp - 1);
   assert.equal(fs.existsSync(third), false, "the old queue file was removed");
   assert.deepEqual(queuedRolePrompts(root, "feature"), ["third", "first", "second"]);
-  // The loop dequeues the moved prompt first.
+  // The role dequeues the moved prompt first.
   assert.equal(dequeueRolePrompt(root, "feature"), "third");
 
   // One prompt_topped event under the target role, previewing the moved prompt.
@@ -76,7 +76,7 @@ test("movePromptToTop returns gone when the file disappears between listing and 
   enqueueRolePrompt(root, "feature", "a");
   enqueueRolePrompt(root, "feature", "b");
 
-  // The loop dequeued the target concurrently: the read hits ENOENT before any rename — the
+  // The role dequeued the target concurrently: the read hits ENOENT before any rename — the
   // same race the cancel/edit paths share — reported as gone, never a throw.
   withThrowingFs("readFileSync", errnoError("ENOENT"), () => {
     assert.deepEqual(movePromptToTop(root, "feature", 2), { status: "gone" });
@@ -180,7 +180,7 @@ test("topQueuedFile moves a named queue file to the head, and answers already_fi
   assert.deepEqual(queuedRolePrompts(root, "feature"), ["third", "first", "second"], "the head is unchanged");
   assert.equal(eventsOfType(root, "prompt_topped").length, 1, "no event on an already-first move");
 
-  // A name the loop already dequeued answers gone.
+  // A name the role already dequeued answers gone.
   assert.deepEqual(topQueuedFile(root, "feature", "missing.md"), { status: "gone" });
 
   // A name failing the shared guard throws, like cancelQueuedFile/editQueuedFile.

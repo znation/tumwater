@@ -38,7 +38,7 @@ test("run refuses to start while another orchestrator is alive", async () => {
   await initProject(repo, "cli run guard");
 
   // Record a live pid (this test process) as the running orchestrator; two teams in one
-  // repo would double-tick every loop and race on the merge lock.
+  // repo would double-tick every role and race on the merge lock.
   writeOrchestratorMarker(repo, []);
 
   const restore = fakePi("exit 0");
@@ -118,9 +118,9 @@ test("run --once --role rejects an unknown id with the shared unknown-role wordi
   await initProject(repo, "cli run role unknown");
 
   await withPi("exit 0", async () => {
-    const r = await cli(repo, "run", "--once", "--role", "no-such-loop");
+    const r = await cli(repo, "run", "--once", "--role", "no-such-role");
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /unknown role: no-such-loop \(valid ids: /,
+    assert.match(r.stderr, /unknown role: no-such-role \(valid ids: /,
       "an unknown id fails fast with the one unknownRoleMessage wording");
     assert.equal(readEvents(repo).length, 0, "no events — the round never started");
   });
@@ -131,7 +131,7 @@ test("run --once --role validates against enabled ids: a disabled built-in reads
   await initProject(repo, "cli run role disabled");
 
   // A scoped round that booted a disabled role's runner would run nothing while claiming to
-  // serve the operator who just queued that loop a prompt — so a disabled id must fail here,
+  // serve the operator who just queued that role a prompt — so a disabled id must fail here,
   // with the same wording as a wholly unknown id (the catalog is not the target list).
   const cfg = defaultConfig();
   cfg.roles.clean!.enabled = false;

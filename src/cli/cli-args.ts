@@ -110,14 +110,14 @@ export function parsePositionFlag(flag: string, raw: string | undefined, example
 }
 
 /** Resolve a read-only command's `--role <id>` scope: the role id, or null when the flag is
- * absent. The id is validated against built-ins PLUS user-defined loops, read through
+ * absent. The id is validated against built-ins PLUS user-defined roles, read through
  * loadConfigCached (which never throws) so a transiently broken tumwater.json cannot take a
  * read-only view down — a broken file falls back to the built-in catalog rather than refusing
  * every id. Without --role no config is read. (State-changing commands instead resolve --role
  * against loadConfig and fail loudly on a broken file, as operator/operator-commands.ts and
  * prompt-commands.ts do.) The id
  * set comes from config.knownRoleIdsCached, the one home of the cached-with-built-in-fallback
- * rule. Shared by the tail views that scope their output to one loop (cmdLogs, cmdHistory). */
+ * rule. Shared by the tail views that scope their output to one role (cmdLogs, cmdHistory). */
 export function parseRoleScope(root: string, args: string[]): string | null {
   if (!args.includes("--role")) return null;
   return parseRoleFlag(args, knownRoleIdsCached(root));
@@ -277,9 +277,9 @@ export function parseSinceFlag(args: string[], label: string, maxMs: number): nu
 }
 
 /** Parse an optional `--role <id>` flag: the validated role id, or null when absent.
- * Shared by every command that scopes to one loop so their validation and error messages
+ * Shared by every command that scopes to one role so their validation and error messages
  * cannot drift. `validIds` is the set of ids this command accepts — callers pass
- * knownRoleIds(config) so user-defined loops are accepted like built-ins; it defaults to the
+ * knownRoleIds(config) so user-defined roles are accepted like built-ins; it defaults to the
  * catalog alone, which keeps in-process callers (and tests) that have no config working.
  */
 export function parseRoleFlag(args: string[], validIds?: string[]): string | null {

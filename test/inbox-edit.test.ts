@@ -16,7 +16,7 @@ import { errnoError, withThrowingFs } from "./helpers/fs-faults.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 
 /** src/inbox/inbox-edit.ts's own tests: the edit half of the prompt queues — rewriting one queued
- * prompt's text in place, by per-loop position or by list-wide numbering — mirrors
+ * prompt's text in place, by per-role position or by list-wide numbering — mirrors
  * inbox.test.ts's cancel coverage: position addressing, the race policy, the deferral
  * carry-over, and the prompt_edited event. */
 
@@ -35,7 +35,7 @@ test("editRolePrompt rewrites one queued prompt in place — same file, same sta
   assert.equal(queueFileStamp(path.basename(first)), stampBefore, "the filename is unchanged");
   assert.deepEqual(queuedRolePrompts(root, "bugfix"), ["fixed text", "second"]);
 
-  // One prompt_edited event under the target loop, previewing the new text.
+  // One prompt_edited event under the target role, previewing the new text.
   const events = eventsOfType(root, "prompt_edited");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.source, "bugfix");
@@ -70,7 +70,7 @@ test("editRolePrompt keeps a non-deferred prompt marker-free even when the new t
   // The new text starts with the marker prefix but is not the writer's marker shape
   // (no full ISO stamp line plus blank separator) — it is content, and the edit must not
   // promote it to plumbing by prepending anything or leave a marker behind.
-  const newText = "tumwater:not-before ask the loop to fix the marker vocabulary";
+  const newText = "tumwater:not-before ask the role to fix the marker vocabulary";
   const outcome = editRolePrompt(root, "bugfix", 1, newText);
   assert.deepEqual(outcome, { status: "edited", oldText: "ordinary prompt", newText });
   const text = fs.readFileSync(file, "utf8");
@@ -144,14 +144,14 @@ test("editListedPrompt resolves the --list numbering like cancel: one hit, ambig
   enqueuePrompt(root, "for the director");
 
   // No --role, position 1: only the director's queue is long enough, so the edit lands
-  // there — the outcome names the loop.
+  // there — the outcome names the role.
   const listed = editListedPrompt(root, [DIRECTOR_ROLE, "clean"], 1, "edited");
   assert.equal(listed.status, "edited");
   assert.equal(listed.status !== "edited" ? null : listed.role, DIRECTOR_ROLE);
   assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["edited"]);
   assert.deepEqual(queuedRolePrompts(root, "clean"), []);
 
-  // Several loops hold the position: an ambiguity the caller reports with the --role
+  // Several roles hold the position: an ambiguity the caller reports with the --role
   // escape hatch — nothing is edited.
   enqueueRolePrompt(root, "clean", "also first for clean");
   const ambiguous = editListedPrompt(root, [DIRECTOR_ROLE, "clean"], 1, "edited");
@@ -159,7 +159,7 @@ test("editListedPrompt resolves the --list numbering like cancel: one hit, ambig
   assert.deepEqual(queuedRolePrompts(root, DIRECTOR_ROLE), ["edited"], "an ambiguity edits nothing");
   assert.deepEqual(queuedRolePrompts(root, "clean"), ["also first for clean"]);
 
-  // No loop holds the position (both queues hold one entry): a miss carrying the largest
+  // No role holds the position (both queues hold one entry): a miss carrying the largest
   // queue length.
   const missing = editListedPrompt(root, [DIRECTOR_ROLE, "clean"], 3, "edited");
   assert.deepEqual(missing, { status: "missing", queued: 1 });
@@ -167,9 +167,9 @@ test("editListedPrompt resolves the --list numbering like cancel: one hit, ambig
 });
 
 /** The shared resolveListedQueue refactor must not have moved cancel's behavior: the same
- * scope and position resolve to the same loop for both verbs, and both touch only that
- * loop's queue. */
-test("editListedPrompt and cancelListedPrompt resolve the same position to the same loop", () => {
+ * scope and position resolve to the same role for both verbs, and both touch only that
+ * role's queue. */
+test("editListedPrompt and cancelListedPrompt resolve the same position to the same role", () => {
   const root = tmpdir();
   enqueueRolePrompt(root, "clean", "only entry anywhere");
   const cancelled = cancelListedPrompt(root, [DIRECTOR_ROLE, "clean"], 1);
@@ -178,14 +178,14 @@ test("editListedPrompt and cancelListedPrompt resolve the same position to the s
   assert.deepEqual(queuedRolePrompts(root, "clean"), []);
 
   enqueueRolePrompt(root, "clean", "back again");
-  const edited = editListedPrompt(root, [DIRECTOR_ROLE, "clean"], 1, "edited in the same loop");
+  const edited = editListedPrompt(root, [DIRECTOR_ROLE, "clean"], 1, "edited in the same role");
   assert.equal(edited.status, "edited");
   assert.equal(edited.status !== "edited" ? null : edited.role, "clean");
-  assert.deepEqual(queuedRolePrompts(root, "clean"), ["edited in the same loop"]);
+  assert.deepEqual(queuedRolePrompts(root, "clean"), ["edited in the same role"]);
 });
 
 /** An edit replaces the prompt's text, not its attachments: the image reference lines (and
- * so the sibling files they name) must survive, or the receiving loop reads no image and the
+ * so the sibling files they name) must survive, or the receiving role reads no image and the
  * file is orphaned with `--edit` giving no way to restore it. */
 test("editRolePrompt keeps an attached prompt's image reference and its file", () => {
   const root = tmpdir();

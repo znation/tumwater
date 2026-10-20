@@ -60,12 +60,12 @@ test("submitPrompt's event preview never carries a lone surrogate", () => {
   assert.equal(String(events[0]?.preview), `${"x".repeat(78)}…`);
 });
 
-test("a role prompt's over-cap error names the target loop's tick, not the director's", () => {
+test("a role prompt's over-cap error names the target role's tick, not the director's", () => {
   const dir = tmpdir();
   const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   assert.throws(() => submitRolePrompt(dir, "qa", over), (err: unknown) => {
     const message = String((err as Error).message);
-    // The cap is shared, but the reason names the loop the prompt actually rides into:
+    // The cap is shared, but the reason names the role the prompt actually rides into:
     // `tumwater prompt --role qa` that says "director" points the operator at the wrong queue.
     return message.includes("the qa run's prefill") && !message.includes("director");
   });
@@ -107,7 +107,7 @@ test("an image-carrying prompt is capped on its composed text, not its body alon
 });
 
 // Image input, part 5/5 (plans/image-input.md "Attachments"): the submit gate. An attachment
-// to a loop whose seam reads no images and that has no reroute target is refused before
+// to a role whose seam reads no images and that has no reroute target is refused before
 // anything is queued or written; with a reroute target the prompt is accepted (its tick would
 // rerun on the vision tier, so nothing is refused).
 test("image prompts are refused when no configured model reads images, accepted when a tier reroutes", async () => {
@@ -158,7 +158,7 @@ test("image prompts are refused when no configured model reads images, accepted 
 
 // The same capability answers the CLI/GUI display: imagePromptGuidance names where a blind
 // prompt runs (the notice surfaces print), and refuses with the fix when nothing reads images.
-test("imagePromptGuidance returns a refusal or a reroute notice, and nothing when the loop reads images", async () => {
+test("imagePromptGuidance returns a refusal or a reroute notice, and nothing when the role reads images", async () => {
   const dir = tmpdir();
   const modelsDir = tmpdir("inbox-guidance-");
   writeModelsFile(
@@ -178,7 +178,7 @@ test("imagePromptGuidance returns a refusal or a reroute notice, and nothing whe
     const guidance = imagePromptGuidance(dir, "feature");
     assert.deepEqual(guidance.refusal, undefined);
     assert.match(guidance.notice ?? "", /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
-    // A vision loop says nothing.
+    // A vision role says nothing.
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
   } finally {
@@ -208,9 +208,9 @@ test("imagePromptGuidance treats a probe-failed pi claim as text-only, matching 
   try {
     process.env.PI_CODING_AGENT_DIR = modelsDir;
     writeConfig(dir, { model: { default: "local/vision", strong: "local/vision" } });
-    // No probe verdict yet: the claim stands on the catalog, so the loop reads images.
+    // No probe verdict yet: the claim stands on the catalog, so the role reads images.
     assert.deepEqual(imagePromptGuidance(dir, "feature"), {});
-    // A fresh failing probe overrides the claim: the loop is text-only, and with no other tier
+    // A fresh failing probe overrides the claim: the role is text-only, and with no other tier
     // able to read images (its strong also probe-fails) the gate refuses instead of granting.
     writeImageProbeCache(dir, {
       [imageProbeKey("pi", "local", "vision")]: { verdict: "fail", detail: "answered 429", at: Date.now(), claim: true },

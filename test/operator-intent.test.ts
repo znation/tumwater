@@ -17,7 +17,7 @@ import {
   submitRolePromptAndWake,
   timedPauseBits,
 } from "../src/operator/operator-intent.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readScheduledWakes } from "./helpers/json-read.js";
 import { orchestratorStatePath, pausedPath, scheduledWakeDir, STATE_DIR, wakeRequestPath } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -93,8 +93,8 @@ test("markerApplyNote reports a live team and the ~2s window when the orchestrat
 test("requestResetCounters zeroes the named roles' counters and preserves scheduling", () => {
   const root = deadRoot();
   for (const role of ["fix", "docs"]) {
-    saveLoopState(root, {
-      ...loadLoopState(root, role),
+    saveRunnerState(root, {
+      ...loadRunnerState(root, role),
       role,
       runs: 7,
       commits: 3,
@@ -122,8 +122,8 @@ test("requestResetCounters zeroes the named roles' counters and preserves schedu
 
 test("requestWake clears backoff and pulls nextRunAt to now, leaving counters alone", () => {
   const root = deadRoot();
-  saveLoopState(root, {
-    ...loadLoopState(root, "fix"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "fix"),
     role: "fix",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,
@@ -147,8 +147,8 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
 
 test("requestWake with a positive delay schedules the marker and skips the state change", () => {
   const root = deadRoot();
-  saveLoopState(root, {
-    ...loadLoopState(root, "fix"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "fix"),
     role: "fix",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,
@@ -170,8 +170,8 @@ test("requestWake with a positive delay schedules the marker and skips the state
 
 test("requestWake with a zero delay behaves immediately", () => {
   const root = deadRoot();
-  saveLoopState(root, {
-    ...loadLoopState(root, "fix"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "fix"),
     role: "fix",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,
@@ -186,8 +186,8 @@ test("requestWake with a zero delay behaves immediately", () => {
 
 test("requestResetCounters leaves a live team's state file to the orchestrator (no racing rewrite)", () => {
   const root = liveRoot();
-  saveLoopState(root, {
-    ...loadLoopState(root, "fix"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "fix"),
     role: "fix",
     runs: 7,
     commits: 3,
@@ -208,8 +208,8 @@ test("requestResetCounters leaves a live team's state file to the orchestrator (
 
 test("requestWake leaves a live team's state file to the orchestrator (no racing rewrite)", () => {
   const root = liveRoot();
-  saveLoopState(root, {
-    ...loadLoopState(root, "fix"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "fix"),
     role: "fix",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,

@@ -8,7 +8,7 @@ import { cancelQueuedFile } from "../src/inbox/inbox-cancel.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { imageReferenceLines, imageReferencePaths, savePromptImages } from "../src/inbox/inbox-attachments.js";
 import { roleInboxDir } from "../src/paths.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // pending-prompt.ts holds the requeue policy for every tick outcome that leaves a user
@@ -16,14 +16,14 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 // pin that policy directly against a real queue directory (the same mechanics inbox.test.ts
 // exercises), because a wrong requeue either loses a user request or runs it twice.
 
-function state(): LoopState {
-  return { loop: "feature", state: "idle" } as unknown as LoopState;
+function state(): RunnerState {
+  return { role: "feature", state: "idle" } as unknown as RunnerState;
 }
 
 /** resumePromptFile via a function boundary — reading the property directly after an
  * `assert.equal(..., undefined)` narrows it for the rest of the test, and the requeue's
  * assignment happens inside PendingPrompt where TypeScript cannot see it. */
-function resumeFile(s: LoopState): string | undefined {
+function resumeFile(s: RunnerState): string | undefined {
   return s.resumePromptFile;
 }
 
@@ -49,7 +49,7 @@ test("clear drops the recorded prompt without requeueing it", () => {
   assert.equal(inboxSize(dir, DIRECTOR_ROLE), 0);
 });
 
-test("requeueUnfulfilled puts the prompt back in the role's own queue — never across loops", () => {
+test("requeueUnfulfilled puts the prompt back in the role's own queue — never across roles", () => {
   const dir = tmpdir();
   const pending = new PendingPrompt(dir, "feature");
   pending.requeueUnfulfilled("retry me");
@@ -78,7 +78,7 @@ test("requeueUnfulfilled ignores null; requeuePendingUnfulfilled requeues and cl
   assert.equal(inboxSize(dir, DIRECTOR_ROLE), 1);
 });
 
-test("requeueForResume: director takes the plain path; a role loop records the queue file", () => {
+test("requeueForResume: director takes the plain path; a role records the queue file", () => {
   const dir = tmpdir();
   const s = state();
 
@@ -91,7 +91,7 @@ test("requeueForResume: director takes the plain path; a role loop records the q
   feature.requeueForResume(s, "resume me");
   assert.deepEqual(queuedRolePrompts(dir, "feature"), ["resume me"]);
   const recorded = resumeFile(s);
-  assert.ok(recorded, "role loops must record the queue file for the reclaim");
+  assert.ok(recorded, "roles must record the queue file for the reclaim");
   assert.ok(recorded.includes("feature"), "the file lives in the role's own queue");
 });
 

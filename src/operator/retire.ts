@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { loadConfigSafe } from "../config/config.js";
 import { CUSTOM_NAME_RE } from "../config/config-schema.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { loopEnabled } from "../roles/runner-ids.js";
+import { runnerEnabled } from "../roles/runner-ids.js";
 import {
   branchExists,
   countCommitsInRange,
@@ -15,14 +15,14 @@ import {
   targetBranch,
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
-import { loadLoopState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state.js";
 import { branchName, mergeRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";
 import { pausedRoles, resumeRole } from "../team/team-state.js";
 import { git } from "../git/git-run.js";
 
-/** `tumwater retire --role <id>`: remove a disabled loop's persistent worktree and branch, plus the
+/** `tumwater retire --role <id>`: remove a disabled role's persistent worktree and branch, plus the
  * per-role merge ref and paused-state marker that outlive it. The safety rails and the `--force`
  * override live here, so the CLI layer (operator/operator-commands.ts) stays a thin renderer. */
 
@@ -55,7 +55,7 @@ export interface RetireStatus {
   dirty: boolean;
   /** The role is enabled in tumwater.json — retire expects it disabled first. */
   enabledInConfig: boolean;
-  /** The loop's persisted state says a tick is in flight (best-effort; cleared on start). */
+  /** The role's persisted state says a tick is in flight (best-effort; cleared on start). */
   midRun: boolean;
 }
 
@@ -99,8 +99,8 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     mergeRefPresent: mergeRef !== null,
     aheadOfMain: ahead + pinnedUnmerged,
     dirty,
-    enabledInConfig: loopEnabled(config.config, role),
-    midRun: loadLoopState(root, role).running === true,
+    enabledInConfig: runnerEnabled(config.config, role),
+    midRun: loadRunnerState(root, role).running === true,
   };
 }
 

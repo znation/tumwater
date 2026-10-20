@@ -83,7 +83,7 @@ test("cancelPrompt removes by 1-based position and reports the cancelled text", 
   // Siblings keep their relative positions.
   assert.deepEqual(queuedPrompts(dir), ["alpha", "gamma"]);
 
-  // Exactly one prompt_cancelled event under the director loop, like its enqueued sibling.
+  // Exactly one prompt_cancelled event under the director role, like its enqueued sibling.
   const events = eventsOfType(dir, "prompt_cancelled");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.source, "director");
@@ -319,7 +319,7 @@ test("per-role queues are separate from the director's queue and from each other
   assert.equal(dequeueRolePrompt(dir, "selfcheck"), null);
 });
 
-test("submitRolePrompt and cancelRolePrompt log their events under the named loop", () => {
+test("submitRolePrompt and cancelRolePrompt log their events under the named role", () => {
   const dir = tmpdir();
   submitRolePrompt(dir, "qa", "check the flow");
   submitRolePrompt(dir, "qa", "another");
@@ -390,7 +390,7 @@ test("cancel by position still reaches a deferred entry", (t) => {
 test("operator content that merely starts with a marker-shaped line is never treated as plumbing", () => {
   const dir = tmpdir();
   // Only the writer's exact `tumwater:not-before <iso-utc>` shape is plumbing. A queued
-  // prompt whose own first line starts with the prefix — e.g. one asking a loop to fix the
+  // prompt whose own first line starts with the prefix — e.g. one asking a role to fix the
   // marker feature itself — must deliver verbatim, not be silently deferred or stripped.
   const spoof = "tumwater:not-before 2030-01-01\n\nfix the not-before marker feature";
   const f = enqueueRolePrompt(dir, "feature", spoof);

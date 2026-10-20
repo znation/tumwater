@@ -1,7 +1,7 @@
-// --- retire --role <id>: remove a disabled loop's worktree, branch, and per-role state ---
+// --- retire --role <id>: remove a disabled role's worktree, branch, and per-role state ---
 // The removal is plain git + file work on the repo (no running harness involved), so the whole
 // surface is testable with fixtures: an initialized repo plus the ensureWorktree artifacts a
-// retired loop leaves behind. The safety rails (enabled role, unmerged commits, dirty worktree,
+// retired role leaves behind. The safety rails (enabled role, unmerged commits, dirty worktree,
 // mid-tick) must refuse without removing anything; --force overrides; a second run is
 // idempotent, reporting what was already gone.
 
@@ -18,12 +18,12 @@ import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
 import { readJson } from "./helpers/json-read.js";
 import { branchHead, setRef } from "../src/git/git.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
 import { helpTopic } from "../src/cli/help.js";
 
 // `feature` is enabled by default config, so a retire of it must refuse; `clean` is a
-// user-defined loop the tests disable in tumwater.json first.
+// user-defined role the tests disable in tumwater.json first.
 
 test("retire removes a disabled role's worktree, branch, and merge ref", async () => {
   const { root } = await initializedWorktree();
@@ -50,7 +50,7 @@ test("retire removes a disabled role's worktree, branch, and merge ref", async (
   assert.equal(branchGone, null, "branch deleted");
 });
 
-test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a mid-tick loop; --force goes through", async () => {
+test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a mid-tick role; --force goes through", async () => {
   const { root, wt } = await initializedWorktree();
 
   // Enabled role: refuse, nothing removed.
@@ -76,7 +76,7 @@ test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a 
   assert.ok(!fs.existsSync(worktreePath(root, "improve")));
 });
 
-test("retire refuses a dirty worktree and a mid-tick loop before removing anything", async () => {
+test("retire refuses a dirty worktree and a mid-tick role before removing anything", async () => {
   const { root, wt } = await initializedWorktree();
   disableRole(root, "improve");
 
@@ -88,9 +88,9 @@ test("retire refuses a dirty worktree and a mid-tick loop before removing anythi
   fs.rmSync(path.join(wt, "scratch.txt"));
 
   // A persisted running flag (runner-state.json) refuses too.
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   state.running = true;
-  saveLoopState(root, state);
+  saveRunnerState(root, state);
   const r2 = await cli(root, "retire", "--role", "improve");
   assert.equal(r2.code, 1);
   assert.match(r2.stderr, /run is in progress/);
@@ -309,7 +309,7 @@ test("retire refuses an enabled work instance id, not just its bare base role (p
   cfg.roles.feature = { ...cfg.roles.feature, enabled: true, instances: 2 };
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
 
-  // `knownRoleIds` accepts `feature-2`, so retire must agree it is a live loop: the
+  // `knownRoleIds` accepts `feature-2`, so retire must agree it is a live role: the
   // still-enabled rail trips and nothing is removed.
   const status = await collectRetire(root, "feature-2");
   assert.equal(status.enabledInConfig, true, "an enabled instance is not reported disabled");

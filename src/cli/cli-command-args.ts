@@ -3,7 +3,7 @@
  * `tumwater prompt`, whose positionals are prompt TEXT rather than a token list. Every
  * shared helper in cli/cli-args.ts assumes flags claim their tokens and rejects whatever is
  * left over — exactly wrong here, where a misspelled flag must fail instead of being
- * silently baked into the prompt that every loop then ticks from. Both parsers therefore
+ * silently baked into the prompt that every role then ticks from. Both parsers therefore
  * hand-roll the same discipline (a double-dash token must be a known flag, given at most
  * once; single-dash tokens are content) and share failStrayArg, so they live together
  * apart from cli/cli-args.ts's generic machinery — which also keeps that module, minus these
@@ -146,7 +146,7 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
  * once; with `--file` present nothing but the other flags may accompany it; a `--branch
  * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
  * prompt content, not flags. Without these checks a misspelled --file would be baked into the
- * initial prompt — injected into every tick of every loop until someone edits the project
+ * initial prompt — injected into every tick of every role until someone edits the project
  * brief. */
 export function parseInitArgs(args: string[]): {
   prompt: string;

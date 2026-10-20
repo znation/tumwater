@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -7,7 +7,7 @@ import { warnEventBestEffort } from "../events/events.js";
 
 /**
  * The raw user prompt a director tick is executing, and the requeue policy for every outcome
- * that leaves the request unfulfilled — extracted from LoopRunner's private methods
+ * that leaves the request unfulfilled — extracted from RoleRunner's private methods
  * (src/runner/runner.ts) so the subtle fresh-vs-resume requeue semantics have one named home beside
  * the queue mechanics they ride on (src/inbox/inbox.ts).
  */
@@ -41,7 +41,7 @@ export class PendingPrompt {
     this.retain = false;
   }
 
-  /** The raw user prompt this tick is executing (null for role loops), so an unfulfilled
+  /** The raw user prompt this tick is executing (null for roles), so an unfulfilled
    * outcome below can re-queue it. */
   get(): string | null {
     return this.value;
@@ -71,7 +71,7 @@ export class PendingPrompt {
    * — the one place that policy lives, shared by every outcome that leaves the request undone
    * (abort, timeout, failure without changes, review abort, context-ceiling cut-off, red-main
    * gate). The queue is the role's own (the director's historical inbox for the director), so a
-   * re-queued per-role request never leaks across loops. A fulfilled no_change never reaches
+   * re-queued per-role request never leaks across roles. A fulfilled no_change never reaches
    * here: re-queueing it would loop the prompt forever. Image attachments ride along: the
    * re-queue moves them to the new queue file's stem so a later cancel or fulfilling sweep
    * finds them, and a reference whose file is genuinely gone (removed out of band) is dropped
@@ -103,7 +103,7 @@ export class PendingPrompt {
    * is recorded so the reclaim takes that exact prompt whatever else was enqueued meanwhile.
    * Director ticks never resume — their re-queued prompt always reruns fresh — so they take
    * the plain path. */
-  requeueForResume(state: LoopState, userPrompt: string | null): void {
+  requeueForResume(state: RunnerState, userPrompt: string | null): void {
     if (!userPrompt) return;
     if (this.role === DIRECTOR_ROLE) {
       this.requeueUnfulfilled(userPrompt);
@@ -121,7 +121,7 @@ export class PendingPrompt {
    * vanished file (cancelled) reclaims nothing. The flag is consumed even when this tick does
    * not resume: a fresh fallback re-derives its prompt from the queue like any other tick, and
    * a stale record must never survive into a later resume. */
-  reclaimForResume(state: LoopState, resuming: boolean): void {
+  reclaimForResume(state: RunnerState, resuming: boolean): void {
     const reclaimFile = state.resumePromptFile;
     state.resumePromptFile = undefined;
     if (resuming && reclaimFile) {

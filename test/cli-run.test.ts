@@ -5,9 +5,9 @@ import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowSt
 import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { pauseTeam } from "../src/team/team-state.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
@@ -20,8 +20,8 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 // documented fallback for a role the settle map lacks (asserted once, via the unambiguous
 // pause-marker branch).
 
-function state(role: string, over: Partial<LoopState>): LoopState {
-  return { ...freshLoopState(role), ...over };
+function state(role: string, over: Partial<RunnerState>): RunnerState {
+  return { ...freshRunnerState(role), ...over };
 }
 
 // --- parseRunWindow: the run --for body rules (the dispatcher's durationFlagSpec("run --for") gate
@@ -132,9 +132,9 @@ test("armDeadlineTimer fires a short duration on schedule and clear() retracts i
 
 test("counts the round's ticks and buckets them by last result, sorted by key", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { runs: 2, lastResult: "changed" }));
-  saveLoopState(root, state("docs", { runs: 1, lastResult: "no_change" }));
-  saveLoopState(root, state("qa", { runs: 3, lastResult: "error" }));
+  saveRunnerState(root, state("clean", { runs: 2, lastResult: "changed" }));
+  saveRunnerState(root, state("docs", { runs: 1, lastResult: "no_change" }));
+  saveRunnerState(root, state("qa", { runs: 3, lastResult: "error" }));
 
   const line = onceSummary(
     root,
@@ -153,7 +153,7 @@ test("counts the round's ticks and buckets them by last result, sorted by key", 
 
 test("one advanced tick reads singular; zero ticks read `nothing ran`", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { runs: 1, lastResult: "no_change" }));
+  saveRunnerState(root, state("clean", { runs: 1, lastResult: "no_change" }));
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
     "once: 1 run — 1 no_change",
@@ -169,7 +169,7 @@ test("a skipped role reports the orchestrator's settle reason verbatim, not a st
   const root = makeRepo();
   // clean's state would read as idle by derivation (past nextRunAt, no pause marker) — the
   // pre-fix mislabel the 2026-09-25 BUGS.md entry records; the settle map says deferred.
-  saveLoopState(root, state("clean", { runs: 4, nextRunAt: Date.now() - 60_000 }));
+  saveRunnerState(root, state("clean", { runs: 4, nextRunAt: Date.now() - 60_000 }));
 
   const line = onceSummary(
     root,
@@ -183,9 +183,9 @@ test("a skipped role reports the orchestrator's settle reason verbatim, not a st
 
 test("skip reasons are reported verbatim and in role order", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { runs: 1 }));
-  saveLoopState(root, state("docs", { runs: 1 }));
-  saveLoopState(root, state("qa", { runs: 1 }));
+  saveRunnerState(root, state("clean", { runs: 1 }));
+  saveRunnerState(root, state("docs", { runs: 1 }));
+  saveRunnerState(root, state("qa", { runs: 1 }));
 
   const line = onceSummary(
     root,
@@ -208,7 +208,7 @@ test("skip reasons are reported verbatim and in role order", () => {
 test("a role the settle map lacks falls back to state, via the pause marker", () => {
   const root = makeRepo();
   pauseTeam(root);
-  saveLoopState(root, state("clean", { runs: 1 }));
+  saveRunnerState(root, state("clean", { runs: 1 }));
 
   const line = onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map());
 
@@ -220,7 +220,7 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
   // The role joined the runners array after the round's start (live config reload), so it is
   // in neither `roles` nor ticksBefore: its persisted ticks (5) are not this round's, and
   // only the orchestrator's ticks-run map knows it ran exactly one (BUGS.md 2026-09-25).
-  saveLoopState(root, state("improve", { runs: 6, lastResult: "changed" }));
+  saveRunnerState(root, state("improve", { runs: 6, lastResult: "changed" }));
 
   const line = onceSummary(
     root,
@@ -239,9 +239,9 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
 test("a ran role with no recorded last result buckets as no_change", () => {
   const root = makeRepo();
   // A tick that advanced the counter without writing lastResult — the field is optional on
-  // LoopState — still counts, bucketed under the same `no_change` key a recorded no-change
+  // RunnerState — still counts, bucketed under the same `no_change` key a recorded no-change
   // tick uses, rather than dropping out of the counts line.
-  saveLoopState(root, state("clean", { runs: 1 }));
+  saveRunnerState(root, state("clean", { runs: 1 }));
 
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
@@ -254,8 +254,8 @@ test("a role the round's ticks-run map lacks counts zero and settles, not its hi
   // The mid-round map is the source of truth for who ran: a role listed in `roles` but
   // absent from it ran zero ticks this round — its persisted history (ticks 4) must not
   // leak into the summary, and it reports the settle reason like any skipped role.
-  saveLoopState(root, state("clean", { runs: 4 }));
-  saveLoopState(root, state("improve", { runs: 1, lastResult: "changed" }));
+  saveRunnerState(root, state("clean", { runs: 4 }));
+  saveRunnerState(root, state("improve", { runs: 1, lastResult: "changed" }));
 
   const line = onceSummary(
     root,
@@ -275,7 +275,7 @@ test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
   // nextRunAt alone (the same clock-vs-backoff conflation the 2026-09-25 settleSkipped
   // fix removed), so a merely not-due role in a settle-map-missing round's summary read
   // as "backoff".
-  saveLoopState(
+  saveRunnerState(
     root,
     state("clean", { runs: 1, backoffSeconds: 0, nextRunAt: Date.now() + 600_000 }),
   );
@@ -288,7 +288,7 @@ test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
 
 test("the fallback reads a raised backoffSeconds as backoff", () => {
   const root = makeRepo();
-  saveLoopState(
+  saveRunnerState(
     root,
     state("qa", { runs: 1, backoffSeconds: 42, nextRunAt: Date.now() + 42_000 }),
   );
@@ -304,7 +304,7 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
   // A cut-off tick waits one interval with backoffSeconds 0 and a future nextRunAt: the
   // resume check must outrank the clock, or the wait reads as backoff (or, post-fix, as
   // idle — both hide that half-finished work is pending).
-  saveLoopState(
+  saveRunnerState(
     root,
     state("improve", { runs: 1, resumePending: true, nextRunAt: Date.now() + 600_000 }),
   );
@@ -317,7 +317,7 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
 
 test("onceFailures reports roles that ticked this round and ended in a failure result", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { runs: 1, lastResult: "error" }));
+  saveRunnerState(root, state("clean", { runs: 1, lastResult: "error" }));
   assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }]);
   assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 0]])), [], "did not tick this round");
   assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 0]])), [{ role: "clean", result: "error" }]);
@@ -328,17 +328,17 @@ test("onceFailures reports roles that ticked this round and ended in a failure r
 test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the rest", () => {
   const root = makeRepo();
   for (const result of ONCE_FAILURE_RESULTS) {
-    saveLoopState(root, state("clean", { runs: 1, lastResult: result }));
+    saveRunnerState(root, state("clean", { runs: 1, lastResult: result }));
     assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result }]);
   }
   for (const result of ["rejected", "refused", "no_change", "changed"] as const) {
-    saveLoopState(root, state("clean", { runs: 1, lastResult: result }));
+    saveRunnerState(root, state("clean", { runs: 1, lastResult: result }));
     assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [], result);
   }
 });
 
-const tickRow = (loop: string, result: string, tick: number): TickRow =>
-  ({ ts: 1_700_000_000_000 + tick, time: "", role: loop, run: tick, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
+const tickRow = (role: string, result: string, tick: number): TickRow =>
+  ({ ts: 1_700_000_000_000 + tick, time: "", role, run: tick, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
 
 test("windowSummary counts every tick once by outcome class, with the history table", () => {
   const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("clean", "refused", 3), tickRow("qa", "error", 1)]), true);

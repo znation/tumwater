@@ -20,7 +20,7 @@ export function notBeforeMarker(at: number): string {
  * `YYYY-MM-DDTHH:MM:SS.sssZ`. Only a marker carrying the writer's full shape — the stamp line
  * plus the blank separator notBeforeMarker appends — counts as plumbing; anything else
  * after the prefix is the prompt's own content (e.g. a queued prompt that begins with a
- * marker-like line asking a loop to fix the marker itself, or a hand-edited file that lost
+ * marker-like line asking a role to fix the marker itself, or a hand-edited file that lost
  * the blank line), not a deferral. The stamp and separator are checked together so this
  * parser and stripNotBeforeMarker — which strips exactly this shape — can never disagree
  * about what is plumbing. */

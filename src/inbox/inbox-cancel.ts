@@ -6,7 +6,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix } from "../text/text.js";
 import { promptPreview, queuedFileAtPosition, queuedFiles, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 
-/** The cancel half of the prompt queues: removing a queued prompt by per-loop position
+/** The cancel half of the prompt queues: removing a queued prompt by per-role position
  * (`tumwater prompt --cancel`), by list-wide position numbering, by queue-file basename
  * (the dashboard's per-row cancel affordance), and the race policy both share. Split out
  * of inbox.ts — which keeps the store (enqueue, list, peek, dequeue) and the shared
@@ -19,8 +19,8 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
 
 /** Read one addressed queue file and turn it into a cancel outcome — the one home of the
  * race-policy-and-event pairing both cancel paths go through: { status: "gone" } when the
- * loop already dequeued or another cancel removed the file (takeQueuedFile's race policy,
- * a normal race, never an error), else one prompt_cancelled event under that loop (preview
+ * role already dequeued or another cancel removed the file (takeQueuedFile's race policy,
+ * a normal race, never an error), else one prompt_cancelled event under that role (preview
  * via promptPreview, exactly like the prompt_enqueued sibling) logged, best-effort, only
  * after a successful removal — the removal is the durable effect, so an unwritable feed must
  * not report the cancel as failed;
@@ -37,8 +37,8 @@ function takeCancelledPrompt(root: string, role: string, file: string): CancelOu
   return { status: "cancelled", text };
 }
 
-/** Remove the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
- * and log one prompt_cancelled event under that loop (preview via promptPreview, exactly like
+/** Remove the Nth prompt queued for one role — 1-based, as shown by `tumwater prompt --list` —
+ * and log one prompt_cancelled event under that role (preview via promptPreview, exactly like
  * its prompt_enqueued sibling). Throws for out-of-range positions with no side effects; returns
  * { status: "gone" } when the file disappears between listing and removal instead of throwing.
  * The race policy and event live in takeCancelledPrompt. */
@@ -46,9 +46,9 @@ export function cancelRolePrompt(root: string, role: string, position: number): 
   return takeCancelledPrompt(root, role, queuedFileAtPosition(root, role, position));
 }
 
-/** The miss half of a list-wide position outcome — an ambiguity (several loops hold the
+/** The miss half of a list-wide position outcome — an ambiguity (several roles hold the
  * position) or a miss (none does, carrying the largest queue length for the error's count) —
- * exactly the two shapes resolveListedQueue returns when it finds no single loop, restated
+ * exactly the two shapes resolveListedQueue returns when it finds no single role, restated
  * once so the three outcome types (ListedQueueResolution, ListedCancelOutcome,
  * ListedEditOutcome) and their two forwarders cannot drift on the miss fields. */
 export type ListedQueueMiss =
@@ -56,8 +56,8 @@ export type ListedQueueMiss =
   | { status: "missing"; queued: number };
 
 /** Forward a resolution to a list-wide command's outcome: a miss shape returns verbatim, a
- * found one calls `found` with the resolved loop (so the command's own side-effecting queue
- * action stays lazy — it runs only for the single loop that holds the position). Both
+ * found one calls `found` with the resolved role (so the command's own side-effecting queue
+ * action stays lazy — it runs only for the single role that holds the position). Both
  * list-wide commands — cancelListedPrompt and editListedPrompt — are the call sites. */
 export function listedQueueOutcome<T>(
   resolved: ListedQueueResolution,
@@ -72,16 +72,16 @@ export function listedQueueOutcome<T>(
   }
 }
 
-/** Outcome of cancelListedPrompt: a resolved cancel (naming the loop it landed in, since the
- * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
+/** Outcome of cancelListedPrompt: a resolved cancel (naming the role it landed in, since the
+ * caller scoped nothing), an ambiguity, or a miss across every role it scoped. */
 export type ListedCancelOutcome =
   | { status: "cancelled"; role: string; outcome: CancelOutcome }
   | ListedQueueMiss;
 
-/** Resolve a list-wide position to the one loop whose queue holds it — the shared half of
+/** Resolve a list-wide position to the one role whose queue holds it — the shared half of
  * cancelListedPrompt and editListedPrompt (inbox-edit.ts), so the two cannot drift on how
- * `--list`'s numbering resolves: its per-loop sections, each numbered from 1, in `scope`
- * order (the director first, then the roles). Only loops whose queue is long enough to hold
+ * `--list`'s numbering resolves: its per-role sections, each numbered from 1, in `scope`
+ * order (the director first, then the roles). Only roles whose queue is long enough to hold
  * the position are candidates — exactly one resolves, several are an ambiguity the caller
  * reports with a --role escape hatch (the list itself shows two "N." lines there, so no
  * silent default), and none is a miss carrying the largest queue length for the error's
@@ -92,7 +92,7 @@ type ListedQueueResolution =
   | ListedQueueMiss;
 
 /** Resolve a list-wide 1-based position (a `prompt --cancel`/`--edit` with no --role) to the
- * one loop whose queue is long enough to hold it, in `scope` order — the semantics the
+ * one role whose queue is long enough to hold it, in `scope` order — the semantics the
  * ListedQueueResolution doc above specifies. Sizes only: no queue content is read. */
 export function resolveListedQueue(root: string, scope: string[], position: number): ListedQueueResolution {
   const candidates = scope.filter((role) => queuedFiles(root, role).length >= position);
@@ -106,7 +106,7 @@ export function resolveListedQueue(root: string, scope: string[], position: numb
 }
 
 /** Cancel by the position numbering `tumwater prompt --list` prints with no --role: the
- * position resolves through the shared resolveListedQueue (above), then one loop's queue
+ * position resolves through the shared resolveListedQueue (above), then one role's queue
  * takes the cancel (cancelRolePrompt's race policy and event). */
 export function cancelListedPrompt(root: string, scope: string[], position: number): ListedCancelOutcome {
   const resolved = resolveListedQueue(root, scope, position);
@@ -118,7 +118,7 @@ export function cancelListedPrompt(root: string, scope: string[], position: numb
 }
 
 /** The queue-file-name guard for a file-addressed cancel: a name arriving over HTTP is
- * trusted only as a plain basename inside the loop's queue directory — anything containing a
+ * trusted only as a plain basename inside the role's queue directory — anything containing a
  * path separator or equal to `..` could name a file elsewhere on disk, a NUL byte is not a
  * character any filename can hold (the fs layer throws on it rather than answering ENOENT,
  * so the endpoint's 400 contract needs it rejected before anything touches the disk), and a

@@ -21,7 +21,7 @@ import { eventsLogPath, piLogPath } from "../paths.js";
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table. Unlike
  * operator/operator-commands.ts these write nothing but stdout — they only read the event log and
- * each loop's agent transcript. It lives beside the other CLI command bodies (history.ts,
+ * each role's agent transcript. It lives beside the other CLI command bodies (history.ts,
  * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering
  * layer they drive — here the event formatter and the transcript renderer — while src/ui/
  * itself stays off src/ module boundaries it does not own. */
@@ -91,7 +91,7 @@ function typeEmpty(type: string, pieces: string[]): string {
 
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
- * loop's agent transcript (see cmdLogsTranscript). */
+ * role's agent transcript (see cmdLogsTranscript). */
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
@@ -258,7 +258,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
-/** `tumwater logs --role <id>`: print (and optionally follow) one loop's agent transcript —
+/** `tumwater logs --role <id>`: print (and optionally follow) one role's agent transcript —
  * run separators, abbreviated thinking, assistant text, and tool calls; with `--prompt` also
  * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
  * complete renderable events are shown. */

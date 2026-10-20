@@ -11,7 +11,7 @@ import { agree, plural } from "../text/phrases.js";
 /** Images attached to queued prompts: a GUI drop or paste into the composer saves each image
  * beside the prompt's queue file (same stem, an image extension — the `.md` filter in
  * listQueueFiles never sees them) and appends one `[image attached: <absolute path>]` line per
- * image to the queued text, so the receiving loop's pi agent can view the file with its read
+ * image to the queued text, so the receiving role's pi agent can view the file with its read
  * tool. Validation lives here once; every surface (the GUI endpoints through submitRolePrompt,
  * the requeue policy through stripVanishedImageReferences) shares it. */
 
@@ -333,7 +333,7 @@ export function stripImageReferenceLines(text: string): string {
 
 /** Drop the `[image attached: …]` lines whose files are no longer on disk from a prompt being
  * re-queued after a tick whose attached image is gone (removed out of band, or by a cancel),
- * so a re-queued copy would otherwise send the loop's agent after files that are gone. Each
+ * so a re-queued copy would otherwise send the role's agent after files that are gone. Each
  * vanished line is replaced by one honest note naming what
  * happened; references whose files still exist are kept. Unchanged text comes back untouched
  * (dropped: []) so the common no-images case costs nothing. */

@@ -1,12 +1,12 @@
 // vocabulary: plain
 /** The CLI layer of `tumwater prompt` — the steering-prompt command: submit a prompt to the
- * director (default) or one role's queue, `--list` what is queued with per-loop position
+ * director (default) or one role's queue, `--list` what is queued with per-role position
  * numbering, or `--cancel <n>` a queued prompt by position. Split out of
  * operator/operator-commands.ts because this command is not a team-control marker: its
  * sibling commands there ride the operator-intent marker protocol, while this command drives
- * the durable per-loop queues (src/inbox/inbox.ts) through the inbox-cancel, inbox-edit, and
+ * the durable per-role queues (src/inbox/inbox.ts) through the inbox-cancel, inbox-edit, and
  * operator-intent helpers, each with its own broken-config policy — so the command lives
- * beside the queue module it drives. The team-side half — the dequeue and requeue a loop
+ * beside the queue module it drives. The team-side half — the dequeue and requeue a role
  * performs — is inbox.ts and pending-prompt.ts. */
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import path from "node:path";
@@ -48,8 +48,8 @@ function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss
     if (listed.status === "ambiguous") {
       fail(`position ${position} is in more than one role's inbox (${listed.roles.join(", ")}) — name one with --role <id>`);
     }
-    // `queued` is the longest queue's length — the highest position any loop's numbering can
-    // reach — so a miss names it as the valid range when at least one loop holds a prompt.
+    // `queued` is the longest queue's length — the highest position any role's numbering can
+    // reach — so a miss names it as the valid range when at least one role holds a prompt.
     const range = listed.queued > 0 ? ` — valid: 1-${listed.queued}` : "";
     fail(`no prompt at position ${position} (longest inbox holds ${listed.queued})${range}`);
   }
@@ -63,8 +63,8 @@ function isQueueMiss(listed: { status: string }): listed is ListedQueueMiss {
 }
 
 /** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
- * rival loops, with the `--role` escape hatch) or a miss (carrying the length of the longest
- * queue, the highest position numbering any loop can hold), else render the resolved outcome
+ * rival roles, with the `--role` escape hatch) or a miss (carrying the length of the longest
+ * queue, the highest position numbering any role can hold), else render the resolved outcome
  * through sayPromptOutcome. One helper so the
  * two verbs' handling of the miss shapes cannot drift. */
 function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, position: number): void {
@@ -72,7 +72,7 @@ function sayListedOutcome(listed: ListedCancelOutcome | ListedEditOutcome, posit
   sayPromptOutcome(position, found.role, found.outcome, true);
 }
 
-/** Run one loop-targeted queue verb (cancelRolePrompt/editRolePrompt) for a `--role`-scoped
+/** Run one role-targeted queue verb (cancelRolePrompt/editRolePrompt) for a `--role`-scoped
  * command: a thrown failure (a broken config, an unwritable queue) exits through fail with
  * its message, a success returns the verb's outcome for the caller to render. One helper so
  * the cancel and edit branches' broken-config policy cannot drift. */
@@ -93,7 +93,7 @@ function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
  * cancel and edit modes (list-wide and `--role`-scoped each): a concurrent dequeue is a normal
  * race, not an error, so it is reported and exited clean; a resolved one previews the text it
  * removed (a cancel's `text`) or wrote (an edit's `newText`). When `labelRole` the line names
- * the loop — the no-`--role` command resolves across every loop, so its output must say where
+ * the role — the no-`--role` command resolves across every role, so its output must say where
  * the prompt went — while a `--role`-scoped command already names it in the user's own
  * command. One helper so the cancel and edit wordings cannot drift. */
 function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
@@ -107,7 +107,7 @@ function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome
 }
 
 /** The gone-case tail shared by every resolved queue-verb reply: a concurrent dequeue is a
- * normal race, not an error, so report it and exit clean, naming the loop that took the
+ * normal race, not an error, so report it and exit clean, naming the role that took the
  * prompt. One helper so the cancel, edit and top verbs' gone wording cannot drift. */
 function sayPromptGone(position: number, role: string): void {
   say(`prompt ${position} is no longer in the inbox — ${roleLabel(role)} already took it`);
@@ -116,7 +116,7 @@ function sayPromptGone(position: number, role: string): void {
 /** The user-facing reply for one resolved top — the two branches of cmdPrompt's top mode
  * (list-wide and `--role`-scoped): a concurrent dequeue is a normal race, not an error, so it
  * is reported and exited clean; a resolved one previews the moved prompt. When `labelRole` the
- * line names the loop — the no-`--role` command resolves across every loop, so its output must
+ * line names the role — the no-`--role` command resolves across every role, so its output must
  * say where the prompt moved — while a `--role`-scoped command already names it in the user's
  * own command. The `sayPromptOutcome` contract, so the verbs cannot drift. */
 function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labelRole: boolean): void {
@@ -142,29 +142,29 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>>`: submit a steering prompt to the
  * director (default) or one role's queue (`--list` takes `--role <id>[,<id>...]`), list what
- * is queued with per-loop position numbering, cancel a queued prompt by position, or move
+ * is queued with per-role position numbering, cancel a queued prompt by position, or move
  * one to the head of its queue. The dispatcher in cli.ts gates on a ready repo and
- * delegates here; list output is grouped by loop — the director first (its queue is
+ * delegates here; list output is grouped by role — the director first (its queue is
  * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
  * per-role queue's position numbering stays unambiguous. */
 export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   const parsed = parsePromptArgs(args);
   // --list takes a comma list (parseRoleListFlag below); every other mode keeps one id.
   if (parsed.role !== null && parsed.mode !== "list") parsed.role = canonicalRoleId(parsed.role);
-  // `--role <id>` scopes every mode to one loop's queue; the value is validated here, with
+  // `--role <id>` scopes every mode to one role's queue; the value is validated here, with
   // the same message every other --role consumer uses. The director is always valid: its
   // queue is the historical inbox (inbox.ts).
   //
   // Where the id set comes from differs by mode, following parseRoleScope's split: --list is
   // a read-only view, so a transiently broken tumwater.json must not take it down — it falls
   // back to the built-in catalog (knownRoleIdsCached), exactly like cmdLogs/cmdHistory's
-  // --role scope, at the cost of a broken config hiding a custom loop's queued section. The
+  // --role scope, at the cost of a broken config hiding a custom role's queued section. The
   // state-changing modes (enqueue, cancel) instead read through loadConfig and fail loudly
-  // when an id was given: before writing to a named loop's queue the operator is owed the
-  // config error, not a built-ins-only guess about whether the loop exists. With no --role,
+  // when an id was given: before writing to a named role's queue the operator is owed the
+  // config error, not a built-ins-only guess about whether the role exists. With no --role,
   // enqueue touches only the director queue (inbox.ts) and never reads the config — a broken
   // tumwater.json must not block steering the director — while cancel resolves its position
-  // across the per-loop sections --list prints, through the same cached, never-throwing id set
+  // across the per-role sections --list prints, through the same cached, never-throwing id set
   // --list uses, so it cancels exactly what the list showed even under a broken config.
   const validIds = parsed.mode === "list"
     ? knownRoleIdsCached(root)
@@ -177,7 +177,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   const role = parsed.role;
   if (parsed.mode === "list") {
     // One payload, two shapes: the prose render and the --json output both come from the
-    // same array, so the per-loop positions --cancel consumes can never disagree with the
+    // same array, so the per-role positions --cancel consumes can never disagree with the
     // data a script reads. Full text, verbatim: this is the inspection command that tells
     // you what a queued prompt actually says before you cancel it.
     // `--role a,b` filters the list-wide rows, so section order and each section's own
@@ -203,10 +203,10 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   if (parsed.mode === "cancel") {
     if (role === null) {
-      // No --role: the position addresses what --list shows — its per-loop sections, each
+      // No --role: the position addresses what --list shows — its per-role sections, each
       // numbered from 1 (the director first, then the roles in catalog order). Resolve across
-      // that scope: one loop holding the position cancels there, several are ambiguous (the
-      // list itself shows two "N." lines), none is a miss. The output names the loop, since
+      // that scope: one role holding the position cancels there, several are ambiguous (the
+      // list itself shows two "N." lines), none is a miss. The output names the role, since
       // the caller scoped nothing.
       sayListedOutcome(cancelListedPrompt(root, listWideScope(root), parsed.position), parsed.position);
       return;
@@ -226,18 +226,18 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
     // tick-time discovery the submit gate prevents, so the refusal promise holds across every
     // CLI attach surface — an image no configured model can read is refused before a byte is
-    // written, and a loop that reroutes a blind read is told where the prompt will run. The
-    // target loop is resolved first (the same resolution the verb below makes) so the gate can
+    // written, and a role that reroutes a blind read is told where the prompt will run. The
+    // target role is resolved first (the same resolution the verb below makes) so the gate can
     // name it.
     if (images !== undefined && images.length > 0) {
-      const loop = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
-      const guidance = imagePromptGuidance(root, loop);
+      const targetRole = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
+      const guidance = imagePromptGuidance(root, targetRole);
       if (guidance.refusal) return fail(guidance.refusal);
       if (guidance.notice) say(guidance.notice);
     }
     const typed = parsed.text;
     if (typed === null) {
-      // Bare `--edit <n>`: open the prompt's body in the editor. The loop is resolved first
+      // Bare `--edit <n>`: open the prompt's body in the editor. The role is resolved first
       // and the write goes by file name, so a dequeue while the editor is open reports gone
       // instead of editing the neighbour that shifted into the position.
       let target = role;
@@ -245,17 +245,17 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
         const resolved = resolveListedQueue(root, listWideScope(root), parsed.position);
         target = failQueueMiss(resolved, parsed.position).role;
       }
-      const loop = target;
+      const targetRole = target;
       let name: string;
       let body: string | null;
       try {
-        name = path.basename(queuedFileAtPosition(root, loop, parsed.position));
-        body = readQueuedPromptBody(root, loop, name);
+        name = path.basename(queuedFileAtPosition(root, targetRole, parsed.position));
+        body = readQueuedPromptBody(root, targetRole, name);
       } catch (err) {
         return fail(errorMessage(err));
       }
       if (body === null) {
-        sayPromptOutcome(parsed.position, loop, { status: "gone" }, role === null);
+        sayPromptOutcome(parsed.position, targetRole, { status: "gone" }, role === null);
         return;
       }
       const after = editInEditor(body, "prompt.md");
@@ -267,7 +267,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
         return;
       }
       try {
-        sayPromptOutcome(parsed.position, loop, editQueuedFile(root, loop, name, after, images), role === null);
+        sayPromptOutcome(parsed.position, targetRole, editQueuedFile(root, targetRole, name, after, images), role === null);
       } catch (err) {
         fail(errorMessage(err));
       }
@@ -288,18 +288,18 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   if (parsed.mode === "top") {
     // The same list-wide resolution the cancel branch uses, one verb on: no --role resolves the
-    // position across `--list`'s per-loop sections and moves it in the resolved loop's queue;
+    // position across `--list`'s per-role sections and moves it in the resolved role's queue;
     // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
-    // clean; position 1 of the resolved loop is "already first".
+    // clean; position 1 of the resolved role is "already first".
     if (role === null) {
-      const loop = failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
+      const targetRole = failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
       let outcome: TopOutcome;
       try {
-        outcome = movePromptToTop(root, loop, parsed.position);
+        outcome = movePromptToTop(root, targetRole, parsed.position);
       } catch (err) {
         return fail(errorMessage(err));
       }
-      sayTopOutcome(parsed.position, loop, outcome, true);
+      sayTopOutcome(parsed.position, targetRole, outcome, true);
       return;
     }
     const target = role ?? DIRECTOR_ROLE;
@@ -317,9 +317,9 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
   const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
   // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
-  // before anything is queued). An attachment the target loop cannot read is refused here by
+  // before anything is queued). An attachment the target role cannot read is refused here by
   // name — the same gate submitRolePrompt enforces, surfaced early so the CLI exits non-zero
-  // with the fix before anything is written or queued; a loop that reroutes a blind read is
+  // with the fix before anything is written or queued; a role that reroutes a blind read is
   // not refused, but the operator is told where the prompt will actually run.
   const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
   if (images && images.length > 0) {

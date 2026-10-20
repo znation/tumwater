@@ -11,7 +11,7 @@ import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
 import { NOT_A_REPO_MESSAGE, NOT_INITIALIZED_MESSAGE } from "../src/gates/readiness.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
-// The `diff` command: the change a loop holds — its branch's unmerged commits (with the
+// The `diff` command: the change a role holds — its branch's unmerged commits (with the
 // patch) and its worktree's uncommitted edits — via the CLI the way cli-history tests
 // `history`: seeded repos, child-process runs, output assertions.
 
@@ -158,7 +158,7 @@ test("a configured baseBranch is the diff's baseline, not the checked-out branch
   assert.equal(ghost.stdout.trim(), "main branch ghost does not exist");
 });
 
-// The team-wide form (`diff` with no --role): one line per loop holding pending work.
+// The team-wide form (`diff` with no --role): one line per role holding pending work.
 
 test("team diff prints exactly the holding role's line with both counts", async () => {
   const { repo, wt } = await seededFeatureRepo();

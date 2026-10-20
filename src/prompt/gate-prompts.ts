@@ -10,9 +10,9 @@ import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-contract.js";
 
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
- * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
+ * roles' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
  * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
- * gate's verdicts back to the loop that authored the change (runner-run.ts, tick-prompt.ts,
+ * gate's verdicts back to the role that authored the change (runner-run.ts, tick-prompt.ts,
  * main-red.ts). The machine-detectable half of the gate's reply contract — verdict constants
  * and detection for parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
 
@@ -68,7 +68,7 @@ function listsHunks(files: readonly (string | ConflictedFile)[]): boolean {
   return files.some((f) => typeof f !== "string" && f.hunks.length > 0);
 }
 
-/** The prompt for resolving merge conflicts left in a loop's worktree. `check` — the project's
+/** The prompt for resolving merge conflicts left in a role's worktree. `check` — the project's
  * resolved check, as the tick prompt threads it — is named so the resolver knows which command
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
@@ -159,7 +159,7 @@ interface PriorReviewPrompt {
  * copies under /tmp while holding the merge slot (BUGS.md 2026-09-23). `baseRev` is the frozen
  * revision the diff is measured against (changeBaseRev's
  * merge-base, resolved when the gate builds the diff): the prompt names it and tells the reviewer
- * to compare against it, never `main`, because other loops merge to main while the review runs
+ * to compare against it, never `main`, because other roles merge to main while the review runs
  * (BUGS.md 2026-10-06). Omitted, the prompt keeps the generic "ahead of main" wording. `today` pins
  * the date line (prompt.ts's dateLine) for tests; omitted, it is the local day. The text must
  * contain the literal "VERDICT:" exactly twice — the two advertised forms — because a prompt
@@ -298,7 +298,7 @@ ${TEST_RUNNER_RULE}
 }
 
 /** The prompt for the next attempt at a review whose previous run hit its time budget while
- * still making progress (LoopState.reviewResume): that run continues the timed-out reviewer's
+ * still making progress (RunnerState.reviewResume): that run continues the timed-out reviewer's
  * own session (`--continue`), so the diff and everything the reviewer already read are in
  * context. This prompt carries no diff — re-sending it would defeat the resume — and names the
  * frozen comparison base and the unchanged patch-id so the reviewer knows the change it was
@@ -388,7 +388,7 @@ export function buildRejectedReviewNote(review: {
   // On exhaustion the rejected diff is gone. Feature's rejected change often implemented a
   // PLANS.md entry, and re-authoring the same plan from scratch is what produced the long
   // rejection runs this note exists to end, so feature is sent to replan the entry instead.
-  // A plan-less role has no downstream loop to replan for it, so it is sent to its own
+  // A plan-less role has no downstream role to replan for it, so it is sent to its own
   // notebook instead: it records the abandoned purpose and any instances that remain
   // unhandled, then takes a different theme on the next tick. Re-authoring the same purpose
   // from the same objections is what restarted the round and produced the long rejection

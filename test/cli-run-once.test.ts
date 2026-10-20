@@ -4,7 +4,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fastConfig } from "./fixtures/orchestrator-fixtures.js";
 import { withIdlePi, withPi } from "./fakes/fake-pi.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The scoped `run --once --role` happy path through the real CLI. The pre-boot `--role` guards
@@ -32,8 +32,8 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     assert.match(r.stdout, /once: 1 run — 1 no_change/,
       `the summary counts only the scoped role's tick: ${r.stdout}`);
     assert.doesNotMatch(r.stdout, /\bdedupe\b/, `the unscoped role must be invisible: ${r.stdout}`);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
-    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the unscoped role never ran");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the unscoped role never ran");
   });
 });
 
@@ -47,9 +47,9 @@ test("run --once --role with a comma list runs exactly the listed roles and exit
     assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
     assert.match(r.stdout, /roles: clean, dedupe\n/, `the banner names the listed roles: ${r.stdout}`);
     assert.match(r.stdout, /once: 2 runs — 2 no_change/, `the summary counts both ticks: ${r.stdout}`);
-    assert.equal(loadLoopState(repo, "clean").runs, 1);
-    assert.equal(loadLoopState(repo, "dedupe").runs, 1);
-    assert.equal(loadLoopState(repo, "organize").runs, 0, "the unlisted role never ran");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1);
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 1);
+    assert.equal(loadRunnerState(repo, "organize").runs, 0, "the unlisted role never ran");
   });
 });
 
@@ -59,7 +59,7 @@ test("run --once exits 3 and names the role when its tick ended in error", async
   writeConfig(repo, fastConfig(["clean"]));
   await withPi("exit 1", async () => {
     const r = await cli(repo, "run", "--once", "--role", "clean");
-    assert.equal(loadLoopState(repo, "clean").lastResult, "error");
+    assert.equal(loadRunnerState(repo, "clean").lastResult, "error");
     assert.equal(r.code, 3, `exit 3 (stderr: ${r.stderr})`);
     assert.match(r.stdout, /once: failed — clean error/);
   });

@@ -23,9 +23,9 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
 import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
 import {
-  freshLoopState,
-  loadLoopState,
-  saveLoopState,
+  freshRunnerState,
+  loadRunnerState,
+  saveRunnerState,
 } from "../src/runner/runner-state.js";
 import {
   abortRequestPath,
@@ -57,10 +57,10 @@ function markLive(root: string): void {
 
 // --- reset-counters ---
 
-test("cmdResetCounters with --role zeroes that loop's counters and preserves its schedule", async () => {
+test("cmdResetCounters with --role zeroes that role's counters and preserves its schedule", async () => {
   const root = tmpdir();
-  saveLoopState(root, {
-    ...freshLoopState("coverage"),
+  saveRunnerState(root, {
+    ...freshRunnerState("coverage"),
     runs: 9,
     commits: 4,
     generatedTokens: 1200,
@@ -72,7 +72,7 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
   });
   const { stdout } = await expectOk(() => cmdResetCounters(root, ["--role", "coverage"]));
   assert.match(stdout, /counters reset for coverage/);
-  const after = loadLoopState(root, "coverage");
+  const after = loadRunnerState(root, "coverage");
   assert.equal(after.runs, 0);
   assert.equal(after.commits, 0);
   assert.equal(after.generatedTokens, 0);
@@ -90,27 +90,27 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
 test("cmdResetCounters without --role targets every role in the config", async () => {
   const root = tmpdir();
   const roles = Object.keys(defaultConfig().roles);
-  saveLoopState(root, { ...freshLoopState("coverage"), runs: 5 });
+  saveRunnerState(root, { ...freshRunnerState("coverage"), runs: 5 });
   const { stdout } = await expectOk(() => cmdResetCounters(root, []));
   assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], roles);
-  assert.equal(loadLoopState(root, "coverage").runs, 0);
+  assert.equal(loadRunnerState(root, "coverage").runs, 0);
   assert.ok(stdout.startsWith("counters reset for "));
 });
 
 // --- wake ---
 
-test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leaving counters alone", async () => {
+test("cmdWake clears the named role's backoff and pulls nextRunAt to now, leaving counters alone", async () => {
   const root = tmpdir();
   const before = Date.now();
-  saveLoopState(root, {
-    ...freshLoopState("clean"),
+  saveRunnerState(root, {
+    ...freshRunnerState("clean"),
     runs: 7,
     backoffSeconds: 3600,
     nextRunAt: Date.now() + 999_999,
   });
   const { stdout } = await expectOk(() => cmdWake(root, ["--role", "clean"]));
   assert.match(stdout, /wake requested for clean/);
-  const after = loadLoopState(root, "clean");
+  const after = loadRunnerState(root, "clean");
   assert.equal(after.backoffSeconds, 0);
   assert.ok(after.nextRunAt >= before && after.nextRunAt <= Date.now(), `nextRunAt ${after.nextRunAt} not pulled to now`);
   assert.equal(after.runs, 7); // observation-window counters are not this command's job
@@ -139,22 +139,22 @@ test("cmdWake --in echoes the operator's duration even when the clock ticks betw
 test("marker commands with --role <builtin> work while tumwater.json is malformed", async () => {
   const root = tmpdir();
   writeMalformedJson(configPath(root));
-  saveLoopState(root, { ...freshLoopState("feature"), backoffSeconds: 120 });
+  saveRunnerState(root, { ...freshRunnerState("feature"), backoffSeconds: 120 });
 
   const wake = await expectOk(() => cmdWake(root, ["--role", "feature"]));
   assert.match(wake.stdout, /wake requested for feature/);
-  assert.equal(loadLoopState(root, "feature").backoffSeconds, 0);
+  assert.equal(loadRunnerState(root, "feature").backoffSeconds, 0);
 
   const reset = await expectOk(() => cmdResetCounters(root, ["--role", "feature"]));
   assert.match(reset.stdout, /counters reset for feature/);
-  assert.equal(loadLoopState(root, "feature").runs, 0);
+  assert.equal(loadRunnerState(root, "feature").runs, 0);
 
   markLive(root);
   const abort = await expectOk(() => cmdAbort(root, ["--role", "feature"]));
   assert.match(abort.stdout, /abort requested for feature/);
 });
 
-// The escape hatch is only for built-ins: a custom-loop id (or any unknown id) still needs
+// The escape hatch is only for built-ins: a custom-role id (or any unknown id) still needs
 // the config to know the valid id set, so the malformed file is reported honestly instead
 // of the command silently claiming a role that may not exist.
 test("marker commands with a custom/unknown --role still report the broken config", async () => {
@@ -295,7 +295,7 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the team marker
   // Both roles end up in the one marker set.
   await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
-  // A custom-loop id resolves through the config-backed check like abort's does.
+  // A custom-role id resolves through the config-backed check like abort's does.
   const config = defaultConfig();
   config.customRoles.push({ name: "myloop", task: "keep the examples current" });
   writeJsonFile(configPath(root), config);
@@ -467,22 +467,22 @@ test("cmdPause --role list --for writes one deadline for every listed role", asy
 test("cmdWake and cmdResetCounters --role take a comma list", async () => {
   const root = tmpdir();
   const seed = (id: string) =>
-    saveLoopState(root, { ...freshLoopState(id), runs: 7, backoffSeconds: 3600, nextRunAt: Date.now() + 999_999 });
+    saveRunnerState(root, { ...freshRunnerState(id), runs: 7, backoffSeconds: 3600, nextRunAt: Date.now() + 999_999 });
   seed("clean");
   seed("dedupe");
   seed("organize");
-  const organize = loadLoopState(root, "organize");
+  const organize = loadRunnerState(root, "organize");
   const woke = await expectOk(() => cmdWake(root, ["--role", "clean, dedupe,clean"]));
   assert.match(woke.stdout, /wake requested for clean, dedupe/);
-  assert.equal(loadLoopState(root, "clean").backoffSeconds, 0);
-  assert.equal(loadLoopState(root, "dedupe").backoffSeconds, 0);
-  assert.deepEqual(loadLoopState(root, "organize"), organize);
+  assert.equal(loadRunnerState(root, "clean").backoffSeconds, 0);
+  assert.equal(loadRunnerState(root, "dedupe").backoffSeconds, 0);
+  assert.deepEqual(loadRunnerState(root, "organize"), organize);
   assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["clean", "dedupe"]);
   const reset = await expectOk(() => cmdResetCounters(root, ["--role", "clean,dedupe"]));
   assert.match(reset.stdout, /counters reset for clean, dedupe/);
-  assert.equal(loadLoopState(root, "clean").runs, 0);
-  assert.equal(loadLoopState(root, "dedupe").runs, 0);
-  assert.equal(loadLoopState(root, "organize").runs, 7);
+  assert.equal(loadRunnerState(root, "clean").runs, 0);
+  assert.equal(loadRunnerState(root, "dedupe").runs, 0);
+  assert.equal(loadRunnerState(root, "organize").runs, 7);
   assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], ["clean", "dedupe"]);
 });
 
@@ -496,13 +496,13 @@ test("cmdWake --in takes a comma list and writes one scheduled wake", async () =
 
 test("wake and reset-counters: a comma list with an unknown id writes no marker", async () => {
   const root = tmpdir();
-  saveLoopState(root, { ...freshLoopState("clean"), runs: 7, backoffSeconds: 3600 });
-  const before = loadLoopState(root, "clean");
+  saveRunnerState(root, { ...freshRunnerState("clean"), runs: 7, backoffSeconds: 3600 });
+  const before = loadRunnerState(root, "clean");
   assert.match(await expectFailAsync(() => cmdWake(root, ["--role", "clean,ghost"])), /unknown role: ghost/);
   assert.match(await expectFailAsync(() => cmdResetCounters(root, ["--role", "clean,ghost"])), /unknown role: ghost/);
   assert.ok(!fs.existsSync(wakeRequestPath(root)));
   assert.ok(!fs.existsSync(resetRequestPath(root)));
-  assert.deepEqual(loadLoopState(root, "clean"), before);
+  assert.deepEqual(loadRunnerState(root, "clean"), before);
   assert.match(await expectFailAsync(() => cmdWake(root, ["--role", ","])), /--role needs a role id/);
   assert.match(await expectFailAsync(() => cmdResetCounters(root, ["--role", ","])), /--role needs a role id/);
 });
@@ -744,7 +744,7 @@ test("cmdReclaim --dry-run reports plural paths, pending resumes and fresh workt
   }
   // feature has a pending resume (so no idle pass may clean it) and was last used long ago;
   // clean was used just now, so it is not idle-expired either.
-  saveLoopState(root, { ...freshLoopState("feature"), resumePending: true });
+  saveRunnerState(root, { ...freshRunnerState("feature"), resumePending: true });
   writeJsonAtomic(worktreeUsePath(root), {
     feature: { lastUsedAt: 1 },
     clean: { lastUsedAt: Date.now() },

@@ -22,13 +22,13 @@ import {
   wakeRequestPath,
   STATE_DIR,
 } from "../src/paths.js";
-import type { LoopRunner } from "../src/runner/runner.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import type { RoleRunner } from "../src/runner/runner.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-/** A recording stand-in for LoopRunner covering exactly the surface operator/operator-requests.ts
+/** A recording stand-in for RoleRunner covering exactly the surface operator/operator-requests.ts
  * touches: role, in-memory running flag, and the three mutators it calls. */
 interface FakeRunner {
   role: string;
@@ -61,8 +61,8 @@ function fakeRunner(role: string, running = false): FakeRunner {
   return r;
 }
 
-function asRunners(...rs: FakeRunner[]): LoopRunner[] {
-  return rs as unknown as LoopRunner[];
+function asRunners(...rs: FakeRunner[]): RoleRunner[] {
+  return rs as unknown as RoleRunner[];
 }
 
 function stateDir(root: string): string {
@@ -77,7 +77,7 @@ test("consumeResetRequest is a no-op without a marker", () => {
   assert.equal(eventsOfType(root, "counters_reset").length, 0);
 });
 
-test("consumeResetRequest resets only the named roles and logs one loop event", () => {
+test("consumeResetRequest resets only the named roles and logs one role event", () => {
   const root = tmpdir();
   const a = fakeRunner("coverage");
   const b = fakeRunner("clean");
@@ -132,7 +132,7 @@ test("consumeResetRequest zeroes a named role that has no live runner through it
   // A disabled role keeps its persisted state but has no runner, so the CLI (which writes only
   // the marker while a team is live) can reach it only here: the consumer is the state file's
   // single writer while the team runs.
-  saveLoopState(root, { ...loadLoopState(root, "docs"), role: "docs", runs: 7, commits: 3 });
+  saveRunnerState(root, { ...loadRunnerState(root, "docs"), role: "docs", runs: 7, commits: 3 });
   writeMarker(resetRequestPath(root), { roles: ["docs"] });
   consumeResetRequest(root, asRunners(a));
   assert.equal(a.resets, 0);
@@ -148,8 +148,8 @@ test("consumeResetRequest zeroes a named role that has no live runner through it
 test("consumeWakeRequest clears the schedule of a named role that has no live runner", () => {
   const root = tmpdir();
   const a = fakeRunner("coverage");
-  saveLoopState(root, {
-    ...loadLoopState(root, "docs"),
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "docs"),
     role: "docs",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,

@@ -11,7 +11,7 @@ import { plural } from "../text/phrases.js";
 import { worktreePath } from "../paths.js";
 import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
-/** Prompt construction for the role loops' pi runs (tick and director). The reply contract those
+/** Prompt construction for the roles' pi runs (tick and director). The reply contract those
  * runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
  * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules — lives in
  * reply-contract.ts; this module weaves it into each prompt. The follow-up prompts that pick a
@@ -112,7 +112,7 @@ export function dateLine(today: string = todayStamp()): string {
   return `Today's date is ${today} (local time).`;
 }
 
-/** The repo root as a loop's worktree reaches it (`../../..`, out of .tumwater/worktrees/<role>),
+/** The repo root as a role's worktree reaches it (`../../..`, out of .tumwater/worktrees/<role>),
  * derived from worktreePath so the prompt cannot drift from the layout: the hand-written "two
  * levels up (`../../node_modules`)" it replaced pointed at .tumwater/ itself, and on 2026-09-29
  * a bugfix run that followed it (`cd ../..`, git output empty there) fell back to the primary
@@ -127,7 +127,7 @@ export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, c
   need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
   run — take a smaller one.`;
 
-/** The rules every loop prompt carries — tick and director alike, so the two cannot drift.
+/** The rules every role prompt carries — tick and director alike, so the two cannot drift.
  * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
  * verification command in the Leave-the-project-working rule instead of asserting npm, and
  * only an npm check keeps the node_modules borrowing sentence: false and actively misleading
@@ -244,7 +244,7 @@ export function principleBullets(principles: string): string {
 }
 
 /** The <principles> block injected into every tick and director prompt: the project's codified
- * taste, phrased positively so loops follow it rather than merely avoid violations — its bullets
+ * taste, phrased positively so roles follow it rather than merely avoid violations — its bullets
  * only (principleBullets). The file itself is read by principles.ts's readPrinciples. */
 function principlesBlock(principles: string): string {
   return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principleBullets(principles)}\n</principles>`;
@@ -324,9 +324,9 @@ interface TickPromptInput {
   /** The bugfix run's flake tally, rendered by tick-prompt.ts; omitted for every other role and
    * when no flake was excused in the window. */
   flakyChecks?: string;
-  /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`),
+  /** A per-role prompt the user queued for this role's next tick (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
-   * The loop still owns find-something-to-do: the request steers, the role's rules and the
+   * The role still owns find-something-to-do: the request steers, the role's rules and the
    * merge gate still apply unchanged. Omitted: no queued request this tick. */
   userRequest?: string;
   /** The project's resolved check (detectBuildCheck against the live config), when one is
@@ -360,7 +360,7 @@ const OLDER_NAMES_MAP = "loop = role, tick = run, fleet = team, landing/landed =
  * listed. Interpolated into the shared preamble and the reviewer and resolver openers. */
 export const OLDER_NAMES_SENTENCE = `Older tumwater names still appear in code, git history and logs: ${OLDER_NAMES_MAP}; docs/glossary.md in tumwater's repository lists them all.`;
 
-/** Shared opening of every loop prompt: where the run happens and what day it is. The brief is
+/** Shared opening of every role prompt: where the run happens and what day it is. The brief is
  * not inlined: the rules send each run to the brief file, which holds the same text. Defined
  * once so the tick and director prompts cannot drift — and so the one sentence telling every
  * role to date its records from dateLine, not from the repo, reaches each of them without

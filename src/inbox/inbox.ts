@@ -14,8 +14,8 @@ import { isPromptImageSibling } from "./inbox-attachments.js";
 
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
- * root; every other loop has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
- * queues a request only that loop's next tick sees.
+ * root; every other role has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
+ * queues a request only that role's next tick sees.
  *
  * This module is the store: enqueueing, listing, peeking, and dequeuing, plus the shared
  * takeQueuedFile race policy. The cancel half — position-, list-, and file-addressed removal
@@ -47,13 +47,13 @@ export function promptPreview(text: string): string {
 
 let seq = 0;
 
-/** Append a prompt to a loop's queue as one timestamped file (creating the queue dir if needed)
+/** Append a prompt to a role's queue as one timestamped file (creating the queue dir if needed)
  * and return its path. The filename orders prompts across processes by wall-clock time; the
  * per-process counter and pid break ties within one process. No event is logged —
  * inbox-submit.ts's submitPrompt and submitRolePrompt are the user-facing wrappers that add the
  * prompt_enqueued line, and PendingPrompt's re-queue of an unfulfilled prompt calls this directly.
  * The write is atomic (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll,
- * `tumwater prompt --list`, and the dequeuing loop — run in other processes, and a read that
+ * `tumwater prompt --list`, and the dequeuing role — run in other processes, and a read that
  * raced a plain writeFileSync could see a truncated prompt and run a tick on a half user request.
  * The optional decorate hook runs before that one write with the file's path and may return the
  * final text instead — submitPromptWithImages uses it to save the prompt's images beside the
@@ -81,8 +81,8 @@ export function enqueueRolePrompt(
   return file;
 }
 
-/** Every queued prompt file for one loop as a path joined onto the loop's inbox dir, oldest
- * first (listQueueFiles over the loop's inbox dir, .md entries only). Prompts still deferred by
+/** Every queued prompt file for one role as a path joined onto the role's inbox dir, oldest
+ * first (listQueueFiles over the role's inbox dir, .md entries only). Prompts still deferred by
  * a not-before marker are included — deliverability filtering is the callers' job
  * (deliverablePredicate, deliverablePromptCount) — and a missing inbox dir reads as an empty
  * queue. */
@@ -90,7 +90,7 @@ export function queuedFiles(root: string, role: string): string[] {
   return listQueueFiles(roleInboxDir(root, role), ".md");
 }
 
-/** Resolve the 1-based position `tumwater prompt --list`'s per-loop numbering shows into one
+/** Resolve the 1-based position `tumwater prompt --list`'s per-role numbering shows into one
  * queue file — the shared range-check-and-pick half of cancelRolePrompt (inbox-cancel.ts)
  * and editRolePrompt (inbox-edit.ts), so the two cannot drift on the error or the numbering.
  * Throws for out-of-range positions with no side effects. The undefined-pick check folds into
@@ -108,12 +108,12 @@ export function queuedFileAtPosition(root: string, role: string, position: numbe
   return file;
 }
 
-/** Number of prompts currently queued for one loop and deliverable now — a directory listing
+/** Number of prompts currently queued for one role and deliverable now — a directory listing
  * plus, per file, one stat-cached content read (the prompt cache below; an unchanged file
- * costs one stat). Defaults to the director's queue; a role argument counts that loop's own
- * per-role queue (scheduling passes it so a queued prompt makes its loop due by itself).
+ * costs one stat). Defaults to the director's queue; a role argument counts that role's own
+ * per-role queue (scheduling passes it so a queued prompt makes its role due by itself).
  * A prompt deferred by the not-before marker (its time still in the future) stays excluded,
- * so a deferred prompt alone never makes its loop due; once due, the marker falls out of the
+ * so a deferred prompt alone never makes its role due; once due, the marker falls out of the
  * count naturally. A missing inbox dir reads as 0, like queuedPrompts and dequeuePrompt. */
 export function inboxSize(root: string, role: string = DIRECTOR_ROLE): number {
   return deliverablePromptCount(root, role);
@@ -163,7 +163,7 @@ interface QueuedPromptEntry {
   notBeforeMs: number | null;
 }
 
-/** The one read pass over a loop's queue that serves every list-shaped consumer: each queued
+/** The one read pass over a role's queue that serves every list-shaped consumer: each queued
  * file paired with its basename, full text, and the enqueue stamp parsed from the filename
  * (queueFileStamp; null for a hand-placed name). Same listing order and race policy as
  * queuedRolePrompts (a file that vanishes mid-listing is skipped, not thrown), and the same
@@ -188,7 +188,7 @@ export function queuedRolePromptRecords(
   return out;
 }
 
-/** Full text of every prompt queued for one loop, in execution order (oldest first) — the same
+/** Full text of every prompt queued for one role, in execution order (oldest first) — the same
  * filename sort dequeueRolePrompt pops by. A not-yet-deliverable prompt (the not-before marker
  * still in the future) is not part of the execution order: it is skipped here, so peek and
  * dequeue can never hand a tick a prompt its time has not reached. A missing queue directory
@@ -204,7 +204,7 @@ export function queuedRolePrompts(root: string, role: string): string[] {
     .map((e) => e.text);
 }
 
-/** Every queued prompt of one loop with the queue-file basename that addresses it and its
+/** Every queued prompt of one role with the queue-file basename that addresses it and its
  * enqueue stamp, in execution order — the snapshot's cancel-addressable payload
  * (StatusSnapshot.inboxFiles and roleInboxPrompts). Same pass, order, race policy, and stat
  * cache as queuedRolePrompts. */
@@ -217,8 +217,8 @@ export function queuedRolePromptEntries(root: string, role: string): QueuedPromp
   }));
 }
 
-/** The loop order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
- * the director first, then the remaining cached catalog ids — the per-loop sections `prompt
+/** The role order a list-wide position (`--cancel`/`--edit` with no `--role`) resolves across:
+ * the director first, then the remaining cached catalog ids — the per-role sections `prompt
  * --list` and the TUI Queued pane print, each numbered from 1. The single home of that scope,
  * shared by the cancel and edit branches so neither can drift from what the list showed. */
 export function listWideScope(root: string): string[] {
@@ -226,7 +226,7 @@ export function listWideScope(root: string): string[] {
 }
 
 /** One row of the list-shaped queue view (`prompt --list`'s prose and --json, the TUI Queued
- * pane): `position` is the 1-based per-loop number the prose prints and `--cancel` consumes;
+ * pane): `position` is the 1-based per-role number the prose prints and `--cancel` consumes;
  * `text` is the full verbatim prompt; `queuedAtMs` is the enqueue stamp parsed from the queue
  * filename (null for a hand-placed name), which the prose turns into a `queued <age> ago`
  * suffix; `notBeforeMs` is the prompt's not-before time parsed from its queue file's marker
@@ -245,7 +245,7 @@ export interface QueuedListRow {
   notBeforeMs: number | null;
 }
 
-/** One traversal of the queues behind the list-shaped queue views: with `role`, that loop's
+/** One traversal of the queues behind the list-shaped queue views: with `role`, that role's
  * queue alone; otherwise the director first (its queue is the shared pre-1/2 inbox), then the
  * remaining catalog ids in order, empty queues skipped — exactly the sections the prose
  * prints. */
@@ -253,7 +253,7 @@ export function queuedListRows(root: string, role: string | null, validIds: stri
   const prompts: QueuedListRow[] = [];
   const record = (r: string, position: number, e: { file: string; text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
     // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
-    // prose and --json are the operator's view of what a loop will tick, and the marker is
+    // prose and --json are the operator's view of what a role will tick, and the marker is
     // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
     prompts.push({ role: r, position, file: e.file, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
   if (role !== null) {
@@ -285,7 +285,7 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
 }
 
 /** Render the list-shaped queue view as the prose `prompt --list` prints and the TUI Queued
- * pane shows: consecutive rows grouped by role, one `<role>:` section per loop holding
+ * pane shows: consecutive rows grouped by role, one `<role>:` section per role holding
  * `"<position>. <text><queuedAgeSuffix>"` lines, sections joined by `\n`. Empty rows render
  * the empty string, so each surface keeps its own empty-state note. One renderer so the CLI
  * and the TUI cannot drift on order, numbering, or the age/countdown wording. */
@@ -305,7 +305,7 @@ export function renderQueuedList(rows: readonly QueuedListRow[], now: number): s
   return sections.join("\n");
 }
 
-/** How many prompts are queued for one loop and deliverable now, without re-reading unchanged
+/** How many prompts are queued for one role and deliverable now, without re-reading unchanged
  * contents — the snapshot's per-role counts poll every role
  * every second, so the count stays a listing plus one stat-cached read per file (the prompt
  * cache above keeps an unchanged file at one stat). A deferred prompt (its not-before time
@@ -391,12 +391,12 @@ export function dequeueRolePromptEntry(root: string, role: string): { text: stri
   return text === null ? null : { text, file: oldest };
 }
 
-/** Remove and return the oldest prompt queued for one loop; see dequeueRolePromptEntry. */
+/** Remove and return the oldest prompt queued for one role; see dequeueRolePromptEntry. */
 export function dequeueRolePrompt(root: string, role: string): string | null {
   return dequeueRolePromptEntry(root, role)?.text ?? null;
 }
 
-/** Full text of the oldest prompt queued for one loop, read WITHOUT consuming it — the
+/** Full text of the oldest prompt queued for one role, read WITHOUT consuming it — the
  * preview seam behind `tumwater role <id>`'s next-prompt view. Same reader, listing order,
  * and race policy as queuedRolePrompts (a file that vanishes mid-listing is skipped, not
  * thrown), but the queue file is never unlinked: a preview can never cost a queued prompt

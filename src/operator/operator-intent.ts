@@ -11,7 +11,7 @@ import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../runner/runner-state.js";
+import { loadRunnerState, saveRunnerState, zeroCounters } from "../runner/runner-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../team/reclaim.js";
@@ -77,7 +77,7 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // the lost update discards. So with a live team only the marker is written; with none there
   // is no concurrent writer and the direct write is what carries the reset to the next run.
   const { live, when } = markerApplyNote(root);
-  if (!live) for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
+  if (!live) for (const r of roles) saveRunnerState(root, zeroCounters(loadRunnerState(root, r)));
   // Atomic: a concurrent poll reading the marker mid-write would see a torn file, which
   // readJsonFile folds to null — the corrupt-marker superset that wakes/resets EVERY runner.
   // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
@@ -146,7 +146,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   // scheduled wake already skips the direct write — see the docstring.
   const { live, when } = markerApplyNote(root);
   if (!deferred && !live)
-    for (const r of roles) saveLoopState(root, clearBackoff(loadLoopState(root, r), now));
+    for (const r of roles) saveRunnerState(root, clearBackoff(loadRunnerState(root, r), now));
   // Atomic — see requestResetCounters: a torn wake marker reads as corrupt and wakes every
   // runner immediately, dropping a scheduled wake's notBeforeMs on the floor. A scheduled wake
   // gets its own file so a later wake request, immediate or scheduled, cannot overwrite it.
@@ -223,17 +223,17 @@ function requestReclaim(root: string): string {
   return `reclaim requested — ${applyClause(live, when, "reclaims idle worktrees")}`;
 }
 
-/** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt
+/** Queue a prompt for one role and wake that role — the one workflow `tumwater prompt
  * --role`, the dashboard's POST /api/prompt-role, and the TUI's Ctrl+R submit all share:
- * submitRolePrompt enqueues into the loop's own queue (length-capped by the shared rule)
- * and logs under the loop, then requestWake's single-role marker brings a live team's
- * loop in within one poll instead of whenever its backoff next expires (and is safe with
+ * submitRolePrompt enqueues into the role's own queue (length-capped by the shared rule)
+ * and logs under the role, then requestWake's single-role marker brings a live team's
+ * role in within one poll instead of whenever its backoff next expires (and is safe with
  * no team running — the same contract as `tumwater wake`). Returns requestWake's
  * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
  * call keeps a surface from ever queueing a prompt without the wake that delivers it
  * promptly — the pairing is the invariant, not each surface's private discipline. An optional
  * `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"); the wake
- * still fires — it brings the loop in at its time to find a deliverable queue, and a queue
+ * still fires — it brings the role in at its time to find a deliverable queue, and a queue
  * holding only future prompts keeps it asleep. */
 export function submitRolePromptAndWake(root: string, role: string, text: string, images?: PromptImageInput[], notBeforeMs?: number): string {
   submitRolePrompt(root, role, text, images, notBeforeMs);

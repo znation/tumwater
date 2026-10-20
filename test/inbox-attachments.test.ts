@@ -102,7 +102,7 @@ test("savePromptImages removes its partial writes when a later image's write fai
   const queueFile = enqueueRolePrompt(root, "qa", "look");
   const dir = roleInboxDir(root, "qa");
   const stem = path.basename(queueFile, ".md");
-  // Make the second image's write fail (EISDIR) mid-loop, so the first write succeeds and
+  // Make the second image's write fail (EISDIR) mid-role, so the first write succeeds and
   // the second throws.
   const target = path.join(dir, `${stem}.jpg`);
   const restoreWrite = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {

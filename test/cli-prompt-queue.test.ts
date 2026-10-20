@@ -154,7 +154,7 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
   submitPrompt(repo, "alpha");
 
   // Out of range: the error names the position and the size of the largest queue the list
-  // shows, since a no-`--role` cancel addresses every loop's numbered section, not just one.
+  // shows, since a no-`--role` cancel addresses every role's numbered section, not just one.
   let r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no prompt at position 2 \(longest inbox holds 1\)/);
@@ -196,7 +196,7 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role/);
 
-  // Writing to a named loop's queue is owed the config error, not a built-ins-only guess.
+  // Writing to a named role's queue is owed the config error, not a built-ins-only guess.
   r = await cli(repo, "prompt", "--role", "qa", "ship it");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /not valid JSON/);
@@ -211,12 +211,12 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
   assert.match(r.stdout, /cancelled \(director\): steer the director/);
 });
 
-// A no-`--role` cancel addresses the same per-loop numbered sections `--list` prints, not the
-// director's queue alone: one loop holding the position cancels there, several are an
+// A no-`--role` cancel addresses the same per-role numbered sections `--list` prints, not the
+// director's queue alone: one role holding the position cancels there, several are an
 // ambiguity the error names with the --role escape hatch.
-test("prompt --cancel without --role cancels the entry --list shows, whichever loop holds it", async () => {
+test("prompt --cancel without --role cancels the entry --list shows, whichever role holds it", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli prompt cancel cross loop");
+  await initProject(repo, "cli prompt cancel cross role");
 
   submitRolePrompt(repo, "qa", "qa task one");
 
@@ -228,8 +228,8 @@ test("prompt --cancel without --role cancels the entry --list shows, whichever l
   assert.match(r.stdout, /cancelled \(qa\): qa task one/);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), []);
 
-  // Several loops showing the same N is ambiguous — the list itself shows two "1." lines —
-  // so the error names the loops and the --role form, and touches no queue.
+  // Several roles showing the same N is ambiguous — the list itself shows two "1." lines —
+  // so the error names the roles and the --role form, and touches no queue.
   submitPrompt(repo, "director task");
   submitRolePrompt(repo, "qa", "qa task two");
   r = await cli(repo, "prompt", "--cancel", "1");
@@ -315,12 +315,12 @@ test("prompt --list and --cancel reject duplicates, combinations, and stray posi
 
 // --- prompt --role: per-role queues from the CLI ---
 
-test("prompt --role queues for one loop only, wakes it, and validates the role", async () => {
+test("prompt --role queues for one role only, wakes it, and validates the role", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli per-role prompt");
 
   // Queued for qa only: qa's queue holds it verbatim, the director's inbox is untouched, and
-  // the targeted loop is woken so a sleeping team sees the prompt within one poll.
+  // the targeted role is woken so a sleeping team sees the prompt within one poll.
   let r = await cli(repo, "prompt", "--role", "qa", "check", "the", "flow");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /added to qa's inbox/);
@@ -343,7 +343,7 @@ test("prompt --role queues for one loop only, wakes it, and validates the role",
   assert.equal(dequeuePrompt(repo), "route this");
 });
 
-test("prompt --list groups queues by loop and --cancel removes from the named loop's queue", async () => {
+test("prompt --list groups queues by role and --cancel removes from the named role's queue", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli per-role list");
 
@@ -360,7 +360,7 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   assert.match(r.stdout, /qa:\n1\. qa task one \(queued \d+[smh] ago\)\n2\. qa task two \(queued \d+[smh] ago\)/);
   assert.match(r.stdout, /readme:\n1\. docs task/);
 
-  // Scoped by --role: only that loop's queue, numbered from 1.
+  // Scoped by --role: only that role's queue, numbered from 1.
   r = await cli(repo, "prompt", "--list", "--role", "qa");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /qa:\n1\. qa task one \(queued \d+[smh] ago\)\n2\. qa task two \(queued \d+[smh] ago\)/);
@@ -375,12 +375,12 @@ test("prompt --list groups queues by loop and --cancel removes from the named lo
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
 });
 
-test("prompt --cancel --role fails on an out-of-range position with the loop's count and no side effects", async () => {
+test("prompt --cancel --role fails on an out-of-range position with the role's count and no side effects", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli prompt cancel role range");
 
   // The scoped form routes the position straight into cancelRolePrompt, so an out-of-range
-  // position surfaces that throw (with the loop's own queue length, not the cross-loop
+  // position surfaces that throw (with the role's own queue length, not the cross-role
   // count the flagless form reports) as a failed command — and leaves the queue untouched.
   submitRolePrompt(repo, "qa", "qa task one");
   const r = await cli(repo, "prompt", "--cancel", "5", "--role", "qa");
@@ -399,7 +399,7 @@ test("prompt --cancel --role reports a concurrently dequeued prompt as gone and 
   await initProject(repo, "cli prompt cancel role race");
 
   // The same dangling-symlink stand-in as the flagless race test, planted in the role's own
-  // queue directory: readdir lists it, readFileSync hits ENOENT — the role loop dequeued the
+  // queue directory: readdir lists it, readFileSync hits ENOENT — the role dequeued the
   // prompt between the operator's listing and the cancel.
   submitRolePrompt(repo, "qa", "qa task one");
   const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
@@ -427,7 +427,7 @@ test("prompt --top moves the Nth entry to the head of its role's inbox", async (
   submitPrompt(repo, "third task");
 
   // No --role: the position resolves like --cancel's flagless form, and the success line
-  // names the resolved loop.
+  // names the resolved role.
   let r = await cli(repo, "prompt", "--top", "2");
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /topped \(director\): urgent task/);
@@ -439,7 +439,7 @@ test("prompt --top moves the Nth entry to the head of its role's inbox", async (
   assert.match(r.stdout, /^2\. first task \(queued \d+[smh] ago\)$/m);
   assert.match(r.stdout, /^3\. third task \(queued \d+[smh] ago\)$/m);
 
-  // A `--role`-scoped top names no loop (it is in the user's own command) and moves there.
+  // A `--role`-scoped top names no role (it is in the user's own command) and moves there.
   submitRolePrompt(repo, "qa", "qa one");
   submitRolePrompt(repo, "qa", "qa two");
   r = await cli(repo, "prompt", "--top", "2", "--role", "qa");
@@ -459,7 +459,7 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
 
   submitPrompt(repo, "only");
 
-  // Out of range (flagless): the same cross-loop count --cancel reports.
+  // Out of range (flagless): the same cross-role count --cancel reports.
   let r = await cli(repo, "prompt", "--top", "2");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no prompt at position 2 \(longest inbox holds 1\)/);
@@ -476,7 +476,7 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
   assert.equal(r.code, 1);
   assert.match(r.stderr, /prompt 1 is already first/);
 
-  // A list-wide ambiguity when several loops hold the position names them and the --role
+  // A list-wide ambiguity when several roles hold the position names them and the --role
   // escape hatch, touching nothing.
   submitRolePrompt(repo, "qa", "qa first");
   r = await cli(repo, "prompt", "--top", "1");
@@ -486,7 +486,7 @@ test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactl
   assert.deepEqual(queuedPrompts(repo), ["only"]);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa first"]);
 
-  // A role-scoped out-of-range reports the loop's own count.
+  // A role-scoped out-of-range reports the role's own count.
   r = await cli(repo, "prompt", "--top", "5", "--role", "qa");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no prompt at position 5 \(1 in the inbox\)/);
@@ -499,7 +499,7 @@ test("prompt --top --role reports a concurrently dequeued prompt as gone and exi
 
   // The same dangling-symlink stand-in as the flagless and role cancel race tests, planted
   // as the higher-stamped entry so position 2 resolves to it: readdir lists it, the rename's
-  // read hits ENOENT — the role loop dequeued the prompt between the operator's listing and
+  // read hits ENOENT — the role dequeued the prompt between the operator's listing and
   // the move (movePromptToTop's gone outcome, which the top verb alone had never reported).
   submitRolePrompt(repo, "qa", "qa task one");
   const raced = path.join(roleInboxDir(repo, "qa"), `9999999999999-000001-${process.pid}.md`);
@@ -528,7 +528,7 @@ test("prompt --list --json prints one JSON document matching the rendered list",
   submitRolePrompt(repo, "readme", "docs task");
 
   // The payload holds every queued prompt — director first, then catalog order, empty
-  // queues omitted — with per-loop positions, full verbatim text, and the enqueue stamp
+  // queues omitted — with per-role positions, full verbatim text, and the enqueue stamp
   // parsed from each queue filename (the age `prompt --list` shows). The expected stamps
   // come from the queue directories themselves, so the payload cannot drift from the names.
   const fileNames = (dir: string) =>
@@ -559,7 +559,7 @@ test("prompt --list --json prints one JSON document matching the rendered list",
     assert.ok(prose.stdout.includes(`${p.position}. ${p.text}`), `prose missing ${p.role} ${p.position}`);
   }
 
-  // Scoped by --role: that loop's queue alone, numbered from 1.
+  // Scoped by --role: that role's queue alone, numbered from 1.
   r = await cli(repo, "prompt", "--list", "--role", "qa", "--json");
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), {
@@ -619,7 +619,7 @@ test("prompt --list shows each prompt's age; a hand-placed file shows none", asy
   assert.equal(payload.prompts[0].queuedAtMs, stamped);
 
   // A hand-placed name has no stamp under the convention: no suffix in prose, null in JSON,
-  // and the per-loop position numbering --cancel consumes is untouched.
+  // and the per-role position numbering --cancel consumes is untouched.
   fs.writeFileSync(path.join(inboxDir(repo), "hand-placed.md"), "by hand");
   r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { resetRequestPath, wakeRequestPath } from "../src/paths.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -21,14 +21,14 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   seedCounters(repo, "feature");
   seedCounters(repo, "clean");
 
-  // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
+  // A misspelled --role used to be ignored: reset-counters would zero EVERY role instead of
   // the one named. Now it fails and leaves every counter (and no team marker) untouched.
   let r = await cli(repo, "reset-counters", "--rol", "feature");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --rol/);
   assert.match(r.stderr, /--role <id>/);
-  assert.equal(loadLoopState(repo, "feature").runs, 7, "no reset happened");
-  assert.equal(loadLoopState(repo, "clean").runs, 7, "no reset happened");
+  assert.equal(loadRunnerState(repo, "feature").runs, 7, "no reset happened");
+  assert.equal(loadRunnerState(repo, "clean").runs, 7, "no reset happened");
   assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written");
 
   // A misspelled --port used to be ignored: gui would serve on the default port.
@@ -75,7 +75,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: extra/);
-  assert.equal(loadLoopState(repo, "feature").runs, 7, "no reset happened");
+  assert.equal(loadRunnerState(repo, "feature").runs, 7, "no reset happened");
 
   // Valid combinations still work.
   r = await cli(repo, "logs", "-n", "3", "--role", "clean");

@@ -169,7 +169,7 @@ test("buildDirectorPrompt embeds the user request", () => {
 });
 
 // PRINCIPLES.md is the project's codified taste: seeded at init, injected into every tick and
-// director prompt so all loops share one standard. The injection must be verbatim from the first
+// director prompt so all roles share one standard. The injection must be verbatim from the first
 // bullet on (the file IS the standard; its own introduction restates the block's heading) and
 // bounded (a runaway file cannot blow up every prefill).
 
@@ -241,7 +241,7 @@ test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
   assert.match(prompt, /Skip entries carrying a Refused note: never pick or re-refuse them/);
 });
 
-// The director is the only loop that can change customRoles — through the harness-mediated
+// The director is the only role that can change customRoles — through the harness-mediated
 // request file (plans/portability.md §3/7), never by editing tumwater.json. The routing bullet
 // names the mechanics; the note scopes the request so a vague request cannot drift into
 // retuning timeouts or disabling roles. Role tick prompts keep the blanket ban untouched.
@@ -316,7 +316,7 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // log"):
 // the status section is a state-only snapshot rewritten wholesale on each sync, never appended to,
 // so it stays small by construction and cannot drift back into per-tick merge narrative. Every
-// loop reads README.md first, so an unbounded log there would cost every tick's prefill forever;
+// role reads README.md first, so an unbounded log there would cost every tick's prefill forever;
 // these assertions pin the contract in the find text. Same whitespace-collapsed matching as above
 // —
 // the prose is hard-wrapped and formatting ticks reflow it, so assertions match content, not
@@ -445,7 +445,7 @@ test("the readme role syncs from the git delta since its own last commit", () =>
   assert.match(find, /read only what those commits touched/i);
 });
 
-// No prompt used to say what day it is (BUGS.md "Loops are never told the date…"), so every
+// No prompt used to say what day it is (BUGS.md "Roles are never told the date…"), so every
 // "(found by … YYYY-MM-DD)" heading, Fixed date, and Needs-review marker was inferred from the
 // newest dates in the repo — and the team stamped entries days into the future. Every pi prompt
 // now states the local day once; tick and director (the roles that write dated records) are also
@@ -456,19 +456,19 @@ test("every run, director, conflict, and review prompt states the given date exa
   const line = "Today's date is 2031-02-03 (local time).";
   const role = roleById("bugfix");
   assert.ok(role);
-  const loopPrompts = [
+  const rolePrompts = [
     buildTickPrompt({ role, today }),
     buildDirectorPrompt("the tui flickers", undefined, undefined, undefined, today),
   ];
   const review = buildReviewPrompt("diff body", undefined, undefined, undefined, undefined, undefined, today);
   const gatePrompts = [buildConflictPrompt("bugfix", ["a.txt"], undefined, undefined, today), review];
-  for (const p of [...loopPrompts, ...gatePrompts]) {
+  for (const p of [...rolePrompts, ...gatePrompts]) {
     assert.ok(p.includes(line), `missing the date line: ${p.slice(0, 60)}…`);
     assert.equal(p.split("Today's date is").length - 1, 1, "the date is stated once, in one place");
   }
   // The roles that write dated records are told to use it — once, in the shared preamble, so no
   // role text repeats it — and never to infer one from the repo's own (drifting) dates.
-  for (const p of loopPrompts) {
+  for (const p of rolePrompts) {
     assert.match(
       oneLine(p),
       /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md heading ends "\(found by the <role> role YYYY-MM-DD\)", a closing date reads "— fixed YYYY-MM-DD by the <role> role", a new PLANS\.md heading reads "\(planned YYYY-MM-DD by the <role> role …\)", and a Refused or Needs-review note carries the date too — and count plan deadlines from it; never infer the date from the repo\./,
@@ -539,12 +539,12 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
   }
 });
 
-// --- User-defined loops (plans/user-defined-loops.md) ---
+// --- User-defined roles (plans/user-defined-loops.md) ---
 
 test("a user-defined role's run prompt identifies it and carries its task as the run task", () => {
   const role = customRole("docs-auditor", "Keep the docs current.");
   const prompt = oneLine(buildTickPrompt({ role }));
-  // The title is what identifies the loop inside its own prompt and commit context.
+  // The title is what identifies the role inside its own prompt and commit context.
   assert.match(prompt, /"docs-auditor" role \(custom role\)/);
   // The task IS the role-specific find-something-to-do text — no catalog prose around it.
   assert.ok(prompt.includes("Keep the docs current."), "the task rides in as the run's task");

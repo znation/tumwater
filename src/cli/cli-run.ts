@@ -6,7 +6,7 @@
  * the only implementations living in the dispatcher itself. */
 import type { StdioOptions } from "node:child_process";
 import { compareCodeUnits, increment } from "../collections.js";
-import { loopIds, loopPaused } from "../roles/runner-ids.js";
+import { runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { fail, say } from "./cli-output.js";
 import {
   durationLabel,
@@ -31,7 +31,7 @@ import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
-import { loadLoopState, stateSkipReason, type LoopState } from "../runner/runner-state.js";
+import { loadRunnerState, stateSkipReason, type RunnerState } from "../runner/runner-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";
@@ -121,10 +121,10 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // live config is readable, and validated against the ENABLED ids — not the full catalog —
   // so an unknown id and a disabled one fail fast with the same wording (a scoped round that
   // booted a disabled role's runner would run nothing while claiming to serve the operator
-  // who just queued that loop a prompt). Custom loops are valid targets: knownRoleIds
+  // who just queued that role a prompt). Custom roles are valid targets: knownRoleIds
   // accepts them, and an enabled custom passes this check like any built-in. Daemon
   // `run --role` stays an error: scoping is a once-round concept.
-  const roleFilter = parseRoleListFlag(args, loopIds(config));
+  const roleFilter = parseRoleListFlag(args, runnerIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
   // The refusal an operator hits by trying to start a second team in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
@@ -180,10 +180,10 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // the supervised generation: an unsupervised `run` became the supervisor above and returned.
   const expectedPpid = expectedSupervisorPid();
   startParentDeathWatch(stop, expectedPpid !== undefined ? { expectedPpid } : {});
-  const enabled = loopIds(config);
-  // A scoped round's loop list is exactly the filter; otherwise every enabled loop runs.
+  const enabled = runnerIds(config);
+  // A scoped round's role list is exactly the filter; otherwise every enabled role runs.
   const roles = roleFilter ?? enabled;
-  // Main's green verdicts outlive this generation: the redeployer and the loops' red-main gate
+  // Main's green verdicts outlive this generation: the redeployer and the roles' red-main gate
   // start from the ones the previous generation verified instead of re-running the suite.
   (await import("../baseline/main-baseline.js")).persistBaselineVerdicts(root);
   // A once round never self-redeploys: it runs one round on the build it booted and exits,
@@ -210,7 +210,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
   await runStartupMigrations(root); // so the snapshot reads a migrated state/<new>.json
-  const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).runs] as const));
+  const ticksBefore = new Map(roles.map((role) => [role, loadRunnerState(root, role).runs] as const));
   let exit;
   try {
     exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
@@ -352,7 +352,7 @@ function ticksThisRound(
 
 /** Every role that could have ticked in this once round — `roles` in order plus any role that
  * appears only in `ticksRun` (enabled mid-round after `ticksBefore` was taken) — paired with
- * its loaded loop state and the number of ticks it ran this round. The same per-role setup
+ * its loaded role state and the number of ticks it ran this round. The same per-role setup
  * onceFailures and onceSummary both repeat, folded here so the two summary passes cannot
  * drift on which roles they visit or how they count a round's work. */
 function onceRoundRoles(
@@ -360,10 +360,10 @@ function onceRoundRoles(
   roles: string[],
   ticksBefore: Map<string, number>,
   ticksRun?: ReadonlyMap<string, number>,
-): { role: string; state: LoopState; ran: number }[] {
+): { role: string; state: RunnerState; ran: number }[] {
   const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
   return [...roles, ...extra].map((role) => {
-    const state = loadLoopState(root, role);
+    const state = loadRunnerState(root, role);
     return { role, state, ran: ticksThisRound(state, role, ticksBefore, ticksRun) };
   });
 }
@@ -384,7 +384,7 @@ export function onceFailures(
   return out;
 }
 
-/** The once round's one-line summary, read from the runners' persisted loop state plus the
+/** The once round's one-line summary, read from the runners' persisted role state plus the
  * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
  * events. Roles whose tick counter advanced bucket by their last completed result; the rest are
  * skipped with the reason the orchestrator settled them for (`paused`, `resume pending`,
@@ -421,7 +421,7 @@ export function onceSummary(
     } else {
       const reason =
         settled?.get(role) ??
-        (isTeamPaused(root) || loopPaused(new Set(pausedRoles(root)), role)
+        (isTeamPaused(root) || runnerPaused(new Set(pausedRoles(root)), role)
           ? "paused"
           : stateSkipReason(state));
       skipped.push(reason);

@@ -1,6 +1,6 @@
 /** Tests for src/prompt/gate-prompts.ts — the merge gate's prompts: conflict resolution after a
  * rebase, the adversarial pre-merge review, and the notes that carry the gate's verdicts back to
- * the author loop. Split out of prompt.test.ts, which keeps the role-loop prompt builders' tests;
+ * the author role. Split out of prompt.test.ts, which keeps the role prompt builders' tests;
  * gate prompts are started by the harness's merge/review pipeline, not the role ticks, so their
  * contracts live beside their own module. */
 import test from "node:test";
@@ -24,7 +24,7 @@ import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
-// load-bearing in ways the loop-level fake-pi tests cannot see (the fake ignores prompt
+// load-bearing in ways the role-level fake-pi tests cannot see (the fake ignores prompt
 // content): pi must know exactly which files hold markers, what "ours"/"theirs" mean, and —
 // critically — that it may not touch git state itself, or its own commit/rebase would collide
 // with the harness's continueRebase.
@@ -186,7 +186,7 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick
 // starts a fresh pi session, so if this note loses or mangles the reviewer's reasons the
-// author loop retries the same rejected work with no idea why it was refused.
+// author role retries the same rejected work with no idea why it was refused.
 
 test("buildRejectedReviewNote carries every reason, numbered in order", () => {
   const note = buildRejectedReviewNote({ reasons: ["violates zero-deps principle", "half-done: no tests"] });

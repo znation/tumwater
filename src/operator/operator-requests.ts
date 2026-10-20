@@ -1,13 +1,13 @@
 // vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
-import { loadLoopState, saveLoopState, zeroCounters } from "../runner/runner-state.js";
+import { loadRunnerState, saveRunnerState, zeroCounters } from "../runner/runner-state.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {
@@ -36,7 +36,7 @@ export interface AbortableMerge {
  * listed roles' runners when the marker is a well-formed string array, and every runner when
  * the marker is corrupt or its list missing (a superset — both operations are idempotent, so
  * applying the same one to extra roles is safe). */
-function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunner[] | null {
+function roleRequestTargets(markerFile: string, runners: RoleRunner[]): RoleRunner[] | null {
   if (!fs.existsSync(markerFile)) return null;
   const requested = requestedRoles(markerFile);
   return requested
@@ -62,7 +62,7 @@ function requestedRoles(markerFile: string): string[] | null {
  * only the marker. A role with no state file has no counters or schedule to change, and a
  * corrupt marker (no role list) yields none: the runner superset must not conjure new files
  * for roles the marker never named. */
-function runnerlessTargets(root: string, markerFile: string, runners: LoopRunner[]): string[] {
+function runnerlessTargets(root: string, markerFile: string, runners: RoleRunner[]): string[] {
   const requested = requestedRoles(markerFile);
   if (!requested) return [];
   return requested.filter(
@@ -108,7 +108,7 @@ function warnStatePersistFailed(root: string, role: string, err: unknown): void 
  * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
  * and writes the zeroed state file directly for requested roles with no runner, which the CLI
  * left to its marker. */
-export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
+export function consumeResetRequest(root: string, runners: RoleRunner[]): void {
   const markerFile = resetRequestPath(root);
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
@@ -126,7 +126,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   const runnerlessReset: string[] = [];
   for (const role of runnerless) {
     try {
-      saveLoopState(root, zeroCounters(loadLoopState(root, role)));
+      saveRunnerState(root, zeroCounters(loadRunnerState(root, role)));
       runnerlessReset.push(role);
     } catch (err) {
       warnStatePersistFailed(root, role, err);
@@ -135,7 +135,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   const applied = [...affected.map((r) => r.role), ...runnerlessReset];
   if (applied.length > 0) {
     const [only] = applied;
-    // One role → filed under that loop; several → one harness-level event listing them.
+    // One role → filed under that role; several → one harness-level event listing them.
     if (applied.length === 1 && only) logRequestEvent(root, { source: only, type: "counters_reset" });
     else logRequestEvent(root, { source: TUMWATER_SOURCE, type: "counters_reset", roles: applied });
   }
@@ -145,7 +145,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
 /** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if any.
  * Immediate wakes find the state files already cleared by the CLI when no team was running; this
  * clears the affected runners' in-memory schedules (backoffSeconds, nextRunAt), or their next save
- * would resurrect the pre-wake sleep window and the loops would keep sleeping until the original
+ * would resurrect the pre-wake sleep window and the roles would keep sleeping until the original
  * backoff expired, and writes the cleared schedule directly for requested roles with no runner,
  * which the CLI left to its marker. A scheduled wake (`--in`) carries a `notBeforeMs`: before the
  * deadline the marker is left in place (a later poll retries it — the wake takes effect within one
@@ -156,7 +156,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
  * `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes. Each
  * woken role logs the existing `wake` event with the operator reason, so the team's early ticks
  * read in the feed as deliberate. */
-export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
+export function consumeWakeRequest(root: string, runners: RoleRunner[]): void {
   // A legacy wake.json (the pre-upgrade build wrote scheduled wakes here) keeps its deadline.
   const markerFile = wakeRequestPath(root);
   // A null marker on an existing file is a corrupt marker: `tumwater wake` already cleared the
@@ -246,7 +246,7 @@ export function cancelScheduledWakes(root: string, roles?: string[]): number {
 
 /** Apply one wake marker that is due: wake the runners it names (every runner for a corrupt
  * marker), write the cleared schedule for runnerless roles, then remove the marker. */
-function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]): void {
+function applyWakeMarker(root: string, markerFile: string, runners: RoleRunner[]): void {
   const affected = roleRequestTargets(markerFile, runners);
   if (affected === null) return;
   for (const r of affected) {
@@ -260,7 +260,7 @@ function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]
   }
   for (const role of runnerlessTargets(root, markerFile, runners)) {
     try {
-      saveLoopState(root, clearBackoff(loadLoopState(root, role), Date.now()));
+      saveRunnerState(root, clearBackoff(loadRunnerState(root, role), Date.now()));
     } catch (err) {
       warnStatePersistFailed(root, role, err);
       continue;
@@ -298,7 +298,7 @@ export function consumeReclaimRequest(root: string, reclaim: { requestManual(): 
 }
 
 /** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per role (no
- * parsing needed), so a request for an idle OR disabled loop is still cleaned up. A running tick
+ * parsing needed), so a request for an idle OR disabled role is still cleaned up. A running tick
  * gets killed and logs exactly one event; anything else is a silent no-op — the marker's presence
  * IS the request, removing it acknowledges. Since merge queue 3/5 a role's in-flight work is often
  * a MERGE rather than a tick, so the merge's controller is passed in: an abort for the role being
@@ -313,7 +313,7 @@ export function consumeReclaimRequest(root: string, reclaim: { requestManual(): 
  * fallback), and the merge discards every stacked ref when it ends. */
 export function consumeAbortRequests(
   root: string,
-  runners: LoopRunner[],
+  runners: RoleRunner[],
   merges: readonly AbortableMerge[],
 ): void {
   let markers: string[];

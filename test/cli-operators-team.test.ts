@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/operator/operator-commands.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";
@@ -19,11 +19,11 @@ import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 // spawns the CLI, so the file is CPU-bound on its own. cli-operators.test.ts keeps the
 // abort and pause/resume families.
 
-// --- logs/reset-counters/abort --role: user-defined loop targets ---
+// --- logs/reset-counters/abort --role: user-defined role targets ---
 
-// User-defined loops are valid --role targets for logs/reset-counters/abort once tumwater.json
+// User-defined roles are valid --role targets for logs/reset-counters/abort once tumwater.json
 // names them, and an unknown id fails naming the customs in the valid list.
-test("logs, reset-counters, and abort accept user-defined loop names from tumwater.json", async () => {
+test("logs, reset-counters, and abort accept user-defined role names from tumwater.json", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom role cli test");
   const cfg = loadConfig(repo);
@@ -35,18 +35,18 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   assert.equal(r.code, 0);
   assert.match(r.stdout, /no transcript yet for docs-sync/);
 
-  // An unknown id fails and lists the custom loop among the valid ones.
+  // An unknown id fails and lists the custom role among the valid ones.
   r = await cli(repo, "logs", "--role", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: .+\)/);
-  assert.ok(r.stderr.includes("docs-sync"), "the valid list names the custom loop");
+  assert.ok(r.stderr.includes("docs-sync"), "the valid list names the custom role");
 
-  // reset-counters --role <custom> zeroes just that loop.
+  // reset-counters --role <custom> zeroes just that role.
   seedCounters(repo, "docs-sync");
   r = await cli(repo, "reset-counters", "--role", "docs-sync");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /counters reset for docs-sync/);
-  assert.equal(loadLoopState(repo, "docs-sync").runs, 0);
+  assert.equal(loadRunnerState(repo, "docs-sync").runs, 0);
 
   // abort --role <custom> passes validation (no live team: it fails on the alive check,
   // which proves the id was accepted rather than rejected).
@@ -72,7 +72,7 @@ test("reset-counters zeroes counters in every role's state file and writes the t
   assert.doesNotMatch(r.stdout, /within ~2s/);
 
   for (const role of ["feature", "clean"]) {
-    const s = loadLoopState(repo, role);
+    const s = loadRunnerState(repo, role);
     assert.equal(s.runs, 0, `${role} ticks`);
     assert.equal(s.commits, 0, `${role} commits`);
     assert.equal(s.generatedTokens, 0, `${role} tokens`);
@@ -82,7 +82,7 @@ test("reset-counters zeroes counters in every role's state file and writes the t
     assert.equal(s.backoffSeconds, 15, `${role} backoff preserved`);
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
     // Per-tick semantics: a fresh observation window clears the last tick's peak too,
-    // or sleeping loops would keep showing their old value until they next tick.
+    // or sleeping roles would keep showing their old value until they next tick.
     assert.equal(s.peakContextTokens, 0, `${role} per-tick peak ctx cleared`);
   }
 
@@ -95,7 +95,7 @@ test("reset-counters zeroes counters in every role's state file and writes the t
   assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 });
 
-test("reset-counters --role targets one loop; unknown or missing role fails without side effects", async () => {
+test("reset-counters --role targets one role; unknown or missing role fails without side effects", async () => {
   const repo = makeRepo();
   await initProject(repo, "reset counters role test");
   seedCounters(repo, "feature");
@@ -104,10 +104,10 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   let r = await cli(repo, "reset-counters", "--role", "feature");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /counters reset for feature/);
-  const f = loadLoopState(repo, "feature");
+  const f = loadRunnerState(repo, "feature");
   assert.equal(f.runs, 0);
   assert.equal(f.commits, 0);
-  assert.equal(loadLoopState(repo, "clean").runs, 7, "other roles untouched");
+  assert.equal(loadRunnerState(repo, "clean").runs, 7, "other roles untouched");
   const marker = readJson(resetRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
 
@@ -116,8 +116,8 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   r = await cli(repo, "reset-counters", "--role", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
-  assert.equal(loadLoopState(repo, "feature").runs, 0, "already-reset role unchanged");
-  assert.equal(loadLoopState(repo, "clean").runs, 7, "other roles untouched on failure");
+  assert.equal(loadRunnerState(repo, "feature").runs, 0, "already-reset role unchanged");
+  assert.equal(loadRunnerState(repo, "clean").runs, 7, "other roles untouched on failure");
   assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written on failure");
 
   // A bare --role fails cleanly too.
@@ -160,7 +160,7 @@ test("wake clears backoff in every role's state file and writes the team marker"
   assert.match(r.stdout, /wake requested for/);
 
   for (const role of ["feature", "clean"]) {
-    const s = loadLoopState(repo, role);
+    const s = loadRunnerState(repo, role);
     assert.equal(s.backoffSeconds, 0, `${role} backoff cleared`);
     assert.ok(
       s.nextRunAt >= before && s.nextRunAt <= Date.now(),
@@ -181,7 +181,7 @@ test("wake clears backoff in every role's state file and writes the team marker"
   assert.deepEqual([...marker.roles].sort(), Object.keys(loadConfig(repo).roles).sort());
 });
 
-test("wake --role targets one loop; unknown or missing role fails without side effects", async () => {
+test("wake --role targets one role; unknown or missing role fails without side effects", async () => {
   const repo = makeRepo();
   await initProject(repo, "wake role test");
   seedCounters(repo, "feature");
@@ -190,8 +190,8 @@ test("wake --role targets one loop; unknown or missing role fails without side e
   let r = await cli(repo, "wake", "--role", "feature");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /wake requested for feature/);
-  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0);
-  assert.equal(loadLoopState(repo, "clean").backoffSeconds, 15, "other roles untouched");
+  assert.equal(loadRunnerState(repo, "feature").backoffSeconds, 0);
+  assert.equal(loadRunnerState(repo, "clean").backoffSeconds, 15, "other roles untouched");
   const marker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
 
@@ -200,8 +200,8 @@ test("wake --role targets one loop; unknown or missing role fails without side e
   r = await cli(repo, "wake", "--role", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
-  assert.equal(loadLoopState(repo, "feature").backoffSeconds, 0, "already-woken role unchanged");
-  assert.equal(loadLoopState(repo, "clean").backoffSeconds, 15, "other roles untouched on failure");
+  assert.equal(loadRunnerState(repo, "feature").backoffSeconds, 0, "already-woken role unchanged");
+  assert.equal(loadRunnerState(repo, "clean").backoffSeconds, 15, "other roles untouched on failure");
   assert.ok(!fs.existsSync(wakeRequestPath(repo)), "no marker written on failure");
 
   // A bare --role fails cleanly too.
@@ -298,15 +298,15 @@ test("stop takes only --in and --cancel and appears in the help table", async ()
 });
 
 // --- config: print the effective merged config as JSON ---
-// A pure read of loadConfig(root) — defaults filled in and custom loops merged — so the
+// A pure read of loadConfig(root) — defaults filled in and custom roles merged — so the
 // oracle is a direct loadConfig call on the same repo, never a hand-built expectation.
 
 test("config prints the effective merged config as JSON, deep-equal to loadConfig", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli config");
 
-  // Overrides plus a custom loop: the output must show the MERGED view (defaults filled
-  // in, the custom loop present in roles) — the same shape the orchestrator's runners see —
+  // Overrides plus a custom role: the output must show the MERGED view (defaults filled
+  // in, the custom role present in roles) — the same shape the orchestrator's runners see —
   // not the overrides-only tumwater.json.
   const cfg = loadConfig(repo);
   cfg.minRunIntervalSeconds = 25;
@@ -318,7 +318,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   const printed = JSON.parse(r.stdout);
   assert.deepEqual(printed, loadConfig(repo));
   // Role defaults the file never mentions are in the output (the merge is visible, not just
-  // pass-through), and the custom loop is merged into roles exactly as the file's own
+  // pass-through), and the custom role is merged into roles exactly as the file's own
   // roles-override entries would be.
   assert.equal(printed.minRunIntervalSeconds, 25);
   assert.deepEqual(printed.roles["docs-sync"], { enabled: true });

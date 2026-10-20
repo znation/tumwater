@@ -46,7 +46,7 @@ import {
  * live beside their shared `--role` resolution. The marker-writing cores and shared
  * confirmations they print live in src/operator/operator-intent.ts (shared with the
  * dashboard and TUI); the team-side consumer half is src/operator/operator-requests.ts;
- * the `prompt` command, which drives the durable per-loop queues rather than the marker
+ * the `prompt` command, which drives the durable per-role queues rather than the marker
  * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
  * which reads and writes tumwater.json directly rather than touching team state, in
  * src/cli/config-commands.ts. Every command here is deliberately usable without a live
@@ -54,8 +54,8 @@ import {
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
  * built-in catalog role: the team itself tolerates a broken config (the live reload keeps
- * the last-known-good one), so an operator marker aimed at a built-in loop must not depend
- * on the file parsing — the same resilience `logs --role` already has. A custom-loop id or
+ * the last-known-good one), so an operator marker aimed at a built-in role must not depend
+ * on the file parsing — the same resilience `logs --role` already has. A custom-role id or
  * an unknown id falls through to the config-backed check, which fails with the honest error
  * (the config problem, or "unknown role" naming every valid id). Returns null when no
  * --role is given. */
@@ -121,15 +121,15 @@ function targetRoles(root: string, args: string[]): string[] {
   return namedRoleList(root, args) ?? Object.keys(loadConfig(root).roles);
 }
 
-/** `tumwater reset-counters [--role <id>[,<id>...]]`: zero the per-loop counters shown in the
+/** `tumwater reset-counters [--role <id>[,<id>...]]`: zero the per-role counters shown in the
  * dashboards so a fresh observation window can begin. Scheduling fields and pi session
- * continuity are untouched: loops keep sleeping/waking exactly as before. */
+ * continuity are untouched: roles keep sleeping/waking exactly as before. */
 export async function cmdResetCounters(root: string, args: string[]): Promise<void> {
   say(requestResetCounters(root, targetRoles(root, args)));
 }
 
 /** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel | --list [--json]]`: tell the
- * team "whatever the loops were failing on is fixed — try again", so the named roles tick
+ * team "whatever the roles were failing on is fixed — try again", so the named roles tick
  * within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
@@ -201,11 +201,11 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
  * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortTick kills the pi child and resets the worktree to main). Requires a live harness —
- * with no team there is nothing to consume the marker. The loop stays enabled: it backs
+ * with no team there is nothing to consume the marker. The role stays enabled: it backs
  * off normally and later ticks proceed as usual. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
-  // user-defined loops; a missing --role fails before it is ever needed.
+  // user-defined roles; a missing --role fails before it is ever needed.
   const roles = namedRoleList(root, args) ?? fail("abort requires --role <id> (e.g. `--role feature`)");
   for (const role of roles) {
     const result = requestAbort(root, role);
@@ -226,9 +226,9 @@ export async function cmdRestart(root: string, _args: string[]): Promise<void> {
 }
 
 /** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
- * each), stop THAT loop from
+ * each), stop THAT role from
  * starting new ticks — in-flight ones finish, every other role (the director included)
- * keeps running; without one, stop every role loop from starting NEW ticks while in-flight
+ * keeps running; without one, stop every role from starting NEW ticks while in-flight
  * ones finish and the director keeps running (its prompts outrank operator gates, like
  * under the budget cap). The markers
  * are persistent state, not one-shot requests: presence means paused until `resume` removes
@@ -382,7 +382,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   const { when, tail } = markerApplyNote(root);
   // The per-role pause outlives a team resume (the markers are independent), so the resumed
   // team's confirmation must name the roles still individually paused instead of claiming
-  // "role loops tick again" for loops the scheduler keeps gated.
+  // "roles tick again" for roles the scheduler keeps gated.
   const still = pausedRoles(root);
   const roleNote = still.length > 0
     ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
@@ -391,7 +391,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
 }
 
 /** The role id retire targets: a built-in or configured id as for the other marker commands, or
- * else any well-formed id that still has a branch or merge ref (a loop no config names). */
+ * else any well-formed id that still has a branch or merge ref (a role no config names). */
 async function retireTargetRole(root: string, args: string[]): Promise<string> {
   const role = flagValue(args, "--role");
   if (role === null) return requiredNamedRole(root, args, "retire");
@@ -407,12 +407,12 @@ async function retireTargetRole(root: string, args: string[]): Promise<string> {
   fail(unknownRoleMessage(role, ids));
 }
 
-/** `tumwater retire --role <id> [--force] [--json]`: remove a disabled loop's leftover worktree,
+/** `tumwater retire --role <id> [--force] [--json]`: remove a disabled role's leftover worktree,
  * branch, merge ref, and paused-state marker. The collection, safety rails, and removal live in
  * src/operator/retire.ts; this is the render layer — one line per removed artifact, the skip lines
  * that make a second run idempotent, or the `--json` payload. */
 export async function cmdRetire(root: string, args: string[]): Promise<void> {
-  // The config exists only to validate the id against built-ins plus user-defined loops, with
+  // The config exists only to validate the id against built-ins plus user-defined roles, with
   // the leftover-branch gate for ids no config names; a missing --role fails before it is needed.
   const role = await retireTargetRole(root, args);
   const force = args.includes("--force");

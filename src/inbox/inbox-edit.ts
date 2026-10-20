@@ -16,7 +16,7 @@ import { notBeforeMs, notBeforeMarker, stripNotBeforeMarker } from "./prompt-not
 import { roleInboxDir } from "../paths.js";
 
 /** The edit half of the prompt queues: rewriting one queued prompt's text in place
- * (`tumwater prompt --edit`), by per-loop position or by list-wide position numbering.
+ * (`tumwater prompt --edit`), by per-role position or by list-wide position numbering.
  * Mirrors inbox-cancel.ts: the store (enqueue, list, peek, dequeue) stays in inbox.ts and
  * the shared resolveListedQueue lives in inbox-cancel.ts, so edit and cancel cannot drift
  * on how a listed position resolves. Split out of inbox.ts so the store module carries no
@@ -25,21 +25,21 @@ import { roleInboxDir } from "../paths.js";
 
 /** Outcome of editRolePrompt: the edited prompt's old and new operator-facing text (the
  * not-before marker stripped from both — the marker is plumbing, not content), or "gone"
- * when the loop dequeued it or another operator cancelled it between listing and write
+ * when the role dequeued it or another operator cancelled it between listing and write
  * (a concurrent pop is a normal race, not an error). */
 export type EditOutcome =
   | { status: "edited"; oldText: string; newText: string }
   | { status: "gone" };
 
 /** Rewrite one queued prompt's file in place — the shared core behind editRolePrompt (address
- * by per-loop position) and editQueuedFile (address by queue-file basename): same queue file
+ * by per-role position) and editQueuedFile (address by queue-file basename): same queue file
  * (so the filename's enqueue stamp and the entry's position behind older prompts are
  * untouched), same atomic write enqueueRolePrompt uses
  * (writeTextAtomic's temp file + rename, so a concurrent dequeue or another edit can never
  * expose a half-written file), and the existing not-before deferral carried over — when the
  * old file starts with the marker, the new text is written under the same marker; a
  * non-deferred prompt stays marker-free even if the new text's first line resembles a
- * marker. Logs one prompt_edited event under that loop (preview via promptPreview, exactly
+ * marker. Logs one prompt_edited event under that role (preview via promptPreview, exactly
  * like its prompt_cancelled sibling) after a successful write, best-effort: the rewrite is
  * the durable effect, so an unwritable feed must not report the edit as failed.
  *
@@ -62,7 +62,7 @@ export type EditOutcome =
  * the image-address form throws for a name failing queueFileNameProblem before touching disk.
  * The race policy pairs with the outcome: the file is read first, and a read that hits ENOENT
  * returns { status: "gone" } —
- * the loop dequeued it or a cancel removed it between listing and write, a normal race
+ * the role dequeued it or a cancel removed it between listing and write, a normal race
  * exactly like takeCancelledPrompt's; any other read error propagates (a permission failure
  * is not a race). The write itself is unconditional once the read succeeded: a dequeue that
  * lands between that read and the rename is a narrower race than takeQueuedFile's own
@@ -115,7 +115,7 @@ function editPromptAtFile(root: string, role: string, file: string, newText: str
   return { status: "edited", oldText, newText: composed };
 }
 
-/** Rewrite the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt
+/** Rewrite the Nth prompt queued for one role — 1-based, as shown by `tumwater prompt
  * --list` — in place, through the shared editPromptAtFile. See that helper for the full
  * contract (deferral carry-over, attachment carry-over, the prompt_edited event, the race
  * policy). */
@@ -139,7 +139,7 @@ export function editQueuedFile(root: string, role: string, name: string, newText
  * edit affordance (PLANS.md 2026-10-11): stripNotBeforeMarker drops the deferral plumbing,
  * stripImageReferenceLines drops the `[image attached: …]` reference block the edit carries
  * over unchanged (so it is never shown in the editor and cannot be edited away), and trimEnd
- * drops any blank lines left behind. null when the file is gone — the loop dequeued it or
+ * drops any blank lines left behind. null when the file is gone — the role dequeued it or
  * another operator cancelled it, which the endpoint reports as { status: "gone" } rather than
  * an error. Throws for a name failing queueFileNameProblem. Reading the one named file directly
  * keeps the dashboard's lazy fetch off the per-poll path. */
@@ -150,15 +150,15 @@ export function readQueuedPromptBody(root: string, role: string, name: string): 
   return stripImageReferenceLines(stripNotBeforeMarker(text)).trimEnd();
 }
 
-/** Outcome of editListedPrompt: a resolved edit (naming the loop it landed in, since the
- * caller scoped nothing), an ambiguity, or a miss across every loop it scoped. */
+/** Outcome of editListedPrompt: a resolved edit (naming the role it landed in, since the
+ * caller scoped nothing), an ambiguity, or a miss across every role it scoped. */
 export type ListedEditOutcome =
   | { status: "edited"; role: string; outcome: EditOutcome }
   | ListedQueueMiss;
 
 /** Edit by the position numbering `tumwater prompt --list` prints with no --role: the same
  * candidate resolution cancelListedPrompt uses — resolveListedQueue, in inbox-cancel.ts, so
- * the two cannot drift — followed by editRolePrompt in the resolved loop. One loop holding
+ * the two cannot drift — followed by editRolePrompt in the resolved role. One role holding
  * the position resolves, several are an ambiguity the caller reports with a --role escape
  * hatch, none is a miss carrying the largest queue length for the error's count. */
 export function editListedPrompt(root: string, scope: string[], position: number, newText: string, images?: PromptImageInput[]): ListedEditOutcome {

@@ -269,7 +269,7 @@ export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
 
-/** The `--summary` flag spec, accepted by `history`: tally each loop's tick outcomes instead of
+/** The `--summary` flag spec, accepted by `history`: tally each role's tick outcomes instead of
  * printing the rows. Value-less, like STAT_FLAG. */
 export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
 
@@ -333,7 +333,7 @@ export function byFlagSpec(missingValue: string): FlagSpec {
 
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
- * (scope a --once round to one loop, parsed by parseRoleFlag), and `--gui` (also serve the
+ * (scope a --once round to one role, parsed by parseRoleFlag), and `--gui` (also serve the
  * browser dashboard on its defaults; port/token selection stays on `tumwater gui`). Exported
  * so the caller's rejectUnknownArgs check and its tests share one definition of what `start`
  * (and its hidden alias `run`) accepts — before this vocabulary existed, run parsed --branch
@@ -388,7 +388,7 @@ export const GUI_FLAG_SPECS: FlagSpec[] = [
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag
  * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs with
- * default behavior, which is worse than an error: `reset-counters --rol x` zeroed every loop
+ * default behavior, which is worse than an error: `reset-counters --rol x` zeroed every role
  * instead of one, and `gui --portt 8080` served on the default port. Valueless flags claim one
  * token; valued flags claim two — and a valued flag left without its value fails right here, with
  * the spec's missingValue wording: cli.ts runs this gate before the ready-repo gate and the command

@@ -89,14 +89,14 @@ test("run starts the team, prints its banner, and stops cleanly on SIGTERM", asy
   });
 });
 
-test("run's banner lists one loop per instance, so the CLI roster matches the runners (part 5b/7)", async () => {
+test("run's banner lists one role per instance, so the CLI roster matches the runners (part 5b/7)", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run instances banner");
   onlyCleanRole(repo, (cfg) => {
     cfg.roles.feature = { ...(cfg.roles.feature ?? { enabled: true }), enabled: true, instances: 2 };
   });
   await withRunningTeam(repo, fakePiIdle(), async (s) => {
-    // Startup's `enabled` must be `loopIds`, not `enabledRoleIds`: the roster the banner names
+    // Startup's `enabled` must be `runnerIds`, not `enabledRoleIds`: the roster the banner names
     // is the roster the orchestrator starts runners for.
     assert.match(s.out(), /roles: [^\n]*feature, feature-2/);
   });

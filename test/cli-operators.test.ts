@@ -18,7 +18,7 @@ import { cli, CLI } from "./helpers/cli-harness.js";
 import { spawnSync } from "node:child_process";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
-// --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
+// --- abort --role <id>: request to kill one role's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
 // per-role marker (.tumwater/abort-<role>.json) a running team consumes within one poll
 // cycle. The team-side consumption is covered by test/orchestrator.e2e.test.ts; here we pin
@@ -28,7 +28,7 @@ test("abort validates its arguments before touching anything", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli abort validation");
 
-  // No flag at all: the command cannot know which loop to kill.
+  // No flag at all: the command cannot know which role to kill.
   let r = await cli(repo, "abort");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /abort requires --role <id>/);
@@ -375,7 +375,7 @@ test("pause and resume accept --role to gate one role, with per-role wording and
   assert.ok(!fs.existsSync(marker));
 });
 
-// --- role <id>: one loop's standing prompt and resolved settings (read-only) ---
+// --- role <id>: one role's standing prompt and resolved settings (read-only) ---
 // Like backlog, the command gates on nothing: its collector degrades to empty answers on a
 // missing read, so it works with the team stopped. The queue-survival assertion here is the
 // end-to-end half of the preview seam's contract (test/role-view.test.ts and

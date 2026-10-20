@@ -17,7 +17,7 @@ import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachme
  * inbox.ts, and this verb's rename-and-event pairing lives beside the only code that does it. */
 
 /** Outcome of movePromptToTop: `topped` carries the moved prompt's one-line preview (via
- * promptPreview, like the enqueue/cancel/edit siblings), or `gone` when the loop dequeued it
+ * promptPreview, like the enqueue/cancel/edit siblings), or `gone` when the role dequeued it
  * between listing and rename (a concurrent pop is a normal race, not an error). */
 export type TopOutcome = { status: "topped"; preview: string } | { status: "gone" };
 
@@ -31,7 +31,7 @@ export type FileTopOutcome = TopOutcome | { status: "already_first" };
  * `tumwater:not-before` marker, which rides in the text) byte-for-byte to the new stem, its
  * image attachments moving to that new stem too (movePromptImages, with
  * stripVanishedImageReferences dropping any already-gone reference) — and one `prompt_topped`
- * event is logged under the loop. Returns { status: "gone" } when the file disappears between
+ * event is logged under the role. Returns { status: "gone" } when the file disappears between
  * the caller's listing and the read here (a concurrent pop is a normal race, never an
  * error), sharing the store's takeQueuedFile convention. */
 function moveFileToTop(root: string, role: string, file: string): TopOutcome {
@@ -62,13 +62,13 @@ function moveFileToTop(root: string, role: string, file: string): TopOutcome {
   return { status: "topped", preview: promptPreview(carried) };
 }
 
-/** Move the Nth prompt queued for one loop — 1-based, as shown by `tumwater prompt --list` —
- * to the head of its queue, so the loop dequeues it next. Inbox order is the queue-file name
+/** Move the Nth prompt queued for one role — 1-based, as shown by `tumwater prompt --list` —
+ * to the head of its queue, so the role dequeues it next. Inbox order is the queue-file name
  * (`queueFileName`'s timestamp stamp), so the only way to make one prompt next is to give it a
  * stamp one below the queue's minimum; the file's text (and its `tumwater:not-before` marker,
  * which rides in the text) is carried byte-for-byte to the new stem, its image attachments
  * move to that new stem too (movePromptImages, with stripVanishedImageReferences dropping any
- * already-gone reference), and one `prompt_topped` event is logged under the loop.
+ * already-gone reference), and one `prompt_topped` event is logged under the role.
  *
  * Throws for out-of-range positions and for position 1 ("already first"), both with no side
  * effects — the moveEntryToTop precedent. Returns { status: "gone" } when the file disappears
@@ -85,7 +85,7 @@ export function movePromptToTop(root: string, role: string, position: number): T
  * queue — the file-addressed twin of movePromptToTop, for the dashboard's per-row Move to
  * top affordance: the address is the file itself, so a stale poll can never reorder the
  * wrong prompt. Throws for a name failing queueFileNameProblem (re-checked through
- * assertQueueFileName, so a caller that skips the guard fails closed); a file the loop
+ * assertQueueFileName, so a caller that skips the guard fails closed); a file the role
  * already dequeued answers "gone", and the queue head answers "already_first" with no write.
  * Reuses moveFileToTop's rename-and-event pairing, so both address forms cannot drift. */
 export function topQueuedFile(root: string, role: string, name: string): FileTopOutcome {

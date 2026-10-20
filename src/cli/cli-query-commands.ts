@@ -134,7 +134,7 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
   }
 }
 
-/** `tumwater diff`: one line per loop holding pending work, or the full per-role view with
+/** `tumwater diff`: one line per role holding pending work, or the full per-role view with
  * `--role <id>`. */
 export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
@@ -146,7 +146,7 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // report's rationale.
   rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG]);
   await requireReadyRepo(root);
-  // Absent --role is the team-wide form: one line per loop holding pending work
+  // Absent --role is the team-wide form: one line per role holding pending work
   // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
   // already failed above). A named role keeps the full per-role view.
   const role = parseRoleFlag(args, knownRoleIdsCached(root));
@@ -424,7 +424,7 @@ function writeRoleConfigKey(
   }
 }
 
-/** `tumwater role <id>`: one loop's standing prompt and next tick's assembled prompt. */
+/** `tumwater role <id>`: one role's standing prompt and next tick's assembled prompt. */
 export async function cmdRole(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
@@ -617,8 +617,8 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // already renders, the terminal twin of `config set roles.<base>.enabled true|false`. The
   // value lands in roles.<base>.enabled through the same setConfigKey core config set uses, so
   // validateConfig's checkBoolean (the roles.<id>. prefix) owns the type and the write stays
-  // atomic and applies live. The director cannot be disabled: with it disabled loopIds omits
-  // it and no loop dequeues the operator's inbox, so that refusal is explicit (enabling stays
+  // atomic and applies live. The director cannot be disabled: with it disabled runnerIds omits
+  // it and no role dequeues the operator's inbox, so that refusal is explicit (enabling stays
   // allowed). knownRoleIds holds every catalog and custom role whether or not it is enabled, so
   // a currently-disabled id resolves; an instance id writes its base role's key.
   if (enable || disable) {

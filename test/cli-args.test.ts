@@ -114,11 +114,11 @@ test("parseRoleFlag returns null when absent (even among other flags) and valida
   for (const id of allRoleIds()) assert.ok(bogus.stderr.includes(id), `valid list names ${id}`);
 });
 
-// User-defined loops are valid --role targets once the config lists them (plans/
+// User-defined roles are valid --role targets once the config lists them (plans/
 // user-defined-loops.md): callers pass knownRoleIds(config) as the accepted set, and an
 // unknown id fails naming the customs too.
 
-test("parseRoleFlag accepts user-defined loop names from a supplied id list", () => {
+test("parseRoleFlag accepts user-defined role names from a supplied id list", () => {
   const ids = [...allRoleIds(), "docs-sync"];
   assert.equal(expectOk(() => parseRoleFlag(["--role", "docs-sync"], ids)), "docs-sync");
 
@@ -129,7 +129,7 @@ test("parseRoleFlag accepts user-defined loop names from a supplied id list", ()
 
   const bogus = expectFail(() => parseRoleFlag(["--role", "bogus"], ids));
   assert.match(bogus.stderr, /unknown role: bogus \(valid ids: .+\)/);
-  assert.ok(bogus.stderr.includes("docs-sync"), "the valid list names the custom loop");
+  assert.ok(bogus.stderr.includes("docs-sync"), "the valid list names the custom role");
 
   // Without a supplied list the catalog alone is authoritative — a custom name is unknown.
   const strict = expectFail(() => parseRoleFlag(["--role", "docs-sync"]));
@@ -186,7 +186,7 @@ test("rejectUnknownArgs adds a did-you-mean hint for a near-miss flag", () => {
 });
 
 test("rejectUnknownArgs rejects unknown tokens with the command's valid flags listed", () => {
-  // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
+  // A misspelled --role used to be ignored: reset-counters would zero EVERY role instead of
   // the one named. Now it fails and names what was accepted.
   const r = expectFail(() => rejectUnknownArgs("reset-counters", ["--rol", "feature"], [{ names: ["--role"], value: true, valueName: "<id>" }]));
   assert.equal(r.code, 1);

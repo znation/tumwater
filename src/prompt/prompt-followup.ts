@@ -15,7 +15,7 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * follow-up. */
 
 /** Why a tick is being resumed: a harness restart interrupted it, it ran out of context (the
- * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
+ * harness resumes the compacted session — see RunnerState.cutOffStreak), a watchdog or the tick
  * deadline killed a still-making-progress run, the budget gate reopened mid-run and the
  * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), the
  * subscription usage window rejected the run and the team held claude seams until it reset
@@ -135,7 +135,7 @@ ${SUMMARY_BLOCK}`;
 }
 
 /** The note injected into a role's next FRESH tick prompt after its previous run(s) were cut
- * off at the context ceiling without merging anything (the loop gave up resuming — see
+ * off at the context ceiling without merging anything (the role gave up resuming — see
  * tick-apply.ts's CUT_OFF_RESUME_LIMIT — or a cut-off director prompt is re-running). The only
  * cross-tick memory that the last attempt was too big for the window. */
 export function buildCutOffNote(streak: number): string {

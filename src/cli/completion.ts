@@ -71,7 +71,7 @@ export function completionSpec(help: string = HELP): CompletionSpec {
   return { commands, subcommands, flags };
 }
 
-/** The ids `--role` completes: this repo's loop ids, or the built-in catalog when tumwater.json is
+/** The ids `--role` completes: this repo's role ids, or the built-in catalog when tumwater.json is
  * unreadable (a broken config must not write errors into the operator's prompt). */
 export function completionRoleIds(root: string): string[] {
   try {
@@ -82,7 +82,7 @@ export function completionRoleIds(root: string): string[] {
 }
 
 /** The keys `config get|set|unset` complete: every form parseConfigKey accepts, with the
- * role-scoped keys of this repo's base roles and custom loops (not instance ids like
+ * role-scoped keys of this repo's base roles and custom roles (not instance ids like
  * `feature-2`). A broken tumwater.json falls back to the built-in catalog rather than writing
  * errors into the prompt. */
 export function completionConfigKeys(root: string): string[] {

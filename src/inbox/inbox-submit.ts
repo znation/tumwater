@@ -21,16 +21,16 @@ import { roleLabel } from "../roles/role-labels.js";
  * and the image side of a submission in src/inbox/inbox-attachments.ts): the shared length cap,
  * the validation, and the submit wrappers the TUI, GUI, and CLI all go through. */
 
-/** Cap on a submitted prompt's length: the same ceiling for every loop's queue, director and
+/** Cap on a submitted prompt's length: the same ceiling for every role's queue, director and
  * role alike, because every prompt rides into its target tick's prefill — a megabyte pasted
  * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
  * ride into the next tick's context wholesale. submitPrompt and submitRolePrompt reject
  * over-long text before it is queued, so no surface can enqueue it. */
 export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
 
-/** The one length rule for a submitted prompt, scoped to the loop it targets: the error
+/** The one length rule for a submitted prompt, scoped to the role it targets: the error
  * message when the trimmed text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. The
- * message names the target loop's tick — `--role qa` must not be told its text rides into
+ * message names the target role's tick — `--role qa` must not be told its text rides into
  * the director's prefill. submitPrompt/submitRolePrompt throw it before anything is queued
  * or logged; the GUI asks it first so an over-long prompt answers 400 (a user-input error)
  * while an unexpected submit failure (a broken inbox's EACCES) stays the 500 its
@@ -46,12 +46,12 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
   );
 }
 
-/** The image-input submit guidance for one loop (plans/image-input.md "Surfaces" and
+/** The image-input submit guidance for one role (plans/image-input.md "Surfaces" and
  * "Attachments", part 5/5): what an image-carrying prompt to `role` means. `refusal` is the
- * throw-and-submit-nothing message when the loop's seam reads no images and no peer tier can
+ * throw-and-submit-nothing message when the role's seam reads no images and no peer tier can
  * (an attachment no configured model can read is refused at submit, not discovered at tick
  * time); `notice` is what a surface prints/shows when the prompt will instead rerun on another
- * tier. Both null when the loop's own model reads images (or capability is unknown — an
+ * tier. Both null when the role's own model reads images (or capability is unknown — an
  * unknown seam is never assumed incapable, mirroring the doctor's `tier models` stance), so
  * the common text-only or vision path says nothing. One resolver (roleImageInfo), shared with
  * the status rows and role page, so the gate cannot disagree with what `tumwater role` or the
@@ -74,8 +74,8 @@ export function imagePromptGuidance(root: string, role: string): { refusal?: str
   };
 }
 
-/** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
- * in the event log under that loop, best-effort — the queue write is the durable effect the
+/** A user submits a new prompt for one role (TUI, GUI, or CLI): enqueue it there and record it
+ * in the event log under that role, best-effort — the queue write is the durable effect the
  * caller asked for, so an unwritable feed must not report the submit as failed. Returns the
  * trimmed prompt that was queued. The logged
  * preview goes through promptPreview — not a raw slice — so an over-long prompt is marked with
@@ -104,7 +104,7 @@ export function submitRolePrompt(
     if (imageProblem) throw new Error(imageProblem);
     // Image input gate (plans/image-input.md "Attachments", part 5/5): an attachment no
     // configured model can read is refused here, before anything is queued or written — the
-    // tick would only fail discovering it. A loop that reroutes a blind read is not refused;
+    // tick would only fail discovering it. A role that reroutes a blind read is not refused;
     // the surface prints/shows the notice instead (imagePromptGuidance is called again there).
     const guidance = imagePromptGuidance(root, role);
     if (guidance.refusal) throw new Error(guidance.refusal);
