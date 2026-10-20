@@ -3135,3 +3135,53 @@ the harness stamp stripped"; `test/operator-revert.test.ts` — "stampedRole rea
 stamped subject only" and "revertFollowUp names a role, and is null when no role made the commit";
 `test/commit-message-stamps.test.ts` — "the subject stamp needs a space or the line's end after its
 colon, and stampedSubject round-trips through both readers".
+
+## Quiet hours: a daily local-time window holds every role but the director, and only a well-formed window holds
+
+`src/scheduling/quiet-hours.ts` owns the quiet-hours gate. The orchestrator polls it once per cycle
+through `src/gates/gate-polls.ts` with the live `quietHours` value.
+
+### INV-BC1: a window is `HH:MM-HH:MM` in local time, and the end is excluded
+
+**Guarantee.** A window is `HH:MM-HH:MM` local time with one dash, hours 0-23 in one or two digits,
+minutes in exactly two, and distinct ends. An absent, empty or whitespace value means off.
+Membership is the half-open `[start, end)`, wrapping midnight when start is after end.
+
+**Binds.** `src/scheduling/quiet-hours.ts` (`parseQuietHours`, `inQuietHours`).
+
+**Pinned by.** `test/quiet-hours.test.ts` — "parseQuietHours: valid windows, empty means off,
+absent means off", "parseQuietHours: malformed values fail with an actionable message",
+"inQuietHours: same-day window boundaries — start in, end out" and "inQuietHours: wrapping window
+spans midnight"; `test/quiet-hours-edges.test.ts` — "parseQuietHours takes one- or two-digit hours
+but exactly two minute digits, and quietWindowEnd reads the end back as written".
+
+### INV-BC2: the team gate logs one event per crossing, and an off or malformed value ends the hold
+
+**Guarantee.** The team gate logs exactly one `quiet_hours_started` or `quiet_hours_ended` per
+crossing, none while settled, and one on a restart mid-window. An off or malformed live value ends
+the hold, and the event's `window` is the value only when it is a string. The director runs through
+the window.
+
+**Binds.** `src/scheduling/quiet-hours.ts` (`pollQuietHoursGate`, `newQuietHoursGateState`).
+
+**Pinned by.** `test/quiet-hours.test.ts` — "pollQuietHoursGate: one started/ended event per
+crossing, none while settled", "pollQuietHoursGate: unset window is silent, restart mid-window logs
+one event" and "pollQuietHoursGate: a live edit from a window to off logs the ended crossing";
+`test/orchestrator-quiet-hours.e2e.test.ts` — "quiet hours block role runs while the director runs;
+emptying the window unblocks live"; `test/quiet-hours-edges.test.ts` — "pollQuietHoursGate reads a
+malformed or non-string value as off, ending a held window with one event that carries only a
+string window".
+
+### INV-BC3: a per-role window holds only its role, and the dashboards advertise only a parsed window
+
+**Guarantee.** A per-role window means what the same string means team-wide and holds only the
+role it names, and an unparseable value never holds. The dashboards advertise a window only when it
+parses, and read its end back as written.
+
+**Binds.** `src/scheduling/quiet-hours.ts` (`roleQuietHold`, `quietHoursStatus`,
+`quietWindowEnd`).
+
+**Pinned by.** `test/quiet-hours.test.ts` — "roleQuietHold: the per-role window holds the role it
+names and no other" and "quietHoursStatus: the window string plus the gate's own membership
+predicate"; `test/quiet-hours-edges.test.ts` — "parseQuietHours takes one- or two-digit hours but
+exactly two minute digits, and quietWindowEnd reads the end back as written".
