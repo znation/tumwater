@@ -51,7 +51,7 @@ import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
-import { lowerMedian } from "../collections.js";
+import { lowerMedian, rankCountEntries } from "../collections.js";
 import { formatBytes, formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, eventsSince, readEventsSince, type EventLogState } from "../events/event-window.js";
@@ -805,7 +805,7 @@ export function checkCheckContention(root: string, config: TumwaterConfig | unde
   if (count === 0) return okOutcome("no check waits");
   let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)}`;
   if (perKind.size > 0) {
-    const ranked = [...perKind.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const ranked = rankCountEntries(perKind);
     detail += ` (behind ${ranked.map(([kind, ms]) => `${kind} ${shortSpanPhrase(ms)}`).join(", ")})`;
   }
   if (total < CHECK_WAIT_WARN_TOTAL_MS) return okOutcome(detail);
