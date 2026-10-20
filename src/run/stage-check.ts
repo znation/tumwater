@@ -93,6 +93,13 @@ const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 const baseFileText = (wt: string, mainBranch: string, file: string): Promise<string | undefined> =>
   changeBaseRev(wt, mainBranch).then((rev) => fileContentAt(wt, rev, file)).catch(() => undefined);
 
+/** Append the reason `check` resolves to, if any, to `findings`; a check that rejects adds
+ * nothing, as staging never fails on a best-effort check. */
+const pushReason = async (findings: string[], check: Promise<string | undefined>): Promise<void> => {
+  const reason = await check.catch(() => undefined);
+  if (reason) findings.push(reason);
+};
+
 /** The findings likely to get this uncommitted change rejected at merge, or an empty list when
  * it is clean: the merge gate's own deterministic checks plus the staging-only heuristics (plan
  * dependencies, the bugfix Waiting note, path drift). Checks the worktree at `wt` against
@@ -110,8 +117,7 @@ export async function stageCheckFindings(
   const files = await changedFiles(wt).catch(() => null);
   if (files === null || files.length === 0) return [];
   const findings: string[] = [];
-  const structure = await backlogStructureReason(wt, mainBranch, files).catch(() => undefined);
-  if (structure) findings.push(structure);
+  await pushReason(findings, backlogStructureReason(wt, mainBranch, files));
   if (files.includes("PLANS.md")) {
     const head = readTextOrNull(path.join(wt, "PLANS.md")) ?? "";
     const base = await baseFileText(wt, mainBranch, "PLANS.md");
@@ -162,14 +168,9 @@ export async function stageCheckFindings(
     const stray = strayPlaceholderFinding(file, head, base);
     if (stray !== undefined) findings.push(stray);
   }
-  const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
-  if (protectedReason) findings.push(protectedReason);
-  const secretReason = await secretLeakReason(wt, mainBranch, files).catch(() => undefined);
-  if (secretReason) findings.push(secretReason);
-  if (isExemptDiff(files, exemptPaths)) {
-    const falseFix = await falseFixReason(wt, mainBranch, files).catch(() => undefined);
-    if (falseFix) findings.push(falseFix);
-  }
+  await pushReason(findings, protectedEditReason(wt, mainBranch, files, role));
+  await pushReason(findings, secretLeakReason(wt, mainBranch, files));
+  if (isExemptDiff(files, exemptPaths)) await pushReason(findings, falseFixReason(wt, mainBranch, files));
   findings.push(...(await gitLevelFindings(wt, mainBranch).catch(() => [])));
   const markers = conflictMarkerReason(wt, files);
   if (markers !== undefined) findings.push(markers);
