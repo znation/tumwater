@@ -20,6 +20,7 @@ import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
 import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
+import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
 import {
   freshLoopState,
   loadLoopState,
@@ -199,6 +200,35 @@ test("cmdAbort rejects an unknown role id", async () => {
   markLive(root);
   const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "ghost"]));
   assert.match(stderr, /unknown role: ghost/);
+});
+
+test("cmdAbort --role takes a comma list and writes one marker per role", async () => {
+  const root = tmpdir();
+  markLive(root);
+  const { stdout } = await expectOk(() => cmdAbort(root, ["--role", "coverage, clean,coverage"]));
+  assert.equal(stdout.match(/abort requested for coverage/g)?.length, 1);
+  assert.equal(stdout.match(/abort requested for clean/g)?.length, 1);
+  assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), true);
+  assert.equal(fs.existsSync(abortRequestPath(root, "clean")), true);
+  assert.equal(fs.existsSync(abortRequestPath(root, "dedupe")), false);
+});
+
+test("cmdAbort with a comma list naming an unknown id writes no marker", async () => {
+  const root = tmpdir();
+  markLive(root);
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "coverage,ghost"]));
+  assert.match(stderr, /unknown role: ghost/);
+  assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), false);
+  const empty = await expectFailAsync(() => cmdAbort(root, ["--role", ","]));
+  assert.match(empty, new RegExp(ROLE_VALUE_ERROR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
+test("cmdAbort with a comma list and no live harness writes no marker", async () => {
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "coverage,clean"]));
+  assert.match(stderr, /tumwater is not running/);
+  assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), false);
+  assert.equal(fs.existsSync(abortRequestPath(root, "clean")), false);
 });
 
 // --- pause / resume ---

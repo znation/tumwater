@@ -105,7 +105,7 @@ function pauseTargetRoles(root: string, args: string[]): string[] | null {
 }
 
 /** The `--role <id>` value a marker command requires: namedRole's resolution plus the
- * command-specific "requires --role" failure. abort and retire both need a target (unlike
+ * command-specific "requires --role" failure. retire needs a target (unlike
  * reset-counters/resume/wake, which default to every role), so the guard lives here once and
  * names the calling command in the error. */
 function requiredNamedRole(root: string, args: string[], command: string): string {
@@ -204,7 +204,8 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
   say(await runManualReclaim(root));
 }
 
-/** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
+/** `tumwater abort --role <id>[,<id>...]`: kill the named roles' in-flight runs right now (a
+ * comma list writes one marker per role). The CLI cannot
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
  * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortTick kills the pi child and resets the worktree to main). Requires a live harness —
@@ -213,10 +214,12 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
   // user-defined loops; a missing --role fails before it is ever needed.
-  const role = requiredNamedRole(root, args, "abort");
-  const result = requestAbort(root, role);
-  if (!result.ok) fail(result.error);
-  say(result.message);
+  const roles = namedRoleList(root, args) ?? fail("abort requires --role <id> (e.g. `--role feature`)");
+  for (const role of roles) {
+    const result = requestAbort(root, role);
+    if (!result.ok) fail(result.error);
+    say(result.message);
+  }
 }
 
 /** `tumwater restart`: apply a pending self-redeploy now, waiving the restart cooldown —

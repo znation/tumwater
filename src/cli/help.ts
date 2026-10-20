@@ -442,8 +442,9 @@ Usage:
                                    --dry-run names the commit and the paths its inverse touches
                                    and says whether it applies cleanly on main, writing nothing
                                    (exit 1 when the revert would conflict or refuse)
-  tumwater abort --role <id>       Stop that role's run in progress (work discarded; the role
-                                   keeps going)
+  tumwater abort --role <id>[,<id>...]
+                                   Stop each named role's run in progress (work discarded; the
+                                   role keeps going)
   tumwater restart                Apply a pending self-redeploy now, waiving the restart
                                    cooldown (the dashboard's update-alert refresh button; a
                                    passing check on main, a successful compile, and in-flight
