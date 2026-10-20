@@ -418,6 +418,8 @@ export async function checkMainBaseline(
           // the same rule runScopedBuildCheck applies at every other scope.
           (first, dur) => onRun?.({ outcome: first, durationMs: dur }),
         ),
+        undefined,
+        "main baseline",
       );
       onRun?.({ outcome, durationMs });
       if (outcome.status === "skipped") {

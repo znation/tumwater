@@ -604,8 +604,15 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "check_wait":
       // Routine-with-explanation, like slot_wait: waiting for a check permit is the cap working
-      // as designed, so no warning prefix.
-      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check)`;
+      // as designed, so no warning prefix. Newer events also name the holders and the cap at park
+      // time; older or malformed ones render the bare line.
+      {
+        const heldBy = stringList(e.heldBy);
+        const limit = finiteNumber(e.limit, null);
+        const behind =
+          heldBy.length > 0 ? `; held by ${heldBy.join(", ")}${limit === null ? "" : ` of maxConcurrentChecks ${limit}`}` : "";
+        return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a check slot (${textOr(e.role)} ${textOr(e.scope)} check${behind})`;
+      }
     case "claim":
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
       // the assignment/release is the harness working as designed, so no warning prefix.

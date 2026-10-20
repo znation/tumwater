@@ -117,8 +117,9 @@ export async function runScopedBuildCheck(
     {
       waiting: () => permitWait?.waiting?.(),
       granted: () => permitWait?.granted?.(),
-      waited: (waitedMs) => logCheckWaitEvent(root, role, scope, waitedMs),
+      waited: (waitedMs, parked) => logCheckWaitEvent(root, role, scope, waitedMs, parked),
     },
+    `${role} ${scope}`,
   );
   // A signal kill at a merge scope, or a timeout whose deadline fired on time (real slowness, a
   // genuinely hung or oversized suite), made no verdict about the tree — and this is the check

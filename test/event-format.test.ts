@@ -1047,6 +1047,11 @@ test("formatEvent renders check_wait with the wait and the role", () => {
   } as never);
   assert.match(line, /waited 45s for a check slot/);
   assert.match(line, /feature merge check/);
+  const base = { ts: 0, source: "feature", type: "check_wait", role: "feature", scope: "merge", waitedMs: 45_000 };
+  const held = formatEvent({ ...base, heldBy: ["feature-2 merge", "main baseline"], limit: 2 } as never);
+  assert.match(held, /\(feature merge check; held by feature-2 merge, main baseline of maxConcurrentChecks 2\)/);
+  assert.doesNotMatch(formatEvent({ ...base, heldBy: [] } as never), /held by/);
+  assert.doesNotMatch(formatEvent({ ...base, heldBy: "x" } as never), /held by/);
 });
 
 test("formatEvent renders provider_wait naming the key and the run cap when none", () => {

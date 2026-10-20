@@ -169,4 +169,9 @@ test("logCheckWaitEvent logs one check_wait only at or past the threshold", () =
   assert.equal(ev.role, "feature");
   assert.equal(ev.scope, "batch");
   assert.equal(ev.waitedMs, CHECK_WAIT_EVENT_MS);
+  assert.equal("heldBy" in ev, false);
+  logCheckWaitEvent(root, "feature", "gate", CHECK_WAIT_EVENT_MS, { heldBy: ["review merge"], limit: 2 });
+  const parked = readEvents(root, 100).filter((e) => e.type === "check_wait")[1] as unknown as Record<string, unknown>;
+  assert.deepEqual(parked.heldBy, ["review merge"]);
+  assert.equal(parked.limit, 2);
 });

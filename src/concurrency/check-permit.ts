@@ -25,6 +25,10 @@ const checkPermits = new Semaphore(defaultConfig().maxConcurrentChecks);
  * nests today; this keeps a future one from deadlocking the team's checks. */
 const holdingPermit = new AsyncLocalStorage<true>();
 
+/** Labels of the checks holding a permit now, keyed by a per-hold token; insertion order is
+ * acquisition order. A check_wait event names them (PermitWaitHooks.waited). */
+const permitHolders = new Map<symbol, string>();
+
 /** Waiting-queue tiers (Semaphore.acquire): a merge-scope check runs inside the merge lock, so it
  * is granted the next free permit ahead of queued gate and baseline checks — every check it waited
  * behind would be lock-hold time for every other merge. A running check is never preempted. */
@@ -46,6 +50,13 @@ export function checkPermitSnapshot(): { inUse: number; limit: number; waiting: 
   return { inUse: checkPermits.snapshot().inUse, limit: checkPermits.limit, waiting: checkPermits.waiting };
 }
 
+/** What a check found when it parked: the labels of the permit holders and the cap, both as of
+ * the moment it parked. */
+export interface ParkedBehind {
+  heldBy: string[];
+  limit: number;
+}
+
 /** Called around a wait for a check permit — only when the permit is not free on arrival: `waiting`
  * before parking, `granted` once the permit arrives. The merge path uses it to show "waiting for a
  * check slot" instead of a check that has not started (merge-slot.ts's checkWaitStage). */
@@ -53,32 +64,40 @@ export interface PermitWaitHooks {
   waiting(): void;
   granted(): void;
   /** Called once, after `granted`, with how long the wait took in ms — only when the permit was not
-   * free. Optional: hooks that only show a stage (merge-slot.ts) omit it. */
-  waited?(waitedMs: number): void;
+   * free, and with who held the permits and the cap when it parked. Optional: hooks that only
+   * show a stage (merge-slot.ts) omit it. */
+  waited?(waitedMs: number, parked: ParkedBehind): void;
 }
 
 /** Run `run` under one process-wide check permit (see checkPermits), resizing the cap from the
  * live config first and releasing in a finally — a check that fails, times out, or throws still
  * gives its permit back. Reentrant (holdingPermit): called again from inside `run`, it runs the
- * inner work under the permit already held. `hooks` hear about a wait, if there is one. */
+ * inner work under the permit already held. `hooks` hear about a wait, if there is one; `label`
+ * names this check to the waiters it holds up ("a check" when omitted). */
 export async function withCheckPermit<T>(
   config: CheckConfigSlice | undefined,
   tier: number,
   run: () => Promise<T>,
   hooks?: PermitWaitHooks,
+  label?: string,
 ): Promise<T> {
   if (holdingPermit.getStore()) return run();
   checkPermits.setCapacity(checkCap(config));
   if (!checkPermits.tryAcquire()) {
     const waitStarted = Date.now();
+    // Snapshot at park time; not revised if holders change mid-wait.
+    const parked = { heldBy: [...permitHolders.values()], limit: checkPermits.limit };
     hooks?.waiting();
     await checkPermits.acquire(tier);
     hooks?.granted();
-    hooks?.waited?.(Date.now() - waitStarted);
+    hooks?.waited?.(Date.now() - waitStarted, parked);
   }
+  const token = Symbol();
+  permitHolders.set(token, label ?? "a check");
   try {
     return await holdingPermit.run(true, run);
   } finally {
+    permitHolders.delete(token);
     checkPermits.release();
   }
 }

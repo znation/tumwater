@@ -35,10 +35,14 @@ test("withCheckPermit bounds concurrency to the configured cap", async () => {
 test("withCheckPermit calls its wait hooks only when the permit is not free", async () => {
   const cfg = { maxConcurrentChecks: 1 };
   const calls: string[] = [];
+  let parkedBehind: unknown;
   const hooks = {
     waiting: () => calls.push("waiting"),
     granted: () => calls.push("granted"),
-    waited: (ms: number) => calls.push(typeof ms === "number" && ms >= 0 ? "waited" : "bad-waited"),
+    waited: (ms: number, parked: unknown) => {
+      parkedBehind = parked;
+      calls.push(typeof ms === "number" && ms >= 0 ? "waited" : "bad-waited");
+    },
   };
   // A free permit: no wait, no hooks.
   await withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran-free"), hooks);
@@ -46,7 +50,7 @@ test("withCheckPermit calls its wait hooks only when the permit is not free", as
   calls.length = 0;
   // A held permit: the second caller announces its wait, then the grant, then runs.
   let releaseFirst!: () => void;
-  const first = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseFirst = r)));
+  const first = withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => (releaseFirst = r)), undefined, "feature merge");
   await flushImmediate();
   const second = withCheckPermit(cfg, CHECK_TIER.other, async () => calls.push("ran"), hooks);
   await flushImmediate();
@@ -54,6 +58,33 @@ test("withCheckPermit calls its wait hooks only when the permit is not free", as
   releaseFirst();
   await Promise.all([first, second]);
   assert.deepEqual(calls, ["waiting", "granted", "waited", "ran"]);
+  assert.deepEqual(parkedBehind, { heldBy: ["feature merge"], limit: 1 });
+});
+
+test("withCheckPermit names every holder, labeled or not, to a parked caller", async () => {
+  const cfg = { maxConcurrentChecks: 2 };
+  let parked: unknown;
+  const release: Array<() => void> = [];
+  const hold = (label?: string) =>
+    withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((r) => release.push(r)), undefined, label);
+  const a = hold();
+  const b = hold("main baseline");
+  await flushImmediate();
+  const c = withCheckPermit(cfg, CHECK_TIER.other, async () => {}, {
+    waiting: () => {},
+    granted: () => {},
+    waited: (_ms, p) => (parked = p),
+  });
+  await flushImmediate();
+  release[0]!();
+  await Promise.all([a, c]);
+  release[1]!();
+  await b;
+  assert.deepEqual(parked, { heldBy: ["a check", "main baseline"], limit: 2 });
+  let hooked = false;
+  const mark = () => (hooked = true);
+  await withCheckPermit(cfg, CHECK_TIER.other, async () => {}, { waiting: mark, granted: mark, waited: mark });
+  assert.equal(hooked, false);
 });
 
 test("a valid config raises the cap for the next checks", async () => {
