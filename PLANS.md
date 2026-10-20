@@ -801,4 +801,46 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing follow tests in test/log-commands.test.ts and test/cli-logs.test.ts pass unchanged (their parent never changes).
 - `npm run test:gate` passes.
 
+### The dashboard's History drill-down gets a "Revert this change" button that previews, then reverts, the run's merged commit through the same cores as `tumwater revert` (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit src/cli/log-commands.ts, `history --model` and the rename series, and none touches src/operator/revert.ts, `handleTick` or the drill-down card; a blocked part of the runner rename series renames identifiers in src/tick/tick-detail.ts, where this plan adds only one exported function)
+
+**Goal.** `tumwater revert <sha> [--dry-run]` (`cmdRevert` in src/operator/operator-commands.ts) undoes one merged change on main. The dashboard's History drill-down (`histDetailCardHtml` in src/ui/gui/gui-client-history.ts, fed by `GET /api/run`, `handleTick` in src/gui/gui-endpoints.ts) already shows which sha a run landed under (`merged as <sha>`, added by the finished plan "A run's trail names the sha its change landed under on main"). To undo it, though, the operator has to copy that sha into a terminal. This plan adds the button that the finished plan was laying the groundwork for. It runs the same two cores (`previewRevert`, `revertMergedCommit` in src/operator/revert.ts), so the dashboard and the CLI cannot drift on what a revert refuses or how it commits.
+
+**Decided scope (no open question).**
+- The button shows only on a run whose change is on the base branch. The server decides which runs those are, not the client.
+- It is a two-step control and never reverts on the first click. The first click fetches a dry-run preview and shows it in the card: subject, paths, and whether it applies cleanly. The second click (a "Revert" button in that preview) commits. If the preview says it would conflict, or that the checkout is dirty, it shows no commit button.
+- After a revert, the card shows `main is now <short sha>` plus the redo warning that `cmdRevert` prints. The card does not track "already reverted". Previewing a second time shows git's verdict (normally a conflict).
+- There is no TUI key. The TUI has no drill-down card to hang it on (its `Ctrl+N` is the newest run only).
+
+**Approach.**
+- **src/tick/tick-detail.ts**: export a `tickLandedSha(d: TickDetail): string | null` that returns `d.mergedSha ?? tickCommitSha(d)`. A no-op fast-forward logs no `merged` event, so its pinned commit is what landed. Give it a doc comment saying that.
+- **src/operator/revert.ts**: export `resolveRevertTarget`, unchanged. Its doc comment adds that `handleTick` also uses it, to decide whether a run's commit is on the base branch.
+- **src/gui/gui-endpoints.ts** `handleTick`: add `revertSha` to the 200 payload. It is the full sha from `resolveRevertTarget(root, landed)` when `landed = tickLandedSha(detail)` is non-null and the target is ok, else null. A rejected or unmerged run's pinned commit is not on main, so it gets null, and so does a primary checkout that is off the base branch. Update the doc comment.
+- **src/gui/gui-operator-commands.ts**: add `handleRevert(req, res, root)` for `POST /api/revert`. Its body is `{"sha": "<hex>", "dryRun"?: true}`, read with `readPostBody(req, res, '{"sha": "1a2b3c4"}')`.
+  - A `sha` that is not a string matching `/^[0-9a-f]{4,64}$/i` gets a 400 and nothing runs. That also rules out a flag-shaped or ref-name value. A `dryRun` that is neither absent nor a boolean also gets a 400.
+  - With `dryRun: true`, call `previewRevert`. Success answers 200 `{ ok: true, preview }`, the RevertPreview object. A refusal answers 409 `{ error }`.
+  - Otherwise call `revertMergedCommit`. Success answers 200 `{ ok: true, headSha, beforeSha, message }`, where `message` is `main is now <short> — the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`. A refusal answers 409 `{ error }` with the core's wording.
+  - Add `handleRevert` to the module's doc-comment list. It is barrelled through src/gui/gui-endpoint-commands.ts like `handleRetire`.
+- **src/gui/gui-server.ts**: add the route `"POST /api/revert": (req, res) => handleRevert(req, res, root)` next to `/api/retire`. It inherits the router's shared Origin/token gate for POSTs.
+- **src/ui/gui/gui-client-history.ts**:
+  - The ok cache entry also keeps `revertSha` (a string, or null when the field is absent, as with an older server). It gains an optional `revert` sub-state: `{ state: "previewing" | "preview" | "reverting" | "done" | "error", preview?, message? }`.
+  - `histDetailCardHtml` appends a `<button type='button' data-hist-revert='<role>#<run>'>Revert this change…</button>` when `revertSha` is set. Below it, it renders the sub-state:
+    - `previewing`: "Checking…"
+    - `preview`: `would revert <short> <subject>`, the paths as a list, then either a `data-hist-revert-go` "Revert" button styled `btn-danger` (applies && !dirty) or the CLI's would-conflict / dirty-checkout sentence.
+    - `done`: the server's message.
+    - `error`: the server's error.
+  - Add `previewHistRevert(key)` and `runHistRevert(key)`, which `postJson("/api/revert", …)` and then `renderHistory()`. Wire them through one delegated click handler in `buildHistoryView`, next to its `data-hist` listener.
+  - `fetchHistory` already clears `histDetails`, so a refetch drops every stale preview.
+
+**Files touched.** src/tick/tick-detail.ts, src/operator/revert.ts, src/gui/gui-endpoints.ts, src/gui/gui-operator-commands.ts, src/gui/gui-endpoint-commands.ts (barrel export), src/gui/gui-server.ts, src/ui/gui/gui-client-history.ts, docs/how-it-works.md (one sentence on the dashboard's History drill-down, beside the existing drill-down mention), docs/cli.md ("Steer the project" row: "the dashboard's History drill-down offers the same revert, preview first"), and the new test file test/gui-revert.test.ts plus test/gui-client-history.test.ts.
+
+**Acceptance criteria.**
+- New test/gui-revert.test.ts, built on the `fakeReq`/`captureJson` shape of test/gui-retire.test.ts with `makeRepo`/`seedCommit` from test/fixtures/repo-fixtures.js:
+  - "POST /api/revert dryRun previews and writes nothing": 200, and `preview.applies` is true. HEAD and `git status --porcelain` are unchanged.
+  - "POST /api/revert reverts a merged commit": 200. HEAD moved, and its subject is `tumwater(operator): Revert <short>`.
+  - "POST /api/revert refuses a sha not on main with 409 and writes nothing" (a commit on a side branch).
+  - "POST /api/revert rejects a non-hex sha and a non-boolean dryRun with 400": `"--json"`, `"main"`, `42`, and `dryRun: "yes"`.
+- The test file that covers `handleTick` (test/gui-server-api.test.ts's "gui /api/run serves one run's detail…" seed, or a new case beside it) checks two things. `revertSha` is the full sha for a run whose `merge_done` commit is on main. It is null for a run whose pinned commit is not in the repo.
+- test/gui-client-history.test.ts covers three cases. (1) An ok entry with `revertSha` renders the `data-hist-revert` button, and one without it does not. (2) Clicking the button posts `{sha, dryRun: true}` and renders the preview's subject and paths plus a `data-hist-revert-go` button. A preview with `applies: false` renders no go button. (3) Clicking go posts `{sha}` with no `dryRun` and renders the server's message.
+- `npm run test:gate` passes.
+
 ## Done
