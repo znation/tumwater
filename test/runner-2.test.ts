@@ -23,11 +23,11 @@ import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readRunBlocks, TOUC
 import { waitForFile } from "./helpers/wait.js";
 import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./fixtures/pi-events.js";
 
-// Thrash flag (plans/refusal-and-thrash.md item b): a changed tick whose authoring run burned
+// Thrash flag (plans/refusal-and-thrash.md item b): a changed run whose authoring run burned
 // BOTH more than thrashTurns turns and thrashMinutes of wall clock is flagged high-friction —
 // one warning event carrying both thresholds, the outcome flag, the reviewer prompt's
 // HIGH-FRICTION marker, and the Friction trailer line on the commit itself. Requiring both (not
-// either) keeps a fast model's ordinary 40-turn/few-minute tick unflagged (BUGS.md 2026-09-19).
+// either) keeps a fast model's ordinary 40-turn/few-minute run unflagged (BUGS.md 2026-09-19).
 // The fake pi identifies reviewer runs by their VERDICT prompt (the pattern this file already
 // uses for gate tests) and records that run's args to a file outside the worktree.
 
@@ -72,7 +72,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
     // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
     assert.match(fs.readFileSync(reviewArgs, "utf8"), /HIGH-FRICTION/);
 
-    // The commit on main carries the Friction trailer line after the Tick line (item d's e2e).
+    // The commit on main carries the Friction trailer line after the Run line (item d's e2e).
     const body = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(body, /^Run: improve #\d+ · turns 2 · ctx \S+\nModel: .+\nFriction: high \(2 turns \/ \d+m\)$/m);
   });
@@ -85,7 +85,7 @@ test("a changed run past only thrashTurns is not flagged high-friction", async (
     reviewerPi("VERDICT: approve", reviewArgs),
     // Two turns with thrashTurns set to 1 is past the turn threshold; the default
     // thrashMinutes of 30 is nowhere near → only the turns side fires. Both are required, so
-    // an ordinary fast tick is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
+    // an ordinary fast run is NOT flagged (the false positive BUGS.md 2026-09-19 recorded).
     `printf '%s\\n' '${assistantLine("first turn of work")}'`,
     `printf '%s\\n' '${assistantLine("second turn\nSUMMARY: fast change", { tokens: 42, output: 42, cost: 0.05 })}'`,
     `echo hello > hello.txt`,
@@ -140,9 +140,9 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
 });
 
 // Self-explaining commit bodies (plans/commit-bodies.md item a): the reply contract's
-// WHY/RISK/VERIFIED lines end up in an ACTUAL tick commit on main, and a SUMMARY-only reply
+// WHY/RISK/VERIFIED lines end up in an ACTUAL run commit on main, and a SUMMARY-only reply
 // commits subject + trailer only. The pure-function units live in test/commit-message.test.ts;
-// this e2e reads real `git log` content from two ticks of one runner — the first compliant,
+// this e2e reads real `git log` content from two runs of one runner — the first compliant,
 // the second non-compliant — so both halves of buildCommitMessage's assembly are pinned
 // against what git actually stores, including that the reviewer run does not inflate the
 // trailer's turn count.
@@ -150,7 +150,7 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
 test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only reply commits subject + trailer only", async () => {
   const repo = await initializedRepo();
   // The fake pi counts its invocations in a file OUTSIDE the worktree (so it never dirties
-  // the tree) and answers each author run differently: tick 1 compliant, tick 2 SUMMARY-only.
+  // the tree) and answers each author run differently: run 1 compliant, run 2 SUMMARY-only.
   const counter = path.join(tmpdir(), "pi-calls");
   fs.writeFileSync(counter, "0");
   const compliant = assistantLine(
@@ -171,7 +171,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
 
-    // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
+    // Run 1: compliant reply → the commit on main carries subject, body (all three fields,
     // in contract order), and the harness-stamped trailer as separate paragraphs. One author
     // turn plus one reviewer run — the trailer counts only the pre-commit author turns.
     assert.equal((await runner.run()).result, "queued");
@@ -182,7 +182,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
       /^tumwater\(improve\): add hello file\n\nWHY: the roles needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nRun: improve #1 · turns 1 · ctx 42$/m,
     );
 
-    // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
+    // Run 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
     assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const second = sh(repo, "git", "log", "-1", "--format=%B");
@@ -191,17 +191,17 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
   });
 });
 
-// Per-tick usage in the event feed (PLANS.md): run_end carries this tick's tokens and cost,
+// Per-run usage in the event feed (PLANS.md): run_end carries this run's tokens and cost,
 // so `tumwater logs` shows where spend went without diffing status-table snapshots. The
-// rendering rules live in test/event-format.test.ts; these e2es pin that a real tick emits
-// the fields on its event — summed over every pi run of the tick (here: author + zero-usage
-// reviewer) — and that a skipped tick carries neither.
+// rendering rules live in test/event-format.test.ts; these e2es pin that a real run emits
+// the fields on its event — summed over every pi run of the run (here: author + zero-usage
+// reviewer) — and that a skipped run carries neither.
 
 test("a changed run's run_end event carries its per-run tokens and cost", async () => {
   const repo = await initializedRepo();
   const script = [
-    // The reviewer run reports zero usage, so the tick's totals are exactly the author
-    // run's — the same numbers the status table's gen column shows for this tick.
+    // The reviewer run reports zero usage, so the run's totals are exactly the author
+    // run's — the same numbers the status table's gen column shows for this run.
     APPROVE_PI,
     `printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 18400, output: 18400, cost: 0.37 })}'`,
     `echo hello > hello.txt`,
@@ -216,7 +216,7 @@ test("a changed run's run_end event carries its per-run tokens and cost", async 
     // zero-usage reviewer) rides the `merge_done` event instead.
     assert.equal(ends[0]!.tokens, 18400);
     assert.equal(ends[0]!.costUsd, 0.37);
-    // The state file still carries the same per-tick window (the gen column's source).
+    // The state file still carries the same per-run window (the gen column's source).
     assert.equal(runner.state.generatedTokens, 18400);
 
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -240,9 +240,9 @@ test("a skipped run's run_end event carries no usage fields", async () => {
   assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped run");
 });
 
-// Context-ceiling memory across ticks (src/prompt/prompt-followup.ts buildCutOffNote /
+// Context-ceiling memory across runs (src/prompt/prompt-followup.ts buildCutOffNote /
 // buildResumePrompt's cut-off cause): a cut-off resume must be told what actually happened, and a
-// fresh tick after
+// fresh run after
 // the runner gave up resuming must be told its last attempts were too big for the window.
 test("a cut-off resume is bridged as a cut-off, and the fresh run after the limit carries the note", async () => {
   const repo = await initializedRepo();
@@ -255,7 +255,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh run after the limi
     fs.mkdirSync(sessionDir(repo, "perf"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
     const runner = makeRoleRunner(repo, "perf");
-    // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
+    // Run 1 fresh; runs 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); run 5 is fresh again.
     for (let i = 1; i <= 5; i++) assert.equal((await runner.run()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 5);
@@ -266,7 +266,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh run after the limi
       assert.match(resumed, /ran out of context before it could finish/);
       assert.doesNotMatch(resumed, /Tumwater was restarted/);
     }
-    // Tick 5 is fresh (past the limit): the only memory of four failed attempts is the note,
+    // Run 5 is fresh (past the limit): the only memory of four failed attempts is the note,
     // and it counts every cut-off — the streak keeps counting past the resume limit.
     assert.doesNotMatch(runs[4]!, /--continue/);
     assert.match(runs[4]!, /Your previous 4 runs as this role ran out of context before merging anything/);
@@ -294,7 +294,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     fs.mkdirSync(sessionDir(repo, "clean"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "clean"), "s.jsonl"), "{}\n");
     // The resumed run finds the interrupted edit in place and decides against it: a clean
-    // nothing-to-do finish, so the tick merges nothing and never reaches the review gate.
+    // nothing-to-do finish, so the run merges nothing and never reaches the review gate.
     restore = fakePi(
       [
         logPromptsTo(promptsFile),
@@ -318,7 +318,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase");
   const argsFile = path.join(tmpdir(), "argv.log");
-  // Attempt 1: pi dies mid-run the way five ticks did in the first 18 days — a JSON.parse
+  // Attempt 1: pi dies mid-run the way five runs did in the first 18 days — a JSON.parse
   // failure on a torn model-server chunk, nothing on stdout worth keeping. Attempt 2 (the
   // harness retry, detected by the phase file) continues the same session and finishes.
   const script = [
@@ -343,16 +343,16 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   });
 });
 
-// A failed pin write is the tick's fail-closed branch: the commit STAYS on the branch for
-// next-tick recovery — resetting the worktree here would orphan it. Blocking the ref: git
+// A failed pin write is the run's fail-closed branch: the commit STAYS on the branch for
+// next-run recovery — resetting the worktree here would orphan it. Blocking the ref: git
 // happily removes an EMPTY directory at a ref's path before creating the file, but not a
 // non-empty one — the stray blocker file makes `git update-ref` fail, like an un-writable
-// .git would. Tick 2's leftover recovery then adopts the unpinned tip
+// .git would. Run 2's leftover recovery then adopts the unpinned tip
 // into the pin scheme and queues it for the same review gate — invariant 1 must hold
 // whether or not the pin survived (plans/merge-queue.md).
 test("a failed pin leaves the commit on the branch; the next run recovers and merges it", async () => {
   const repo = await initializedRepo();
-  // Tick 1: one authoring run that makes a change. The tick ends at commit + pin, so the
+  // Run 1: one authoring run that makes a change. The run ends at commit + pin, so the
   // VERDICT branch below only guards against the review prompt ever reaching this script.
   const script1 = [
     APPROVE_PI,
@@ -389,9 +389,9 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
   });
   fs.rmSync(blockedRef, { recursive: true, force: true });
 
-  // Unblock done (the first tick's withPi block ended); tick 2's leftover recovery adopts the
+  // Unblock done (the first run's withPi block ended); run 2's leftover recovery adopts the
   // unpinned commit and puts it on
-  // the merge queue — the tick ends there, like a fresh changed tick — and the merge slot
+  // the merge queue — the run ends there, like a fresh changed run — and the merge slot
   // merges
   // it through the same gate, with the approve.
   const script2 = [
@@ -410,7 +410,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
     assert.equal(await refSha(repo, mergeRefName("improve")), null, "the merged pin is deleted");
     assert.equal(queueDepth(repo), 0);
     // Like the pinned-recovery case, the merge is recorded as a merged event (what the
-    // usage report counts), from the merge slot rather than the tick.
+    // usage report counts), from the merge slot rather than the run.
     const merged = eventsOfType(repo, "merged");
     assert.equal(merged.length, 1);
     // The merged summary names what merged — the recovered commit's own subject — not
@@ -420,9 +420,9 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
   });
 });
 
-// A tick whose authoring agent reads an image on a model that cannot see it stops and fails
-// (plans/image-input.md "Detecting a blind read" / "Failing the tick"): pi strips such an
-// image from the request, so the run is killed at the first read and the tick ends error
+// A run whose authoring agent reads an image on a model that cannot see it stops and fails
+// (plans/image-input.md "Detecting a blind read" / "Failing the run"): pi strips such an
+// image from the request, so the run is killed at the first read and the run ends error
 // instead of answering about a picture it never saw. The fake pi emits the read start, its
 // end carrying pi's non-vision note, and nothing more — the runner must kill it before any
 // further output.
@@ -448,10 +448,10 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
 });
 
 // Image-input reroute (plans/image-input.md part 4/5): with a text-only default tier and a
-// vision strong tier, a blind read on a text-only runner ends the tick aborted/`image-reroute`
-// (no target-less error), and the NEXT tick runs immediately on the vision target in a fresh
+// vision strong tier, a blind read on a text-only runner ends the run aborted/`image-reroute`
+// (no target-less error), and the NEXT run runs immediately on the vision target in a fresh
 // session over the kept worktree carrying the handoff note — its run_start stamped
-// reroute:"image" — while the tick after that is back on the runner's own tier.
+// reroute:"image" — while the run after that is back on the runner's own tier.
 test("a blind read on a text-only role reroutes to the vision target, then back to its own tier", async () => {
   const repo = await initializedRepo();
   // A text-only default tier and a vision strong tier, via a models.json in the suite's
@@ -483,7 +483,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   ].join("\n");
   const runner = makeRoleRunner(repo, "feature", config);
 
-  // Tick 1: the blind read stops the tick; with a vision target it ends aborted/image-reroute
+  // Run 1: the blind read stops the run; with a vision target it ends aborted/image-reroute
   // and records the one-shot marker instead of failing.
   await withPi(blindScript, async () => {
     const outcome = await runner.run();
@@ -494,7 +494,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   assert.equal(runner.state.imageReroute?.model, "vision");
   assert.equal(runner.state.imageReroute?.path, "/x/s.png");
 
-  // Tick 2: a fresh-session run on the vision target. The handoff note names the prior model
+  // Run 2: a fresh-session run on the vision target. The handoff note names the prior model
   // and the image, run_start is stamped reroute:"image" on local/vision, and the one-shot
   // marker is consumed.
   await withPi(settlePi, async () => {
@@ -502,8 +502,8 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
     assert.equal(outcome.result, "no_change");
   });
   assert.equal(runner.state.imageReroute, undefined, "the one-shot marker is consumed by the rerouted run");
-  // The blind tick (1) is killed at the first read, so only the rerouted tick (2) reliably
-  // reaches its logPromptsTo line; take the last logged prompt as tick 2's.
+  // The blind run (1) is killed at the first read, so only the rerouted run (2) reliably
+  // reaches its logPromptsTo line; take the last logged prompt as run 2's.
   const blocks = readRunBlocks(promptsFile);
   const reroutedPrompt = blocks[blocks.length - 1] ?? "";
   assert.match(reroutedPrompt, /cannot read images/);
@@ -513,7 +513,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   assert.ok(reroutedStart, "run_start carries reroute:image on the rerouted run");
   assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted run runs on the target");
 
-  // Tick 3: back on the runner's own text-only tier — run_start has no reroute stamp and names
+  // Run 3: back on the runner's own text-only tier — run_start has no reroute stamp and names
   // the runner's own model.
   await withPi(settlePi, async () => {
     const outcome = await runner.run();
@@ -527,7 +527,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
 
 // Image-input reroute for the DIRECTOR (plans/image-input.md part 4/5, INV-J2): the director
 // never resumes, so the rerouted prompt runs FRESH on the image-capable target exactly once, and
-// the one-shot marker clears (in runTickPhase) so the director's later ticks are back on its own
+// the one-shot marker clears (in runOncePhase) so the director's later runs are back on its own
 // tier instead of being re-routed forever.
 test("a rerouted director prompt runs fresh on the vision target and is delivered once", async () => {
   const repo = await initializedRepo();
@@ -565,8 +565,8 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   const runner = makeRoleRunner(repo, "director", config);
   enqueuePrompt(repo, "read the attached image");
 
-  // Tick 1: the director's blind read ends aborted/`image-reroute` and records the one-shot
-  // marker; the director never resumes, so the prompt re-queues to run fresh next tick.
+  // Run 1: the director's blind read ends aborted/`image-reroute` and records the one-shot
+  // marker; the director never resumes, so the prompt re-queues to run fresh next run.
   await withPi(blindScript, async () => {
     const outcome = await runner.run();
     assert.equal(outcome.result, "aborted", "a director blind read with a target ends aborted");
@@ -574,7 +574,7 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   });
   assert.equal(runner.state.imageReroute?.tier, "strong");
 
-  // Tick 2: the rerouted director prompt runs FRESH on the vision target, and the one-shot
+  // Run 2: the rerouted director prompt runs FRESH on the vision target, and the one-shot
   // marker is consumed so it is NOT re-routed again.
   await withPi(settlePi, async () => {
     const outcome = await runner.run();
@@ -586,9 +586,9 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   assert.ok(reroutedStart, "run_start carries reroute:image on the rerouted director run");
   assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted director run runs on the target");
 
-  // Tick 3: with a NEW queued prompt and the one-shot marker cleared, the director is back on
+  // Run 3: with a NEW queued prompt and the one-shot marker cleared, the director is back on
   // its own text-only tier — no reroute stamp, own model (without the clearing fix the marker
-  // would persist and this tick would re-route onto the vision target).
+  // would persist and this run would re-route onto the vision target).
   enqueuePrompt(repo, "a follow-up director prompt");
   await withPi(settlePi, async () => {
     const outcome = await runner.run();

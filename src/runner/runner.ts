@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { TickOutcome } from "../run/run-outcome.js";
+import type { RunOutcome } from "../run/run-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { loadRunnerState, saveRunnerState, zeroCounters, type RunnerState } from "./runner-state.js";
@@ -21,8 +21,8 @@ import { modelFallbackActive } from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import { RunUsage } from "../run/run-usage.js";
 import {
-  runTickPhase,
-  tickPhase,
+  runOncePhase,
+  runPhase,
   type FallbackRunContext,
   type RunnerRunContext,
 } from "./runner-run.js";
@@ -34,13 +34,13 @@ import {
 import { foldModelFallbackPhase } from "./runner-fallback.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
-/** One role runner: owns a persistent worktree + branch and runs one tick at a time. */
+/** One role runner: owns a persistent worktree + branch and runs one run at a time. */
 export class RoleRunner {
   state: RunnerState;
   /** The current tumwater.json config. Not readonly on purpose: the orchestrator pushes a
    * freshly loaded config in here every poll cycle (live-reload), and every downstream read
    * goes through this, so one assignment steers provider/model/thinking/instructions,
-   * tick intervals, backoff, and role enablement for subsequent ticks. */
+   * run intervals, backoff, and role enablement for subsequent runs. */
   config: TumwaterConfig;
   /** The 429 observation from this runner's usage accounting (RunUsage.lastRateLimit,
    * src/run/run-usage.ts): the orchestrator's team-wide hold wiring reads it through the
@@ -55,37 +55,37 @@ export class RoleRunner {
   get lastBackendFailure(): { at: number; kind: BackendFailureKind; provider?: string } | undefined {
     return this.usage.lastBackendFailure;
   }
-  /** Per-tick and lifetime usage accounting (src/run/run-usage.ts): the turns/cost windows the
+  /** Per-run and lifetime usage accounting (src/run/run-usage.ts): the turns/cost windows the
    * commit trailer and run_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new RunUsage();
-  /** The dequeued user prompt a tick is executing and its requeue policy
+  /** The dequeued user prompt a run is executing and its requeue policy
    * (src/inbox/pending-prompt.ts): the raw director request is recorded at dequeue so an
-   * unfulfilled tick (abort, timeout, or failure without changes) can re-queue it instead of
+   * unfulfilled run (abort, timeout, or failure without changes) can re-queue it instead of
    * losing the request. */
   private readonly pending: PendingPrompt;
-  /** Per-tick abort controller, recreated at every tick start: `abortRun()` kills the
+  /** Per-run abort controller, recreated at every run start: `abortRun()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
    * would stop the whole team. */
   private runAbort = new AbortController();
-  /** Set by abortRun() when a user-initiated abort lands mid-tick: runOnce's two abort
+  /** Set by abortRun() when a user-initiated abort lands mid-run: runOnce's two abort
    * branches (author run, review gate) then diverge from shutdown semantics — worktree reset
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
-   * at the next tick start so a stale request can never leak into a later tick. */
+   * at the next run start so a stale request can never leak into a later run. */
   private userAborted = false;
-  /** Set by handBackRun() when a budget-reopened handback lands mid-tick: it aborts the
-   * tick WITHOUT the user-abort flag, so finishAbortedRun takes its shutdown branch (pi
-   * session and worktree edits kept) and the tick ends `aborted` — but with a named resume
+  /** Set by handBackRun() when a budget-reopened handback lands mid-run: it aborts the
+   * run WITHOUT the user-abort flag, so finishAbortedRun takes its shutdown branch (pi
+   * session and worktree edits kept) and the run ends `aborted` — but with a named resume
    * cause, so the resumed session's bridge prompt says the run moved back to the primary
-   * model instead of claiming a harness restart. Cleared at the next tick start, like
+   * model instead of claiming a harness restart. Cleared at the next run start, like
    * userAborted. */
   private handedBack = false;
-  /** The provider/model pair this tick's config resolved to at tick start (configForRole):
-   * what the in-flight tick is running on. The orchestrator's budget-gate poll reads it via
-   * runModelPair() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30); with
+  /** The provider/model pair this run's config resolved to at run start (configForRole):
+   * what the in-flight run is running on. The orchestrator's budget-gate poll reads it via
+   * runModelPair() to hand fallback runs back when the budget reopens (PLANS.md 2026-09-30); with
    * per-tier fallbacks (part 5c/8) the handback matches this pair against EVERY pair the tiers
    * resolve to, since different roles may run on different pairs.
-   * Transient — never persisted — and captured fresh at every tick start. */
+   * Transient — never persisted — and captured fresh at every run start. */
   private runPair?: { provider?: string; model?: string };
   /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
@@ -94,14 +94,14 @@ export class RoleRunner {
    * the runner itself is mid-fallback; defaults false, so standalone-runner tests stay on the
    * primary regime unless they set it. */
   budgetFallbackActive = false;
-  /** The merge failure this tick's leftover recovery is retrying, if any (a retriable merger
+  /** The merge failure this run's leftover recovery is retrying, if any (a retriable merger
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryRun and
-   * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
-   * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
+   * attached to the returned RunOutcome so applyRunOutcome can feed it into the error streak
+   * even though the run itself ends `queued` (BUGS.md 2026-09-21). Reset at every run start. */
   private recoveryFailure?: string;
   /** This runner's pi-run plumbing (src/runner/runner-pi.ts): shared per-run wiring, the transient
    * retry policy, and the SUMMARY follow-up. Host accessors are read live at every call, so
-   * the orchestrator's config live-reload and the tick lifecycle need no notification path. */
+   * the orchestrator's config live-reload and the run lifecycle need no notification path. */
   private readonly pi: RunnerPi;
   /** This runner's base role: `feature-2` → `feature`. Every identity lookup that is ABOUT the
    * role (its catalog charter, model, tier, red-main class) reads this, while state, branch,
@@ -133,7 +133,7 @@ export class RoleRunner {
       runNumber: () => this.state.runs,
       sleep: this.sleep,
     });
-    // A persisted running flag means the previous process died mid-tick WITHOUT the
+    // A persisted running flag means the previous process died mid-run WITHOUT the
     // graceful-abort bookkeeping (crash, kill -9, power loss). The interruption looks the
     // same on disk — pi session and worktree edits in place — so resume it the same way.
     if (this.state.running && role !== DIRECTOR_ROLE) this.state.resumePending = true;
@@ -156,7 +156,7 @@ export class RoleRunner {
 
   /** Zero the accumulated counters in memory and persist them (the orchestrator's
    * `tumwater reset-counters` request). Mutating the EXISTING state object keeps an in-flight
-   * tick's own start/end saves authoritative over the same reference; swapping in a fresh copy
+   * run's own start/end saves authoritative over the same reference; swapping in a fresh copy
    * would lose its nextRunAt/backoff/lastResult and leave running=true on disk. */
   resetCounters(): void {
     Object.assign(this.state, zeroCounters(this.state));
@@ -165,16 +165,16 @@ export class RoleRunner {
 
   /** Clear this runner's backoff in memory and persist (the orchestrator's `tumwater wake`
    * request). Eligibility reads the IN-MEMORY state; the mutation is in place on the EXISTING
-   * object, as with resetCounters, so an in-flight tick's saves stay authoritative. */
+   * object, as with resetCounters, so an in-flight run's saves stay authoritative. */
   wake(): void {
     Object.assign(this.state, clearBackoff(this.state, Date.now()));
     this.save();
   }
 
-  /** Kill this runner's in-flight tick on user request (`tumwater abort --role <id>`). No-op
-   * when no tick is running — the orchestrator checks `state.running` before calling, and a
+  /** Kill this runner's in-flight run on user request (`tumwater abort --role <id>`). No-op
+   * when no run is running — the orchestrator checks `state.running` before calling, and a
    * direct call must not arm a stale flag. Otherwise set the userAborted flag and abort the
-   * per-tick controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
+   * per-run controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
    * escalation) exactly like a harness shutdown, but only this runner's run dies — the team
    * keeps running. */
   abortRun(): void {
@@ -183,26 +183,26 @@ export class RoleRunner {
     this.runAbort.abort();
   }
 
-  /** Hand this runner's in-flight tick back to the primary model after the budget gate reopens
-   * (PLANS.md 2026-09-30): abort the per-tick controller WITHOUT the user-abort flag, so
+  /** Hand this runner's in-flight run back to the primary model after the budget gate reopens
+   * (PLANS.md 2026-09-30): abort the per-run controller WITHOUT the user-abort flag, so
    * finishAbortedRun takes its shutdown branch — pi session and worktree edits kept — and
-   * the tick ends `aborted`, which applyTickOutcome schedules to resume promptly. The
+   * the run ends `aborted`, which applyRunOutcome schedules to resume promptly. The
    * orchestrator calls this on every runner whose runModelPair() still matches the fallback
-   * pair the gate just left; a tick started on the primary (and the director) keeps running.
-   * No-op when no tick is running, like abortRun. */
+   * pair the gate just left; a run started on the primary (and the director) keeps running.
+   * No-op when no run is running, like abortRun. */
   handBackRun(): void {
     if (!this.state.running) return;
     this.handedBack = true;
     this.runAbort.abort();
   }
 
-  /** The provider/model pair the in-flight tick is running on (null when idle): the
+  /** The provider/model pair the in-flight run is running on (null when idle): the
    * orchestrator's budget handback matches this against the fallback pair it just left. */
   runModelPair(): { provider?: string; model?: string } | null {
     return this.state.running ? (this.runPair ?? null) : null;
   }
 
-  /** The config this role's NEXT tick will run on: the tier fallback pair while the episode is
+  /** The config this role's NEXT run will run on: the tier fallback pair while the episode is
    * active (a due probe runs the primary), else the role's own resolved config. The hold and
    * start passes read this so a role mid-episode is keyed by the provider it will actually use.
    * Pure read of config + state + the caller's clock. */
@@ -218,8 +218,8 @@ export class RoleRunner {
 
   runConfig(now: number): ResolvedModelConfig {
     // A pending image-input reroute (plans/image-input.md part 4/5) outranks the role's own
-    // tier and its model fallback: the next tick starts on the image-capable target the
-    // blind-read tick recorded, rebuilt from the stored seam over the live config.
+    // tier and its model fallback: the next run starts on the image-capable target the
+    // blind-read run recorded, rebuilt from the stored seam over the live config.
     if (this.state.imageReroute) {
       const r = this.state.imageReroute;
       return withModelOverrides(this.config, r.tier, {
@@ -241,15 +241,15 @@ export class RoleRunner {
     return seamHoldKey(this.runConfig(now));
   }
 
-  /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user
+  /** The signal every pi run of the current run watches: harness shutdown OR a per-run user
    * abort (Node ≥ 20's AbortSignal.any). */
   private runSignal(): AbortSignal {
     return this.signal ? AbortSignal.any([this.signal, this.runAbort.signal]) : this.runAbort.signal;
   }
 
-  /** Assemble this tick's prompt via src/run/run-prompt.ts (the prompt-content concern lives
+  /** Assemble this run's prompt via src/run/run-prompt.ts (the prompt-content concern lives
    * there); the dequeued user request — the director's, or a per-role one — rides back so the
-   * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
+   * runner records it as pending — re-queued if the run ends without fulfilling it. Null when
    * the runner has nothing to run (an empty director inbox); a role runner's assembly never
    * returns null. */
   private runPrompt(agent?: string): string | null {
@@ -263,7 +263,7 @@ export class RoleRunner {
   }
 
   /** Thin delegate to finishAbortedTickPhase (src/runner/runner-recovery.ts). */
-  private async finishAbortedRun(userPrompt: string | null, wt: string): Promise<TickOutcome> {
+  private async finishAbortedRun(userPrompt: string | null, wt: string): Promise<RunOutcome> {
     return finishAbortedTickPhase(this.runContext(), userPrompt, wt, this.userAborted, this.handedBack);
   }
 
@@ -278,11 +278,11 @@ export class RoleRunner {
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,
-  ): Promise<TickOutcome> {
+  ): Promise<RunOutcome> {
     return finishRecoveryTickPhase(this.runContext(), recovered, userPrompt, wt, priorMergeFailure);
   }
 
-  /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
+  /** Fold one pi run's usage into the run's counters and the lifetime totals — the
    * accounting itself lives in RunUsage.fold (src/run/run-usage.ts); this keeps the once-per-run
    * choke point and the foldMergeUsage face on the runner, where RunnerPi and the merge
    * wiring (src/merge/merge-slot.ts) reach them. */
@@ -292,7 +292,7 @@ export class RoleRunner {
 
   /** Run pi for the orchestrator's merge slot (merge queue 3/5): runRolePi's shared wiring
    * with usage folded into this runner's counters, watching ONLY the harness shutdown signal
-   * (`this.signal`) — a merge is outside any tick, so `tumwater abort --role` must never
+   * (`this.signal`) — a merge is outside any run, so `tumwater abort --role` must never
    * reach it. The plumbing lives in src/runner/runner-pi.ts; this is the merge slot's public
    * face. */
   async runMergePi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
@@ -313,18 +313,18 @@ export class RoleRunner {
   /** Public face of foldUsage for the orchestrator's merge wiring: folds a merge pi run
    * (reviewer, conflict resolution) into the AUTHORING role's counters, so the team's daily
    * cost and the per-role usage windows attribute that spend to the role that authored the
-   * work — no new counter semantics, just the same fold runner.ts applies to its tick runs. */
+   * work — no new counter semantics, just the same fold runner.ts applies to its agent runs. */
   foldMergeUsage(run: PiRunResult, provider?: string, pair?: string): void {
     // authoring=false: a merge/review run's usage counts toward cost and prompt tokens, but
-    // never toward the tick's pre-edit counter (src/run/run-usage.ts fold).
+    // never toward the run's pre-edit counter (src/run/run-usage.ts fold).
     this.usage.fold(this.state, run, false, provider, pair);
   }
 
-  /** Run one full tick of this role runner (the pipeline lives in src/runner/runner-run.ts):
-   * `tickPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
-   * and finalizes. Never throws: a failed tick is an "error" result, saved and logged. */
-  async run(): Promise<TickOutcome> {
-    return tickPhase(this.runContext());
+  /** Run one full run of this role runner (the pipeline lives in src/runner/runner-run.ts):
+   * `runPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
+   * and finalizes. Never throws: a failed run is an "error" result, saved and logged. */
+  async run(): Promise<RunOutcome> {
+    return runPhase(this.runContext());
   }
 
   /** Thin delegate to foldModelFallbackPhase (src/runner/runner-fallback.ts). */
@@ -337,12 +337,12 @@ export class RoleRunner {
   private async runOnce(
     cfg: ResolvedModelConfig,
     fallbackCtx: FallbackRunContext,
-  ): Promise<TickOutcome> {
-    return runTickPhase(this.runContext(), cfg, fallbackCtx);
+  ): Promise<RunOutcome> {
+    return runOncePhase(this.runContext(), cfg, fallbackCtx);
   }
 
-  /** Assemble the tick pipeline's host context (src/runner/runner-run.ts) from this runner's
-   * fields. `config` and `recoveryFailure` are live getters, so a mid-tick change is seen as
+  /** Assemble the run pipeline's host context (src/runner/runner-run.ts) from this runner's
+   * fields. `config` and `recoveryFailure` are live getters, so a mid-run change is seen as
    * the pre-split methods saw it; every callback is bound to this runner. */
   private runContext(): RunnerRunContext {
     const self = this;

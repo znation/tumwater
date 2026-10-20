@@ -434,7 +434,7 @@ inconclusive (never a provider failure or an "answered").
 "an authoring run that reads an image on a blind model is killed and fails" and "a gate run
 that reads an image on a blind model is logged, not killed"; `test/run-verdict.test.ts` — "a
 blind image read fails the tick with an error naming the file and the model";
-`test/runner-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
+`test/runner-2.test.ts` — "a run whose agent reads an image on a blind model stops and fails".
 
 ### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted run never hops twice
 

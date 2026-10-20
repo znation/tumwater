@@ -53,7 +53,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "runs");
   // The machine sleeps long enough that pi reports the idle-stream timeout AND the
-  // harness's own tick timeout fires: retrying would just burn another full timeout.
+  // harness's own run timeout fires: retrying would just burn another full timeout.
   await withPi(
     [
       `echo run >> "${counter}"`,
@@ -63,7 +63,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
     async () => {
       const config = defaultConfig();
       config.runTimeoutSeconds = 3;
-      // The tick timeout on logical time (watchdogClock with timeouts): it fires once the shim
+      // The run timeout on logical time (watchdogClock with timeouts): it fires once the shim
       // has printed its error line — on the wall clock a 1s budget could expire during process
       // spawn under load, before the shim printed anything at all (BUGS.md 2026-09-18). A retry
       // (the regression) prints a second line and is timed out in turn, so the run count below
@@ -71,10 +71,10 @@ test("a transient timeout that also hits the harness timeout is not retried", as
       const clock = watchdogClock(t, { timeouts: true });
       const runner = makeRoleRunner(repo, "clean", config);
       let settled = false;
-      const tick = runner.run().finally(() => (settled = true));
+      const runDone = runner.run().finally(() => (settled = true));
       const log = piLogPath(repo, "clean");
       for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_000);
-      const outcome = await tick;
+      const outcome = await runDone;
       // The shim's error line is one real progress event, but none lands within the final
       // `progressWindowMs` before the deadline, so the timeout discards instead of resuming
       // (BUGS.md 2026-10-09). The pinned property is the one below — still exactly one pi
@@ -89,7 +89,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
 
 test("a transient timeout on both attempts errors with the real cause (regression)", async () => {
   const repo = await initializedRepo();
-  // Every pi run (tick + retry) hits the idle-stream timeout: the machine keeps sleeping.
+  // Every pi run (run + retry) hits the idle-stream timeout: the machine keeps sleeping.
   await withPi(
     `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'\nexit 1`,
     async () => {
@@ -106,7 +106,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
   // Install signature at the repo root: detectBuildCheck walks up from the worktree to it,
   // and npm resolves the toolchain from there. The build script fails with a compiler-style
   // line only while broken.ts exists — pristine main must stay green so the red-main baseline
-  // gate (which runs before authoring) does not block the tick this test is about.
+  // gate (which runs before authoring) does not block the run this test is about.
   fs.mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
   const tool = path.join(repo, "node_modules", ".bin", "buildcheck-tool");
   writeScript(
@@ -125,7 +125,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
 
   // The reviewer branch (any run whose prompt asks for a VERDICT) approves — it must never be
   // reached, because the pre-check decides first. Author runs record their full argv so the
-  // test can assert what each tick was actually told.
+  // test can assert what each run was actually told.
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "changed-once");
   await withPi(
@@ -139,21 +139,21 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      // Tick 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
+      // Run 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
       // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
       assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
       assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
-      // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
-      // tick starts a fresh pi session. Since revise-rejected, the rejected diff is re-applied
+      // Run 2: the machine-generated reasons are the cross-run memory of what broke — every
+      // run starts a fresh pi session. Since revise-rejected, the rejected diff is re-applied
       // as uncommitted edits and the revision note carries the reasons; the idle run then
       // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
       // prompts log holds exactly the two author runs: the merge spent none.
       assert.equal((await runner.run()).result, "no_change");
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2, "two author runs and nothing from the merge");
-      assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
+      assert.ok(!runs[0]?.includes("rejected in review"), "run 1's prompt had no rejection note yet");
       const second = runs[1] ?? "";
       assert.match(second, /is already in the worktree as uncommitted edits/);
       assert.match(second, /revision 1\b/);
@@ -168,7 +168,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
 // (src/merge/merge-to-main.ts), which captures the Open list before the rebase and diffs it after
 // the ff.
 
-test("a tick that posts a question merges it and emits question_posted with the merged event", async () => {
+test("a run that posts a question merges it and emits question_posted with the merged event", async () => {
   const repo = await initializedRepo();
   // md-only diff: review-exempt by construction, so exactly one pi run (the author) is
   // expected — a second invocation would mean the gate ran on a markdown-only change.
@@ -213,12 +213,12 @@ test("a tick that posts a question merges it and emits question_posted with the 
   );
 });
 
-test("a tick that changes other files emits no question_posted event", async () => {
+test("a run that changes other files emits no question_posted event", async () => {
   const repo = await initializedRepo();
   await withPi(
     [
       // Non-md diff goes through the review gate: approve the reviewer run (identified by its
-      // VERDICT prompt) so the tick merges like "a tick that changes files commits and merges".
+      // VERDICT prompt) so the run merges like "a run that changes files commits and merges".
       APPROVE_PI,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
@@ -229,19 +229,19 @@ test("a tick that changes other files emits no question_posted event", async () 
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
       const events = readEvents(repo);
-      assert.ok(events.some((e) => e.type === "merged"), "the tick merged");
+      assert.ok(events.some((e) => e.type === "merged"), "the run merged");
       assert.equal(events.filter((e) => e.type === "question_posted").length, 0);
     },
   );
 });
 
-test("the merge slot is the only merge-lock holder: another runner ticks and queues behind it", async () => {
+test("the merge slot is the only merge-lock holder: another runner runs and queues behind it", async () => {
   const repo = await initializedRepo();
-  // A's MERGE (drained right after its tick) touches the marker in its reviewer run, then
-  // holds — A holds the merge lock (the merger's run) until B's tick is done, bounded at
-  // ~30s. B waits for that marker, then does its whole tick (author + commit + pin + enqueue).
-  // Since merge queue 3/5 a tick never merges, so it never needs the lock: B must finish while
-  // A's merge is still mid-flight. The merge slot serializes merges, not authoring. A tick
+  // A's MERGE (drained right after its run) touches the marker in its reviewer run, then
+  // holds — A holds the merge lock (the merger's run) until B's run is done, bounded at
+  // ~30s. B waits for that marker, then does its whole run (author + commit + pin + enqueue).
+  // Since merge queue 3/5 a run never merges, so it never needs the lock: B must finish while
+  // A's merge is still mid-flight. The merge slot serializes merges, not authoring. A run
   // that did need the lock would wait out A's bound and finish after A's merge.
   const marker = path.join(tmpdir(), "a-merge");
   const bDone = path.join(tmpdir(), "b-done");
@@ -260,12 +260,12 @@ test("the merge slot is the only merge-lock holder: another runner ticks and que
       // B's merge's reviewer run (slot for organize): plain approve.
       `organize:1)`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      // The leased slots cover the authoring ticks.
+      // The leased slots cover the authoring runs.
       `improve:0)`,
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,
-      // B's tick's author run: wait for A to be mid-merge, then work fast.
+      // B's run's author run: wait for A to be mid-merge, then work fast.
       `organize:0)`,
       `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
       `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
@@ -279,8 +279,8 @@ test("the merge slot is the only merge-lock holder: another runner ticks and que
       let bEndAt = 0;
       let aMergeEndAt = 0;
       const pa = (async () => {
-        const tickOutcome = await a.run();
-        assert.equal(tickOutcome.result, "queued");
+        const runOutcome = await a.run();
+        assert.equal(runOutcome.result, "queued");
         const mergeDone = await mergeHead(repo, a, defaultConfig(), "improve");
         aMergeEndAt = Date.now();
         return mergeDone;
@@ -294,11 +294,11 @@ test("the merge slot is the only merge-lock holder: another runner ticks and que
       const [aMergeDone, bOutcome] = await Promise.all([pa, pb]);
       assert.equal(aMergeDone, "changed");
       assert.equal(bOutcome.result, "queued");
-      // B's tick (commit + enqueue) finished while A's merge held the merge lock — the
+      // B's run (commit + enqueue) finished while A's merge held the merge lock — the
       // merge slot is the only place the lock is ever needed.
       assert.ok(
         bEndAt < aMergeEndAt,
-        `B finished at ${bEndAt} before A's merge ended at ${aMergeEndAt}: its tick must not need the lock`,
+        `B finished at ${bEndAt} before A's merge ended at ${aMergeEndAt}: its run must not need the lock`,
       );
       // Then B drains behind A: the slot is free again and both merges complete linearly.
       assert.equal(await mergeHead(repo, b, defaultConfig(), "organize"), "changed");

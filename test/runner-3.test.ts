@@ -17,11 +17,11 @@ import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
-test("a rejected change is re-applied on the role's next tick and its reasons ride along", async () => {
+test("a rejected change is re-applied on the role's next run and its reasons ride along", async () => {
   const repo = await initializedRepo();
   // The reviewer (any run whose prompt asks for a VERDICT) rejects with two numbered
   // reasons. Author runs record their full argv — the fake appends the stdin prompt as the
-  // last argument (PROMPT_FROM_STDIN) — so the test can assert what each tick was actually
+  // last argument (PROMPT_FROM_STDIN) — so the test can assert what each run was actually
   // told, not just that state changed.
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const marker = path.join(tmpdir(), "changed-once");
@@ -37,25 +37,25 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    // Tick 1: the change is committed and enqueued, then the MERGE rejects it — nothing
+    // Run 1: the change is committed and enqueued, then the MERGE rejects it — nothing
     // merges on main.
     assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = roleWt(repo, "improve");
-    assertClean(wt, "a rejected tick leaves the role worktree clean at main");
+    assertClean(wt, "a rejected run leaves the role worktree clean at main");
     assert.ok(!mergeRefExists(repo, "improve"), "a rejection is terminal: the pin was deleted with it");
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
 
-    // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi
+    // Run 2: the rejection is the only cross-run memory — every run starts a fresh pi
     // session. Since revise-rejected, the rejected diff is re-applied to current main as
     // uncommitted edits and the revision note carries the full reasons; the idle run then
     // declares nothing-to-do, so the revision is dropped and the worktree reset clean.
     assert.equal((await runner.run()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
-    assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
-    assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "tick 1 had no revision yet");
+    assert.ok(!runs[0]?.includes("rejected in review"), "run 1's prompt had no rejection note yet");
+    assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "run 1 had no revision yet");
     const second = runs[1] ?? "";
     assert.match(second, /is already in the worktree as uncommitted edits/);
     assert.match(second, /revision 1\b/);
@@ -68,9 +68,9 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
 
 test("concurrent-main-advance still merges (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
-  // The fake pi advances main itself mid-tick, simulating another runner merging work.
+  // The fake pi advances main itself mid-run, simulating another runner merging work.
   const script = [
-    // The tick's commit goes through the review gate before the (rebased) merge.
+    // The run's commit goes through the review gate before the (rebased) merge.
     APPROVE_PI,
     `printf '%s\n' '${assistantLine("ok\nSUMMARY: slow work")}'`,
     `echo slow > slow.txt`,
@@ -82,7 +82,7 @@ test("concurrent-main-advance still merges (rebase path, linear history)", async
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
-    // The tick's commit was rebased onto the concurrent main advance: no merge commits.
+    // The run's commit was rebased onto the concurrent main advance: no merge commits.
     assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
   });
 });
@@ -95,7 +95,7 @@ test("a clean resolution of a conflicted file with setext underlines merges (reg
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "docs with setext heading");
   const marker = path.join(tmpdir(), "phase");
-  // Phase 1 (the tick): both sides edit the same line. Phase 2 (the resolution run):
+  // Phase 1 (the run): both sides edit the same line. Phase 2 (the resolution run):
   // combine them, keeping the setext underline — no real conflict markers remain.
   const script = [
     `if [ ! -f "${marker}" ]; then`,

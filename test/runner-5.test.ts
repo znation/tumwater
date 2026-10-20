@@ -24,10 +24,10 @@ import { waitForFile } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // The pin write can fail too: a stale lock file (a crash between lock and rename) blocks
-// update-ref, so adoption cannot pin the tip. Recovery must fail the tick naming the commit,
-// leave the work on the branch for the next tick, and run no model — a bookkeeping failure is
+// update-ref, so adoption cannot pin the tip. Recovery must fail the run naming the commit,
+// leave the work on the branch for the next run, and run no model — a bookkeeping failure is
 // no evidence about the backend.
-test("a leftover whose pin cannot be written ends the tick in error and stays on the branch", async () => {
+test("a leftover whose pin cannot be written ends the run in error and stays on the branch", async () => {
   const repo = await initializedRepo();
   // Same crash shape as above: a commit on the role branch, no merge ref written.
   const wt = await ensureWorktree(repo, "improve", "main");
@@ -45,14 +45,14 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   await withPi(`touch "${ran}"`, async () => {
     const runner = makeRoleRunner(repo, "improve");
     const outcome = await runner.run();
-    assert.equal(outcome.result, "error", "a failed pin adoption fails the tick");
+    assert.equal(outcome.result, "error", "a failed pin adoption fails the run");
     assert.match(
       String(outcome.summary),
       new RegExp(`failed to pin leftover ${sha.slice(0, 8)}`),
       "the error names the commit it could not pin",
     );
     assert.equal(outcome.recoveredLeftover, true, "the error is recovery bookkeeping, not the model's");
-    assert.ok(!fs.existsSync(ran), "no pi run: the tick ended before any authoring run");
+    assert.ok(!fs.existsSync(ran), "no pi run: the run ended before any authoring run");
     // The commit stays on the branch (invariant 1: nothing lost) and nothing was queued —
     // the pin never took, so no merge entry can hold it.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
@@ -61,7 +61,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   });
 });
 
-test("resume falls back to a fresh tick when there is no session to continue", async () => {
+test("resume falls back to a fresh run when there is no session to continue", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
   await withPi(
@@ -82,10 +82,10 @@ test("resume falls back to a fresh tick when there is no session to continue", a
 test("a crashed process (stale running flag) resumes like a graceful abort", async () => {
   const repo = await initializedRepo();
   const s = freshRunnerState("improve");
-  s.running = true; // Persisted at tick start; a crash never cleared it.
+  s.running = true; // Persisted at run start; a crash never cleared it.
   saveRunnerState(repo, s);
   const runner = makeRoleRunner(repo, "improve");
-  assert.equal(runner.state.resumePending, true, "a crash mid-tick is resumed too");
+  assert.equal(runner.state.resumePending, true, "a crash mid-run is resumed too");
   assert.equal(runner.state.running, false);
 
   // The director never resumes: its recovery is re-queuing the user prompt.
@@ -96,7 +96,7 @@ test("a crashed process (stale running flag) resumes like a graceful abort", asy
   assert.ok(!director.state.resumePending);
 });
 
-test("an aborted director tick re-queues the user prompt", async () => {
+test("an aborted director run re-queues the user prompt", async () => {
   const repo = await initializedRepo();
   await withPi(`exec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
@@ -114,17 +114,17 @@ test("an aborted director tick re-queues the user prompt", async () => {
 
 // User-initiated abort (tumwater abort --role <id>) vs harness shutdown: both kill the pi
 // child, but a deliberate stop discards the half-done work and backs off like an unproductive
-// tick instead of leaving it resumable. The marker-file plumbing that reaches here is covered
+// run instead of leaving it resumable. The marker-file plumbing that reaches here is covered
 // by the orchestrator tests; these pin RoleRunner's own contract (the abort plan's runner e2e
 // acceptance criterion).
-test("a user-aborted tick discards work, backs off, and does not resume", async () => {
+test("a user-aborted run discards work, backs off, and does not resume", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
     const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
-    const tick = runner.run();
+    const runDone = runner.run();
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
     // fake pi even starts under parallel load.
     try {
@@ -134,11 +134,11 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
       throw err;
     }
     runner.abortRun();
-    const outcome = await tick;
+    const outcome = await runDone;
     assert.equal(outcome.result, "user_aborted");
 
     // The work is discarded: nothing merges on main and the planted dirty file is gone from
-    // the worktree (reset --hard + clean -fd), so the next tick's leftover recovery finds
+    // the worktree (reset --hard + clean -fd), so the next run's leftover recovery finds
     // nothing to salvage.
     assert.equal(mainSha(repo), before, "nothing merges on main");
     const wt = roleWt(repo, "improve");
@@ -146,7 +146,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     assertClean(wt, "no uncommitted edits remain");
 
     // A deliberate stop is not an interruption: no resume flag, and the runner backs off like
-    // an unproductive tick instead of retrying immediately.
+    // an unproductive run instead of retrying immediately.
     const s = loadRunnerState(repo, "improve");
     assert.ok(!s.resumePending, "nothing to resume — the work was discarded");
     assert.equal(s.backoffSeconds, config.idleBackoff.initialSeconds);
@@ -159,14 +159,14 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
   });
 });
 
-test("a user-aborted director tick drops the prompt instead of re-queueing it", async () => {
+test("a user-aborted director run drops the prompt instead of re-queueing it", async () => {
   const repo = await initializedRepo();
   // Hangs until killed; writes a marker first so the test can wait for the run to be in flight.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const runner = makeRoleRunner(repo, "director");
-    const tick = runner.run();
+    const runDone = runner.run();
     try {
       await waitForFile(path.join(worktreePath(repo, "director"), "partial.txt"));
     } catch (err) {
@@ -174,7 +174,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
       throw err;
     }
     runner.abortRun();
-    const outcome = await tick;
+    const outcome = await runDone;
     assert.equal(outcome.result, "user_aborted");
 
     // Contrast with a shutdown abort (which re-queues): an explicit stop IS the answer to
@@ -184,7 +184,7 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
     assert.ok(!s.resumePending, "the director never resumes an author session");
 
     // The discard is explicit, not accidental: the dequeued prompt is cleared on the live
-    // runner (item (a)) rather than left to be overwritten by the next tick's dequeue.
+    // runner (item (a)) rather than left to be overwritten by the next run's dequeue.
     assert.equal(
       (runner as unknown as { pending: { get(): string | null } }).pending.get(),
       null,
@@ -195,9 +195,9 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
 
 test("a user-abort mid-review discards the committed work too", async () => {
   const repo = await initializedRepo();
-  // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
+  // Author run (the run prompt): make a change and finish. Review run (its prompt contains
   // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
-  // Since merge queue 3/5 the gate runs in the MERGE, not the tick: the abort below hits
+  // Since merge queue 3/5 the gate runs in the MERGE, not the run: the abort below hits
   // the merge's signal (the same wiring the orchestrator's pipeline hands its verifications). At
   // the runner level an aborted merge KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
@@ -205,7 +205,7 @@ test("a user-abort mid-review discards the committed work too", async () => {
   await runAbortedDirectorMerge(repo);
 });
 
-test("a failing director tick re-queues the user prompt (regression)", async () => {
+test("a failing director run re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
   // pi fails hard: non-zero exit, no assistant text, and no file changes.
   await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
@@ -218,7 +218,7 @@ test("a failing director tick re-queues the user prompt (regression)", async () 
   });
 });
 
-test("a timed-out director tick re-queues the user prompt (regression)", async () => {
+test("a timed-out director run re-queues the user prompt (regression)", async () => {
   const repo = await initializedRepo();
   await withPi(`exec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
@@ -233,7 +233,7 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
   });
 });
 
-test("a director tick that handles a prompt with no file changes does not re-queue it", async () => {
+test("a director run that handles a prompt with no file changes does not re-queue it", async () => {
   const repo = await initializedRepo();
   // pi answers the question in its reply and changes nothing: that IS fulfillment.
   await withPi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`, async () => {
@@ -244,7 +244,7 @@ test("a director tick that handles a prompt with no file changes does not re-que
   });
 });
 
-test("a timed-out tick reports an error and never commits partial work", async () => {
+test("a timed-out run reports an error and never commits partial work", async () => {
   const repo = await initializedRepo();
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
@@ -263,7 +263,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
 // the case where discarding costs the most (BUGS.md 2026-09-29: 97 timeouts in 8 hours,
 // ~55 agent-hours discarded). It is handled the way a quiet kill is handled.
 
-test("a tick timeout that fires on a run still making progress is resumed like a quiet kill (regression)", async () => {
+test("a run timeout that fires on a run still making progress is resumed like a quiet kill (regression)", async () => {
   const repo = await initializedRepo();
   // Writes an edit and keeps speaking progress events through the deadline: a slow run that
   // is still progressing, not one whose last progress predates the final `progressWindowMs`.
@@ -312,16 +312,16 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
 });
 
 // The budget handback (PLANS.md 2026-09-30): when the budget gate reopens, the orchestrator
-// hands the in-flight ticks still on the fallback back to the primary. handBackRun aborts
-// WITHOUT the user-abort flag, so the tick ends `aborted` with its session and worktree edits
+// hands the in-flight runs still on the fallback back to the primary. handBackRun aborts
+// WITHOUT the user-abort flag, so the run ends `aborted` with its session and worktree edits
 // kept (the shutdown branch, not the discard), and the resume carries its own cause so the
 // bridge prompt says the model moved. Contrast with the user-abort test above: same kill
 // plumbing, opposite fate for the work.
-test("a budget handback ends the tick resumably; the resume continues the session on the primary", async () => {
+test("a budget handback ends the run resumably; the resume continues the session on the primary", async () => {
   const repo = await initializedRepo();
   const promptsFile = path.join(tmpdir(), "handback-prompts.log");
   const script = (body: string) => [TOUCH_SESSION, logPromptsTo(promptsFile), body].join("\n");
-  // Tick 1 runs on the fallback view's pair (what the orchestrator assigns while the gate
+  // Run 1 runs on the fallback view's pair (what the orchestrator assigns while the gate
   // holds), writes a half-done edit, then hangs until the handback kills it.
   let restore = fakePi(script(`echo partial > partial.txt\nexec sleep 30`));
   try {
@@ -329,18 +329,18 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     fallback.provider = "local";
     fallback.model = "local-free";
     const runner = makeRoleRunner(repo, "improve", fallback);
-    const tick = runner.run();
+    const runDone = runner.run();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
       runner.abortRun(); // don't leave the hung fake pi running after a wait timeout
       throw err;
     }
-    // The runner reports what the in-flight tick runs on — the pair the orchestrator matches
+    // The runner reports what the in-flight run runs on — the pair the orchestrator matches
     // against the fallback pair it just left.
     assert.deepEqual(runner.runModelPair(), { provider: "local", model: "local-free" });
     runner.handBackRun();
-    const outcome = await tick;
+    const outcome = await runDone;
     assert.equal(outcome.result, "aborted");
     assert.equal(outcome.resumeCause, "budget-resumed");
 
@@ -359,7 +359,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     assert.equal(runner.runModelPair(), null);
     runner.handBackRun();
 
-    // The resume tick continues the SAME session (--continue) on the primary's pair — the
+    // The resume run continues the SAME session (--continue) on the primary's pair — the
     // orchestrator assigns the live config before calling handBackRun; mirrored here.
     restore();
     restore = fakePi(script(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`));
@@ -368,7 +368,7 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     primary.model = "big-paid";
     runner.config = primary;
     const outcome2 = await runner.run();
-    // The kept half-done edit is committed by the resume tick like any resumed session's
+    // The kept half-done edit is committed by the resume run like any resumed session's
     // leftover work — the point is the session and the model, not the file's fate.
     assert.equal(outcome2.result, "queued");
     const s2 = loadRunnerState(repo, "improve");
@@ -392,10 +392,10 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
   }
 });
 
-// plans/worktree-pool.md part 4b: a non-director tick leases a pooled `_slot-<n>` instead of
+// plans/worktree-pool.md part 4b: a non-director run leases a pooled `_slot-<n>` instead of
 // creating its own `.tumwater/worktrees/<role>`, and the slot budget is `worktreeSlots`. The
 // director keeps the dedicated checkout it reads its config-request file from.
-test("role ticks lease pooled slots; no legacy role worktree is created", async () => {
+test("role runs lease pooled slots; no legacy role worktree is created", async () => {
   const repo = await initializedRepo();
   writeConfig(repo, { maxConcurrent: 2, worktreeSlots: 2 });
   await withPi(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
@@ -416,7 +416,7 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
         `the ${role} branch holds its work`,
       );
     }
-    // The director still ticks in its dedicated checkout.
+    // The director still runs in its dedicated checkout.
     enqueuePrompt(repo, "say hello");
     assert.equal((await makeRoleRunner(repo, "director").run()).result, "no_change");
     assert.ok(fs.existsSync(path.join(wtDir, "director")), "the director keeps its dedicated worktree");
