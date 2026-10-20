@@ -2,6 +2,7 @@ import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui/gui-client-drawer.js";
+import { GUI_CLIENT_DRAWER_CONFIG_JS } from "../src/ui/gui/gui-client-drawer-config.js";
 import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui/gui-client-drawer.ts): the open/close
@@ -57,7 +58,7 @@ interface DrawerScope {
  * regions, with `inject` bound as free variables, and hand back the names asked for. */
 function drawerScope(names: string[], inject: Record<string, unknown>): DrawerScope {
   const keys = Object.keys(inject);
-  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS,
+  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS, GUI_CLIENT_DRAWER_CONFIG_JS,
     `return { ${names.join(", ")} };`].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => DrawerScope;
   return run(...keys.map((k) => inject[k]));
