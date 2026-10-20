@@ -6,7 +6,7 @@ import { cachedBaselineVerdict } from "../baseline/main-baseline.js";
 import type { RunResult } from "../run/run-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
-import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { saveRunnerState, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { applyMergeOutcome, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -17,7 +17,7 @@ import { mergeStatePath } from "../paths.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
-import { truncate } from "../text/text.js";
+import { errorMessage, truncate } from "../text/text.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The merge pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
@@ -569,7 +569,8 @@ export const MAIN_RED_VERDICT_WAIT_MS = 15 * 60_000;
  * leaves the record untouched, so a later poll asks again; no verdict starts (and saves) a wait
  * at `now`, and the pin re-queues once MAIN_RED_VERDICT_WAIT_MS has passed; green re-queues at
  * once. Re-queuing clears the record; no entry is queued when the pin is gone or held back by
- * pinnedRetrySha, or the role already has one queued. */
+ * pinnedRetrySha, or the role already has one queued. It never throws: the poll
+ * loop calls it with no catch. */
 export async function requeueMainRedPin(
   root: string,
   mainBranch: string,
@@ -584,14 +585,18 @@ export async function requeueMainRedPin(
   if (verdict === undefined) {
     if (kept.waitingSince === undefined) {
       state.mainRedRetry = { ...kept, waitingSince: now };
-      saveRunnerState(root, state);
+      saveRunnerStateBestEffort(root, state);
       return;
     }
     if (now - kept.waitingSince < MAIN_RED_VERDICT_WAIT_MS) return;
   }
   state.mainRedRetry = undefined;
-  saveRunnerState(root, state);
+  saveRunnerStateBestEffort(root, state);
   const sha = await pinnedRetrySha(root, kept.entry.role, mainBranch, state);
   if (!sha || queuedMerges(root).some((e) => e.role === kept.entry.role)) return;
-  enqueueRetry(root, retryEntry(kept.entry, sha, "main_red"));
+  try {
+    enqueueRetry(root, retryEntry(kept.entry, sha, "main_red"));
+  } catch (err) {
+    warnEventBestEffort(root, kept.entry.role, `the kept main_red change could not be re-queued: ${errorMessage(err)}`);
+  }
 }

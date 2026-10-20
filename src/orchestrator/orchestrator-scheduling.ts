@@ -19,7 +19,7 @@ import { deferRunReason, isEligible, type DeferReason } from "../scheduling/sche
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, configuredInstances, instanceIndex, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
-import { freshlyWoken, hasOutstandingWork, saveRunnerState, type SkipReason } from "../runner/runner-state.js";
+import { freshlyWoken, hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasUnmergedPin, MERGE_CONFLICT_LIMIT } from "../runner/leftover.js";
@@ -106,7 +106,7 @@ interface SchedulingPassCtx {
 function noteSkip(root: string, runner: RoleRunner, reason: SkipReason | undefined): void {
   if (runner.state.skipReason === reason) return;
   runner.state.skipReason = reason;
-  saveRunnerState(root, runner.state);
+  saveRunnerStateBestEffort(root, runner.state);
 }
 
 /** Decide which runners are due this poll. Mutates `deferredDue` (and once-mode settlement)
@@ -205,7 +205,7 @@ export async function pollRunnerReasons(
       r.state.claim = undefined;
       // Persist the release: an idle extra instance gets no run to save its state, so the dead
       // claim would stay on disk for status/doctor to show and for a restart to release again.
-      saveRunnerState(root, r.state);
+      saveRunnerStateBestEffort(root, r.state);
       const reason: ClaimReleaseReason = released;
       logEventBestEffort(root, { source: r.role, type: "claim", action: "released", title, reason });
       if (reason === "stale") {

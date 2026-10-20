@@ -20,7 +20,8 @@ import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { setRef } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
 import { initializedRepo, mainSha, tmpdir, twoPlansDoc } from "./fixtures/repo-fixtures.js";
-import { unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
+import { eventsOfType, unwritableEvents, writeEvents } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { HOUR } from "./helpers/oracles.js";
 
@@ -946,4 +947,44 @@ test("a runner with a revision is admitted before a free runner when one place i
   const reasons = await pollRunnerReasons(schedulingCtx(root, [feature, feature2, feature3, feature4], providers));
   assert.equal(reasons.has(feature3), true, "the returned change runs on its own runner");
   assert.equal(reasons.has(feature2), false, "the free runner waits for another place");
+});
+
+test("a skip reason that cannot be saved warns and leaves the poll running", async () => {
+  const root = tmpdir("tumwater-scheduling-skip-save-fails-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  feature.state.revision = { sha: "deadbeef", round: 1, at: T0 };
+  const roleProviders = new Map([["feature", undefined], ["feature-2", undefined]]);
+  const undo = failRenameSyncOn(statePath(root, "feature-2"), "state write refused");
+  try {
+    await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roleProviders));
+  } finally {
+    undo();
+  }
+  assert.equal(feature2.state.skipReason, "claim-hold");
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "feature-2");
+  assert.equal(warnings.length, 1);
+  assert.match(JSON.stringify(warnings[0]), /state write refused/);
+});
+
+test("a claim release that cannot be saved warns and leaves the poll running", async () => {
+  const root = tmpdir("tumwater-scheduling-release-save-fails-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const roleProviders = new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roleProviders));
+  assert.equal(feature2.state.claim?.key, "beta");
+  config.roles.feature = { enabled: true, instances: 1 };
+  const undo = failRenameSyncOn(statePath(root, "feature-2"), "state write refused");
+  try {
+    await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roleProviders));
+  } finally {
+    undo();
+  }
+  assert.equal(feature2.state.claim, undefined);
+  assert.match(JSON.stringify(eventsOfType(root, "warning")), /state write refused/);
 });

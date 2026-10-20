@@ -15,10 +15,11 @@ import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { noteGreenBaseline, persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
-import { baselineVerdictsPath, mergeRefName } from "../src/paths.js";
+import { baselineVerdictsPath, mergeQueueDir, mergeRefName, statePath } from "../src/paths.js";
 import { deleteRef, refSha, setRef } from "../src/git/git.js";
 import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 
 const NO_USAGE = { tokens: 0, cost: 0, providerCost: {} };
 
@@ -184,4 +185,39 @@ test("drainVerify leaves an entry queued until its notBefore passes", async () =
   );
   assert.equal(pipeline.verifying.size, 0, "no verification started");
   assert.equal(queuedMerges(root).length, 1, "the entry is still queued");
+});
+
+test("a main_red re-queue whose state save fails still queues the change", async () => {
+  const { root, entry, file } = await pinnedEntry();
+  const state = freshRunnerState("improve");
+  await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
+  noteGreenBaseline("f".repeat(40));
+  const undo = failRenameSyncOn(statePath(root, "improve"), "state write refused");
+  try {
+    await requeueMainRedPin(root, "main", state, "f".repeat(40));
+  } finally {
+    undo();
+  }
+  const [queued] = queuedMerges(root);
+  assert.ok(queued);
+  assert.equal(queued.retry, "main_red");
+  assert.equal(state.mainRedRetry, undefined);
+});
+
+test("a main_red re-queue whose queue write fails warns instead of throwing", async () => {
+  const { root, entry, file } = await pinnedEntry();
+  const state = freshRunnerState("improve");
+  await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
+  noteGreenBaseline("f".repeat(40));
+  const undo = patchFsMethod("renameSync", (orig) => (a, b) => {
+    if (typeof b === "string" && b.startsWith(mergeQueueDir(root))) throw new Error("queue write refused");
+    return orig(a, b);
+  });
+  try {
+    await requeueMainRedPin(root, "main", state, "f".repeat(40));
+  } finally {
+    undo();
+  }
+  assert.equal(queuedMerges(root).length, 0);
+  assert.match(JSON.stringify(eventsOfType(root, "warning")), /queue write refused/);
 });

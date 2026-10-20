@@ -3858,3 +3858,29 @@ OpenCode DB directory that cannot be created costs only the OpenCode session del
 **Pinned by.** `test/retention.test.ts` — "RetentionPruner: a window change and a prune survive an
 unwritable events feed" and "RetentionPruner: an OpenCode DB dir that cannot be created skips the
 session deletes and still prunes the rest".
+
+## Runner state in the poll loop: a failed save costs only that save
+
+### INV-BR1: a skip-reason or claim-release save that fails warns and the poll goes on
+
+**Guarantee.** A skip-reason or claim-release save that fails logs one warning under the role's id,
+and the poll goes on with the in-memory state; the next successful save writes it.
+
+**Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`) and
+`src/orchestrator/orchestrator-scheduling.ts` (`noteSkip`, `pollRunnerReasons`).
+
+**Pinned by.** `test/orchestrator-scheduling.test.ts` — "a skip reason that cannot be saved warns and
+leaves the poll running" and "a claim release that cannot be saved warns and leaves the poll running";
+the saves still land when the disk is fine: "a released claim is saved to disk before the runner runs
+again" and "a sibling held by an unclaimed mid-entry runner records claim-hold, cleared once admitted".
+
+### INV-BR2: a main_red re-queue never throws
+
+**Guarantee.** `requeueMainRedPin` never throws: a failed state save still re-queues the change, and a
+failed queue write warns and leaves the kept pin to the role's leftover recovery.
+
+**Binds.** `src/merge/merge-slot.ts` (`requeueMainRedPin`).
+
+**Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues
+the change", "a main_red re-queue whose queue write fails warns instead of throwing" and "a main_red
+pin is re-queued once main's head moves, and not before".
