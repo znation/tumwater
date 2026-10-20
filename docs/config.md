@@ -131,7 +131,7 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `role_streak_paused` | The repeated-failure breaker paused a role; the message names the streak and its last error. |
 | `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
 | `disk_low` | Free space on the worktrees volume dropped below `diskHoldGB`, so new work is held. |
-| `main_red_hold` | Main's own check is failing, so every code role is held until a fix merges. |
+| `main_red_hold` | Main's own check is failing. When the check names its failing tests, the message names the first and roles keep working on changes that add no new failures; otherwise every code role is held until a fix merges. |
 | `merge_failed` | A merge finished without landing its change; the message names the change's summary and why the merge failed: the review's first reason, or the check, block or error that stopped it. |
 | `restart_blocked` | The restart onto the new main is blocked, and the team is stuck behind it. |
 | `question_posted` | A merge added a new entry under `## Open` in QUESTIONS.md; only a human can answer it; the message names the question's number and the `tumwater questions answer` command. |

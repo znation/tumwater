@@ -12,7 +12,8 @@ import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../eve
 import type { TickOutcome } from "../run/run-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
-import { mainRedPhrase } from "../text/phrases.js";
+import { mainRedPhrase, plural } from "../text/phrases.js";
+import { clipToWidth } from "../text/text-width.js";
 import { shortSha } from "../text/format.js";
 import { branchHead } from "../git/git.js";
 import { gateMainWorktreePath } from "../paths.js";
@@ -85,9 +86,10 @@ function warnMainRedOnce(
     type: "main_red_hold",
     sha: red.sha,
     script: red.script,
+    ...(named.length > 0 ? { failingTests: named } : {}),
     message:
       named.length > 0
-        ? `${mainRedPhrase(red.sha)} (${named.length} failing tests); changes that add no new failures still merge`
+        ? `${mainRedPhrase(red.sha)} (${plural(named.length, "failing test")}: ${clipToWidth(named[0] ?? "", 80)}${named.length > 1 ? `, +${named.length - 1} more` : ""}); changes that add no new failures still merge`
         : redMainMessage(red, "code merges blocked until main is green"),
   });
   // Bugfix is the only repairer, and it is exempt from mainRedGate — but it is a work role

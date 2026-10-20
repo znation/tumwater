@@ -98,6 +98,8 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.ok(message.message?.includes(shortSha(sha)), `warning names the red SHA: ${message.message}`);
     assert.ok(message.message?.includes("test"), "warning names the failing script");
     assert.ok(message.message?.includes("baseline-failure"), "warning carries the failure's first line");
+    assert.ok(message.message?.endsWith("code merges blocked until main is green"), String(message.message));
+    assert.equal("failingTests" in warning, false, "no named failures, no failingTests key");
   } finally {
     restore();
   }
@@ -530,7 +532,8 @@ test("mainRedGate lets a role run on a red main that names its failing tests, on
     const holds = mainRedHolds(root);
     assert.equal(holds.length, 1);
     const message = (holds[0] as { message?: string }).message ?? "";
-    assert.ok(message.includes("(2 failing tests); changes that add no new failures still merge"), message);
+    assert.ok(message.includes("(2 failing tests: known-red-alpha, +1 more); changes that add no new failures still merge"), message);
+    assert.deepEqual((holds[0] as { failingTests?: string[] }).failingTests, ["known-red-alpha", "known-red-beta"]);
     assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "the healer is told once");
 
     // A second red commit with the same failing set sends no second heal prompt.
@@ -539,6 +542,20 @@ test("mainRedGate lets a role run on a red main that names its failing tests, on
     assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
     assert.equal(mainRedHolds(root).length, 2, "the new red SHA is still logged");
     assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "same failing set: one heal prompt");
+  } finally {
+    restore();
+  }
+});
+
+test("mainRedGate's hold with one named failure says '1 failing test' and names it", async () => {
+  const script = `echo '✖ known-red-alpha (1.2ms)'; exit 1`;
+  const { root, wt } = baselineFixture(ROLE, script);
+  const restore = fakeNpm(script);
+  try {
+    assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
+    const message = (mainRedHolds(root)[0] as { message?: string }).message ?? "";
+    assert.ok(message.includes("(1 failing test: known-red-alpha); changes that add no new failures still merge"), message);
+    assert.ok(!message.includes("failing tests"), message);
   } finally {
     restore();
   }
