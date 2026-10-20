@@ -85,6 +85,21 @@ export function teamDailyCost(states: RunnerState[], now = Date.now()): number {
   return states.reduce((sum, s) => sum + dailyCost(s, now), 0);
 }
 
+/** The roles that spent most today, highest first (ties by role name), at most `limit`; roles
+ * with no spend today (zero or a stale day window) are left out. Each state is its own role, so
+ * `feature` and `feature-2` are listed apart. */
+export function topDailySpenders(
+  states: RunnerState[],
+  now = Date.now(),
+  limit = 3,
+): { role: string; spentUsd: number }[] {
+  return states
+    .map((s) => ({ role: s.role, spentUsd: dailyCost(s, now) }))
+    .filter((r) => r.spentUsd > 0)
+    .sort((a, b) => b.spentUsd - a.spentUsd || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0))
+    .slice(0, limit);
+}
+
 /** True when today's spend has reached the daily cost budget — the view is non-null, its cap is
  * enabled (capUsd > 0; a cap of 0 disables the gate regardless of spend), and spend sits at or
  * above it. The single definition of "the budget gate is on": the orchestrator evaluates it from

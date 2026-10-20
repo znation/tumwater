@@ -305,7 +305,15 @@ export function eventMessage(e: HarnessEvent): string {
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
       // operator still has room to raise it or fix the fallback before the team stops.
-      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent; runs still start`;
+      const top = Array.isArray(e.topRoles)
+        ? e.topRoles.flatMap((r: unknown) =>
+            isJsonObject(r) && typeof r.role === "string" && Number.isFinite(r.spentUsd)
+              ? [`${r.role} ${usd(r.spentUsd as number)}`]
+              : [],
+          )
+        : [];
+      const mostBy = top.length > 0 ? ` (most by ${top.join(", ")})` : "";
+      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent${mostBy}; runs still start`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the team stopped instead of

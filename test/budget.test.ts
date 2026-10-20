@@ -7,6 +7,7 @@ import {
   budgetReached,
   dailyCost,
   teamDailyCost,
+  topDailySpenders,
   pairDailyCost,
   projectCapHit,
   recordDailyCost,
@@ -378,4 +379,29 @@ test("recordDailyCost with a pair accumulates per pair, resets at local midnight
   assert.equal(pairDailyCost([a, b], "hf/m", dayB), 0, "a stale day reads as $0");
   recordDailyCost(a, 3, dayB, "hf/m");
   assert.equal(a.dayCostByPair?.["hf/m"], 3, "the rollover cleared yesterday's per-pair spend");
+});
+
+test("topDailySpenders lists today's biggest spenders, highest first, ties by role", () => {
+  const { dayA } = midnightPair();
+  const spender = (role: string, usd: number, stamp = todayStamp(dayA)) => {
+    const s = freshRunnerState(role);
+    s.dayStamp = stamp;
+    s.dayCostUsd = usd;
+    return s;
+  };
+  const four = [spender("a", 1), spender("b", 4), spender("c", 2), spender("d", 3)];
+  assert.deepEqual(topDailySpenders(four, dayA), [
+    { role: "b", spentUsd: 4 },
+    { role: "d", spentUsd: 3 },
+    { role: "c", spentUsd: 2 },
+  ]);
+  assert.deepEqual(
+    topDailySpenders([spender("zeta", 2), spender("alpha", 2)], dayA).map((r) => r.role),
+    ["alpha", "zeta"],
+  );
+  assert.deepEqual(
+    topDailySpenders([spender("stale", 9, "1999-01-01"), spender("zero", 0), spender("ok", 1)], dayA),
+    [{ role: "ok", spentUsd: 1 }],
+  );
+  assert.deepEqual(topDailySpenders([freshRunnerState("feature")], dayA), []);
 });

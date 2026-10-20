@@ -26,6 +26,17 @@ test("formatEvent renders the budget warning with the spend phrase and the still
   assert.match(warned, /tumwater\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; runs still start/);
 });
 
+test("formatEvent names the top spenders on a budget warning and ignores malformed entries", () => {
+  const base = { ts: 0, source: "tumwater", type: "budget_warning", spentUsd: 40.005, capUsd: 50 };
+  const top = formatEvent({
+    ...base,
+    topRoles: [{ role: "feature", spentUsd: 30 }, { role: "plan", spentUsd: 10.01 }],
+  } as never);
+  assert.match(top, /budget warning — \$40\.01 of \$50\.00 of the daily cap spent \(most by feature \$30\.00, plan \$10\.01\); runs still start/);
+  const bad = formatEvent({ ...base, topRoles: [null, { role: 3, spentUsd: 1 }, { role: "x", spentUsd: "1" }] } as never);
+  assert.match(bad, /of the daily cap spent; runs still start/);
+});
+
 test("formatEvent renders the per-role cap warning naming the role and that it keeps running", () => {
   const warned = formatEvent({
     ts: 0,

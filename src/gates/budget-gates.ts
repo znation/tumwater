@@ -13,6 +13,7 @@ import {
   budgetWarning,
   modelPairName,
   pairDailyCost,
+  topDailySpenders,
   type BudgetGate,
 } from "../budget/budget.js";
 import {
@@ -350,7 +351,14 @@ export function pollBudgetGate(
   // doubles the page on the poll the cap itself is reached.
   const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
   if (warn && !state.warned) {
-    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "budget_warning", spentUsd, capUsd });
+    const topRoles = topDailySpenders(states, now);
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "budget_warning",
+      spentUsd,
+      capUsd,
+      ...(topRoles.length > 0 ? { topRoles } : {}),
+    });
     state.warned = true;
   } else if (!warn) {
     state.warned = false;

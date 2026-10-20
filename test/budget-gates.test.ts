@@ -219,6 +219,7 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   assert.equal(events[0]!.source, "tumwater");
   assert.equal(events[0]!.capUsd, 10);
   assert.equal(events[0]!.spentUsd, threshold);
+  assert.deepEqual(events[0]!.topRoles, [{ role: "feature", spentUsd: threshold }]);
 
   // Still above the threshold: edge-triggered, no second warning.
   poll(root, state, cfg, models, [spentRunnerState("feature", threshold + 1)]);
@@ -228,6 +229,18 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   poll(root, state, cfg, models, [spentRunnerState("feature", threshold - 3)]); // still open the whole time: no transition events
   poll(root, state, cfg, models, [spentRunnerState("feature", threshold)]);
   assert.deepEqual(eventTypes(root), ["budget_warning", "budget_warning"]);
+});
+
+test("the budget warning names the roles spending most, highest first", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  poll(root, state, cfg, models, [spentRunnerState("plan", 2), spentRunnerState("feature", 6)]);
+  assert.deepEqual(readEvents(root)[0]!.topRoles, [
+    { role: "feature", spentUsd: 6 },
+    { role: "plan", spentUsd: 2 },
+  ]);
 });
 
 test("no budget warning at the cap itself, and none with the cap disabled", () => {
