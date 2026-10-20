@@ -14,7 +14,6 @@ import { rejectBadRole, requireConfigKey, requireRoleField, requireStringField }
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { badRequest, sendJson } from "./http-body.js";
-import { gotSuffix } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -200,12 +199,9 @@ export async function handleRoleModel(req: http.IncomingMessage, res: http.Serve
   if (role === null) return;
   const fields: { provider?: string; model?: string; thinking?: string } = {};
   for (const key of ["provider", "model", "thinking"] as const) {
-    const value = body[key];
-    if (value === undefined) continue;
-    if (typeof value !== "string") {
-      badRequest(res, `"${key}" must be a string — a model override, or "" to clear it${gotSuffix(value)}`);
-      return;
-    }
+    if (body[key] === undefined) continue;
+    const value = requireStringField(res, body, key, 'a model override, or "" to clear it');
+    if (value === null) return;
     fields[key] = value.trim();
   }
   if (!("provider" in fields) && !("model" in fields) && !("thinking" in fields)) {

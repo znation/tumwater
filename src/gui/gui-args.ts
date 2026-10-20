@@ -209,8 +209,9 @@ export function requireRoleField(res: http.ServerResponse, body: Record<string, 
 
 /** Pull a required string field out of a POST body — the shared 400 for the editors whose body
  * carries a full replacement text that may be "" to clear it (role instructions, quiet-hours
- * window, role notes, the brief). `meaning` completes the message after the em dash. Returns the
- * string as sent, or null once the 400 is sent. */
+ * window, role notes, the brief, and the model handler's optional provider/model/thinking
+ * fields). `meaning` completes the message after the em dash. Returns the string as sent, or
+ * null once the 400 is sent. */
 export function requireStringField(
   res: http.ServerResponse,
   body: Record<string, unknown>,
