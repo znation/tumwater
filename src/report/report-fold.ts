@@ -382,35 +382,62 @@ export function zeroMergeCounts(): {
   return { mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
 }
 
-/** Sum a per-loop-id count/cost map over one base role: instance keys (`feature-2`) fold into
- * their base (`feature`), so a scoped report aggregates a whole role group exactly as the
- * per-role cap's group does. Ticks/tokens/cost are keyed by exact loop id while commits are
+/** The base roles a report scope names: undefined and an empty list mean no scope (the team
+ * report); otherwise each id folded through `baseRoleOf`, deduplicated in first-seen order, so
+ * `feature-2,feature` is one base. */
+export function scopeBases(role: string | readonly string[] | undefined): string[] | undefined {
+  if (role === undefined) return undefined;
+  const ids = typeof role === "string" ? [role] : role;
+  if (ids.length === 0) return undefined;
+  const out: string[] = [];
+  for (const id of ids) {
+    const base = baseRoleOf(id);
+    if (!out.includes(base)) out.push(base);
+  }
+  return out;
+}
+
+/** Sum a per-loop-id count/cost map over the scoped base roles: instance keys (`feature-2`)
+ * fold into their base (`feature`), so a scoped report aggregates a whole role group exactly
+ * as the per-role cap's group does. Ticks/tokens/cost are keyed by exact loop id while commits are
  * already base-role keyed; running every key through `baseRoleOf` reads both shapes the same
  * and returns 0 when nothing matches. */
-export function roleSum(record: Record<string, number>, role: string): number {
+export function roleSum(record: Record<string, number>, bases: string | readonly string[]): number {
+  const list = typeof bases === "string" ? [bases] : bases;
   let sum = 0;
   for (const [key, n] of Object.entries(record)) {
-    if (baseRoleOf(key) === role) sum += n;
+    if (list.includes(baseRoleOf(key))) sum += n;
   }
   return sum;
 }
 
-/** Narrow a per-loop-id count/cost map to one base role, keyed by the base role; a role absent
- * from the map (no ticks, or no nonzero cost) yields an empty map, never a zero entry — the
- * same zero-means-absent rule the team render applies. Used by the role-scoped collectors so a
- * scoped series derives from the fold's per-role maps without inventing entries. */
-export function narrowToRole(record: Record<string, number>, role: string): Record<string, number> {
-  const n = roleSum(record, role);
-  return n === 0 ? {} : { [role]: n };
+/** Narrow a per-loop-id count/cost map to the scoped base roles, one entry per base keyed by
+ * that base; a role absent from the map (no ticks, or no nonzero cost) yields no entry, never
+ * a zero one — the same zero-means-absent rule the team render applies. Used by the
+ * role-scoped collectors so a scoped series derives from the fold's per-role maps without
+ * inventing entries. */
+export function narrowToRole(
+  record: Record<string, number>,
+  bases: string | readonly string[],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const base of typeof bases === "string" ? [bases] : bases) {
+    const n = roleSum(record, base);
+    if (n !== 0) out[base] = n;
+  }
+  return out;
 }
 
-/** A per-loop map scoped to one base role for a report: the full map as-is when no scope is
- * set (a team report), else the same map narrowed to `base` — narrowToRole's zero-means-absent
+/** A per-loop map scoped to the base roles of a report: the full map as-is when no scope is
+ * set (a team report), else the same map narrowed to `bases` — narrowToRole's zero-means-absent
  * rule, so a scoped report never invents a zero entry. The one home of the "keep everything,
  * or keep only the named base role" rule: the 13 per-role/pair fields of the `--since` report's
  * output all shape through it, so the scoping rule cannot drift between them. */
-export function scopedByRole(record: Record<string, number>, base: string | undefined): Record<string, number> {
-  return base === undefined ? record : narrowToRole(record, base);
+export function scopedByRole(
+  record: Record<string, number>,
+  bases: readonly string[] | undefined,
+): Record<string, number> {
+  return bases === undefined ? record : narrowToRole(record, bases);
 }
 
 function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {

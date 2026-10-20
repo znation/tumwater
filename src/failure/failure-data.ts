@@ -12,6 +12,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import { assertReportSinceMs, eventWindowCovers, readWindowEvents, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
+import { scopeBases } from "../report/report-fold.js";
 import { timeAndSpend, type LossCause, type TimeSpendRow } from "./time-spend.js";
 import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
@@ -112,7 +113,7 @@ interface StateChange {
 /** The digest's collected evidence — a pure function of the event log plus a clock; the
  * render step below is a pure function of this. */
 export interface FailureReportData {
-  role?: string; // set by the role-scoped collector (the base role); absent on the team digest
+  role?: string; // the scoped base roles, comma-joined; set by the role-scoped collector; absent on the team digest
   days: number;
   from: string; // current window start, local day key
   to: string; // today
@@ -141,20 +142,20 @@ export interface FailureReportData {
   stateChangesTotal: number; // all transitions in the window, before the newest-N cut
 }
 
-/** Keep only events that belong to one base role, so a scoped digest aggregates instances
+/** Keep only events that belong to the scoped base roles, so a scoped digest aggregates instances
  * (`feature-2`) into their group exactly as `report --role` and the per-role cap do. Loop
  * events match on their own loop id; the role-scoped harness transitions (a role pause, its
  * streak breaker, its cap, its fallback) log with loop "harness" and name the affected role
  * in `role`, so those match on that field too — otherwise a scoped digest would drop exactly
  * the events that explain why the loop stopped. Applied to both partitions and the whole read,
  * so every section derived from them narrows. */
-function scopeToRole(events: HarnessEvent[], base: string): HarnessEvent[] {
+function scopeToRole(events: HarnessEvent[], bases: readonly string[]): HarnessEvent[] {
   return events.filter(
     (ev) =>
-      baseRoleOf(eventRole(ev)) === base ||
+      bases.includes(baseRoleOf(eventRole(ev))) ||
       (STATE_CHANGE_TYPES.has(ev.type) &&
         typeof ev.role === "string" &&
-        baseRoleOf(ev.role) === base),
+        bases.includes(baseRoleOf(ev.role))),
   );
 }
 
@@ -297,14 +298,14 @@ function digestStat(root: string): FailureDigestStat {
  * and partitioning it in memory so the delta against the preceding equal window costs no
  * second tail read. Memoized (failureDigestCache): a repeat request whose window and log are
  * unchanged returns the prior digest instead of re-reading and re-folding the same bytes. */
-export function collectFailureReport(root: string, days: number, role?: string): FailureReportData {
+export function collectFailureReport(root: string, days: number, role?: string | readonly string[]): FailureReportData {
   const now = new Date();
   const { from, to } = dayWindow(days, now);
   const priorFrom = formatDate(dayAt(days * 2 - 1, now));
-  const base = role === undefined ? undefined : baseRoleOf(role);
+  const bases = scopeBases(role);
   // The base role rides the key, so a scoped and a team digest of the same log cannot
   // collide in the memo.
-  const key = `${root}\u0000${days}\u0000${base ?? ""}`;
+  const key = `${root}\u0000${days}\u0000${bases?.join(",") ?? ""}`;
   const stat = digestStat(root);
   const cached = failureDigestCache.get(key);
   if (
@@ -337,7 +338,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
  * the day collector builds, so the Deltas table compares like with like). The read starts at the
  * prior half's own day key, exactly as the day collector reads 2× its window; the cutoff instant
  * for coverage is the prior half's start, which a day key alone cannot prove. */
-export function collectFailureReportSince(root: string, sinceMs: number, role?: string): FailureReportData {
+export function collectFailureReportSince(root: string, sinceMs: number, role?: string | readonly string[]): FailureReportData {
   assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
@@ -370,16 +371,16 @@ function assembleFailureReport(
   coversFullWindow: boolean,
   logState: EventLogState,
   window: { days: number; from: string; to: string; sinceMs?: number; fromIso?: string },
-  role?: string,
+  role?: string | readonly string[],
 ): FailureReportData {
   // Scope first when a role was named: every section below derives from these partitions, so
   // narrowing them at the source scopes outcomes, deltas, clusters, merges, and time/spend at
   // once. The unfiltered read's first event is kept for the retention line, so a scoped partial
   // window still names when the log starts, not when the scoped role's own first tick does.
-  const base = role === undefined ? undefined : baseRoleOf(role);
-  const current = base === undefined ? currentRaw : scopeToRole(currentRaw, base);
-  const prior = base === undefined ? priorRaw : scopeToRole(priorRaw, base);
-  const allEvents = base === undefined ? allEventsRaw : scopeToRole(allEventsRaw, base);
+  const bases = scopeBases(role);
+  const current = bases === undefined ? currentRaw : scopeToRole(currentRaw, bases);
+  const prior = bases === undefined ? priorRaw : scopeToRole(priorRaw, bases);
+  const allEvents = bases === undefined ? allEventsRaw : scopeToRole(allEventsRaw, bases);
   const oldestRetained = allEventsRaw.length > 0 ? eventDayKey(allEventsRaw[0]!) : null;
   const tickEvents = current.filter((ev) => ev.type === "run_end");
 
@@ -540,7 +541,7 @@ function assembleFailureReport(
 
   return {
     ...window,
-    ...(base === undefined ? {} : { role: base }),
+    ...(bases === undefined ? {} : { role: bases.join(",") }),
     runs: tickEvents.length,
     hasEvents,
     emptyLog: !hasEvents && !coversFullWindow,

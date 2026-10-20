@@ -7,7 +7,7 @@ import { collectFailureReport, collectFailureReportSince } from "../failure/fail
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
 import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
+import { failRivalShapes, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags and
@@ -18,8 +18,8 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
   // trailing window vs a series over whole days), not a modifier of either.
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
   // --role scopes both report shapes: the usage report (day and --since) and the failure
-  // digest, whose day and --since collectors take the same optional base role.
-  const role = parseRoleScope(root, args);
+  // digest, whose day and --since collectors take the same optional list of base roles.
+  const role = parseRoleListScope(root, args);
   if (ms !== null) {
     // --days is still a rival shape: it counts whole local days, while --since totals a trailing
     // window. --failures is not a rival anymore — the digest has a windowed-since collector that

@@ -877,41 +877,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### `tumwater report --role` takes a comma-separated list of role ids, so one usage report or failure digest covers every role an operator is comparing (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 status data and scheduling, the TUI Ctrl+Y entry src/ui/tui, and the wake entry src/operator plus the wake/reset-counters help lines and docs/cli.md's "Control the roles" row; none of them is src/report, src/failure/failure-data.ts or the report stanza of src/cli/help.ts, and this edits docs/cli.md's Audit row only; the blocked plain-terms parts reach src/report only in far-behind parts, a rebase; touches src/report/report.ts src/report/report-fold.ts src/report/report-data.ts src/failure/failure-data.ts src/cli/help.ts docs/cli.md test/report.test.ts test/help.test.ts)
-
-**Goal.** `history --role` takes a comma list (`parseRoleListScope`, src/cli/cli-args.ts), and the pause/resume/wake work does the same for the operator commands. `report --role` still takes one id: `tumwater report --role clean,dedupe` fails with `unknown role: clean,dedupe`, so an operator comparing the maintenance roles' spend against their output runs one report per role and adds the numbers by hand. Accept the comma list on every report shape: the day report, `--since`, and `--failures` (day and `--since`).
-
-**Approach.**
-- `src/report/report.ts` `cmdReport`: replace `parseRoleScope(root, args)` with `parseRoleListScope(root, args)`. It already validates each piece, canonicalizes, deduplicates in first-seen order and fails `ROLE_VALUE_ERROR` on an empty list. Pass `roles ?? undefined` to the four collectors. Update the import and the `--role` comment.
-- `src/report/report-fold.ts`:
-  - Add an exported `scopeBases(role: string | readonly string[] | undefined): string[] | undefined`. It maps undefined and an empty array to undefined (the team report). Otherwise it maps each id through `baseRoleOf`, deduplicated in first-seen order, so `feature-2,feature` is one base.
-  - Widen `roleSum(record, role)` to `roleSum(record, bases: string | readonly string[])`. It sums every key whose `baseRoleOf` is one of the bases. A single string behaves as today.
-  - Widen `narrowToRole` the same way. It returns one entry per base with a nonzero `roleSum`, keyed by that base, and keeps the zero-means-absent rule.
-  - Widen `scopedByRole(record, base)` to take `readonly string[] | undefined`.
-  - Update the three doc comments: "one base role" becomes "the scoped base roles".
-- `src/report/report-data.ts`:
-  - `collectReport` and `collectReportSince` widen `role?: string` to `role?: string | readonly string[]`. Each computes `const bases = scopeBases(role)` once, and every `base === undefined` test becomes `bases === undefined`. The `roleSum`/`narrowToRole`/`scopedByRole` calls take `bases`.
-  - The day branch's work/maintenance split no longer uses `commitTier(base)` on one base. `workCommits` sums `roleSum(fold.commitsByRole, b)` over the bases whose `commitTier(b)` is `"work"`, and `maintenanceCommits` sums those whose tier is `"maintenance"`. With one base this gives the same numbers as today.
-  - The output's `role` field stays a string: `bases.join(",")`. The JSON shape does not change, a single-role report keeps the same `role` value, and the render's `role: <id>` header line prints `role: clean,dedupe`. Update the `role?: string` field comments on `ReportData` and `SinceReport` to say this.
-  - The callers that pass one string keep compiling unchanged: `reportScope`'s `/api/report` path in src/gui/gui-endpoints.ts and `scope` in src/ui/tui/tui-pane-report.ts. Do not edit them.
-- `src/failure/failure-data.ts`:
-  - `collectFailureReport`, `collectFailureReportSince` and the shared collector they call take `role?: string | readonly string[]` and compute `bases` through `scopeBases`.
-  - `scopeToRole(events, base)` becomes `scopeToRole(events, bases: readonly string[])` and tests membership with `includes`.
-  - The memo key uses `bases?.join(",") ?? ""`.
-  - The output `role` is `bases.join(",")`, as in the usage report.
-- `src/cli/help.ts`: the report usage lines become `[--role <id>[,<id>...]]`. In the three descriptions, "--role <id> scopes … to one role's" becomes "--role <id>[,<id>...] scopes … to the listed roles'". Update the `help.test.ts` regexes that pin the old usage lines (`report --failures [--days N] [--since <duration>] [--role <id>] [--json]` and the `--failures --since` one) in the same change.
-- `docs/cli.md`, Audit row: `tumwater report --role <id>` (scopes … to one role's …) becomes `tumwater report --role <id>[,<id>...]` (scopes … to the listed roles' …, summed; the by-role lines keep one entry per listed role).
-
-**Acceptance criteria.**
-- New case in `test/report.test.ts`, "report --role takes a comma list and sums the listed roles". It uses `writeEvents` with `run_end` events (tokens/cost) for `clean`, `dedupe` and `feature`:
-  - `report --role clean,dedupe --json` (day report) has `role` `"clean,dedupe"`. Its days' `runsByRole`/`costByRole` hold exactly the `clean` and `dedupe` keys, and their `tokensOut`/`costUsd` equal the two roles' sum, with `feature` absent.
-  - The `--since 6h` form behaves the same: `totals.runs` is the two roles' run count, and the render prints `role: clean,dedupe`.
-  - `report --role dedupe,clean,dedupe --json` dedupes, giving `role` `"dedupe,clean"`.
-- New case: `report --failures --role clean,dedupe --json` scopes the digest to both roles: `role` is `"clean,dedupe"`, and no row names `feature`.
-- New case: `report --role clean,ghost` exits nonzero with `unknown role: ghost`, and `report --role ,` exits nonzero with `ROLE_VALUE_ERROR`'s text.
-- The existing single-role cases keep passing unchanged, among them "report --since narrows Revisions by role to the scoped base role" and "report --since folds failed ticks by role and narrows to the scoped base role".
-- `tumwater help report` shows `[--role <id>[,<id>...]]`. `npm run test:gate` passes.
-
 ### `tumwater start --once --role` takes a comma-separated list of role ids, so one scoped round runs exactly the roles an operator names (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — fast merge 14/14 edits the merge path, runner 9/14 touches src/status/ and src/scheduling/, the TUI History, wake and report entries touch other commands; this one touches src/cli/cli-args.ts, src/cli/cli-run.ts, src/orchestrator/orchestrator.ts, src/config/config-live.ts, src/cli/help.ts, docs/cli.md and their tests)
 
 **Goal.** `start --once --role <id>` scopes a once round to ONE role (`cmdRun`, src/cli/cli-run.ts, via `parseRoleFlag`). A cron job or CI step that wants a round of just the maintenance roles (`clean,dedupe,organize`) has to start three rounds one after another, and each one pays the full startup cost (startup check, baseline, orchestrator boot). `start --once --role clean,dedupe` fails today with `unknown role: clean,dedupe`. Accept the comma list, as `history --role` and `pause --role` already do: the round runs exactly the listed enabled runners. A single id behaves exactly as now.

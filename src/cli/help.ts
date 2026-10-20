@@ -44,27 +44,28 @@ Usage:
   tumwater status [--json]         One-shot status table (--json prints machine-readable
                                    team state — the GUI's /api/status payload minus the
                                    serving process's serverBuildSha)
-  tumwater report [--days N] [--role <id>] [--json]
+  tumwater report [--days N] [--role <id>[,<id>...]] [--json]
                                    Markdown usage report — tokens/runs/commits per day (default
                                    14 days); totals also include merge runs (reviewer + conflict
-                                   resolution); --role <id> scopes the report to one role's runs,
-                                   tokens, cost, and commits (merge runs and backlog tallies
-                                   omitted); --json prints machine-readable usage data — the
-                                   collector's own payload, not the Markdown render
-  tumwater report --failures [--days N] [--since <duration>] [--role <id>] [--json]
+                                   resolution); --role <id>[,<id>...] scopes the report to the
+                                   listed roles' runs, tokens, cost, and commits (merge runs
+                                   and backlog tallies omitted); --json prints
+                                   machine-readable usage data — the collector's own
+                                   payload, not the Markdown render
+  tumwater report --failures [--days N] [--since <duration>] [--role <id>[,<id>...]] [--json]
                                    Markdown failure digest — run outcomes, deltas,
                                    clustered errors, and team state changes (default
-                                   14 days); --role <id> scopes the digest to one role's
+                                   14 days); --role <id>[,<id>...] scopes the digest to the listed roles'
                                    rows; --since windows the digest over a trailing
                                    span (capped at 7d)
-  tumwater report --failures --since <duration> [--role <id>] [--json]
+  tumwater report --failures --since <duration> [--role <id>[,<id>...]] [--json]
                                    The failure digest over a trailing window, compared
                                    against the equal-length window before it
-  tumwater report --since <duration> [--role <id>] [--json]
+  tumwater report --since <duration> [--role <id>[,<id>...]] [--json]
                                    Totals over a trailing window (capped at 7d) —
                                    tokens/runs/commits/cost since a point in time; totals
                                    also include merge runs (reviewer + conflict
-                                   resolution); --role <id> scopes the totals to one role
+                                   resolution); --role <id>[,<id>...] scopes the totals to the listed roles
                                    (merge runs and backlog tallies omitted); not
                                    combinable with --days
   tumwater doctor [--json] [--reprobe] [--problems]

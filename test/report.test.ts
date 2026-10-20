@@ -1435,3 +1435,54 @@ test("renderReportMarkdown prints Check wait median for the days that carry one,
   assert.ok(!renderReportMarkdown(none).includes("Check wait median"));
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Check wait median"));
 });
+
+test("report --role takes a comma list and sums the listed roles", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "changed", tokens: 20, costUsd: 0.25 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40, costUsd: 1 }),
+  ]);
+
+  const day = JSON.parse((await runCli(root, "report", "--role", "clean,dedupe", "--json", "--days", "1")).out);
+  assert.equal(day.role, "clean,dedupe");
+  const today = day.series[day.series.length - 1];
+  assert.deepEqual(Object.keys(today.runsByRole).sort(), ["clean", "dedupe"]);
+  assert.deepEqual(Object.keys(today.costByRole).sort(), ["clean", "dedupe"]);
+  assert.equal(today.tokensOut, 30);
+  assert.equal(today.costUsd, 0.75);
+
+  const since = JSON.parse((await runCli(root, "report", "--role", "clean,dedupe", "--json", "--since", "6h")).out);
+  assert.equal(since.totals.runs, 2);
+  const md = await runCli(root, "report", "--role", "clean,dedupe", "--since", "6h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /role: clean,dedupe/);
+
+  const dup = JSON.parse((await runCli(root, "report", "--role", "dedupe,clean,dedupe", "--json", "--days", "1")).out);
+  assert.equal(dup.role, "dedupe,clean");
+});
+
+test("report --failures --role takes a comma list and scopes the digest to those roles", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "error", tokens: 1 }),
+    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "error", tokens: 1 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 1 }),
+  ]);
+  const out = await runCli(root, "report", "--failures", "--role", "clean,dedupe", "--json");
+  assert.equal(out.code, 0);
+  const digest = JSON.parse(out.out);
+  assert.equal(digest.role, "clean,dedupe");
+  assert.ok(digest.outcomes.length > 0);
+  assert.ok(!JSON.stringify(digest.outcomes).includes("feature"));
+});
+
+test("report --role rejects an unknown id and an empty list in a comma list", async () => {
+  const root = makeRepo();
+  const ghost = await runCli(root, "report", "--role", "clean,ghost");
+  assert.notEqual(ghost.code, 0);
+  assert.match(ghost.out, /unknown role: ghost/);
+  const empty = await runCli(root, "report", "--role", ",");
+  assert.notEqual(empty.code, 0);
+  assert.match(empty.out, /--role needs a role id/);
+});

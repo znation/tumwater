@@ -24,13 +24,13 @@ import {
 import { validationGapTag } from "../backlog/backlog-md.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian } from "../collections.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { commitTier } from "../roles/roles.js";
 import {
   foldUsageEvent,
   foldWindowEvents,
   narrowToRole,
   roleSum,
+  scopeBases,
   scopedByRole,
   zeroCommitCounts,
   zeroMergeCounts,
@@ -160,7 +160,7 @@ export interface ReportData {
   days: number;
   from: string; // day key of the oldest day in the series
   to: string; // day key of today
-  role?: string; // set by the role-scoped collector; absent on the team report
+  role?: string; // the scoped base roles, comma-joined; set by the role-scoped collector; absent on the team report
   series: ReportDay[]; // oldest → newest, zero-filled
   totals: ReportTotals & {
     featuresDone: number;
@@ -192,7 +192,7 @@ export interface ReportData {
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
-  role?: string; // set by the role-scoped collector; absent on the team report
+  role?: string; // the scoped base roles, comma-joined; set by the role-scoped collector; absent on the team report
   totals: ReportTotals;
   runsByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
@@ -260,7 +260,7 @@ export interface SinceReport {
  * only (run_end/merged — see SinceReport for why the backlog files are not read). Kept a
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
-export function collectReportSince(root: string, sinceMs: number, role?: string): SinceReport {
+export function collectReportSince(root: string, sinceMs: number, role?: string | readonly string[]): SinceReport {
   assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
@@ -311,13 +311,13 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // history that never existed. When neither proof holds, the oldest retained event lies inside
   // the window and the render notes the possible truncation.
   const coversFullWindow = eventWindowCovers(raw, cutoff);
-  // Role scope: every total derives from the fold's per-role maps for the named base role alone
+  // Role scope: every total derives from the fold's per-role maps for the named base roles alone
   // — merge usage (the merge slot's, not the role's) and the team-only fields stay out, so
   // a scoped --since report sums exactly the same events the scoped day report would. The scope
-  // is the base role, so instances (`feature-2`) aggregate into their group as the cap does.
-  const base = role === undefined ? undefined : baseRoleOf(role);
+  // is the base roles, so instances (`feature-2`) aggregate into their group as the cap does.
+  const bases = scopeBases(role);
   const scopedTotals: ReportTotals =
-    base === undefined
+    bases === undefined
       ? {
           tokensOut: acc.tokensOut + (acc.mergeTokens ?? 0),
           runs: acc.runs ?? 0,
@@ -332,12 +332,12 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
       : (() => {
           // The role's own notional spend, from its run_end events; the merge slot's
           // notional is team-wide and stays out like its cost.
-          const notional = roleSum(acc.notionalByRole, base);
+          const notional = roleSum(acc.notionalByRole, bases);
           return {
-            tokensOut: roleSum(acc.tokensByRole, base),
-            runs: roleSum(acc.runsByRole, base),
-            commits: roleSum(acc.commitsByRole, base),
-            costUsd: roleSum(acc.costByRole, base),
+            tokensOut: roleSum(acc.tokensByRole, bases),
+            runs: roleSum(acc.runsByRole, bases),
+            commits: roleSum(acc.commitsByRole, bases),
+            costUsd: roleSum(acc.costByRole, bases),
             ...(notional > 0 ? { notionalCostUsd: notional } : {}),
             ...zeroMergeCounts(),
           };
@@ -346,41 +346,41 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // notional spend, scoped to base when a role is given — the same conditional the day
   // collector applies to ReportDay.notionalByRole (line ~573), so a role-scoped window
   // whose role spent no notional carries no notionalByRole instead of an empty map.
-  const notionalByRole = scopedByRole(acc.notionalByRole, base);
+  const notionalByRole = scopedByRole(acc.notionalByRole, bases);
   // Deferred runs are bucketed by a reason code (not a role), so a role-scoped window
   // carries no entries — the same team-only rule runsByModel follows. Only set when the
   // window actually deferred (zero means absent), so a deferral-free --since JSON omits it.
-  const deferred = scopedByRole(acc.deferredByReason, base);
+  const deferred = scopedByRole(acc.deferredByReason, bases);
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
-    ...(base === undefined ? {} : { role: base }),
+    ...(bases === undefined ? {} : { role: bases.join(",") }),
     totals: scopedTotals,
-    runsByRole: scopedByRole(acc.runsByRole, base),
-    costByRole: scopedByRole(acc.costByRole, base),
-    rejectionsByRole: scopedByRole(acc.rejectionsByRole, base),
-    revisionsByRole: scopedByRole(acc.revisionsByRole, base),
-    refusalsByRole: scopedByRole(acc.refusalsByRole, base),
-    failedRunsByRole: scopedByRole(acc.failedRunsByRole, base),
-    fallbacksByRole: scopedByRole(acc.fallbacksByRole, base),
-    imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, base),
-    tokensByRole: scopedByRole(acc.tokensByRole, base),
-    commitsByRole: scopedByRole(acc.commitsByRole, base),
-    mergedByRole: scopedByRole(acc.mergedByRole, base),
-    mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, base),
+    runsByRole: scopedByRole(acc.runsByRole, bases),
+    costByRole: scopedByRole(acc.costByRole, bases),
+    rejectionsByRole: scopedByRole(acc.rejectionsByRole, bases),
+    revisionsByRole: scopedByRole(acc.revisionsByRole, bases),
+    refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
+    failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
+    fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases),
+    imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
+    tokensByRole: scopedByRole(acc.tokensByRole, bases),
+    commitsByRole: scopedByRole(acc.commitsByRole, bases),
+    mergedByRole: scopedByRole(acc.mergedByRole, bases),
+    mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, bases),
     // A result code is not a role, so a role-scoped window carries an empty map (a code
     // never baseRoleOf to the role) — the render gates the reason line to the team report.
-    mergeFailedByReason: scopedByRole(acc.mergeFailedByReason, base),
+    mergeFailedByReason: scopedByRole(acc.mergeFailedByReason, bases),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
     // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
     // gates the provider lines to the team report anyway. Always present, empty when none.
-    costByProvider: scopedByRole(acc.costByProvider, base),
-    notionalByProvider: scopedByRole(acc.notionalByProvider, base),
+    costByProvider: scopedByRole(acc.costByProvider, bases),
+    notionalByProvider: scopedByRole(acc.notionalByProvider, bases),
     // Model attribution is team-only (a model is not a role, so no model folds to the
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
-    runsByModel: scopedByRole(acc.runsByModel, base),
+    runsByModel: scopedByRole(acc.runsByModel, bases),
     ...(Object.keys(deferred).length > 0 ? { deferredByReason: deferred } : {}),
     coversFullWindow,
   };
@@ -389,7 +389,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
 /** Aggregate team usage over exactly `days` local calendar days ending today, from the event
  * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
  * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
-export function collectReport(root: string, days: number, role?: string): ReportData {
+export function collectReport(root: string, days: number, role?: string | readonly string[]): ReportData {
+  const bases = scopeBases(role);
   const now = new Date();
   // One captured instant for the whole window, so every day key derives from the same day.
   const { from, to } = dayWindow(days, now);
@@ -414,7 +415,7 @@ export function collectReport(root: string, days: number, role?: string): Report
   for (const [dayKey, fold] of foldEntry.days) {
     const day = byDate.get(dayKey);
     if (!day) continue; // Out-of-window day key (e.g. future-dated) — no series slot to fill.
-    if (role === undefined) {
+    if (bases === undefined) {
       day.tokensOut = fold.tokensOut;
       day.runsByRole = fold.runsByRole;
       day.tokensByRole = fold.tokensByRole;
@@ -490,41 +491,41 @@ export function collectReport(root: string, days: number, role?: string): Report
       // the numbers match the per-role cap, which is base-role keyed too. The merge fields
       // stay unset — merge runs are the merge slot's, not this role's — and the work /
       // maintenance split follows the base role's own tier rather than the day's whole split.
-      const base = baseRoleOf(role);
-      const commits = roleSum(fold.commitsByRole, base);
-      const tier = commitTier(base);
-      day.tokensOut = roleSum(fold.tokensByRole, base);
-      day.runsByRole = narrowToRole(fold.runsByRole, base);
-      day.tokensByRole = narrowToRole(fold.tokensByRole, base);
-      day.costByRole = narrowToRole(fold.costByRole, base);
-      const rejs = narrowToRole(fold.rejectionsByRole, base);
+      const commits = roleSum(fold.commitsByRole, bases);
+      day.tokensOut = roleSum(fold.tokensByRole, bases);
+      day.runsByRole = narrowToRole(fold.runsByRole, bases);
+      day.tokensByRole = narrowToRole(fold.tokensByRole, bases);
+      day.costByRole = narrowToRole(fold.costByRole, bases);
+      const rejs = narrowToRole(fold.rejectionsByRole, bases);
       if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
-      const revs = narrowToRole(fold.revisionsByRole, base);
+      const revs = narrowToRole(fold.revisionsByRole, bases);
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
-      const refusals = narrowToRole(fold.refusalsByRole, base);
+      const refusals = narrowToRole(fold.refusalsByRole, bases);
       if (Object.keys(refusals).length > 0) day.refusalsByRole = refusals;
-      const fails = narrowToRole(fold.failedRunsByRole, base);
+      const fails = narrowToRole(fold.failedRunsByRole, bases);
       if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
-      const falls = narrowToRole(fold.fallbacksByRole, base);
+      const falls = narrowToRole(fold.fallbacksByRole, bases);
       if (Object.keys(falls).length > 0) day.fallbacksByRole = falls;
-      const reroutes = narrowToRole(fold.imageReroutesByRole, base);
+      const reroutes = narrowToRole(fold.imageReroutesByRole, bases);
       if (Object.keys(reroutes).length > 0) day.imageReroutesByRole = reroutes;
       day.commits = commits;
-      day.commitsByRole = narrowToRole(fold.commitsByRole, base);
-      day.workCommits = tier === "work" ? commits : 0;
-      day.maintenanceCommits = tier === "maintenance" ? commits : 0;
-      day.costUsd = roleSum(fold.costByRole, base);
-      const notional = roleSum(fold.notionalByRole, base);
+      day.commitsByRole = narrowToRole(fold.commitsByRole, bases);
+      const tierCommits = (tier: string): number =>
+        bases.filter((b) => commitTier(b) === tier).reduce((n, b) => n + roleSum(fold.commitsByRole, b), 0);
+      day.workCommits = tierCommits("work");
+      day.maintenanceCommits = tierCommits("maintenance");
+      day.costUsd = roleSum(fold.costByRole, bases);
+      const notional = roleSum(fold.notionalByRole, bases);
       if (notional > 0) {
         day.notionalCostUsd = notional;
-        day.notionalByRole = narrowToRole(fold.notionalByRole, base);
+        day.notionalByRole = narrowToRole(fold.notionalByRole, bases);
       }
       // Merge runs belong to the merge slot, not this role, so the role-scoped series
       // keeps them unset (matching the merge-share fields) — the render omits the merge
       // line for a scoped report, so these are carried only for shape consistency.
-      const mergeDone = narrowToRole(fold.mergedByRole, base);
+      const mergeDone = narrowToRole(fold.mergedByRole, bases);
       if (Object.keys(mergeDone).length > 0) day.mergedByRole = mergeDone;
-      const mergeDoneFailed = narrowToRole(fold.mergeFailedByRole, base);
+      const mergeDoneFailed = narrowToRole(fold.mergeFailedByRole, bases);
       if (Object.keys(mergeDoneFailed).length > 0) day.mergeFailedByRole = mergeDoneFailed;
     }
   }
@@ -641,7 +642,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     days,
     from,
     to,
-    ...(role === undefined ? {} : { role: baseRoleOf(role) }),
+    ...(bases === undefined ? {} : { role: bases.join(",") }),
     series,
     totals: {
       ...totals,
