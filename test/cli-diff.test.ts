@@ -240,3 +240,51 @@ test("diff --stat without --role fails", async () => {
   assert.notEqual(r.code, 0);
   assert.ok(r.stderr.includes("diff --stat needs --role"));
 });
+
+test("diff --role takes a comma list and prints each listed role's view in order", async () => {
+  const { repo } = await seededFeatureRepo();
+  await ensureWorktree(repo, "clean", "main");
+  const r = await cli(repo, "diff", "--role", "clean,feature");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.startsWith("no pending change for clean\n\nfeature: "));
+  assert.ok(r.stdout.includes("1 commit ahead of main"));
+  assert.ok(r.stdout.includes("+# widget"));
+  const dup = await cli(repo, "diff", "--role", "feature,feature");
+  const one = await cli(repo, "diff", "--role", "feature");
+  assert.equal(dup.stdout, one.stdout);
+});
+
+test("diff --role list --json prints one per-role payload per listed role", async () => {
+  const { repo } = await seededFeatureRepo();
+  await ensureWorktree(repo, "clean", "main");
+  const r = await cli(repo, "diff", "--role", "feature,clean", "--json");
+  const view = JSON.parse(r.stdout);
+  assert.equal(view.mainBranch, "main");
+  assert.deepEqual(view.roles.map((x: { role: string }) => x.role), ["feature", "clean"]);
+  assert.equal(view.roles[0].state, "ready");
+  assert.equal(view.roles[0].ahead, 1);
+  assert.ok(view.roles[0].diff.includes("+# widget"));
+  assert.equal(view.roles[1].diff, "");
+});
+
+test("diff --role list composes with --stat and degrades a missing baseline once", async () => {
+  const { repo } = await seededFeatureRepo();
+  await ensureWorktree(repo, "clean", "main");
+  const stat = await cli(repo, "diff", "--role", "feature,clean", "--stat");
+  assert.equal(stat.code, 0);
+  assert.ok(stat.stdout.includes("widget.md |"));
+  assert.ok(!stat.stdout.includes("+# widget"));
+  const cfg = loadConfig(repo);
+  cfg.baseBranch = "ghost";
+  writeConfig(repo, cfg);
+  const ghost = await cli(repo, "diff", "--role", "feature,clean");
+  assert.equal(ghost.code, 0);
+  assert.equal(ghost.stdout.trim(), "main branch ghost does not exist");
+});
+
+test("diff --role list names an unknown piece", async () => {
+  const { repo } = await seededFeatureRepo();
+  const r = await cli(repo, "diff", "--role", "feature,nope");
+  assert.equal(r.code, 1);
+  assert.ok(r.stderr.includes("nope"));
+});

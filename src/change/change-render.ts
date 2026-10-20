@@ -4,7 +4,7 @@
  * collected view — no I/O, no clock reads. */
 
 import { plural } from "../text/phrases.js";
-import type { TeamChangeView, RoleChangeView } from "./change-data.js";
+import type { TeamChangeView, RoleChangeView, RoleChangesView } from "./change-data.js";
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, K commits behind` when the branch lags main, plus `, M uncommitted
@@ -53,4 +53,13 @@ export function renderRoleChange(view: RoleChangeView): string {
     if (view.uncommittedDiff) lines.push("", view.uncommittedDiff.trimEnd());
   }
   return lines.join("\n");
+}
+
+/** Render several roles' views in the listed order, a blank line apart; every block opens with
+ * its role's name, so the blank line separates them. */
+export function renderRoleChanges(view: RoleChangesView): string {
+  if (view.roles.length > 0 && view.roles.every((r) => r.state === "no-base")) {
+    return `main branch ${view.mainBranch} does not exist`;
+  }
+  return view.roles.map(renderRoleChange).join("\n\n");
 }

@@ -169,14 +169,15 @@ Usage:
                                    with no worktree or nothing pending are skipped, and a
                                    missing baseline prints the per-role view's degradation
                                    line; --json prints the {mainBranch, roles} roster
-  tumwater diff --role <id> [--stat] [--json]
+  tumwater diff --role <id>[,<id>...] [--stat] [--json]
                                    Show the change that role holds: its branch's unmerged
                                    commits (one line each, plus the ahead-of-main patch) and
                                    its worktree's uncommitted edits (the file list, plus the
                                    patch — staged and unstaged alike); a role with no workspace
                                    yet prints \`no worktree for <id>\`; --stat prints each patch's per-file
                                    \`git diff --stat\` summary instead; --json prints the
-                                   collector's payload as machine-readable data
+                                   collector's payload as machine-readable data; a comma list prints each listed
+                                   role's view in that order, separated by a blank line (--json: {mainBranch, roles})
   tumwater queue [--role <id>[,<id>...]] [--json]
                                    List the durable merge queue in execution order (oldest
                                    first): one line per waiting merge — position, role, run

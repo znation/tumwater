@@ -5,18 +5,18 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { flagValue, parseGrepFlag, parseRoleFlag, parseRoleListScope } from "./cli-args.js";
+import { flagValue, parseGrepFlag, parseRoleListScope } from "./cli-args.js";
 import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
-import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
+import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
-import { renderTeamChange, renderRoleChange } from "../change/change-render.js";
+import { collectTeamChanges, collectRoleChange, collectRoleChanges } from "../change/change-data.js";
+import { renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { renderMergeQueue } from "../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
@@ -122,8 +122,8 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
   }
 }
 
-/** `tumwater diff`: one line per role holding pending work, or the full per-role view with
- * `--role <id>`. */
+/** `tumwater diff`: one line per role holding pending work, or the full per-role view of each
+ * role listed with `--role <id>[,<id>...]`. */
 export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
   // (no git, not a repository, no tumwater.json, no commits) has no team to ask about,
@@ -135,15 +135,18 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG]);
   await requireReadyRepo(root);
   // Absent --role is the team-wide form: one line per role holding pending work
-  // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
-  // already failed above). A named role keeps the full per-role view.
-  const role = parseRoleFlag(args, knownRoleIdsCached(root));
-  if (role === null) {
+  // (parseRoleListScope returns null only for an absent flag — an empty or unknown piece
+  // already failed above). One named role keeps the single per-role view; a list prints each
+  // listed role's view in order.
+  const roles = parseRoleListScope(root, args);
+  if (roles === null) {
     if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
     sayJsonOrRender(args, await collectTeamChanges(root), renderTeamChange);
-  } else {
-    const change = await collectRoleChange(root, role, { stat: args.includes("--stat") });
+  } else if (roles.length === 1) {
+    const change = await collectRoleChange(root, roles[0]!, { stat: args.includes("--stat") });
     sayJsonOrRender(args, change, renderRoleChange);
+  } else {
+    sayJsonOrRender(args, await collectRoleChanges(root, roles, { stat: args.includes("--stat") }), renderRoleChanges);
   }
 }
 

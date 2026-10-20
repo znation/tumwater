@@ -92,6 +92,18 @@ export async function collectTeamChanges(root: string): Promise<TeamChangeView> 
   return { mainBranch: roles[0]?.mainBranch ?? "main", roles };
 }
 
+/** The per-role views of several roles: the list form of `tumwater diff --role`. */
+export interface RoleChangesView {
+  mainBranch: string;
+  roles: RoleChangeView[];
+}
+
+/** Collect each listed role's full change view, entries in the caller's order. */
+export async function collectRoleChanges(root: string, roles: string[], opts: { stat?: boolean } = {}): Promise<RoleChangesView> {
+  const views = await Promise.all(roles.map((role) => collectRoleChange(root, role, opts)));
+  return { mainBranch: views[0]?.mainBranch ?? "main", roles: views };
+}
+
 /** The uncommitted patch's cap, matching aheadOfMainDiff's — one shared bound so neither
  * half of the view can print unbounded text. */
 const DIFF_MAX_BYTES = 200_000;
