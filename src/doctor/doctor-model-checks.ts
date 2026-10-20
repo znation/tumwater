@@ -32,7 +32,7 @@ import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { formatBytes, usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
-import { parsePiModelImages, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
+import { parsePiModelImages, parsePiModelTable, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
@@ -267,11 +267,10 @@ export async function piProviderAuth(
  * first non-blank line is the `provider model …` header, so a "No models matching" reply or any
  * other text is never taken for an empty catalog. */
 export function parsePiModelList(stdout: string): Set<string> | null {
-  const rows = stdout.split("\n").map((line) => line.trim().split(/\s+/)).filter((t) => t[0] !== "");
-  const header = rows.shift();
-  if (header?.[0] !== "provider" || header[1] !== "model") return null;
+  const table = parsePiModelTable(stdout);
+  if (table === null) return null;
   const listed = new Set<string>();
-  for (const [provider, model] of rows) if (model !== undefined) listed.add(`${provider}/${model}`);
+  for (const [provider, model] of table.rows) if (model !== undefined) listed.add(`${provider}/${model}`);
   return listed;
 }
 

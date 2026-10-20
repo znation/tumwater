@@ -7,13 +7,23 @@ export interface PiListedModels {
   images: Record<string, boolean>;
 }
 
+/** The whitespace-split rows of the table `pi --list-models` prints, header first. Null unless
+ * the first non-blank line is the `provider model …` header, so other text (a "No models
+ * matching" reply) is never taken for an empty table. */
+export function parsePiModelTable(stdout: string): { header: string[]; rows: string[][] } | null {
+  const rows = stdout.split("\n").map((line) => line.trim().split(/\s+/)).filter((t) => t[0] !== "");
+  const header = rows.shift();
+  if (header?.[0] !== "provider" || header[1] !== "model") return null;
+  return { header, rows };
+}
+
 /** Read the `images` column of the table `pi --list-models` prints. Null unless the first
  * non-blank line is the `provider model …` header and it has an `images` column. A row's
  * `yes`/`no` maps to a boolean; any other value is skipped. */
 export function parsePiModelImages(stdout: string): Record<string, boolean> | null {
-  const rows = stdout.split("\n").map((line) => line.trim().split(/\s+/)).filter((t) => t[0] !== "");
-  const header = rows.shift();
-  if (header?.[0] !== "provider" || header[1] !== "model") return null;
+  const table = parsePiModelTable(stdout);
+  if (table === null) return null;
+  const { header, rows } = table;
   const column = header.indexOf("images");
   if (column < 0) return null;
   const images: Record<string, boolean> = {};
