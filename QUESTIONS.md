@@ -6,7 +6,29 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### What flag should scope `tumwater logs`' event feed to some roles? (asked 2026-10-19 by the plan role)
+
+**Context.** The dashboard's event search (`GET /api/logs?role=<id>`, `handleLogs` in
+src/gui/gui-endpoints.ts) and the TUI Activity pane (Ctrl+G, exact-role scope in
+src/ui/tui/tui-pane-activity.ts) both filter the event feed by role through `eventRole`. The
+CLI's `tumwater logs` cannot: `--role <id>` already switches it to that role's pi transcript, and
+`rejectRoleViewRival` (src/cli/log-commands.ts) rejects `--role` alongside every event-feed flag
+(`--grep`, `--type`, `--since`, `--count`, `--json`). Today the nearest workaround is
+`--grep feature`, which also matches other roles' lines that mention the word. Whatever name is
+picked takes a comma list like `history --role clean,dedupe`.
+
+**Options.**
+1. A new event-feed flag, e.g. `tumwater logs --from clean,dedupe [-f] [-n N] [--type …]`. This
+   adds a flag and leaves `--role` as it is.
+2. Make `--role` filter the event feed and move the transcript to its own flag,
+   e.g. `tumwater logs --transcript <id> [--prompt]`. This matches `history --role`, but it breaks
+   existing `logs --role` scripts and docs.
+3. Leave it: `--grep` is close enough, and the dashboards already cover the case.
+
+**Recommendation.** Option 1 (`--from`): it adds a flag without breaking anything and reads
+naturally ("events from clean"). Once a name is chosen, the plan role will plan it as one
+change: parse it with `parseRoleListFlag`, add it to `feedFilter` in `cmdLogs`, and update
+help/docs/completion.
 
 ## Answered
 
