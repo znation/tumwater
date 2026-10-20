@@ -19,7 +19,7 @@ import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { modelFallbackActive } from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";
-import { TickUsage } from "../run/run-usage.js";
+import { RunUsage } from "../run/run-usage.js";
 import {
   runTickPhase,
   tickPhase,
@@ -42,13 +42,13 @@ export class RoleRunner {
    * goes through this, so one assignment steers provider/model/thinking/instructions,
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
-  /** The 429 observation from this runner's usage accounting (TickUsage.lastRateLimit,
+  /** The 429 observation from this runner's usage accounting (RunUsage.lastRateLimit,
    * src/run/run-usage.ts): the orchestrator's team-wide hold wiring reads it through the
    * runner (src/team/team-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
     return this.usage.lastRateLimit;
   }
-  /** The backend-failure observation (TickUsage.lastBackendFailure, src/run/run-usage.ts): the
+  /** The backend-failure observation (RunUsage.lastBackendFailure, src/run/run-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
    * kinds the team-wide hold groups storms by (src/team/team-hold.ts). Same runner surface,
    * same consumer. */
@@ -58,7 +58,7 @@ export class RoleRunner {
   /** Per-tick and lifetime usage accounting (src/run/run-usage.ts): the turns/cost windows the
    * commit trailer and run_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
-  private readonly usage = new TickUsage();
+  private readonly usage = new RunUsage();
   /** The dequeued user prompt a tick is executing and its requeue policy
    * (src/inbox/pending-prompt.ts): the raw director request is recorded at dequeue so an
    * unfulfilled tick (abort, timeout, or failure without changes) can re-queue it instead of
@@ -283,7 +283,7 @@ export class RoleRunner {
   }
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
-   * accounting itself lives in TickUsage.fold (src/run/run-usage.ts); this keeps the once-per-run
+   * accounting itself lives in RunUsage.fold (src/run/run-usage.ts); this keeps the once-per-run
    * choke point and the foldMergeUsage face on the runner, where RunnerPi and the merge
    * wiring (src/merge/merge-slot.ts) reach them. */
   private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {

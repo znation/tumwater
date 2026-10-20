@@ -1,23 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TickUsage } from "../src/run/run-usage.js";
+import { RunUsage } from "../src/run/run-usage.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
-// TickUsage's accounting (src/run/run-usage.ts): the once-per-run choke point every pi run of a
-// tick folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned
-// directly: lifetime totals on RunnerState, per-tick windows on the TickUsage itself, the daily
+// RunUsage's accounting (src/run/run-usage.ts): the once-per-run choke point every pi run of a
+// run folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned
+// directly: lifetime totals on RunnerState, per-run windows on the RunUsage itself, the daily
 // budget fold, and the 429 stamp the orchestrator's team-wide hold consumes.
 
 function run(over: Partial<PiRunResult>): PiRunResult {
   return piRunResult({ ...over });
 }
 
-test("fold accumulates lifetime totals and per-tick counters across runs", () => {
+test("fold accumulates lifetime totals and per-run counters across runs", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ outputTokens: 100, peakContextTokens: 5_000, costUsd: 0.01, turns: 3 }));
   u.fold(s, run({ outputTokens: 50, peakContextTokens: 9_000, costUsd: 0.02, turns: 2 }));
@@ -34,7 +34,7 @@ test("fold accumulates lifetime totals and per-tick counters across runs", () =>
 
 test("fold sums prompt tokens every run and freezes the pre-edit prefix at the first edit", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   // Two authoring runs before any edit: both pre-edit prefixes count.
   u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100 }));
@@ -50,7 +50,7 @@ test("fold sums prompt tokens every run and freezes the pre-edit prefix at the f
 
 test("fold's authoring=false (a merge/review run) never advances the pre-edit prefix", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100 }), false);
 
@@ -61,7 +61,7 @@ test("fold's authoring=false (a merge/review run) never advances the pre-edit pr
 
 test("reset clears the prompt-token windows too", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   u.fold(s, run({ promptTokens: 100, cacheReadTokens: 80, preEditPromptTokens: 100, firstEditTurn: 1 }));
 
   u.reset();
@@ -69,14 +69,14 @@ test("reset clears the prompt-token windows too", () => {
   assert.equal(u.promptTokens, 0);
   assert.equal(u.cacheReadTokens, 0);
   assert.equal(u.preEditPromptTokens, 0);
-  // A later run in the next tick is pre-edit again — the freeze does not survive a reset.
+  // A later run in the next run is pre-edit again — the freeze does not survive a reset.
   u.fold(s, run({ promptTokens: 10, preEditPromptTokens: 10 }));
   assert.equal(u.preEditPromptTokens, 10);
 });
 
 test("fold feeds the daily cost budget: dayStamp is set and dayCostUsd accumulates", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ costUsd: 0.25 }));
   u.fold(s, run({ costUsd: 0.75 }));
@@ -92,7 +92,7 @@ test("fold heals a corrupt persisted lifetime counter instead of poisoning it", 
   (s as { generatedTokens: unknown }).generatedTokens = "123";
   (s as { peakContextTokens: unknown }).peakContextTokens = Number.POSITIVE_INFINITY;
   (s as { totalCostUsd: unknown }).totalCostUsd = -5;
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ outputTokens: 10, peakContextTokens: 4_000, costUsd: 0.5 }));
 
@@ -103,7 +103,7 @@ test("fold heals a corrupt persisted lifetime counter instead of poisoning it", 
 
 test("lastRateLimit is stamped only by a run that ENDED on the 429, with the Retry-After hint", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   const before = Date.now();
 
   // A run that merely saw a 429 inside pi's own retry and then finished must not stamp one.
@@ -127,20 +127,20 @@ test("lastRateLimit is stamped only by a run that ENDED on the 429, with the Ret
   assert.equal((u.lastRateLimit as { at: number } | undefined)?.at, stampedAt);
 });
 
-test("reset clears the per-tick windows but keeps lastRateLimit for the orchestrator's hold", () => {
+test("reset clears the per-run windows but keeps lastRateLimit for the orchestrator's hold", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   u.fold(s, run({ turns: 4, costUsd: 0.1, ok: false, transientRateLimit: true }));
 
   u.reset();
 
   assert.equal(u.turns, 0);
   assert.equal(u.costUsd, 0);
-  // lastRateLimit is an episodic observation, not a per-tick window: reset at tick start
+  // lastRateLimit is an episodic observation, not a per-run window: reset at run start
   // would erase a hold the orchestrator has not polled yet.
   assert.ok(u.lastRateLimit);
 
-  // And the next tick's folds start from the cleared windows.
+  // And the next run's folds start from the cleared windows.
   u.fold(s, run({ turns: 2, costUsd: 0.3 }));
   assert.equal(u.turns, 2);
   assert.equal(u.costUsd, 0.3);
@@ -151,7 +151,7 @@ test("reset clears the per-tick windows but keeps lastRateLimit for the orchestr
 // the same rule — only a run that ENDED on the failure.
 test("lastBackendFailure is stamped only by a run that ENDED on a backend failure, with the kind", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   const before = Date.now();
 
   // A run that saw a backend failure inside pi's own retry and then finished must not stamp.
@@ -177,17 +177,17 @@ test("lastBackendFailure is stamped only by a run that ENDED on a backend failur
 
 test("reset keeps lastBackendFailure for the orchestrator's hold, like lastRateLimit", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   u.fold(s, run({ ok: false, transientBackend: true, backendKind: "model-load" }));
   u.reset();
-  assert.ok(u.lastBackendFailure, "an episodic observation survives the per-tick reset");
+  assert.ok(u.lastBackendFailure, "an episodic observation survives the per-run reset");
 });
 
 // The claude billing split (plans/agent-backends.md part 6a): a subscription run's cost is
 // notional and never charges the daily cap; an API run's — or one that saw overage — is real.
 test("a subscription run folds its cost into notionalCostUsd, never the daily cap", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ costUsd: 3, billing: "subscription" }));
   u.fold(s, run({ costUsd: 3, billing: "subscription" }));
@@ -201,7 +201,7 @@ test("a subscription run folds its cost into notionalCostUsd, never the daily ca
 
 test("a subscription run that saw overage charges its cost as real spend", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ costUsd: 3, billing: "subscription", usedOverage: true }));
 
@@ -212,7 +212,7 @@ test("a subscription run that saw overage charges its cost as real spend", () =>
 
 test("an API-billed run charges the cap and leaves notional at zero", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   u.fold(s, run({ costUsd: 1.5, billing: "api" }));
 
@@ -224,7 +224,7 @@ test("an API-billed run charges the cap and leaves notional at zero", () => {
 
 test("fold carries the newest rate windows and reset clears them", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   const windows = [{ type: "five_hour", status: "allowed", utilization: 0.4 }];
 
   u.fold(s, run({ billing: "subscription", rateWindows: windows }));
@@ -241,7 +241,7 @@ test("fold carries the newest rate windows and reset clears them", () => {
 // of a mixed team spent what. A run whose provider was never resolved attributes nothing.
 test("fold splits per-provider spend into providerCost, keyed by provider, guarded on undefined", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
 
   // Real spend on the default provider, notional on a claude subscription seam.
   u.fold(s, run({ costUsd: 0.25, billing: "api" }), true, "deepinfra");
@@ -260,14 +260,14 @@ test("fold splits per-provider spend into providerCost, keyed by provider, guard
     claude: { costUsd: 0, notionalCostUsd: 2 },
   });
 
-  // reset clears the per-tick split alongside costUsd/notionalCostUsd.
+  // reset clears the per-run split alongside costUsd/notionalCostUsd.
   u.reset();
   assert.deepEqual(u.serializeProviderCost(), {});
 });
 
 test("fold charges a real run's cost to its pair and leaves dayCostByPair alone for an estimated one", () => {
   const s: RunnerState = freshRunnerState("coverage");
-  const u = new TickUsage();
+  const u = new RunUsage();
   u.fold(s, run({ costUsd: 2 }), true, "hf", "hf/m");
   u.fold(s, run({ costUsd: 3, billing: "subscription" }), true, "claude", "claude/sonnet");
   assert.deepEqual(s.dayCostByPair, { "hf/m": 2 });

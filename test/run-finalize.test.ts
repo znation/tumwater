@@ -5,7 +5,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { finalizeTick } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, loadRunnerState, zeroCounters } from "../src/runner/runner-state.js";
-import { TickUsage } from "../src/run/run-usage.js";
+import { RunUsage } from "../src/run/run-usage.js";
 import type { TickOutcome } from "../src/run/run-outcome.js";
 import {
   applyMergeOutcome,
@@ -25,7 +25,7 @@ async function run(
   role: string,
   state: RunnerState,
   outcome: TickOutcome,
-  opts: { tick?: number; usage?: TickUsage; recoveryFailure?: string; mainBranch?: string } = {},
+  opts: { tick?: number; usage?: RunUsage; recoveryFailure?: string; mainBranch?: string } = {},
 ): Promise<TickOutcome> {
   const tick = opts.tick ?? 1;
   state.lastRunStartedAt = Date.now() - 50;
@@ -39,7 +39,7 @@ async function run(
     outcome,
     tick,
     tickStartedAt: state.lastRunStartedAt,
-    usage: opts.usage ?? new TickUsage(),
+    usage: opts.usage ?? new RunUsage(),
     ...(opts.recoveryFailure !== undefined ? { recoveryFailure: opts.recoveryFailure } : {}),
   });
 }
@@ -88,7 +88,7 @@ test("finalizeTick rides nonzero per-tick usage on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   s.generatedTokens = 4321;
-  const usage = new TickUsage();
+  const usage = new RunUsage();
   usage.costUsd = 0.0125;
   await run(root, "organize", s, { result: "no_change" }, { usage });
   const end = eventsOfType(root, "run_end")[0]!;
@@ -99,7 +99,7 @@ test("finalizeTick rides nonzero per-tick usage on run_end", async () => {
 test("finalizeTick rides per-tick prompt-token telemetry on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const usage = new TickUsage();
+  const usage = new RunUsage();
   usage.promptTokens = 1000;
   usage.cacheReadTokens = 800;
   usage.preEditPromptTokens = 250;
@@ -113,7 +113,7 @@ test("finalizeTick rides per-tick prompt-token telemetry on run_end", async () =
 test("finalizeTick rides the per-provider spend split on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const usage = new TickUsage();
+  const usage = new RunUsage();
   usage.fold(s, piRunResult({ costUsd: 0.25, billing: "api" }), true, "deepinfra");
   usage.fold(s, piRunResult({ costUsd: 2, billing: "subscription" }), true, "claude");
   await run(root, "organize", s, { result: "no_change" }, { usage });
@@ -127,7 +127,7 @@ test("finalizeTick rides the per-provider spend split on run_end", async () => {
 test("finalizeTick omits providerCost when the tick's runs carried no provider", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const usage = new TickUsage();
+  const usage = new RunUsage();
   usage.fold(s, piRunResult({ costUsd: 0.25, billing: "api" })); // no provider
   await run(root, "organize", s, { result: "no_change" }, { usage });
   const end = eventsOfType(root, "run_end")[0]!;

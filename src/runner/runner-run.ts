@@ -46,7 +46,7 @@ import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeTick } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote } from "../text/format.js";
-import type { TickUsage } from "../run/run-usage.js";
+import type { RunUsage } from "../run/run-usage.js";
 import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
@@ -78,7 +78,7 @@ export interface RunnerRunContext {
   baseRole: string;
   config: TumwaterConfig;
   state: RunnerState;
-  usage: TickUsage;
+  usage: RunUsage;
   pending: PendingPrompt;
   pi: RunnerPi;
   save(): void;

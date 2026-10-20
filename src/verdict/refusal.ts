@@ -95,7 +95,7 @@ export function newlyRefusedTitles(baseMd: string, headMd: string, section: stri
 }
 
 /** What handleRefusal needs from its owning runner: identity, this tick's assistant-turn count
- * (deliberately not on RunnerState — see TickUsage.turns, src/run/run-usage.ts), and the
+ * (deliberately not on RunnerState — see RunUsage.turns, src/run/run-usage.ts), and the
  * runner's shared merge step so a conflict-resolution run folds into the same tick counters as
  * an authoring run. */
 export interface RefusalContext {

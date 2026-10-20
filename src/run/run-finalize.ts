@@ -8,7 +8,7 @@ import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
 import type { TickOutcome, TickResult } from "./run-outcome.js";
-import type { TickUsage } from "./run-usage.js";
+import type { RunUsage } from "./run-usage.js";
 
 /** What finalizeTick needs from the runner: everything the post-outcome bookkeeping reads,
  * passed explicitly so the policy below stays a free function over plain state. */
@@ -31,7 +31,7 @@ interface FinalizeTickDeps {
   tickStartedAt: number;
   /** The tick's usage accumulator (src/run/run-usage.ts): its costUsd rides the run_end
    * event. */
-  usage: TickUsage;
+  usage: RunUsage;
   /** The merge failure this tick's leftover recovery is retrying, if any (set by
    * finishRecoveryRun); undefined for a tick that ran no leftover recovery. */
   recoveryFailure?: string;

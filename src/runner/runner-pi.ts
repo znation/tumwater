@@ -102,7 +102,7 @@ interface RunnerPiHost {
    * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
   foldUsage(run: PiRunResult, provider?: string, pair?: string): void;
   /** Fold a merge/review run's usage into the authoring role's counters WITHOUT touching
-   * the tick's pre-edit prefix (TickUsage.fold's authoring=false): the reviewer's and conflict
+   * the tick's pre-edit prefix (RunUsage.fold's authoring=false): the reviewer's and conflict
    * resolver's context is not the authoring tick's pre-edit search. `provider` is the review
    * seam's hold key — a 429 storm on a claude reviewer must hold `claude`, not the pi author's
    * provider. */
