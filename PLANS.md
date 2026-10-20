@@ -24,4 +24,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
+### Merge fast-forward: a failed `tumwater.json` write-back after the fast-forward warns instead of throwing out of a merge that already moved main (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/merge/merge-git.ts + test/merge-config.test.ts + docs/invariants.md)
+
+**Goal.** `ffMainToOrWhy` (src/merge/merge-git.ts) runs `git merge --ff-only` on the working-tree arm and then calls `restoreConfigBytes(root, saved)` to write back a live `tumwater.json` that the merged commit untracked. That write (`writeBytesAtomic`) has no `try`, and it runs after the fast-forward has already moved main. When it throws (full disk, EACCES), the error escapes `ffMainToOrWhy` instead of the function returning `null`. All three callers then skip their post-merge steps even though main moved: `tryMerge`'s fast-forward in src/merge/merge-to-main.ts (no `merged` event, no `logNewQuestions`, no `syncRootInstall`), `ffStackToMain` in src/merge/merge-stack.ts (the same three steps for every change in the batch), and the main-revert path in src/baseline/main-revert.ts (no `main_revert` event, no `onReverted` hand-back). Nothing tells the operator that the live config is now missing. Fix it at the one shared site: the write-back failure becomes a warning event, and `ffMainToOrWhy` reports the merge it made.
+
+**Approach.**
+1. src/merge/merge-git.ts, `ffMainToOrWhy`, working-tree arm: wrap `restoreConfigBytes(root, saved);` in `try { … } catch (err) { warnEventBestEffort(root, TUMWATER_SOURCE, …) }`, then `return null` as now. Import `warnEventBestEffort` and `TUMWATER_SOURCE` from `../events/events.js`. events.ts imports only paths, files, event-legacy and text, so this adds no import cycle. Message: `` `main fast-forwarded, but writing the live ${CONFIG_BASENAME} back failed: ${errorMessage(err)}; restore it by hand (it is no longer tracked on main)` ``. `CONFIG_BASENAME` and `errorMessage` are already imported. Do not retry, and do not change `restoreConfigBytes` itself: the existing test "a crash mid write-back leaves the live config absent, never torn" pins that it rethrows.
+2. Extend `ffMainToOrWhy`'s doc comment with one sentence: the merge has already happened by the time of the write-back, so a failed write-back is a warning event and the function still returns null.
+
+**Files touched.** src/merge/merge-git.ts (`ffMainToOrWhy`), test/merge-config.test.ts, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/merge-config.test.ts, "a failed config write-back after the fast-forward warns and still reports the merge". Seed it as "a merge that untracks the config preserves the live file byte-identical" does: `trackedConfigRoot(config)` with any valid config string, then `const sha = await untrackingBranch(root)`. Arm `patchFsMethod("writeFileSync", …)` (already imported from ./helpers/fs-faults.js) so it throws `new Error("disk full")` for any string `file` that starts with `path.join(root, "tumwater.json")` and falls through otherwise. Call `await ffMainTo(root, sha, "main")` and restore the patch in a `finally`. Assert:
+  - the call resolves `true`;
+  - `headSha(root)` (already imported from ./fixtures/repo-fixtures.js; check its signature before use) equals `sha`;
+  - `tumwater.json` does not exist in `root`;
+  - `warningMessages(root)` (import from ./fixtures/log-fixtures.js) has exactly one entry, matching `/tumwater\.json back failed: disk full/`.
+  Mutation: remove the new `try`. `ffMainTo` then rejects with "disk full", so the test fails.
+- The existing test/merge-config.test.ts tests pass unchanged, including "a crash mid write-back leaves the live config absent, never torn" and "the config write-back is restore-only-when-absent: a newer write wins".
+- docs/invariants.md: at the END of the file, after every section present when the change is made (CH's sections included, if they have merged), add `## Merge fast-forward: a failed config write-back never undoes a merge`. Under it put `### INV-CI1: a fast-forward that moved main returns success even when the live tumwater.json write-back fails, and logs one warning`, in the Guarantee / Binds / Pinned by layout. Binds: `src/merge/merge-git.ts` (`ffMainToOrWhy`, `restoreConfigBytes`). Pinned by: the new test's name. Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. INV-CH1/CH2 are reserved by the backlog-archive plan, and CI was free on 2026-10-20.
+- `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
+
 ## Done
