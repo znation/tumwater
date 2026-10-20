@@ -227,7 +227,7 @@ test("history rejects unknown flags, prints no runs yet on an empty log, and has
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater history \[--role <id>\] \[-n N\] \[--since <duration>\] \[--grep <text>\]\s+\[--result <merged\|none\|refused\|problems>\[,\.\.\.\]\] \[--summary\] \[--json\]/);
+  assert.match(help.stdout, /tumwater history \[--role <id>\[,<id>\.\.\.\]\] \[-n N\] \[--since <duration>\] \[--grep <text>\]\s+\[--result <merged\|none\|refused\|problems>\[,\.\.\.\]\] \[--summary\] \[--json\]/);
   assert.match(help.stdout, /machine-readable history data/);
 });
 

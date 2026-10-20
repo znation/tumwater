@@ -1,13 +1,13 @@
 // vocabulary: plain
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { renderRow, renderSummary, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
-/** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
+/** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `run_end` events src/tick/tick-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
@@ -27,7 +27,7 @@ export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
  * it. */
 export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
 
-/** `tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>] [--result
+/** `tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>] [--result
  * <class>]`: print the last N completed ticks, newest first — or, with `--since`, the ticks of a
  * bounded past window over the same record, the same shape `logs --since` and `report --since`
  * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to the listed
@@ -55,7 +55,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   if (sinceMs !== null) {
     if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
-    const role = parseRoleScope(root, rest);
+    const role = parseRoleListScope(root, rest);
     const windowed = readTickRowsSince(root, sinceMs, role);
     rows = windowed.rows;
     covered = windowed.covered;
@@ -65,7 +65,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_TICKS) : HISTORY_DEFAULT_TICKS;
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
-    const role = parseRoleScope(root, rest);
+    const role = parseRoleListScope(root, rest);
     rows = readTickRows(root, limit, role);
   }
   // The filter runs on the collected rows, before rendering and before --json serialization:

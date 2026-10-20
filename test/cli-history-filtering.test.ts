@@ -450,3 +450,54 @@ test("history --summary keeps the empty-state output on an empty log", async () 
   assert.equal((await cli(repo, "history", "--summary")).stdout, "no runs yet\n");
   assert.deepEqual(JSON.parse((await cli(repo, "history", "--summary", "--json")).stdout), { rows: [] });
 });
+
+test("history --role takes a comma list of role ids", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history role list");
+  writeEvents(repo, [
+    { ts: 1787222691956, loop: "feature", type: "run_start", run: 7 },
+    { ts: 1787222695956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "added a widget" },
+    { ts: 1787222700000, loop: "clean", type: "run_end", run: 3, result: "no_change" },
+    { ts: 1787222760000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "pi unreachable" },
+    { ts: 1787222800000, loop: "feature", type: "run_end", run: 8, result: "no_change" },
+  ]);
+  const roles = async (...a: string[]) => {
+    const r = await cli(repo, "history", "--json", ...a);
+    assert.equal(r.code, 0);
+    return (JSON.parse(r.stdout) as { rows: Array<{ role: string; run: number }> }).rows;
+  };
+
+  const both = await roles("--role", "feature,clean");
+  assert.deepEqual(both.map((r) => `${r.role}#${r.run}`), ["feature#8", "clean#3", "feature#7"]);
+  assert.deepEqual(await roles("--role", "clean,clean"), await roles("--role", "clean"));
+
+  const summary = await cli(repo, "history", "--role", "feature,clean", "--summary", "--json");
+  assert.equal(summary.code, 0);
+  const parsed = JSON.parse(summary.stdout) as { roles: Array<{ role: string }> };
+  assert.deepEqual(parsed.roles.map((r) => r.role), ["clean", "feature"]);
+
+  // -n counts runs across the listed roles, with bugfix's run sitting between them.
+  const two = await roles("--role", "feature,clean", "-n", "2");
+  assert.deepEqual(two.map((r) => `${r.role}#${r.run}`), ["feature#8", "clean#3"]);
+  assert.deepEqual((await roles("--role", "feature,clean", "--grep", "widget")).map((r) => r.run), [7]);
+  assert.deepEqual((await roles("--role", "feature,clean", "--result", "none")).map((r) => r.run), [8, 3]);
+
+  const unknown = await cli(repo, "history", "--role", "feature,nosuch");
+  assert.notEqual(unknown.code, 0);
+  assert.match(unknown.stderr, /unknown role: nosuch/);
+  for (const bad of [["--role", ","], ["--role"]]) {
+    const r = await cli(repo, "history", ...bad);
+    assert.notEqual(r.code, 0);
+    assert.match(r.stderr, /--role/);
+  }
+});
+
+test("history --role list composes with --since", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history role list since");
+  seedWindowedHistory(repo);
+  const r = await cli(repo, "history", "--since", "1h", "--role", "feature,clean", "--json");
+  assert.equal(r.code, 0);
+  const rows = (JSON.parse(r.stdout) as { rows: Array<{ role: string }> }).rows;
+  assert.deepEqual(rows.map((x) => x.role), ["feature", "clean"]);
+});

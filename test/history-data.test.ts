@@ -719,3 +719,17 @@ test("renderSummary shows tokens, cost and time columns in order, with a dash fo
   assert.match(lines[2]!, /—/); // the untimed loop shows a dash
   assert.match(lines[3]!, /\b1h\b/); // the total, the one timed span summed
 });
+
+test("tickRows takes a list of role ids, joining each queued row's merge verdict", () => {
+  const events = [
+    { ts: 10, source: "feature", type: "merge_queued", commit: "s1", summary: "a" },
+    { ts: 11, source: "feature", type: "run_end", run: 1, result: "queued", summary: "a" },
+    { ts: 12, source: "clean", type: "run_end", run: 1, result: "no_change" },
+    { ts: 13, source: "bugfix", type: "run_end", run: 1, result: "no_change" },
+    { ts: 20, source: "feature", type: "merge_done", commit: "s1", result: "merged" },
+  ] as never as HarnessEvent[];
+  const both = tickRows(events, 10, ["feature", "clean"]);
+  assert.deepEqual(both.map((r) => r.role).sort(), ["clean", "feature"]);
+  assert.equal(both.find((r) => r.role === "feature")!.result, tickRows(events, 10, "feature")[0]!.result);
+  assert.deepEqual(tickRows(events, 10, ["feature"]), tickRows(events, 10, "feature"));
+});

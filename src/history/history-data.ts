@@ -407,16 +407,20 @@ function isRecoveryPin(pin: HarnessEvent | undefined): boolean {
   return pin !== undefined && textOr(pin.summary, "").startsWith("recovered leftover work from ");
 }
 
+/** A role filter: one id, a list of ids (any listed role's events are kept), or null for all. */
+type RoleScope = string | readonly string[] | null;
+
 /** The tick rows for the last `limit` completed ticks in `events` (oldest-first, as
  * readEvents returns them), filtered to `role` when given, newest first. Pure: the CLI, the
  * GUI, and the tests share this collector, and none of them writes anything. */
 export function tickRows(
   events: HarnessEvent[],
   limit: number,
-  role: string | null,
+  role: RoleScope,
   join?: TickRowJoin,
 ): TickRow[] {
-  const scoped = role === null ? events : events.filter((e) => e.source === role);
+  const wanted = role === null ? null : new Set(typeof role === "string" ? [role] : role);
+  const scoped = wanted === null ? events : events.filter((e) => wanted.has(e.source));
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
@@ -428,9 +432,9 @@ export function tickRows(
   // the pins of ticks that span it, so the maps read the unfiltered-by-cutoff evidence and
   // resolveQueuedResult guards each claim on the row's run_start being whole in that read.
   const joinScoped = join
-    ? role === null
+    ? wanted === null
       ? join.events
-      : join.events.filter((e) => e.source === role)
+      : join.events.filter((e) => wanted.has(e.source))
     : scoped;
   const joinStarts = join ? tickStartMap(joinScoped) : starts;
   const joinModels = join ? tickStartModelMap(joinScoped) : models;
@@ -485,8 +489,8 @@ export function tickRows(
  *   (A queued row's merge verdict needs no growth: the merge_done/merge_failed event sits
  *   after its run_end, so any tail window holding the row holds the verdict too — or there
  *   is none yet, the genuinely-pending case that keeps the raw label.) */
-export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
-  const key = `${root}\u0000${role ?? ""}\u0000${limit}`;
+export function readTickRows(root: string, limit: number, role: RoleScope): TickRow[] {
+  const key = `${root}\u0000${typeof role === "string" || role === null ? role ?? "" : role.join(",")}\u0000${limit}`;
   // A repeated ask's steady state starts where the last one ended, not back at the base window: the
   // GUI drawer's history panel re-issues this ask every second while events flow, and each poll's
   // ladder re-parsed every intermediate window (base → ×4 → …) before the one that satisfied
@@ -533,7 +537,7 @@ const TICK_ROW_WINDOW_MEMO_MAX = 256;
  * tick's pin (BUGS.md 2026-09-30). The rows reuse the pure tickRows with limit =
  * events.length, so pairing, role filtering, and the dash-on-unpaired rule stay exactly the
  * count view's. Pure over root: reads the event log, writes nothing. */
-export function readTickRowsSince(root: string, sinceMs: number, role: string | null): { rows: TickRow[]; covered: boolean } {
+export function readTickRowsSince(root: string, sinceMs: number, role: RoleScope): { rows: TickRow[]; covered: boolean } {
   // One backwards scan serves both the rows' window and the wider join read (see
   // readEventsSinceJoined): two readEventsSince calls re-scanned and re-parsed the same
   // log bytes — a whole duplicate window scan per `history --since`.

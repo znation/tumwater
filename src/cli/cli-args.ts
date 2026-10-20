@@ -123,6 +123,25 @@ export function parseRoleScope(root: string, args: string[]): string | null {
   return parseRoleFlag(args, knownRoleIdsCached(root));
 }
 
+/** Resolve `history --role <id>[,<id>...]`: the listed role ids (canonical, deduplicated,
+ * first-seen order), or null when the flag is absent (no config read then, as parseRoleScope).
+ * Each piece is validated like parseRoleScope's id; empty pieces are dropped, and a value with
+ * no piece left fails with ROLE_VALUE_ERROR. */
+export function parseRoleListScope(root: string, args: string[]): string[] | null {
+  if (!args.includes("--role")) return null;
+  const typed = flagValue(args, "--role");
+  const pieces = (typed ?? "").split(",").map((p) => p.trim()).filter(Boolean);
+  if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
+  const ids = knownRoleIdsCached(root);
+  const out: string[] = [];
+  for (const piece of pieces) {
+    const role = canonicalRoleId(piece);
+    if (!ids.includes(role)) fail(unknownRoleMessage(role, ids));
+    if (!out.includes(role)) out.push(role);
+  }
+  return out;
+}
+
 /** Parse the `--port` flag value: an integer in 1..65535, or fail with a clear message.
  * Port 0 would make Node pick an ephemeral port while the CLI prints :0 — a URL that
  * cannot be opened; out-of-range values only fail later via Node's raw RangeError. */
