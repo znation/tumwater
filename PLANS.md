@@ -907,4 +907,43 @@ test/history-follow.test.ts.
 - test/help.test.ts's revert assertions (if any match the old signature) are updated to the new HELP line.
 - `npm run test:gate` passes.
 
+### `tumwater history <role> <n> --transcript` appends that one run's agent transcript to its trail, so you can read what the agent did in a past run without scrolling the role's whole log (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight `history <role> <n> --patch` plan edits the same `cmdTick`/`runTrailCommand`/HELP line/docs row, so whichever lands second rebases and keeps both flags. The blocked runner-rename parts rename identifiers in src/tick and src/ui only as rebases. Touches src/agent/run-agent.ts src/ui/transcript-run.ts (new) src/tick/tick-detail.ts src/cli.ts src/cli/cli-flag-specs.ts src/cli/help.ts docs/cli.md test/transcript-run.test.ts (new) test/tick-detail.test.ts test/pi.test.ts)
+
+**Goal.** `tumwater history <role> <n>` prints a run's harness events: start, verdict, merge, usage. It does not show what the agent itself said or ran. The only CLI view of that is `tumwater logs --role <id>` (`cmdLogsTranscript`, src/cli/log-commands.ts). It prints the last N entries of `.tumwater/log/<role>.pi.jsonl` (`piLogPath`), so reading run 412 when the role is on run 430 means guessing `-n` and scrolling through 18 other runs. The dashboard drawer shows only the live tail too (`/api/transcript`). `--transcript` appends exactly the agent runs that started inside the run's `[startTs, endTs]` window, rendered the way `logs --role` renders them.
+
+**Decided scope (no open question).**
+- **Run start times.** Each agent run in the raw log begins with the harness's `tumwater_run` marker (`runAgent` in src/agent/run-agent.ts), which carries `kind`, `agent` and an optional `label` but no time. Add `ts: Date.now()` to that marker. For a marker written before this change (no numeric `ts`), the segment's start is the `timestamp` of its first `message_end` whose `message.role` is `"user"` (the same field `createTranscriptRenderer` already stamps its separator from). A segment with neither is skipped.
+- **Which runs are included.** A segment is included when `detail.startTs <= start <= (detail.endTs ?? Infinity)`. That covers the authoring run, its retries and fallbacks, and any review or gate run the role logged inside the window (they render with their `── review @ … ──` separator). A merge review that runs after the run's `run_end` is outside the window and is not shown. `detail.startTs === null` (the start was rotated out of the event log) prints a note instead of a guess.
+- **Files read.** `piLogPath(root, role)` + `".1"` (the one generation `rotateIfLarge` keeps), then `piLogPath(root, role)` itself, oldest first, each only if it exists. Each file is read whole. This is a one-shot command, and each file is bounded by `logMaxBytes`. Lines before a file's first marker are skipped.
+- **Prompts.** No `--prompt` companion: the transcript renders with `includePrompts: false`, like plain `logs --role`. The run's prompt is already on `tumwater role <id>`.
+- **Composition.** `--transcript` is accepted with `--last` and with `--stat` (and with `--patch` if that has landed). The stat block, then any patch block, then the transcript block, each separated by a blank line. With `--json`, a `transcript` field (an array of strings, one per rendered line) is added beside `stat`, and only when the flag is given.
+- **Nothing found.** When no segment matches, the block is the single line `(no transcript for <role> run <n>: rotated out of .tumwater/log/<role>.pi.jsonl, or the run started no agent)`. The exit code is 0, as for `--stat`'s missing-commit texts. With `--json`, the field is `[]`.
+- No dashboard or TUI change.
+
+**Approach.**
+- **src/agent/run-agent.ts**: add `ts: number` to the marker object type and literal (keep the `label` only-when-set rule). Update its comment.
+- **src/ui/transcript-run.ts (new)**: `export function readRunTranscript(file: string, fromTs: number, toTs: number | null): string[]`. It reads `file + ".1"` and `file` if they exist and splits their lines into segments, a segment starting at each line that parses (`parsePiEventLine` with a `tumwater_run`-only set, as `MARKER_ONLY` in src/ui/transcript-tail.ts does) as a `tumwater_run` marker. Each segment's start is marker `ts`, else the first user `message_end`'s `message.timestamp`. It keeps the segments whose start is in the window, concatenates their lines (markers included, so labels render), and returns `formatTranscript(lines).flat()` (src/ui/transcript.ts). Keep this small and synchronous. Add a header comment naming the marker-ts / user-timestamp fallback.
+- **src/tick/tick-detail.ts**: `cmdTick` gains a `transcript` boolean. Because the boolean list is growing, convert its trailing flags to one options object `{ last, stat, transcript }` (plus `patch` if that has landed) and update the one caller. When the flag is set and `detail.startTs !== null`, call `readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs)`. For a null `startTs`, use the note `(no transcript: run <n>'s start rotated out of the event log)`, or `[]` under `--json`. Then append the block, or the empty-result line, as described above. Update `TICK_USAGE` to `... [--stat] [--transcript] [--json]`.
+- **src/cli/cli-flag-specs.ts**: `export const TRANSCRIPT_FLAG: FlagSpec = { names: ["--transcript"] };`, documented like `STAT_FLAG`.
+- **src/cli.ts**: `runTrailCommand` admits `TRANSCRIPT_FLAG` in its `rejectUnknownArgs` list and passes `rest.includes("--transcript")`.
+- **src/cli/help.ts**: the `tumwater history <role> [<n>] ...` line gains `[--transcript]`. Completion derives from HELP.
+- **docs/cli.md**: in the "Watch run history" row, after the `--stat` clause, add: "`--transcript` appends the agent transcript of the runs that started inside that run's window (the role's `logs --role` rendering, rotated-out runs noted; `--json` adds a `transcript` array)".
+
+**Acceptance criteria.**
+- test/transcript-run.test.ts (new), against temp files:
+  - Three markers with `ts` 1000, 2000 and 3000, each followed by an `agent_start` and an assistant `message_end` with distinct text. Window `[1500, 2500]` returns only the second run's text.
+  - Window `[1500, null]` returns the second and third.
+  - A `.1` file holding the first run and a live file holding the next two: window `[0, null]` returns all three, oldest first.
+  - A legacy marker without `ts` whose run has a user `message_end` with `timestamp: 2000` is included by `[1500, 2500]`.
+  - A missing file returns `[]`.
+  - A labeled marker (`label: "review"`) renders a `── review` separator.
+- test/tick-detail.test.ts: seed run_start/run_end events for `clean` runs 1 and 2 (`writeEvents`, test/fixtures/log-fixtures.ts) and a `clean.pi.jsonl` with one marker-stamped segment inside each run's window.
+  - `history clean 2 --transcript` prints the trail and then only run 2's assistant text, not run 1's.
+  - `--json` carries a `transcript` array with that text, and omits the key without the flag.
+  - A run with no matching segment prints the `(no transcript for clean run 2: …)` line and exits 0.
+  - `--last --transcript` shows the newest run's text.
+  - `--transcript --stat` prints the stat block before the transcript block.
+- test/pi.test.ts: the assertions on the marker's exact bytes are updated to parse the line and check `kind`/`agent`/`label` plus a numeric `ts` between the before and after `Date.now()` of the call. Grep test/ for other exact `{"type":"tumwater_run",` byte assertions on *written* logs and update them the same way. Fixtures that only *feed* markers to renderers stay as they are.
+- `npm run test:gate` passes.
+
 ## Done
