@@ -15,6 +15,7 @@ import { opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, un
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
+import { setEnv } from "./helpers/env.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { loadConfig } from "../src/config/config.js";
@@ -45,7 +46,7 @@ test("each unmet precondition is the gate's verdict, in cmdRun's order", async (
   const config = path.join(repo, "tumwater.json");
   const saved = fs.readFileSync(config, "utf8");
   const restore = fakePi("exit 0");
-  const piEnv = process.env.TUMWATER_PI_BIN;
+  const restorePiBin = setEnv("TUMWATER_PI_BIN", process.env.TUMWATER_PI_BIN); // snapshot only
   try {
     // A vanished config is "not initialized" — startup never reads a missing file as defaults.
     fs.rmSync(config);
@@ -56,18 +57,16 @@ test("each unmet precondition is the gate's verdict, in cmdRun's order", async (
     assert.match(String(await runStartupProblem(repo, null)), /tumwater\.json/);
     fs.writeFileSync(config, saved);
     // An agent binary that does not resolve names the resolution.
-    process.env.TUMWATER_PI_BIN = "/no/such/pi";
+    setEnv("TUMWATER_PI_BIN", "/no/such/pi");
     assert.match(String(await runStartupProblem(repo, null)), /\/no\/such\/pi.*TUMWATER_PI_BIN/);
-    if (piEnv === undefined) delete process.env.TUMWATER_PI_BIN;
-    else process.env.TUMWATER_PI_BIN = piEnv;
+    restorePiBin();
     // A branch it cannot target: a named one that does not exist, or a detached checkout.
     assert.equal(await runStartupProblem(repo, "ghost"), "branch ghost does not exist (branches: main)");
     sh(repo, "git", "checkout", "-q", "--detach");
     assert.equal(await runStartupProblem(repo, null), DETACHED_HEAD_MESSAGE);
     assert.equal(await runStartupProblem(repo, "main"), null, "an explicit branch does not need the checkout");
   } finally {
-    if (piEnv === undefined) delete process.env.TUMWATER_PI_BIN;
-    else process.env.TUMWATER_PI_BIN = piEnv;
+    restorePiBin();
     restore();
   }
 });
@@ -103,17 +102,15 @@ test("a bare agentBin name that is nowhere on PATH fails the gate with the resol
   const repo = makeRepo();
   await initProject(repo, "startup gate bare pi");
   const restore = fakePi("exit 0");
-  const piEnv = process.env.TUMWATER_PI_BIN;
+  const restorePiBin = setEnv("TUMWATER_PI_BIN", "definitely-not-on-path-xyz");
   try {
     assert.ok(findOnPath("pi"), "fakePi is on PATH so the gate's default check passes");
-    process.env.TUMWATER_PI_BIN = "definitely-not-on-path-xyz";
     assert.match(
       String(await runStartupProblem(repo, null)),
       /resolved "definitely-not-on-path-xyz" from TUMWATER_PI_BIN is not an executable/,
     );
   } finally {
-    if (piEnv === undefined) delete process.env.TUMWATER_PI_BIN;
-    else process.env.TUMWATER_PI_BIN = piEnv;
+    restorePiBin();
     restore();
   }
 });
