@@ -80,4 +80,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `grep -n 'rejectTranscriptViewRival(rest, "--grep"' src/cli/log-commands.ts` prints nothing.
 - `npm run test:gate` passes, including test/help.test.ts and test/completion.test.ts.
 
+### Merge queue by role: `tumwater queue --role <id>[,<id>...]` lists only the listed roles' waiting merges, each under its whole-queue position (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/cli/cli-query-commands.ts + src/merge/merge-queue-render.ts + src/cli/help.ts + docs/cli.md + test/cli-queue.test.ts)
+
+**Goal.** `status`, `logs`, `history`, `wake --list`, `reset-counters`, `resume` and `abort` all take `--role <id>[,<id>...]`, with a base role id taking its instances too. `tumwater queue` does not. `cmdQueue` (src/cli/cli-query-commands.ts) gates its arguments with `rejectUnknownArgs("queue", args, [JSON_FLAG])`, so `tumwater queue --role feature` is refused as an unknown flag. With ten feature instances queueing merges (the event log showed 1126 `merge_queued` events in the two days up to 2026-10-20), an operator who asks "where are feature's changes in the queue?" has to read the whole list. `grep -c 'queue --role' docs/cli.md PLANS.md PLANS-DONE.md` printed 0 for each file when this was planned.
+
+**Approach.**
+1. src/cli/cli-query-commands.ts `cmdQueue`: gate with `[ROLE_FLAG, JSON_FLAG]` (both already imported), then after `requireReadyRepo` take `const scope = parseRoleListScope(root, args);` (already imported; it fails with `unknownRoleMessage` on an unknown id and ROLE_VALUE_ERROR on an empty value, as `status --role` does). With a scope, keep each entry where `scope.includes(e.role) || scope.includes(baseRoleOf(e.role))` (the rule `scopeSnapshotToRoles` and `cmdLogs` use; `baseRoleOf` is already imported), and record each kept entry's 1-based position in `view.entries`. Pass the **kept** entries to `queueInFlight`. Then the in-flight label and `inFlight` show only for a marker naming an in-scope change, and INV-T3's rule (a marker shows only while a queued change it names is unfinished) holds for the scoped list unchanged.
+2. `--json` with a scope prints the same `{entries, unreadable}` document (plus `inFlight` when present) with `entries` filtered. `unreadable` stays the whole queue's count, because an unreadable file cannot be attributed to a role. Without `--role`, the document and the text output do not change.
+3. src/merge/merge-queue-render.ts `renderMergeQueue`: add a fourth optional parameter `scope?: { roles: readonly string[]; positions: readonly number[]; total: number }`, where `total` is the whole queue's entry count. With it:
+   - each line's number is `scope.positions[i]` instead of `i + 1`;
+   - the header reads `` `merge queue (${view.entries.length} of ${scope.total + view.unreadable}, --role ${scope.roles.join(",")}):` ``;
+   - when no entry is kept but `scope.total + view.unreadable > 0`, the only line before the unreadable line is `` `no queued merges for ${scope.roles.join(",")} (merge queue holds ${scope.total + view.unreadable})` ``; with nothing queued at all it stays `merge queue empty`;
+   - the trailing `(+N unreadable queue files skipped)` line is unchanged.
+   Without `scope`, the output is unchanged. Update the function's doc comment to say so.
+4. src/cli/help.ts: change the stanza's usage to `tumwater queue [--role <id>[,<id>...]] [--json]` and add one sentence: "--role keeps only the listed roles' merges (a base role id taking its instances too), each under its position in the whole queue; --json then lists only those entries". Shell completion derives flags from help stanzas (`helpStanzas`, src/cli/completion.ts), so it needs no separate edit.
+5. docs/cli.md, row "Check state": change `` `tumwater queue [--json]` `` to `` `tumwater queue [--role <id>[,<id>...]] [--json]` `` and add the same rule to its parenthetical. The transcript-search plan edits the same table line (its `logs --transcript` text). If that plan merges first, this edit rebases onto it as a one-line conflict.
+
+**Files.** src/cli/cli-query-commands.ts, src/merge/merge-queue-render.ts, src/cli/help.ts, docs/cli.md, test/cli-queue.test.ts. No invariants entry changes: INV-T3's bound functions (`queueInFlight`, `liveMergeMarker`) are not edited, only called with fewer entries.
+
+**Acceptance criteria.** New tests in test/cli-queue.test.ts, using its `entry` helper, `enqueueMerge` and `cli`:
+- "queue --role lists only the listed roles' merges under their whole-queue positions": enqueue `improve` (run 1), `feature-2` (run 2), `organize` (run 3), `feature` (run 4). `cli(repo, "queue", "--role", "feature")` exits 0. Its first line is `merge queue (2 of 4, --role feature):`, then lines matching `/^  2\. feature-2 run #2 · /` and `/^  4\. feature run #4 · /`, and no other entry lines. `--role improve,organize` yields lines numbered 1 and 3.
+- "queue --role with no matching merge names the role and the queue depth": with the same queue, `--role clean` prints exactly `no queued merges for clean (merge queue holds 4)`, exit 0. On an empty queue, `--role clean` prints `merge queue empty`.
+- "queue --role --json filters entries and keeps the unreadable count": `--role feature --json` parses to a document whose `entries` map to roles `["feature-2", "feature"]` and whose `unreadable` is 0.
+- "queue --role rejects an unknown or empty role id": `--role nosuch` exits non-zero with stderr matching `/nosuch/`, and `--role ""` exits non-zero.
+- The existing tests in test/cli-queue.test.ts pass unchanged, including "queue rejects an unknown flag, naming it" and "queue prints the in-flight label only while an orchestrator is alive".
+- `grep -n 'tumwater queue \[--role' src/cli/help.ts docs/cli.md` prints a line from each file.
+- `npm run test:gate` passes, including test/help.test.ts and test/completion.test.ts.
+
 ## Done
