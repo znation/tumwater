@@ -25,6 +25,7 @@ import { type FiledEntry, showEntry, splitEntryFile } from "./backlog-write.js";
 import { renderShownEntry } from "./backlog-cli-view.js";
 import { archiveFinishedOnMain, describeArchivedFile } from "./backlog-archive.js";
 import { MERGE_LOCK_WAIT_MS } from "../paths.js";
+import { shortSha } from "../text/format.js";
 
 /** The title each file command derives from the CLI positionals, exported so the CLI case
  * can hand fileAndAnnounce the same derivation the write will carry: fileAndAnnounce
@@ -391,5 +392,5 @@ export async function cmdArchive(root: string): Promise<void> {
   }
   if (outcome.status === "skipped") fail(`nothing archived: ${outcome.reason}`);
   for (const f of outcome.moved) say(describeArchivedFile(f));
-  say(`committed ${outcome.commit.slice(0, 8)}`);
+  say(`committed ${shortSha(outcome.commit)}`);
 }

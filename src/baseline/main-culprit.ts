@@ -10,6 +10,7 @@ import { onlyQuarantined } from "../review/known-flakes.js";
 import { readEvents } from "../events/event-read.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { shortSha } from "../text/format.js";
 
 /** How many first-parent commits below the red tip the search for a last green looks at. */
 const CULPRIT_SEARCH_MAX = 50;
@@ -55,7 +56,7 @@ export async function findRedCulprit(
       return { kind: "unattributed", reason: `no green commit within ${CULPRIT_SEARCH_MAX} first-parent commits` };
     }
     const recheck = await check(green, false, true, false);
-    if (!recheck) return { kind: "unattributed", reason: `the check made no verdict at ${green.slice(0, 7)}` };
+    if (!recheck) return { kind: "unattributed", reason: `the check made no verdict at ${shortSha(green)}` };
     if (recheck.status === "red") return { kind: "environment", green };
 
     const exempt = config.review.exemptPaths;
@@ -75,14 +76,14 @@ export async function findRedCulprit(
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
       const verdict = await check(candidates[mid] as string, false, false, true);
-      if (!verdict) return { kind: "unattributed", reason: `the check made no verdict at ${(candidates[mid] as string).slice(0, 7)}` };
+      if (!verdict) return { kind: "unattributed", reason: `the check made no verdict at ${shortSha(candidates[mid])}` };
       if (verdict.status === "red" && !onlyQuarantined(root, verdict.failingTests)) hi = mid;
       else lo = mid + 1;
     }
     const commit = candidates[lo] as string;
     const confirmed = await check(commit, true, false, true);
     if (confirmed?.status !== "red" || onlyQuarantined(root, confirmed.failingTests)) {
-      return { kind: "unattributed", reason: `red did not reproduce at ${commit.slice(0, 7)}` };
+      return { kind: "unattributed", reason: `red did not reproduce at ${shortSha(commit)}` };
     }
     const failingTests = red.failingTests ?? []; // G was just verified green, so it carries none to subtract
     const merged = readEvents(root, OWNER_EVENT_TAIL)

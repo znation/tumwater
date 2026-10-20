@@ -493,7 +493,7 @@ test("the drill-down's revert button previews, then reverts, through /api/revert
 
   await previewHistRevert("clean#9");
   assert.deepEqual(posts, [{ path: "/api/revert", body: { sha, dryRun: true } }]);
-  assert.match(card(), /would revert aaaaaaa tumwater\(feature\): &lt;b&gt;x/);
+  assert.match(card(), /would revert aaaaaaaa tumwater\(feature\): &lt;b&gt;x/);
   assert.match(card(), /src\/a\.ts/);
   assert.match(card(), /data-hist-revert-go='clean#9'/);
 

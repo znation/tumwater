@@ -159,8 +159,8 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     else if (s === "done" || s === "error") out += "<div class='" + (s === "error" ? "err" : "muted") + "'>" + esc(r.message || "") + "</div>";
     else if (s === "preview" && r.preview) {
       const p = r.preview;
-      const on = "on " + p.primary + " (HEAD " + String(p.head).slice(0, 7) + "); nothing was written";
-      out += "<div class='hist-revert-preview'><div class='mono'>would revert " + esc(String(p.sha).slice(0, 7)) + " " + esc(p.subject) + "</div><ul>" +
+      const on = "on " + p.primary + " (HEAD " + shortSha(p.head) + "); nothing was written";
+      out += "<div class='hist-revert-preview'><div class='mono'>would revert " + esc(shortSha(p.sha)) + " " + esc(p.subject) + "</div><ul>" +
         (p.paths || []).map((x) => "<li class='mono'>" + esc(x) + "</li>").join("") + "</ul>";
       if (!p.applies) out += "<div>would conflict " + esc(on) + "</div>";
       else if (p.dirty) out += "<div>the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written</div>";

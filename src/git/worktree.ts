@@ -6,6 +6,7 @@ import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { isDirectory, pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
+import { shortSha } from "../text/format.js";
 
 /** Persistent-worktree lifecycle for the harness: role worktrees (one per role, reset to main
  * on every fresh run) and the detached mirror worktree redeploy.ts verifies and compiles.
@@ -283,7 +284,7 @@ function logDroppedRef(root: string, ref: string, why: string): void {
   logEventBestEffort(root, {
     source: TUMWATER_SOURCE,
     type: "warning",
-    message: `dropped dangling ref ${ref} (${sha?.slice(0, 7) ?? "unknown sha"}, object missing) ${why}`,
+    message: `dropped dangling ref ${ref} (${sha ? shortSha(sha) : "unknown sha"}, object missing) ${why}`,
     ref,
     sha,
     ...(refWrittenAt === undefined ? {} : { refWrittenAt }),
