@@ -257,6 +257,18 @@ export function subdirectoryNames(dir: string, keep?: (name: string) => boolean)
   return keep ? names.filter(keep) : names;
 }
 
+/** The entry names directly under `dir`, in readdir order; `[]` when the directory is missing
+ * or unreadable. For the best-effort scans — a sweep, a count, an existence probe — where "no
+ * directory" and "nothing in it" are the same answer. A reader that must tell an unreadable
+ * directory from an empty one (listQueueFiles) keeps its own try/catch. */
+export function dirEntryNames(dir: string): string[] {
+  try {
+    return fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
 /** Write `data` — UTF-8 text or raw bytes — to `file` via a tmp file + rename, so a concurrent
  * reader of the same path sees either the old (absent) or the new content, never a partial
  * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process

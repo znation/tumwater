@@ -16,7 +16,7 @@ import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { envPath, findOnPath, readTextOrNull, subdirectoryNames, treeBytes } from "../files/files.js";
+import { dirEntryNames, envPath, findOnPath, readTextOrNull, subdirectoryNames, treeBytes } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -535,13 +535,7 @@ export function checkStateDir(root: string): CheckOutcome {
  * write and delete, a partial write above, or a removal that failed. Removed one at a time so
  * a single unremovable probe cannot stop the sweep. */
 function sweepStaleProbes(dir: string): void {
-  let names;
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return; // Unreadable dir — nothing to sweep.
-  }
-  for (const name of names) {
+  for (const name of dirEntryNames(dir)) {
     if (!name.startsWith(".doctor-probe-")) continue;
     try {
       fs.rmSync(path.join(dir, name));

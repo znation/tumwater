@@ -1,6 +1,5 @@
-import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, readTextIfExists, writeTextAtomic } from "../files/files.js";
+import { dirEntryNames, ensureParentDir, readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { listQueueFiles, queueFileName, queueFileStamp, removeQueueFile } from "../files/file-queue.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { roleInboxDir } from "../paths.js";
@@ -351,13 +350,7 @@ export function takeQueuedFile(file: string): string | null {
 export function removeSameStemSiblings(root: string, role: string, file: string): void {
   const dir = path.dirname(file);
   const stem = path.basename(file, ".md");
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(dir);
-  } catch {
-    return; // The queue directory itself is gone — nothing to clean.
-  }
-  for (const entry of entries) {
+  for (const entry of dirEntryNames(dir)) {
     if (entry === path.basename(file) || !isPromptImageSibling(stem, entry)) continue;
     try {
       removeQueueFile(path.join(dir, entry));

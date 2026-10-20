@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { RoleRunner } from "../runner/runner.js";
 import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { removeQuiet } from "../files/files.js";
+import { dirEntryNames, removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -193,13 +193,7 @@ function wakeNotDue(markerFile: string): boolean {
  * write are skipped. A missing directory is an empty list. */
 function scheduledWakeFiles(root: string): string[] {
   const dir = scheduledWakeDir(root);
-  let names: string[];
-  try {
-    names = fs.readdirSync(dir);
-  } catch {
-    return [];
-  }
-  return names
+  return dirEntryNames(dir)
     .filter((n) => n.endsWith(".json"))
     .sort()
     .map((n) => path.join(dir, n));
@@ -316,12 +310,8 @@ export function consumeAbortRequests(
   runners: RoleRunner[],
   merges: readonly AbortableMerge[],
 ): void {
-  let markers: string[];
-  try {
-    markers = fs.readdirSync(path.join(root, STATE_DIR));
-  } catch {
-    return; // .tumwater/ missing — nothing to consume (a fresh repo before the first run).
-  }
+  // A missing .tumwater/ (a fresh repo before the first run) reads empty — nothing to consume.
+  const markers = dirEntryNames(path.join(root, STATE_DIR));
   // Best-effort report of one marker's failure: the warning can itself throw when the
   // unwritable event feed is what failed, and there is nothing left to report on then.
   const warnFailure = (role: string, err: unknown): void => {

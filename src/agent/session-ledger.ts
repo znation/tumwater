@@ -12,7 +12,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
+import { dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
@@ -65,13 +65,8 @@ export function recordSession(dir: string, record: SessionRecord): void {
  * unregistered backend. The ledger file shares the dir and is a `.jsonl` too, so it is
  * excluded — it is the harness's record of runs, not a session. */
 export function hasResumableSession(dir: string): boolean {
-  try {
-    return fs
-      .readdirSync(dir)
-      .some((f) => f.endsWith(".jsonl") && f !== SESSION_LEDGER_FILE);
-  } catch {
-    return false; // Missing directory — nothing to resume.
-  }
+  // A missing directory reads empty — nothing to resume.
+  return dirEntryNames(dir).some((f) => f.endsWith(".jsonl") && f !== SESSION_LEDGER_FILE);
 }
 
 /** Every valid record in `dir`'s ledger, oldest first. A missing ledger reads as no records;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pidAlive } from "../process/process.js";
 import { errorMessage, parsePositiveInt } from "../text/text.js";
-import { ensureParentDir, removeTree } from "../files/files.js";
+import { dirEntryNames, ensureParentDir, removeTree } from "../files/files.js";
 import { errCode } from "../errno.js";
 import { primaryWorktreeLockPath } from "../paths.js";
 
@@ -173,13 +173,8 @@ function publishLockDir(dir: string): void {
 function sweepStaleTemps(dir: string): void {
   const parent = path.dirname(dir);
   const prefix = `${path.basename(dir)}.acquiring-`;
-  let entries: string[];
-  try {
-    entries = fs.readdirSync(parent);
-  } catch {
-    return; // No parent to sweep; the acquire's own mkdir reports the real cause.
-  }
-  for (const name of entries) {
+  // No parent to sweep reads empty; the acquire's own mkdir reports the real cause.
+  for (const name of dirEntryNames(parent)) {
     if (!name.startsWith(prefix)) continue;
     const candidate = path.join(parent, name);
     try {

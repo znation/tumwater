@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
+import { dirEntryNames, removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { roleInboxDir } from "../paths.js";
 import { errorMessage, isNonBlankString } from "../text/text.js";
@@ -41,12 +41,8 @@ export function isPromptImageSibling(stem: string, entry: string): boolean {
  * with, and the write that follows reports the real failure, if any. */
 function takenImageSiblings(dir: string, stem: string): Set<string> {
   const taken = new Set<string>();
-  try {
-    for (const entry of fs.readdirSync(dir)) {
-      if (isPromptImageSibling(stem, entry)) taken.add(entry);
-    }
-  } catch {
-    // Missing or unreadable: left empty, see above.
+  for (const entry of dirEntryNames(dir)) {
+    if (isPromptImageSibling(stem, entry)) taken.add(entry);
   }
   return taken;
 }

@@ -2,7 +2,7 @@
 import type { RunnerState } from "./runner-state.js";
 import { APPROVED_PATCH_IDS_MAX, freshRunnerState, SKIP_REASONS } from "./runner-state.js";
 import path from "node:path";
-import { readdirSync } from "node:fs";
+import { dirEntryNames } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber, validEntries } from "../files/json-object.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
@@ -230,13 +230,10 @@ const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: strin
  * resolve to themselves and so are skipped, as are the base roles allRoleIds already names. */
 function liveClaimRunnerIds(root: string): string[] {
   const ids = new Set(allRoleIds());
-  try {
-    for (const name of readdirSync(path.join(root, STATE_DIR, "state"))) {
-      const id = name.replace(/\.json$/, "");
-      if (baseRoleOf(id) !== id) ids.add(id);
-    }
-  } catch {
-    // no state directory yet — the catalog roles (fresh, claim-less) suffice
+  // No state directory yet reads empty — the catalog roles (fresh, claim-less) suffice.
+  for (const name of dirEntryNames(path.join(root, STATE_DIR, "state"))) {
+    const id = name.replace(/\.json$/, "");
+    if (baseRoleOf(id) !== id) ids.add(id);
   }
   return [...ids];
 }
