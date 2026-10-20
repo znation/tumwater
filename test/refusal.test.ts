@@ -155,6 +155,23 @@ test("a failed note merge records lastError and still reports the commit", async
   assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0, "a failed merge pages nothing");
 });
 
+test("a note merge that throws records lastError and still returns the refusal", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.appendFileSync(path.join(wt, "PLANS.md"), "\n**Refused:** it would delete user data\n");
+
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx } = makeCtx(root);
+  ctx.merge = async () => {
+    throw new Error("timed out after 120s waiting for lock /x/merge.lock");
+  };
+  const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
+
+  assert.equal(outcome.result, "refused");
+  assert.ok(outcome.commit, "the note commit stays on the branch for leftover recovery");
+  assert.equal(state.lastError, "refusal note merge failed: timed out after 120s waiting for lock /x/merge.lock");
+  assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0);
+});
+
 // The refusal-note merge bypasses applyMergeOutcome, so it must clear a stale rejection
 // itself — otherwise a role whose refused note merged is still told to address an objection
 // main has moved past (BUGS.md 2026-10-07). A still-owed revision keeps it, exactly as the

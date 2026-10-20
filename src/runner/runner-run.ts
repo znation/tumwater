@@ -10,7 +10,7 @@ import { leaseSlot } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
-import { branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
+import { MERGE_LOCK_WAIT_MS, branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import { buildConflictHandbackNote } from "../prompt/gate-prompts.js";
 import {
@@ -697,7 +697,8 @@ async function runWithWorktreePhase(
  * like any other pi run. Only the refusal-note merge (src/verdict/refusal.ts) still uses it —
  * reviewed changes merge through the merge pipeline's leased verification slot instead; md-only
  * notes are review-exempt by construction, so they keep this branch path (plans/merge-queue.md
- * 2/5). */
+ * 2/5). The refusal path waits MERGE_LOCK_WAIT_MS for merge.lock, not withLock's default: a
+ * merge holds it through its in-lock check, which outlasts the default. */
 async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): Promise<RunResult> {
   return mergeToMain(
     {
@@ -707,6 +708,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
       exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
       runNumber: ctx.state.runs,
+      lockTimeoutMs: MERGE_LOCK_WAIT_MS,
       runPi: (w, prompt, sessionName, config) => ctx.pi.runRolePi(w, prompt, sessionName, false, config),
     },
     wt,

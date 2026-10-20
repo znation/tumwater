@@ -112,10 +112,10 @@ export interface RefusalContext {
   merge(wt: string, summary: string): Promise<RunResult>;
 }
 
-/** Handle a refused run and return its outcome. Never throws: a failed note merge is recorded
- * in `state.lastError` and reported through the "refused" result like any other non-merge. A
- * failed write of the stripped PLANS.md logs a warning and leaves PLANS.md out of the commit,
- * so the other notes still merge. */
+/** Handle a refused run and return its outcome. Never throws: a failed note merge (a non-merge
+ * result, or a throw such as a lock timeout) is recorded in `state.lastError` and reported
+ * through the "refused" result like any other non-merge. A failed write of the stripped PLANS.md
+ * logs a warning and leaves PLANS.md out of the commit, so the other notes still merge. */
 export async function handleRefusal(
   ctx: RefusalContext,
   state: RunnerState,
@@ -197,7 +197,15 @@ export async function handleRefusal(
     await resetWorktreeToMain(wt, ctx.mainBranch);
     return { result: "refused", summary: reason };
   }
-  const result = await ctx.merge(wt, `refused: ${reason}`);
+  let result: RunResult;
+  try {
+    result = await ctx.merge(wt, `refused: ${reason}`);
+  } catch (err) {
+    // A lock timeout or `cannot acquire lock`: the note stays committed on the branch for
+    // leftover recovery, as for merge_conflict.
+    state.lastError = `refusal note merge failed: ${errorMessage(err)}`;
+    return { result: "refused", summary: reason, commit };
+  }
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
   // A merged refusal note is a merged change too: it supersedes a stale rejection exactly as
   // applyMergeOutcome's merged branch does (this path merges directly, bypassing that fold).

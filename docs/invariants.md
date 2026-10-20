@@ -4291,3 +4291,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/notes-cli.ts` (`writeNote`, `readNote`, `main`).
 
 **Pinned by.** `test/notes-cli.test.ts` — "write to a note that cannot be written exits 1 with one 'could not save the note' line and no stack trace", "clear on a note that cannot be written exits 1 with one 'could not clear the note' line" and "show on a note that cannot be read exits 1 naming the failure instead of printing nothing".
+
+## Refusal-note merge: a merge holding merge.lock never errors the refusing run
+
+### INV-CT1: handleRefusal never throws on a failed note merge, and the refusal path waits MERGE_LOCK_WAIT_MS for merge.lock
+
+**Guarantee.** `handleRefusal` catches a note merge that throws (a lock timeout, `cannot acquire lock`): it records `state.lastError` as "refusal note merge failed: <error>", logs no `entry_refused`, and still returns the "refused" outcome with the note commit, which stays on the branch for leftover recovery. The refusal path's merge waits `MERGE_LOCK_WAIT_MS` (15 minutes) for `merge.lock` rather than `withLock`'s 120 s default, because a merge holds the lock through its in-lock check; the merge queue's own callers set no `lockTimeoutMs` and keep the default.
+
+**Binds.** `src/verdict/refusal.ts` (`handleRefusal`), `src/runner/runner-run.ts` (`mergePhase`) and `src/merge/merge-to-main.ts` (`tryMerge`, `MergeContext.lockTimeoutMs`).
+
+**Pinned by.** `test/refusal.test.ts` — "a note merge that throws records lastError and still returns the refusal"; `test/merge-to-main.test.ts` — "mergeToMain waits for merge.lock up to ctx.lockTimeoutMs and names the lock when it gives up".

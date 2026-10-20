@@ -73,6 +73,8 @@ export interface MergeContext extends RunsPi {
   exemptPaths: string[];
   /** The current run number (names the conflict-resolution pi session). */
   runNumber: number;
+  /** How long to wait for merge.lock; defaults to withLock's. */
+  lockTimeoutMs?: number;
   /** Told when the in-lock check went red on the rebased tree — the one merge_blocked cause
    * that is the change's own (merge-check-failures.ts counts it toward
    * MERGE_CHECK_FAILURE_LIMIT); a failed fast-forward or a false fix never calls it. */
@@ -197,7 +199,7 @@ async function tryMerge(
     // every worktree resolves through before the next merge's check runs (BUGS.md 2026-10-01).
     await syncRootInstall(ctx.root, ctx.role);
     return "changed";
-  });
+  }, ctx.lockTimeoutMs);
 }
 
 /** The backlog-structure cross-check both verifyMerge paths run (exempt and code diffs

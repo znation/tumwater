@@ -10,7 +10,8 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { ffMainTo } from "../src/merge/merge-git.js";
 import { mergeToMain } from "../src/merge/merge-to-main.js";
-import { branchName, eventsLogPath, mergeWorktreePath } from "../src/paths.js";
+import { withLock } from "../src/concurrency/lock.js";
+import { branchName, eventsLogPath, mergeLockDir, mergeWorktreePath } from "../src/paths.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -297,6 +298,27 @@ test("a fast-forward that git refuses reports merge_blocked without merge", asyn
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "local\n", "the local edit survives");
   assert.equal(await aheadOfMain(wt, "main"), 1, "the branch keeps its commit for a later merge");
   assert.equal(eventsOfType(root, "merged").length, 0);
+});
+
+test("mergeToMain waits for merge.lock up to ctx.lockTimeoutMs and names the lock when it gives up", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
+  commitIn(wt, "branch edit");
+  const mainBefore = mainSha(root);
+  const { ctx } = makeCtx(root);
+  const hold = (ms: number) => withLock(mergeLockDir(root), () => new Promise<void>((r) => setTimeout(r, ms)));
+
+  const holder = hold(1_000);
+  await assert.rejects(
+    mergeToMain({ ...ctx, lockTimeoutMs: 200 }, wt, "branch edit"),
+    /timed out after 0\.2s waiting for lock/,
+  );
+  assert.equal(mainSha(root), mainBefore, "main never moved");
+  await holder;
+
+  const second = hold(300);
+  assert.equal(await mergeToMain({ ...ctx, lockTimeoutMs: 10_000 }, wt, "branch edit"), "changed");
+  await second;
 });
 
 test("the merge-flow git helpers are exported from merge-git.js (regression)", async () => {
