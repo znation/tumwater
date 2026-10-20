@@ -7,7 +7,8 @@
  * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
-import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote, type EntryHold } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, cancelledClaimNote, stillHeldNote, type EntryHold } from "../backlog/backlog-eligibility.js";
+import { entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog-parts.js";
 import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";

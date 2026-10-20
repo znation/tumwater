@@ -642,8 +642,8 @@ under `## Planned`. Once no named part is planned, the hold lifts. A `requires` 
 never holds. A note line (Refused, Needs review, Needs replan, Waiting for the next failure) holds
 as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
 
-**Binds.** `src/backlog/backlog-eligibility.ts` (`requiredParts`, `entryHoldAgainst`,
-`prerequisitesMerged`, `planDependencyProblems`), `src/run/stage-backlog-checks.ts` and
+**Binds.** `src/backlog/backlog-parts.ts` (`requiredParts`, `prerequisitesMerged`,
+`planDependencyProblems`), `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`), `src/run/stage-backlog-checks.ts` and
 `src/doctor/doctor-backlog.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing

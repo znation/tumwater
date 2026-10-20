@@ -292,7 +292,7 @@ export interface RunnerState {
    * merged work, not counters. */
   lastMergedAt?: number;
   /** The backlog entry this instance is assigned to implement or fix (plans/parallel-work-
-   * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
+   * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-parts.ts's
    * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
    * assignment, when it was assigned, and whether the harness assigned it (`assigned`) or an
    * unassigned run moved it at staging (`staged`). Persisted with the runner's state, so a

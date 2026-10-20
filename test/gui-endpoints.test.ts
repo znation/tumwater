@@ -26,7 +26,7 @@ import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { collectReportSince } from "../src/report/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
-import { entryKey } from "../src/backlog/backlog-eligibility.js";
+import { entryKey } from "../src/backlog/backlog-parts.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { collectFailureReportSince } from "../src/failure/failure-data.js";

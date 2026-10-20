@@ -4,13 +4,8 @@ import { commitPathsAndDiscardRest, fileContentAt } from "../git/git.js";
 import { writeTextAtomic } from "../files/files.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
 import { actionableEntryRanges, stripEntryStamp } from "../backlog/backlog-structure.js";
-import {
-  entryHoldAgainst,
-  entryKey,
-  plannedPartKeys,
-  refusalNote,
-  withoutRefusalNotes,
-} from "../backlog/backlog-eligibility.js";
+import { entryHoldAgainst, refusalNote, withoutRefusalNotes } from "../backlog/backlog-eligibility.js";
+import { entryKey, plannedPartKeys } from "../backlog/backlog-parts.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";

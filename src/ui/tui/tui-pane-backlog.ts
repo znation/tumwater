@@ -1,6 +1,7 @@
 import { tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
 import { tryMoveEntryToTop, tryReleaseEntry } from "../../backlog/backlog-release.js";
-import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
+import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
+import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-parts.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state-load.js";
 import { requestWake } from "../../operator/operator-intent.js";

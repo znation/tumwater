@@ -9,7 +9,8 @@
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
-import { type EligibleEntry, backlogHolds, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
+import { type EligibleEntry, backlogHolds, eligibleEntries } from "../backlog/backlog-eligibility.js";
+import { entryKey } from "../backlog/backlog-parts.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";

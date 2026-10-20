@@ -13,7 +13,8 @@ import {
   type FinishedArchive,
 } from "../backlog/backlog-md.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
-import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { entryKey, planDependencyProblems } from "../backlog/backlog-parts.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { moreSuffix } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";

@@ -19,7 +19,8 @@ import {
   type ActionableEntryRange,
   type SeriesRow,
 } from "./backlog-structure.js";
-import { entryHoldAgainst, holdMark, plannedPartKeys } from "./backlog-eligibility.js";
+import { entryHoldAgainst, holdMark } from "./backlog-eligibility.js";
+import { plannedPartKeys } from "./backlog-parts.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** Max characters an index title keeps before a trailing ellipsis, so one very long BUGS.md

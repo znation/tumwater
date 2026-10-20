@@ -15,11 +15,8 @@ import {
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import {
-  seriesPart,
-  type EntryHold,
-  type PartRef,
-} from "./backlog-eligibility.js";
+import type { EntryHold } from "./backlog-eligibility.js";
+import { seriesPart, type PartRef } from "./backlog-parts.js";
 
 /** The archive files of PLANS.md and BUGS.md (FINISHED_ARCHIVES). */
 const PLANS_ARCHIVE = FINISHED_ARCHIVES[0].archive;

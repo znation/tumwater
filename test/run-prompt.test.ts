@@ -5,7 +5,7 @@ import path from "node:path";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
-import { entryKey } from "../src/backlog/backlog-eligibility.js";
+import { entryKey } from "../src/backlog/backlog-parts.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";

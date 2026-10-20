@@ -22,7 +22,7 @@ import { errorMessage, squash } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
-import { entryKey } from "../backlog/backlog-eligibility.js";
+import { entryKey } from "../backlog/backlog-parts.js";
 import { assignedMovedFinding, heldMovedFinding } from "./stage-backlog-checks.js";
 import { archiveNewFinishedEntries } from "../backlog/backlog-archive.js";
 

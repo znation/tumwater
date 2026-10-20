@@ -2,35 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  withoutRefusalNotes,
-  backlogHolds,
-  backlogInProgress,
-  cancelledClaimNote,
-  inProgressMark,
-  eligibleEntries,
-  entryHold,
-  entryKey,
-  holdMark,
-  holdsBacklogReaders,
-  mergedPrerequisiteRanges,
-  plannedPartKeys,
-  prerequisitesMerged,
-  refusalNote,
-  refusedEntryTitles,
-  waitingNote,
-  planDependencyProblems,
-  plansReleasedBy,
-  plansWaitingOn,
-  releasedPartsNote,
-  requiredParts,
-  seriesPart,
-  waitingPartRanges,
-  type EligibleEntry,
-  type EntryHold,
-  type PartRef,
-  stillHeldNote,
-} from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, inProgressMark, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, mergedPrerequisiteRanges, refusalNote, refusedEntryTitles, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
