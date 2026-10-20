@@ -13,14 +13,14 @@ import { openBugs } from "../backlog/backlog.js";
 import { fallbackProbeDuePair } from "../budget/fallback-breaker.js";
 import { modelPairName } from "../budget/budget.js";
 import type { pollTeamGates, TeamGateStates } from "../gates/gate-polls.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
-import { baseRoleOf, configuredInstances, instanceIndex, loopEnabled, loopPaused } from "../roles/runner-ids.js";
-import { freshlyWoken, hasOutstandingWork, saveLoopState, type SkipReason } from "../runner/runner-state.js";
+import { baseRoleOf, configuredInstances, instanceIndex, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
+import { freshlyWoken, hasOutstandingWork, saveRunnerState, type SkipReason } from "../runner/runner-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasUnmergedPin, MERGE_CONFLICT_LIMIT } from "../runner/leftover.js";
@@ -40,7 +40,7 @@ import {
  * the scheduling pass runs (TeamGatePoll's fields beside the pass's own inputs). */
 interface SchedulingPassCtx {
   root: string;
-  runners: readonly LoopRunner[];
+  runners: readonly RoleRunner[];
   once: OnceRound;
   now: number;
   mainHead: string;
@@ -48,12 +48,12 @@ interface SchedulingPassCtx {
   quietNow: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
-  /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2). */
+  /** The roles the new-project bootstrap holds (plans/work-ratio.md, part 2/2). */
   bootstrapHeld: ReadonlySet<string>;
   /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance`
    * is what the rolling window permits and `used` is the merged maintenance count plus the
-   * maintenance loops already in flight. The pass admits at most the remaining
-   * `allowance - used` due maintenance loops, so the headroom is never overshot within a poll. */
+   * maintenance roles already in flight. The pass admits at most the remaining
+   * `allowance - used` due maintenance roles, so the headroom is never overshot within a poll. */
   maintenanceQuota: MaintenanceQuotaVerdict;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now. */
   roleQuietHeld: ReadonlySet<string>;
@@ -87,34 +87,34 @@ interface SchedulingPassCtx {
   roleProviders: ReadonlyMap<string, string | undefined>;
   /** BUGS.md `## Open` non-empty (backlog.ts's openBugs), read once per poll by the poll body. */
   openBugsNow: boolean;
-  /** A pending self-redeploy hold: nothing new starts, on any loop. */
+  /** A pending self-redeploy hold: nothing new starts, on any role. */
   holdForRestart: boolean;
   /** The disk floor holds new work (plans/disk-floor.md, part 1/4): like a restart, nothing new
-   * starts on any loop — the director included — until free space recovers. */
+   * starts on any role — the director included — until free space recovers. */
   diskHeld: boolean;
   /** PLANS.md `## Planned` or BUGS.md `## Open` non-empty, read once per poll by the poll body. */
   workBacklogOpen: boolean;
-  /** PLANS.md already holds the plan loop's eligible-plan target (planBacklogFull). */
+  /** PLANS.md already holds the plan role's eligible-plan target (planBacklogFull). */
   planBacklogFull: boolean;
   /** Per-role deferred-due memory (one-shot run_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
   workMergedSince: WorkMergedCache;
 }
 
-/** Record why the poll skipped a due loop on its state (LoopState.skipReason), saving only when
- * the value changes: a skipped loop gets no tick to save its own state, and a loop that stays
+/** Record why the poll skipped a due role on its state (RunnerState.skipReason), saving only when
+ * the value changes: a skipped role gets no tick to save its own state, and a role that stays
  * skipped must not rewrite its file every poll. */
-function noteSkip(root: string, runner: LoopRunner, reason: SkipReason | undefined): void {
+function noteSkip(root: string, runner: RoleRunner, reason: SkipReason | undefined): void {
   if (runner.state.skipReason === reason) return;
   runner.state.skipReason = reason;
-  saveLoopState(root, runner.state);
+  saveRunnerState(root, runner.state);
 }
 
 /** Decide which runners are due this poll. Mutates `deferredDue` (and once-mode settlement)
  * as its only side effects; returns the reason per admitted runner. */
 export async function pollRunnerReasons(
   ctx: SchedulingPassCtx,
-): Promise<Map<LoopRunner, string | undefined>> {
+): Promise<Map<RoleRunner, string | undefined>> {
   const {
     root,
     runners,
@@ -143,7 +143,7 @@ export async function pollRunnerReasons(
     deferredDue,
     workMergedSince,
   } = ctx;
-  const reasons = new Map<LoopRunner, string | undefined>();
+  const reasons = new Map<RoleRunner, string | undefined>();
   // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
   // queuedMergeFiles() re-lists the merge-queue directory and re-stats every queued entry): the
   // check below only asks whether the runner's role has a queued entry. The queue changes
@@ -194,19 +194,19 @@ export async function pollRunnerReasons(
         now,
         hasQueuedMerge: queuedRoles.has(r.role),
         // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
-        // place with `loopEnabled` false, and its idle claim must be released so a sibling can
+        // place with `runnerEnabled` false, and its idle claim must be released so a sibling can
         // take the entry instead of the key staying held until the 24h stale sweep.
-        enabled: loopEnabled(r.config, r.role),
+        enabled: runnerEnabled(r.config, r.role),
         // Only this instance paused (not its whole role; instance 1 under `<role>-1`): a sibling
         // can take the entry. With the base role paused no sibling runs, so the claim stays.
-        paused: loopPaused(pausedRolesSet, r.role) && !pausedRolesSet.has(base),
+        paused: runnerPaused(pausedRolesSet, r.role) && !pausedRolesSet.has(base),
       });
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";
       r.state.claim = undefined;
       // Persist the release: an idle extra instance gets no tick to save its state, so the dead
       // claim would stay on disk for status/doctor to show and for a restart to release again.
-      saveLoopState(root, r.state);
+      saveRunnerState(root, r.state);
       const reason: ClaimReleaseReason = released;
       logEventBestEffort(root, { source: r.role, type: "claim", action: "released", title, reason });
       if (reason === "stale") {
@@ -243,26 +243,26 @@ export async function pollRunnerReasons(
   const operatorPauseBlocks = (role: string): boolean =>
     (userPaused || quietNow || roleQuietHeld.has(role) || budgetHolds(role)) &&
     role !== DIRECTOR_ROLE;
-  // Fresh operator demand: a queued prompt or a wake newer than the loop's last tick end. The
+  // Fresh operator demand: a queued prompt or a wake newer than the role's last tick end. The
   // same override the need-based deferral honors (an explicit "try again now" is not idle
   // maintenance); shared by the bootstrap and maintenance-allowance holds so the two cannot
   // drift on what counts as demand.
-  const hasDemand = (runner: LoopRunner): boolean =>
+  const hasDemand = (runner: RoleRunner): boolean =>
     inboxSize(root, runner.role) > 0 || freshlyWoken(runner.state);
-  // The new-project bootstrap hold (part 2/2): held unless the loop has a fresh operator wake
+  // The new-project bootstrap hold (part 2/2): held unless the role has a fresh operator wake
   // or a queued prompt.
-  const bootstrapHeldNow = (runner: LoopRunner): boolean =>
+  const bootstrapHeldNow = (runner: RoleRunner): boolean =>
     bootstrapHeld.has(runner.role) && !hasDemand(runner);
   // The maintenance allowance's team-level hold (part 1b/4): `used` has reached `allowance`,
-  // so no maintenance loop starts unless it carries demand (`tumwater wake <maintenance-role>`
+  // so no maintenance role starts unless it carries demand (`tumwater wake <maintenance-role>`
   // runs exactly one tick). The per-poll admission headroom is spent separately, after each
-  // loop's due check, where the pass knows what actually ticks; the verdict alone cannot.
-  const maintenanceQuotaOverLine = (runner: LoopRunner): boolean =>
+  // role's due check, where the pass knows what actually ticks; the verdict alone cannot.
+  const maintenanceQuotaOverLine = (runner: RoleRunner): boolean =>
     commitTier(baseRoleOf(runner.role)) === "maintenance" &&
     maintenanceQuota.used >= maintenanceQuota.allowance &&
     !hasDemand(runner);
-  // The one-poll admission budget: each due maintenance loop this pass admits spends one of
-  // the remaining `allowance - used` slots, reset every pass, so two due maintenance loops
+  // The one-poll admission budget: each due maintenance role this pass admits spends one of
+  // the remaining `allowance - used` slots, reset every pass, so two due maintenance roles
   // cannot start in the same poll and overshoot the allowance.
   let maintenanceQuotaAdmitted = 0;
   // Runs writing code per multi-runner base role (plans/fast-merge.md "Lever 1"): a runner in
@@ -278,7 +278,7 @@ export async function pollRunnerReasons(
   // Admission order: a runner of a multi-runner base with a pending revision or conflict
   // hand-back comes first (its change came back; it holds no new claim), then the rest in runner
   // order, so the lowest-index free runner takes new work. Other roles keep their place.
-  const ownsOutstanding = (r: LoopRunner): boolean =>
+  const ownsOutstanding = (r: RoleRunner): boolean =>
     claimGroups.has(baseRoleOf(r.role)) && hasOutstandingWork(r.state);
   const ordered = [
     ...runners.filter((r) => ownsOutstanding(r)),
@@ -296,7 +296,7 @@ export async function pollRunnerReasons(
       once.active &&
       !once.isSettled(runner) &&
       !runner.state.running &&
-      (loopPaused(pausedRolesSet, runner.role) ||
+      (runnerPaused(pausedRolesSet, runner.role) ||
         capPaused.has(runner.role) ||
         maintenanceQuotaOverLine(runner) ||
         bootstrapHeldNow(runner) ||
@@ -308,14 +308,14 @@ export async function pollRunnerReasons(
     // its tick — or was settled with a skip reason — runs nothing further this round, even
     // when its backoff has expired or the clock override would admit it again. Without this
     // gate the one-tick guarantee held only for deferrable built-ins (their deferral
-    // settles them); a custom loop or work role with a short backoff re-qualified every
+    // settles them); a custom role or work role with a short backoff re-qualified every
     // poll and the round never ended.
     if (once.active && !runner.state.running && once.isSettled(runner)) continue;
     if (holdForRestart || diskHeld)
-      continue; // a restart or a low disk is pending: nothing new starts, on any loop
+      continue; // a restart or a low disk is pending: nothing new starts, on any role
     // The per-role pause gates BEFORE the team check and exempts nothing — the director
-    // included (the operator named that one loop deliberately).
-    if (loopPaused(pausedRolesSet, runner.role)) continue;
+    // included (the operator named that one role deliberately).
+    if (runnerPaused(pausedRolesSet, runner.role)) continue;
     // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
     // parked waiter finishes (in-flight ticks finish, NEW ticks are gated at scheduling,
     // exactly like every per-role pause), and there is no fallback-probe exception: the
@@ -341,9 +341,9 @@ export async function pollRunnerReasons(
       (reviewHeld || heldProviders.has(roleProviders.get(runner.role)))
     )
       continue; // nor while ITS provider's failure storm holds — or the reviewer's (nothing could merge)
-    // The loop's OWN queue decides inbox due-ness: the director counts its historical
-    // inbox, every other loop its per-role queue (tumwater prompt --role <id>) — so a
-    // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
+    // The role's OWN queue decides inbox due-ness: the director counts its historical
+    // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
+    // queued prompt makes its role due by itself, no wake marker needed (isEligible).
     const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
       planBacklogOpen: !planBacklogFull,
@@ -444,10 +444,10 @@ export async function pollRunnerReasons(
       deferredDue.set(runner.role, false); // an inbox/resume run ends the episode
     }
     // The allowance's in-flight admission (plans/work-ratio.md, part 1b/4): `used` counts the
-    // maintenance loops already in flight, so a due maintenance tick admitted here spends one
+    // maintenance roles already in flight, so a due maintenance tick admitted here spends one
     // of the remaining `allowance - used` slots. This must sit after the due check — the pure
-    // verdict cannot know which loops will be eligible this poll, so the reservation lives in
-    // the pass that does; without it two due maintenance loops start in the same poll. Demand
+    // verdict cannot know which roles will be eligible this poll, so the reservation lives in
+    // the pass that does; without it two due maintenance roles start in the same poll. Demand
     // spends no slot: it is an explicit operator request, not idle maintenance.
     if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !hasDemand(runner)) {
       if (maintenanceQuotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) {
@@ -579,7 +579,7 @@ interface DeferralInputs {
  * probe of the strong pair pierces this hold for exactly the probed tier's roles too. */
 export function pollDeferralInputs(
   root: string,
-  runners: readonly LoopRunner[],
+  runners: readonly RoleRunner[],
   liveConfig: TumwaterConfig,
   gateStates: TeamGateStates,
   gates: Pick<ReturnType<typeof pollTeamGates>, "priceResolved" | "servingResolved" | "budgetActive">,

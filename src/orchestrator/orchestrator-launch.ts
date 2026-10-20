@@ -22,7 +22,7 @@ import { seamHoldKey } from "../config/config-views.js"
 import type { TeamGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
@@ -50,7 +50,7 @@ interface LaunchContext {
   /** The repo root, for the wake events. */
   root: string;
   /** The decision pass's output: the runner → due-reason map, in poll order. */
-  reasons: ReadonlyMap<LoopRunner, string | undefined>;
+  reasons: ReadonlyMap<RoleRunner, string | undefined>;
   /** The role tick signal (the full shutdown signal plus the role-only stop): a restart
    * cuts off permit holders through it. */
   signal: AbortSignal;
@@ -82,7 +82,7 @@ interface LaunchContext {
   piDefault: ModelSelector | null;
   /** Role ticks actually holding a permit — the redeployer's in-flight count and the
    * restart abort's target. */
-  rolePermitHolders: Set<LoopRunner>;
+  rolePermitHolders: Set<RoleRunner>;
   /** The two in-flight buckets: role ticks (the drain awaits these) and director ticks
    * (the drain waits for them to finish first). */
   roleInFlight: Set<Promise<void>>;
@@ -141,7 +141,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
       logEventBestEffort(root, { source: runner.role, type: "wake", reason });
     }
     runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
-    // The director never queues behind role loops: a user prompt starts immediately,
+    // The director never queues behind roles: a user prompt starts immediately,
     // even when maxConcurrent slots are busy. Parked waiters keep fairOrder's tier order
     // across polls too: a work-role arrival jumps ahead of maintenance ticks that queued
     // in an earlier poll (in-flight ticks always run to completion).
@@ -207,7 +207,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
             }
           : async () => {
               // The director wraps its tick in a forced lease on its run's provider key, never
-              // queuing behind role loops: a user prompt starts at once even on a full provider,
+              // queuing behind roles: a user prompt starts at once even on a full provider,
               // and the key's in-use rises by one — overshooting by one — so no further grant on
               // that key happens until its release drains it back under the cap.
               const cfg = runner.runConfig(Date.now());
@@ -295,7 +295,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     })();
     const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
     bucket.add(task);
-    // A LoopRunner.tick folds every failure it handles into an `error` outcome, so this task
+    // A RoleRunner.tick folds every failure it handles into an `error` outcome, so this task
     // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
     // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
     // off a bare `void task.finally(...)` would leave the derived promise's rejection

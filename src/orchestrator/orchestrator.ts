@@ -1,7 +1,7 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { loopIds } from "../roles/runner-ids.js";
+import { runnerIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
   FALLBACK_BREAKER_POLICY,
@@ -17,7 +17,7 @@ import {
   pollSchedule,
   type PollContext,
 } from "./orchestrator-poll.js";
-import { LoopRunner } from "../runner/runner.js";
+import { RoleRunner } from "../runner/runner.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
@@ -112,7 +112,7 @@ interface OrchestratorExit {
   ticksRun?: ReadonlyMap<string, number>;
 }
 
-/** Run all enabled loops until the signal aborts — or until a pending self-redeploy has drained
+/** Run all enabled roles until the signal aborts — or until a pending self-redeploy has drained
  * the team and swapped the new build into dist/ (then `restart` is true). */
 export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExit> {
   const { root, config, mainBranch, signal: externalSignal } = opts;
@@ -123,10 +123,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
   const breakerNow = opts.breakerNow ?? Date.now;
-  // Parallel work instances (part 5b/7): the runner list is every loop id the config enables
+  // Parallel work instances (part 5b/7): the runner list is every runner id the config enables
   // (`feature`, `feature-2`, …), so `instances` creates real runners. A `--once --role` filter
-  // targets exactly that loop id.
-  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : loopIds(config);
+  // targets exactly that runner id.
+  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : runnerIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
   // defaults they can fall back to. With a role filter this is unreachable — cmdRun validated
@@ -190,7 +190,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
     ...(redeploy ? { build: redeploy.build.sha } : {}),
   });
 
-  // The first per-runner state read is each LoopRunner constructor's loadLoopState, so the
+  // The first per-runner state read is each RoleRunner constructor's loadRunnerState, so the
   // persisted-name migrations run before it. (After the info write and start event above, which
   // an in-process test or a second `tumwater run` probe reads synchronously.)
   await runStartupMigrations(root);
@@ -199,18 +199,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // repository migrates on its first start with this build, and an entry a hand commit moved is
   // swept. One commit on main, or a warning; the team starts either way.
   await archiveAtTeamStart(root);
-  const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
+  const runners = enabled.map((role) => new RoleRunner(root, role, config, mainBranch, roleSignal));
   // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
   // and merges lease pooled slots: remove them once, before any tick, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published
   // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
   await removeLegacyLandWorktrees(root);
   // Legacy role checkouts (`<role>` from a pre-pool build) are retired in the same startup
-  // window, right after the LoopRunners above: a role with a pending resume keeps its dir as a
-  // pinned slot, every other legacy dir goes. Pass every configured loop id, not `enabled` (a
+  // window, right after the RoleRunners above: a role with a pending resume keeps its dir as a
+  // pinned slot, every other legacy dir goes. Pass every configured runner id, not `enabled` (a
   // `--once --role` filter): a scoped run must not retire or unpin the other roles, whose
   // pending resumes the next full-team start still owns. See retireLegacyRoleWorktrees.
-  await retireLegacyRoleWorktrees(root, loopIds(config));
+  await retireLegacyRoleWorktrees(root, runnerIds(config));
 
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged team prunes at most once
@@ -231,7 +231,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // pending — and counting it held drains open for ticks that had not begun and inflated
   // abortedTicks (12 reported against 3 aborted run_ends on 2026-09-21; BUGS.md 2026-09-23).
   const roleInFlight = new Set<Promise<void>>();
-  const rolePermitHolders = new Set<LoopRunner>();
+  const rolePermitHolders = new Set<RoleRunner>();
   const directorInFlight = new Set<Promise<void>>();
   // The restart drain's window tracks the team's real tick duration (BUGS.md 2026-09-18): the
   // durations of recent COMPLETED role ticks feed a p75 that poll uses in place of the

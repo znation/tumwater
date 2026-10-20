@@ -27,7 +27,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readBranchHead } from "../src/git/git.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -45,7 +45,7 @@ import { waitFor } from "./helpers/wait.js";
 /** The state a finished no_change tick on the current main head leaves on disk, due now. */
 function idleDueState(repo: string) {
   return {
-    ...freshLoopState("clean"),
+    ...freshRunnerState("clean"),
     runs: 1,
     lastResult: "no_change" as const,
     lastMainHead: readBranchHead(repo, "main") ?? "",
@@ -64,19 +64,19 @@ function openBacklog(repo: string): void {
 test("once: a due maintenance role with an open backlog settles as deferred, runs no tick, and logs the episode", async () => {
   const repo = await makeFastRepo("once unit deferral test", ["clean"]);
   openBacklog(repo);
-  saveLoopState(repo, idleDueState(repo));
+  saveRunnerState(repo, idleDueState(repo));
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "deferred", "the deferral is the role's round answer, not idle");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the deferred role ran no tick");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["clean"],
       "the deferral is logged once on the transition in, not silent",
     );
-    assert.equal(loadLoopState(repo, "clean").skipReason, "deferred-backlog");
+    assert.equal(loadRunnerState(repo, "clean").skipReason, "deferred-backlog");
   });
 });
 
@@ -86,18 +86,18 @@ test("once: a backlog of only held entries does not defer a maintenance role —
     path.join(repo, "PLANS.md"),
     "# Plans\n\n## Planned\n\n### a held feature (planned 2026-09-30)\n\n**Refused 2026-10-12 by feature: test**\n",
   );
-  saveLoopState(repo, idleDueState(repo));
+  saveRunnerState(repo, idleDueState(repo));
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.settled?.get("clean"), "deferred");
-    assert.equal(loadLoopState(repo, "clean").skipReason, "deferred-no-work");
+    assert.equal(loadRunnerState(repo, "clean").skipReason, "deferred-no-work");
   });
 });
 
 test("once: a fresh operator wake overrides the deferral — the demand ticks despite the open backlog", async () => {
   const repo = await makeFastRepo("once unit wake-override test", ["clean"]);
   openBacklog(repo);
-  saveLoopState(repo, {
+  saveRunnerState(repo, {
     ...idleDueState(repo),
     lastRunEndedAt: Date.now() - 60_000,
     wokenAt: Date.now() - 1000, // newer than the last tick's end: an explicit "try again now"
@@ -106,7 +106,7 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
-    assert.equal(loadLoopState(repo, "clean").runs, 2, "the tick really ran");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the tick really ran");
     assert.deepEqual(eventsOfType(repo, "run_deferred"), [], "no deferral episode: the demand preempted it");
   });
 });
@@ -117,8 +117,8 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
   // `## Planned` both empty, so workBacklogOpen is false and the deferral rests entirely on
   // the work-merged query — the seeded state's lastMainHead IS main's head, so nothing has
   // merged since the idle tick and the search waits. The seed must carry the bugfix role
-  // itself: saveLoopState keys the state file off the state's role field.
-  saveLoopState(repo, { ...idleDueState(repo), role: "bugfix" });
+  // itself: saveRunnerState keys the state file off the state's role field.
+  saveRunnerState(repo, { ...idleDueState(repo), role: "bugfix" });
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
@@ -128,7 +128,7 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
       "an idle search tick with nothing new on main defers even with the backlog empty",
     );
     assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
-    assert.equal(loadLoopState(repo, "bugfix").runs, 1, "nothing ticked past the seeded history");
+    assert.equal(loadRunnerState(repo, "bugfix").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["bugfix"],
@@ -140,7 +140,7 @@ test("once: bugfix in search mode defers on the work-merged verdict alone, backl
 test("live: an inbox demand ends a deferral episode silently, and the next deferral logs a fresh episode", async () => {
   const repo = await makeFastRepo("deferral episode reset test", ["clean"]);
   openBacklog(repo);
-  saveLoopState(repo, idleDueState(repo));
+  saveRunnerState(repo, idleDueState(repo));
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Episode one: the backlog defers the due maintenance tick and the event logs once.
@@ -159,7 +159,7 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
     // scheduled tick defers again — and that fresh episode logs its own run_deferred: the
     // stale in-memory episode flag must not swallow it.
     await waitFor(() => eventsOfType(repo, "run_deferred").length >= 2, "the fresh deferral episode");
-    assert.equal(loadLoopState(repo, "clean").runs, 2, "still deferred: the backlog holds");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "still deferred: the backlog holds");
   } finally {
     await stopOrchestrator(orch, restore);
   }

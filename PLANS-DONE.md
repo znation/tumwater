@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 8/14: Convert the orchestrator and its tests (planned 2026-10-16 by user; requires part 7/14 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ + test/orchestrator*.test.ts + test/fixtures/orchestrator-fixtures.ts; done 2026-10-19 by the feature role)
+
+**Goal.** The orchestrator and its unit and e2e tests use `RoleRunner`, `RunnerState` and runner/role wording.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/orchestrator/orchestrator.ts, orchestrator-poll.ts, orchestrator-scheduling.ts, orchestrator-launch.ts and retention.ts: migrate `LoopRunner` → `RoleRunner`, `loopEnabled` → `runnerEnabled`, `loopIds` → `runnerIds`, `saveLoopState` → `saveRunnerState` and `LoopState` → `RunnerState`, and convert comments ("the LoopRunners above" → "the RoleRunners above"). The poll loop stays the poll loop.
+- Tests: every test/orchestrator*.test.ts and test/orchestrator*.e2e.test.ts (`loadLoopState` alone is about 170 lines here), plus test/fixtures/orchestrator-fixtures.ts. Rename test locals per the series rules; test/orchestrator-2.e2e.test.ts's `loopOrder` → `roleOrder`.
+- Locals such as `dryTicks` and `dryFailedAt` carry role-id and tick words, which belong to later series; leave them.
+
+**Files touched.** src/orchestrator/*.ts, test/orchestrator*.test.ts, test/orchestrator*.e2e.test.ts, test/fixtures/orchestrator-fixtures.ts.
+
+**Acceptance criteria.**
+- `grep -rnE 'LoopRunner|LoopState|[a-z]LoopState|loopIds|loopEnabled'` over this part's files prints nothing.
+- `grep -rnwiE 'loops?'` over the same files lists only the poll loop and other kept senses.
+- No behavior change: the suite's test count is unchanged, including the e2e tier (`npm run test:e2e` passes).
+- `npm run test` passes.
+
 ### `tumwater pause --role` and `resume --role` take a comma-separated list of role ids, so one command holds or releases every role an operator is steering (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only `cmdPause`/`cmdResume` in src/operator/operator-commands.ts, the pause/resume help lines and docs/cli.md's "Control the roles" row) — done 2026-10-19 by the feature role
 
 **Goal.** Holding a group of roles today takes one `pause --role` per role (for example, holding `clean`, `dedupe` and `organize` while a large feature merges), and releasing them takes one `resume --role` each. `history --role` already takes a comma list (`parseRoleListScope`, src/cli/cli-args.ts). Give `pause --role` and `resume --role` the same spelling: `tumwater pause --role clean,dedupe,organize [--for 2h]` and `tumwater resume --role clean,dedupe,organize`. Each listed role gets exactly the write and the confirmation line it gets today, and every id is validated before any marker is written.

@@ -8,7 +8,7 @@
  *   runs it immediately — the scheduling pass creates the director's task with no-op
  *   acquire/release closures (`usesSlot = role !== DIRECTOR_ROLE`), so it never queues behind
  *   maxConcurrent. Pinned with a slot-holding role tick: with one permit and a role pi that
- *   holds it for minutes, the director's own pi run still sees two loops in flight.
+ *   holds it for minutes, the director's own pi run still sees two roles in flight.
  * - No team gate for the director: an operator pause (`tumwater pause`, the marker file)
  *   holds every role's next tick but exempts the director — an explicit human prompt outranks
  *   the pause. The director ticks while the paused role never starts one.
@@ -27,7 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
@@ -126,9 +126,9 @@ test("director: a queued prompt runs without a permit even while the only slot i
         return "";
       }
     };
-    await waitFor(() => samplesText().includes("director:2"), "the director's run sampling two loops in flight");
-    assert.equal(loadLoopState(repo, "director").runs, 1, "the director ticked once");
-    assert.equal(loadLoopState(repo, "clean").running, true, "the role tick still holds the only permit");
+    await waitFor(() => samplesText().includes("director:2"), "the director's run sampling two roles in flight");
+    assert.equal(loadRunnerState(repo, "director").runs, 1, "the director ticked once");
+    assert.equal(loadRunnerState(repo, "clean").running, true, "the role tick still holds the only permit");
     assert.equal(
       eventsOfType(repo, "run_end").some((e) => e.source === "clean"),
       false,
@@ -169,13 +169,13 @@ test("director: a team pause holds role ticks but not the director's queued prom
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await awaitSettledTick(repo, "director", 1, "the director's prompt tick under the pause");
-    assert.equal(loadLoopState(repo, "director").runs, 1, "the director ticked despite the pause");
+    assert.equal(loadRunnerState(repo, "director").runs, 1, "the director ticked despite the pause");
     assert.equal(
       eventsOfType(repo, "run_start").some((e) => e.source === "clean"),
       false,
       "the paused role started no tick",
     );
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "the paused role ran nothing");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the paused role ran nothing");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -205,7 +205,7 @@ test("merge queue interlock: a role with a queued merge starts no tick until the
     assert.ok(reviewIdx >= 0, "the queued change got a review run");
     assert.ok(tickIdx >= 0, "clean eventually ran its own tick");
     assert.ok(reviewIdx < tickIdx, "the review ran before the role's tick — the interlock held the role back");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "exactly the post-interlock tick ran");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "exactly the post-interlock tick ran");
   } finally {
     await stopOrchestrator(orch, restore);
   }

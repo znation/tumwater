@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";
@@ -20,6 +20,6 @@ test("runOrchestrator starts and finishes a once round when the events feed is u
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "the round exits on its own");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "the enabled role still ticked");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the enabled role still ticked");
   });
 });

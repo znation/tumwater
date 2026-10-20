@@ -20,9 +20,9 @@ import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
 import {
-  freshLoopState,
-  loadLoopState,
-  saveLoopState,
+  freshRunnerState,
+  loadRunnerState,
+  saveRunnerState,
   zeroCounters,
 } from "../src/runner/runner-state.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
@@ -185,7 +185,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     await waitFor(
       () =>
         ["clean", "dedupe"].every((role) => {
-          const s = loadLoopState(repo, role);
+          const s = loadRunnerState(repo, role);
           return s.runs >= 1 && !s.running;
         }),
       "both startup ticks to finish",
@@ -212,14 +212,14 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.ok(types.includes("orchestrator_stop"));
     // Both enabled roles got their startup tick.
     for (const role of ["clean", "dedupe"])
-      assert.ok(loadLoopState(repo, role).runs >= 1, `${role} should have ticked`);
+      assert.ok(loadRunnerState(repo, role).runs >= 1, `${role} should have ticked`);
   } finally {
     restore();
     controller.abort();
   }
 });
 
-test("runOrchestrator starts one runner per loop id and an unclaimed extra instance stays idle", async () => {
+test("runOrchestrator starts one runner per runner id and an unclaimed extra instance stays idle", async () => {
   const repo = await makeFastRepo("instances runner test", ["feature"]);
   const config = loadConfig(repo);
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
@@ -234,10 +234,10 @@ test("runOrchestrator starts one runner per loop id and an unclaimed extra insta
     await waitFor(() => readOrchestratorInfo(repo)?.roles.includes("feature-3") === true, "all three runners registered");
     assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ["feature", "feature-2", "feature-3"]);
     await waitFor(
-      () => loadLoopState(repo, "feature").runs >= 1 && loadLoopState(repo, "feature-2").runs >= 1,
+      () => loadRunnerState(repo, "feature").runs >= 1 && loadRunnerState(repo, "feature-2").runs >= 1,
       "the two claimed instances tick",
     );
-    assert.equal(loadLoopState(repo, "feature-3").runs, 0, "the extra instance with no claim does not tick");
+    assert.equal(loadRunnerState(repo, "feature-3").runs, 0, "the extra instance with no claim does not tick");
     // Ticks lease pooled slots: no per-role worktree is created for the instance.
     assert.equal(fs.existsSync(worktreePath(repo, "feature-2")), false, "no feature-2 role worktree");
     controller.abort();
@@ -266,7 +266,7 @@ test("runOrchestrator refuses to start with no roles enabled", async () => {
   }
 });
 
-// --- Early wakes are observable: a loop that runs ahead of its schedule logs why ---
+// --- Early wakes are observable: a role that runs ahead of its schedule logs why ---
 
 test("a main move and a queued prompt each log exactly one wake event with their reason", async () => {
   const repo = makeRepo();
@@ -371,7 +371,7 @@ test("a no_change maintenance role defers due ticks until work merges on main", 
     // Several poll cycles pass with the interval long since due — still exactly one run.
     await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
-    assert.equal(loadLoopState(repo, "organize").runs, 1);
+    assert.equal(loadRunnerState(repo, "organize").runs, 1);
 
     // Work merges: the deferred tick starts within one poll and finishes. (This is also the
     // verdict-cache flip case: the earlier false verdict over this range must not be cached.)
@@ -427,7 +427,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
     // And the second episode still defers: no third tick while it holds.
     await sleep(500);
-    assert.equal(loadLoopState(repo, "organize").runs, 2, "the second episode defers, it does not tick");
+    assert.equal(loadRunnerState(repo, "organize").runs, 2, "the second episode defers, it does not tick");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -455,7 +455,7 @@ test("an open bug backlog defers due maintenance ticks even when work merges, un
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
     await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
-    assert.equal(loadLoopState(repo, "organize").runs, 1);
+    assert.equal(loadRunnerState(repo, "organize").runs, 1);
 
     // The bugfix role fixes the last open bug: its merge drains BUGS.md `## Open` (and
     // counts as work) — the deferred tick starts within one poll of either conjunct flipping.
@@ -484,15 +484,15 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "seed the backlog");
 
-  // Seed the loop exactly as a long-deferred no_change tick looks on disk: its scheduled time
+  // Seed the role exactly as a long-deferred no_change tick looks on disk: its scheduled time
   // is already past the cap. The fix must let it run; the pre-fix predicate deferred it forever.
-  const state = freshLoopState("organize");
+  const state = freshRunnerState("organize");
   state.runs = 1;
   state.lastResult = "no_change";
   state.lastMainHead = headSha(repo);
   state.lastRunEndedAt = Date.now() - 60_000;
   state.nextRunAt = Date.now() - DEFER_MAX_MS - 60_000;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
 
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
@@ -704,7 +704,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
 
     // Reproduce what `tumwater reset-counters` does from the CLI side: zero the state file
     // and drop the marker. (The CLI path itself is covered in test/cli.test.ts.)
-    saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
+    saveRunnerState(repo, zeroCounters(loadRunnerState(repo, "clean")));
     const markerFile = resetRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
@@ -713,8 +713,8 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // so at most 1 is expected — without in-memory zeroing this would read >= 3.
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
     assert.ok(
-      loadLoopState(repo, "clean").runs <= 1,
-      `counters start from zero after consumption (got ${loadLoopState(repo, "clean").runs})`,
+      loadRunnerState(repo, "clean").runs <= 1,
+      `counters start from zero after consumption (got ${loadRunnerState(repo, "clean").runs})`,
     );
 
     // The reset survives tick boundaries: the next completed tick counts from zero — a stale
@@ -722,7 +722,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // deferred role for that post-reset tick.
     mergeWork(repo);
     await waitFor(
-      () => loadLoopState(repo, "clean").runs === 1 && !loadLoopState(repo, "clean").running,
+      () => loadRunnerState(repo, "clean").runs === 1 && !loadRunnerState(repo, "clean").running,
       "a post-reset tick to finish",
     );
 
@@ -735,19 +735,19 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   }
 });
 
-test("a reset consumed while a tick is in flight does not wedge the loop", async () => {
+test("a reset consumed while a tick is in flight does not wedge the role", async () => {
   const repo = await makeFastRepo("mid-tick reset test", ["clean"]);
   // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
   // first tick is in flight (observed within a poll or two of start, consumed within one)
   // arrives mid-tick. That is the documented use case (resetting a running team), where most
-  // loops are mid-tick at any moment.
+  // roles are mid-tick at any moment.
   const restore = fakePi(`sleep 2\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => loadLoopState(repo, "clean").running === true, "a tick to be in flight");
+    await waitFor(() => loadRunnerState(repo, "clean").running === true, "a tick to be in flight");
 
     // Drop the marker while the tick is running (CLI-side file zeroing included).
-    saveLoopState(repo, zeroCounters(loadLoopState(repo, "clean")));
+    saveRunnerState(repo, zeroCounters(loadRunnerState(repo, "clean")));
     const markerFile = resetRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
@@ -755,20 +755,20 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
 
     // The in-flight tick must still end cleanly: its running flag clears on disk. Before the
     // fix, resetCounters() replaced the state object mid-tick, so the tick's end-of-save
-    // wrote back the zeroed copy — which still carried running=true — and the loop was wedged
+    // wrote back the zeroed copy — which still carried running=true — and the role was wedged
     // (never eligible again) until a restart.
     await waitFor(
-      () => loadLoopState(repo, "clean").running === false,
+      () => loadRunnerState(repo, "clean").running === false,
       "the in-flight tick to finish",
     );
 
     // Counters stayed zeroed: no resurrection from the pre-reset in-memory copy.
     assert.ok(
-      loadLoopState(repo, "clean").runs <= 1,
-      `counters start from zero after a mid-tick reset (got ${loadLoopState(repo, "clean").runs})`,
+      loadRunnerState(repo, "clean").runs <= 1,
+      `counters start from zero after a mid-tick reset (got ${loadRunnerState(repo, "clean").runs})`,
     );
 
-    // And the loop keeps ticking: a post-reset tick runs to completion.
+    // And the role keeps ticking: a post-reset tick runs to completion.
     await awaitSettledTick(repo, "clean", 1, "a post-reset tick to finish");
 
     // The reset is still visible as one plain event, filed under the role.
@@ -785,7 +785,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let one poll pass so the divergence watch is seeded against the startup branch.
-    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the startup tick to run");
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the startup tick to run");
 
     // A human checks out something else in the primary checkout mid-run: one warning names
     // the divergence, and the team keeps merging into the branch it resolved at startup.

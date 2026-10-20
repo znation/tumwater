@@ -144,7 +144,7 @@ test("sleepInterruptible returns without waiting on an already-aborted signal", 
   assert.ok(Date.now() - start < 5_000, "a pre-aborted signal must resolve immediately");
 });
 
-// BUGS.md 2026-09-24 — the display fix leans on this wiring: the orchestrator marks a loop
+// BUGS.md 2026-09-24 — the display fix leans on this wiring: the orchestrator marks a role
 // `parkedSince` BEFORE the semaphore wait and clears it inside the acquire closure, so a
 // parked waiter renders as an inactive state and the active rows track the real permit
 // holders. Pinned here against the real Semaphore because the merge-holds-a-permit
@@ -196,7 +196,7 @@ test("a parked waiter holds no permit until acquire grants it, which the merge t
   assert.equal(parked.merge, 1, "the merge is still parked");
 
   // Releases hand the permit on: the lower tier number (the merge) goes first, the waiter
-  // follows. Both clear their parked marker at grant, so no loop can stay an inactive row
+  // follows. Both clear their parked marker at grant, so no role can stay an inactive row
   // while holding a permit.
   releaseHolder();
   await Promise.all([holder, waiter, merge]);
@@ -276,7 +276,7 @@ test("a waiter parked before a restart hold is turned away at its permit, which 
 });
 
 // BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold": the orchestrator's per-poll
-// step reads every runner's latest 429 (LoopRunner.lastRateLimit), steps the pure gate
+// step reads every runner's latest 429 (RoleRunner.lastRateLimit), steps the pure gate
 // (team-hold.test.ts pins its rule), and logs exactly one event per crossing — the team
 // state transitions the digest's Team state changes section replays. Before the fix there was
 // no cross-role input at all: two roles 429ing seconds apart changed nothing.

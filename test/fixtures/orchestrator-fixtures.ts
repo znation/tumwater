@@ -11,11 +11,11 @@ import { startVerify } from "../../src/merge/merge-verify.js";
 import { dropMerge, headMerge, queuedMergeFiles } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
-import { loadLoopState } from "../../src/runner/runner-state.js";
+import { loadRunnerState } from "../../src/runner/runner-state.js";
 import { logEvent } from "../../src/events/events.js";
 import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../../src/redeploy/redeployer.js";
-import type { LoopRunner } from "../../src/runner/runner.js";
+import type { RoleRunner } from "../../src/runner/runner.js";
 import { fakePi, fakePiIdle } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { writeModelsFile } from "./models-fixtures.js";
@@ -26,7 +26,7 @@ import type { TickResult } from "../../src/tick/tick-outcome.js";
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
  * orchestrator or its merge pipeline: fast configs and repos, a start/stop wrapper around
  * runOrchestrator, and a one-entry driver for the merge pipeline. Split from the
- * loop-level fixtures (runner-fixtures.ts) so the e2e tier's machinery lives beside its tier,
+ * runner-level fixtures (runner-fixtures.ts) so the e2e tier's machinery lives beside its tier,
  * mirroring repo-fixtures.ts / merger-fixtures.ts / status-fixtures.ts. */
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
@@ -42,7 +42,7 @@ export const FAST_POLL_MS = 100;
  * successful-merge tests assert. Waiting on the outcome alone races the discard: a
  * deliberate stop's `discardPinnedRefs` runs in the merge slot's `finally`, AFTER
  * `writeMergeOutcome` has already recorded `lastResult` (the load-sensitive-test class in
- * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the loop-tier suites
+ * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the runner-tier suites
  * (runner-3.test.ts, runner-leftover-recovery.test.ts) each held an inline copy before this was
  * extracted, and orchestrator-3.e2e.test.ts a file-local one. */
 export function mergeRefExists(repo: string, role: string): boolean {
@@ -229,9 +229,9 @@ export async function stopOrchestrator(
   await orch.stop();
 }
 
-/** Poll until `role`'s persisted loop state has completed at least `n` ticks and is idle
+/** Poll until `role`'s persisted runner state has completed at least `n` ticks and is idle
  * (not mid-tick) — the live-orchestrator e2e tests' shared "a tick finished" gate, the
- * `waitFor(() => loadLoopState(repo, role).runs >= n && !loadLoopState(repo, role).running,
+ * `waitFor(() => loadRunnerState(repo, role).runs >= n && !loadRunnerState(repo, role).running,
  * what)` idiom that recurred verbatim across the suite. Reads the state file fresh each
  * poll, exactly like the inline form; `ms` forwards to waitFor's deadline (default when
  * omitted). Tests that wait for the tick to start but not finish, or that assert on the
@@ -245,7 +245,7 @@ export async function awaitSettledTick(
 ): Promise<void> {
   await waitFor(
     () => {
-      const s = loadLoopState(repo, role);
+      const s = loadRunnerState(repo, role);
       return s.runs >= n && !s.running;
     },
     what,
@@ -254,7 +254,7 @@ export async function awaitSettledTick(
 }
 
 /** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
- * (merge-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
+ * (merge-drain.ts). Runner-level tests call `runner.tick()` directly — no poll loop — so the
  * entry a changed tick enqueues needs a driver: this verifies the head alone (startVerify, on a
  * one-permit semaphore) and, once approved, merges it (drainMerge), leaving every other queued
  * entry untouched — a test that ticks a second role meanwhile merges that one with its own call.
@@ -263,7 +263,7 @@ export async function awaitSettledTick(
  * exactly as the pipeline does. */
 export async function mergeHead(
   repo: string,
-  runner: LoopRunner,
+  runner: RoleRunner,
   config: TumwaterConfig,
   role: string,
   branch = "main",

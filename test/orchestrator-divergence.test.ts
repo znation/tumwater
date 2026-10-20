@@ -9,7 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { eventsLogPath } from "../src/paths.js";
 import { FAST_POLL_MS, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
@@ -30,7 +30,7 @@ function divergenceWarnings(repo: string): { message: string }[] {
  * least once with the checkout still on `main`, so any warning found later is attributable. */
 async function awaitFirstTick(repo: string, role: string): Promise<void> {
   await waitFor(
-    () => loadLoopState(repo, role).runs >= 1 && !loadLoopState(repo, role).running,
+    () => loadRunnerState(repo, role).runs >= 1 && !loadRunnerState(repo, role).running,
     `${role}'s first tick settled`,
   );
 }

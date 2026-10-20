@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { FAST_POLL_MS, deadFallbackScenario, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -89,10 +89,10 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
     assert.equal(info?.fallbackDemoted?.failures, 3);
 
     // And the demoted pause actually holds: no further role tick starts while it stands.
-    const ticksAtTrip = loadLoopState(repo, "feature").runs;
+    const ticksAtTrip = loadRunnerState(repo, "feature").runs;
     await sleep(600);
     assert.equal(
-      loadLoopState(repo, "feature").runs,
+      loadRunnerState(repo, "feature").runs,
       ticksAtTrip,
       "a demoted fallback pauses role ticks — the probe waits out its cool-down",
     );

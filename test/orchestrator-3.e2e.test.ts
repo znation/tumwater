@@ -13,7 +13,7 @@ import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import {
   abortRequestPath,
   branchName,
@@ -33,7 +33,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { makeLoopRunner, roleWt } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
@@ -105,7 +105,7 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
     // the pinned ref: a deliberate stop kills the work under review, the merge's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
     await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
+      () => loadRunnerState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
       "the aborted merge to settle and discard its pinned ref",
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
@@ -118,7 +118,7 @@ test("a user abort during a merge kills it and discards the pinned ref", async (
     assert.equal(failed.length, 1, "the aborted merge logged its failure");
     assert.equal(failed[0]!.result, "aborted");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0);
-    assert.equal(loadLoopState(repo, "clean").runs, 1);
+    assert.equal(loadRunnerState(repo, "clean").runs, 1);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -148,18 +148,18 @@ test("a role with a queued or in-flight merge never starts a new tick (interlock
     // entry stays in the queue until the merge settles, and the interlock covers both the
     // queued and the in-flight phases with that one check.
     await sleep(1_200);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "no second tick while its own merge is in flight");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "no second tick while its own merge is in flight");
     assert.equal(queueDepth(repo), 1, "the entry stays queued until the merge settles");
     // The pending change is not a completed result: the role's first tick had no prior one,
     // so the persisted last-result pair stays empty through the whole window (BUGS.md
     // 2026-09-23 — it used to read `queued`).
-    assert.equal(loadLoopState(repo, "clean").lastResult, undefined, "the in-flight merge is not a last result");
+    assert.equal(loadRunnerState(repo, "clean").lastResult, undefined, "the in-flight merge is not a last result");
 
     // Settle the test: a deliberate stop kills the hung merge and drops its entry.
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
     await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "aborted",
+      () => loadRunnerState(repo, "clean").lastResult === "aborted",
       "the aborted merge to settle",
     );
     assert.equal(queueDepth(repo), 0, "the entry drops with the aborted merge");
@@ -198,7 +198,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
       0,
       "no failed merge",
     );
-    assert.equal(loadLoopState(repo, "clean").commits, 1, "the merged change counts as one commit");
+    assert.equal(loadRunnerState(repo, "clean").commits, 1, "the merged change counts as one commit");
     assert.ok(!mergeRefExists(repo, "clean"), "the pin is deleted with a successful merge");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -221,7 +221,7 @@ test("an entry whose sha main already holds is dropped at the drain without a me
   try {
     // One real change merges end to end…
     await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "changed" && fs.existsSync(path.join(repo, "hello.txt")),
+      () => loadRunnerState(repo, "clean").lastResult === "changed" && fs.existsSync(path.join(repo, "hello.txt")),
       "the change to merge on main",
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
@@ -332,7 +332,7 @@ test("a merge whose pinned sha no longer exists degrades to an error outcome, no
   const sha = "0".repeat(40); // a commit git cannot check out
   enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
   const config = fastConfig(["clean"]);
-  const author = makeLoopRunner(repo, "clean", config);
+  const author = makeRoleRunner(repo, "clean", config);
 
   const result = await mergeHead(repo, author, config, "clean");
 
@@ -350,18 +350,18 @@ test("a merge whose pinned sha no longer exists degrades to an error outcome, no
   assert.equal(failed[0]?.commit, sha);
   assert.equal(eventsOfType(repo, "merge_done").length, 0);
   // The degraded outcome is persisted on the author's state, like any other tick result.
-  assert.equal(loadLoopState(repo, "clean").lastResult, "error");
-  assert.equal(loadLoopState(repo, "clean").lastError, author.state.lastError);
+  assert.equal(loadRunnerState(repo, "clean").lastResult, "error");
+  assert.equal(loadRunnerState(repo, "clean").lastError, author.state.lastError);
 });
 
-// --- abort requests: the marker-file plumbing that reaches LoopRunner's
-// user-abort branch — consumption, kill, event, and the silent no-op shapes. The loop-level
+// --- abort requests: the marker-file plumbing that reaches RoleRunner's
+// user-abort branch — consumption, kill, event, and the silent no-op shapes. The runner-level
 // semantics themselves are pinned in test/runner.test.ts; the CLI side in test/cli.test.ts. ---
 
 test("an abort request kills an in-flight tick, consumes its marker, and logs one event", async () => {
   const repo = makeRepo();
   await initProject(repo, "abort e2e test");
-  // Only clean ticks; a long backoff so the aborted loop stays idle while the no-op cases
+  // Only clean ticks; a long backoff so the aborted role stays idle while the no-op cases
   // below are asserted (no second tick can start and muddy the event count).
   const cfg = defaultConfig();
   cfg.minRunIntervalSeconds = 0;
@@ -388,12 +388,12 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
 
     const aborted = () => eventsOfType(repo, "run_aborted");
     assert.equal(aborted().length, 1, "exactly one run_aborted event");
-    assert.equal(aborted()[0]?.source, "clean", "filed under the role's loop");
+    assert.equal(aborted()[0]?.source, "clean", "filed under the role");
 
     // The killed run ends user_aborted: half-done work discarded (worktree reset to main),
     // backed off instead of resuming promptly.
-    await waitFor(() => !loadLoopState(repo, "clean").running, "the aborted tick to finish");
-    const s = loadLoopState(repo, "clean");
+    await waitFor(() => !loadRunnerState(repo, "clean").running, "the aborted tick to finish");
+    const s = loadRunnerState(repo, "clean");
     assert.equal(s.lastResult, "user_aborted");
     assert.ok(!s.resumePending, "a deliberate stop leaves nothing to resume");
     assert.ok(
@@ -405,11 +405,11 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // slack a `> now + 29 s` check left on the 30 s backoff (BUGS.md 2026-10-01).
     assert.ok(s.nextRunAt - (s.lastRunEndedAt ?? 0) >= 29_000, "backed off, not immediate");
 
-    // A request for a loop that is NOT running is a silent no-op: the marker is removed and
+    // A request for a role that is NOT running is a silent no-op: the marker is removed and
     // no event logged — clean itself (now idle in its backoff) …
     fs.writeFileSync(markerFile, JSON.stringify({ at: Date.now() }));
-    await waitFor(() => !fs.existsSync(markerFile), "the idle-loop marker to be consumed");
-    assert.equal(aborted().length, 1, "no event for an idle loop");
+    await waitFor(() => !fs.existsSync(markerFile), "the idle-role marker to be consumed");
+    assert.equal(aborted().length, 1, "no event for an idle role");
 
     // … and the same holds for a disabled role, which has no runner at all (the no-runner shape).
     for (const role of ["feature", "bugfix"]) {
@@ -484,9 +484,9 @@ test("an abort for one queued role stops only that role's verify and discards it
   // no-op tick before the asserts below read `ticks`. Seed both roles as freshly ticked so NO
   // tick can start for the next 300 s: "no tick ever started" then asserts a deterministic fact.
   for (const role of ["clean", "dedupe"]) {
-    const s = loadLoopState(repo, role);
+    const s = loadRunnerState(repo, role);
     s.lastRunEndedAt = Date.now();
-    saveLoopState(repo, s);
+    saveRunnerState(repo, s);
   }
   // Each reviewer marks itself and parks until released (bounded ~60 s, so a failed assert can
   // never leave one spinning); the abort kills dedupe's.
@@ -514,7 +514,7 @@ test("an abort for one queued role stops only that role's verify and discards it
     writeMarker(markerFile, { at: Date.now() });
 
     await waitFor(
-      () => loadLoopState(repo, "dedupe").lastResult === "aborted" && !mergeRefExists(repo, "dedupe"),
+      () => loadRunnerState(repo, "dedupe").lastResult === "aborted" && !mergeRefExists(repo, "dedupe"),
       "dedupe's aborted verify to settle and discard its pin",
       60_000,
     );
@@ -529,12 +529,12 @@ test("an abort for one queued role stops only that role's verify and discards it
     );
 
     fs.writeFileSync(release, "");
-    await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's verify to merge", 60_000);
+    await waitFor(() => loadRunnerState(repo, "clean").lastResult === "changed", "clean's verify to merge", 60_000);
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean merged on main");
     assert.ok(!fs.existsSync(path.join(repo, "dedupe.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no tick was running");
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "the interlock held: no tick ever started");
-    assert.equal(loadLoopState(repo, "dedupe").runs, 0);
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the interlock held: no tick ever started");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 0);
   } finally {
     fs.writeFileSync(release, ""); // never leave a review parked
     await stopOrchestrator(orch, restore);
@@ -568,9 +568,9 @@ test("a role rejected in its verify ticks again while another queued change is s
   try {
     await waitFor(() => fs.existsSync(held), "dedupe's review to be in flight — clean's verdict is already in", 60_000);
     // The interlock frees clean while dedupe's review is still parked: its due tick runs.
-    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-merge", 30_000);
+    await waitFor(() => loadRunnerState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-merge", 30_000);
     assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its review never returned");
-    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")

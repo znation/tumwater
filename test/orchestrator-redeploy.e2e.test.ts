@@ -19,7 +19,7 @@ import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import type { HarnessEvent } from "../src/events/events.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { worktreePath } from "../src/paths.js";
 import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "./fixtures/orchestrator-fixtures.js";
@@ -96,7 +96,7 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]!.result, "aborted", "the drain cap aborted the tick like a shutdown would");
-    assert.equal(loadLoopState(repo, "clean").resumePending, true, "…so it resumes on the new build");
+    assert.equal(loadRunnerState(repo, "clean").resumePending, true, "…so it resumes on the new build");
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
     assert.equal(restart.abortedRuns, 1);
   } finally {
@@ -145,7 +145,7 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted run_ends).
     assert.equal(events.find((e) => e.type === "restart")!.abortedRuns, 1);
     assert.deepEqual(started(), [holder], "the parked role's pi never ran");
-    assert.equal(loadLoopState(repo, parked).runs, 0, "no state write for a tick that never started");
+    assert.equal(loadRunnerState(repo, parked).runs, 0, "no state write for a tick that never started");
   } finally {
     await stop();
     restore();
@@ -244,7 +244,7 @@ test("a failed compile leaves the team running the old build", async () => {
     // finish first: its end-of-tick head refresh would swallow a concurrent merge into
     // lastMainHead, leaving deferral nothing to react to.
     await waitFor(
-      () => !loadLoopState(repo, "clean").running && loadLoopState(repo, "clean").lastMainHead !== "",
+      () => !loadRunnerState(repo, "clean").running && loadRunnerState(repo, "clean").lastMainHead !== "",
       "the startup tick to finish",
     );
     mergeWork(repo);

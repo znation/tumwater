@@ -1,5 +1,5 @@
 /** The quiet-hours gate's e2e tier slice (test/quiet-hours.test.ts covers the unit surface):
- * a configured quietHours window blocks role loops' ticks on a live orchestrator while the
+ * a configured quietHours window blocks roles' ticks on a live orchestrator while the
  * director stays exempt, and emptying the window live lifts the hold without a restart —
  * the operator pause's semantics on a schedule (test/orchestrator-pause.e2e.test.ts is the
  * sibling this mirrors). Each test file gets its own process — and its own PATH, which
@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -44,12 +44,12 @@ test("quiet hours block role ticks while the director runs; emptying the window 
 
     // Several (fast) poll cycles pass: clean starts no tick while the window holds.
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "a quiet-hours role starts no ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a quiet-hours role starts no ticks");
 
     // The director is exempt: a queued human prompt still runs during the window.
     enqueuePrompt(repo, "steer me during quiet hours");
     await awaitSettledTick(repo, "director", 1, "the director to tick during quiet hours");
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "still quiet after the director's run");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "still quiet after the director's run");
 
     // Emptying the window live (what `tumwater config set quietHours ""` does) ends the
     // hold on the next poll: one ended event, then the blocked role ticks without a restart.

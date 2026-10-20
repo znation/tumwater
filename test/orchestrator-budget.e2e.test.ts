@@ -16,7 +16,7 @@ import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -59,15 +59,15 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.deepEqual(readOrchestratorInfo(repo)?.budget, { spentUsd: 1, capUsd: 0.5 });
 
     // The paused role starts no new ticks even though its schedule says to run: wait well
-    // past nextRunAt plus several (fast) poll cycles — an ungated loop would have ticked by then.
-    const scheduled = loadLoopState(repo, "clean").nextRunAt;
+    // past nextRunAt plus several (fast) poll cycles — an ungated role would have ticked by then.
+    const scheduled = loadRunnerState(repo, "clean").nextRunAt;
     await waitFor(() => Date.now() >= scheduled + 1500, "the schedule to pass while paused");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "a budget-paused role starts no new ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a budget-paused role starts no new ticks");
 
     // The director is exempt: a queued human prompt still runs while the team is paused.
     enqueuePrompt(repo, "steer me while the team is paused");
     await awaitSettledTick(repo, "director", 1, "the director to tick while budget-paused");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "still paused after the director's run");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "still paused after the director's run");
 
     // Raising the cap live resumes within a poll cycle: one transition event, then the role
     // ticks again. The director's spend counts toward the team total ($2 now), so this also
@@ -106,18 +106,18 @@ test("startup with spend already at the cap starts no role ticks", async () => {
   saveConfig(repo, config);
   // A team that spent its budget on an earlier run of the harness today: seed clean's daily
   // window at the cap so the gate is closed from the very first poll.
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.dayStamp = todayStamp();
   s.dayCostUsd = 1;
-  saveLoopState(repo, s);
+  saveRunnerState(repo, s);
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The loop is schedule-eligible (fresh state, nextRunAt 0) — an ungated team would have
+    // The role is schedule-eligible (fresh state, nextRunAt 0) — an ungated team would have
     // ticked within the first poll. Several (fast) poll cycles pass with no role tick starting.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "a team at cap starts no role ticks");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "a team at cap starts no role ticks");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1);
@@ -149,7 +149,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
     // poll cycles pass with no tick and no wake event.
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "a main move cannot wake a budget-paused team");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a main move cannot wake a budget-paused team");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -191,13 +191,13 @@ function fallbackConfig(
   return config;
 }
 
-test("a reached cap switches role loops to the free fallback model instead of stopping them", async () => {
+test("a reached cap switches roles to the free fallback model instead of stopping them", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget fallback e2e test");
   // Tiny cap: exactly one fake run's cost, so clean's startup tick closes the gate.
   const config = fallbackConfig(["clean", "director"]);
   // A role pinned to its own paid model: the switch must drop that override too, or the cap
-  // would keep being exceeded by exactly the loop that opted out of the default model.
+  // would keep being exceeded by exactly the role that opted out of the default model.
   config.roles.clean = { enabled: true, model: "also-paid" };
   saveConfig(repo, config);
   const argsFile = path.join(tmpdir(), "argv.log");
@@ -230,7 +230,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
       /model=local-free provider=local/,
-      "the role loop keeps ticking, on the cost n/a fallback",
+      "the role keeps ticking, on the cost n/a fallback",
     );
 
     // The director is outside the gate in both directions: an explicit human prompt outranks
@@ -284,7 +284,7 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
     // And it really is paused: several poll cycles past its schedule, no second tick.
     mergeWork(repo);
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "a refused fallback leaves the team paused");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "a refused fallback leaves the team paused");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -325,7 +325,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     modelsPath: models,
     fallbackBreakerPolicy: { failureLimit: 2, cooldownMs: 1500, maxCooldownMs: 1500 },
   });
-  const clean = () => loadLoopState(repo, "clean");
+  const clean = () => loadRunnerState(repo, "clean");
   const runFor = (tick: number): string => {
     const log = fs.existsSync(argsFile) ? fs.readFileSync(argsFile, "utf8") : "";
     return log.split("\n").find((l) => l.includes(`session=tumwater-clean-${tick}`)) ?? "";
@@ -333,7 +333,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
   try {
     // The startup tick spends $1 of the $0.50 cap on the paid pair: the free fallback takes over.
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the switch to the fallback");
-    // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored loop backs off
+    // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored role backs off
     // 30 s, and a main move wakes it early.
     mergeWork(repo);
     await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback tick");
@@ -416,7 +416,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     restore = fakePi([TOUCH_SESSION, logFlagsTo(flagsFile), rec, `touch "${marker}"`, `exec sleep 30`].join("\n"));
     mergeWork(repo);
     await waitFor(() => fs.existsSync(marker), "the in-flight fallback tick to start");
-    assert.equal(loadLoopState(repo, "clean").running, true);
+    assert.equal(loadRunnerState(repo, "clean").running, true);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the budget_fallback event");
 
     // Phase 3: raising the cap reopens the budget. The orchestrator hands the tick back:
@@ -429,7 +429,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     assert.equal(hb[0]?.provider, "local");
     assert.equal(hb[0]?.model, "local-free");
     await waitFor(() => {
-      const s = loadLoopState(repo, "clean");
+      const s = loadRunnerState(repo, "clean");
       return !s.running && s.resumePending === true && s.resumeCause === "budget-resumed";
     }, "the handed-back tick to end resumably");
 

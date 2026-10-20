@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { pauseTeam, resumeTeam } from "../src/team/team-state.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -26,8 +26,8 @@ test("once: a team where every role finds nothing to do exits on its own, one ti
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false, "a once round never reports a restart");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "clean ticked exactly once");
-    assert.equal(loadLoopState(repo, "dedupe").runs, 1, "dedupe ticked exactly once");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "clean ticked exactly once");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 1, "dedupe ticked exactly once");
   });
 });
 
@@ -59,8 +59,8 @@ test("once: a role in error backoff is skipped and does not run, and the round s
   // Persisted backoff: nextRunAt in the future with backoffSeconds raised — once mode
   // honors a backoff deadline (it overrides only the min-tick-interval clock, and the
   // clock is told from backoff by backoffSeconds, which only a backoff ladder leaves set).
-  saveLoopState(repo, {
-    ...freshLoopState("clean"),
+  saveRunnerState(repo, {
+    ...freshRunnerState("clean"),
     runs: 3,
     lastResult: "error",
     lastRunEndedAt: Date.now(),
@@ -70,7 +70,7 @@ test("once: a role in error backoff is skipped and does not run, and the round s
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadLoopState(repo, "clean").runs, 3, "the backed-off role ran no tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 3, "the backed-off role ran no tick");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start" && e.source === "clean"),
       "no tick started for the backed-off role",
@@ -90,7 +90,7 @@ test("once: a team under a standing pause settles every role as paused, ticks no
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the recorded settle reason, not idle");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the paused role ran no tick");
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "nothing ticked under the pause");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "nothing ticked under the pause");
     assert.ok(
       !readEvents(repo).some((e) => e.type === "run_start"),
       "no tick started for the paused role",
@@ -108,8 +108,8 @@ test("once: a round started right after a productive daemon tick still ticks the
   // round is an explicit demand for a round now, so the role must tick despite the fresh
   // clock — this is the scenario the once-mode clock override exists for (a real config's
   // minRunIntervalSeconds made the old gap-only override a no-op here).
-  saveLoopState(repo, {
-    ...freshLoopState("clean"),
+  saveRunnerState(repo, {
+    ...freshRunnerState("clean"),
     runs: 1,
     lastResult: "changed",
     lastRunEndedAt: Date.now(),
@@ -120,7 +120,7 @@ test("once: a round started right after a productive daemon tick still ticks the
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadLoopState(repo, "clean").runs, 2, "the role ticked despite its fresh clock");
+    assert.equal(loadRunnerState(repo, "clean").runs, 2, "the role ticked despite its fresh clock");
   });
 });
 
@@ -130,8 +130,8 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
   // in once mode that deferral is the role's round answer, not something to wait out.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
   const head = mainSha(repo);
-  saveLoopState(repo, {
-    ...freshLoopState("clean"),
+  saveRunnerState(repo, {
+    ...freshRunnerState("clean"),
     runs: 1,
     lastResult: "no_change",
     lastMainHead: head,
@@ -140,7 +140,7 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
   await withIdlePi(async () => {
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "the deferred role ran no tick");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the deferred role ran no tick");
     assert.ok(
       readEvents(repo).some((e) => e.type === "run_deferred" && e.source === "clean"),
       "the deferral is logged, not silent",
@@ -167,8 +167,8 @@ test("once: the summary reports a deferred role as deferred, not idle", async ()
   // set aside) — not the re-derived "idle" (nothing was due), which misreads the round.
   fs.writeFileSync(path.join(repo, "PLANS.md"), "# Plans\n\n## Planned\n\n### a queued feature (planned 2026-09-25)\n");
   const head = mainSha(repo);
-  saveLoopState(repo, {
-    ...freshLoopState("clean"),
+  saveRunnerState(repo, {
+    ...freshRunnerState("clean"),
     runs: 1,
     lastResult: "no_change",
     lastMainHead: head,
@@ -217,8 +217,8 @@ test("once --role: a scoped round ticks only the named role", async () => {
   await withIdlePi(async () => {
     const exit = await onceRound(repo, "clean");
     assert.equal(exit.restart, false, "a scoped round still exits on its own");
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
-    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the other role never ran");
+    assert.equal(loadRunnerState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the other role never ran");
   });
 });
 
@@ -237,7 +237,7 @@ test("once --role: a scoped round that produces a change merges it before exitin
       assert.equal(exit.restart, false);
       assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged on main");
       assert.notEqual(mainSha(repo), before, "main's head moved");
-      assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the unscoped role never ran");
+      assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the unscoped role never ran");
     },
   );
 });
@@ -251,7 +251,7 @@ test("once --role: the CLI scopes the round — banner and summary name only tha
     assert.match(r.stdout, /once: 1 run — 1 no_change/,
       `the summary counts only the scoped role's tick: ${r.stdout}`);
     assert.doesNotMatch(r.stdout, /\bdedupe\b/);
-    assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the other role's persisted counter is unchanged");
+    assert.equal(loadRunnerState(repo, "dedupe").runs, 0, "the other role's persisted counter is unchanged");
   });
 });
 
@@ -278,16 +278,16 @@ test("once --role: --role without --once fails with its own message", async () =
   });
 });
 
-test("once --role: a custom loop id is a valid target", async () => {
+test("once --role: a custom role id is a valid target", async () => {
   const repo = await makeFastRepo("once scoped custom test", ["clean"]);
   const config = loadConfig(repo);
   config.customRoles.push({ name: "docs-sync", task: "Keep the docs current." });
   saveConfig(repo, config);
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "docs-sync");
-    assert.equal(r.code, 0, `a custom loop scopes like a built-in (stderr: ${r.stderr}; stdout: ${r.stdout})`);
-    assert.equal(loadLoopState(repo, "docs-sync").runs, 1, "the custom loop ticked once");
-    assert.equal(loadLoopState(repo, "clean").runs, 0, "the enabled built-in never ran");
+    assert.equal(r.code, 0, `a custom role scopes like a built-in (stderr: ${r.stderr}; stdout: ${r.stdout})`);
+    assert.equal(loadRunnerState(repo, "docs-sync").runs, 1, "the custom role ticked once");
+    assert.equal(loadRunnerState(repo, "clean").runs, 0, "the enabled built-in never ran");
   });
 });
 

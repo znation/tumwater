@@ -37,9 +37,9 @@ function concurrencyRecordingFakePi(runDir: string): () => void {
 test("a live maxConcurrent edit resizes the cap without a restart", async () => {
   const repo = makeRepo();
   await initProject(repo, "live maxConcurrent test");
-  // THREE fast-ticking roles and ONE slot: with three loops competing for one permit, steady
+  // THREE fast-ticking roles and ONE slot: with three roles competing for one permit, steady
   // state always has at least one tick queued on the semaphore (a two-role team settles into
-  // a strict alternation where every poll schedules exactly one loop, so there would be no
+  // a strict alternation where every poll schedules exactly one role, so there would be no
   // queued tick for the grow to wake). The shim's ~1.5s hold makes overlapping runs visible.
   const base = fastConfig(["clean", "dedupe", "bugfix"]);
   base.maxConcurrent = 1;
@@ -56,12 +56,12 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   // the boundary and false-fail the test.
   const orch = startLiveOrchestrator(repo);
   try {
-    // Phase 1 (cap 1): all three loops tick — but never overlap. Wait until each has run at
+    // Phase 1 (cap 1): all three roles tick — but never overlap. Wait until each has run at
     // least once (three samples), then confirm no sample ever exceeded one concurrent run.
     await waitFor(() => readSamples(runDir).length >= 3, "all three roles to have run");
     assert.ok(
       readSamples(runDir).every((n) => n <= 1),
-      `peak stays 1 while the second loop waits on its slot (samples: ${readSamples(runDir)})`,
+      `peak stays 1 while the second role waits on its slot (samples: ${readSamples(runDir)})`,
     );
 
     // Phase 2 (cap 2): a live edit admits the queued work — runs overlap without a restart.

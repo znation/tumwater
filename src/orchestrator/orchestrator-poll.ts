@@ -6,14 +6,14 @@
  * reserve and exit — and moved here without reordering any of them. */
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { loopEnabled } from "../roles/runner-ids.js";
+import { runnerEnabled } from "../roles/runner-ids.js";
 import type { newLiveConfigReload } from "../config/config-live.js";
 import type { FallbackBreakerPolicy } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { reviewHoldKey, pollDeferralInputs, pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
 import { requeueMainRedPin } from "../merge/merge-slot.js";
@@ -56,7 +56,7 @@ export interface PollContext {
   roleSignal: AbortSignal;
   internalStop: AbortController;
   internalRoleStop: AbortController;
-  runners: LoopRunner[];
+  runners: RoleRunner[];
   semaphore: Semaphore;
   merges: MergePipeline;
   gateStates: TeamGateStates;
@@ -76,7 +76,7 @@ export interface PollContext {
   breakerPolicy: FallbackBreakerPolicy;
   breakerNow: () => number;
   roleInFlight: Set<Promise<void>>;
-  rolePermitHolders: Set<LoopRunner>;
+  rolePermitHolders: Set<RoleRunner>;
   directorInFlight: Set<Promise<void>>;
   roleTickDurationsMs: number[];
   emit: (event: HarnessEventInput) => void;
@@ -98,7 +98,7 @@ export interface PollState {
   /** The primary checkout moved off the target branch and the one warning was logged; re-armed
    * when the checkout returns. */
   warnedBranchDivergence: boolean;
-  /** The maintenance permits withheld for work loops that have work to take (part 7/7), so the
+  /** The maintenance permits withheld for work roles that have work to take (part 7/7), so the
    * event logs only the crossings into and out of a reserved state. */
   lastReserve: number;
 }
@@ -126,7 +126,7 @@ interface PollInputs {
  * branch-divergence watch. Writes state.warnedBranchDivergence. */
 export async function pollRequestsAndWatch(ctx: PollContext, state: PollState): Promise<PollInputs> {
   const { root, mainBranch, runners } = ctx;
-  // Live-reload tumwater.json — the single reload point shared by all loops.
+  // Live-reload tumwater.json — the single reload point shared by all roles.
   // src/config/config-live.ts owns the last-known-good retention and the edge-triggered
   // warnings/events around it.
   const liveConfig = ctx.liveReload.poll();
@@ -401,19 +401,19 @@ export async function pollSchedule(
 export function pollReserveAndExit(ctx: PollContext, state: PollState, { liveConfig, now }: PollInputs): boolean {
   const { root, runners, semaphore } = ctx;
   // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits
-  // from maintenance while a work loop has work to take, so a due work tick never waits out
+  // from maintenance while a work role has work to take, so a due work tick never waits out
   // a whole maintenance tick. Sized after the launch pass, so a runner launched this poll
   // already reads as running and reserves nothing for itself.
   const poolSnapshot = semaphore.snapshot();
   // The provider-headroom predicate receives the structural ClaimRunner; the config that
-  // names the provider lives on the real LoopRunners, so look the runner up by role.
+  // names the provider lives on the real RoleRunners, so look the runner up by role.
   const runnerByRole = new Map(runners.map((r) => [r.role, r]));
   const reserve = workReserveCount(root, runners, {
     maxConcurrent: liveConfig.maxConcurrent,
-    enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
+    enabled: new Set(runners.filter((r) => runnerEnabled(r.config, r.role)).map((r) => r.role)),
     queuedMergeRoles: queuedMergeRoles(root),
     instancesOf: (base) => liveConfig.roles[base]?.instances ?? 1,
-    // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
+    // Per-provider headroom (plans/provider-concurrency.md §6): an idle work role reserves a
     // permit only when its own provider could use it — capped and full, it would only idle
     // the slot another provider's maintenance tick could take. Read from the pool's live
     // snapshot; an uncapped key (or the team-total-only case) always has headroom.

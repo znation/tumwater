@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadLoopState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state.js";
 import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { STATE_DIR } from "../src/paths.js";
 import { FAST_POLL_MS, deadFallbackScenario, fastConfig, makeFastRepo, runRepoOrchestrator } from "./fixtures/orchestrator-fixtures.js";
@@ -54,7 +54,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
   const cfg = fastConfig(["feature", "helper"]);
   cfg.maxDailyCostUsd = 10;
   cfg.fallbackModel = { provider: "free", model: "qwen-free" };
-  // The second role is a custom loop, not bugfix: a custom never defers (DEFERRABLE_ROLES
+  // The second role is a custom role, not bugfix: a custom never defers (DEFERRABLE_ROLES
   // holds only built-ins), so it stays due behind its wake and can take the probe slot.
   cfg.customRoles = [{ name: "helper", task: "Keep the scratch notes current." }];
   const cfgPath = path.join(repo, "tumwater.json");
@@ -102,7 +102,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     // new tick can start meanwhile, since admission reads the tripped breaker.
     await waitFor(() => roleTicksInFlight(repo) === 0, "the pre-trip stragglers to finish");
     const runsAtTrip = onFallback();
-    const ticksAt = (role: string) => loadLoopState(repo, role).runs;
+    const ticksAt = (role: string) => loadRunnerState(repo, role).runs;
     const ticksAtTrip = { feature: ticksAt("feature"), helper: ticksAt("helper") };
 
     // Read the deadline the orchestrator itself published rather than guessing from sleeps:

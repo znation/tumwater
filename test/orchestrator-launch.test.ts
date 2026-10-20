@@ -9,7 +9,7 @@
  * where a slip in any of them would surface as a hung team, not a red test.
  *
  * The tests drive launchDueTicks directly with stand-in runners (the launch pass touches
- * only `role`, `state.running`, `state.parkedSince`, and `tick()` on a LoopRunner), a real
+ * only `role`, `state.running`, `state.parkedSince`, and `tick()` on a RoleRunner), a real
  * Semaphore, and a real breaker; a zero-capacity semaphore makes the director's bypass
  * observable (the role parked behind it never gets a permit). */
 
@@ -19,8 +19,8 @@ import fs from "node:fs";
 
 import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import type { LoopRunner } from "../src/runner/runner.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RoleRunner } from "../src/runner/runner.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { TeamGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";
@@ -42,11 +42,11 @@ function fakeRunner(
 ) {
   return {
     role,
-    state: {} as LoopState,
+    state: {} as RunnerState,
     config,
-    runConfig: () => config as ReturnType<LoopRunner["runConfig"]>,
+    runConfig: () => config as ReturnType<RoleRunner["runConfig"]>,
     tick,
-  } as unknown as LoopRunner;
+  } as unknown as RoleRunner;
 }
 
 function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): TeamGateStates {
@@ -57,7 +57,7 @@ function emptyGateStates(breaker: FallbackBreaker = IDLE_FALLBACK_BREAKER): Team
 function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
   return {
     root: tmpdir("launch-"),
-    reasons: new Map<LoopRunner, string | undefined>(),
+    reasons: new Map<RoleRunner, string | undefined>(),
     signal: new AbortController().signal,
     gateStates: emptyGateStates(),
     breakerPolicy: FALLBACK_BREAKER_POLICY,
@@ -67,7 +67,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     budgetActive: false,
     semaphore: new Semaphore(4),
     piDefault: null,
-    rolePermitHolders: new Set<LoopRunner>(),
+    rolePermitHolders: new Set<RoleRunner>(),
     roleInFlight: new Set<Promise<void>>(),
     directorInFlight: new Set<Promise<void>>(),
     roleTickDurationsMs: [],
@@ -222,11 +222,11 @@ test("a model-fallback tick folds its breaker evidence into the pair runConfig n
   } as unknown as TeamGateStates;
   const runner = {
     role: "feature",
-    state: {} as LoopState,
+    state: {} as RunnerState,
     config: { roles: {}, provider: "paid", model: "gpt" },
     runConfig: () => ({ roles: {}, provider: "free", model: "qwen" }),
     tick: async () => ({ result: "error" }) as TickOutcome,
-  } as unknown as LoopRunner;
+  } as unknown as RoleRunner;
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), budgetActive: true, gateStates });
   launchDueTicks(c);
   await settle(c);
@@ -312,7 +312,7 @@ test("an already-aborted signal launches nothing", async () => {
 });
 
 test("a rejected tick task is logged and un-reserved, not an unhandled rejection", async () => {
-  // A LoopRunner.tick normally folds every failure into an `error` outcome, but a throw
+  // A RoleRunner.tick normally folds every failure into an `error` outcome, but a throw
   // before or after runTick (a finalize-time file write, a bug) rejects the task. The
   // launch pass chains its bucket cleanup off a detached `void task.finally(...)`, so the
   // rejection would surface as an unhandled rejection and kill the whole team. The drain
