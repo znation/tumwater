@@ -9,11 +9,12 @@ import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
+  teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
 import { opencodeProviders, repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse, type OpenCodeSeedOptions } from "../src/gates/startup-gate.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
-import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { gitInit, makeRepo, sh, teamWorkspace, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { setEnv } from "./helpers/env.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
@@ -342,4 +343,10 @@ test("a fresh on-disk catalog cache is reused without fetching (offline boot)", 
     assert.ok(!("problem" in check), JSON.stringify(check));
     assert.equal(fs.readFileSync(opencodeModelsPath(repo), "utf8"), before, "a fresh cache is reused, untouched");
   });
+});
+
+test("a team workspace without tumwater.json names the owning team root instead of not-initialized", async () => {
+  const { root, slot } = teamWorkspace();
+  assert.equal(await repoNotReady(slot), teamWorkspaceMessage(root));
+  assert.equal(await repoNotReady(makeRepo()), NOT_INITIALIZED_MESSAGE);
 });

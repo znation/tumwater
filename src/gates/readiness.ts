@@ -13,3 +13,9 @@ export const DETACHED_HEAD_MESSAGE =
   "your checkout is detached; check out your main branch first";
 export const NOT_INITIALIZED_MESSAGE =
   "not initialized (run `tumwater init <prompt>` first — or a bare `tumwater init` when the project brief (TUMWATER.md or README.md) already carries the prompt)";
+
+/** What a command run inside a team workspace (`<root>/.tumwater/worktrees/<slot>`) says in place
+ * of NOT_INITIALIZED_MESSAGE: the workspace is no project of its own, the team root is. */
+export function teamWorkspaceMessage(teamRoot: string): string {
+  return `this is a tumwater workspace of the team at ${teamRoot}, not a project — run tumwater from ${teamRoot} (\`cd ${teamRoot}\`)`;
+}

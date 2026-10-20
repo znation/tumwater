@@ -36,7 +36,8 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness.js";
+import { headSha, teamWorkspace, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
@@ -1257,4 +1258,9 @@ test("checkOpencodeVersion stands down without an opencode seam", async () => {
     level: "ok",
     detail: "no model jobs run on opencode",
   });
+});
+
+test("checkInit in a team workspace names the owning team root", () => {
+  const { root, slot } = teamWorkspace();
+  assert.deepEqual(checkInit(slot), { level: "fail", detail: teamWorkspaceMessage(root) });
 });

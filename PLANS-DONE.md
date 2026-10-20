@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Inside a team workspace (`<root>/.tumwater/worktrees/<slot>`), `tumwater init` refuses and every gated command names the owning team root instead of answering "not initialized — run `tumwater init`" (planned 2026-10-19 by the plan role; independent of every eligible Planned entry: none names src/gates/, src/init/init.ts or src/paths.ts; runner part 14/16 renames loop identifiers across src and test, src/doctor included, so a shared file such as src/doctor/doctor-checks.ts is a rebase either way; touches src/paths.ts + src/gates/readiness.ts + src/gates/startup-gate.ts + src/init/init.ts + src/doctor/doctor-checks.ts + test/paths.test.ts + test/startup-gate.test.ts + test/init.test.ts + test/doctor-checks.test.ts, done 2026-10-19)
+
+**Goal.** A role's run, an operator's shell, or a `logs -f` left behind in a slot runs with its cwd in a team workspace. That checkout has no `tumwater.json` (the file is untracked) and no `.tumwater`. The CLI's root is `repoToplevel(process.cwd())`, so the root is the workspace. Today this goes wrong in two ways:
+- Every gated command (`status`, `logs`, `history`, `stop`, …) fails with `NOT_INITIALIZED_MESSAGE`. That message tells the user to run a bare `tumwater init`. Verified 2026-10-19 by running `node ../../../dist/src/cli.js status` and `logs -n 2` from `_slot-6`.
+- The bare init works there, because the workspace's README.md carries the brief. `initProject` would then seed `tumwater.json`, PLANS/BUGS/…, and a phantom `.tumwater` inside the workspace, and commit them on the role's branch. That commit could merge to main.
+
+After this change, a command run in a workspace says where the team actually lives, and `init` refuses before any side effect.
+
+**Approach.**
+- `src/paths.ts`: add `owningTeamRoot(dir: string): string | undefined`.
+  - Call `nearestTumwaterRoot(dir)`. Return that root only when `dir` lies under `worktreesDir(root)`, meaning `path.relative(worktreesDir(root), dir)` is non-empty, not absolute, and does not start with `..`. Otherwise return `undefined`.
+  - A normal team root holds its own `.tumwater`, so `nearestTumwaterRoot` returns `dir` itself, which is not under its own worktrees dir. The result is `undefined`, and nothing changes for ordinary projects.
+  - Doc comment: a read-only lookup, never used to decide where to write (same caution as `teamRootOf`).
+- `src/gates/readiness.ts`: add `teamWorkspaceMessage(teamRoot: string): string`. Wording: ``this is a tumwater workspace of the team at <teamRoot>, not a project — run tumwater from <teamRoot> (`cd <teamRoot>`)``. It sits beside `NOT_INITIALIZED_MESSAGE` so the gate, init and doctor share one wording.
+- `src/gates/startup-gate.ts` `repoNotReady`: where `tumwater.json` is missing, return `teamWorkspaceMessage(owner)` when `owningTeamRoot(root)` is defined, else `NOT_INITIALIZED_MESSAGE` as today. Every `requireReadyRepo` caller and `runStartupCheck` inherit the change; nothing else changes in their order.
+- `src/init/init.ts` `initProject`: before the first side effect (next to the existing `findOnPath("git")` check, ahead of the prompt/README validation), throw `new Error(teamWorkspaceMessage(owner))` when `owningTeamRoot(root)` is defined. Also apply this under `dryRun`, so `init --dry-run` in a workspace reports the refusal instead of a would-create list. The CLI's `main().catch` already prints a thrown error and exits 1. `--list-templates` returns before `initProject` and is unaffected.
+- `src/doctor/doctor-checks.ts` `checkInit`: on a missing config, `failOutcome(teamWorkspaceMessage(owner))` when `owningTeamRoot(root)` is defined, else `NOT_INITIALIZED_MESSAGE`.
+
+**Acceptance criteria.**
+- `test/startup-gate.test.ts`, new test "a team workspace without tumwater.json names the owning team root instead of not-initialized". Set up a temp team root `R` (realpath it, since macOS `/var` → `/private/var`) holding `.tumwater/worktrees/_slot-1`, and git-init that slot with one commit and no `tumwater.json`. Then `repoNotReady(slot)` equals `teamWorkspaceMessage(R)`. A plain repo with no `tumwater.json` outside any `.tumwater` still gets `NOT_INITIALIZED_MESSAGE`.
+- `test/init.test.ts`, new test "initProject refuses inside a team workspace and writes nothing". Use the same layout, with a README.md carrying the tumwater:prompt markers in the slot. A bare `initProject(slot, "")` rejects with the workspace message. The same holds with `{ dryRun: true }`. Afterwards the slot has no `tumwater.json`, no `.tumwater`, and `git rev-list --count HEAD` is unchanged.
+- `test/paths.test.ts` covers `owningTeamRoot`:
+  - a workspace returns `R`;
+  - `R` itself returns `undefined`;
+  - a directory under `R` but outside `.tumwater/worktrees` (e.g. `R/src`) returns `undefined`.
+- `test/doctor-checks.test.ts`: `checkInit(slot)` fails with the workspace message, and `checkInit` on a plain uninitialized repo still fails with `NOT_INITIALIZED_MESSAGE`.
+- Every existing test that pins `NOT_INITIALIZED_MESSAGE` passes unchanged, since none of their temp repos sits under a `.tumwater/worktrees`.
+- `npm run test:gate` passes.
+
 ### The dashboard role drawer's Live transcript gets a "Show prompts" toggle, through `GET /api/transcript?…&prompt=1`, the dashboard twin of `tumwater logs --transcript <id> --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Touches src/ui/transcript.ts, src/gui/gui-endpoints.ts, src/ui/gui/gui-client-drawer.ts, docs/how-it-works.md and tests); done 2026-10-19 by the feature role
 
 **Goal.** `tumwater logs --transcript <id> --prompt` shows a role's live transcript with each agent run's prompt. The dashboard's run History can do the same for a past run ("Show prompts", through `/api/run?…&prompt=1`). The role drawer's "Live transcript" cannot: `handleTranscript` ignores any `prompt` parameter, and `readTranscript` always renders with `createTranscriptRenderer()`, which drops user messages. An operator watching a role in the browser cannot see what it was asked to do.

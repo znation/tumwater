@@ -14,6 +14,8 @@ import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { VALIDATION_GAP_TAGS } from "../src/roles/role-guidance.js";
 import { exampleConfigPath } from "../src/paths.js";
+import { teamWorkspace } from "./fixtures/repo-fixtures.js";
+import { teamWorkspaceMessage } from "../src/gates/readiness.js";
 import { assertClean, headSha, makeRepo, sh, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 import { setEnv } from "./helpers/env.js";
@@ -639,4 +641,17 @@ test("a repo that only gains a config reports it and stays uncommitted", async (
   assert.ok(!again.committed);
   assert.ok(fs.existsSync(path.join(repo, "tumwater.json")));
   assertClean(repo);
+});
+
+test("initProject refuses inside a team workspace and writes nothing", async () => {
+  const { root, slot } = teamWorkspace();
+  fs.writeFileSync(path.join(slot, "README.md"), `# P\n${PROMPT_START}\nBuild a thing.\n${PROMPT_END}\n`);
+  const commits = () => sh(slot, "git", "rev-list", "--count", "HEAD").trim();
+  const before = commits();
+  const message = teamWorkspaceMessage(root);
+  await assert.rejects(initProject(slot, ""), { message });
+  await assert.rejects(initProject(slot, "", undefined, { dryRun: true }), { message });
+  assert.equal(fs.existsSync(path.join(slot, "tumwater.json")), false);
+  assert.equal(fs.existsSync(path.join(slot, ".tumwater")), false);
+  assert.equal(commits(), before);
 });

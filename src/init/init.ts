@@ -15,7 +15,8 @@ import {
   readInitialPrompt,
   readmeTemplate,
 } from "../brief/brief.js";
-import { CONFIG_BASENAME, STATE_DIR, configPath } from "../paths.js";
+import { teamWorkspaceMessage } from "../gates/readiness.js";
+import { CONFIG_BASENAME, STATE_DIR, configPath, owningTeamRoot } from "../paths.js";
 import { projectName } from "../project-name.js";
 import { tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
@@ -159,6 +160,10 @@ export async function initProject(
     );
   }
   if (!findOnPath("git")) throw new Error(GIT_MISSING_MESSAGE);
+  // A team workspace is not a project: seeding it would commit tumwater.json and a phantom
+  // .tumwater on the role's branch. Refused before any side effect, dry run included.
+  const owner = owningTeamRoot(root);
+  if (owner !== undefined) throw new Error(teamWorkspaceMessage(owner));
   // Validate everything that is pure validation before any side effect, so a bad prompt or
   // README never leaves a half-seeded repo behind.
   const prompt = initialPrompt.trim();

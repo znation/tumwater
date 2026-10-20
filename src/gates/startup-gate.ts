@@ -12,7 +12,9 @@ import {
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
+  teamWorkspaceMessage,
 } from "./readiness.js";
+import { owningTeamRoot } from "../paths.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { refreshOpencodeCatalog, type CatalogFetch } from "../agent/opencode/opencode-catalog.js";
@@ -57,7 +59,10 @@ export async function repoNotReady(root: string): Promise<string | null> {
   // repository" — pointing at the wrong fix for a machine with no git installed.
   if (!findOnPath("git")) return GIT_MISSING_MESSAGE;
   if (!(await isGitRepo(root))) return NOT_A_REPO_MESSAGE;
-  if (!fs.existsSync(path.join(root, "tumwater.json"))) return NOT_INITIALIZED_MESSAGE;
+  if (!fs.existsSync(path.join(root, "tumwater.json"))) {
+    const owner = owningTeamRoot(root);
+    return owner === undefined ? NOT_INITIALIZED_MESSAGE : teamWorkspaceMessage(owner);
+  }
   if (!(await hasCommits(root))) return NO_COMMITS_MESSAGE;
   return null;
 }

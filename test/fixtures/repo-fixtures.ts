@@ -386,3 +386,13 @@ export function mergeWork(repo: string): void {
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "tumwater(feature): test work merge");
 }
+
+/** A team root `R` (realpathed: macOS `/var` is `/private/var`) holding
+ * `.tumwater/worktrees/_slot-1`, a committed repo with no tumwater.json — what a role's cwd looks
+ * like inside a team workspace. */
+export function teamWorkspace(): { root: string; slot: string } {
+  const root = fs.realpathSync(tmpdir());
+  const slot = path.join(root, ".tumwater", "worktrees", "_slot-1");
+  makeRepo(slot);
+  return { root, slot };
+}

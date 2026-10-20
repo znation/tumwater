@@ -342,6 +342,17 @@ export function nearestTumwaterRoot(sessionDir: string): string | undefined {
   return undefined;
 }
 
+/** The team root of the workspace `dir` sits in — `dir` lies under `worktreesDir(root)` for the
+ * nearest `.tumwater` root — or undefined for a team root itself, a directory elsewhere under
+ * it, or a directory with no root above. A read-only lookup for messages, never used to decide
+ * where to write (same caution as teamRootOf). */
+export function owningTeamRoot(dir: string): string | undefined {
+  const root = nearestTumwaterRoot(dir);
+  if (root === undefined) return undefined;
+  const rel = path.relative(worktreesDir(root), dir);
+  return rel !== "" && !path.isAbsolute(rel) && !rel.startsWith("..") ? root : undefined;
+}
+
 /** The team root that owns `sessionDir`: the `.tumwater` directory that contains it. A run's
  * session dir is always `<root>/.tumwater/sessions/…`, so the first ancestor holding a
  * `.tumwater` directory is the root; opencodeDbPath reads back to that same `.tumwater` for

@@ -35,6 +35,7 @@ import {
   DETACHED_HEAD_MESSAGE,
   NOT_A_REPO_MESSAGE,
   NOT_INITIALIZED_MESSAGE,
+  teamWorkspaceMessage,
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness.js";
 import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
@@ -45,7 +46,7 @@ import { resolvedAgentConfig } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
+import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { lowerMedian } from "../collections.js";
@@ -170,7 +171,10 @@ export async function checkRepo(root: string, config?: TumwaterConfig): Promise<
  * is watching). The template problem outranks drift: drift is computed from a parse that has
  * already failed. */
 export function checkInit(root: string): CheckOutcome {
-  if (!fs.existsSync(configPath(root))) return failOutcome(NOT_INITIALIZED_MESSAGE);
+  if (!fs.existsSync(configPath(root))) {
+    const owner = owningTeamRoot(root);
+    return failOutcome(owner === undefined ? NOT_INITIALIZED_MESSAGE : teamWorkspaceMessage(owner));
+  }
   try {
     const config = loadConfig(root);
     const templateProblem = exampleConfigProblem(root);

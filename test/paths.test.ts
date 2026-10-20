@@ -22,8 +22,10 @@ import {
   slotWorktreePath,
   sessionsRootDir,
   statePath,
+  owningTeamRoot,
   worktreePath,
 } from "../src/paths.js";
+import { teamWorkspace } from "./fixtures/repo-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
 
 /** Unit coverage for src/paths.ts — the single source of truth for where every piece of
@@ -140,4 +142,11 @@ test("one-shot markers and per-role state never collide with each other or long-
   // it cannot.
   shared.push(orchestratorStatePath(ROOT));
   assert.equal(new Set(shared).size, shared.length);
+});
+
+test("owningTeamRoot names the team root only for a directory inside its worktrees", () => {
+  const { root, slot } = teamWorkspace();
+  assert.equal(owningTeamRoot(slot), root);
+  assert.equal(owningTeamRoot(root), undefined);
+  assert.equal(owningTeamRoot(path.join(root, "src")), undefined);
 });
