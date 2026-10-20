@@ -1,8 +1,8 @@
-/** Guards plans/terminology.md's plain-terms vocabulary: user-visible text in an opted-in `src/`
- * module never uses a retired word. A module opts in with a `// vocabulary: plain` line; with no
- * module opted in the scan passes. The guard reads string literals, template text, JSX text and
- * the string literals inside the `String.raw` browser blobs; identifiers, comments and `${…}`
- * expressions are code and never scanned. */
+/** Guards plans/terminology.md's plain-terms vocabulary: user-visible text in a `src/` module never
+ * uses a retired word. Every module is scanned except header-less ones in `PENDING_VOCABULARY_DIRS`
+ * and the `LEGACY_FILES` readers; `retired-name-ok` lines and regions are exempt too. The guard
+ * reads string literals, template text, JSX text and the string literals inside the `String.raw`
+ * browser blobs; identifiers, comments and `${…}` expressions are code and never scanned. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { repoRoot } from "./helpers/repo-root.js";
+import { LEGACY_FILES, exemptLines } from "./helpers/legacy-files.js";
 
 /** The retired words, as regex sources; later series append here. This is the only list.
  * `dry(?![- ]run)` keeps `--dry-run` and "dry run" legal. */
@@ -40,10 +41,36 @@ const RETIRED_RE = new RegExp(
   "gi",
 );
 
-/** Whether a module is scanned: one of its lines, trimmed, is exactly `// vocabulary: plain`.
- * Plain terms code cleanup flips the guard to all of `src/` by making this return true. */
-function optedIn(text: string): boolean {
-  return text.split("\n").some((line) => line.trim() === "// vocabulary: plain");
+/** src/ directories whose header-less modules the guard still skips; part 6/7 of Plain terms code
+ * cleanup empties it. */
+const PENDING_VOCABULARY_DIRS: ReadonlySet<string> = new Set([
+  "src/merge",
+  "src/operator",
+  "src/orchestrator",
+  "src/pi",
+  "src/pi-extension",
+  "src/process",
+  "src/prompt",
+  "src/redeploy",
+  "src/report",
+  "src/review",
+  "src/roles",
+  "src/run",
+  "src/runner",
+  "src/scheduling",
+  "src/status",
+  "src/team",
+  "src/text",
+  "src/ui",
+  "src/verdict",
+]);
+
+/** Whether a module is scanned: it has a line that, trimmed, is exactly `// vocabulary: plain`, or
+ * it lies outside `pending`. */
+function optedIn(fileName: string, text: string, pending: ReadonlySet<string> = PENDING_VOCABULARY_DIRS): boolean {
+  if (text.split("\n").some((line) => line.trim() === "// vocabulary: plain")) return true;
+  const rel = fileName.split(path.sep).join("/");
+  return ![...pending].some((dir) => rel.startsWith(`${dir}/`));
 }
 
 /** A finding's line is exempt when it ends with `// vocabulary-ok: <reason>` (non-empty reason).
@@ -125,19 +152,25 @@ function scanLiterals(
   visit(sf);
 }
 
-/** `"<file>:<line>: <word> in <excerpt>"` for each retired word in the user-visible text of an
- * opted-in module; empty for a module without the header. Shared by the real scan and the
- * self-tests. */
-function vocabularyFindings(fileName: string, text: string): string[] {
-  if (!optedIn(text)) return [];
+/** `"<file>:<line>: <word> in <excerpt>"` for each retired word in the user-visible text of a
+ * scanned module; empty for a pending-directory module without the header and for a legacy file.
+ * Shared by the real scan and the self-tests. */
+function vocabularyFindings(
+  fileName: string,
+  text: string,
+  pending: ReadonlySet<string> = PENDING_VOCABULARY_DIRS,
+  legacy: readonly string[] = LEGACY_FILES,
+): string[] {
+  if (legacy.includes(fileName) || !optedIn(fileName, text, pending)) return [];
   const lines = text.split("\n");
+  const retiredOk = exemptLines(lines);
   const out: string[] = [];
   const report = (raw: string, pos: number, sf: ts.SourceFile, lineBase: number): void => {
     for (const m of raw.matchAll(RETIRED_RE)) {
       const at = pos + (m.index ?? 0);
       const line = lineBase + sf.getLineAndCharacterOfPosition(at).line + 1;
       const src = lines[line - 1] ?? "";
-      if (EXEMPT_RE.test(src)) continue;
+      if (EXEMPT_RE.test(src) || retiredOk.has(line)) continue;
       out.push(`${fileName}:${line}: ${m[0]} in ${src.trim().slice(0, 80)}`);
     }
   };
@@ -167,7 +200,7 @@ function walk(dir: string, out: string[]): void {
 
 const H = "// vocabulary: plain\n";
 
-test("opted-in src modules use only plain terms", () => {
+test("scanned src modules use only plain terms", () => {
   const root = repoRoot(fileURLToPath(new URL(".", import.meta.url)));
   const files: string[] = [];
   walk(path.join(root, "src"), files);
@@ -233,6 +266,27 @@ test("does not flag ticket, seamless or lastTickEndedAt", () => {
   assert.deepEqual(vocabularyFindings("m.ts", H + 'const a = "ticket seamless lastTickEndedAt loophole";\n'), []);
 });
 
-test("ignores a module without the header", () => {
-  assert.deepEqual(vocabularyFindings("m.ts", 'const a = "the fleet";\n'), []);
+test("scans a module without the header unless its directory is pending", () => {
+  const src = 'const a = "the fleet";\n';
+  assert.equal(vocabularyFindings("src/cli/m.ts", src).length, 1);
+  assert.deepEqual(vocabularyFindings("src/merge/m.ts", src), []);
+  assert.equal(vocabularyFindings("src/merge/m.ts", H + src).length, 1);
+  assert.equal(vocabularyFindings("src/cli/m.ts", src, new Set(["src/cli"])).length, 0);
+});
+
+test("every PENDING_VOCABULARY_DIRS entry names an existing directory", () => {
+  const root = repoRoot(fileURLToPath(new URL(".", import.meta.url)));
+  for (const dir of PENDING_VOCABULARY_DIRS) {
+    assert.ok(fs.statSync(path.join(root, dir), { throwIfNoEntry: false })?.isDirectory(), `${dir} is pending but missing`);
+  }
+});
+
+test("skips legacy files and honors retired-name-ok lines and regions", () => {
+  const src = 'const a = "the fleet";\n';
+  assert.deepEqual(vocabularyFindings("src/cli/m.ts", src, new Set(), ["src/cli/m.ts"]), []);
+  assert.deepEqual(vocabularyFindings("src/cli/m.ts", 'const a = "fleet"; // retired-name-ok: old key\n'), []);
+  const region = '// retired-name-ok:start old keys\nconst a = "fleet";\n// retired-name-ok:end\nconst b = "fleet";\n';
+  const f = vocabularyFindings("src/cli/m.ts", region);
+  assert.equal(f.length, 1);
+  assert.match(f[0]!, /^src\/cli\/m\.ts:4: fleet in /);
 });

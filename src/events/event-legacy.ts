@@ -49,7 +49,7 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
   },
   {
     // build_check.scope and conflict_handback.reason said "landing" for what is now "merge".
-    name: "landing-to-merge",
+    name: "merge-scope-value",
     apply(ev) {
       const e = ev as Record<string, unknown>;
       if (e.type === "build_check" && e.scope === "landing") e.scope = "merge"; // vocabulary-ok: legacy event value read from old logs
@@ -68,7 +68,7 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
   },
   {
     // The restart event's drain fields became finish fields.
-    name: "restart-drain-to-finish",
+    name: "restart-finish-fields",
     apply(ev) {
       const e = ev as Record<string, unknown>;
       if (e.type !== "restart") return;
@@ -91,7 +91,7 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     // call site that still passes `source: "harness"` (the warn helpers' callers) maps too.
     // Kept permanently though no TypeScript type accepts `loop` any more: old logs and a
     // still-running old supervisor keep writing it, so the read path and logEvent need this.
-    name: "loop-to-source",
+    name: "writer-id-to-source",
     apply(ev) {
       const e = ev as Record<string, unknown>;
       if (typeof e.loop === "string") { // vocabulary-ok: legacy field name read from old logs // retired-name-ok: legacy field, read permanently

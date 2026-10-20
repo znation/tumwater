@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 import { repoRoot } from "./helpers/repo-root.js";
+import { LEGACY_FILES, exemptLines } from "./helpers/legacy-files.js";
 
 interface RetiredFamily {
   family: string;
@@ -86,18 +87,6 @@ const RETIRED: readonly RetiredFamily[] = [
   },
 ];
 
-/** Repo-relative files whose identifiers are skipped (their file names are still checked). */
-const LEGACY_FILES: readonly string[] = [
-  "src/orchestrator/startup-migrations.ts", // renames old on-disk state
-  "src/orchestrator/startup-migration-steps.ts", // the migration steps
-  "src/config/config-aliases.ts", // CONFIG_KEY_RENAMES names the old config keys
-  "src/roles/legacy-role-ids.ts", // old role ids
-  "test/startup-migrations.test.ts", // writes old state to disk
-  "test/config-aliases.test.ts", // asserts the old config keys
-  "test/legacy-role-ids.test.ts", // asserts the old role ids
-  "test/legacy-role-migration.test.ts", // writes old role ids to disk
-];
-
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = repoRoot(TEST_DIR);
 
@@ -114,18 +103,6 @@ function walk(dir: string): string[] {
 /** Lowercase words of an identifier, split at camelCase, PascalCase, `_`, `$` and digits. */
 function identWords(name: string): string[] {
   return (name.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+/g) ?? []).map((w) => w.toLowerCase());
-}
-
-/** Lines exempted by `// retired-name-ok: <reason>` or a start/end region (1-based). */
-function exemptLines(lines: readonly string[]): Set<number> {
-  const out = new Set<number>();
-  let inRegion = false;
-  lines.forEach((line, i) => {
-    if (/\/\/ retired-name-ok:start +\S/.test(line)) inRegion = true;
-    if (inRegion || /\/\/ retired-name-ok: +\S/.test(line)) out.add(i + 1);
-    if (/\/\/ retired-name-ok:end\b/.test(line)) inRegion = false;
-  });
-  return out;
 }
 
 /** `path:line identifier (family)` for each retired identifier word in the file's code. */
