@@ -264,7 +264,9 @@ function windowFromRun(w: RateWindow, now: number): ClaudeWindow {
  * set means claude prefers the key, so billing is API; otherwise `claude auth status` decides —
  * a claude.ai OAuth login is a subscription, any other login is API. An existing file is left
  * alone, and a probe that cannot run or is not logged in leaves the file absent
- * (readClaudeAccount then reads "no subscription"). Returns the account written, or null. */
+ * (readClaudeAccount then reads "no subscription"). Returns the account written, or null. A
+ * failed write also returns null and never throws, so the first claude run's
+ * observeClaudeAccount fills the file in. */
 export function seedClaudeAccount(
   root: string,
   config: TumwaterConfig,
@@ -280,7 +282,11 @@ export function seedClaudeAccount(
     observedAt: now,
     windows: {},
   };
-  writeClaudeAccount(root, account);
+  try {
+    writeClaudeAccount(root, account);
+  } catch {
+    return null;
+  }
   return account;
 }
 

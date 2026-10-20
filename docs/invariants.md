@@ -4029,3 +4029,15 @@ warns through `opts.warn` and still returns the fetched catalog.
 **Pinned by.** `test/opencode-catalog.test.ts` — "parseOpencodeCatalog skips a malformed provider or
 model instead of throwing", "a failed catalog write warns and still returns the fetched catalog" and
 "a failed fetch keeps the old cache and logs one warning".
+
+## Claude account seed: a failed write never throws out of startup
+
+### INV-CA1: seedClaudeAccount returns null when the account write fails
+
+**Guarantee.** `seedClaudeAccount` returns null instead of throwing when the account write fails, so
+`runStartupCheck` keeps its never-throws contract on a claude team.
+
+**Binds.** `src/agent/claude/claude-account.ts` (`seedClaudeAccount`); `src/gates/startup-gate.ts`
+(`runStartupCheck`).
+
+**Pinned by.** `test/claude-account.test.ts` — "seedClaudeAccount: a failed account write returns null instead of throwing"; `test/startup-gate.test.ts` — "an unwritable claude account file does not fail the startup gate".

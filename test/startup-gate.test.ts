@@ -20,7 +20,7 @@ import { setEnv } from "./helpers/env.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { loadConfig } from "../src/config/config.js";
-import { opencodeModelsPath } from "../src/paths.js";
+import { claudeAccountPath, opencodeModelsPath } from "../src/paths.js";
 import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
 
@@ -157,6 +157,26 @@ test("a claude seam that exists only as a fallback is checked and its account se
     const account = readClaudeAccount(repo);
     assert.ok(account !== null, "no hand-written account file: the gate wrote it");
     assert.equal(account.billing, "subscription", "the gate seeded the fallback's subscription billing");
+  });
+});
+
+test("an unwritable claude account file does not fail the startup gate", async () => {
+  // runStartupCheck never throws: a failed seed write leaves the file for the first claude run.
+  const repo = makeRepo();
+  await initProject(repo, "startup gate claude unwritable account");
+  const claudeBin = tmpdir("startup-claude-bin-");
+  writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { claude: { bin: path.join(claudeBin, "claude") } };
+    cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
+    cfg.roles = { feature: { enabled: true } };
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    fs.mkdirSync(claudeAccountPath(repo), { recursive: true });
+    const check = await runStartupCheck(repo, null);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    assert.equal(readClaudeAccount(repo), null);
   });
 });
 

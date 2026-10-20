@@ -392,3 +392,17 @@ test("claudeWindowUsedUp counts a window at its reserve fraction, flagged, and r
     { type: "five_hour", resetsAt: 300 },
   );
 });
+
+test("seedClaudeAccount: a failed account write returns null instead of throwing", () => {
+  const root = tmpdir();
+  const saved = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "sk-test";
+  try {
+    fs.mkdirSync(claudeAccountPath(root), { recursive: true });
+    assert.equal(seedClaudeAccount(root, defaultConfig() as TumwaterConfig, 123), null);
+    assert.equal(readClaudeAccount(root, 123), null);
+  } finally {
+    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
