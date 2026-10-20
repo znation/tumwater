@@ -55,7 +55,7 @@ import { lowerMedian } from "../collections.js";
 import { formatBytes, formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, eventsSince, readEventsSince, type EventLogState } from "../events/event-window.js";
-import { finiteNumber } from "../files/json-object.js";
+import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -769,27 +769,45 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
   return (contended ? warnOutcome : okOutcome)(detail);
 }
 
+/** Names the kind of check a `heldBy` label stands for, in checkCheckContention's tally. */
+function checkHolderKind(label: string): string {
+  if (label === "main baseline") return "the main baseline";
+  const scope = label.slice(label.lastIndexOf(" ") + 1);
+  return scope === "gate" || scope === "merge" || scope === "batch" ? `${scope} checks` : "other checks";
+}
+
 /** Check-slot contention: sums the last 24 h of `check_wait` events (each a scoped check whose
  * permit wait reached CHECK_WAIT_EVENT_MS, recorded in build-check-events.ts) and warns when
  * the total reaches CHECK_WAIT_WARN_TOTAL_MS — maxConcurrentChecks is too small. The third
  * sibling of checkWorktreePool's slot-wait half and checkProviderContention; read-only.
- * `now` is a test seam for the window. */
+ * When events carry `heldBy` (the labels of the permit holders the check parked behind), the
+ * detail gains `(behind <kind> <span>, …)` after the longest clause, kinds busiest first: a
+ * wait counts once toward each distinct kind that held a slot. `now` is a test seam for the
+ * window. */
 export function checkCheckContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
   let count = 0;
   let total = 0;
   let longestMs = 0;
+  const perKind = new Map<string, number>();
   try {
     for (const ev of eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait")) {
       count += 1;
       const waited = finiteNumber(ev.waitedMs, 0);
       total += waited;
       if (waited > longestMs) longestMs = waited;
+      for (const kind of new Set(stringList(ev.heldBy).map(checkHolderKind))) {
+        perKind.set(kind, (perKind.get(kind) ?? 0) + waited);
+      }
     }
   } catch (err) {
     return okOutcome(`could not read the event log for check waits: ${errorMessage(err)}`);
   }
   if (count === 0) return okOutcome("no check waits");
   let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)}`;
+  if (perKind.size > 0) {
+    const ranked = [...perKind.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    detail += ` (behind ${ranked.map(([kind, ms]) => `${kind} ${shortSpanPhrase(ms)}`).join(", ")})`;
+  }
   if (total < CHECK_WAIT_WARN_TOTAL_MS) return okOutcome(detail);
   detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;
   return warnOutcome(detail);

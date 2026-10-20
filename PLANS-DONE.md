@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater doctor`'s "check contention" row names which checks held the slots, so an operator can tell merge-check queueing from a main-baseline run or gate checks crowding each other (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/doctor/doctor-checks.ts test/doctor-checks.test.ts docs/cli.md docs/how-it-works.md. Plain terms cleanup part 6/7 renames other doctor-checks.ts symbols; whichever lands second only rebases) — done 2026-10-20
+
+**Goal.** `check_wait` events now carry `heldBy`, the labels of the permit holders when the check parked: `<role> <scope>` from `runScopedBuildCheck` (src/build/build-check-scoped.ts), `main baseline` from src/baseline/main-baseline.ts, and `a check` for an unlabeled caller (`withCheckPermit`, src/concurrency/check-permit.ts). They also carry `limit`. `checkCheckContention` (src/doctor/doctor-checks.ts) still only counts and sums the waits: `3 waits for a check slot in the last 24h, 15m total, longest 10m — raise maxConcurrentChecks above 2`. Raising the cap is the wrong fix when the waits sat behind the main baseline or behind merge checks, which go first by design. The sibling `checkProviderContention` already names its busiest bucket. The plan for `heldBy` explicitly left this row out of scope. This change makes the row say what the waits sat behind.
+
+**Approach (src/doctor/doctor-checks.ts, `checkCheckContention` only).**
+- Add a small private helper, `checkHolderKind(label: string): string`. It maps `"main baseline"` to `"the main baseline"`. It maps a label whose last space-separated word is `gate`, `merge` or `batch` to `"gate checks"`, `"merge checks"` or `"batch checks"`. Anything else, including `"a check"`, maps to `"other checks"`.
+- While summing, read each event's `heldBy` with `stringList` (src/files/json-object.ts). Map the labels to kinds and dedupe them, then add the event's `waitedMs` once to each distinct kind in a `Map<string, number>`. A wait behind two merge checks counts once toward `merge checks`. Events without `heldBy`, which were logged before the field existed, add nothing to the tally but still count in `count`, `total` and `longest`, as today.
+- When the tally is non-empty, rank the kinds by total descending, breaking ties by kind name, and insert ` (behind <kind> <shortSpanPhrase(ms)>, <kind> <span>…)` right after the `longest …` clause. On a warning, the existing ` — raise maxConcurrentChecks above N` suffix stays after it. When no event in the window carries `heldBy`, the detail is unchanged byte for byte.
+- The level logic (`CHECK_WAIT_WARN_TOTAL_MS`) and the advice stay unchanged. Update the function's doc comment to describe the parenthetical.
+
+**Docs.** In docs/cli.md's `tumwater doctor` row, the `check contention` clause gains "naming what the waits sat behind (merge, gate or batch checks, or the main baseline)". In docs/how-it-works.md's `maxConcurrentChecks` bullet, the sentence about the doctor row gets the same words.
+
+**Out of scope.** Changing the advice by holder kind (for example, not suggesting a higher cap when the main baseline held every wait). The report's "Check wait median". The live `checkPermits` badge. Per-role holder names.
+
+**Acceptance criteria.**
+- test/doctor-checks.test.ts "checkCheckContention sums the last day of check_wait events and warns at ten minutes" passes unchanged, because its events carry no `heldBy`.
+- New test in test/doctor-checks.test.ts, "checkCheckContention names what the waits sat behind, busiest first". Log three `check_wait` events:
+  - 240 000 ms, `heldBy: ["feature merge", "dedupe merge"]`
+  - 120 000 ms, `heldBy: ["main baseline", "clean gate"]`
+  - 60 000 ms, no `heldBy`
+  The detail equals `3 waits for a check slot in the last 24h, 7m total, longest 4m (behind merge checks 4m, gate checks 2m, the main baseline 2m)`. Merge checks count once at 4m, not 8m, and the 2m tie sorts `gate checks` before `the main baseline`. The level is `ok`.
+  A fourth event of 600 000 ms with `heldBy: ["a check"]` makes the level `warn`. The detail then contains `other checks 10m` ranked first, followed by ` — raise maxConcurrentChecks above 2`.
+- `npm run test:gate` passes.
+
 ### `team_resumed` and `role_resumed` say when a timed pause ran out, so `logs` and the failure digest tell an expired `pause --for` from an operator's `resume` (planned 2026-10-20 by the plan role; done 2026-10-20 by the feature role; no dependency on any Planned entry. Touches src/gates/pause-gates.ts src/team/team-state.ts src/text/phrases.ts src/events/event-format.ts src/failure/failure-state-change.ts src/events/events.ts test/pause-gates.test.ts test/event-format-team.test.ts test/failure-render.test.ts)
 
 **Goal.** Since the merged team_paused plan, a timed pause logs `team paused … until HH:MM:SS`. When the pause ends, the line is always `team resumed — roles run again`. That is true whether the deadline passed (`standingMarker` in src/team/team-state.ts reads an `until` in the past as no pause) or the operator typed `tumwater resume` early. The per-role pair behaves the same way: `readPausedRoles` returns no roles once the shared `until` has passed, and `pollPauseGates` logs a bare `role_resumed`. Someone reading `logs` or the failure digest's Team state changes can't tell "the freeze ran out" from "someone lifted it". All 5 `team_resumed`/`role_resumed` events in the live log carry no field beyond `ts`, `source`, `type` and `role`. This plan adds `expired: true` to a resume event the deadline caused, and the event's lines say so.

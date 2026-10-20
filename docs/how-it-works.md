@@ -169,7 +169,7 @@ discards a role's in-flight merge.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first. A scoped check whose permit wait reaches 30 s logs a `check_wait` event (role, scope,
-  waitedMs, and the checks holding the slots and the cap when it parked), and `tumwater doctor`'s "check contention" row sums the last 24 h and warns at
+  waitedMs, and the checks holding the slots and the cap when it parked), and `tumwater doctor`'s "check contention" row sums the last 24 h, names what the waits sat behind (merge, gate or batch checks, or the main baseline), and warns at
   10 minutes, naming `maxConcurrentChecks` to raise. `tumwater report` and the dashboard's Report
   tab show the per-day median of those waits as "Check wait median" (team scope only).
   While a check runs or waits, `tumwater status`, the TUI header and the dashboard's team panel

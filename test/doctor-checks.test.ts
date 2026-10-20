@@ -1086,6 +1086,25 @@ test("checkCheckContention sums the last day of check_wait events and warns at t
   assert.equal(later.detail, "no check waits");
 });
 
+test("checkCheckContention names what the waits sat behind, busiest first", () => {
+  const root = readyRepo();
+  const wait = (waitedMs: number, heldBy?: string[]) =>
+    logEvent(root, { source: "feature", type: "check_wait", role: "feature", scope: "gate", waitedMs, ...(heldBy ? { heldBy } : {}) });
+  wait(240_000, ["feature merge", "dedupe merge"]);
+  wait(120_000, ["main baseline", "clean gate"]);
+  wait(60_000);
+  const quiet = checkCheckContention(root, undefined);
+  assert.equal(quiet.level, "ok");
+  assert.equal(
+    quiet.detail,
+    "3 waits for a check slot in the last 24h, 7m total, longest 4m (behind merge checks 4m, gate checks 2m, the main baseline 2m)",
+  );
+  wait(600_000, ["a check"]);
+  const busy = checkCheckContention(root, undefined);
+  assert.equal(busy.level, "warn");
+  assert.match(busy.detail, /\(behind other checks 10m, .*\) — raise maxConcurrentChecks above 2$/);
+});
+
 test("checkProviderContention names every keyed provider that waited and its cap in rank order", () => {
   const root = readyRepo();
   const wait = (role: string, key: string | undefined, waitedMs: number) =>
