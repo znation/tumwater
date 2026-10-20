@@ -4,6 +4,7 @@ import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
 import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
+import { errCode } from "../errno.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
@@ -129,18 +130,30 @@ export async function rebaseOntoMainLeaveConflicts(
  * conflict prompt names are exactly the blocks the marker check later rejects. */
 const MARKER_EDGE = /^(<{7}|>{7})( |$)/m;
 
+/** One file's marker check: "clean", "marked" (holds a start/end marker) or "unreadable". Only
+ * a path with no file (deleted, a parent replaced, or a directory/gitlink) is clean without
+ * being read; any other read error cannot be vouched for. */
+function markerState(wt: string, f: string): "clean" | "marked" | "unreadable" {
+  let text: string;
+  try {
+    text = fs.readFileSync(path.join(wt, f), "utf8");
+  } catch (err) {
+    const code = errCode(err);
+    return code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR" ? "clean" : "unreadable";
+  }
+  return MARKER_EDGE.test(text) ? "marked" : "clean";
+}
+
 /** True if any of the given files still contains a git conflict marker.
- * A deleted file counts as resolved (the resolver chose the deletion). */
+ * A missing path counts as resolved (the resolver chose the deletion), but an unreadable one
+ * counts as conflicted: a check that cannot read a file cannot vouch for it. */
 export function hasConflictMarkers(wt: string, files: string[]): boolean {
   // Only start/end markers are checked: every real conflict block carries them, while a bare
   // `=======` line is legitimate content (a markdown setext or RST underline of exactly seven
   // characters), and flagging it would reject clean resolutions forever. A resolver that
   // leaves only a separator line behind is treated as resolved; its stray line is content the
   // project's own tests can catch.
-  return files.some((f) => {
-    const text = readTextOrNull(path.join(wt, f));
-    return text !== null && MARKER_EDGE.test(text);
-  });
+  return files.some((f) => markerState(wt, f) !== "clean");
 }
 
 /** How many conflict hunks a conflict prompt lists per file: every hunk of a typical backlog or
@@ -199,8 +212,17 @@ export function conflictedFileHunks(wt: string, files: readonly string[]): Confl
  * lines on main (PLANS.md "Robust conflict landing, part 2/2"). Builds on hasConflictMarkers
  * above, the shared definition of what a marker is. */
 export function conflictMarkerReason(wt: string, files: string[]): string | undefined {
-  const marked = files.filter((f) => hasConflictMarkers(wt, [f]));
-  return marked.length > 0 ? `conflict markers remain in: ${marked.join(", ")}` : undefined;
+  const states = files.map((f) => [f, markerState(wt, f)] as const);
+  const named = (state: string) => states.filter(([, s]) => s === state).map(([f]) => f);
+  const marked = named("marked");
+  const unreadable = named("unreadable");
+  const clauses = [
+    ...(marked.length > 0 ? [`conflict markers remain in: ${marked.join(", ")}`] : []),
+    ...(unreadable.length > 0
+      ? [`could not be read to check for conflict markers: ${unreadable.join(", ")}`]
+      : []),
+  ];
+  return clauses.length > 0 ? clauses.join("; ") : undefined;
 }
 
 /** Conclude an in-progress rebase with everything in the worktree as the resolution.

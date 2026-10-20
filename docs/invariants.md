@@ -414,6 +414,19 @@ keys", "secretLeakReason names the pi models.json source, never the value" — `
 that writes a secret env value, with no pi run" — and `test/stage-check.test.ts` — "an uncommitted
 file holding a secret env value is a finding".
 
+### INV-G3: a changed file that cannot be read for conflict markers is rejected as if it held them; only a path with no file counts as resolved
+
+**Guarantee.** The conflict-marker check reads each changed file. A path with no file (ENOENT,
+ENOTDIR, EISDIR) counts as resolved; any other read error counts as still conflicted, and the
+reason names the file after `could not be read to check for conflict markers: `. The review gate
+rejects it before review, md-only diffs included, the stage check flags it, and the merge
+resolver's resolution is not accepted.
+
+**Binds.** `src/merge/merge-git.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+`src/merge/merge-to-main.ts`.
+
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read" and "hasConflictMarkers sees start/end markers but not a bare ======= separator" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
+
 ## Tumwater owns every commit
 
 ### INV-H1: a run's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the merged history

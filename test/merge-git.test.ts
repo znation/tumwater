@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import {
   conflictedFiles,
+  conflictMarkerReason,
   continueRebase,
   ffMainTo,
   ffMainToOrWhy,
@@ -206,6 +208,27 @@ test("hasConflictMarkers sees start/end markers but not a bare ======= separator
   // A path not on disk counts as resolved (the resolver chose the deletion).
   assert.equal(hasConflictMarkers(wt, ["gone.txt"]), false);
   assert.equal(hasConflictMarkers(wt, []), false);
+});
+
+test("hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", async () => {
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "clean.md"), "no markers\n");
+  fs.writeFileSync(path.join(wt, "marked.md"), "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> b\n");
+  fs.mkdirSync(path.join(wt, "sub"));
+  const undo = patchFsMethod("readFileSync", (orig) => (...args) => {
+    if (String(args[0]).endsWith("clean.md")) throw errnoError("EMFILE");
+    return orig(...args);
+  });
+  try {
+    assert.equal(hasConflictMarkers(wt, ["clean.md"]), true);
+    assert.match(conflictMarkerReason(wt, ["clean.md"]) ?? "", /could not be read to check for conflict markers: clean\.md/);
+    const both = conflictMarkerReason(wt, ["marked.md", "clean.md"]) ?? "";
+    assert.match(both, /conflict markers remain in: marked\.md; could not be read to check for conflict markers: clean\.md/);
+  } finally {
+    undo();
+  }
+  // A directory (EISDIR) cannot hold a text marker.
+  assert.equal(hasConflictMarkers(wt, ["sub"]), false);
 });
 
 test("ffMainToOrWhy names main having moved off the ref's base, with its new head", async () => {

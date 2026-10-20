@@ -12,6 +12,7 @@ import { eventsLogPath, piLogPath, reviewRunSessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
@@ -848,6 +849,29 @@ test("gate rejects a change that still holds conflict markers, with no pi run", 
     "doc change with markers left in",
     /conflict markers remain in: notes\.md/,
   );
+});
+
+test("gate rejects a change whose changed file cannot be read for conflict markers, with no pi run", async () => {
+  const root = makeRepo();
+  const wt = await ensureWorktree(root, ROLE, "main");
+  fs.writeFileSync(path.join(wt, "notes.md"), "no markers here\n");
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "doc change");
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const undo = patchFsMethod("readFileSync", (orig) => (...args) => {
+      if (String(args[0]).startsWith(wt) && String(args[0]).endsWith("/notes.md")) throw errnoError("EMFILE");
+      return orig(...args);
+    });
+    try {
+      const { result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.match(result.detail!, /could not be read to check for conflict markers: notes\.md/);
+    } finally {
+      undo();
+    }
+    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
 });
 
 test("gate rejects conflict markers in a non-ASCII-named file (git C-quotes the diff path)", async () => {
