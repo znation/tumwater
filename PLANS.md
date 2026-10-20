@@ -8,10 +8,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code run, part 15/20: Convert the status display and the TUI (planned 2026-10-16 by user; requires part 14/20 landed; design in plans/terminology.md "Code names"; touches src/ui/*.ts + src/ui/tui/ + their tests)
 
-**Needs replan 2026-10-20 by feature: rejected after 2 review rounds**
-
-1. (prior 2) The word swap left one more garbled phrase: `test/status-render-cells.test.ts:124` reads "A role that has never merged shows the same dash as a never-ran role." "never-ran" is the broken past participle the self-check plan in this diff's own PLANS-DONE.md lists as garbled ("never" + "-ran…
-
 **Goal.** The status model and renderer, the run-progress model and the TUI use run names: `lastRunCell`, `runProgress`, `progressOfRun` and `runStat`.
 
 **Approach.**
@@ -25,12 +21,14 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - src/ui/status-render.ts: `lastTickCell` → `lastRunCell` (aliased if src/text/ or src/budget/ still use it). src/ui/run-progress-model.ts: `tickProgress` → `runProgress` and comments ("a tick with no recorded start time" → "a run with …"); its `ProgressRunKind` already says run. src/ui/progress-data.ts: `progressOfTick` → `progressOfRun`, and its many "run" nouns that mean the agent run get the "agent run" rule. Comments in status-model.ts (about 50 lines), status-payload.ts, team-alerts.ts, tone.ts, badges.ts and transcript.ts.
 - src/ui/tui/ (tui-keys.ts has about 54 lines, plus tui-history.ts, tui-pane.ts, tui.tsx, tui-editors.ts and tui-frame.ts): the local `tickStat` → `runStat`; migrate `renderRunDetail`, `readRunRows`, `readRunDetail`, `RunRow`, `RunDetail`, `runRowCells`, `HISTORY_DEFAULT_RUNS`, `runRowsMatchingGrep`, `runDetailStat` and `runRowGrepHaystack`; then delete each of those aliases that no other file still names. Comments.
 - Tests: test/status-model.test.ts, test/status-render*.test.ts, test/status-payload.test.ts, test/team-alerts.test.ts, test/progress.test.ts, test/tui*.test.ts and test/fixtures/tui-fixtures.ts.
+- Wording (replanned 2026-10-20 by plan: the review rounds on this part rejected garbled English the word swap left, plus once an event-loop "tick" renamed by mistake, and never the renames themselves). Reread every comment and test title you change as a sentence, and reword rather than swap when "run" lands next to another "run" or a form of it. The shapes reviewers rejected, each with a fix: "the role's next run runs" (also split across a line break) → "the role's next run is in progress"; "while the role's runs run off-model" → "while the role's runs use another model"; "with no director run running" → "while no director run is in progress"; "the run's own run" / "the authoring run's finished run" → "the authoring agent run" / "the authoring role's finished run"; "never-ran role" → "role that has never run"; "has actually ran" → "has actually run". Also: "this run's pi run" / "the new run's run" → "this run's agent run" / "the new agent run"; "across runs and runs" → reword per the "agent run" rule. Keep "tick" where it means the JavaScript event-loop tick, such as the src/ui/tui/tui.tsx comment "the test harness waits a tick before pressing keys"; mark that line `// retired-name-ok: event-loop tick`. The pre-queue self-check's `GARBLED_WORDING` (src/run/stage-check.ts) catches some of these shapes but not "run runs" or "run running", so do not rely on it alone. In test/progress.test.ts, rename the `"never-ran"` role-name fixture to `"idle-role"`.
 
 **Files touched.** src/ui/*.ts, src/ui/tui/*.ts(x), alias deletions in src/run/ and src/history/, and the tests listed above.
 
 **Acceptance criteria.**
-- `lastRunCell`, `runProgress` and `progressOfRun` are declared, and `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/ui --include=*.ts --include=*.tsx` (excluding src/ui/gui/) prints only serialized names.
+- `lastRunCell`, `runProgress` and `progressOfRun` are declared, and `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/ui --include=*.ts --include=*.tsx` (excluding src/ui/gui/) prints only serialized names and lines marked `retired-name-ok`.
 - The run-detail and history aliases this part's files were the last users of are gone (`grep -rn '@deprecated Use' src test`).
+- `grep -rnEi "\bruns? runs?\b|\bruns? running\b|\bnever-ran\b|\b(has|have|had|having) ([a-z]+ )?ran\b|\brun's ([a-z]+ )?run\b|\bruns and runs\b|\b(ran|runs?) (a|the|no|its|their) run\b" src/ui test/status-*.test.ts test/team-alerts.test.ts test/progress.test.ts test/tui*.test.ts test/fixtures/tui-fixtures.ts | grep -v '^src/ui/gui/'` prints nothing (on main before this part it prints only the test/progress.test.ts `"never-ran"` fixture).
 - No behavior change: TUI frames and status output in the tests are unchanged, and the suite's test count is unchanged.
 - `npm run test` passes.
 
