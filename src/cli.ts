@@ -286,8 +286,9 @@ async function main(): Promise<void> {
       const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, editBug, editBugFromText, fileBug, fileBugFromText } =
         await import("./backlog/backlog-write.js");
       const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-      const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce } =
+      const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce } =
         await import("./backlog/backlog-cli.js");
+      const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--show")) {
         showAndAnnounce(root, args, "bug");
@@ -331,8 +332,9 @@ async function main(): Promise<void> {
       const { OPERATOR_FILE_KINDS, cancelPlan, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
         await import("./backlog/backlog-write.js");
       const { moveEntryToTop, releaseEntry } = await import("./backlog/backlog-release.js");
-      const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce, planTitleOf } =
+      const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, planTitleOf } =
         await import("./backlog/backlog-cli.js");
+      const { listAndAnnounce, showAndAnnounce } = await import("./backlog/backlog-cli-view.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--show")) {
         showAndAnnounce(root, args, "plan");

@@ -36,8 +36,9 @@ export function flagValue(args: string[], flag: string): string | null | undefin
  * the shared wording (`<flag> may only be given once`), `seen` being the caller's accumulator
  * for that flag. One home for the wording the spec-driven gate (cli-flag-specs.ts), the
  * free-form parsers' pre-scan (cli-command-args.ts), and the bespoke command shells
- * (backlog-cli.ts, cli-query-commands.ts) all apply, so a repeat cannot be reported as a
- * different error on one surface. Called per occurrence rather than pre-scanned at every site,
+ * (backlog-cli.ts, backlog-cli-view.ts, cli-query-commands.ts) all apply, so a repeat cannot be
+ * reported as a different error on one surface. Called per occurrence rather than pre-scanned
+ * at every site,
  * so a malformed invocation still reports whichever error its token order reaches first. */
 export function rejectRepeatFlag(seen: boolean, flag: string): void {
   if (seen) fail(`${flag} may only be given once`);

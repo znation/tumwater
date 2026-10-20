@@ -7,8 +7,9 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
 /** Unit coverage for the waiting-entry age surface (src/backlog/backlog.ts's filingDate /
- * ageInDays / entryAgeSuffix, and their consumers in listAndAnnounce): `plan|bug --list`
- * names how long each waiting entry has been open — a ` · since <date> (<N>d)` tail on the
+ * ageInDays / entryAgeSuffix, and their consumers in listAndAnnounce, backlog-cli-view.ts):
+ * `plan|bug --list` names how long each waiting entry has been open — a
+ * ` · since <date> (<N>d)` tail on the
  * numbered prose line and a `since`/`ageDays` pair on the `--json` objects — parsed from the
  * `(planned …)`/`(reported …)`/`(found by …)` stamp every eligible heading already carries. */
 
