@@ -500,4 +500,30 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/doctor-checks.test.ts, "checkProviderContention sums the last day of provider_wait events and warns at ten minutes". Its existing assertions still hold, since those events carry no `cap`. Add a test: two waits with `key: "omlx"`, `cap: "team"`, 600_000 ms each, and a config with `maxConcurrent: 3` and no `maxConcurrentPerProvider`. The row warns, its detail contains `(the run cap)`, it contains `raise maxConcurrent above 3`, and it does not contain `omlx`.
 - `npm run test:gate` passes.
 
+### A `check_wait` event names the checks that held the check slots and the cap, so `logs` says what a gate check waited behind (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/concurrency/check-permit.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/baseline/main-baseline.ts src/events/event-format.ts src/events/events.ts docs/how-it-works.md test/check-permit.test.ts test/build-check-events.test.ts test/event-format.test.ts)
+
+**Goal.** A scoped check that waits `CHECK_WAIT_EVENT_MS` or more for a `maxConcurrentChecks` permit logs `check_wait` with `role`, `scope` and `waitedMs` (`logCheckWaitEvent`, src/build/build-check-events.ts). `formatEvent` renders `waited 2m10s for a check slot (feature-3 gate check)`. The line doesn't say what held the slots or what the cap was. In the last 80,000 lines of the live event log, all 30 `check_wait` events carry no fields beyond `ts`, `source`, `type`, `role`, `scope` and `waitedMs`, and two gate checks there waited 130 s each. An operator can't tell whether a gate check waited behind merge checks (expected, since merges go first), behind a main-baseline run, or behind other gate checks. The cap is live-editable, so the cap in force at the time is gone too. This plan records the labels of the permit holders and the cap at the moment the check parked, and the line names them.
+
+**Approach.**
+- **src/concurrency/check-permit.ts.**
+  - Add a module-level `const permitHolders = new Map<symbol, string>()`. Insertion order is acquisition order.
+  - `withCheckPermit` gains a trailing optional `label?: string` parameter, after `hooks`. Once the permit is held, by either `tryAcquire` or `acquire`, set `permitHolders.set(token, label ?? "a check")` with a fresh `Symbol()` token. Delete the token in the existing `finally`, before `checkPermits.release()`. The reentrant early return (`holdingPermit.getStore()`) registers nothing, because it takes no permit.
+  - When `tryAcquire` fails, capture `const parked = { heldBy: [...permitHolders.values()], limit: checkPermits.limit }` before `hooks?.waiting()`. Comment that the snapshot is taken at park time and isn't revised if holders change mid-wait.
+  - Change `PermitWaitHooks.waited` to `waited?(waitedMs: number, parked: { heldBy: string[]; limit: number }): void` and pass `parked`. Update its doc comment.
+  - `checkPermitSnapshot` is unchanged.
+- **src/build/build-check-scoped.ts**, `runScopedBuildCheck`'s `withCheckPermit` call. Pass `` `${role} ${scope}` `` as the label. Forward `parked` through the `waited` hook to `logCheckWaitEvent`.
+- **src/baseline/main-baseline.ts**, `checkMainBaseline`'s `withCheckPermit` call. Pass `undefined` hooks and the label `"main baseline"`.
+- **src/build/build-check-events.ts**, `logCheckWaitEvent`. Add a trailing optional `parked?: { heldBy: string[]; limit: number }` and spread `heldBy` and `limit` into the event when it is given. Callers that omit it log today's shape.
+- **src/events/event-format.ts**, `case "check_wait"`. When `e.heldBy` is a non-empty array of strings, append `; held by <labels joined with ", ">` inside the parentheses. When `limit` is a finite number (read through `finiteNumber`), also append ` of maxConcurrentChecks <limit>`. Example: `waited 2m for a check slot (feature-3 gate check; held by feature-2 merge, main baseline of maxConcurrentChecks 2)`. When `heldBy` is absent, empty or malformed, render today's line exactly, so older log lines read as before. Update the case's comment.
+- **src/events/events.ts**: extend the `"check_wait"` union member's comment. It carries `heldBy`, the holders' labels at park time (`<role> <scope>`, `main baseline`, or `a check` for an unlabeled caller), and `limit`, the cap at park time. Events logged before this change carry neither.
+- **docs/how-it-works.md**, the `maxConcurrentChecks` bullet. Change "(role, scope, waitedMs)" to also name the checks that held the slots and the cap when the check parked.
+
+**Out of scope.** `checkCheckContention` (src/doctor/doctor-checks.ts) and the report's check-wait median stay as they are. The live `checkPermits` badge doesn't list holders.
+
+**Acceptance criteria.**
+- test/check-permit.test.ts, "withCheckPermit calls its wait hooks only when the permit is not free". The first caller passes the label `"feature merge"`. The `waited` hook records its second argument, and the test asserts it deep-equals `{ heldBy: ["feature merge"], limit: 1 }`. Add a test: at cap 2, with an unlabeled holder and a `"main baseline"` holder both parked on unresolved promises, a third caller's `waited` receives `{ heldBy: ["a check", "main baseline"], limit: 2 }`. After all three settle, a fourth caller with a free permit calls no hooks.
+- test/build-check-events.test.ts, "logCheckWaitEvent logs one check_wait only at or past the threshold". Its existing assertions still hold. Add a call with `{ heldBy: ["review merge"], limit: 2 }`. That event carries `heldBy` deep-equal `["review merge"]` and `limit === 2`. Assert the existing parked-less event has no `heldBy` key.
+- test/event-format.test.ts, "formatEvent renders check_wait with the wait and the role". The existing assertions still match. Add an event with `heldBy: ["feature-2 merge", "main baseline"], limit: 2` that matches `/\(feature merge check; held by feature-2 merge, main baseline of maxConcurrentChecks 2\)/`. An event with `heldBy: []` or `heldBy: "x"` doesn't contain `held by`.
+- `npm run test:gate` passes.
+
 ## Done
