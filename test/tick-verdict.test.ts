@@ -5,7 +5,7 @@ import path from "node:path";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
@@ -20,7 +20,7 @@ import { initializedWorktree } from "./fixtures/repo-fixtures.js";
 function makeCtx(root: string, wt: string, role: string, over: Record<string, unknown> = {}) {
   const warns: string[] = [];
   const merges: Array<{ wt: string; summary: string }> = [];
-  const state: LoopState = freshLoopState(role);
+  const state: RunnerState = freshRunnerState(role);
   const pending = new PendingPrompt(root, role);
   const ctx = {
     root,
@@ -60,7 +60,7 @@ test("the director's config request is applied to the live config and deleted", 
   const { ctx, warns } = makeCtx(root, wt, DIRECTOR_ROLE);
   const outcome = await resolveTickVerdict(ctx);
 
-  // The request was applied: the custom loop is live in the root config.
+  // The request was applied: the custom role is live in the root config.
   assert.deepEqual(loadConfig(root).customRoles.map((c) => c.name), ["docs"]);
   // The request file is gone — it can never enter a diff or a review prompt.
   assert.ok(!fs.existsSync(configRequestPath(wt)));
@@ -133,10 +133,10 @@ test("a director question answered in prose ends no_change carrying the answer a
   assert.equal(outcome?.summary, "Not a bug. The merge slot is busy.");
 });
 
-test("a role loop's prompt-less nothing-to-do is not treated as an answer", async () => {
+test("a role runner's prompt-less nothing-to-do is not treated as an answer", async () => {
   const { root, wt } = await initializedWorktree("improve");
   // Prose above the sentinel, but no user prompt driving the tick: only a director question
-  // promotes the reply to a summary; a role loop's bare nothing-to-do stays summary-less.
+  // promotes the reply to a summary; a role runner's bare nothing-to-do stays summary-less.
   const pi: PiRunResult = piRunResult({
     nothingToDo: true,
     finalText: "Nothing to do today.\n\nTUMWATER_NOTHING_TO_DO",
@@ -173,12 +173,12 @@ test("a blind image read fails the tick with an error naming the file and the mo
 // another configured tier (here strong) can read images, a blind read stops routing its work
 // to that tier instead of failing. The verdict ends `aborted` with the `image-reroute` resume
 // cause and records a one-shot marker the next tick's model choice reads. These unit tests
-// exercise the pure verdict decision with a fake pi; the loop e2e (test/runner-2.test.ts) covers
+// exercise the pure verdict decision with a fake pi; the role e2e (test/runner-2.test.ts) covers
 // the next tick actually running on the target.
 
 test("a blind read on a text-only tier with a vision reroute target aborts as image-reroute", async () => {
   const { root, wt } = await initializedWorktree("feature");
-  // The feature loop rides the default tier (text-only local/text); strong reads images
+  // The feature role rides the default tier (text-only local/text); strong reads images
   // (local/vision). The models.json sits in the suite's scratch pi-agent dir.
   writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
   const config = loadConfig(root);
@@ -209,8 +209,8 @@ test("a blind read on a text-only tier with a vision reroute target aborts as im
   assert.equal(state.imageReroute?.from, "local/text");
   assert.equal(state.imageReroute?.path, "/x/s.png");
   assert.match(state.lastError ?? "", /rerouting to strong/);
-  // The verdict re-queues the prompt for a prompt-driven reroute; a bare role loop has none.
-  // (applyTickOutcome, exercised in the loop e2e, arms the prompt resume + nextRunAt.)
+  // The verdict re-queues the prompt for a prompt-driven reroute; a bare role runner has none.
+  // (applyTickOutcome, exercised in the role e2e, arms the prompt resume + nextRunAt.)
 });
 
 test("a blind read during an already-rerouted tick fails instead of rerouting a second time", async () => {

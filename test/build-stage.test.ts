@@ -22,7 +22,7 @@ const HEAD_C = "c".repeat(40);
  * node_modules from the running test file. Hard-coding `<this checkout>/node_modules/typescript`
  * instead is what broke the team on 2026-09-08: no tumwater worktree has an install of its own
  * (node_modules is gitignored), so the symlink dangled, the compile test below failed in every
- * loop worktree, main read red team-wide, and the harness could not restart itself (BUGS.md). */
+ * role worktree, main read red team-wide, and the harness could not restart itself (BUGS.md). */
 function typescriptDir(): string {
   return path.dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
 }

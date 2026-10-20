@@ -8,13 +8,13 @@ import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
 import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { truncate } from "../src/text/text.js";
 import { piRunResult } from "./fakes/fake-pi.js";
@@ -40,7 +40,7 @@ interface CtxOverrides {
   revisionRound?: number;
   modelLine?: string;
   mainBranch?: string;
-  /** The loop id the stage runs as; defaults to the improve role. */
+  /** The role id the stage runs as; defaults to the improve role. */
   role?: string;
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
@@ -75,7 +75,7 @@ interface CtxCalls {
 function makeCtx(
   root: string,
   wt: string,
-  state: LoopState,
+  state: RunnerState,
   over: CtxOverrides = {},
 ): { ctx: ReturnType<typeof buildCtx>; calls: CtxCalls } {
   const calls: CtxCalls = {
@@ -98,7 +98,7 @@ function makeCtx(
 function buildCtx(
   root: string,
   wt: string,
-  state: LoopState,
+  state: RunnerState,
   config: TumwaterConfig,
   calls: CtxCalls,
   over: CtxOverrides,
@@ -168,7 +168,7 @@ test("an unassigned tick that moves a plan records a staged claim", async () => 
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   const { ctx } = makeCtx(root, wt, state, {
     role: "feature-2",
     mainBranch: "main",
@@ -200,7 +200,7 @@ test("an unassigned tick still records its staged claim when the events feed is 
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   const { ctx } = makeCtx(root, wt, state, {
     role: "feature-2",
     mainBranch: "main",
@@ -236,7 +236,7 @@ test("a bare feature tick that moves a plan stages no claim and leaves the next 
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const state = freshLoopState("feature");
+  const state = freshRunnerState("feature");
   const { ctx } = makeCtx(root, wt, state, {
     role: "feature",
     mainBranch: "main",
@@ -265,7 +265,7 @@ test("a tick's finished plan is archived in its own commit: PLANS-DONE.md gains 
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const { ctx } = makeCtx(root, wt, freshLoopState("feature"), {
+  const { ctx } = makeCtx(root, wt, freshRunnerState("feature"), {
     role: "feature",
     mainBranch: "main",
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
@@ -292,7 +292,7 @@ test("an assigned tick that moves a different plan gets a stage-check finding", 
   );
   fs.writeFileSync(path.join(wt, "PLANS.md"), moved);
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   state.claim = {
     file: "PLANS.md",
     key: "alpha",
@@ -344,7 +344,7 @@ const twoFeatureInstances = (c: TumwaterConfig): void => {
 // staged claims). The held titles ride its prompt; staging is the deterministic backstop.
 test("an unassigned tick that moves a plan a sibling holds gets a finding, not a second claim", async () => {
   const { root, wt } = await movedPlansTick(["Alpha"]);
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
     role: "feature-2",
@@ -363,7 +363,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
 
 test("a fix-up that drops a sibling's held entry leaves nothing to merge", async () => {
   const { root, wt } = await movedPlansTick(["Alpha"]);
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
     role: "feature-2",
@@ -387,7 +387,7 @@ test("a fix-up that drops a sibling's held entry leaves nothing to merge", async
 
 test("an unassigned tick that moves a held plan and a free one claims the free one", async () => {
   const { root, wt } = await movedPlansTick(["Alpha", "Beta"]);
-  const state = freshLoopState("feature-2");
+  const state = freshRunnerState("feature-2");
   state.heldElsewhere = ["Alpha (planned 2026-01-01 by operator)"];
   const { ctx, calls } = makeCtx(root, wt, state, {
     role: "feature-2",
@@ -406,7 +406,7 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
 
 test("a tick with a SUMMARY commits, pins, and enqueues the merge", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
+  const state: RunnerState = { ...freshRunnerState("improve"), runs: 3 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
@@ -443,7 +443,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the merge", async () => 
 
 test("a tick with a SUMMARY still enqueues its merge when the events feed is unwritable", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
+  const state: RunnerState = { ...freshRunnerState("improve"), runs: 3 };
   const { ctx } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
@@ -461,8 +461,8 @@ test("a tick with a SUMMARY still enqueues its merge when the events feed is unw
 test("a revision tick's queued merge carries the prior review's objections", async () => {
   const { root, wt } = await setup();
   const rejected = "a".repeat(40);
-  const state: LoopState = {
-    ...freshLoopState("improve"),
+  const state: RunnerState = {
+    ...freshRunnerState("improve"),
     lastReview: { verdict: "reject", reasons: ["fix the bug", "add a test"], head: rejected, at: Date.now() },
     revision: { sha: rejected, round: 1, at: Date.now() },
   };
@@ -482,7 +482,7 @@ test("a revision tick's queued merge carries the prior review's objections", asy
 
 test("a missing SUMMARY is recovered with one follow-up turn", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "changed some files but the message was cut off",
     followUp: okPi({ finalText: "SUMMARY: recovered summary\n" }),
@@ -500,7 +500,7 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
 
 test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
   const { root, wt } = await setup();
-  const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+  const { ctx, calls } = makeCtx(root, wt, freshRunnerState("improve"), {
     finalText: `SUMMARY: ${"x".repeat(140)}\nWHY: because\n`,
     followUp: okPi({ finalText: "SUMMARY: short form\n" }),
   });
@@ -518,7 +518,7 @@ test("a follow-up that stays over the cap keeps the truncated subject", async ()
   for (const followUp of [okPi({ finalText: `SUMMARY: ${"y".repeat(150)}\n` }), null]) {
     const { root, wt } = await setup();
     const original = "x".repeat(140);
-    const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+    const { ctx, calls } = makeCtx(root, wt, freshRunnerState("improve"), {
       finalText: `SUMMARY: ${original}\n`,
       followUp,
     });
@@ -533,7 +533,7 @@ test("a follow-up that stays over the cap keeps the truncated subject", async ()
 
 test("a SUMMARY within the cap asks no follow-up", async () => {
   const { root, wt } = await setup();
-  const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+  const { ctx, calls } = makeCtx(root, wt, freshRunnerState("improve"), {
     finalText: `SUMMARY: ${"z".repeat(80)}\n`,
   });
   await stageTickMerge(ctx);
@@ -542,7 +542,7 @@ test("a SUMMARY within the cap asks no follow-up", async () => {
 
 test("a follow-up that yields no SUMMARY falls back to the changed files", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "no summary anywhere",
     followUp: okPi({ finalText: "still nothing" }),
@@ -558,7 +558,7 @@ test("a follow-up that yields no SUMMARY falls back to the changed files", async
 
 test("a follow-up that failed names its error instead of claiming 'gave none'", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "no summary anywhere",
     followUp: okPi({
@@ -578,7 +578,7 @@ test("a follow-up that failed names its error instead of claiming 'gave none'", 
 
 test("a missing SUMMARY with no follow-up session says so", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "no summary anywhere",
     followUp: null,
@@ -591,9 +591,9 @@ test("a missing SUMMARY with no follow-up session says so", async () => {
   assert.match(calls.warnings[0]!, /no follow-up session was available/);
 });
 
-test("an aborted follow-up finalizes through the loop and queues nothing", async () => {
+test("an aborted follow-up finalizes through the role and queues nothing", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "cut off",
     followUp: okPi({ aborted: true }),
@@ -603,7 +603,7 @@ test("an aborted follow-up finalizes through the loop and queues nothing", async
   const outcome = await stageTickMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-summary" });
-  assert.equal(calls.abortedFinalized, 1, "the loop's abort finalizer ran");
+  assert.equal(calls.abortedFinalized, 1, "the runner's abort finalizer ran");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
   assert.equal(queueDepth(root), 0);
   assert.equal(sh(wt, "git", "log", "-1", "--format=%s").includes("tumwater(improve)"), false,
@@ -612,7 +612,7 @@ test("an aborted follow-up finalizes through the loop and queues nothing", async
 
 test("a tick past both friction thresholds is flagged, warned, and marked in the merge", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), runs: 5 };
+  const state: RunnerState = { ...freshRunnerState("improve"), runs: 5 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: hard work\n",
     config: (c) => {
@@ -635,7 +635,7 @@ test("a tick past both friction thresholds is flagged, warned, and marked in the
 
 test("burning turns alone is not friction — the wall clock must pass too", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: fast work\n",
     config: (c) => {
@@ -656,7 +656,7 @@ test("burning turns alone is not friction — the wall clock must pass too", asy
 
 test("a failed pin reports an error, records lastError, and queues nothing", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     pinResult: false,
@@ -675,7 +675,7 @@ test("a failed pin reports an error, records lastError, and queues nothing", asy
 
 test("a qa flow record from the reply is written into the coverage file", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: fixed the bug\n",
     flow: { flow: "unit tests", result: "bug" },
@@ -694,7 +694,7 @@ test("a qa flow record from the reply is written into the coverage file", async 
 
 test("a passed qa flow records no summary", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: green suite\n",
     flow: { flow: "unit tests", result: "passed" },
@@ -715,7 +715,7 @@ test("a passed qa flow records no summary", async () => {
 
 test("a self-check finding triggers one follow-up and queues with the fixed warning", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     stageChecks: [["md-only BUGS.md edit moves X to Fixed, but none of its symbols exist"], []],
@@ -737,7 +737,7 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
 
 test("a partial fix-up body keeps the fields it did not restate", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx } = makeCtx(root, wt, state, {
     finalText:
       "SUMMARY: add the feature\nWHY: original why\nRISK: original risk\nVERIFIED: original verified\n",
@@ -756,7 +756,7 @@ test("a partial fix-up body keeps the fields it did not restate", async () => {
 
 test("a finding the follow-up leaves unfixed still queues, with the still-open warning", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     stageChecks: [["a finding"], ["a finding"]],
@@ -774,7 +774,7 @@ test("a finding the follow-up leaves unfixed still queues, with the still-open w
 
 test("a clean self-check runs no follow-up turn", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
   });
@@ -789,7 +789,7 @@ test("a clean self-check runs no follow-up turn", async () => {
 
 test("no follow-up session leaves the finding for the gate and still queues", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     stageChecks: [["a finding"], ["a finding"]],
@@ -803,9 +803,9 @@ test("no follow-up session leaves the finding for the gate and still queues", as
   assert.deepEqual(calls.warnings, ["stage self-check: 1 finding; 1 still open, queued for the gate"]);
 });
 
-test("an aborted self-check follow-up finalizes through the loop and queues nothing", async () => {
+test("an aborted self-check follow-up finalizes through the role and queues nothing", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     stageChecks: [["a finding"]],
@@ -816,14 +816,14 @@ test("an aborted self-check follow-up finalizes through the loop and queues noth
   const outcome = await stageTickMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-fix" });
-  assert.equal(calls.abortedFinalized, 1, "the loop's abort finalizer ran");
+  assert.equal(calls.abortedFinalized, 1, "the runner's abort finalizer ran");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
   assert.equal(queueDepth(root), 0);
 });
 
 test("a fix-up that reverts the whole change ends no_change with nothing queued", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: add the feature\n",
     stageChecks: [["a finding"]],
@@ -844,7 +844,7 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
 
 test("the real staging self-check leaves the index clean, so a full revert still ends no_change", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = freshLoopState("improve");
+  const state: RunnerState = freshRunnerState("improve");
   // Drop the tick's only change's final newline so the real git-level self-check raises a
   // finding and the follow-up turn runs. Unlike the canned-findings case above, this exercises
   // stageCheckFindings' own `git add -A`, whose staging must not survive into the guard's
@@ -875,7 +875,7 @@ for (const [label, finalText] of [
   test(`a commit made in the ${label} follow-up folds into the harness commit`, async () => {
     const { root, wt } = await setup();
     const base = sh(wt, "git", "rev-parse", "HEAD");
-    const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
+    const { ctx, calls } = makeCtx(root, wt, freshRunnerState("improve"), {
       finalText,
       followUp: okPi({ finalText: "SUMMARY: short form\n" }),
       followUpCommits: true,
@@ -893,7 +893,7 @@ for (const [label, finalText] of [
 test("a staged commit carries the Model line the run started on", async () => {
   const { root, wt } = await setup();
   const modelLine = "Model: claude-opus-5-5 · backend claude";
-  const { ctx } = makeCtx(root, wt, freshLoopState("improve"), {
+  const { ctx } = makeCtx(root, wt, freshRunnerState("improve"), {
     modelLine,
     finalText: "Done.\nSUMMARY: add feature\nVERIFIED: npm test\n",
   });

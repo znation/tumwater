@@ -195,7 +195,7 @@ const baselineInFlight = new Map<string, Promise<MainBaselineCheck>>();
 /** Should a cached RED be re-run here instead of trusted? A red says as much about the
  * environment the check ran in as about the tree — a worktree mid-install, or a machine under
  * the load the team deliberately creates starving a timing-sensitive test (BUGS.md's
- * load-sensitive tests entry). The role loops consult this team-shared cache and, before
+ * load-sensitive tests entry). The role runners consult this team-shared cache and, before
  * 2026-09-18, trusted a red forever: one environmental red blocked every code role until main
  * moved, and main could not move, because blocking the code roles is exactly what stops it —
  * a deadlock broken only by restarting the orchestrator, since the cache is per-process.
@@ -358,7 +358,7 @@ export async function checkMainBaseline(
    * circuits — see baselineCache). For the caller whose false block is expensive enough to pay
    * one extra run: the redeploy gate, where trusting another worktree's environmental red
    * strands the whole team on a stale build until main moves. A green from the re-run promotes
-   * the SHA team-wide, which unblocks the role loops too. */
+   * the SHA team-wide, which unblocks the role runners too. */
   reverifyRed = false,
   /** Ignore the cache entirely and run the suite here, even over a GREEN verdict. For the one
    * caller that cannot trust a green (BUGS.md 2026-10-06: the review gate re-attributing a
@@ -484,7 +484,7 @@ export async function mainIsGreen(
    * maxConcurrentChecks sizes the check permit this run takes. */
   config: CheckConfigSlice,
   /** Hook for the build_check event — this run is a minute of the team's time and belongs in
-   * the feed like the role loops' own baseline checks. */
+   * the feed like the role runners' own baseline checks. */
   onRun?: (run: BaselineCheckRun) => void,
 ): Promise<boolean> {
   const check = await checkMainBaseline(mirrorWt, config, onRun, true);

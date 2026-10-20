@@ -188,7 +188,7 @@ test("checkMainBaseline dedups concurrent checks of one new SHA into a single ru
 test("a red is provisional: the next worktree re-runs it unasked, and a pass promotes the SHA", async () => {
   // The 2026-09-08 shape: one worktree's environment, not the tree, produced the red — here a
   // `marker` file standing in for the missing node_modules — and it became the team's verdict.
-  // Since 2026-09-18 no caller has to ASK for that second opinion: the role loops never passed
+  // Since 2026-09-18 no caller has to ASK for that second opinion: the role runners never passed
   // the flag, so one environmental red blocked every code role until main moved — which it could
   // not, because blocking the code roles is what stops main moving (BUGS.md).
   const counter = path.join(tmpdir(), "runs");
@@ -346,7 +346,7 @@ test("mainIsGreen re-verifies another worktree's red in the mirror, and its gree
   assert.equal(
     (await checkMainBaseline(role, CFG)).baseline?.status,
     "green",
-    "and the green promotes the SHA for every other gate, unblocking the role loops too",
+    "and the green promotes the SHA for every other gate, unblocking the role runners too",
   );
   assert.equal(runsOf(counter), 2, "the promotion re-runs nothing");
 });

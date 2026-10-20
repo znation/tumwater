@@ -13,7 +13,7 @@
  * consults it.
  *
  * Part 2/2 appends git-level, language-neutral findings (PLANS.md "Pre-queue self-check, part
- * 2/2") for path drift, the organize loop's main rejection cause: references left behind by a
+ * 2/2") for path drift, the organize role's main rejection cause: references left behind by a
  * rename or delete, added lines naming paths that do not exist in the resulting tree, and text
  * files whose final newline the change removed. These stage the change (`git add -A`) to read
  * the index with git only, then restore the index to HEAD before returning: staging is a read
@@ -215,7 +215,7 @@ export function assignedMovedFinding(
 }
 
 /** The staging finding for an unassigned tick that moved a backlog entry a sibling instance
- * holds — one the poll listed in the tick's `<held-entries>` note (LoopState.heldElsewhere).
+ * holds — one the poll listed in the tick's `<held-entries>` note (RunnerState.heldElsewhere).
  * The note is advice the model can ignore; this is the deterministic backstop at the same
  * point as assignedMovedFinding (BUGS.md 2026-10-12: 24 of 29 staged claims duplicated a
  * sibling's held entry, and each duplicate cost a gate check, a review, and a conflict

@@ -4,7 +4,7 @@
  * it. The application policy — which outcomes count which streaks, when a session resumes,
  * how the next run is scheduled — lives next door in tick-apply.ts; the clock arithmetic it
  * drives in backoff.ts. This module holds only the shared types. Split out of runner-state.ts —
- * the persisted state file's load/save — and later of the types.ts grab-bag, as LoopState and
+ * the persisted state file's load/save — and later of the types.ts grab-bag, as RunnerState and
  * HarnessEvent were before it. */
 
 export type TickResult =
@@ -37,7 +37,7 @@ export type TickResult =
    * preserved and resumed promptly. */
   | "quiet_killed"
   /** A user-initiated abort (tumwater abort) killed the run mid-tick; work discarded,
-   * loop backed off. */
+   * role backed off. */
   | "user_aborted"
   /** Main's build/test suite is red: a tick's baseline check skipped the authoring run, or
    * a merge's check failed on a red main (pin kept, no strike). */
@@ -58,7 +58,7 @@ export interface TickOutcome {
   highFriction?: boolean;
   /** The run was truncated at the model's context ceiling before it could finish (a
    * no_change tick whose final message carried no text or tool call). The work so far
-   * survives in the pi session, which pi compacted at end of run — so the loop resumes
+   * survives in the pi session, which pi compacted at end of run — so the role resumes
    * it promptly instead of backing off as if the role were idle. */
   cutOff?: boolean;
   /** The tick's leftover recovery re-queued a pin whose last merge failed and kept it for

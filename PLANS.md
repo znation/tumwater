@@ -6,32 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 12/14: Convert the run pipeline modules and the baseline and build modules (planned 2026-10-16 by user; requires part 11/14 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/baseline/ + src/build/ + test/tick-*.test.ts + their other tests)
-
-**Goal.** The run pipeline modules under src/tick/, which Plain terms code run renames next, and the baseline and build modules use `RunnerState`, `RoleRunner` and role wording, so the run series only handles tick words.
-
-**Approach.**
-- Series rules (every code-runner part):
-  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
-  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
-  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
-  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
-  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
-- src/tick/ (tick-apply.ts, tick-verdict.ts, tick-prompt.ts, tick-stage.ts, tick-resume.ts, tick-usage.ts, tick-finalize.ts, tick-detail-data.ts, tick-outcome.ts, tick-timing.ts, tick-detail.ts, stage-check.ts, qa-coverage.ts): migrate `LoopState` → `RunnerState` (about 24 lines), `LoopRunner`, `saveLoopState`, `loadLoopState` and `loopPhase`, and convert "loop" in comments. Leave every tick word: Plain terms code run renames the directory and its names.
-- `mergeQueuedByLoop` and `outcomeByLoop`, the members of `bucketMergeEvents`' result that join merge-queue and outcome events by runner, are declared in src/history/ (part 13/14); leave them.
-- src/baseline/ (main-red.ts, main-baseline.ts) and src/build/ (build-check-events.ts, build-check.ts, dep-install.ts): comments and uses.
-- Tests: test/tick-*.test.ts (tick-apply.test.ts alone has about 66 lines, mostly `freshLoopState`), test/main-*.test.ts, test/build*.test.ts, test/stage-check.test.ts, test/qa-coverage.test.ts, test/dep-install.test.ts and test/check-permit.test.ts.
-
-**Files touched.** src/tick/*.ts, src/baseline/*.ts, src/build/*.ts, and the tests listed above.
-
-**Acceptance criteria.**
-- `grep -rnE 'LoopState|LoopRunner|[a-z]LoopState|loopPhase'` over this part's files prints nothing.
-- `grep -rnwiE 'loops?'` over this part's comments and test titles lists only kept senses.
-- No behavior change: the suite's test count is unchanged.
-- `npm run test` passes.
-
 ### Plain terms code runner, part 13/14: Convert gates and budget and the event history failure and report modules (planned 2026-10-16 by user; requires part 12/14 landed; design in plans/terminology.md "Code names"; touches src/gates/ + src/budget/ + src/events/ + src/history/ + src/failure/ + src/report/ + src/files/ + src/text/ + their tests)
 
 **Goal.** The gate, budget, event, history, failure, report, file and text helpers use runner and role names, including the per-runner event maps in history and failure.

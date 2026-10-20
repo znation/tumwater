@@ -13,11 +13,11 @@ import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-/** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
+/** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one role's tick actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
  * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
  * (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
@@ -32,14 +32,14 @@ function root(): string {
   return dir;
 }
 
-function state(overrides: Partial<LoopState> = {}): LoopState {
+function state(overrides: Partial<RunnerState> = {}): RunnerState {
   // The production constructor, not a hand-rolled literal: a copied field list drifts
   // silently when runner-state.ts grows a field (this one had already dropped dayStamp and
-  // dayCostUsd), while a spread over freshLoopState picks the shape up automatically.
-  return { ...freshLoopState("coverage"), ...overrides };
+  // dayCostUsd), while a spread over freshRunnerState picks the shape up automatically.
+  return { ...freshRunnerState("coverage"), ...overrides };
 }
 
-/** assembleTickPrompt with the suite's standing inputs — defaultConfig() and a fresh loop
+/** assembleTickPrompt with the suite's standing inputs — defaultConfig() and a fresh role
  * state carrying the same role — so a call site cannot pass a role that disagrees with its
  * state's. `overrides` carries the few custom configs and pinned state fields; the
  * preview-seam tests below keep calling assembleTickPrompt directly, since they share one
@@ -47,7 +47,7 @@ function state(overrides: Partial<LoopState> = {}): LoopState {
 function promptFor(
   root: string,
   role: string,
-  overrides: { config?: ReturnType<typeof defaultConfig>; state?: Partial<LoopState> } = {},
+  overrides: { config?: ReturnType<typeof defaultConfig>; state?: Partial<RunnerState> } = {},
 ): ReturnType<typeof assembleTickPrompt> {
   return assembleTickPrompt({
     root,
@@ -91,7 +91,7 @@ test("an explicit agent override selects the dialect over the config's primary",
 });
 
 test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
-  // The degraded-but-running state: an operator edit (or a docs loop rewrite) can strip the
+  // The degraded-but-running state: an operator edit (or a docs role rewrite) can strip the
   // markers, leaving no file that owns the brief. The team must keep ticking — readInitialPrompt
   // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
   const dir = tmpdir();
@@ -169,8 +169,8 @@ test("a role run prompt injects the rendered <backlog-index> block from the prim
   assert.match(result.prompt, /BUGS\.md ## Open\n- 3-4: Real bug/);
 });
 
-// Work ratio 3/4: the plan loop counts only entries feature could take now, and the index
-// marks the held ones. One takeable entry beside four blocked ones leaves the plan loop below
+// Work ratio 3/4: the plan role counts only entries feature could take now, and the index
+// marks the held ones. One takeable entry beside four blocked ones leaves the plan role below
 // its target, so the new independence rule tells it what to write instead.
 test("the plan prompt counts only takeable entries and marks the blocked ones in the index", () => {
   const dir = root();
@@ -377,7 +377,7 @@ test("a custom role's task is its find-something-to-do text, titled by its name"
 });
 
 test("a runner whose role answers to nothing throws the shared unknown-role message, custom ids included", () => {
-  // The race the defensive path exists for: a live tumwater.json edit removes a custom loop
+  // The race the defensive path exists for: a live tumwater.json edit removes a custom role
   // while its runner is still alive (runners are built at start and survive reloads), so the
   // next tick's assembly finds neither a catalog entry nor a customRoles task. It must throw
   // the shared unknownRoleMessage — the same wording the CLI's parseRoleFlag and the operator
@@ -449,7 +449,7 @@ test("an exhausted feature rejection carries the replan instruction on the next 
 // rounds. That merge is review-exempt, so it records no verdict; the merge fold clears the
 // standing rejection instead (clearSupersededRejection, tick-apply.ts). This pins that the
 // instruction retires after the note merges rather than re-injecting and letting feature re-mark
-// an entry the plan loop has already replanned.
+// an entry the plan role has already replanned.
 test("the exhausted-feature replan instruction retires once the markdown-only note merges", () => {
   const dir = root();
   const s = state({
@@ -533,7 +533,7 @@ test("a clean state appends none of the cross-run notes", () => {
 });
 
 // `tumwater prompt --role <id>` queues a prompt only that
-// loop's next tick sees — dequeued here, riding as the tick's userPrompt and an explicit
+// role's next tick sees — dequeued here, riding as the tick's userPrompt and an explicit
 // <user-request> block in the prompt text.
 test("a queued per-role prompt is dequeued into that role's prompt only", () => {
   const dir = root();
@@ -558,7 +558,7 @@ test("a queued per-role prompt is dequeued into that role's prompt only", () => 
 
 // A deferred prompt (`tumwater prompt --at <duration>`) delivers once its not-before time has
 // passed; the marker line is plumbing (src/inbox/prompt-not-before.ts) and must never reach the
-// loop — the same
+// role — the same
 // strip every display surface applies (stripNotBeforeMarker).
 test("a delivered deferred prompt rides without its not-before marker line", () => {
   const dir = root();
@@ -632,7 +632,7 @@ test("other roles never see the <backlog-structure> block, and the clean find te
 // --- the preview seam (`tumwater role <id>`'s next-prompt view) ---
 // A preview must assemble the same prompt a real tick would run on — queued user request,
 // state-derived notes, everything — while provably consuming nothing: the queued prompt is
-// peeked (read, never unlinked), so an inspection can never cost a loop its queued work.
+// peeked (read, never unlinked), so an inspection can never cost a role its queued work.
 
 test("preview mode assembles the queued prompt without consuming it", () => {
   const dir = root();

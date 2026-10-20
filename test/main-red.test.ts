@@ -10,7 +10,7 @@ import { defaultConfig, liveConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
-import { baselineFixture, fakeNpm, makeLoopRunner, runsOf } from "./fixtures/runner-fixtures.js";
+import { baselineFixture, fakeNpm, makeRoleRunner, runsOf } from "./fixtures/runner-fixtures.js";
 import { pathReplace } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, mainSha, makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
@@ -126,7 +126,7 @@ test("mainRedGate warns once per red SHA: a repeat tick on the same HEAD re-bloc
   }
 });
 
-test("mainRedGate blocks a user-defined loop on red main like the code roles", async () => {
+test("mainRedGate blocks a user-defined role on red main like the code roles", async () => {
   // A custom's charter may produce code, so it is blocked exactly like feature/improve
   // (plans/user-defined-loops.md). Customs come from tumwater.json, not the catalog — declare
   // one in the fixture repo before the gate reads the live config.
@@ -141,7 +141,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
     assert.equal(
       (await mainRedGate(root, "docs-auditor", wt))?.result,
       "main_red",
-      "a custom loop's fresh tick on red main is blocked like feature's",
+      "a custom role's fresh tick on red main is blocked like feature's",
     );
     // The check ran once under the role that paid for it — same pricing as a built-in.
     assert.equal(runsOf(counter), 1);
@@ -506,7 +506,7 @@ test("a queued healer prompt makes a bugfix runner due on the next poll despite 
   // A fresh bugfix runner with an empty BUGS.md backlog, a future nextRunAt, and a no_change
   // last result is not due on its own — but a non-empty inbox makes it due for reason "inbox"
   // before any interval, backoff, or deferral check (isEligible, scheduling.ts).
-  const r = makeLoopRunner(makeRepo(), "bugfix");
+  const r = makeRoleRunner(makeRepo(), "bugfix");
   const now = Date.now();
   r.state.nextRunAt = now + 60 * 60 * 1000; // an hour out — not due on the clock
   r.state.lastRunEndedAt = now - 1000;

@@ -21,9 +21,9 @@ import type { HarnessEvent } from "../events/events.js";
  * from the `run_end` event (`result` null, both numbers 0 while it is in flight); `usage` is
  * the same numbers through usageText, empty when the tick carries neither (the payload's
  * omit-when-zero convention, matching TickRow). `events` is the tick's block oldest-first: the
- * paired `run_start`/`run_end` themselves plus every event filed under this loop whose
+ * paired `run_start`/`run_end` themselves plus every event filed under this role whose
  * timestamp falls inside the pair — the tick-less in-tick events (`review_verdict`,
- * `build_check`, `warning`) included, other loops' events excluded. A tick that ended `queued`
+ * `build_check`, `warning`) included, other roles' events excluded. A tick that ended `queued`
  * has its merge's verdict resolved the way history rows do: `result` becomes the merge's
  * result and `merge` the `merge_done`/`merge_failed` event that carries it (not in `events`:
  * logged after the block, or — for a leftover-recovery run, whose verdict is the failed
@@ -53,7 +53,7 @@ export interface TickDetail {
  * The newest `run_start` the log retains for `${role}#${n}` wins (a counter reset can make an
  * old tick number recur; the operator asking by number means the most recent one), and the
  * block closes at the first `run_end` for that tick after the start — or, when that end is
- * missing (in flight, or its tail lost to rotation), at the loop's next `run_start`, so a
+ * missing (in flight, or its tail lost to rotation), at the role's next `run_start`, so a
  * rotation-cut block never leaks the following tick's events into this one. When even the
  * start is gone but a matching `run_end` survives, the end-alone block still answers with
  * `startTs` null and a null duration (the unpaired rule); nothing at all in the scan is the
@@ -65,7 +65,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
   // the largest byte read one command can cost, and every read-only view scans under the
   // same bound.
   const events = readEvents(root, HISTORY_SCAN_MAX_EVENTS).filter((e) => e.source === role);
-  // Newest run_start for this loop+tick: the block's lower bound.
+  // Newest run_start for this role+tick: the block's lower bound.
   let startIdx = -1;
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]!;
@@ -101,7 +101,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
       break;
     }
   }
-  // The block itself: the start event plus everything this loop logged up to the bound —
+  // The block itself: the start event plus everything this role logged up to the bound —
   // inclusive at a paired end, exclusive at a next tick's start.
   const block: HarnessEvent[] = [];
   for (let i = startIdx; i < events.length; i++) {
@@ -113,7 +113,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
 }
 
 /** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
- * duration via tickSpanMs against the loop's own start map (the shared pairing helper, so this
+ * duration via tickSpanMs against the role's own start map (the shared pairing helper, so this
  * view and the history rows cannot drift on what a span is), events oldest-first. */
 function detailFrom(
   role: string,

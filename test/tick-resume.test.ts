@@ -5,7 +5,7 @@ import path from "node:path";
 import { planTickStart } from "../src/tick/tick-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
@@ -35,8 +35,8 @@ registerAgentBackend(claudeBackend);
 // These tests pin the decision table directly, against a real session dir and a real prompt
 // queue, the way pending-prompt.test.ts pins the requeue policy.
 
-function state(overrides: Partial<LoopState> = {}): LoopState {
-  return { role: "feature", phase: "pi", ...overrides } as unknown as LoopState;
+function state(overrides: Partial<RunnerState> = {}): RunnerState {
+  return { role: "feature", phase: "pi", ...overrides } as unknown as RunnerState;
 }
 
 /** Plant one pi session file in the role's session dir, so hasResumableSession finds it. */
@@ -64,7 +64,7 @@ function withClaudeAuthor(root: string, cwd: string, id = "c1"): void {
 
 function plan(
   root: string,
-  s: LoopState,
+  s: RunnerState,
   opts: {
     tickPrompt?: (agent?: string, compact?: boolean) => string | null;
     pending?: PendingPrompt;
@@ -326,7 +326,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
 
     // The interrupted tick's edits are on disk, so the verdict keeps the worktree.
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     const outcome = await resolveTickVerdict({
       root,
       wt,
@@ -370,7 +370,7 @@ test("an aborted resumeMissing run records the missing session for the next run'
   const restoreHome = setEnv("HOME", tmpdir());
   try {
     withClaudeAuthor(root, fs.realpathSync(wt), "c1");
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     const outcome = await resolveTickVerdict({
       root,
       wt,
@@ -549,7 +549,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
 
     // The interrupted run's half-done edits are on disk and must survive the hold.
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     const outcome = await resolveTickVerdict({
       root,
       wt,
@@ -602,7 +602,7 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
   try {
     withClaudeAuthor(root, cwd, "c1");
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     const outcome = await resolveTickVerdict({
       root,
       wt,

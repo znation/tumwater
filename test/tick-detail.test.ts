@@ -24,10 +24,10 @@ function end(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "bugfix", type: "run_end", run: 3, result: "changed", ...over } as HarnessEvent;
 }
 
-test("readTickDetail returns exactly one loop's tick block, bracketed by its start and end", () => {
+test("readTickDetail returns exactly one role's tick block, bracketed by its start and end", () => {
   const root = makeRepo();
   writeEvents(root, [
-    // A neighbor loop's tick with the SAME number contributes nothing.
+    // A neighbor role's tick with the SAME number contributes nothing.
     start({ ts: 1000, loop: "feature" }),
     { ts: 2000, source: "feature", type: "review_verdict", head: "abc" } as HarnessEvent,
     end({ ts: 3000, loop: "feature", result: "no_change" }),
@@ -36,7 +36,7 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
     { ts: 5000, source: "bugfix", type: "review_verdict", head: "def", durationMs: 9000 } as HarnessEvent,
     { ts: 6000, source: "bugfix", type: "merge_queued", commit: "abc1234def", summary: "the fix" } as HarnessEvent,
     end({ ts: 7000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
-    // After the block: another loop, and the asked loop's NEXT tick — both excluded.
+    // After the block: another role, and the asked role's NEXT tick — both excluded.
     { ts: 8000, source: "clean", type: "run_start", run: 1 } as HarnessEvent,
     start({ ts: 9000, run: 4 }),
   ]);
@@ -100,7 +100,7 @@ test("readTickDetail marks an in-flight run: events so far, no end, no duration"
   );
 });
 
-test("readTickDetail bounds a rotation-cut block at the loop's next run_start", () => {
+test("readTickDetail bounds a rotation-cut block at the role's next run_start", () => {
   // The run_end was lost to rotation; the next tick's start closes the window exclusive, so
   // the following tick's events never leak into this one.
   const root = makeRepo();

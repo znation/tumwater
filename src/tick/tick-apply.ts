@@ -1,7 +1,7 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { MergeEntry } from "../merge/merge-queue.js";
-import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
+import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import {
@@ -13,20 +13,20 @@ import {
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import { firstReason } from "../text/phrases.js";
 
-/** The state machine that applies a finished tick or merge to the loop's state: the
+/** The state machine that applies a finished tick or merge to the role's state: the
  * outcome application (applyTickOutcome — which outcomes count which streaks, when a
  * cut-off or quiet-killed session resumes and when it is abandoned), its merge sibling
  * (applyMergeOutcome), the error-streak thresholds, the resume limits, and the
  * review-verdict record the next tick's prompt reads. Split out of tick-outcome.ts — which
  * keeps the TickResult/TickOutcome vocabulary the dashboards and call sites share — because
  * "what an outcome is" and "what applying it records" are different concerns that happen to
- * touch the same LoopState object. The loop's CLOCK side of the same policy — the wake
+ * touch the same RunnerState object. The role's CLOCK side of the same policy — the wake
  * semantics, the backoff ladders, the yield-scaled clock — lives next door in backoff.ts,
  * which this module drives. No I/O here: every function mutates the caller's state in place
  * (the caller's object is authoritative across an in-flight tick and saves it itself), so
  * the policy is unit-testable without touching a disk. */
 
-export function recordReview(s: LoopState, verdict: string, reasons: string[], head?: string): void {
+export function recordReview(s: RunnerState, verdict: string, reasons: string[], head?: string): void {
   s.lastReview = { verdict, reasons, ...(head === undefined ? {} : { head }), at: Date.now() };
 }
 
@@ -39,12 +39,12 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
  * not resolve it, and its next revision tick still needs the objections (runner-run.ts's revision
  * note). A model-reviewed merge already overwrote `lastReview` with its approve; this only
  * clears a standing `reject`. */
-export function clearSupersededRejection(s: LoopState): void {
+export function clearSupersededRejection(s: RunnerState): void {
   if (s.revision === undefined && (s.lastReview?.verdict === "reject" || s.lastReview?.verdict === "reverted")) s.lastReview = undefined;
 }
 
-/** Consecutive failed ticks after which the loop raises a harness warning and its state
- * cell reads "failing" (BUGS.md 2026-09-15: every loop failing identically looked like a
+/** Consecutive failed ticks after which the role raises a harness warning and its state
+ * cell reads "failing" (BUGS.md 2026-09-15: every role failing identically looked like a
  * quiet team). Small on purpose — at 3 the error ladder has already doubled twice and
  * the failure is clearly not transient. */
 export const ERROR_STREAK_WARN = 3;
@@ -58,29 +58,29 @@ export const ERROR_STREAK_WARN = 3;
  * short enough to stop the burn well before an all-day failure. One sensible default, no knob. */
 export const ERROR_STREAK_BREAKER = 10;
 
-/** Resumes granted to one context-ceiling cut-off streak before the loop stops resuming the
+/** Resumes granted to one context-ceiling cut-off streak before the role stops resuming the
  * task and falls back to a fresh tick: a task that outruns the ceiling on every attempt (even
  * from a freshly compacted context) is too big to converge, and each cycle costs an hour-plus
- * of model time on local hardware. The streak itself keeps counting (LoopState.cutOffStreak). */
+ * of model time on local hardware. The streak itself keeps counting (RunnerState.cutOffStreak). */
 const CUT_OFF_RESUME_LIMIT = 3;
 
-/** Resumes granted to one quiet-kill streak before the loop abandons the starved pi session
+/** Resumes granted to one quiet-kill streak before the role abandons the starved pi session
  * and takes a fresh tick on the idle ladder. A session the backend defers past the quiet
  * watchdog every attempt would otherwise re-send the same input immediately and forever,
  * burning an hour of slot time per retry with no output (BUGS.md 2026-09-18: 41 quiet kills
  * consumed 44% of the team over two days). Mirrors CUT_OFF_RESUME_LIMIT; the streak itself
- * keeps counting (LoopState.quietKillStreak) so one warning per episode can be raised. */
+ * keeps counting (RunnerState.quietKillStreak) so one warning per episode can be raised. */
 export const QUIET_KILL_RESUME_LIMIT = 3;
 
-/** Record a finished tick on the loop's state and schedule its next run from the outcome.
- * Split out of LoopRunner.tick() (runner.ts) so the scheduling policy — which outcomes retry
+/** Record a finished tick on the role's state and schedule its next run from the outcome.
+ * Split out of RoleRunner.tick() (runner.ts) so the scheduling policy — which outcomes retry
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
  * the other scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
  * the caller's state object is authoritative across an in-flight tick (see resetCounters).
  * `cfg` is the role-resolved config (configForRole): its minRunIntervalSeconds carries any
  * per-role slow clock, and idleBackoff passes through it unchanged from the top level. */
 export function applyTickOutcome(
-  s: LoopState,
+  s: RunnerState,
   cfg: TumwaterConfig,
   role: string,
   outcome: TickOutcome,
@@ -115,13 +115,13 @@ export function applyTickOutcome(
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
   // The no-change streak counts consecutive completed ticks that ended `no_change` (the
-  // resting state cell's ` · no change ×N` suffix — status-model.ts loopPhase). Any other
-  // completed result resets it, so a loop that merges between no-ops never shows a stale
+  // resting state cell's ` · no change ×N` suffix — status-model.ts rolePhase). Any other
+  // completed result resets it, so a role that merges between no-ops never shows a stale
   // streak. Every completed result reaches this block (tick-finalize.ts calls
   // applyTickOutcome for every outcome), so `changed`/`queued`/`error`/`aborted`/
   // `quiet_killed`/`user_aborted` all reset it and only a `no_change` tick grows it.
   // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately
-  // idle maintenance loop with an empty backlog can hold a long streak and that is expected.
+  // idle maintenance role with an empty backlog can hold a long streak and that is expected.
   s.noChangeStreak = outcome.result === "no_change" ? (s.noChangeStreak ?? 0) + 1 : 0;
   // The yield ring records the result beside the streaks: a merge or a counted empty
   // stretches the role's min-tick gap (yieldMultiplier, read by isEligible), an error-class
@@ -195,7 +195,7 @@ export function applyTickOutcome(
     // on a stalled tool call (director ticks never resume — their prompt was re-queued fresh).
     // Bounded like a cut-off streak: past QUIET_KILL_RESUME_LIMIT the session is
     // abandoned — the backend has refused to schedule it every attempt, so re-sending it only
-    // starves the slot again — and the loop takes a fresh tick on the idle ladder instead
+    // starves the slot again — and the role takes a fresh tick on the idle ladder instead
     // (BUGS.md 2026-09-18).
     if (role !== DIRECTOR_ROLE && s.quietKillStreak <= QUIET_KILL_RESUME_LIMIT) {
       s.resumePending = true;
@@ -218,7 +218,7 @@ export function applyTickOutcome(
     // A failed tick, not an idle verdict: it often never reached the model, so it retries on
     // the short error ladder (capped in minutes) instead of the idle ladder, whose cap prices
     // hour-long model runs. backoffSeconds is shared: each ladder advances from the current
-    // value, so an error streak capped at the error ceiling never sleeps LESS than the loop
+    // value, so an error streak capped at the error ceiling never sleeps LESS than the role
     // already was sleeping, and the idle ladder picks up from there if the failures stop.
     // A subscription claude usage-window rejection is a transient hold, not a failure of the
     // session: the team hold keeps ticks from starting until `resetsAt` (plans/agent-backends.md
@@ -235,7 +235,7 @@ export function applyTickOutcome(
     // session pi just compacted, so resume it promptly instead of idle-backing-off.
     // Each resume restarts from the compacted (small) context, so repeated cut-offs on
     // one task still converge — but a task that outruns the ceiling every single time
-    // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the loop gives up on it
+    // would cycle forever, so after CUT_OFF_RESUME_LIMIT resumes the role gives up on it
     // and falls back to a fresh tick with normal backoff (its prompt carrying the streak).
     s.resumePending = true;
     scheduleAtMinInterval(s, cfg);
@@ -267,7 +267,7 @@ export function applyTickOutcome(
   }
 }
 
-/** Record a completed MERGE on the authoring loop's state (plans/merge-queue.md 3/5):
+/** Record a completed MERGE on the authoring role's state (plans/merge-queue.md 3/5):
  * the orchestrator calls this on the state object the merge ran against — the runner's live
  * copy when one exists, a disk load otherwise — then saves it, the same in-place discipline
  * applyTickOutcome has (the caller's state object is authoritative; a role with a queued or
@@ -288,7 +288,7 @@ export function applyTickOutcome(
  * its tick's outcome was applied. Either way the stash is consumed. The failure detail rides
  * in `lastReview` and the merge_done/merge_failed events. */
 export function applyMergeOutcome(
-  s: LoopState,
+  s: RunnerState,
   result: TickResult,
   change: Pick<MergeEntry, "sha" | "summary">,
 ): void {
@@ -298,7 +298,7 @@ export function applyMergeOutcome(
   if (result === "changed") {
     s.commits += 1;
     // The last-merged timestamp: set only on a successful merge, so the rendered age means
-    // "time since the loop last actually merged to main" — a rejected/merge_conflict/aborted
+    // "time since the role last actually merged to main" — a rejected/merge_conflict/aborted
     // merge, like a no_change tick, leaves the prior value standing (PLANS.md "Each loop's
     // last-landed age").
     s.lastMergedAt = Date.now();

@@ -27,7 +27,7 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
  * state (one harness-level `main_red_hold` event AND one queued healer prompt per
  * newly-discovered red SHA) and its own
- * event contract; what it borrows from the loop is identity and the role's worktree, and it
+ * event contract; what it borrows from the role is identity and the role's worktree, and it
  * consumes
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
  * which stays unaware of ticks. */
@@ -68,7 +68,7 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
  * the healer ticks on the orchestrator's next poll instead of waiting out its own interval or
  * deferral; bugfix finding its own red skips the enqueue because its running tick already
  * carries the note and IS the heal (and enqueuing from inside it would queue a second run). A
- * queued per-role prompt makes the loop due by itself (`isEligible`, scheduling.ts, returns
+ * queued per-role prompt makes the role due by itself (`isEligible`, scheduling.ts, returns
  * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
  * deferral check), and `pollRunnerReasons` skips the need-based deferral block for reason
  * `inbox`, so no scheduler change is needed. */
@@ -181,7 +181,7 @@ export async function mainRedGate(
    * main instead of ending `main_red`, and the caller puts them in its prompt. */
   onKnownRed?: (failingTests: string[]) => void,
 ): Promise<TickOutcome | null> {
-  // User-defined loops are blocked alongside the built-in code roles (plans/user-defined-loops.md):
+  // User-defined roles are blocked alongside the built-in code roles (plans/user-defined-loops.md):
   // an unknown charter may produce code, and on red main such diffs are rejected deterministically
   // at the gate's pre-check — an authoring run would be pure waste. Customs come from
   // tumwater.json, not the catalog, so read the live config (stat-cached; a broken file

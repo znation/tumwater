@@ -14,14 +14,14 @@ import {
   YIELD_RING,
   yieldMultiplier,
 } from "../src/scheduling/backoff.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget/budget.js";
 
-/** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
- * src/scheduling/backoff.ts for the clock): what a finished tick or merge does to the loop's
+/** The per-role scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
+ * src/scheduling/backoff.ts for the clock): what a finished tick or merge does to the role's
  * state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of
@@ -29,7 +29,7 @@ import { todayStamp } from "../src/budget/budget.js";
  * zeroCounters) stayed there. */
 
 test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving everything else", () => {
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   s.runs = 12;
   s.commits = 5;
   s.generatedTokens = 987654;
@@ -69,12 +69,12 @@ test("restoreMidTickWake re-applies a wake that was consumed while the tick was 
   // nextRunAt a fresh interval out, so the demand silently waits out qa's two-hour clock.
   // restoreMidTickWake, called by the tick's end-save after applyTickOutcome, re-applies the
   // demand exactly like a wake arriving one poll after the tick ended.
-  const s = freshLoopState("qa");
+  const s = freshRunnerState("qa");
   const start = Date.now() - 2000; // the tick began two seconds ago and is still running
   s.lastRunStartedAt = start;
   s.running = true;
   s.nextRunAt = start + 2 * 3600 * 1000;
-  // One second into the tick, the operator wakes the loop — what consumeWakeRequest's
+  // One second into the tick, the operator wakes the role — what consumeWakeRequest's
   // r.wake() does to the in-memory state the in-flight tick holds.
   Object.assign(s, clearBackoff(s, start + 1000));
   assert.equal(s.wokenAt, start + 1000);
@@ -92,7 +92,7 @@ test("restoreMidTickWake re-applies a wake that was consumed while the tick was 
 test("restoreMidTickWake leaves a wake older than the tick's start alone", () => {
   // Self-clearing must hold: a wake honored by the tick that just ran (stamped before its
   // start, e.g. an old wokenAt carried in state) must not re-arm itself at every end-save.
-  const s = freshLoopState("qa");
+  const s = freshRunnerState("qa");
   const now = Date.now();
   s.lastRunStartedAt = now - 60_000;
   s.wokenAt = now - 120_000;
@@ -105,9 +105,9 @@ test("restoreMidTickWake leaves a wake older than the tick's start alone", () =>
 
 test("restoreMidTickWake does not pull a cut-off resume past its deliberate wait", () => {
   // A cut-off outcome deliberately waits one interval before resuming the compacted session;
-  // a mid-tick wake must not shortcut that wait (the resume is the loop acting on a demand
+  // a mid-tick wake must not shortcut that wait (the resume is the role acting on a demand
   // already — isEligible's resume gate is documented as intentional).
-  const s = freshLoopState("qa");
+  const s = freshRunnerState("qa");
   const start = Date.now();
   s.lastRunStartedAt = start;
   s.running = true;
@@ -155,7 +155,7 @@ test("yieldMultiplier: one merge in the last ten counted ticks resets it to 1", 
 });
 
 test("applyTickOutcome maintains the yield ring: merges and empties recorded, the error class skipped", () => {
-  const s = freshLoopState("perf");
+  const s = freshRunnerState("perf");
   // Read through a fresh call each time: the assertions below must see the ring as
   // applyTickOutcome left it, not a narrowed snapshot of an earlier value.
   const ringOf = (): string => s.recentOutcomes ?? "";
@@ -179,7 +179,7 @@ test("applyTickOutcome maintains the yield ring: merges and empties recorded, th
   assert.equal(yieldMultiplier(ringOf().split("")), 8);
 });
 
-// --- Post-tick outcome recording + next-run scheduling (extracted from LoopRunner.tick) ---
+// --- Post-tick outcome recording + next-run scheduling (extracted from RoleRunner.tick) ---
 
 /** A queued tick's pinned commit — the key its stashed summary is filed under. */
 const PINNED = "a".repeat(40);
@@ -192,7 +192,7 @@ function testConfig(): TumwaterConfig {
 }
 
 test("applyTickOutcome records the outcome and schedules a changed tick at the role's minimum interval", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.running = true;
   s.phase = "review"; // set around the gate's run — must not linger after the tick
   s.commits = 4;
@@ -217,7 +217,7 @@ test("applyTickOutcome records the outcome and schedules a changed tick at the r
 
 test("applyTickOutcome: rejected and skipped ticks wait the minimum interval without counting a commit", () => {
   for (const result of ["rejected", "skipped"] as const) {
-    const s = freshLoopState(result === "rejected" ? "feature" : "director");
+    const s = freshRunnerState(result === "rejected" ? "feature" : "director");
     s.commits = 2;
     applyTickOutcome(s, testConfig(), s.role, { result });
     assert.equal(s.lastResult, result);
@@ -234,7 +234,7 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
   // Merge queue 3/5: the tick committed and enqueued — productive work, so the minimum-interval
   // schedule applies — but `commits` keeps meaning "merged to main": applyMergeOutcome
   // increments it when the merge slot actually merges.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.commits = 4;
   s.phase = "review"; // any marker from around the pin — must not linger after the tick
   s.lastResult = "refused";
@@ -259,7 +259,7 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
 test("applyMergeOutcome folds the merge's result into the authoring state", () => {
   const change = { sha: PINNED, summary: "did it" };
   // A merged change counts the commit the tick queued and clears the gate's phase marker.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.phase = "review";
   s.approvedPatchIds = ["p1"];
   applyMergeOutcome(s, "changed", change);
@@ -270,13 +270,13 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
   // The merged patch's approval is spent: the same patch authored again is a new change.
   assert.equal(s.approvedPatchIds, undefined);
 
-  // A fresh loop starts with no last-merged stamp: the age reads "never" until it merges.
-  assert.equal(freshLoopState("feature").lastMergedAt, undefined);
+  // A fresh role starts with no last-merged stamp: the age reads "never" until it merges.
+  assert.equal(freshRunnerState("feature").lastMergedAt, undefined);
 
   // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
   // retry rides next-tick leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
-    const n = freshLoopState("feature");
+    const n = freshRunnerState("feature");
     n.approvedPatchIds = ["p1"];
     n.lastMergedAt = 12345; // a prior merge's stamp
     applyMergeOutcome(n, result, change);
@@ -291,7 +291,7 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
 
   // An aborted merge keeps the marker: a shutdown mid-review must re-review the pinned work
   // fresh on the next launch, and the dashboard shows the merge as interrupted, not done.
-  const a = freshLoopState("feature");
+  const a = freshRunnerState("feature");
   a.phase = "review";
   applyMergeOutcome(a, "aborted", change);
   assert.equal(a.lastResult, "aborted");
@@ -308,21 +308,21 @@ test("applyMergeOutcome folds the merge's result into the authoring state", () =
 test("a merged change clears a stale review rejection unless a revision is still owed", () => {
   const change = { sha: PINNED, summary: "did it" };
 
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
   applyMergeOutcome(s, "changed", change);
   assert.equal(s.lastReview, undefined, "the merged change supersedes the rejection");
 
   // A per-role user-request tick can merge an unrelated change while the rejected change still
   // owes a revision (merge-core.ts sets `state.revision` for it): the objections must survive.
-  const pending = freshLoopState("feature");
+  const pending = freshRunnerState("feature");
   pending.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
   pending.revision = { sha: PINNED, round: 1, at: 2 };
   applyMergeOutcome(pending, "changed", change);
   assert.equal(pending.lastReview?.verdict, "reject", "a pending revision keeps the rejection");
 
   // A non-merge outcome must keep it: the objection still stands until a change merges.
-  const n = freshLoopState("feature");
+  const n = freshRunnerState("feature");
   n.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
   applyMergeOutcome(n, "merge_conflict", change);
   assert.equal(n.lastReview?.verdict, "reject", "an unmerged change leaves the rejection standing");
@@ -337,7 +337,7 @@ test("a rejection past the warn bar backs the re-author off on the error ladder"
   // first retries keep the queued tick's minimum-interval schedule untouched.
   const cfg = testConfig();
   const change = { sha: PINNED, summary: "did it" };
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   const rungs: number[] = [];
   for (let i = 1; i <= 10; i++) {
     applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
@@ -378,7 +378,7 @@ test("a revision-round rejection leaves the error streak unchanged; only a final
 
   // Round 1 and 2 of one change: recordRejectedChange leaves `revision` set, so neither the
   // streak nor the re-author's fast schedule moves.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   for (const round of [1, 2]) {
     applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
     s.revision = { sha: PINNED, round, at: Date.now() };
@@ -408,27 +408,27 @@ test("a hand-back record is cleared when the tick abandons its edits", () => {
   const cfg = testConfig();
   const hb = { sha: PINNED, at: 1, reason: "merge" as const, applied: true };
 
-  const abandoned = freshLoopState("feature");
+  const abandoned = freshRunnerState("feature");
   abandoned.conflictHandback = { ...hb };
   applyTickOutcome(abandoned, cfg, "feature", { result: "no_change" });
   assert.equal(abandoned.conflictHandback, undefined, "no_change abandons the marker edits");
 
-  const aborted = freshLoopState("feature");
+  const aborted = freshRunnerState("feature");
   aborted.conflictHandback = { ...hb };
   applyTickOutcome(aborted, cfg, "feature", { result: "user_aborted" });
   assert.equal(aborted.conflictHandback, undefined, "a deliberate abort abandons them too");
 
-  const queued = freshLoopState("feature");
+  const queued = freshRunnerState("feature");
   queued.conflictHandback = { ...hb };
   applyTickOutcome(queued, cfg, "feature", { result: "queued", commit: PINNED });
   assert.notEqual(queued.conflictHandback, undefined, "a queued resolution keeps the bound");
 
-  const resumed = freshLoopState("feature");
+  const resumed = freshRunnerState("feature");
   resumed.conflictHandback = { ...hb };
   applyTickOutcome(resumed, cfg, "feature", { result: "aborted" });
   assert.notEqual(resumed.conflictHandback, undefined, "a resumable session still holds the edits");
 
-  const revision = freshLoopState("feature");
+  const revision = freshRunnerState("feature");
   revision.conflictHandback = { ...hb };
   revision.revision = { sha: PINNED, round: 1, at: 2 };
   applyTickOutcome(revision, cfg, "feature", { result: "no_change" });
@@ -439,7 +439,7 @@ test("a hand-back record is cleared when the tick abandons its edits", () => {
 // re-queue instead of the next authored commit dropping it): the streak leftover recovery caps
 // counts consecutive merge_conflict merges of ONE sha.
 test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
   applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
@@ -455,7 +455,7 @@ test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () =
   assert.deepEqual(s.mergeConflicts, { sha: "bbb", count: 1 });
   // Merge or rejection ends the pin's life, and the streak with it.
   for (const result of ["changed", "rejected"] as const) {
-    const n = freshLoopState("feature");
+    const n = freshRunnerState("feature");
     n.mergeConflicts = { sha: "aaa", count: 2 };
     n.mergeCheckFailures = { patchId: "p1", count: 1 };
     applyMergeOutcome(n, result, { sha: "aaa", summary: "x" });
@@ -466,13 +466,13 @@ test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () =
 
 test("the conflict-discard note is cleared once the role queues or merges its next change", () => {
   for (const result of ["queued", "changed"] as const) {
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     s.conflictDiscard = { sha: "aaa", summary: "old work", attempts: 3, at: 1 };
     applyTickOutcome(s, testConfig(), "feature", { result, summary: "new work", commit: "ccc" });
     assert.equal(s.conflictDiscard, undefined, `${result} delivers the note`);
   }
   // A tick that produced nothing keeps it for the next prompt.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.conflictDiscard = { sha: "aaa", summary: "old work", attempts: 3, at: 1 };
   applyTickOutcome(s, testConfig(), "feature", { result: "error", summary: "pi died" });
   assert.deepEqual(s.conflictDiscard, { sha: "aaa", summary: "old work", attempts: 3, at: 1 });
@@ -482,7 +482,7 @@ test("a resolved merge pairs its result with the summary of the change it merged
   // BUGS.md 2026-09-23, the second window: the queued tick held its summary back, so the
   // merge's result must arrive with THAT summary — never beside the prior tick's.
   for (const result of ["changed", "rejected", "merge_conflict", "aborted"] as const) {
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     applyTickOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
     applyTickOutcome(s, testConfig(), "feature", {
       result: "queued",
@@ -502,12 +502,12 @@ test("a resolved merge pairs its result with the summary of the change it merged
   // No stash for this sha — a crash between enqueue and the tick's state save, or a merge
   // that resolved before its tick's outcome was applied: the entry's own summary names the
   // change, so the prior tick's summary still never pairs with the merge's result.
-  const lost = freshLoopState("feature");
+  const lost = freshRunnerState("feature");
   lost.lastResult = "no_change";
   lost.lastSummary = "found nothing";
   applyMergeOutcome(lost, "changed", { sha: PINNED, summary: "did it" });
   assert.equal(lost.lastSummary, "did it");
-  const other = freshLoopState("feature");
+  const other = freshRunnerState("feature");
   other.queuedSummary = { sha: "c".repeat(40), summary: "some other change" };
   applyMergeOutcome(other, "changed", { sha: PINNED, summary: "did it" });
   assert.equal(other.lastSummary, "did it", "a stash naming another sha is not this change's");
@@ -517,7 +517,7 @@ test("a resolved merge pairs its result with the summary of the change it merged
 test("any completed tick clears a stale queued-summary stash", () => {
   // A role with a queued merge never ticks, so a stash that survives to a later tick names a
   // change that is no longer waiting: the completed tick records its own pair and drops it.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.queuedSummary = { sha: PINNED, summary: "did it" };
   applyTickOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
   assert.equal(s.lastResult, "no_change");
@@ -526,7 +526,7 @@ test("any completed tick clears a stale queued-summary stash", () => {
 });
 
 test("applyTickOutcome: an aborted tick resumes promptly — role via resumePending, director via re-queue", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.phase = "review"; // interruption hit mid-review: the next launch must recover + re-review
   const before = Date.now();
   applyTickOutcome(s, testConfig(), "feature", { result: "aborted" });
@@ -535,7 +535,7 @@ test("applyTickOutcome: an aborted tick resumes promptly — role via resumePend
   assert.equal(s.phase, "review", "kept so recovery re-reviews instead of resuming the author session");
   assert.ok(s.nextRunAt >= before && s.nextRunAt <= after, "due immediately on restart");
 
-  const d = freshLoopState("director");
+  const d = freshRunnerState("director");
   applyTickOutcome(d, testConfig(), "director", { result: "aborted" });
   assert.equal(d.resumePending, undefined, "the director reruns its re-queued prompt fresh");
 });
@@ -543,7 +543,7 @@ test("applyTickOutcome: an aborted tick resumes promptly — role via resumePend
 test("applyTickOutcome: a user-aborted tick backs off like an unproductive one and sets no resume", () => {
   // A deliberate stop is not an interruption: the worktree was already reset to main, so there
   // is nothing to recover or re-review — idle backoff applies instead of prompt resume.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.phase = "review"; // set around the gate's run — must not linger after a user-abort either
   applyTickOutcome(s, testConfig(), "feature", { result: "user_aborted" });
   assert.equal(s.lastResult, "user_aborted");
@@ -556,7 +556,7 @@ test("applyTickOutcome: a user-aborted tick backs off like an unproductive one a
   );
 
   // A second user-abort grows the backoff like any other unproductive tick.
-  const s2 = freshLoopState("feature");
+  const s2 = freshRunnerState("feature");
   s2.backoffSeconds = 30;
   applyTickOutcome(s2, testConfig(), "feature", { result: "user_aborted" });
   assert.equal(s2.backoffSeconds, 60); // 30 × factor 2
@@ -566,7 +566,7 @@ test("applyTickOutcome: cut-off ticks resume the compacted session until the str
   const cfg = testConfig();
   // Under the limit (3): each consecutive cut-off resumes promptly and grows the streak.
   for (let streak = 0; streak < 3; streak++) {
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     s.cutOffStreak = streak;
     applyTickOutcome(s, cfg, "feature", { result: "no_change", cutOff: true });
     assert.equal(s.resumePending, true, `cut-off ${streak + 1} resumes`);
@@ -577,7 +577,7 @@ test("applyTickOutcome: cut-off ticks resume the compacted session until the str
   // Past the limit: give up on the task — normal backoff, no resume. The streak keeps counting
   // (only a non-cut-off tick clears it): the next fresh tick's prompt names how many attempts
   // the window has eaten (buildCutOffNote), and the next cut-off also backs off.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.cutOffStreak = 3;
   applyTickOutcome(s, cfg, "feature", { result: "no_change", cutOff: true });
   assert.equal(s.resumePending, undefined);
@@ -589,7 +589,7 @@ test("applyTickOutcome: quiet kills resume the starved session until the streak 
   const cfg = testConfig();
   // Under the limit (3): each consecutive kill resumes promptly and grows the streak.
   for (let streak = 0; streak < 3; streak++) {
-    const s = freshLoopState("feature");
+    const s = freshRunnerState("feature");
     s.quietKillStreak = streak;
     applyTickOutcome(s, cfg, "feature", { result: "quiet_killed" });
     assert.equal(s.resumePending, true, `quiet kill ${streak + 1} resumes`);
@@ -600,7 +600,7 @@ test("applyTickOutcome: quiet kills resume the starved session until the streak 
   }
   // Past the limit: abandon the starved session and take a fresh tick on the idle ladder
   // (BUGS.md 2026-09-18). Before the fix the branch resumed forever with no backoff.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.quietKillStreak = 3;
   applyTickOutcome(s, cfg, "feature", { result: "quiet_killed" });
   assert.equal(s.resumePending, false, "no resume — the next tick starts fresh");
@@ -613,10 +613,10 @@ test("applyTickOutcome: a quiet-killed director never resumes and never backs of
   const cfg = testConfig();
   // The director skips both role arms of the quiet-kill branch: its prompt was re-queued
   // fresh (there is no session to resume), and — unlike a role past the limit — the abandoned
-  // session must not put the director on the idle ladder either: the team's steering loop
+  // session must not put the director on the idle ladder either: the team's steering role
   // re-runs promptly at every streak, while the streak itself keeps counting for the warning.
   for (const streak of [0, QUIET_KILL_RESUME_LIMIT]) {
-    const s = freshLoopState(DIRECTOR_ROLE);
+    const s = freshRunnerState(DIRECTOR_ROLE);
     s.quietKillStreak = streak;
     applyTickOutcome(s, cfg, DIRECTOR_ROLE, { result: "quiet_killed" });
     assert.equal(s.resumePending, undefined, `streak ${streak}: no resume is armed`);
@@ -629,7 +629,7 @@ test("applyTickOutcome: a quiet-killed director never resumes and never backs of
 
 test("applyTickOutcome: any non-quiet-kill outcome resets the quiet-kill streak", () => {
   const cfg = testConfig();
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.quietKillStreak = 2;
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.quietKillStreak, 0);
@@ -643,15 +643,15 @@ test("applyTickOutcome: any non-quiet-kill outcome resets the quiet-kill streak"
 test("applyTickOutcome: a no_change tick grows the no-change streak; any other result resets it", () => {
   const cfg = testConfig();
   // A no_change tick increments the streak, from absent or from a prior count.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.noChangeStreak, 1);
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.noChangeStreak, 2, "consecutive no_change ticks grow the streak");
-  // Every completed result other than no_change resets it, so a loop that merges between
+  // Every completed result other than no_change resets it, so a role that merges between
   // no-ops never shows a stale streak.
   for (const result of ["changed", "queued", "error", "aborted", "quiet_killed", "user_aborted", "skipped", "refused", "main_red"] as const) {
-    const r = freshLoopState("feature");
+    const r = freshRunnerState("feature");
     r.noChangeStreak = 3;
     applyTickOutcome(r, cfg, "feature", { result });
     assert.equal(r.noChangeStreak, 0, `${result} resets the no-change streak`);
@@ -660,7 +660,7 @@ test("applyTickOutcome: a no_change tick grows the no-change streak; any other r
 
 test("applyTickOutcome: other unproductive outcomes grow the idle backoff and clear the cut-off streak", () => {
   const cfg = testConfig();
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.backoffSeconds = 30;
   s.cutOffStreak = 2; // a prior cut-off — this tick finished normally, so it resets
   applyTickOutcome(s, cfg, "feature", { result: "merge_conflict" });
@@ -676,7 +676,7 @@ test("applyTickOutcome: other unproductive outcomes grow the idle backoff and cl
   // ONE tick, so a no_change tick never renders beside another tick's work description
   // (BUGS.md 2026-09-30: both dashboards read "No change — <prior tick's summary>" beside
   // work that had already merged; the retention the old code kept is gone).
-  const s2 = freshLoopState("feature");
+  const s2 = freshRunnerState("feature");
   s2.lastResult = "changed";
   s2.lastSummary = "previous";
   applyTickOutcome(s2, cfg, "feature", { result: "no_change" });
@@ -689,7 +689,7 @@ test("applyTickOutcome: an observer's no_change schedules at its interval withou
   // punished with a doubling sleep. The interval is the only cadence knob left for it.
   const cfg = testConfig(); // minRunIntervalSeconds: 20
   for (const role of OBSERVER_ROLES) {
-    const s = freshLoopState(role);
+    const s = freshRunnerState(role);
     s.backoffSeconds = 300; // a grown backoff from an earlier episode — must reset, not build on it
     const before = Date.now();
     applyTickOutcome(s, cfg, role, { result: "no_change" });
@@ -700,7 +700,7 @@ test("applyTickOutcome: an observer's no_change schedules at its interval withou
     );
   }
   // A non-observer's no_change still climbs the idle ladder, byte-identical to before.
-  const s = freshLoopState("organize");
+  const s = freshRunnerState("organize");
   s.backoffSeconds = 30;
   applyTickOutcome(s, cfg, "organize", { result: "no_change" });
   assert.equal(s.backoffSeconds, 60);
@@ -711,12 +711,12 @@ test("applyTickOutcome: an observer still climbs the error ladder and idles on a
   // deliberate operator stop keep the ordinary backoff (invariant 1 of plans/observer-roles.md).
   const cfg = testConfig();
   for (const role of OBSERVER_ROLES) {
-    const err = freshLoopState(role);
+    const err = freshRunnerState(role);
     applyTickOutcome(err, cfg, role, { result: "error", summary: "git is broken" });
     assert.equal(err.backoffSeconds, 30, `${role}: a broken toolchain still parks it`);
     assert.ok(err.nextRunAt <= Date.now() + 31_000, `${role}: retries on the short error ladder`);
 
-    const aborted = freshLoopState(role);
+    const aborted = freshRunnerState(role);
     applyTickOutcome(aborted, cfg, role, { result: "user_aborted" });
     assert.equal(aborted.backoffSeconds, 30, `${role}: a deliberate stop still backs off`);
   }
@@ -727,7 +727,7 @@ test("applyTickOutcome: an observer still climbs the error ladder and idles on a
 
 test("applyTickOutcome: consecutive error ticks climb a short ladder capped in minutes", () => {
   const cfg = testConfig();
-  const s = freshLoopState("bugfix");
+  const s = freshRunnerState("bugfix");
   const seen: number[] = [];
   for (let i = 0; i < 10; i++) {
     applyTickOutcome(s, cfg, "bugfix", { result: "error", summary: "git is broken" });
@@ -747,7 +747,7 @@ test("applyTickOutcome: consecutive error ticks climb a short ladder capped in m
 
 test("applyTickOutcome: the error streak counts consecutive failures and resets on any other result", () => {
   const cfg = testConfig();
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   applyTickOutcome(s, cfg, "clean", { result: "no_change" });
   assert.equal(s.consecutiveErrors, 0, "a healthy tick leaves the streak at zero");
   applyTickOutcome(s, cfg, "clean", { result: "error", summary: "git is broken" });
@@ -764,7 +764,7 @@ test("applyTickOutcome: a recovery merge failure feeds the error streak on a hea
   // while the tick's own authoring run succeeds (`no_change`/`queued`). The streak must count
   // that merge failure, or it resets every tick and the alarm never fires.
   const cfg = testConfig();
-  const s = freshLoopState("clean");
+  const s = freshRunnerState("clean");
   applyTickOutcome(s, cfg, "clean", {
     result: "no_change",
     recoveryFailure: "review failed: no parseable VERDICT",
@@ -782,22 +782,22 @@ test("applyTickOutcome: a recovery merge failure feeds the error streak on a hea
 
 test("applyTickOutcome: no_change laddering is unchanged by the error ladder", () => {
   const cfg = testConfig();
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.backoffSeconds, 30, "the first no-change tick takes the idle initial");
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.backoffSeconds, 60, "the second doubles it, as before the fix");
-  // The idle cap is still reachable for the case it was written for: an idle loop can
-  // reach its full 3600 s ceiling, an error loop cannot.
+  // The idle cap is still reachable for the case it was written for: an idle role can
+  // reach its full 3600 s ceiling, an error role cannot.
   for (let i = 0; i < 20; i++) applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.backoffSeconds, 3600);
 });
 
 test("applyTickOutcome: an error after idle backoff caps at the error ceiling, and productive ticks zero it", () => {
   const cfg = testConfig();
-  // A loop deep in idle backoff that then fails its tick retries within the error cap,
+  // A role deep in idle backoff that then fails its tick retries within the error cap,
   // not the idle cap — the ladders share backoffSeconds and each caps the step it takes.
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   s.backoffSeconds = 3600;
   applyTickOutcome(s, cfg, "feature", { result: "error" });
   assert.equal(s.backoffSeconds, 600); // min(3600 × 2, error cap 600)
@@ -808,7 +808,7 @@ test("applyTickOutcome: an error after idle backoff caps at the error ceiling, a
 
   // A productive tick zeroes the backoff regardless of which ladder fed it.
   for (const result of ["changed", "rejected"] as const) {
-    const z = freshLoopState("feature");
+    const z = freshRunnerState("feature");
     z.backoffSeconds = 600;
     applyTickOutcome(z, cfg, "feature", { result });
     assert.equal(z.backoffSeconds, 0, `${result} zeroes the backoff`);

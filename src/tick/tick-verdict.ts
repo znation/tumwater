@@ -6,7 +6,7 @@
  * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of runner.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
@@ -31,14 +31,14 @@ interface TickVerdictContext {
   root: string;
   role: string;
   mainBranch: string;
-  /** The loop's live state object — mutated in place (`lastError`), not swapped. */
-  state: LoopState;
+  /** The role's live state object — mutated in place (`lastError`), not swapped. */
+  state: RunnerState;
   /** The dequeued prompt's requeue policy (src/inbox/pending-prompt.ts): unfulfilled outcomes
    * re-queue the raw director request through it. */
   pending: PendingPrompt;
   /** Assistant turns folded into this tick so far — the same field handleRefusal reads. */
   turns: number;
-  /** The raw director prompt this tick is executing (null for role loops). */
+  /** The raw director prompt this tick is executing (null for role runners). */
   userPrompt: string | null;
   /** The team config, when the caller can provide it, used to resolve an image-reroute
    * target (plans/image-input.md part 4/5). Absent in the unit harness, so those contexts
@@ -60,7 +60,7 @@ interface TickVerdictContext {
   pi: PiRunResult;
   flow: FlowResult | null;
   warn(message: string): void;
-  /** Merge the worktree branch on main with the loop's shared wiring (refusal-note merges). */
+  /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<TickOutcome["result"]>;
   finishAbortedTick(): Promise<TickOutcome>;
 }
@@ -173,7 +173,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   if (pi.imageBlind) {
     // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
     // tick that ALREADY started on the image-capable target and still read blind is not
-    // rerouted a second time — it fails, so a misreadable image cannot bounce the loop
+    // rerouted a second time — it fails, so a misreadable image cannot bounce the role
     // between tiers forever. Set at tick start by tickPhase when it routes a tick onto the
     // target (blind-read handoff or attachment preflight).
     if (s.imageRerouteActive) {
@@ -264,7 +264,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     s.lastError = pi.errorMessage ?? "the agent failed";
     // A dirty worktree on a run that added nothing of its own is a prior tick's work: arm the
     // resume so the next tick continues that session instead of resetting the edits. A role
-    // loop re-queues through requeueForResume, so the resume reclaims exactly this prompt
+    // runner re-queues through requeueForResume, so the resume reclaims exactly this prompt
     // rather than leaving a duplicate for a later fresh tick to run again (BUGS.md 2026-09-25);
     // the director never resumes, so its prompt always re-runs fresh. A clean worktree has
     // nothing to carry forward, so the plain re-queue still applies.
@@ -311,7 +311,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       );
     }
     // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
-    // to the inbox to rerun fresh; a role loop resumes the just-compacted session
+    // to the inbox to rerun fresh; a role runner resumes the just-compacted session
     // next tick (see the cutOff handling in tick()).
     if (diagnosis.cutOff) ctx.pending.requeueForResume(s, ctx.userPrompt);
     // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
@@ -328,7 +328,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
     // and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as
     // the tick's summary so `lastSummary` and the run_end event show the answer where the
-    // operator asked the question. A role loop's bare nothing-to-do stays summary-less.
+    // operator asked the question. A role runner's bare nothing-to-do stays summary-less.
     const summary =
       ctx.userPrompt !== null && !diagnosis.cutOff
         ? (extractNoChangeAnswer(pi.finalText) ?? undefined)

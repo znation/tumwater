@@ -10,7 +10,7 @@ import { errorMessage } from "../text/text.js";
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
  * gitignored, so a tumwater worktree has none of its own: its toolchain and every import resolve by
  * walking UP to the root checkout's install (detectBuildCheck, resolveFromNodeModules). That
- * install predates any dependency a change adds, and no loop ever ran `npm install` — so a
+ * install predates any dependency a change adds, and no role ever ran `npm install` — so a
  * legitimate dependency-adding change failed its gate check with TS2307 every time, and had it
  * merged, every tree after it would have resolved against a root install missing the package. Two
  * callers close both halves: runBuildCheck installs into the checked tree when its lockfile's

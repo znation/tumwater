@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
 import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
@@ -10,7 +10,7 @@ import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prom
 /** What a tick starts with, decided before any worktree or pi work: whether it resumes the
  * interrupted session (and why), the prompt it runs, and the raw user request it executes.
  * planTickStart owns the whole decision — runTick (src/runner/runner.ts) consumes the
- * plan verbatim: a null plan means the loop has nothing to run (the tick is skipped), a
+ * plan verbatim: a null plan means the role has nothing to run (the tick is skipped), a
  * resumed tick gets the cause-named bridge prompt, a fresh tick the assembled one. */
 export interface TickStartPlan {
   /** The last merge's failure (the merger's own vocabulary — review_error, merge_conflict,
@@ -38,7 +38,7 @@ export interface TickStartPlan {
    * before the run). Null only for a promptless recovery run (`recoveryOnly`): the tick
    * re-enqueues a kept merge pin and authors nothing. */
   prompt: string | null;
-  /** The raw user prompt this tick is executing (null for role loops), so an unfulfilled
+  /** The raw user prompt this tick is executing (null for role runners), so an unfulfilled
    * outcome can re-queue it. */
   userPrompt: string | null;
 }
@@ -46,16 +46,16 @@ export interface TickStartPlan {
 /** Decide how a tick starts, consuming the resume flags as a side effect (the flag is
  * consumed here so a resume that fails falls back to a normal fresh tick; another shutdown
  * mid-resume sets it again) and reclaiming the interrupted tick's re-queued prompt. Returns
- * null — meaning the tick is skipped — when the loop has nothing to run (an empty director
- * inbox); a role loop's assembly never returns null. */
+ * null — meaning the tick is skipped — when the role has nothing to run (an empty director
+ * inbox); a role runner's assembly never returns null. */
 export function planTickStart(opts: {
   root: string;
   role: string;
-  state: LoopState;
-  /** The loop's prompt queue: the interrupted tick's re-queued request is reclaimed into it,
+  state: RunnerState;
+  /** The role's prompt queue: the interrupted tick's re-queued request is reclaimed into it,
    * and a fresh tick's assembled prompt is recorded onto it (via tickPrompt). */
   pending: PendingPrompt;
-  /** Assemble a fresh tick's prompt (null when the loop has nothing to run); the runner's
+  /** Assemble a fresh tick's prompt (null when the role has nothing to run); the runner's
    * tickPrompt() so the dequeued user request is recorded as pending exactly as before. The
    * effective `agent` below is passed through so the prompt speaks the dialect of the backend
    * the tick actually runs on, not the role's primary. */
@@ -68,7 +68,7 @@ export function planTickStart(opts: {
    * claude tick's resume guard looks under the same dir its run writes transcripts to.
    * Absent for a pi team or one that sets no config dir. */
   claudeConfigDir?: string;
-  /** The loop has no prompt but holds a kept merge pin: instead of the null plan (skip), return
+  /** The role has no prompt but holds a kept merge pin: instead of the null plan (skip), return
    * a promptless plan so the tick's leftover recovery runs. Ignored when a prompt exists. */
   recoveryOnly?: boolean;
 }): TickStartPlan | null {
@@ -99,7 +99,7 @@ export function planTickStart(opts: {
   const resumePending = s.resumePending === true;
   // The previous run's own verdict that its `--resume` target is gone is authoritative over the
   // transcript check: a lingering transcript (a torn/empty file, or the fake's planted one) must
-  // not re-arm a resume the backend just rejected, or the loop re-resumes and re-fails forever.
+  // not re-arm a resume the backend just rejected, or the role re-resumes and re-fails forever.
   const resumeMissing = s.resumeMissing === true;
   const latest = resumePending ? latestSession(dir) : null;
   // Our backend decides whether the newest session of this kind is actually resumable: pi
@@ -191,7 +191,7 @@ export function planTickStart(opts: {
     if (!opts.recoveryOnly) return null;
     return { priorMergeFailure, resuming: false, handoff: false, resumeCause, prompt: null, userPrompt: null };
   }
-  // The raw user prompt a director tick is executing (null for role loops), so an
+  // The raw user prompt a director tick is executing (null for role runners), so an
   // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
   const userPrompt = opts.pending.get();
   return { priorMergeFailure, resuming, handoff: handingOff, resumeCause, prompt, userPrompt };

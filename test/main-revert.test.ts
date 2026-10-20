@@ -11,8 +11,8 @@ import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
 import { headSha, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
-import type { LoopRunner } from "../src/runner/runner.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
 import { revertedPendingPath, rejectedRefName } from "../src/paths.js";
 import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
@@ -101,11 +101,11 @@ test("drainMerge starts a pending revert before any merge pick and frees the slo
   assert.equal(eventsOfType(root, "main_revert").length, 1);
 });
 
-function fakeRunner(role: string, state: Partial<LoopState> = {}): LoopRunner {
-  return { role, baseRole: baseRoleOf(role), state: { ...freshLoopState(role), ...state } } as unknown as LoopRunner;
+function fakeRunner(role: string, state: Partial<RunnerState> = {}): RoleRunner {
+  return { role, baseRole: baseRoleOf(role), state: { ...freshRunnerState(role), ...state } } as unknown as RoleRunner;
 }
 
-async function revertWith(runners: LoopRunner[], role = "improve") {
+async function revertWith(runners: RoleRunner[], role = "improve") {
   const { root, b, found } = await redMain(role);
   const p = newMergePipeline();
   p.revert = found[0]!;
@@ -144,7 +144,7 @@ test("with no free runner the revision waits in reverted.json and is assigned on
   assert.equal(busy.state.revision, undefined);
   busy.state.running = false;
   await assignPendingReverts(ctx);
-  assert.equal((busy.state as LoopState).revision?.sha, b);
+  assert.equal((busy.state as RunnerState).revision?.sha, b);
   assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
 });
 
@@ -161,7 +161,7 @@ test("the reverted commit re-applies onto the post-revert main as uncommitted ed
 });
 
 test("a standing reverted verdict is cleared like a rejection once the revision is resolved", () => {
-  const s = freshLoopState("improve");
+  const s = freshRunnerState("improve");
   s.lastReview = { verdict: "reverted", reasons: ["x"], head: "abc", at: 1 };
   clearSupersededRejection(s);
   assert.equal(s.lastReview, undefined);

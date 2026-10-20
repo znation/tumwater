@@ -2,12 +2,12 @@ import type { BackendFailureKind } from "../pi/pi.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
 import type { ClaudeBilling } from "../agent/claude/claude-account.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { recordDailyCost } from "../budget/budget.js";
 import { nonNegativeNumber } from "../files/json-object.js";
 
-/** Usage accounting for one role loop, split out of runner.ts — which keeps the tick lifecycle —
- * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
+/** Usage accounting for one role runner, split out of runner.ts — which keeps the tick lifecycle
+ * — because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
  * commit trailer reads turns, the run_end event reads costUsd, and the orchestrator's team-wide
  * hold reads lastRateLimit and lastBackendFailure (src/team/team-hold.ts,
  * src/team/team-polls.ts).
@@ -17,7 +17,7 @@ import { nonNegativeNumber } from "../files/json-object.js";
  * adding a usage field to PiRunResult touches this single place. */
 /** One persisted counter, healed to a finite non-negative number before it is read and
  * rewritten: `generatedTokens`/`peakContextTokens` are per-tick windows and `totalCostUsd` a
- * lifetime total. `loadLoopState` already heals every top-level numeric state field on read,
+ * lifetime total. `loadRunnerState` already heals every top-level numeric state field on read,
  * but fold keeps its own invariant at this write choke point so a hand-edited or torn field (a
  * string that would make `+=` concatenate, NaN/±Infinity that would propagate through Math.max
  * and every display of the figure, or a negative that would run a total backwards) can never
@@ -27,17 +27,17 @@ function counter(value: unknown): number {
   return nonNegativeNumber(value, 0);
 }
 
-/** One role loop's per-tick usage accounting: the counters fold() grows from each pi run, plus
+/** One role runner's per-tick usage accounting: the counters fold() grows from each pi run, plus
  * the billing and rate-window readings the orchestrator persists at tick end. */
 export class TickUsage {
   /** Assistant turns folded into THIS tick so far (non-persisted): reset at tick start,
    * grown in fold. Read at commit time for the trailer, where it holds exactly the
    * pre-commit runs' total (main + transient retry) — conflict-resolution and review runs
-   * fold after the commit and never inflate it. Deliberately not on LoopState: its only
+   * fold after the commit and never inflate it. Deliberately not on RunnerState: its only
    * consumer is the trailer stamped into the commit message itself, which is durable. */
   turns = 0;
   /** USD cost folded into THIS tick so far (non-persisted): reset at tick start alongside
-   * turns, grown in fold. Deliberately not on LoopState — unlike generatedTokens, no
+   * turns, grown in fold. Deliberately not on RunnerState — unlike generatedTokens, no
    * dashboard reads it mid-run; its only consumer is the run_end event, which fires before
    * the next tick resets it (plans: per-tick usage in the event feed). */
   costUsd = 0;
@@ -66,7 +66,7 @@ export class TickUsage {
   preEditPromptTokens = 0;
   /** True once an authoring run has reported a first edit; the pre-edit counter freezes. */
   private editSeen = false;
-  /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
+  /** This role's most recent pi run that ended on a provider 429 — author run, retry,
    * reviewer or merge run alike, since every one folds through fold — with the provider's
    * Retry-After hint when it sent one. The orchestrator reads it every poll as this role's
    * rate-limit input to the team-wide hold (src/team/team-hold.ts): the per-run retry has no
@@ -82,7 +82,7 @@ export class TickUsage {
    * behavior. Parallel to costUsd/notionalCostUsd, never subtracted from them. */
   private providerCost = new Map<string, { costUsd: number; notionalCostUsd: number }>();
 
-  /** This loop's most recent pi run that ended on a provider-wide failure that was NOT rate
+  /** This role's most recent pi run that ended on a provider-wide failure that was NOT rate
    * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
    * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
    * the same rule and for the same consumer as lastRateLimit above: the team-wide hold
@@ -107,10 +107,10 @@ export class TickUsage {
   }
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns) and
-   * the loop's lifetime totals on `s`. `authoring` is false for a merge/review run folded
+   * the role's lifetime totals on `s`. `authoring` is false for a merge/review run folded
    * through foldMergeUsage: those never advance the tick's pre-edit counter, which measures
    * the authoring search. */
-  fold(s: LoopState, run: PiRunResult, authoring = true, provider?: string, pair?: string): void {
+  fold(s: RunnerState, run: PiRunResult, authoring = true, provider?: string, pair?: string): void {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
     s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
     s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;

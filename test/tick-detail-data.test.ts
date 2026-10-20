@@ -24,7 +24,7 @@ function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
 }
 
 /** A tick-less in-tick event — the review gate's and build check's output, filed under the
- * loop but carrying no tick of its own. */
+ * role but carrying no tick of its own. */
 function inTickEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, loop: "feature", type: "review_verdict", verdict: "approve", ...over } as HarnessEvent;
 }
@@ -45,7 +45,7 @@ test("a paired tick's block is its start, its in-tick events, and its end — no
     // only past it, so a same-ms build_check is not dropped.
     inTickEvent({ ts: 2000, run: 1 }),
     endEvent({ ts: 2000, run: 1, result: "changed", tokens: 1234, costUsd: 0.5 }),
-    // The next tick, and another loop's tick entirely — both outside tick 1's block.
+    // The next tick, and another role's tick entirely — both outside tick 1's block.
     startEvent({ ts: 3000, run: 2, loop: "helper" }),
     endEvent({ ts: 4000, run: 2, loop: "helper" }),
   ]);
@@ -156,7 +156,7 @@ test("a tick the scan never saw reads as not found, start or end", () => {
   const root = tmpdir();
   writeEvents(root, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 2000, run: 1 })]);
   assert.equal(readTickDetail(root, "feature", 9), null);
-  // Another loop's tick 1 does not answer for feature's.
+  // Another role's tick 1 does not answer for feature's.
   assert.equal(readTickDetail(root, "helper", 1), null);
 });
 

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
@@ -19,7 +19,7 @@ interface FinalizeTickDeps {
   /** The role-resolved config view (src/config/config-views.ts's configForRole result) this tick
    * already computed — applyTickOutcome schedules the next run from its interval overrides. */
   config: TumwaterConfig;
-  state: LoopState;
+  state: RunnerState;
   outcome: TickOutcome;
   /** The tick number run_start announced, captured at tick start — NOT re-read from
    * `state.runs` here: `resetCounters` zeroes `state.runs` in place mid-tick (the
@@ -46,13 +46,13 @@ const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
   "skipped",
 ]);
 
-/** Fold a finished tick's outcome into the loop's state and the event feed — everything that
- * happens AFTER the pi run, extracted from LoopRunner.tick (src/runner/runner.ts) so the runner
+/** Fold a finished tick's outcome into the role's state and the event feed — everything that
+ * happens AFTER the pi run, extracted from RoleRunner.tick (src/runner/runner.ts) so the runner
  * keeps only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
  * outcome's folds are applied to state before applyTickOutcome schedules the next run, the
  * main-head read happens while `running` is still true (a poll that runs in that window must not
- * double-wake the loop), and the warnings read the streaks exactly once per episode, after the
+ * double-wake the role), and the warnings read the streaks exactly once per episode, after the
  * schedule. */
 export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome> {
   const { root, role, mainBranch, config, state: s, usage, tick } = deps;
@@ -71,7 +71,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
 
   // Read main's current head while this tick is still reserved (running=true): the
   // applyTickOutcome below clears running, and a poll that runs between that clear and a later
-  // head update would see a stale lastMainHead and wake the loop again on the very move
+  // head update would see a stale lastMainHead and wake the role again on the very move
   // that triggered this tick — a duplicate wake event plus an extra tick for one world change.
   // branchHead reads the ref files first (microsecond-scale, like the orchestrator's per-poll
   // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
@@ -100,8 +100,8 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
   // arriving one poll after the tick ended.
   restoreMidTickWake(s);
-  saveLoopState(root, s);
-  // One warning per error episode (BUGS.md 2026-09-15: every loop failing identically
+  saveRunnerState(root, s);
+  // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
   // looked like a quiet team). applyTickOutcome increments the streak on error-class
   // outcomes, preserves it across a plain `queued` tick (the tick's merge resolves it),
   // and resets it on any other completed result — so warn only when THIS outcome incremented
@@ -121,8 +121,8 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
       ),
     );
   }
-  // One warning per quiet-kill episode (BUGS.md 2026-09-18): a loop burning an hour per
-  // tick with no output must not look like a sleeping loop. applyTickOutcome grows the
+  // One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per
+  // tick with no output must not look like a sleeping role. applyTickOutcome grows the
   // streak on each kill and resets it on any other result, so the crossing fires once;
   // the give-up (fresh session + backoff) follows on the next kill.
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {

@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { planBacklogTarget } from "../scheduling/claims.js";
@@ -30,13 +30,13 @@ import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
 
-/** One loop's inputs for assembling its tick prompt: read-only views of what LoopRunner
+/** One role's inputs for assembling its tick prompt: read-only views of what RoleRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
 export interface TickPromptInput {
   root: string;
   config: TumwaterConfig;
   role: string;
-  state: LoopState;
+  state: RunnerState;
   /** Preview mode (`tumwater role <id>`'s next-prompt view): the queued prompt is peeked at,
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
@@ -103,9 +103,9 @@ function flakyChecksNote(root: string): string | undefined {
   );
 }
 
-/** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
+/** Assemble the prompt a role's next tick runs on — the whole "what should this tick see"
  * concern, split out of runner.ts so the runner owns only lifecycle and the prompt owns only
- * content. Returns null when the loop has nothing to run this tick (a director with an empty
+ * content. Returns null when the role has nothing to run this tick (a director with an empty
  * inbox); `userPrompt` carries the dequeued user request — the director's, or a per-role one
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
  * re-queue it if the tick leaves it unfulfilled; `userPromptFile` is the queue file it came
@@ -119,7 +119,7 @@ export function assembleTickPrompt(
   // runs blind on prompts either way, so the name in the rules should still point somewhere.
   const brief = briefFile(root) ?? "README.md";
   // The project's design principles ride along in every prompt — tick and director alike — so
-  // all loops share one standard of taste. Empty when the repo has no PRINCIPLES.md.
+  // all roles share one standard of taste. Empty when the repo has no PRINCIPLES.md.
   const principles = readPrinciples(root);
   // The project's resolved check (plans/portability.md §6/7): the prompt names the actual
   // verify command instead of asserting npm. Detection is a handful of stat calls — a
@@ -144,12 +144,12 @@ export function assembleTickPrompt(
     userPromptFile = entry?.file ?? null;
     prompt = buildDirectorPrompt(userPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, config.roles[DIRECTOR_ROLE]?.instructions);
   } else {
-    // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
+    // The role id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
     // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
     // own queue and notes (plans/parallel-work-instances.md).
     const base = baseRoleOf(role);
-    // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
+    // Catalog first, then user-defined roles (plans/user-defined-loops.md): a custom's task
     // is its entire find-something-to-do text and the title identifies it in the prompt.
     const custom = config.customRoles.find((c) => c.name === role);
     const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
@@ -166,7 +166,7 @@ export function assembleTickPrompt(
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts), not
-    // content: it is stripped at delivery, so the loop sees the operator's text alone and the
+    // content: it is stripped at delivery, so the role sees the operator's text alone and the
     // runner's re-queue writes clean text.
     const entry = preview ? null : dequeueRolePromptEntry(root, role);
     const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
@@ -200,9 +200,9 @@ export function assembleTickPrompt(
     const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
     const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
     // The plan charter's stop threshold is derived from config (plans/parallel-work-
-    // instances.md "…keeping the plan loop ahead", part 5c/7). The catalog text stays a
+    // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
     // config-free description of the rule; this note supplies the concrete eligible-plan count
-    // so the plan loop stops only once every configured feature instance has a plan waiting.
+    // so the plan role stops only once every configured feature instance has a plan waiting.
     const planTargetNote =
       base === "plan"
         ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
@@ -272,7 +272,7 @@ export function assembleTickPrompt(
   // its next change (the discarding tick itself appends it after recovery — see runTick).
   const discard = state.conflictDiscard;
   if (discard) prompt = appendPromptNote(prompt, buildConflictDiscardNote(discard.summary, discard.attempts));
-  // A fresh tick after the previous run(s) were cut off at the context ceiling (the loop
+  // A fresh tick after the previous run(s) were cut off at the context ceiling (the role
   // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
   // memory that the last attempt was too big for the window is this note.
   if ((state.cutOffStreak ?? 0) > 0) {

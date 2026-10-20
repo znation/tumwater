@@ -6,7 +6,7 @@ import { isJsonObject } from "../files/json-object.js";
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` tick
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a
  * runtime file the harness — not pi — maintains. A passing cheap check writes nothing into the
- * repo (a note commit per check would move main and wake every sleeping loop), so without this
+ * repo (a note commit per check would move main and wake every sleeping role), so without this
  * ledger the model picks a flow blind every tick and converges on the top of its menu. The
  * ledger is gitignored runtime state under .tumwater/state/ and degrades to "no data" on any
  * missing or malformed file: an observer must never fail a tick on bookkeeping. */

@@ -2,7 +2,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { commitAll, foldCommitsSince, headOf } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import {
@@ -33,9 +33,9 @@ interface TickFlow {
   result: "passed" | "bug";
 }
 
-/** The shared loop wiring a changed worktree's staging needs (src/runner/runner-run.ts):
+/** The shared role wiring a changed worktree's staging needs (src/runner/runner-run.ts):
  * the per-tick authoring-run counters as a snapshot, plus the callbacks that touch the
- * loop — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
+ * role — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
  * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of
  * leftover.ts, refusal.ts, and merge-core.ts. */
 interface TickStageContext {
@@ -44,12 +44,12 @@ interface TickStageContext {
   modelLine?: string;
   root: string;
   role: string;
-  state: LoopState;
+  state: RunnerState;
   config: TumwaterConfig;
   /** Authoring turns folded so far this tick, captured before the commit (friction artifact). */
   tickTurns: number;
-  /** The raw user prompt a director tick is executing (null for role loops), so an aborted
-   * summary follow-up can finalize through the loop's requeue path. */
+  /** The raw user prompt a director tick is executing (null for role runners), so an aborted
+   * summary follow-up can finalize through the role's requeue path. */
   userPrompt: string | null;
   /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
    * undefined when the tick is not a revision. Set by runner-run.ts only when the revision was
@@ -77,7 +77,7 @@ interface TickStageContext {
   requestStageFix(wt: string, findings: string[]): Promise<PiRunResult | null>;
   /** Pin the commit by the role's merge ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
-  /** Finalize an aborted follow-up run through the loop (requeue + worktree reset). */
+  /** Finalize an aborted follow-up run through the role (requeue + worktree reset). */
   finishAbortedTick(): Promise<TickOutcome>;
 }
 
@@ -97,7 +97,7 @@ export async function foldAgentCommitsSince(
 /** Stage a changed worktree for the merge queue: derive the commit message from the reply's
  * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction ticks,
  * commit, pin the commit by the role's merge ref, and enqueue the merge. Extracted from
- * LoopRunner.runTick so the tick's own method stays the outcome classifier and this module is
+ * RoleRunner.runTick so the tick's own method stays the outcome classifier and this module is
  * the commit-staging layer — the only place a fresh tick's work becomes a queued merge.
  * Returns the tick's outcome; a failed pin or an aborted follow-up returns an error/aborted
  * outcome without anything queued. */

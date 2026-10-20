@@ -24,7 +24,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * when the command's shape changes. */
 export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--json]";
 
-/** The shared not-found frame both wordings complete — what the scan looked for, the loop,
+/** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
  * the not-found wordings below (the numbered form's exported message and the --last form's
  * module-local sibling), so the trailing hedge cannot drift between them. */
@@ -35,7 +35,7 @@ function tickNotFoundPhrase(role: string, what: string): string {
 /** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
  * stdout line and the GUI /api/run endpoint's 404 JSON error, one template so the CLI's prose
  * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
- * can act on: the tick number, the loop, and that the scanned window (not the world) is what
+ * can act on: the tick number, the role, and that the scanned window (not the world) is what
  * came up empty. */
 export function tickNotFoundMessage(role: string, tick: number): string {
   return tickNotFoundPhrase(role, `run #${tick}`);
@@ -134,7 +134,7 @@ export async function cmdTick(
   if (positionals.length !== arity) fail(`usage: ${TICK_USAGE}`);
   const role = canonicalRoleId(positionals[0] as string);
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
-  // built-ins plus user-defined loops, read through the never-throwing cached loader so a
+  // built-ins plus user-defined roles, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared
   // unknown-role wording plus the usage the positional command owes.
   const ids = knownRoleIdsCached(root);
