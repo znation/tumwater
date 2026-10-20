@@ -280,4 +280,32 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/invariants.md has the two new entries under "Cross-surface agreement", and "this repo's docs/invariants.md is honest" (test/invariants-doc.test.ts) passes. Each quoted test title must match a test in the cited file.
 - `npm run test:gate` passes.
 
+### docs/invariants.md gains a queue-file section, so a fixer touching how the prompt inbox or the merge queue lists, names, stamps or removes entry files reads what src/files/file-queue.ts promises instead of rebuilding it from tests (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Appends after whatever invariants section is last, so it only rebases over the display-format, text-shaping, Markdown-builder, shared-phrases and untrusted-JSON sections if they merge first. Touches docs/invariants.md and test/file-queue.test.ts only, not the src file)
+
+**Goal.** src/files/file-queue.ts holds the directory-of-timestamped-files convention that both src/inbox/inbox.ts and src/merge/merge-queue.ts use: `listQueueFiles`, `queueFileName`, `queueFileStamp` and `removeQueueFile`. A drift here reorders or loses queued prompts and queued merges. `grep -n 'file-queue' docs/invariants.md` finds nothing (2026-10-20), so the register never states these rules. test/file-queue.test.ts pins most of them, but no test covers `listQueueFiles` rethrowing a directory error other than ENOENT/ENOTDIR. That is the rule that keeps an unreadable queue directory from reading as an empty queue and hiding queued work. This plan adds that test and the section.
+
+**Approach.**
+- In test/file-queue.test.ts, add `runningAsRoot` to the imports from `./fixtures/repo-fixtures.js` and append one test at the end of the file. Do not edit any existing test.
+  - "listQueueFiles rethrows an unreadable queue directory instead of reading it as empty": make a directory under `tmpdir()`, write one `.json` file into it, `fs.chmodSync(dir, 0o000)`, and assert that `listQueueFiles(dir, ".json")` throws an error whose `code` is `"EACCES"`. Restore the mode with `fs.chmodSync(dir, 0o755)` in a `finally`. When `runningAsRoot()` is true, call `t.skip("root reads any directory, so there is no EACCES to provoke")` and return, as the root-gated test in test/doctor-orphans.test.ts does.
+- Append a new section at the very end of docs/invariants.md, after whatever section is last at that point. Title it `## Queue files: one file per entry, ordered by name, and a missing queue reads as empty`. Give it a two-sentence intro in the register's style: the director's prompt inbox and the durable merge queue both list, name, stamp and remove entries through file-queue.ts, so the ordering and the race rules cannot drift between the two. Before choosing ids, run `grep -n '^### INV-' docs/invariants.md | tail` and use the next free two-letter prefix after every one in use. That is `INV-AG` when AA–AF are taken: the display-format, text-shaping, shared-phrases and untrusted-JSON plans take INV-AA, INV-AD, INV-AE and INV-AF.
+- Add four entries, each with **Guarantee.**, **Binds.** and **Pinned by.** like the existing ones. Read the cited test and the code before writing each guarantee, and state only what the code does.
+  - `INV-AG1: a listing is the exact-extension entries oldest first by filename, a missing or non-directory queue reads as empty, and any other read error is thrown`. Binds `listQueueFiles`. Pinned by "listQueueFiles reads a missing directory as an empty queue", "listQueueFiles keeps only matching extensions, oldest-first by filename", "listQueueFiles reads a queue path that is a regular file as an empty queue" and the new EACCES test.
+  - `INV-AG2: an entry's name sorts by stamp, then by zero-padded sequence, with the pid keeping two processes apart`. Binds `queueFileName`. Pinned by "queueFileName orders across processes and breaks ties with seq and pid".
+  - `INV-AG3: a stamp is read back only from a leading run of exactly 13 digits, and anything else is unstamped`. Binds `queueFileStamp`. Pinned by "queueFileStamp round-trips queueFileName's stamp and rejects non-conforming names".
+  - `INV-AG4: removing an entry that already vanished reports false, and any other removal error is thrown`. Binds `removeQueueFile`. Pinned by "removeQueueFile reports true for a file it removed", "removeQueueFile reports false for a file that already vanished" and "removeQueueFile rethrows errors other than ENOENT".
+- Name src/inbox/inbox.ts and src/merge/merge-queue.ts as the consumers in the intro, not in each Binds line, and do not copy their call sites.
+- Keep the words "tick", "loop" and "notebook" out of the new prose and the new test title.
+- Check every quoted title with `grep -nF '<title>' test/file-queue.test.ts` before citing it. The guard in test/invariants-doc.test.ts fails on a title that is not in the cited file.
+
+**Files touched.** docs/invariants.md, test/file-queue.test.ts (one new test and the widened import).
+
+**Acceptance criteria.**
+- `grep -n '^### INV-AG' docs/invariants.md` (or the fallback prefix) lists four entries under the new section, each with the three field labels.
+- The new test fails when the `if (code !== "ENOENT" && code !== "ENOTDIR") throw err;` line in `listQueueFiles` is removed (check locally, then restore it). It passes as the code stands, and it is skipped, not failed, as root.
+- After the test runs, the temp directory's mode is restored. The test leaves no unreadable directory behind.
+- `git diff --stat` touches only docs/invariants.md and test/file-queue.test.ts.
+- Every quoted title in the new section is found by `grep -F` in test/file-queue.test.ts.
+- test/invariants-doc.test.ts and test/file-queue.test.ts pass.
+- `npm run test:gate` passes.
+
 ## Done
