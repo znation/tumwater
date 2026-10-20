@@ -45,4 +45,22 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `cli(repo, "reclaim", "--dry-run")` without `--json` still prints the `feature: idle …` text line in the first test's setup. Check this in the same test before the JSON call.
 - `npm run test:gate` passes, including test/help.test.ts and the completion tests.
 
+### Archive: `tumwater archive --json` prints what moved and the commit as data (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/cli.ts + src/backlog/backlog-cli.ts + src/cli/help.ts + docs/cli.md + test/backlog-archive.test.ts)
+
+**Goal.** A script that runs `tumwater archive` and wants to know which entries moved, or which commit it made, has to scrape lines like `PLANS.md → PLANS-DONE.md: 1 entry` and `committed <short sha>`. The short sha is the only form of the commit it gets. `archiveFinishedOnMain` (src/backlog/backlog-archive.ts) already returns structured data: `{ status: "archived", commit, moved: ArchivedFile[] }`, where each `ArchivedFile` carries `file`, `archive`, `titles` and `dropped`. But cli.ts's `case "archive"` calls `rejectUnknownArgs("archive", args, [])`, so `--json` is refused. This plan follows the other in-flight `--json` twins for write commands (revert, reclaim --dry-run, doctor --kill-orphans).
+
+**Approach.**
+1. src/cli.ts `case "archive"`: change the gate to `rejectUnknownArgs("archive", args, [JSON_FLAG])`. `JSON_FLAG` is already imported there from ./cli/cli-flag-specs.js. Then call `cmdArchive(root, args)`.
+2. src/backlog/backlog-cli.ts `cmdArchive(root, args: string[] = [])`: read `const json = args.includes("--json")`. The `skipped` outcome still goes through `fail`: one stderr line, exit 1, nothing on stdout, the same as `retire --json`. With `json`, the `nothing` outcome prints `sayJson({ archived: false, commit: null, moved: [] })` and the `archived` outcome prints `sayJson({ archived: true, commit: outcome.commit, moved: outcome.moved })`. `commit` is the full sha, and `moved` is the `ArchivedFile[]` exactly as returned. `sayJson` is already imported there. The text output stays as it is. Add a doc comment on `cmdArchive` that names the `--json` shape.
+3. src/cli/help.ts: change the stanza `tumwater archive` to `tumwater archive [--json]`, and end its description with `; --json prints what moved and the commit as data`, re-wrapped to the column. Shell completion reads flags from help stanzas (`helpStanzas`, src/cli/completion.ts), so it needs no separate edit.
+4. docs/cli.md, "Steer the project" row: after the `tumwater archive` sentence's "…so the live files hold only open work", add `` (`--json` prints `{ archived, commit, moved }`, each moved file carrying `file`, `archive`, `titles` and `dropped`; `commit` is the full sha, or `null` when there was nothing to archive) ``. Also change the `tumwater archive` there to `tumwater archive [--json]`.
+
+**Files.** src/cli.ts, src/backlog/backlog-cli.ts, src/cli/help.ts, docs/cli.md, test/backlog-archive.test.ts. src/backlog/backlog-archive.ts is unchanged (`ArchivedFile` stays unexported, and the payload is built from the returned outcome). `grep -n 'cmdArchive' docs/invariants.md` prints nothing, so this plan claims no invariant ID.
+
+**Acceptance criteria.**
+- New test in test/backlog-archive.test.ts, "tumwater archive --json prints what moved and the full commit sha, then archived false". Use the same seeding as the existing "tumwater archive dispatches through the CLI…" test (`initializedRepo`, `ignoreInRepo`, a D1 done plan and a B1 fixed bug, committed). `cli(root, "archive", "--json")` exits 0. Its whole stdout passes `JSON.parse` with `archived: true` and `commit` equal to `sh(root, "git", "rev-parse", "HEAD").trim()`. `moved` deep-equals two entries: `{ file: "PLANS.md", archive: "PLANS-DONE.md", titles: [<D1 heading as archiveFinishedOnMain reports it>], dropped: [] }` and the matching BUGS.md one. Derive the titles from the JSON's own order, or assert `titles.length === 1` and that each title contains `D1` or `B1`. A second `cli(root, "archive", "--json")` exits 0 and parses deep-equal to `{ archived: false, commit: null, moved: [] }`.
+- `cli(root, "archive", "--stat")` still exits 1 with the unknown-flag refusal. Check that in the same test.
+- The existing text test "tumwater archive dispatches through the CLI…" passes unchanged.
+- `npm run test:gate` passes, including test/help.test.ts and the completion tests.
+
 ## Done
