@@ -1067,6 +1067,15 @@ test("formatEvent renders provider_wait naming the key and the run cap when none
     waitedMs: 30_000,
   } as never);
   assert.match(keyless, /waited 30s for a run slot \(feature\)/);
+  const base = { ts: 0, source: "feature", type: "provider_wait", role: "feature", waitedMs: 120_000 };
+  assert.match(
+    formatEvent({ ...base, cap: "provider", limit: 2, key: "omlx" } as never),
+    /waited 2m for a omlx slot \(feature; maxConcurrentPerProvider\.omlx is 2\)/,
+  );
+  const team = formatEvent({ ...base, cap: "team", limit: 3, key: "omlx" } as never);
+  assert.match(team, /waited 2m for a run slot \(feature; maxConcurrent is 3\)/);
+  assert.doesNotMatch(team, /omlx/);
+  assert.match(formatEvent({ ...base, cap: "team", limit: "x" } as never), /for a run slot \(feature\)/);
 });
 
 test("formatEvent renders claim assignment and release lines", () => {

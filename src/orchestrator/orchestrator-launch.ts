@@ -182,6 +182,14 @@ export function launchDueTicks(ctx: LaunchContext): void {
               const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
               const key = cfg ? seamConcurrencyKey(cfg, piDefault) : undefined;
               const admittedAt = Date.now();
+              // Which cap would hold the run, read once at park time (not revised if the caps
+              // change mid-wait): the run's own provider cap when full, else the team total.
+              const pool = semaphore.snapshot();
+              const keyed = key !== undefined ? pool.byKey[key] : undefined;
+              const providerFull = keyed?.limit !== undefined && keyed.inUse >= keyed.limit;
+              const heldBy = providerFull
+                ? { cap: "provider" as const, limit: keyed.limit }
+                : { cap: "team" as const, limit: pool.limit };
               lease = await semaphore.acquireLease(roleTier(runner.role), key);
               // A wait of PROVIDER_WAIT_EVENT_MS or more for the provider/team slot is
               // provider contention worth surfacing: name it so `tumwater doctor`'s provider
@@ -196,6 +204,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
                   role: runner.role,
                   waitedMs: Date.now() - admittedAt,
                   ...(key !== undefined ? { key } : {}),
+                  ...heldBy,
                 });
               }
               // Permit granted: the tick is now an active, permit-holding state until the

@@ -715,8 +715,9 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
  * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
  * provider cap is too small. Names every key that waited, busiest first (the key-less
- * bucket reads "the run cap") and, on a warn, each key's maxConcurrentPerProvider cap to raise. A
- * counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
+ * bucket, which also takes every team-cap wait whatever its key, reads "the run cap") and, on
+ * a warn, each key's maxConcurrentPerProvider cap to raise, plus maxConcurrent for the run cap.
+ * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
   let count = 0;
@@ -730,7 +731,7 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
       const waited = finiteNumber(ev.waitedMs, 0);
       total += waited;
       if (waited > longestMs) longestMs = waited;
-      const key = typeof ev.key === "string" && ev.key.length > 0 ? ev.key : "";
+      const key = ev.cap !== "team" && typeof ev.key === "string" && ev.key.length > 0 ? ev.key : "";
       perKey.set(key, (perKey.get(key) ?? 0) + waited);
     }
   } catch (err) {
@@ -760,7 +761,10 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
       .filter((b) => b.key !== "" && config?.maxConcurrentPerProvider?.[b.key] !== undefined)
       .map((b) => `raise maxConcurrentPerProvider.${b.key} above ${config?.maxConcurrentPerProvider?.[b.key]}`)
       .join(" and ");
-    if (advice) detail += ` — ${advice}`;
+    const teamAdvice =
+      perKey.has("") && config !== undefined ? [`raise maxConcurrent above ${config.maxConcurrent}`] : [];
+    const all = [...(advice ? [advice] : []), ...teamAdvice].join(" and ");
+    if (all) detail += ` — ${all}`;
   }
   return (contended ? warnOutcome : okOutcome)(detail);
 }

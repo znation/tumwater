@@ -1052,6 +1052,18 @@ test("checkProviderContention sums the last day of provider_wait events and warn
   assert.equal(later.detail, "no provider waits");
 });
 
+test("checkProviderContention files team-cap waits under the run cap and advises maxConcurrent", () => {
+  const root = readyRepo();
+  for (let i = 0; i < 2; i++) {
+    logEvent(root, { source: TUMWATER_SOURCE, type: "provider_wait", role: "feature", key: "omlx", cap: "team", limit: 3, waitedMs: 600_000 });
+  }
+  const out = checkProviderContention(root, { ...defaultConfig(), maxConcurrent: 3 });
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /\(the run cap\)/);
+  assert.match(out.detail, /raise maxConcurrent above 3/);
+  assert.doesNotMatch(out.detail, /omlx/);
+});
+
 test("checkCheckContention sums the last day of check_wait events and warns at ten minutes", () => {
   const root = readyRepo();
   assert.equal(checkCheckContention(root, undefined).detail, "no check waits");

@@ -135,6 +135,8 @@ test("a role tick that waits for its provider slot logs a provider_wait event; a
   assert.equal(waits.length, 1, "one provider_wait event for the waiting admission");
   assert.equal(waits[0]!.role, "feature");
   assert.equal(waits[0]!.key, "omlx");
+  assert.equal(waits[0]!.cap, "provider");
+  assert.equal(waits[0]!.limit, 1);
   assert.ok(Number(waits[0]!.waitedMs) >= 0, "the wait is measured, never NaN");
 
   // An unheld semaphore admits at once: at the default threshold nothing is logged.
@@ -151,6 +153,21 @@ test("a role tick that waits for its provider slot logs a provider_wait event; a
   launchDueTicks(dc);
   await settle(dc);
   assert.equal(eventsOfType(dc.root, "provider_wait").length, 0);
+});
+
+test("a provider_wait names the team cap when maxConcurrent, not the provider, held the run", async () => {
+  const semaphore = new Semaphore(1);
+  const held = await semaphore.acquireLease(0, "other");
+  const runner = fakeRunner("feature", undefined, { provider: "omlx", model: "m", agent: "pi" });
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]), semaphore, providerWaitMs: 0 });
+  launchDueTicks(c);
+  held.release();
+  await settle(c);
+  const waits = eventsOfType(c.root, "provider_wait");
+  assert.equal(waits.length, 1);
+  assert.equal(waits[0]!.key, "omlx");
+  assert.equal(waits[0]!.cap, "team");
+  assert.equal(waits[0]!.limit, 1);
 });
 
 test("the director never queues behind the semaphore and never samples the role drain window", async () => {
