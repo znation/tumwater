@@ -14,8 +14,10 @@
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
 import {
+  failRivalShapes,
   parseCountFlag,
 } from "./cli/cli-args.js";
+import { plural } from "./text/phrases.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -43,6 +45,7 @@ import {
   STOP_IN_FLAG,
   REPROBE_FLAG,
   PROBLEMS_FLAG,
+  KILL_ORPHANS_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -190,9 +193,25 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG]);
+      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG]);
+      if (args.includes("--kill-orphans") && args.includes("--json"))
+        failRivalShapes("doctor --kill-orphans", "--json", "it prints what it killed before the report");
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
+      if (args.includes("--kill-orphans")) {
+        const { killOrphans } = await import("./doctor/doctor-orphans.js");
+        const killed = await killOrphans(root);
+        if ("error" in killed) say(`could not scan the process table — ${killed.error}; nothing killed`);
+        else {
+          for (const k of killed.killed) {
+            const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
+            say(`killed pid ${k.pid}${tree} ${k.command}`);
+          }
+          for (const f of killed.failed) say(`could not kill pid ${f.pid}: ${f.reason}`);
+          if (killed.killed.length + killed.failed.length === 0) say("no orphaned processes to kill");
+        }
+        say("");
+      }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
         "./doctor/doctor-render.js"
       );

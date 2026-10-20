@@ -542,3 +542,16 @@ test("doctor <check>... runs the named checks and rejects an unknown name", asyn
   assert.equal(typo.code, 1);
   assert.match(typo.stderr, /unknown check "orphan" — did you mean `orphans`\?/);
 });
+
+test("doctor --kill-orphans reports an unreadable process table, then the report; --json is rejected", async () => {
+  // The no-ps PATH keeps the scan off the host's real table: a real scan could kill another
+  // agent's leaked process.
+  const env = { PATH: gitOnlyBinDir() };
+  const r = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans"]);
+  assert.match(r.stdout, /^could not scan the process table — .*; nothing killed\n\n/);
+  assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
+  assert.equal(r.code, 1, "exit follows the report's verdict");
+  const json = await cliWithEnv(tmpdir(), env, ["doctor", "--kill-orphans", "--json"]);
+  assert.notEqual(json.code, 0);
+  assert.match(json.stderr, /cannot be combined with --json/);
+});

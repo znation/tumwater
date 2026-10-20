@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { pidAlive } from "../process/process.js";
+import { GROUP_POLL_MS, KILL_GRACE_MS } from "../process/process-group.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../process/process-table.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { plural } from "../text/phrases.js";
@@ -75,10 +76,10 @@ function relativeArgvIsOurs(command: string, cwd: string | undefined, root: stri
   return false;
 }
 
-/** How many processes descend from `pid`, given the table's parent → children map — an
+/** The processes that descend from `pid`, given the table's parent → children map — an
  * orphaned test runner's workers keep the runner as their parent, so they are the orphan's
  * tree, not orphans of their own, and killing the runner alone leaves them running. */
-function descendantCount(children: Map<number, number[]>, pid: number): number {
+function descendantPids(children: Map<number, number[]>, pid: number): number[] {
   const seen = new Set<number>();
   const stack = [...(children.get(pid) ?? [])];
   for (let p = stack.pop(); p !== undefined; p = stack.pop()) {
@@ -86,7 +87,88 @@ function descendantCount(children: Map<number, number[]>, pid: number): number {
     seen.add(p);
     stack.push(...(children.get(p) ?? []));
   }
-  return seen.size;
+  return [...seen];
+}
+
+/** What the orphan scan found: the table it read, the orphans in it, each scanned process's
+ * `TUMWATER_RUN` marks and why cwds could not be read (null when they could), or the reason the
+ * table itself could not be read. */
+type OrphanScan =
+  | { rows: ProcessRow[]; orphans: ProcessRow[]; marks: Map<number, string[]>; cwdProblem: string | null }
+  | { error: string };
+
+/** A mark's harness is dead (true), alive (false), or the mark names no harness (null — a torn
+ * or foreign value judges nothing rather than counting as dead). */
+function harnessGone(marker: string): boolean | null {
+  const m = /^(\d+)-/.exec(marker);
+  return m ? !pidAlive(Number(m[1])) : null;
+}
+
+/** A parent pid → child pids map of the table. */
+function childrenOf(rows: ProcessRow[]): Map<number, number[]> {
+  const children = new Map<number, number[]>();
+  for (const r of rows) {
+    const siblings = children.get(r.ppid);
+    if (siblings) siblings.push(r.pid);
+    else children.set(r.ppid, [r.pid]);
+  }
+  return children;
+}
+
+/** An orphan's command with the repo root cut out, longest spelling first: the resolved one can
+ * contain the given one (/private/var/… holds /var/…) — then trimmed to ORPHAN_COMMAND_MAX. */
+function shownCommand(command: string, root: string): string {
+  const cut = [...rootSpellings(root)].sort((a, b) => b.length - a.length);
+  return truncate(cut.reduce((c, rt) => c.split(`${rt}/`).join(""), command), ORPHAN_COMMAND_MAX);
+}
+
+/** The detection half of checkOrphans, shared with killOrphans so the check and the kill cannot
+ * disagree about the set. */
+async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanScan> {
+  const roots = rootSpellings(root);
+  let rows: ProcessRow[];
+  try {
+    rows = await probe.list();
+  } catch (err) {
+    return { error: errorMessage(err) };
+  }
+  const dirs = roots.map(worktreesDir);
+  // Never doctor itself, should it be run parentless from a worktree's build.
+  const parentless = rows.filter((r) => r.ppid === 1 && r.pid !== process.pid);
+  const byArgv = new Set(parentless.filter((r) => argvNamesDir(r.command, dirs)).map((r) => r.pid));
+  const uid = process.getuid?.();
+  const ask = parentless
+    .filter((r) => !byArgv.has(r.pid) && (uid === undefined || uid === 0 || r.uid === uid))
+    .map((r) => r.pid);
+  let cwds = new Map<number, string>();
+  let cwdProblem: string | null = null;
+  if (ask.length > 0) {
+    try {
+      cwds = await probe.cwds(ask);
+    } catch (err) {
+      cwdProblem = errorMessage(err);
+    }
+  }
+  let marks = new Map<number, string[]>();
+  if (ask.length > 0) {
+    try {
+      marks = await probe.runMarkers(ask);
+    } catch {
+      // Best-effort per the probe contract: argv and cwd still carry the check alone.
+    }
+  }
+  const byMark = new Set<number>();
+  for (const r of parentless) {
+    if (byArgv.has(r.pid)) continue;
+    const verdicts = (marks.get(r.pid) ?? []).map(harnessGone);
+    if (verdicts.length > 0 && verdicts.every((v) => v === true)) byMark.add(r.pid);
+  }
+  const orphans = parentless.filter((r) => {
+    if (byArgv.has(r.pid) || byMark.has(r.pid)) return true;
+    const cwd = cwds.get(r.pid);
+    return (cwd !== undefined && isUnder(cwd, dirs)) || relativeArgvIsOurs(r.command, cwd, root, dirs);
+  });
+  return { rows, orphans, marks, cwdProblem };
 }
 
 /** Orphaned worktree processes — the detector half of the grandchild-leak fix (BUGS.md
@@ -128,82 +210,89 @@ export async function checkOrphans(
   root: string,
   probe: ProcessProbe = systemProcessProbe,
 ): Promise<CheckOutcome> {
-  let rows: ProcessRow[];
-  try {
-    rows = await probe.list();
-  } catch (err) {
-    return warnOutcome(`could not scan the process table — ${errorMessage(err)}`);
-  }
-  const roots = rootSpellings(root);
-  const dirs = roots.map(worktreesDir);
-  // Never doctor itself, should it be run parentless from a worktree's build.
-  const parentless = rows.filter((r) => r.ppid === 1 && r.pid !== process.pid);
-  const byArgv = new Set(parentless.filter((r) => argvNamesDir(r.command, dirs)).map((r) => r.pid));
-  const uid = process.getuid?.();
-  const ask = parentless
-    .filter((r) => !byArgv.has(r.pid) && (uid === undefined || uid === 0 || r.uid === uid))
-    .map((r) => r.pid);
-  let cwds = new Map<number, string>();
-  let cwdProblem: string | null = null;
-  if (ask.length > 0) {
-    try {
-      cwds = await probe.cwds(ask);
-    } catch (err) {
-      cwdProblem = errorMessage(err);
-    }
-  }
-  let marks = new Map<number, string[]>();
-  if (ask.length > 0) {
-    try {
-      marks = await probe.runMarkers(ask);
-    } catch {
-      // Best-effort per the probe contract: argv and cwd still carry the check alone.
-    }
-  }
-  /** A mark's harness is dead (true), alive (false), or the mark names no harness (null —
-   * a torn or foreign value judges nothing rather than counting as dead). */
-  const harnessGone = (marker: string): boolean | null => {
-    const m = /^(\d+)-/.exec(marker);
-    return m ? !pidAlive(Number(m[1])) : null;
-  };
-  const byMark = new Set<number>();
-  for (const r of parentless) {
-    if (byArgv.has(r.pid)) continue;
-    const verdicts = (marks.get(r.pid) ?? []).map(harnessGone);
-    if (verdicts.length > 0 && verdicts.every((v) => v === true)) byMark.add(r.pid);
-  }
-  const orphans = parentless.filter((r) => {
-    if (byArgv.has(r.pid) || byMark.has(r.pid)) return true;
-    const cwd = cwds.get(r.pid);
-    return (cwd !== undefined && isUnder(cwd, dirs)) || relativeArgvIsOurs(r.command, cwd, root, dirs);
-  });
+  const scan = await findOrphans(root, probe);
+  if ("error" in scan) return warnOutcome(`could not scan the process table — ${scan.error}`);
+  const { rows, orphans, marks, cwdProblem } = scan;
   if (orphans.length === 0) {
     if (cwdProblem !== null)
       return warnOutcome(`none named in argv, but process cwds are unreadable (${cwdProblem}) — an orphan started inside a worktree, like a leaked test runner, would be missed`);
     return okOutcome("none — no process reparented to PID 1 runs from .tumwater/worktrees/ or carries only dead runs' marks");
   }
-  const children = new Map<number, number[]>();
-  for (const r of rows) {
-    const siblings = children.get(r.ppid);
-    if (siblings) siblings.push(r.pid);
-    else children.set(r.ppid, [r.pid]);
-  }
-  // The root is cut from each shown command, longest spelling first: the resolved one can
-  // contain the given one (/private/var/… holds /var/…).
-  const cut = [...roots].sort((a, b) => b.length - a.length);
+  const children = childrenOf(rows);
   const listed = orphans.slice(0, ORPHANS_LISTED_MAX).map((r) => {
-    const n = descendantCount(children, r.pid);
+    const n = descendantPids(children, r.pid).length;
     const tree = n > 0 ? `, +${plural(n, "descendant")}` : "";
-    const command = cut.reduce((c, rt) => c.split(`${rt}/`).join(""), r.command);
     // A mark-caught orphan says which run marked it: the operator killing it wants to know
     // nothing else will, and the dead harness's pid is the evidence argv and cwd lacked.
     const mark = (marks.get(r.pid) ?? []).find((m) => harnessGone(m) === true);
     const marked = mark !== undefined ? ` (run ${mark}; tumwater ${mark.split("-")[0]} exited)` : "";
-    return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${truncate(command, ORPHAN_COMMAND_MAX)}${marked}`;
+    return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${shownCommand(r.command, root)}${marked}`;
   });
   const more = orphans.length - listed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
   return failOutcome(`${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
-      " — nothing reaps these; kill each with its descendants" +
+      " — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""));
+}
+
+/** The seams killOrphans signals through, injectable so tests send no real signal. */
+export interface OrphanSignals {
+  kill(pid: number, signal: NodeJS.Signals): void;
+  alive(pid: number): boolean;
+  graceMs: number;
+  pollMs: number;
+}
+
+const systemSignals: OrphanSignals = {
+  kill: (pid, signal) => void process.kill(pid, signal),
+  alive: pidAlive,
+  graceMs: KILL_GRACE_MS,
+  pollMs: GROUP_POLL_MS,
+};
+
+/** What `doctor --kill-orphans` did: the orphans killed (with how many descendants went with
+ * each), the pids that could not be signalled, or why the table could not be scanned. */
+type OrphanKillReport =
+  | { error: string }
+  | {
+      killed: { pid: number; command: string; descendants: number }[];
+      failed: { pid: number; reason: string }[];
+    };
+
+/** Kill the processes checkOrphans lists, each with its descendants from the same scan:
+ * SIGTERM all, wait up to `graceMs` for them to go, SIGKILL what remains. A pid already gone
+ * (ESRCH) counts as killed; any other refusal (EPERM) is reported and the rest are still
+ * signalled. An orphan with a refused pid in its tree is reported failed, not killed. */
+export async function killOrphans(
+  root: string,
+  probe: ProcessProbe = systemProcessProbe,
+  signals: OrphanSignals = systemSignals,
+): Promise<OrphanKillReport> {
+  const scan = await findOrphans(root, probe);
+  if ("error" in scan) return { error: scan.error };
+  const children = childrenOf(scan.rows);
+  const refused = new Map<number, string>();
+  const send = (pid: number, signal: NodeJS.Signals): void => {
+    try {
+      signals.kill(pid, signal);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ESRCH") refused.set(pid, errorMessage(err));
+    }
+  };
+  const trees = scan.orphans.map((r) => ({ r, pids: [r.pid, ...descendantPids(children, r.pid)] }));
+  const all = [...new Set(trees.flatMap((t) => t.pids))];
+  for (const pid of all) send(pid, "SIGTERM");
+  const stillAlive = (): number[] => all.filter((pid) => !refused.has(pid) && signals.alive(pid));
+  const deadline = Date.now() + signals.graceMs;
+  while (stillAlive().length > 0 && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, signals.pollMs));
+  for (const pid of stillAlive()) send(pid, "SIGKILL");
+  const killed: { pid: number; command: string; descendants: number }[] = [];
+  const failed: { pid: number; reason: string }[] = [];
+  for (const { r, pids } of trees) {
+    const bad = pids.find((pid) => refused.has(pid));
+    if (bad === undefined) killed.push({ pid: r.pid, command: shownCommand(r.command, root), descendants: pids.length - 1 });
+    else failed.push({ pid: bad, reason: refused.get(bad) ?? "" });
+  }
+  return { killed, failed };
 }

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans } from "../src/doctor/doctor-orphans.js";
+import { checkOrphans, killOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -44,7 +44,7 @@ test("checkOrphans flags each leak shape by argv or cwd, naming pid, age, CPU, t
       "pid 8198 (age 18:34:12, cpu 0:41.20) node .tumwater/worktrees/perf/dist/src/cli.js run; " +
       "pid 88052 (age 2-21:44:01, cpu 0:03.12, +2 descendants) node dist/test/test-runner.js; " +
       "pid 73241 (age 07:24:10, cpu 0:02.50) node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602 --all-interfaces" +
-      " — nothing reaps these; kill each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants",
   });
   // One cwd lookup, over the parentless processes argv did not already settle — never the
   // workers (they have a parent) and never the absolute-argv match.
@@ -101,7 +101,7 @@ test("checkOrphans catches a marked leak outside the worktrees once its harness 
     detail:
       "1 orphaned process (PPID 1): " +
       `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; tumwater ${dead} exited)` +
-      " — nothing reaps these; kill each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants",
   });
 });
 
@@ -167,7 +167,7 @@ test("checkOrphans asks cwds only of parentless processes this user can inspect"
     level: "fail",
     detail:
       "1 orphaned process (PPID 1): pid 10 (age 01:00, cpu 0:00.10, +1 descendant) node dist/test/test-runner.js" +
-      " — nothing reaps these; kill each with its descendants",
+      " — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants",
   });
   assert.deepEqual(asked, [[10]]);
 });
@@ -263,4 +263,80 @@ test("runDoctor fails the verdict on an orphan — the exit code a scripted doct
   const report = await runDoctor(root, fakeBins("git", "pi"), probe);
   assert.equal(report.checks.find((c) => c.name === "orphans")?.level, "fail");
   assert.equal(report.verdict, "1 problem");
+});
+
+/** Fake signals that record every (pid, signal), with `stubborn` pids staying alive until
+ * SIGKILL and every other pid gone once it has been sent SIGTERM. */
+function fakeSignals(opts: { stubborn?: number[]; throwing?: Record<number, string> } = {}): {
+  signals: OrphanSignals;
+  sent: [number, string][];
+} {
+  const sent: [number, string][] = [];
+  const termed = new Set<number>();
+  const signals: OrphanSignals = {
+    kill(pid, signal) {
+      sent.push([pid, signal]);
+      const code = opts.throwing?.[pid];
+      if (code === "ESRCH") termed.add(pid); // Already gone.
+      if (code !== undefined) throw Object.assign(new Error("not permitted"), { code });
+      if (signal === "SIGTERM") termed.add(pid);
+      else termed.add(-pid);
+    },
+    alive: (pid) => !termed.has(-pid) && (opts.stubborn?.includes(pid) === true || !termed.has(pid)),
+    graceMs: 20,
+    pollMs: 5,
+  };
+  return { signals, sent };
+}
+
+test("killOrphans terms each orphan's tree, kills what outlives the grace, and touches nothing else", async () => {
+  const root = readyRepo();
+  const real = fs.realpathSync(root);
+  const other = tmpdir("doctor-other-checkout-");
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "bugfix"), { recursive: true });
+  const { probe } = fakeProbe(
+    [
+      { pid: 8198, command: `node ${root}/.tumwater/worktrees/perf/dist/src/cli.js run` },
+      { pid: 88052, command: "node dist/test/test-runner.js" },
+      { pid: 88160, ppid: 88052, command: "node --test a.test.js" },
+      { pid: 95649, ppid: 88160, command: "node a.test.js" },
+      { pid: 73241, command: "node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602" },
+      { pid: 500, ppid: 501, command: "pi --mode json -p go" },
+      { pid: 600, command: `node ${other}/.tumwater/worktrees/qa/dist/src/cli.js gui` },
+    ],
+    { 88052: path.join(real, ".tumwater", "worktrees", "bugfix"), 73241: path.join(real, "..", "tumwater-qa.gone"), 600: other },
+  );
+  const { signals, sent } = fakeSignals({ stubborn: [95649] });
+  const report = await killOrphans(root, probe, signals);
+  assert.deepEqual(sent.filter(([, s]) => s === "SIGTERM").map(([p]) => p).sort((a, b) => a - b), [8198, 73241, 88052, 88160, 95649]);
+  assert.deepEqual(sent.filter(([, s]) => s === "SIGKILL"), [[95649, "SIGKILL"]]);
+  assert.deepEqual(report, {
+    killed: [
+      { pid: 8198, command: "node .tumwater/worktrees/perf/dist/src/cli.js run", descendants: 0 },
+      { pid: 88052, command: "node dist/test/test-runner.js", descendants: 2 },
+      { pid: 73241, command: "node .tumwater/worktrees/qa/dist/src/cli.js gui --port 41602", descendants: 0 },
+    ],
+    failed: [],
+  });
+});
+
+test("killOrphans reports a refused signal and an unreadable table", async () => {
+  const root = readyRepo();
+  const { probe } = fakeProbe([
+    { pid: 3001, command: `node ${root}/.tumwater/worktrees/a/x.js` },
+    { pid: 3002, command: `node ${root}/.tumwater/worktrees/b/x.js` },
+    { pid: 3003, command: `node ${root}/.tumwater/worktrees/c/x.js` },
+  ]);
+  const { signals, sent } = fakeSignals({ throwing: { 3001: "EPERM", 3002: "ESRCH" } });
+  const report = await killOrphans(root, probe, signals);
+  assert.ok("killed" in report);
+  assert.deepEqual(report.failed, [{ pid: 3001, reason: "not permitted" }]);
+  assert.deepEqual(report.killed.map((k) => k.pid), [3002, 3003]);
+  assert.deepEqual(sent.map(([p]) => p), [3001, 3002, 3003]);
+
+  const broken: ProcessProbe = { ...probe, list: async () => { throw new Error("ps missing"); } };
+  const none = fakeSignals();
+  assert.deepEqual(await killOrphans(root, broken, none.signals), { error: "ps missing" });
+  assert.deepEqual(none.sent, []);
 });

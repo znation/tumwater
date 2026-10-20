@@ -71,10 +71,12 @@ Usage:
                                    resolution); --role <id>[,<id>...] scopes the totals to the listed roles
                                    (merge runs and backlog tallies omitted); not
                                    combinable with --days
-  tumwater doctor [<check>...] [--json] [--reprobe] [--problems]
+  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
-                                   (read-only; exit 0/1; --json prints the report object —
+                                   (read-only unless --kill-orphans, which first kills the
+                                   orphaned processes the orphans check lists, each with
+                                   its descendants; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict; probes image-input models — --reprobe
                                    re-probes every one, bypassing the 7-day cache; --problems prints only the warn

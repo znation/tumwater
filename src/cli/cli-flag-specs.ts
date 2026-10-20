@@ -285,6 +285,10 @@ export const REPROBE_FLAG: FlagSpec = { names: ["--reprobe"] };
  * like REPROBE_FLAG. */
 export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };
 
+/** The `--kill-orphans` flag spec, accepted by `doctor`: first kill the orphaned processes the
+ * orphans check lists, each with its descendants. Value-less, like PROBLEMS_FLAG. */
+export const KILL_ORPHANS_FLAG: FlagSpec = { names: ["--kill-orphans"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
