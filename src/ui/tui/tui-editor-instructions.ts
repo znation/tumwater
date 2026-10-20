@@ -122,7 +122,11 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
         }
         session.refreshNotes(role);
         exitInstructionsMode();
-        session.flashMessage(`${role}: instructions cleared`);
+        session.flashMessage(
+          result.oldValue === undefined
+            ? `${role}: instructions is not set in tumwater.json, so nothing was cleared`
+            : `${role}: instructions cleared`,
+        );
         return true;
       }
       const result = setConfigKey(session.root, cfgKey, JSON.stringify(text));
@@ -132,7 +136,11 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
       }
       session.refreshNotes(role);
       exitInstructionsMode();
-      session.flashMessage(`${role}: instructions saved (${text.length} chars)`);
+      session.flashMessage(
+        result.unchanged
+          ? `${role}: instructions unchanged, so tumwater.json was not written`
+          : `${role}: instructions saved (${text.length} chars)`,
+      );
       return true;
     }
     return false;

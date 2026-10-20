@@ -55,6 +55,23 @@ test("Ctrl+L replaces the viewed role's standing instructions from a file; empty
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /clean: instructions cleared/);
     assert.equal(instructionsOf(), undefined, "a whitespace-only file removes the override");
+
+    // Clearing an override the file never held, and saving the same file twice, say nothing was
+    // written and leave the bytes identical.
+    const bytes = fs.readFileSync(cfgPath, "utf8");
+    tui.key(undefined, "l", { ctrl: true });
+    for (const ch of instructionsFile) tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /clean: instructions is not set in tumwater\.json, so nothing was cleared/);
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), bytes);
+    fs.writeFileSync(instructionsFile, "answer every question in two lines");
+    for (let i = 0; i < 2; i++) {
+      tui.key(undefined, "l", { ctrl: true });
+      for (const ch of instructionsFile) tui.key(ch, ch);
+      tui.key(undefined, "return");
+      if (i === 0) assert.match(tui.lastFrame(), /clean: instructions saved/);
+    }
+    assert.match(tui.lastFrame(), /clean: instructions unchanged, so tumwater\.json was not written/);
   });
 });
 

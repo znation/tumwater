@@ -60,8 +60,24 @@ test("Ctrl+S edits the viewed role's min run interval; Enter saves, empty clears
     tui.key(undefined, "s", { ctrl: true });
     assert.equal(tui.lines().at(-1), "min run interval ›", "an unset override pre-fills empty, not the seed");
     tui.key(undefined, "return"); // the pre-filled line is empty → unset
-    assert.match(tui.lastFrame(), /clean: min run interval cleared/);
+    assert.match(tui.lastFrame(), /clean: min run interval is not set in tumwater\.json, so nothing was cleared/);
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "clearing an absent key leaves the file unchanged");
+
+    // Saving the same interval twice says so the second time and writes nothing.
+    tui.key(undefined, "s", { ctrl: true });
+    for (const ch of "90") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    const saved = fs.readFileSync(cfgPath, "utf8");
+    tui.key(undefined, "s", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /clean: min run interval is already 90s, so tumwater\.json was not written/);
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), saved, "the same value is not rewritten");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    tui.key(undefined, "s", { ctrl: true });
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "return"); // back to the unset file for the checks below
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before);
 
     // A non-numeric value flashes the checkMinRunInterval message naming the dotted key, STAYS
     // in edit mode with the text kept, and writes nothing.

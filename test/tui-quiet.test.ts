@@ -54,8 +54,23 @@ test("Ctrl+O edits the viewed role's quiet hours; Enter saves, empty clears, inv
     const before = fs.readFileSync(cfgPath, "utf8");
     tui.key(undefined, "o", { ctrl: true });
     tui.key(undefined, "return"); // the pre-filled line is empty → unset
-    assert.match(tui.lastFrame(), /clean: quiet hours cleared/);
+    assert.match(tui.lastFrame(), /clean: quiet hours is not set in tumwater\.json, so nothing was cleared/);
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "clearing an absent key leaves the file unchanged");
+
+    // Saving the same window twice says so the second time and writes nothing.
+    tui.key(undefined, "o", { ctrl: true });
+    for (const ch of "23:00-07:00") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    const saved = fs.readFileSync(cfgPath, "utf8");
+    tui.key(undefined, "o", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /clean: quiet hours is already 23:00-07:00, so tumwater\.json was not written/);
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), saved, "the same window is not rewritten");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    tui.key(undefined, "o", { ctrl: true });
+    for (let i = 0; i < 11; i++) tui.key(undefined, "backspace");
+    tui.key(undefined, "return"); // back to the unset file for the checks below
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before);
 
     // An invalid window flashes the checkQuietHours message naming the dotted key, STAYS in
     // edit mode with the text kept, and writes nothing.
@@ -219,6 +234,20 @@ test("Ctrl+S on Activity edits the team-wide quietHours window; Enter saves, emp
     assert.match(tui.lastFrame(), /team: quiet hours cleared/);
     cfg = readJson(cfgPath) as { quietHours?: string };
     assert.equal(cfg.quietHours, undefined, "the key is removed");
+
+    // Saving the same team window twice says so the second time and writes nothing.
+    tui.key(undefined, "s", { ctrl: true });
+    for (const ch of "23:00-07:00") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    const savedTeam = fs.readFileSync(cfgPath, "utf8");
+    tui.key(undefined, "s", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /team: quiet hours is already 23:00-07:00, so tumwater\.json was not written/);
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), savedTeam, "the same window is not rewritten");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    tui.key(undefined, "s", { ctrl: true });
+    for (let i = 0; i < 11; i++) tui.key(undefined, "backspace");
+    tui.key(undefined, "return");
 
     // Ctrl+S again while the team editor is open cancels it and restores the draft.
     tui.key(undefined, "s", { ctrl: true });

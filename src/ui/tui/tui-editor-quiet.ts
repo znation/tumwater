@@ -157,14 +157,16 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
         const team = quietTeam;
         const role = lockedRole;
         exitQuietMode();
+        const scope = team ? "team" : `${role}`;
+        const noop = text === "" ? result.oldValue === undefined : "unchanged" in result;
         session.flashMessage(
-          team
+          noop
             ? text === ""
-              ? "team: quiet hours cleared"
-              : `team: quiet hours set to ${text}`
+              ? `${scope}: quiet hours is not set in tumwater.json, so nothing was cleared`
+              : `${scope}: quiet hours is already ${text}, so tumwater.json was not written`
             : text === ""
-              ? `${role}: quiet hours cleared`
-              : `${role}: quiet hours set to ${text}`,
+              ? `${scope}: quiet hours cleared`
+              : `${scope}: quiet hours set to ${text}`,
         );
       } else {
         session.flashMessage(result.error); // broken config or write failure — stay in edit mode

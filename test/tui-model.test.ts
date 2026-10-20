@@ -84,8 +84,19 @@ test("Ctrl+A edits the team's model; a selector string and a tier map save, a nu
     const beforeAbsent = fs.readFileSync(cfgPath, "utf8");
     tui.key(undefined, "a", { ctrl: true }); // the pre-filled line is empty now
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /team model cleared/);
+    assert.match(tui.lastFrame(), /model is not set in tumwater\.json, so nothing was cleared/);
     assert.equal(fs.readFileSync(cfgPath, "utf8"), beforeAbsent, "clearing an absent key leaves the file unchanged");
+
+    // Saving the same model twice says so the second time and writes nothing.
+    tui.key(undefined, "a", { ctrl: true });
+    for (const ch of "claude-opus-5-5") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    const savedModel = fs.readFileSync(cfgPath, "utf8");
+    tui.key(undefined, "a", { ctrl: true });
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /model is already claude-opus-5-5, so tumwater\.json was not written/);
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), savedModel, "the same model is not rewritten");
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
   });
 });
 

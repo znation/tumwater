@@ -98,7 +98,11 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
         const result = unsetConfigKey(session.root, cfgKey);
         if (result.ok) {
           exitIntervalMode();
-          session.flashMessage(`${role}: min run interval cleared`);
+          session.flashMessage(
+            result.oldValue === undefined
+              ? `${role}: min run interval is not set in tumwater.json, so nothing was cleared`
+              : `${role}: min run interval cleared`,
+          );
         } else {
           session.flashMessage(result.error); // broken config or write failure — stay in edit mode
         }
@@ -113,7 +117,11 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       const result = setConfigKey(session.root, cfgKey, JSON.stringify(value));
       if (result.ok) {
         exitIntervalMode();
-        session.flashMessage(`${role}: min run interval set to ${text}s`);
+        session.flashMessage(
+          result.unchanged
+            ? `${role}: min run interval is already ${text}s, so tumwater.json was not written`
+            : `${role}: min run interval set to ${text}s`,
+        );
       } else {
         session.flashMessage(result.error); // broken config or write failure — stay in edit mode
       }

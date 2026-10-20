@@ -73,8 +73,21 @@ test("Ctrl+G edits the viewed role's parallel-runner count; Enter saves, empty c
     tui.key(undefined, "g", { ctrl: true });
     assert.equal(tui.lines().at(-1), "instances ›", "an unset count pre-fills empty, not 1");
     tui.key(undefined, "return"); // the pre-filled line is empty → unset
-    assert.match(tui.lastFrame(), /feature: instances cleared/);
+    assert.match(tui.lastFrame(), /feature: instances is not set in tumwater\.json, so nothing was cleared/);
     assert.equal(fs.readFileSync(cfgPath, "utf8"), before, "clearing an absent key leaves the file unchanged");
+
+    // Saving the same count twice says so the second time and writes nothing.
+    for (let i = 0; i < 2; i++) {
+      tui.key(undefined, "g", { ctrl: true });
+      if (i === 0) tui.key("3", "3");
+      tui.key(undefined, "return");
+    }
+    assert.match(tui.lastFrame(), /feature: instances is already 3, so tumwater\.json was not written/);
+    assert.equal(tui.lines().at(-1), "director › draft prompt");
+    tui.key(undefined, "g", { ctrl: true });
+    tui.key(undefined, "backspace");
+    tui.key(undefined, "return"); // restore the unset file for the checks below
+    assert.equal(fs.readFileSync(cfgPath, "utf8"), before);
 
     // A `0` (below the 1-8 bound) flashes the validateConfig message, STAYS in edit mode with
     // the text kept, and writes nothing.

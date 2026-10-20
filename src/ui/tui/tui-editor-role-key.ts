@@ -10,7 +10,8 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
  * redirect the write), the mutually-exclusive held registry, a pre-fill read from the FILE's raw
  * `roles.<base>.<field>`, and an Enter that writes through a shared setter so validation owns
  * the value's truth — the differences are the key, the held name, the pre-fill formatting, the
- * setter, and the flash strings. Esc, the key again, and Ctrl+T cancel by restoring the draft. */
+ * setter, and the flash strings (a no-op commit may flash its own). Esc, the key again, and
+ * Ctrl+T cancel by restoring the draft. */
 interface RoleKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns. */
   mode: "roleModel" | "instances";
@@ -29,9 +30,12 @@ interface RoleKeySpec {
     session: TuiEditorSession,
     base: string,
     text: string,
-  ) => { ok: true } | { ok: false; error: string };
+  ) => { ok: true; noop?: true } | { ok: false; error: string };
   /** Message flashed when the commit succeeds for `role`; `text` is empty for a clear. */
   savedFlash: (role: string, text: string) => string;
+  /** Message flashed instead when the commit succeeded as a no-op (the key was already
+   * unset or already held the value, so nothing was written). */
+  noopFlash?: (role: string, text: string) => string;
 }
 
 /** Build a role-pinned editor. It may take the line only on a role's Transcript view
@@ -105,7 +109,9 @@ export function createRoleKeyEditor(
       const result = spec.commit(session, baseRoleOf(role), text);
       if (result.ok) {
         exit();
-        session.flashMessage(spec.savedFlash(role, text));
+        session.flashMessage(
+          result.noop && spec.noopFlash ? spec.noopFlash(role, text) : spec.savedFlash(role, text),
+        );
       } else {
         session.flashMessage(result.error); // broken config or write failure — stay in edit mode
       }

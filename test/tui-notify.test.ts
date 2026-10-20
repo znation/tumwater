@@ -30,7 +30,7 @@ test("Ctrl+E on Activity opens the notify editor pre-filled from the file, a com
 
     // Enter on a command writes that literal string and the editor closes.
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /notify hook set to notify-me --event x/);
+    assert.match(tui.lastFrame(), /notify is already notify-me --event x, so tumwater\.json was not written/);
     assert.match(tui.lines().at(-1)!, /^director ›/);
     assert.equal(readConfig(repo).notify, "notify-me --event x");
 
@@ -65,7 +65,7 @@ test("Enter on an empty line clears the notify hook and flashes the cleared word
     tui.key(undefined, "e", { ctrl: true });
     assert.equal(tui.lines().at(-1), "notify hook ›", "pre-filled empty when the file has no notify");
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /notify hook cleared/);
+    assert.match(tui.lastFrame(), /notify is not set in tumwater\.json, so nothing was cleared/);
     assert.deepEqual(configBytes(repo), before, "an already-absent hook leaves the file byte-identical");
   });
 });

@@ -108,7 +108,7 @@ test("Ctrl+W defaults to an unset pool size and an empty Enter leaves the file u
     tui.key(undefined, "w", { ctrl: true });
     assert.equal(tui.lines().at(-1), "worktree slots ›", "unset pre-fills an empty line");
     tui.key(undefined, "return"); // whitespace-only: nothing to unset, a no-op success
-    assert.match(tui.lastFrame(), /worktree slots reset to the default/);
+    assert.match(tui.lastFrame(), /worktreeSlots is not set in tumwater\.json, so nothing was cleared/);
     assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "an absent key leaves the file unchanged");
     assert.equal(tui.lines().at(-1), "director ›");
   });

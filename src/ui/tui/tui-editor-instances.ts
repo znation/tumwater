@@ -27,9 +27,18 @@ export function createInstancesEditor(session: TuiEditorSession): TuiEditorModul
       `edit ${role}'s parallel-runner count (an integer 1-8; feature and bugfix only; empty clears): Enter to save, Esc to cancel`,
     commit: (s, base, text) => {
       const cfgKey = `roles.${base}.instances`;
-      return text === "" ? unsetConfigKey(s.root, cfgKey) : setConfigKey(s.root, cfgKey, text);
+      if (text === "") {
+        const r = unsetConfigKey(s.root, cfgKey);
+        return r.ok && r.oldValue === undefined ? { ok: true, noop: true } : r;
+      }
+      const r = setConfigKey(s.root, cfgKey, text);
+      return r.ok && r.unchanged ? { ok: true, noop: true } : r;
     },
     savedFlash: (role, text) =>
       text === "" ? `${role}: instances cleared` : `${role}: instances set to ${text}`,
+    noopFlash: (role, text) =>
+      text === ""
+        ? `${role}: instances is not set in tumwater.json, so nothing was cleared`
+        : `${role}: instances is already ${text}, so tumwater.json was not written`,
   });
 }

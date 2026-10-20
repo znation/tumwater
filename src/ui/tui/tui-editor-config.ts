@@ -109,7 +109,16 @@ export function createTeamConfigKeyEditor(
           : setConfigKey(session.root, spec.configKey, text);
       if (result.ok) {
         exit();
-        session.flashMessage(text === "" ? spec.clearedFlash : spec.setFlash(text));
+        const noop = text === "" ? result.oldValue === undefined : "unchanged" in result;
+        session.flashMessage(
+          noop
+            ? text === ""
+              ? `${spec.configKey} is not set in tumwater.json, so nothing was cleared`
+              : `${spec.configKey} is already ${text}, so tumwater.json was not written`
+            : text === ""
+              ? spec.clearedFlash
+              : spec.setFlash(text),
+        );
       } else {
         session.flashMessage(result.error); // broken config or write failure — stay in edit mode
       }
