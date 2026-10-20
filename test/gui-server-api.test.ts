@@ -5,13 +5,14 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
 import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
-import { writeEvents } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { enqueueRolePrompt, inboxSize, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
+import { piLogPath } from "../src/paths.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // The dashboard transport's JSON read/write routes under live use: /api/status, the
@@ -396,6 +397,31 @@ test("gui /api/run carries hasCommit, and the patch only on request", async () =
     const none = await get("/api/run?role=clean&run=2");
     assert.equal(none.hasCommit, false);
     assert.equal((await get("/api/run?role=clean&run=2&patch=1")).patch, "(no commit: this run sent nothing to merge)");
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/run carries the run's transcript only on request", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "transcript api test");
+  writeEvents(repo, [
+    { ts: 1000, source: "clean", type: "run_start", run: 1 },
+    { ts: 2000, source: "clean", type: "run_end", run: 1, result: "no_change" },
+    { ts: 3000, source: "clean", type: "run_start", run: 2 },
+    { ts: 4000, source: "clean", type: "run_end", run: 2, result: "no_change" },
+  ]);
+  writeLogLines(piLogPath(repo, "clean"), [
+    { type: "tumwater_run", kind: "author", agent: "pi", ts: 1500 },
+    { type: "agent_start" },
+    { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "said-one" }], timestamp: 1500 } },
+  ]);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const get = async (u: string) => (await (await fetch(base + u)).json()) as { transcript?: string };
+    assert.equal("transcript" in (await get("/api/run?role=clean&run=1")), false);
+    assert.match((await get("/api/run?role=clean&run=1&transcript=1")).transcript ?? "", /said-one/);
+    assert.ok((await get("/api/run?role=clean&run=2&transcript=1")).transcript?.startsWith("(no transcript for clean run 2: "));
   } finally {
     server.close();
   }

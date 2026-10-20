@@ -5,6 +5,38 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The dashboard's History drill-down gets a "Show transcript" button that loads that run's agent transcript below its trail, the dashboard twin of `tumwater history <role> <n> --transcript` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Logs role filter part 1/2 changes only a doc comment in src/gui/gui-endpoints.ts (the `/api/transcript` doc, not `handleTick`'s), so whichever lands second just rebases. The TUI Ctrl+P plan touches src/ui/tui/ only. Touches src/tick/tick-detail.ts src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts, done 2026-10-19)
+
+**Goal.** `tumwater history <role> <n> --transcript` prints what the agent said and ran in one past run (`tickTranscriptLines` in src/tick/tick-detail.ts, over `readRunTranscript` in src/ui/transcript-run.ts). The dashboard cannot show this. Its History drill-down card (`histDetailCardHtml`, src/ui/gui/gui-client-history.ts) shows the harness trail, the stat, the lazy "Show patch" button and the revert button. The role drawer's transcript (`/api/transcript`) shows only the live tail. Add a "Show transcript" button to the card. It follows the Show patch pattern exactly: it fetches `/api/run?…&transcript=1` once, then toggles.
+
+**Approach.**
+- **src/tick/tick-detail.ts.** Export `tickTranscriptLines` unchanged and widen its doc comment to say that the dashboard's `/api/run?transcript` serves it too. Do not change `cmdTick`.
+- **src/gui/gui-endpoints.ts `handleTick`.** Next to the `patch` spread, add `...(q.get("transcript") !== null ? { transcript: <text> } : {})`. `<text>` is built from `tickTranscriptLines(root, role, tick, detail)`: `found.join("\n")` when `found` is non-empty, else `note`. This is the same text the CLI's text view prints, as one string, like `patch`. The flag is present-or-absent, whatever its value, exactly like `patch`, so the default expand reads no pi log. Extend `handleTick`'s doc comment with one sentence about `transcript`.
+- **src/ui/gui/gui-client-history.ts.** Copy the patch trio:
+  - `histTranscriptHtml(entry, key)`: the button is `data-hist-transcript`, labelled "Show transcript"/"Hide transcript". It shows "Loading transcript…", or the error in `<div class='err'>`, or `<pre class='mono hist-detail-transcript'>` while open.
+  - `toggleHistTranscript(key)`: the sub-state is `entry.transcript = { state, text?, message?, open? }`. It fetches `"/api/run?role=…&run=…&transcript=1"` and throws `"/api/run answered without a transcript field"` when `typeof d.transcript !== "string"`. An errored load refetches. A load already in flight is a no-op.
+  - Add a third `$("histbody")` click listener for `button[data-hist-transcript]`, next to the patch one.
+  - In `histDetailCardHtml`, render `histTranscriptHtml(entry, key)` for every ok entry, not gated on `hasCommit`: a no-change run still has a transcript. Put it after the patch button and before the revert button.
+  - Extend the comment that describes the cache entry's shape to name the `transcript` sub-state.
+- **docs/how-it-works.md.** Next to the "Show patch" sentence in the History drill-down paragraph, add one sentence. It says the "Show transcript" button loads the run's agent transcript through `GET /api/run?…&transcript=1`, the same `tickTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
+
+**Tests.**
+- test/gui-server-api.test.ts: a new test beside "gui /api/run carries hasCommit, and the patch only on request". Write events for clean runs 1 (ts 1000–2000) and 2 (ts 3000–4000), and write the pi log with `writeLogLines(piLogPath(repo, "clean"), …)`. Use one `tumwater_run` segment at ts 1500 saying `said-one`, the segment shape that test/tick-detail.test.ts's `--transcript` test uses (`writeLogLines` comes from test/fixtures/log-fixtures.js, `piLogPath` from src/paths.js). Assert:
+  - a plain `/api/run?role=clean&run=1` has no `transcript` key;
+  - `&transcript=1` on run 1 holds `said-one`;
+  - on run 2 it starts with `(no transcript for clean run 2: `.
+- test/gui-client-history.test.ts: a new test modelled on "the drill-down's Show patch button loads the patch on demand and toggles it", using the same `clientScope` stub. Assert:
+  - an ok card without `hasCommit` still renders `data-hist-transcript='clean#9'>Show transcript<`;
+  - a failed fetch shows the error, and a second click refetches (two URLs, the first ending `&transcript=1`);
+  - a successful fetch renders `hist-detail-transcript'>` with the text escaped (stub `"a < b"` → `a &lt; b`) and the label `Hide transcript`;
+  - a further click hides it without fetching.
+
+**Acceptance criteria.**
+- The new tests pass, and the existing Show patch and `/api/run` tests pass unchanged.
+- `/api/run` without `transcript` returns the same keys it did before.
+- `history <role> <n> --transcript`'s output does not change: test/tick-detail.test.ts passes unchanged.
+- `npm run test:gate` passes.
+
 ### The TUI History trail follows the pane's window, outcome filter and search, so Ctrl+N opens the newest run the rows show and Ctrl+P steps through only those runs (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight plans touch src/cli/, src/gui/, src/ui/gui/ and src/tick/, none of the source files below; the in-flight Show transcript plan also edits docs/how-it-works.md, but a different paragraph (the History drill-down), so whichever lands second just rebases; the blocked plain-terms parts rename identifiers in src/ui/tui/ later, which is only a rebase. Touches src/ui/tui/tui-pane-history.ts test/tui-keys.test.ts docs/how-it-works.md docs/cli.md) — done 2026-10-19
 
 **Goal.** On the TUI History pane, `Ctrl+O` filters the rows to an outcome class (say, `problems`), `Ctrl+S` sets a trailing window and `/` sets a search. `Ctrl+N` and `Ctrl+P` ignore all three. `loadTrail` in src/ui/tui/tui-pane-history.ts reads `readTickRows(session.root, index + 1, historyRole)[index]`, scoped only by `Ctrl+G`. So an operator who filters to `problems` and presses `Ctrl+N` reads the newest run of any outcome, usually a success, and has to step through the successes with `Ctrl+P`. The Ctrl+P plan (PLANS-DONE.md, "The TUI's History trail steps back through older runs with Ctrl+P") left this as a separate change. This plan makes the trail use the same selection as the rows.

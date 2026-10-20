@@ -612,3 +612,40 @@ test("the drill-down's Show patch button loads the patch on demand and toggles i
   assert.doesNotMatch(card(), /hist-detail-patch/);
   assert.match(card(), />Show patch</);
 });
+
+test("the drill-down's Show transcript button loads the transcript on demand and toggles it", async () => {
+  const urls: string[] = [];
+  let fail = false;
+  const scope = clientScope<{
+    histDetails: Map<string, Record<string, unknown>>;
+    histDetailCardHtml(entry: unknown, key: string): string;
+    toggleHistTranscript(key: string): Promise<void>;
+  }>(HISTORY_REGIONS, ["histDetails", "histDetailCardHtml", "toggleHistTranscript"], {
+    icon: iconStub,
+    renderHistory: () => {},
+    getJson: (url: string) => {
+      urls.push(url);
+      return fail ? Promise.reject(new Error("boom")) : Promise.resolve({ transcript: "a < b" });
+    },
+  });
+  const { histDetails, histDetailCardHtml, toggleHistTranscript } = scope;
+  const card = () => histDetailCardHtml(histDetails.get("clean#9"), "clean#9");
+
+  histDetails.set("clean#9", { state: "ok", text: "h" });
+  assert.match(card(), /data-hist-transcript='clean#9'>Show transcript</);
+
+  fail = true;
+  await toggleHistTranscript("clean#9");
+  assert.match(card(), /<div class='err'>boom<\/div>/);
+  fail = false;
+  await toggleHistTranscript("clean#9");
+  assert.equal(urls.length, 2, "an errored transcript refetches");
+  assert.match(urls[0]!, /&transcript=1$/);
+  assert.match(card(), /hist-detail-transcript'>a &lt; b</);
+  assert.match(card(), />Hide transcript</);
+
+  await toggleHistTranscript("clean#9");
+  assert.equal(urls.length, 2, "hiding does not refetch");
+  assert.doesNotMatch(card(), /hist-detail-transcript/);
+  assert.match(card(), />Show transcript</);
+});

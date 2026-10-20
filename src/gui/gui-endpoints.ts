@@ -31,7 +31,7 @@ import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSin
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
-import { readTickDetail } from "../tick/tick-detail-data.js";
+import { readTickDetail, type TickDetail } from "../tick/tick-detail-data.js";
 import {
   renderTickDetail,
   tickCommitSha,
@@ -39,6 +39,7 @@ import {
   tickDetailStat,
   tickMergedSha,
   tickNotFoundMessage,
+  tickTranscriptLines,
 } from "../tick/tick-detail.js";
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -328,6 +329,11 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   sendJson(res, 200, { events: matched.map(eventFeedItem) });
 }
 
+/** handleTick's `transcript` text: the run's transcript lines joined, else the miss note. */
+function transcriptText(root: string, role: string, tick: number, detail: TickDetail): string {
+  const { found, note } = tickTranscriptLines(root, role, tick, detail);
+  return found.length > 0 ? found.join("\n") : note;
+}
 /** Handle GET /api/run?role=<id>&run=N: one tick's full event trail — readTickDetail's
  * TickDetail, the collector `tumwater tick <role> <n>` prints from, plus `text`: the same
  * payload through renderTickDetail, pre-rendered server-side like /api/transcript's lines so
@@ -343,7 +349,9 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
  * null — the drill-down offers its revert button only when it is set. `hasCommit` says whether
  * the run pinned a commit (tickCommitSha), for the "Show patch" button; `patch` — the same text
  * `history --patch` prints — is added only when the `patch` flag is present, whatever its
- * value, so the default expand costs no extra `git show`. Reads files directly, so
+ * value, so the default expand costs no extra `git show`. `transcript`, likewise flag-gated, is
+ * the text `history --transcript` prints (tickTranscriptLines: the found lines joined, else its
+ * note), so the default expand reads no pi log. Reads files directly, so
  * it works whether or not the team is running. */
 export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
@@ -364,6 +372,7 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
     revertSha: target?.ok ? target.full : null,
     hasCommit: tickCommitSha(detail) !== null,
     ...(q.get("patch") !== null ? { patch: await tickDetailPatch(root, detail) } : {}),
+    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, tick, detail) } : {}),
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,

@@ -120,8 +120,9 @@ export function renderTickDetail(d: TickDetail): string {
 }
 
 /** The transcript block of `--transcript`: the rendered lines of the agent runs that started in the
- * run's window, or `found: []` plus the `note` the text view prints in their place. */
-function tickTranscriptLines(
+ * run's window, or `found: []` plus the `note` the text view prints in their place. The
+ * dashboard's `/api/run?transcript` serves the same text. */
+export function tickTranscriptLines(
   root: string,
   role: string,
   tick: number,

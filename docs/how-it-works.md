@@ -480,6 +480,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   the two cores `tumwater revert` uses (`POST /api/revert`).
   Its "Show patch" button loads the run's commit patch on demand through `GET /api/run?…&patch=1`,
   the same `tickDetailPatch` text `tumwater history <role> <n> --patch` prints.
+  Its "Show transcript" button loads the run's agent transcript through `GET /api/run?…&transcript=1`,
+  the same `tickTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
   The Pending pane shows the durable merge queue above the pending-change roster, reading and
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed

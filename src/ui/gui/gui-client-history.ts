@@ -110,14 +110,22 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       if (!b) return;
       toggleHistPatch(b.dataset.histPatch);
     });
+    // The drill-down's "Show transcript" / "Hide transcript" button.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-transcript]") : null;
+      if (!b) return;
+      toggleHistTranscript(b.dataset.histTranscript);
+    });
   }
   // history-detail:start
   // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
   // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
-  // when one failed, { state: "ok", text, stat, revertSha, hasCommit, patch?, revert? } once
-  // /api/run answered — hasCommit is whether the run pinned a commit (the Show patch button's
-  // gate), patch the button's sub-state { state: loading | ok | error, text?, message?, open? },
-  // revertSha is the full sha of the change on main (null when none), revert the revert button's
+  // when one failed, { state: "ok", text, stat, revertSha, hasCommit, patch?, transcript?,
+  // revert? } once /api/run answered — hasCommit is whether the run pinned a commit (the Show
+  // patch button's gate), patch the button's sub-state
+  // { state: loading | ok | error, text?, message?, open? }, transcript the Show transcript
+  // button's sub-state, shaped like patch's (shown on every ok card, commit or not), revertSha
+  // is the full sha of the change on main (null when none), revert the revert button's
   // sub-state { state: previewing | preview | reverting | done | error, preview?, message? }.
   // Cached until the view refetches (fetchHistory clears the map), so collapsing and
   // re-expanding reuses the card.
@@ -213,6 +221,40 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     }
     renderHistory();
   }
+  // The Show/Hide transcript button, then its sub-state, exactly like histPatchHtml.
+  function histTranscriptHtml(entry, key) {
+    const t = entry.transcript || {};
+    const label = t.state === "ok" && t.open ? "Hide transcript" : "Show transcript";
+    let out = "<button type='button' class='btn btn-sm' data-hist-transcript='" + esc(key) + "'>" + label + "</button>";
+    if (t.state === "loading") out += " <span class='muted'>Loading transcript…</span>";
+    else if (t.state === "error") out += "<div class='err'>" + esc(t.message || "the transcript failed to load") + "</div>";
+    else if (t.state === "ok" && t.open) out += "<pre class='mono hist-detail-transcript'>" + esc(t.text) + "</pre>";
+    return out;
+  }
+  // Toggle the transcript for the card at key ("role#run"), the way toggleHistPatch does the patch.
+  async function toggleHistTranscript(key) {
+    const entry = histDetails.get(key);
+    if (!entry || entry.state !== "ok") return;
+    if (entry.transcript && entry.transcript.state === "ok") {
+      entry.transcript.open = !entry.transcript.open;
+      renderHistory();
+      return;
+    }
+    if (entry.transcript && entry.transcript.state === "loading") return;
+    const at = key.lastIndexOf("#");
+    entry.transcript = { state: "loading" };
+    renderHistory();
+    try {
+      const d = await getJson(
+        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1",
+      );
+      if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
+      entry.transcript = { state: "ok", text: d.transcript, open: true };
+    } catch (err) {
+      entry.transcript = { state: "error", message: err && err.message ? err.message : "the transcript failed to load" };
+    }
+    renderHistory();
+  }
   function histDetailCardHtml(entry, key) {
     const state = entry && entry.state;
     if (!state || state === "loading") return "<div class='empty'>Loading run detail…</div>";
@@ -224,6 +266,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this run's block.</div>") +
       (entry.stat ? "<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>" : "") +
       (entry.hasCommit === true ? histPatchHtml(entry, key) : "") +
+      histTranscriptHtml(entry, key) +
       (entry.revertSha ? histRevertHtml(entry, key) : "") +
       "</div>";
   }
