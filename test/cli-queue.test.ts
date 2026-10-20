@@ -85,3 +85,56 @@ test("queue prints the in-flight label only while an orchestrator is alive", asy
   assert.match(live.stdout, /ago · \[merging 2m · reviewing\] · tidy the parser/);
   assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight.sha, sha);
 });
+
+async function scopedQueueRepo(): Promise<string> {
+  const repo = makeRepo();
+  await initProject(repo, "queue role test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1));
+  enqueueMerge(repo, entry("feature-2", "b".repeat(40), 2));
+  enqueueMerge(repo, entry("organize", "c".repeat(40), 3));
+  enqueueMerge(repo, entry("feature", "d".repeat(40), 4));
+  return repo;
+}
+
+test("queue --role lists only the listed roles' merges under their whole-queue positions", async () => {
+  const repo = await scopedQueueRepo();
+  const r = await cli(repo, "queue", "--role", "feature");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], "merge queue (2 of 4, --role feature):");
+  assert.match(lines[1]!, /^  2\. feature #2 run #2 · /);
+  assert.match(lines[2]!, /^  4\. feature run #4 · /);
+  const other = (await cli(repo, "queue", "--role", "improve,organize")).stdout.trimEnd().split("\n");
+  assert.match(other[1]!, /^  1\. improve /);
+  assert.match(other[2]!, /^  3\. organize /);
+});
+
+test("queue --role with no matching merge names the role and the queue depth", async () => {
+  const repo = await scopedQueueRepo();
+  const r = await cli(repo, "queue", "--role", "clean");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "no queued merges for clean (merge queue holds 4)");
+  const empty = makeRepo();
+  await initProject(empty, "queue role empty");
+  const e = await cli(empty, "queue", "--role", "clean");
+  assert.equal(e.code, 0);
+  assert.equal(e.stdout.trim(), "merge queue empty");
+});
+
+test("queue --role --json filters entries and keeps the unreadable count", async () => {
+  const repo = await scopedQueueRepo();
+  const r = await cli(repo, "queue", "--role", "feature", "--json");
+  assert.equal(r.code, 0);
+  const doc = JSON.parse(r.stdout) as { entries: Array<{ role: string }>; unreadable: number };
+  assert.deepEqual(doc.entries.map((e) => e.role), ["feature-2", "feature"]);
+  assert.equal(doc.unreadable, 0);
+});
+
+test("queue --role rejects an unknown or empty role id", async () => {
+  const repo = await scopedQueueRepo();
+  const bad = await cli(repo, "queue", "--role", "nosuch");
+  assert.notEqual(bad.code, 0);
+  assert.match(bad.stderr, /nosuch/);
+  assert.notEqual((await cli(repo, "queue", "--role", "")).code, 0);
+});

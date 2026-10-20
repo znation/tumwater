@@ -177,7 +177,8 @@ Usage:
                                    yet prints \`no worktree for <id>\`; --stat prints each patch's per-file
                                    \`git diff --stat\` summary instead; --json prints the
                                    collector's payload as machine-readable data
-  tumwater queue [--json]          List the durable merge queue in execution order (oldest
+  tumwater queue [--role <id>[,<id>...]] [--json]
+                                   List the durable merge queue in execution order (oldest
                                    first): one line per waiting merge — position, role, run
                                    number, short pinned sha, age, and summary — plus a bracketed
                                    \`[merging 2m · reviewing]\` / \`[approved, waiting to merge]\`
@@ -185,7 +186,10 @@ Usage:
                                    prints \`merge queue empty\`, and any torn/foreign queue file
                                    the reader skipped is counted on a trailing line; --json
                                    prints the collector's own {entries, unreadable} document
-                                   (raw sha and numeric enqueuedAt, not the render's age)
+                                   (raw sha and numeric enqueuedAt, not the render's age); --role
+                                   keeps only the listed roles' merges (a base role id taking
+                                   its instances too), each under its position in the whole
+                                   queue; --json then lists only those entries
   tumwater backlog [--ready] [--grep <text>] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable

@@ -46,21 +46,35 @@ export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorRev
  * `merge queue empty`; a non-zero skip count appends one `(+N unreadable queue file(s) skipped)`
  * line so a torn or foreign file the reader dropped is visible rather than silent. An entry the
  * optional in-flight marker has a live record for carries ` · [<label>]` after its age
- * (queueEntryMergeLabel). */
-export function renderMergeQueue(view: MergeQueueView, now: number, inFlight?: MergeInFlight): string {
+ * (queueEntryMergeLabel). With the optional `scope` (`queue --role`: `view` holds only the
+ * listed roles' entries, `positions` their 1-based places in the whole queue, `total` the whole
+ * queue's entry count) each line keeps its whole-queue number, the header reads
+ * `merge queue (<kept> of <whole depth>, --role <ids>):`, and a scope that keeps nothing of a
+ * non-empty queue prints `no queued merges for <ids> (merge queue holds <depth>)`. Without
+ * `scope` the output is the whole queue's. */
+export function renderMergeQueue(
+  view: MergeQueueView,
+  now: number,
+  inFlight?: MergeInFlight,
+  scope?: { roles: readonly string[]; positions: readonly number[]; total: number },
+): string {
   const depth = view.entries.length + view.unreadable;
+  const wholeDepth = scope ? scope.total + view.unreadable : depth;
+  const ids = scope ? scope.roles.join(",") : "";
   const lines: string[] = [];
-  if (depth === 0) {
+  if (wholeDepth === 0) {
     lines.push("merge queue empty");
+  } else if (scope && view.entries.length === 0) {
+    lines.push(`no queued merges for ${ids} (merge queue holds ${wholeDepth})`);
   } else {
-    lines.push(`merge queue (${depth}):`);
+    lines.push(scope ? `merge queue (${view.entries.length} of ${wholeDepth}, --role ${ids}):` : `merge queue (${depth}):`);
     view.entries.forEach((e, i) => {
       const age = humanAgo(e.enqueuedAt, now);
       const label = queueEntryMergeLabel(e.sha, inFlight, now);
       const tag = label ? ` · [${label}]` : "";
       const note = revisionNote(e);
       const noteTag = note ? ` · ${note}` : "";
-      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${noteTag} · ${e.summary}`);
+      lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${noteTag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

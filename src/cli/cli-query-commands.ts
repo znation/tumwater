@@ -154,16 +154,32 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
   // as an empty queue (a `merge queue empty` line, exit 0), so no merge ever queued is
   // data, not an error.
-  rejectUnknownArgs("queue", args, [JSON_FLAG]);
+  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG]);
   await requireReadyRepo(root);
+  const roles = parseRoleListScope(root, args);
   // The JSON branch prints the reader's own document — raw sha and numeric enqueuedAt, not
   // the render's short sha and age — and the render is the collector's view with one clock
   // read, so `tumwater queue` and `tumwater status --json`'s mergeQueue cannot drift.
   // The in-flight marker rides along only while an orchestrator runs and the marker names a
   // queued entry (queueInFlight) — status --json's mergeQueue.inFlight, so the two agree.
-  const view = readMergeQueue(root);
+  // --role keeps the listed roles' entries (a base id taking its instances too) under their
+  // whole-queue positions; the in-flight marker is judged against the kept entries only, and
+  // `unreadable` stays whole because an unreadable file has no role to attribute it to.
+  const whole = readMergeQueue(root);
+  const positions: number[] = [];
+  const view = roles
+    ? {
+        ...whole,
+        entries: whole.entries.filter((e, i) => {
+          const kept = roles.includes(e.role) || roles.includes(baseRoleOf(e.role));
+          if (kept) positions.push(i + 1);
+          return kept;
+        }),
+      }
+    : whole;
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight));
+  const scope = roles ? { roles, positions, total: whole.entries.length } : undefined;
+  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight, scope));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */
