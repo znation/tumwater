@@ -24,6 +24,12 @@ export function statOrNull(file: string): fs.Stats | null {
   }
 }
 
+/** Whether `file` exists and is a directory (a symlink is followed); false when it is missing
+ * or cannot be stat'd. */
+export function isDirectory(file: string): boolean {
+  return statOrNull(file)?.isDirectory() === true;
+}
+
 /** Whether a freshly stat'd file is still the same file at the same bytes as a prior
  * observation: matching dev/ino (a replaced inode is a different file even at the same size)
  * plus matching size and, when the caller tracks it, mtime. The one home of the freshness

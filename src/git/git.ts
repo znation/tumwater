@@ -1,4 +1,5 @@
 import { errCode } from "../errno.js";
+import { isDirectory } from "../files/files.js";
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, commitAuthorArgs, committerIdentArgs, execGitBounded, git, gitTry } from "./git-run.js";
@@ -17,13 +18,8 @@ function isSha(s: string): boolean {
  * `git rev-parse`. Synchronous and microsecond-scale: this exists for poll loops that would
  * otherwise pay a ~10ms subprocess spawn per run just to watch main. */
 export function readBranchHead(root: string, branch: string): string | null {
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(path.join(root, ".git"));
-  } catch {
-    return null; // Not a repo (or .git missing).
-  }
-  if (!st.isDirectory()) return null; // Worktree pointer file — the spawn fallback knows better.
+  // Not a repo (or .git missing), or a worktree pointer file — the spawn fallback knows better.
+  if (!isDirectory(path.join(root, ".git"))) return null;
 
   try {
     const sha = fs.readFileSync(path.join(root, ".git", "refs", "heads", branch), "utf8").trim();

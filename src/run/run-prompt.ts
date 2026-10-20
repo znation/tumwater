@@ -22,7 +22,7 @@ import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
 import { pathTokens } from "./stage-path-checks.js";
-import { readTextOrNull, statOrNull } from "../files/files.js";
+import { isDirectory, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
@@ -57,7 +57,7 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
   const entry = text.split("\n").slice(range.start - 1, range.end).join("\n");
   return pathTokens(entry).filter((p) => {
     const top = p.slice(0, p.indexOf("/"));
-    return statOrNull(path.join(root, top))?.isDirectory() === true && statOrNull(path.join(root, p)) === null;
+    return isDirectory(path.join(root, top)) && statOrNull(path.join(root, p)) === null;
   });
 }
 

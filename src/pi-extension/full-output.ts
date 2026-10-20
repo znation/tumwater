@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { toolOutputDir } from "../paths.js";
-import { walkUp, writeTextAtomic } from "../files/files.js";
+import { isDirectory, walkUp, writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
  * under it (`.tumwater/worktrees/<role>`, merger, gate alike) reach it three levels up
@@ -24,13 +24,7 @@ import { walkUp, writeTextAtomic } from "../files/files.js";
  * terminates without walking to the filesystem root; returns null when no ancestor within
  * that bound has one, so such a run writes nothing. Exported for tests. */
 export function findTumwaterRoot(startDir: string = process.cwd()): string | null {
-  return walkUp(startDir, 63, (dir) => {
-    try {
-      return fs.statSync(path.join(dir, ".tumwater")).isDirectory() ? dir : null;
-    } catch {
-      return null; // Not here — keep walking up.
-    }
-  });
+  return walkUp(startDir, 63, (dir) => (isDirectory(path.join(dir, ".tumwater")) ? dir : null));
 }
 
 /** Persist a full tool output under the harness's gitignored `.tumwater/` area and return

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
-import { walkUp } from "../files/files.js";
+import { isDirectory, statOrNull, walkUp } from "../files/files.js";
 import { isNonBlankString } from "../text/text.js";
 import type { CheckConfigSlice } from "../config/config-schema.js";
 
@@ -57,12 +57,7 @@ const WALK_UP_LEVELS = 5;
 /** True when `dir` holds both a package.json and a node_modules/ directory — the structural
  * signature of an installed JS project root. */
 function hasInstall(dir: string): boolean {
-  try {
-    fs.statSync(path.join(dir, "package.json"));
-    return fs.statSync(path.join(dir, "node_modules")).isDirectory();
-  } catch {
-    return false;
-  }
+  return statOrNull(path.join(dir, "package.json")) !== null && isDirectory(path.join(dir, "node_modules"));
 }
 
 /** Read the check script from `dir`'s package.json: prefer test — npm convention makes

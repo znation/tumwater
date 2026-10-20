@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
+import { isDirectory } from "./files/files.js";
 
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
@@ -334,13 +334,7 @@ export function sessionDir(root: string, role: string): string {
 export function nearestTumwaterRoot(sessionDir: string): string | undefined {
   let dir = sessionDir;
   for (let i = 0; i < 64; i += 1) {
-    let tumwater: fs.Stats | undefined;
-    try {
-      tumwater = fs.statSync(path.join(dir, ".tumwater"));
-    } catch {
-      tumwater = undefined;
-    }
-    if (tumwater?.isDirectory()) return dir;
+    if (isDirectory(path.join(dir, ".tumwater"))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

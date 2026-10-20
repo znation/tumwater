@@ -3,7 +3,7 @@ import path from "node:path";
 import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
 import { branchExists, commitExists, deleteRef, hasWorktreeRegistrations, isGitRepo, refShaFromFiles, refsUnder, resolveGitDir } from "./git.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
+import { isDirectory, pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
 
@@ -203,11 +203,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
 function syncStateClear(wt: string): boolean {
   const gitdir = resolveGitDir(wt);
   if (gitdir === undefined) return false; // Not a repo we can inspect — fall back to the spawns.
-  try {
-    if (!fs.statSync(gitdir).isDirectory()) return false; // Pointer target gone: uncertain.
-  } catch {
-    return false;
-  }
+  if (!isDirectory(gitdir)) return false; // Pointer target gone: uncertain.
   try {
     fs.statSync(path.join(gitdir, "MERGE_HEAD"));
     return false;
@@ -215,11 +211,7 @@ function syncStateClear(wt: string): boolean {
     // No merge in progress — rebase state next.
   }
   for (const dir of ["rebase-merge", "rebase-apply"]) {
-    try {
-      if (fs.statSync(path.join(gitdir, dir)).isDirectory()) return false;
-    } catch {
-      // This backend's rebase state is absent.
-    }
+    if (isDirectory(path.join(gitdir, dir))) return false;
   }
   return true;
 }

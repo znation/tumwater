@@ -6,7 +6,7 @@ import { boundedProbe } from "./probe.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
 import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { opencodeDbPath } from "../paths.js";
-import { readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
+import { isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole, resolvedBackendConfig } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
@@ -911,7 +911,7 @@ export async function checkOpencode(
   warns.push(...opencodeConfigLeaks(xdgConfigHome !== "" ? xdgConfigHome : path.join(home, ".config")));
   const db = statOrNull(opencodeDbPath(root));
   const spillDir = opencodeSpillDir(root);
-  const spill = spillDir !== "" && statOrNull(spillDir)?.isDirectory() === true ? treeBytes(spillDir) : null;
+  const spill = spillDir !== "" && isDirectory(spillDir) ? treeBytes(spillDir) : null;
   const sizeNotes = `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
   const found = [...fails, ...warns];
   const base =
