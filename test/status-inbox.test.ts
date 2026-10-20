@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectInboxes } from "../src/status/status-inbox.js";
-import { loopIds } from "../src/roles/runner-ids.js";
+import { runnerIds } from "../src/roles/runner-ids.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { initProject } from "../src/init/init.js";
@@ -14,7 +14,7 @@ import { loadConfig } from "../src/config/config.js";
 test("collectInboxes counts the director queue and the per-role queues", async () => {
   const repo = makeRepo();
   await initProject(repo, "inbox collector");
-  const roles = loopIds(loadConfig(repo));
+  const roles = runnerIds(loadConfig(repo));
   submitPrompt(repo, "director prompt");
   enqueueRolePrompt(repo, "clean", "one");
   enqueueRolePrompt(repo, "clean", "two");

@@ -1,33 +1,33 @@
 // vocabulary: plain
 import type { BackoffConfig } from "../config/config-schema.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { yieldScaledRole } from "../roles/roles.js";
 
-/** The loop's CLOCK policy: when a loop runs next — the wake semantics (clearBackoff,
+/** The role's CLOCK policy: when a role runs next — the wake semantics (clearBackoff,
  * restoreMidTickWake), the backoff ladders (nextBackoffSeconds, scheduleBackoff, the error
  * ladder), the yield-scaled clock (the recentOutcomes ring and yieldMultiplier), and the
  * min-interval scheduler. Split out of tick-outcome.ts — which keeps the tick's outcome
  * vocabulary (TickResult, TickOutcome), with the state machine that applies a finished outcome
  * in tick-apply.ts — because "what an outcome is / what applying it records" and "what the
- * loop's clock does next" are different concerns that happen to touch the same LoopState
+ * role's clock does next" are different concerns that happen to touch the same RunnerState
  * object. No I/O here: every function mutates the caller's state in place (the caller's
  * object is authoritative across an in-flight tick and saves it itself), so the policy is
  * unit-tested without touching a disk. */
 
-/** Clear a loop's backoff so its next orchestrator poll finds it immediately due: zero
+/** Clear a role's backoff so its next orchestrator poll finds it immediately due: zero
  * backoffSeconds (so the next no_change/error tick restarts the backoff ladder from the
  * bottom instead of climbing from wherever the team parked) and pull nextRunAt forward to
  * now. Pure: returns a new state and preserves everything else — counters (an
  * observation-window reset is zeroCounters' job), wake tracking (lastMainHead), and the
  * last-result fields. Scheduling operation, not observation-window reset: it exists so an
- * operator who fixed what the loops were failing on can say "try again" (BUGS.md
+ * operator who fixed what the roles were failing on can say "try again" (BUGS.md
  * 2026-09-15: the team had no wake lever). Also stamps wokenAt, which is what lets
- * isEligible honor the demand over the role's min-tick interval (LoopState.wokenAt). */
-export function clearBackoff(s: LoopState, now: number): LoopState {
+ * isEligible honor the demand over the role's min-tick interval (RunnerState.wokenAt). */
+export function clearBackoff(s: RunnerState, now: number): RunnerState {
   // wokenAt marks the wake as newer than the current gap window's opening tick, which is
-  // what lets isEligible honor the demand over the min-tick interval (LoopState.wokenAt):
-  // without it a loop that ticked inside its own slow clock stays asleep for the rest of
+  // what lets isEligible honor the demand over the min-tick interval (RunnerState.wokenAt):
+  // without it a role that ticked inside its own slow clock stays asleep for the rest of
   // the interval and both `tumwater wake` and a queued per-role prompt silently do nothing.
   return { ...s, backoffSeconds: 0, nextRunAt: now, wokenAt: now };
 }
@@ -44,7 +44,7 @@ export function clearBackoff(s: LoopState, now: number): LoopState {
  * tick that just ran (the ordinary self-clearing must hold), and a cut-off/aborted outcome's
  * `resumePending` — the next run deliberately waits one interval from the compacted context,
  * and a mid-tick wake must not shortcut that wait. */
-export function restoreMidTickWake(s: LoopState): boolean {
+export function restoreMidTickWake(s: RunnerState): boolean {
   if (s.resumePending) return false;
   if (s.wokenAt === undefined || s.wokenAt <= (s.lastRunStartedAt ?? 0)) return false;
   // clearBackoff stamps wokenAt = now, which must read NEWER than the end-save's
@@ -55,7 +55,7 @@ export function restoreMidTickWake(s: LoopState): boolean {
 }
 
 /** Yield-scaled clocks: how long a role's own recent
- * results stretch its min-tick gap. The ring (LoopState.recentOutcomes) holds one char per
+ * results stretch its min-tick gap. The ring (RunnerState.recentOutcomes) holds one char per
  * COUNTED tick — a merge (`changed`/`queued`) is `L`, every other counted result is `n`;
  * the error class (`error`/`aborted`/`quiet_killed`) is no yield evidence either way and is
  * not recorded at all, so a run of backend failures neither stretches a role's clock nor
@@ -68,7 +68,7 @@ const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", 
 /** Record one finished tick's result on the state's yield ring, oldest entries falling off
  * past YIELD_RING. Mutates `s` in place, called from applyTickOutcome (src/tick/tick-apply.ts)
  * beside the streak counters. */
-export function pushYieldOutcome(s: LoopState, result: TickResult): void {
+export function pushYieldOutcome(s: RunnerState, result: TickResult): void {
   if (UNCOUNTED_RESULTS.has(result)) return;
   const ch = result === "changed" || result === "queued" ? YIELD_MERGE : "n";
   s.recentOutcomes = ((s.recentOutcomes ?? "") + ch).slice(-YIELD_RING);
@@ -90,18 +90,18 @@ export function yieldMultiplier(recent: string[]): number {
   return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - 10) / 5) + 1));
 }
 
-/** The yield multiplier a loop's state earns: the role's recent-yield multiplier when
+/** The yield multiplier a runner's state earns: the role's recent-yield multiplier when
  * yieldScaledRole(role) holds, else 1 (a role outside the scalable set keeps its plain gap
  * whatever its ring says). The one assembly of the scalable-role test with yieldMultiplier,
  * so the scheduler's gap (isEligible) and the mirrors that DISPLAY that gap — the TUI's
  * next-run cell (status-render.ts's nextRunCell) and the JSON/GUI payload
  * (status-payload.ts) — cannot disagree about whether a quiet role's next run is stretched. */
-export function yieldMultiplierFor(s: LoopState): number {
+export function yieldMultiplierFor(s: RunnerState): number {
   return yieldScaledRole(s.role) ? yieldMultiplier((s.recentOutcomes ?? "").split("")) : 1;
 }
 
 /** The `×N` yield-multiplier suffix a next-run display rides: `×4` when the multiplier is
- * above 1, else `""` — the quiet scalable loop's stretched effective gap made visible (the
+ * above 1, else `""` — the quiet scalable role's stretched effective gap made visible (the
  * multiplier gates the scheduled gap in isEligible, so a `now`-due cell at ×4 is a role
  * waiting out its gap, not a broken clock). Shared by the status table's `next run` cell
  * (status-render.ts's nextRunCell) and the role view's Schedule line (role-render.ts) so the
@@ -118,25 +118,25 @@ export function nextBackoffSeconds(current: number, ladder: BackoffConfig): numb
   return Math.min(current * factor, maxSeconds);
 }
 
-/** Advance the loop's shared backoffSeconds on `ladder` and schedule its next tick after it.
+/** Advance the role's shared backoffSeconds on `ladder` and schedule its next tick after it.
  * Every backing-off outcome (an unproductive tick, a failed one, a deliberate stop, and the
  * quiet-kill fallback) funnels through here, so the seconds→ms conversion and the rule that
  * each ladder advances from the current value apply identically in all four arms. */
-export function scheduleBackoff(s: LoopState, ladder: BackoffConfig): void {
+export function scheduleBackoff(s: RunnerState, ladder: BackoffConfig): void {
   s.backoffSeconds = nextBackoffSeconds(s.backoffSeconds, ladder);
   s.nextRunAt = Date.now() + s.backoffSeconds * 1000;
 }
 
-/** Schedule the loop's next tick at its minimum interval — the role-resolved config's
+/** Schedule the role's next tick at its minimum interval — the role-resolved config's
  * minRunIntervalSeconds (a per-role slow clock), converted seconds→ms here so every outcome
  * arm that shares this cadence cannot drift apart. The productive-side counterpart of
- * scheduleBackoff: together the two own the whole "when does this loop run again" decision. */
-export function scheduleAtMinInterval(s: LoopState, cfg: { minRunIntervalSeconds: number }): void {
+ * scheduleBackoff: together the two own the whole "when does this role run again" decision. */
+export function scheduleAtMinInterval(s: RunnerState, cfg: { minRunIntervalSeconds: number }): void {
   s.nextRunAt = Date.now() + cfg.minRunIntervalSeconds * 1000;
 }
 
 /** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model
- * runs — its cap exists so a loop that keeps finding nothing stops burning model time. A tick
+ * runs — its cap exists so a role that keeps finding nothing stops burning model time. A tick
  * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it
  * climbs this short ladder, capped in minutes: one broken `git` must not park a team for the
  * idle ladder's 10-hour sleep (BUGS.md, the 2026-09-15 outage). One ladder, one sensible

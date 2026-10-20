@@ -23,10 +23,10 @@ interface InboxCollectResult {
  * directory and reads each file once): the count is the deliverable entries' length, so a
  * prompt enqueued or dequeued mid-snapshot can never make the header badge disagree with its
  * numbered previews, and each preview keeps its queue-file address beside it. A second
- * listing pass per role (all non-director loops) fills the per-role counts and their
+ * listing pass per role (all non-director roles) fills the per-role counts and their
  * cancel-addressable entries from the same `queuedRolePromptEntries` records, with
  * deliverableAt (prompt-not-before.ts) over the same cached text. `roles` is the
- * already-computed loop list so one `loopIds` read serves the caller and both passes; `now`
+ * already-computed role list so one `runnerIds` read serves the caller and both passes; `now`
  * is the snapshot's pinned clock, so deliverability and the counts advance together instead
  * of racing the wall clock. */
 export function collectInboxes(root: string, roles: string[], now: number): InboxCollectResult {

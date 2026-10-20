@@ -1,5 +1,5 @@
 // Core status-data suite: snapshot()'s own contract and per-poll cache — the config it
-// resolves against (quiet hours, custom loops), the loop rows it builds, and the stat-keyed
+// resolves against (quiet hours, custom roles), the role rows it builds, and the stat-keyed
 // reads that serve them. Split by facet from one status-data test file; the
 // budget/cap fields live in status-data-budget.test.ts, the team/pause/health fields in
 // status-data-team.test.ts, the queue fields in status-data-inbox.test.ts, and the model
@@ -17,7 +17,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { allRoleIds } from "../src/roles/roles.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { withCountedReads } from "./helpers/fs-faults.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { backdate } from "./helpers/backdate.js";
@@ -61,7 +61,7 @@ test("snapshot carries the quiet-hours window when configured and nothing when n
   assert.equal(fromDefaults.inQuietHours, false);
 });
 
-test("snapshot lists one row per loop id for a multi-instance role (part 5b/7)", async () => {
+test("snapshot lists one row per role id for a multi-instance role (part 5b/7)", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   const config = loadConfig(repo);
@@ -74,7 +74,7 @@ test("snapshot lists one row per loop id for a multi-instance role (part 5b/7)",
 
 // Per-role quiet hours key config by BASE role (gate-polls.ts's roleQuietHeld resolves an
 // instance through baseRoleOf), so the snapshot must resolve the window the same way while
-// keying the map by the loop id loopPhase looks up — otherwise feature-2 reads queued while
+// keying the map by the role id rolePhase looks up — otherwise feature-2 reads queued while
 // the scheduler holds it.
 test("snapshot resolves a per-role quiet window through the base role for instances", async () => {
   const repo = makeRepo();
@@ -126,12 +126,12 @@ test("snapshot survives a broken tumwater.json and recovers when it is fixed", a
   assert.ok(!snap.loops.some((l) => l.role === "clean"));
 });
 
-test("snapshot serves unchanged loop state from the stat-keyed cache without re-reading", async () => {
+test("snapshot serves unchanged runner state from the stat-keyed cache without re-reading", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  const state = freshLoopState("clean");
+  const state = freshRunnerState("clean");
   state.runs = 3;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 3); // populates the cache
 
   withCountedReads(
@@ -149,9 +149,9 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   // A same-size edit is picked up via mtime, not just size: ticks 3 → 4 keeps the file's byte
   // length identical, so utimes forces a distinct mtime regardless of filesystem timestamp
   // granularity (two fast writes could otherwise share one on coarse-grained filesystems).
-  const bumped = freshLoopState("clean");
+  const bumped = freshRunnerState("clean");
   bumped.runs = 4;
-  saveLoopState(repo, bumped);
+  saveRunnerState(repo, bumped);
   backdate(path.join(repo, ".tumwater", "state", "clean.json"), -5000);
   assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 4);
 });
@@ -176,7 +176,7 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   assert.equal(reads, 1); // one read serves both — not two
 });
 
-// The `custom` flag marks user-defined loops (tumwater.json's customRoles) for the
+// The `custom` flag marks user-defined roles (tumwater.json's customRoles) for the
 // dashboards' asterisk. It is computed in snapshot from the same last-known-good config that
 // produced the role list — so a transiently broken file keeps marking its customs rather than
 // flipping them unmarked mid-poll.

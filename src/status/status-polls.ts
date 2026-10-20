@@ -8,7 +8,7 @@ import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
-import { freshLoopState, loadLoopState, type LoopState } from "../runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { eventsLogPath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {
@@ -22,7 +22,7 @@ import { commitTier } from "../roles/roles.js";
  * three inputs that cost real reads — main's newest merge-scope build check (a stat-cached
  * event-tail scan with its own grown-full memo), the config to display against (stat-keyed, with a
  * last-known-good fallback so a transiently broken tumwater.json never blinds an observer),
- * and each role's loop state (stat-keyed, copied per poll). Split out of status/status-data.ts —
+ * and each role's runner state (stat-keyed, copied per poll). Split out of status/status-data.ts —
  * which keeps the StatusSnapshot contract and the snapshot assembly — so the contract file
  * carries no module-level cache state of its own. Lives beside it in src/: pure data
  * collection, no presentation concern. */
@@ -172,20 +172,20 @@ function mainCheckScanFor(root: string): MainCheckScan {
   );
 }
 
-/** Has main's newest merge-scope check retired a loop's stale `main_red` verdict? Only a
- * PASSED check stamped strictly after the loop's red tick ended counts — the team-level
- * green is newer evidence than the loop's own red (BUGS.md 2026-09-30). A failed or skipped
- * newest check, a check from before the red tick, or a loop with no known tick end all leave
+/** Has main's newest merge-scope check retired a role's stale `main_red` verdict? Only a
+ * PASSED check stamped strictly after the role's red tick ended counts — the team-level
+ * green is newer evidence than the role's own red (BUGS.md 2026-09-30). A failed or skipped
+ * newest check, a check from before the red tick, or a role with no known tick end all leave
  * the verdict standing. Single-homed here beside heldByMainRed. */
-function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: LoopState): boolean {
+function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: RunnerState): boolean {
   return mainCheck?.status === "passed"
     && s.lastRunEndedAt !== undefined
     && mainCheck.at > s.lastRunEndedAt;
 }
 
-/** Is a loop's tick verdict still the red-main hold? The one predicate behind the status
+/** Is a role's tick verdict still the red-main hold? The one predicate behind the status
  * phase's `main red` label and doctor's `main red` check, so the two cannot disagree. */
-export function heldByMainRed(s: LoopState, mainCheck: MainCheckStatus | undefined): boolean {
+export function heldByMainRed(s: RunnerState, mainCheck: MainCheckStatus | undefined): boolean {
   return s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s);
 }
 
@@ -238,7 +238,7 @@ export function queueInFlight(root: string, entries: readonly MergeEntry[], runn
 // reload poll and surfaces the error as a warning event visible in `tumwater logs`.
 const lastGoodConfig = new Map<string, TumwaterConfig>();
 
-/** The config to display loop state against: fresh when valid, otherwise the last
+/** The config to display runner state against: fresh when valid, otherwise the last
  * known-good one (or defaults if this process never saw a valid file). Never throws.
  * Freshness is stat-keyed (config.loadConfigCached): an unedited tumwater.json costs one
  * stat per poll instead of a read + parse + validate. */
@@ -257,22 +257,22 @@ export function configForStatus(root: string): TumwaterConfig {
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
 // Keyed by state-file path so distinct roots never collide; capped inside cachedByStat so many
 // short-lived roots in tests cannot grow it unbounded.
-const loopStateCache = new Map<string, StatKeyedValue<LoopState>>();
+const runnerStateCache = new Map<string, StatKeyedValue<RunnerState>>();
 
 /** This poll's view of one role's state: fresh when the file changed since this process last
  * read it, cached otherwise (see above). Returns a copy so each snapshot owns its data —
- * mutating one poll's LoopState must not poison later polls. A missing state file yields a
- * fresh state, as loadLoopState does for an unreadable one. */
-export function loopStateForPoll(root: string, role: string): LoopState {
+ * mutating one poll's RunnerState must not poison later polls. A missing state file yields a
+ * fresh state, as loadRunnerState does for an unreadable one. */
+export function runnerStateForPoll(root: string, role: string): RunnerState {
   const file = statePath(root, role);
   return (
     cachedByStat(
-      loopStateCache,
+      runnerStateCache,
       file,
       file,
-      () => loadLoopState(root, role),
+      () => loadRunnerState(root, role),
       (state) => ({ ...state }), // A copy: callers may treat the result as their own.
-    ) ?? freshLoopState(role)
+    ) ?? freshRunnerState(role)
   );
 }
 
@@ -285,14 +285,14 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
 
 /** The maintenance allowance verdict as an observer sees it for this poll (status-data's
  * `maintenanceQuota` field): the rolling-window counts over the same event log the gate reads,
- * plus the enabled maintenance loops currently in flight (running a tick or holding a queued
- * merge, so the `used` figure matches the gate's). `held` names the enabled maintenance loop
+ * plus the enabled maintenance roles currently in flight (running a tick or holding a queued
+ * merge, so the `used` figure matches the gate's). `held` names the enabled maintenance role
  * ids the scheduler holds while `used >= allowance`. Pure read — unlike the gate it logs nothing
  * and keeps no hold edge, so it can run in the TUI/GUI process every second. */
 export function maintenanceQuotaForPoll(
   root: string,
   perWorkMerge: number,
-  loops: readonly { role: string; running?: boolean }[],
+  runners: readonly { role: string; running?: boolean }[],
   queuedMergeRoles: ReadonlySet<string>,
   now: number,
 ): { allowance: number; used: number; held: string[] } {
@@ -304,10 +304,10 @@ export function maintenanceQuotaForPoll(
   const { work, maint } = countMaintenanceWindow(root, counter, now);
   const maintenanceRoles: string[] = [];
   let inFlight = 0;
-  for (const loop of loops) {
-    if (commitTier(loop.role) !== "maintenance") continue;
-    maintenanceRoles.push(loop.role);
-    if (loop.running || queuedMergeRoles.has(loop.role)) inFlight++;
+  for (const runner of runners) {
+    if (commitTier(runner.role) !== "maintenance") continue;
+    maintenanceRoles.push(runner.role);
+    if (runner.running || queuedMergeRoles.has(runner.role)) inFlight++;
   }
   const verdict = maintenanceQuota({ work, maint, inFlight, perWorkMerge });
   return { allowance: verdict.allowance, used: verdict.used, held: verdict.held ? maintenanceRoles : [] };

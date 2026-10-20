@@ -1,15 +1,15 @@
 /** Tick-scheduling POLICY, split out of orchestrator.ts (the poll-loop runtime that calls it):
- * pure decisions over a runner's state and the world — when a loop may tick, in what order
- * eligible loops take slots, and whether merged work or an open backlog defers idle
+ * pure decisions over a runner's state and the world — when a role may tick, in what order
+ * eligible roles take slots, and whether merged work or an open backlog defers idle
  * maintenance. No I/O, no process state: every function
- * takes plain data (a LoopRunner's observable fields, timestamps, commit subjects) so the
+ * takes plain data (a RoleRunner's observable fields, timestamps, commit subjects) so the
  * policy is unit-tested without running an orchestrator, and a future change to how ticks are
  * driven (e.g. the merge queue's async merge, PLANS.md 3/5) reuses these decisions instead of
- * re-deriving them inside the loop. Dependency direction: orchestrator → scheduling; this
- * module only reads LoopRunner through its public fields and imports no runtime from it. */
+ * re-deriving them inside the poll loop. Dependency direction: orchestrator → scheduling; this
+ * module only reads RoleRunner through its public fields and imports no runtime from it. */
 
-import type { LoopRunner } from "../runner/runner.js";
-import { freshlyWoken, hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
+import type { RoleRunner } from "../runner/runner.js";
+import { freshlyWoken, hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
@@ -17,7 +17,7 @@ import {
   DIRECTOR_ROLE,
   roleTier,
 } from "../roles/roles.js";
-import { baseRoleOf, loopEnabled } from "../roles/runner-ids.js";
+import { baseRoleOf, runnerEnabled } from "../roles/runner-ids.js";
 import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
@@ -32,7 +32,7 @@ interface EligibilityOptions {
    * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
    * per-role enablement are kept as-is. */
   once?: boolean;
-  /** PLANS.md still has planning room (planBacklogFull false): while true, the plan loop's
+  /** PLANS.md still has planning room (planBacklogFull false): while true, the plan role's
    * min-tick gap is ZERO rather than its per-role default (3600 s), so a productive plan tick
    * reruns on the next poll and an unproductive one drops to the idle backoff. Every other
    * role's gap is unchanged. */
@@ -45,11 +45,11 @@ interface EligibilityOptions {
   leftoverPending?: boolean;
 }
 
-/** Should this loop tick now? `inboxCount` is the calling loop's own queued-prompt count
+/** Should this role tick now? `inboxCount` is the calling role's own queued-prompt count
  * (the director's queue for the director, the per-role queue for everyone else) — see the
  * inbox check below. Exported for tests. */
 export function isEligible(
-  runner: LoopRunner,
+  runner: RoleRunner,
   now: number,
   mainHead: string,
   inboxCount: number,
@@ -58,7 +58,7 @@ export function isEligible(
   const s = runner.state;
   // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
   // resumes within one poll cycle because the runner and its persisted state survive.
-  if (!loopEnabled(runner.config, runner.role)) return { run: false };
+  if (!runnerEnabled(runner.config, runner.role)) return { run: false };
   if (s.running) return { run: false };
 
   // The director carries the user's own requests: no min-gap, no backoff — a queued
@@ -115,7 +115,7 @@ export function isEligible(
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastRunEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval
-  // (LoopState.wokenAt): an explicit "try again now" with an empty queue must not silently
+  // (RunnerState.wokenAt): an explicit "try again now" with an empty queue must not silently
   // wait out the remaining slow clock it ticked inside — a queued prompt carries its own
   // due-ness in the inbox check above, so it never depends on this stamp surviving.
   const woken = freshlyWoken(s);
@@ -126,7 +126,7 @@ export function isEligible(
   if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
     return { run: true, reason: s.runs === 0 ? "startup" : "scheduled" };
   }
-  // The world changed under a sleeping loop: main moved since its last tick. The stretched
+  // The world changed under a sleeping role: main moved since its last tick. The stretched
   // gap above gates this wake too (the gap check runs first), so a role whose recent ticks
   // merged nothing does not re-check on every merge — the multiplier's whole point.
   if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
@@ -135,13 +135,13 @@ export function isEligible(
   return { run: false };
 }
 
-/** Fair scheduling order for one poll's eligible loops: the director always leads (it runs
+/** Fair scheduling order for one poll's eligible roles: the director always leads (it runs
  * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a stale-
  * ticked feature takes a slot over a fresh-ticked steward, because shipping work is what the
- * team exists to do — and within a tier least-recently-ticked first, so loops alternate
- * instead of the same ones re-claiming freed slots. Never-run loops tie at zero and the stable
+ * team exists to do — and within a tier least-recently-ticked first, so roles alternate
+ * instead of the same ones re-claiming freed slots. Never-run roles tie at zero and the stable
  * sort keeps them in role-catalog (priority) order. */
-export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
+export function fairOrder(runners: RoleRunner[]): RoleRunner[] {
   return [...runners].sort((a, b) => {
     if ((a.role === DIRECTOR_ROLE) !== (b.role === DIRECTOR_ROLE)) {
       return a.role === DIRECTOR_ROLE ? -1 : 1;
@@ -185,7 +185,7 @@ export const DEFER_MAX_MS = 3 * 3600 * 1000;
  * past its scheduled time, survives an orchestrator restart (it is persisted state), and does
  * not fire for a `main moved` wake that arrives before the role's own clock (nextRunAt is
  * still in the future). A never-scheduled role (nextRunAt 0) is never expired. */
-function deferralExpired(s: LoopState, now: number): boolean {
+function deferralExpired(s: RunnerState, now: number): boolean {
   return s.nextRunAt > 0 && now - s.nextRunAt >= DEFER_MAX_MS;
 }
 
@@ -222,10 +222,10 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * need-based deferral. */
 export type DeferReason = "backlog" | "no-work" | "plans-full";
 
-/** The plan loop's own deferral: a due tick (no fresh wake, nothing outstanding, main seen
+/** The plan role's own deferral: a due tick (no fresh wake, nothing outstanding, main seen
  * before, inside DEFER_MAX_MS) while PLANS.md already holds its eligible-plan target
  * (planBacklogFull). `lastResult` does not matter: the charter would stop either way. */
-function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): DeferReason | null {
+function planDeferral(s: RunnerState, planBacklogFull: boolean, now: number): DeferReason | null {
   const woken = freshlyWoken(s);
   return planBacklogFull &&
     !woken &&
@@ -242,7 +242,7 @@ function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): Defe
  * backlog clause stands in for the merge verdict, which the caller short-circuits — while the
  * bugfix-in-search-mode branch ignores the backlog and reports "no-work". */
 export function deferTickReason(
-  s: LoopState,
+  s: RunnerState,
   role: string,
   workMergedSinceLast: boolean,
   workBacklogOpen: boolean,
@@ -266,7 +266,7 @@ export function deferTickReason(
 
 /** The boolean projection of deferTickReason: does this due maintenance tick defer? */
 export function deferTick(
-  s: LoopState,
+  s: RunnerState,
   role: string,
   workMergedSinceLast: boolean,
   workBacklogOpen: boolean,

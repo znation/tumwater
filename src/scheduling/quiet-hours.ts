@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** Quiet hours (plans: "Quiet hours … part 1/2, the gate"): a config-driven daily local-time
- * window — `"23:00-07:00"` — during which role loops start no new ticks, so an operator can
+ * window — `"23:00-07:00"` — during which roles start no new ticks, so an operator can
  * put the team on a nightly schedule once instead of typing `tumwater pause` every evening.
  * Extracted from the orchestrator's concerns the same way the pause gate is
  * (src/gates/pause-gates.ts): the parsing, the membership decision, and the edge-triggered
@@ -131,7 +131,7 @@ export function pollQuietHoursGate(
  * per-role window means exactly what the same string means team-wide (wrapping included).
  * An absent key, a non-string, or an unparseable value reads as off here — validation is
  * config-validation.ts's job, not this helper's, and a malformed value must never hold a
- * loop the operator did not schedule. Stateless: unlike the team-wide gate there is no
+ * role the operator did not schedule. Stateless: unlike the team-wide gate there is no
  * edge-triggered event — a per-role hold is an anonymous verdict recomputed per poll,
  * exactly like `capPaused`'s set (role-cap-gates.ts). */
 export function roleQuietHold(

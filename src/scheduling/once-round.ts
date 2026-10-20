@@ -1,5 +1,5 @@
 import { stateSkipReason } from "../runner/runner-state.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 
 /**
  * Once-mode bookkeeping (`tumwater run --once`), extracted from the orchestrator's poll loop.
@@ -18,12 +18,12 @@ import type { LoopRunner } from "../runner/runner.js";
 export class OnceRound {
   /** Whether a once round is running at all; false makes every method inert. */
   readonly active: boolean;
-  private readonly runners: readonly LoopRunner[];
+  private readonly runners: readonly RoleRunner[];
   private readonly tickSnapshots = new Map<string, number>();
   private readonly settled = new Map<string, string>();
   private idlePolls = 0;
 
-  constructor(runners: readonly LoopRunner[], active: boolean) {
+  constructor(runners: readonly RoleRunner[], active: boolean) {
     this.runners = runners;
     this.active = active;
     for (const r of runners) this.tickSnapshots.set(r.role, r.state.runs);
@@ -38,7 +38,7 @@ export class OnceRound {
    * as 0, so a role with history counted as already settled and the round exited without
    * ever running it (BUGS.md 2026-09-25). Roles are unique across the array — the reload
    * only appends an id no runner has — so the map is keyed by role safely. */
-  private snapshotOf(runner: LoopRunner): number {
+  private snapshotOf(runner: RoleRunner): number {
     const known = this.tickSnapshots.get(runner.role);
     if (known !== undefined) return known;
     this.tickSnapshots.set(runner.role, runner.state.runs);
@@ -46,13 +46,13 @@ export class OnceRound {
   }
 
   /** A role is settled once it ran its tick or a settle reason was recorded for it. */
-  isSettled(runner: LoopRunner): boolean {
+  isSettled(runner: RoleRunner): boolean {
     return runner.state.runs > this.snapshotOf(runner) || this.settled.has(runner.role);
   }
 
   /** Ticks this round advanced the runner past its snapshot — the exit summary's per-role
    * count, exact even for a role the caller's own pre-round snapshot never named. */
-  ticksRun(runner: LoopRunner): number {
+  ticksRun(runner: RoleRunner): number {
     return runner.state.runs - this.snapshotOf(runner);
   }
 
@@ -68,7 +68,7 @@ export class OnceRound {
    * also writes nextRunAt (with backoffSeconds 0), so a future nextRunAt alone does not mean
    * backoff — and resumePending outranks it, because a resume wait (e.g. a cut-off tick
    * deliberately held one interval) is pending work, not an idle verdict and not backoff. */
-  settleSkipped(runner: LoopRunner): void {
+  settleSkipped(runner: RoleRunner): void {
     this.settle(
       runner.role,
       !runner.config.roles[runner.role]?.enabled

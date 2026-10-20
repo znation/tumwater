@@ -4,12 +4,12 @@
  * which entry a staged diff moved. The pure policies live here — assignment is the first free
  * entry in file order, release is `left` / `ineligible` / `disabled` / `stale` — so
  * orchestrator-scheduling.ts and tick-stage.ts share one definition and the rules are unit
- * tested without a team. The claim itself is persisted on LoopState, so it survives a crash,
+ * tested without a team. The claim itself is persisted on RunnerState, so it survives a crash,
  * resume, revision and leftover recovery. */
 
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, type LoopState } from "../runner/runner-state.js";
+import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { type EligibleEntry, backlogHolds, eligibleEntries, entryKey } from "../backlog/backlog-eligibility.js";
 import { actionableEntryRanges, actionableEntryRangesFor } from "../backlog/backlog-structure.js";
 import { readTextOrNull } from "../files/files.js";
@@ -21,29 +21,29 @@ import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner
  * work — an abandoned entry must return to the free pool for another instance. */
 export const CLAIM_IDLE_MAX_MS = 24 * 60 * 60 * 1000;
 
-/** The number of eligible plans PLANS.md's `## Planned` should hold before the plan loop stops
+/** The number of eligible plans PLANS.md's `## Planned` should hold before the plan role stops
  * for lack of work: one waiting plan per configured feature instance, plus one, so every
  * runner has something to take and the next planner tick still has headroom. At the default
  * one feature instance this is 2 — the "two or more plans" threshold the plan charter has
- * always used (plans/parallel-work-instances.md "…keeping the plan loop ahead", part 5c/7). */
+ * always used (plans/parallel-work-instances.md "…keeping the plan role ahead", part 5c/7). */
 export function planBacklogTarget(config: TumwaterConfig): number {
   return configuredInstances(config, "feature") + 1;
 }
 
-/** Does PLANS.md already hold the plan loop's target (planBacklogTarget eligible plans), with no
+/** Does PLANS.md already hold the plan role's target (planBacklogTarget eligible plans), with no
  * plan marked needs-review or needs-replan? The charter makes splitting or replanning a marked
- * plan outrank the stop, so a marked entry keeps the plan loop running; otherwise a plan tick can
+ * plan outrank the stop, so a marked entry keeps the plan role running; otherwise a plan tick can
  * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferTickReason). */
 export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
   if (eligibleEntries(root, "feature").length < planBacklogTarget(config)) return false;
   return !backlogHolds(root).plans.some((h) => h === "needs-review" || h === "needs-replan");
 }
 
-/** The runner fields the claim policies read (structural stand-in for LoopRunner, so claims.ts
+/** The runner fields the claim policies read (structural stand-in for RoleRunner, so claims.ts
  * stays free of the runner's lifecycle). */
 export interface ClaimRunner {
   role: string;
-  state: LoopState;
+  state: RunnerState;
 }
 
 /** The backlog file and section a role's entries live under: PLANS.md's `## Planned` for
@@ -95,10 +95,10 @@ interface ClaimReleaseCtx {
   now: number;
   /** The runner has a queued or in-flight merge. */
   hasQueuedMerge: boolean;
-  /** The runner's loop id is enabled in config (`loopEnabled`, so a lowered `instances`
+  /** The runner's role id is enabled in config (`runnerEnabled`, so a lowered `instances`
    * disables the surplus runner). */
   enabled: boolean;
-  /** This runner's own loop id is paused while its base role is not. With the base role paused
+  /** This runner's own role id is paused while its base role is not. With the base role paused
    * every instance is paused, so no sibling could take the entry and releasing it would only
    * churn claims. */
   paused: boolean;
@@ -160,7 +160,7 @@ export async function stagedMovedEntries(
   return movedOutEntries(base, head, section).map((e) => ({ file, ...e }));
 }
 
-/** How many permits to withhold from tier ≥ 1 acquirers this poll so a work loop that has work
+/** How many permits to withhold from tier ≥ 1 acquirers this poll so a work role that has work
  * to take can claim one without waiting out a maintenance tick (plans/parallel-work-instances.md
  * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
  * one — not running, with no queued merge — counts when it either holds an eligible claim or
@@ -171,16 +171,16 @@ export function workReserveCount(
   runners: readonly ClaimRunner[],
   opts: {
     maxConcurrent: number;
-    /** The loop ids the live config enables (loopEnabled). */
+    /** The role ids the live config enables (runnerEnabled). */
     enabled: ReadonlySet<string>;
-    /** The loop ids with a queued or in-flight merge. */
+    /** The role ids with a queued or in-flight merge. */
     queuedMergeRoles: ReadonlySet<string>;
-    /** Whether an idle work loop's provider still has headroom to use a reserved permit
+    /** Whether an idle work role's provider still has headroom to use a reserved permit
      * (plans/provider-concurrency.md §6). With per-provider caps, withholding a team permit
-     * for a loop whose provider is full only idles a slot another provider's maintenance tick
-     * could use, so such a loop adds nothing to the reserve. The caller supplies it from the
+     * for a role whose provider is full only idles a slot another provider's maintenance tick
+     * could use, so such a role adds nothing to the reserve. The caller supplies it from the
      * pool's snapshot() — this policy stays free of the seams. Defaults to counting every idle
-     * work loop, the pre-caps behavior. */
+     * work role, the pre-caps behavior. */
     providerHasHeadroom?: (runner: ClaimRunner) => boolean;
     /** The base role's `instances`: the most runs writing code at once. A role may hold twice as
      * many runner ids, so idle runners reserve only the places not already taken by running
@@ -223,7 +223,7 @@ export function workReserveCount(
     if (!INSTANCE_ROLES.has(base)) continue;
     if (!opts.enabled.has(r.role)) continue;
     if (r.state.running || opts.queuedMergeRoles.has(r.role)) continue;
-    // A work loop whose provider is full (capped and at its cap) cannot use a reserved permit
+    // A work role whose provider is full (capped and at its cap) cannot use a reserved permit
     // anyway, so it must not withhold one from another provider's maintenance tick (§6).
     if (opts.providerHasHeadroom !== undefined && !opts.providerHasHeadroom(r)) continue;
     const eligible = eligibleFor(base);

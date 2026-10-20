@@ -13,12 +13,12 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeImageProbeCache } from "../src/doctor/image-probe.js";
 import { collectImageProbeFailures } from "../src/status/status-roles.js";
 
-test("snapshot loop rows carry the resolved selector always and the seam tier only under a tier map", async () => {
+test("snapshot role rows carry the resolved selector always and the seam tier only under a tier map", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
 
@@ -28,7 +28,7 @@ test("snapshot loop rows carry the resolved selector always and the seam tier on
   assert.equal(plain.loops[0]?.modelTier, undefined);
   assert.equal(plain.loops[0]?.model, "prov-a/model-a");
 
-  // The payload ships the same field per row — the GUI renders it beside the loop name.
+  // The payload ships the same field per row — the GUI renders it beside the role name.
   const plainPayload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
   assert.equal(plainPayload.roles[0]?.model, "prov-a/model-a");
   assert.equal(plainPayload.roles[0]?.modelTier, undefined);
@@ -43,14 +43,14 @@ test("snapshot loop rows carry the resolved selector always and the seam tier on
   assert.equal(readme?.modelTier, "small");
   assert.equal(readme?.model, "prov-a/model-a"); // an undeclared tier inherits default
 
-  // The payload ships the same fields per row — the GUI renders them beside the loop name.
+  // The payload ships the same fields per row — the GUI renders them beside the role name.
   const payload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
   const planRow = payload.roles.find((l) => l.role === "plan");
   assert.equal(planRow?.modelTier, "strong");
   assert.equal(planRow?.model, "prov-s/model-s:high");
 });
 
-// Model failure fallback, part 2/2: the snapshot's loop row carries the resolved fallback
+// Model failure fallback, part 2/2: the snapshot's role row carries the resolved fallback
 // pair, the episode's start, and the tripping reason only while the episode is active (its
 // ticks run off-model); a due probe runs the primary, so the field is absent then.
 test("snapshot rows carry the active model-fallback episode", async () => {
@@ -58,7 +58,7 @@ test("snapshot rows carry the active model-fallback episode", async () => {
   await initProject(repo, "model fallback rows");
   writeConfig(repo, { model: "prov-a/model-a", fallbackModel: { provider: "prov-fb", model: "model-fb" } });
   const now = Date.now();
-  const state = freshLoopState("feature");
+  const state = freshRunnerState("feature");
   state.modelFallback = {
     failures: 0,
     since: now - 60_000,
@@ -66,7 +66,7 @@ test("snapshot rows carry the active model-fallback episode", async () => {
     cooldownMs: 300_000,
     reason: "Request timed out.",
   };
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
   const active = snapshot(repo, undefined, now).loops.find((l) => l.role === "feature");
   assert.deepEqual(active?.fallback, {
     provider: "prov-fb",
@@ -80,13 +80,13 @@ test("snapshot rows carry the active model-fallback episode", async () => {
 
   // Probe due: this tick runs the primary, so the row stops naming the fallback.
   state.modelFallback.probeAt = now - 1;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
   assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
 
   // No fallback configured: an active episode cannot advertise a pair.
   writeConfig(repo, { model: "prov-a/model-a" });
   state.modelFallback.probeAt = now + 300_000;
-  saveLoopState(repo, state);
+  saveRunnerState(repo, state);
   assert.equal(snapshot(repo, undefined, now).loops.find((l) => l.role === "feature")?.fallback, undefined);
 });
 
@@ -148,7 +148,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   assert.match(mixed.budgetBadge, /Claude 5h/, "beside the window line");
 });
 
-// The pi-default facet of the loop row (docs/backends.md): when tumwater.json resolves no
+// The pi-default facet of the role row (docs/backends.md): when tumwater.json resolves no
 // model and the seam routes to pi, the row names pi's own saved default from its settings.json
 // (read beside the models catalog) and marks it modelFromPi.
 test("snapshot rows name pi's own saved default when the config resolves no model", async () => {
@@ -223,10 +223,10 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): every snapshot row carries the
-// loop's image-input capability and its reroute target as a display label, computed by the
+// role's image-input capability and its reroute target as a display label, computed by the
 // same resolver the role page and submit gate use — so `status --json` and the images alert
-// answer without running doctor. A default-tier text-only loop reroutes to the vision strong
-// tier; a strong-tier loop reads images itself.
+// answer without running doctor. A default-tier text-only role reroutes to the vision strong
+// tier; a strong-tier role reads images itself.
 test("snapshot rows carry the image-input surface from the models catalog", async () => {
   const repo = makeRepo();
   await initProject(repo, "image surface");
@@ -245,7 +245,7 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
     }),
   );
   // plan rides the strong tier; feature rides default. Default is text-only, strong reads images,
-  // so the default-tier loop is text-only with a reroute target naming strong.
+  // so the default-tier role is text-only with a reroute target naming strong.
   writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
   const snap = snapshot(repo, models);
   const feature = snap.loops.find((l) => l.role === "feature")!;

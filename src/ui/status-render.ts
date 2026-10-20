@@ -208,7 +208,7 @@ function budgetTone(
  * alarm threshold (onErrorStreak — the red "failing tick after tick" alert keys on this, not
  * the phase, so it stays up while a streak stands behind a `working` label; BUGS.md
  * 2026-10-14), whether it is in flight, its last error. */
-interface StatusLoopRow {
+interface StatusRoleRow {
   role: string;
   phase: string;
   errorStreak: boolean;
@@ -217,13 +217,13 @@ interface StatusLoopRow {
 }
 
 /** Render the status table shared by `tumwater status` and the TUI as lines of toned spans,
- * plus the per-role facts it computed (see StatusLoopRow). When `maxWidth` is given, wide cells
+ * plus the per-role facts it computed (see StatusRoleRow). When `maxWidth` is given, wide cells
  * are clipped so no line exceeds it (terminal rows never wrap). */
 export function renderStatusSpans(
   root: string,
   snap: StatusSnapshot,
   maxWidth?: number,
-): { lines: StatusLine[]; loops: StatusLoopRow[] } {
+): { lines: StatusLine[]; loops: StatusRoleRow[] } {
   const name = projectName(root);
   const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's

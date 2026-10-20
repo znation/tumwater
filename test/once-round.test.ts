@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
-import type { LoopRunner } from "../src/runner/runner.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import type { RoleRunner } from "../src/runner/runner.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 function configWithRole(role: string, enabled: boolean): TumwaterConfig {
@@ -15,7 +15,7 @@ function configWithRole(role: string, enabled: boolean): TumwaterConfig {
 
 test("a role is unsettled at snapshot and settled once its tick count advances", () => {
   const repo = makeRepo();
-  const runner = makeLoopRunner(repo, "improve");
+  const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   assert.equal(round.isSettled(runner), false);
   runner.state.runs++;
@@ -24,7 +24,7 @@ test("a role is unsettled at snapshot and settled once its tick count advances",
 
 test("settle records the reason and settles the role without a tick", () => {
   const repo = makeRepo();
-  const runner = makeLoopRunner(repo, "improve");
+  const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   round.settle("improve", "deferred");
   assert.equal(round.isSettled(runner), true);
@@ -33,10 +33,10 @@ test("settle records the reason and settles the role without a tick", () => {
 
 test("settleSkipped classifies disabled, backoff, and idle roles", () => {
   const repo = makeRepo();
-  const disabled = makeLoopRunner(repo, "improve", configWithRole("improve", false));
-  const backing = makeLoopRunner(repo, "qa");
+  const disabled = makeRoleRunner(repo, "improve", configWithRole("improve", false));
+  const backing = makeRoleRunner(repo, "qa");
   backing.state.backoffSeconds = 30;
-  const idle = makeLoopRunner(repo, "clean");
+  const idle = makeRoleRunner(repo, "clean");
   const round = new OnceRound([disabled, backing, idle], true);
   round.settleSkipped(disabled);
   round.settleSkipped(backing);
@@ -58,13 +58,13 @@ test("settleSkipped reports a pending resume as pending work, not idle or backof
   // productive tick (the cutOff arm only schedules the interval, src/tick/tick-apply.ts). The old
   // classification read this state as "idle — nothing was due", which is false: the role's
   // half-finished work is the reason it is not ticking.
-  const waiting = makeLoopRunner(repo, "improve");
+  const waiting = makeRoleRunner(repo, "improve");
   waiting.state.resumePending = true;
   waiting.state.nextRunAt = Date.now() + 30 * 60_000;
   waiting.state.backoffSeconds = 0;
   // Same wait after an error streak: the resume wait is still the role's truth, not the
   // stale ladder it inherited.
-  const afterError = makeLoopRunner(repo, "clean");
+  const afterError = makeRoleRunner(repo, "clean");
   afterError.state.resumePending = true;
   afterError.state.nextRunAt = Date.now() + 30 * 60_000;
   afterError.state.backoffSeconds = 120;
@@ -82,14 +82,14 @@ test("settleSkipped reports a pending resume as pending work, not idle or backof
 
 test("a runner appended mid-round is snapshotted at first sight, not settled by its history", () => {
   const repo = makeRepo();
-  const first = makeLoopRunner(repo, "improve");
+  const first = makeRoleRunner(repo, "improve");
   // The orchestrator's runners array is shared with the live config reload: a role enabled
   // mid-round joins it here, carrying persisted ticks from earlier rounds (BUGS.md 2026-09-25:
   // before first-sight snapshotting the missing entry read as 0, so 5 > 0 counted the role as
   // already settled and the round exited without ever running it).
-  const runners: LoopRunner[] = [first];
+  const runners: RoleRunner[] = [first];
   const round = new OnceRound(runners, true);
-  const late = makeLoopRunner(repo, "clean");
+  const late = makeRoleRunner(repo, "clean");
   late.state.runs = 5; // history, not this round
   runners.push(late);
   assert.equal(round.isSettled(late), false);
@@ -105,7 +105,7 @@ test("a runner appended mid-round is snapshotted at first sight, not settled by 
 
 test("exitReady fires only on the second consecutive quiet poll of an active round", () => {
   const repo = makeRepo();
-  const runner = makeLoopRunner(repo, "improve");
+  const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   runner.state.runs++; // ran its one tick
   const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
@@ -115,7 +115,7 @@ test("exitReady fires only on the second consecutive quiet poll of an active rou
 
 test("exitReady stays false while work is in flight and resets the quiet streak", () => {
   const repo = makeRepo();
-  const runner = makeLoopRunner(repo, "improve");
+  const runner = makeRoleRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   runner.state.runs++;
   assert.equal(round.exitReady({ roleTicks: 1, directorTicks: 0, merges: 0, queuedMerges: 0 }), false);
@@ -129,7 +129,7 @@ test("exitReady stays false while work is in flight and resets the quiet streak"
 
 test("exitReady is inert in an inactive round even when everything is quiet", () => {
   const repo = makeRepo();
-  const runner = makeLoopRunner(repo, "improve");
+  const runner = makeRoleRunner(repo, "improve");
   runner.state.runs++; // ran its one tick
   const round = new OnceRound([runner], false);
   const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };
@@ -139,8 +139,8 @@ test("exitReady is inert in an inactive round even when everything is quiet", ()
 
 test("exitReady stays false until every runner is settled", () => {
   const repo = makeRepo();
-  const ran = makeLoopRunner(repo, "improve");
-  const idle = makeLoopRunner(repo, "clean");
+  const ran = makeRoleRunner(repo, "improve");
+  const idle = makeRoleRunner(repo, "clean");
   const round = new OnceRound([ran, idle], true);
   ran.state.runs++; // ran its one tick
   const quiet = { roleTicks: 0, directorTicks: 0, merges: 0, queuedMerges: 0 };

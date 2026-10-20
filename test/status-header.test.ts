@@ -102,7 +102,7 @@ test("the status header carries a quiet-hours badge only while a window is confi
 });
 
 // The daily cost budget (plans/daily-cost-budget.md): the header badge is standing
-// information while enabled — the paused role loops' state-cell half of this plan lives in
+// information while enabled — the paused roles' state-cell half of this plan lives in
 // status-render.test.ts's fallback tests.
 
 test("the status header carries a budget badge in every cap state", () => {
@@ -170,7 +170,7 @@ test("renderStatus shows the merge queue badge in the header and the label in th
     pid: 4242,
   });
   assert.doesNotMatch(idle, /merge queue/);
-  assert.match(idle, /^clean +due/m, "an idle loop keeps its ordinary state cell");
+  assert.match(idle, /^clean +due/m, "an idle role keeps its ordinary state cell");
 
   // Two queued merges: the header badge appears…
   const queued = {
@@ -184,7 +184,7 @@ test("renderStatus shows the merge queue badge in the header and the label in th
   assert.match(text, /clean +due/, "a merely queued role shows its normal state");
 
   // …and the role whose in-flight record is attached reads `merge <elapsed> · <stage>` in
-  // its row — no work-item prefix (the loop is not running, so stateCell returns the phase),
+  // its row — no work-item prefix (the role is not running, so stateCell returns the phase),
   // while the other row is untouched.
   const startedAt = Date.now() - 90_000;
   const merge = {

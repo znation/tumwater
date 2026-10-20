@@ -1,6 +1,6 @@
 /** The need-based deferral's cached "did qualifying work merge on main since <head>?" check,
  * split out of orchestrator.ts (whose runOrchestrator had grown it as an inline closure over
- * the poll-loop state) — it now lives in scheduling/ next to the workMerged policy it caches.
+ * the poll loop's state) — it now lives in scheduling/ next to the workMerged policy it caches.
  * This module adds only the caching layer around it plus the one git query that feeds it.
  *
  * Caching rule: verdicts are cached per base head so a

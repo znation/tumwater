@@ -20,7 +20,7 @@ import { readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { OrchestratorInfo } from "../team/orchestrator-info.js";
-import type { StatusLoopRow } from "./status-roles.js";
+import type { StatusRoleRow } from "./status-roles.js";
 
 type PiProviders = ReturnType<typeof readPiProviders>;
 
@@ -95,7 +95,7 @@ function claudeWindowBlock(
 export function collectBudget(
   root: string,
   cfg: TumwaterConfig,
-  loops: StatusLoopRow[],
+  rows: StatusRoleRow[],
   roles: string[],
   running: boolean,
   info: OrchestratorInfo | null,
@@ -109,7 +109,7 @@ export function collectBudget(
   const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
   // The one materialized spend the budget block renders and the burn-rate projection both
   // read — the scheduler's published figure while running, the persisted states' sum otherwise.
-  const spentUsd = publishedSpend ?? teamDailyCost(loops, now);
+  const spentUsd = publishedSpend ?? teamDailyCost(rows, now);
   // The persisted billing answer (6a/7), read once for every free-ness verdict below: a
   // subscription claude seam is free, so the badge and the pause set judge it as such.
   const account = readClaudeAccount(root, now);
@@ -135,7 +135,7 @@ export function collectBudget(
     : [];
   const capPaused = [
     ...roleCapVerdicts(
-      loops.map((l) => ({ role: l.role, state: l })),
+      rows.map((l) => ({ role: l.role, state: l })),
       cfg.maxDailyCostUsdPerRole,
       now,
     ).values(),

@@ -18,7 +18,7 @@ import {
   type ClaimRunner,
 } from "../src/scheduling/claims.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, type LoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { buildAssignmentNote } from "../src/prompt/gate-prompts.js";
 import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
 
@@ -39,15 +39,15 @@ const PLANNED = [
   "",
 ].join("\n");
 
-function state(claim?: LoopState["claim"], overrides: Partial<LoopState> = {}): LoopState {
-  return { ...freshLoopState("feature-2"), ...(claim ? { claim } : {}), ...overrides };
+function state(claim?: RunnerState["claim"], overrides: Partial<RunnerState> = {}): RunnerState {
+  return { ...freshRunnerState("feature-2"), ...(claim ? { claim } : {}), ...overrides };
 }
 
-function runner(role: string, s: LoopState): ClaimRunner {
+function runner(role: string, s: RunnerState): ClaimRunner {
   return { role, state: s };
 }
 
-const claimA: LoopState["claim"] = {
+const claimA: RunnerState["claim"] = {
   file: "PLANS.md",
   key: "plan a",
   title: "Plan A (planned 2026-01-01 by operator)",
@@ -217,7 +217,7 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
   assert.equal(workReserveCount(repo, [idle], opts), 1);
   // Floor(cap/3) bounds the count.
   assert.equal(workReserveCount(repo, [idle], { ...opts, maxConcurrent: 3 }), 1);
-  // A work loop that is running or merging has nothing to reserve for.
+  // A work role that is running or merging has nothing to reserve for.
   assert.equal(
     workReserveCount(repo, [runner("feature", state(undefined, { running: true }))], opts),
     0,
@@ -226,11 +226,11 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
     workReserveCount(repo, [idle], { ...opts, queuedMergeRoles: new Set(["feature"]) }),
     0,
   );
-  // A disabled loop reserves nothing.
+  // A disabled role reserves nothing.
   assert.equal(workReserveCount(repo, [idle], { ...opts, enabled: new Set() }), 0);
 });
 
-test("workReserveCount drops an idle work loop whose provider is full (per-provider headroom)", () => {
+test("workReserveCount drops an idle work role whose provider is full (per-provider headroom)", () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
   const idle = runner("feature", state());
@@ -239,10 +239,10 @@ test("workReserveCount drops an idle work loop whose provider is full (per-provi
     enabled: new Set(["feature"]),
     queuedMergeRoles: new Set<string>(),
   };
-  // No predicate (or one that says the provider has headroom): the idle work loop reserves.
+  // No predicate (or one that says the provider has headroom): the idle work role reserves.
   assert.equal(workReserveCount(repo, [idle], opts), 1);
   assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => true }), 1);
-  // A full (or capped-and-full) provider cannot use the reserved permit, so the loop withholds
+  // A full (or capped-and-full) provider cannot use the reserved permit, so the role withholds
   // nothing — a maintenance tick on another provider may take the slot instead.
   assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => false }), 0);
 });
@@ -284,7 +284,7 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
   assert.equal(
     planBacklogFull(plans(entry("A"), entry("B"), entry("C", "**Needs review 2026-01-02 by feature: too large for one run**\n")), cfg),
     false,
-    "a needs-review mark keeps the plan loop running",
+    "a needs-review mark keeps the plan role running",
   );
   assert.equal(
     planBacklogFull(plans(entry("A"), entry("B", "**Refused 2026-01-02 by feature: no**\n")), cfg),

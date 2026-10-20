@@ -180,7 +180,7 @@ test("pollQuietHoursGate: a live edit from a window to off logs the ended crossi
 // window's parser and predicate, so a per-role value means exactly what the same string
 // means team-wide — wrapping included. Absent, off, and unparseable all read as off here;
 // validation is config-validation.ts's business.
-test("roleQuietHold: the per-role window holds the loop it names and no other", () => {
+test("roleQuietHold: the per-role window holds the role it names and no other", () => {
   const perRole = { feature: "23:00-07:00" };
   // Inside a wrapping window (23:00-07:00): 23:30 and 06:59 hold, 07:00 exits, 22:59 has
   // not entered.
@@ -200,7 +200,7 @@ test("roleQuietHold: the per-role window holds the loop it names and no other", 
   assert.equal(roleQuietHold({ feature: "" }, "feature", localDate(23, 30)), false);
   assert.equal(roleQuietHold({ feature: "  " }, "feature", localDate(23, 30)), false);
   // An unparseable value reads as off — validation rejects it elsewhere; the helper must
-  // never hold a loop the operator did not schedule.
+  // never hold a role the operator did not schedule.
   assert.equal(roleQuietHold({ feature: "25:00-07:00" }, "feature", localDate(23, 30)), false);
   assert.equal(roleQuietHold({ feature: "nonsense" }, "feature", localDate(23, 30)), false);
   // A non-string value is off, likewise.

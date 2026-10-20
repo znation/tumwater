@@ -4,11 +4,11 @@ import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workMe
 import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
-import type { LoopRunner } from "../src/runner/runner.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { clearBackoff } from "../src/scheduling/backoff.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling/scheduling.ts — eligibility,
@@ -18,11 +18,11 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
  * has the module-named test file the rest of src/ follows and its pure tests run in their own
  * parallel process. */
 
-function runner(role: string): LoopRunner {
-  return makeLoopRunner(makeRepo(), role);
+function runner(role: string): RoleRunner {
+  return makeRoleRunner(makeRepo(), role);
 }
 
-test("a fresh loop is eligible at startup", () => {
+test("a fresh role is eligible at startup", () => {
   const r = runner("clean");
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, true);
 });
@@ -36,13 +36,13 @@ test("eligibility follows the base role, and an extra instance stays off until p
   const disabled = defaultConfig();
   disabled.roles.feature = { ...(disabled.roles.feature ?? { enabled: true }), enabled: false };
   assert.equal(
-    isEligible(makeLoopRunner(makeRepo(), "feature", disabled), Date.now(), "abc", 0).run,
+    isEligible(makeRoleRunner(makeRepo(), "feature", disabled), Date.now(), "abc", 0).run,
     false,
     "a disabled base role disables its bare id",
   );
 });
 
-test("a running or recently-finished loop is not eligible", () => {
+test("a running or recently-finished role is not eligible", () => {
   const r = runner("clean");
   r.state.running = true;
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, false);
@@ -52,7 +52,7 @@ test("a running or recently-finished loop is not eligible", () => {
   assert.equal(isEligible(r, Date.now(), "abc", 0).run, false);
 });
 
-test("a sleeping loop wakes when main moves, respecting the min gap", () => {
+test("a sleeping role wakes when main moves, respecting the min gap", () => {
   const r = runner("clean");
   const now = Date.now();
   const gap = r.config.minRunIntervalSeconds * 1000;
@@ -101,7 +101,7 @@ test("yield scaling: a wake and a queued prompt bypass the stretch; observers sc
   // A queued per-role prompt never reaches the gap check at all.
   assert.equal(isEligible(r, now, "abc", 1).run, true, "inbox bypasses the stretch");
   // An operator wake is an explicit demand: it overrides the gap exactly as it overrides
-  // the plain one (the gap exemption alone does not make the loop due — the wake test
+  // the plain one (the gap exemption alone does not make the role due — the wake test
   // above pairs it with a past nextRunAt, and so does this one).
   r.state.wokenAt = now;
   r.state.nextRunAt = now - 1000;
@@ -130,7 +130,7 @@ test("yield scaling never applies to feature, plan, or the director", () => {
 });
 
 test("an operator wake newer than the last tick overrides the min gap", () => {
-  // qa's default clock is two hours: a loop that ticked five minutes ago is inside its own
+  // qa's default clock is two hours: a role that ticked five minutes ago is inside its own
   // gap window even with backoffSeconds 0 — exactly the state `tumwater wake --role qa`
   // (and a queued per-role prompt's auto-wake) must be able to pull out of.
   const r = runner("qa");
@@ -144,7 +144,7 @@ test("an operator wake newer than the last tick overrides the min gap", () => {
   // What requestWake and runner.wake() both do:
   Object.assign(r.state, clearBackoff(r.state, now));
   const woken = isEligible(r, now, "abc", 0);
-  assert.equal(woken.run, true, "the wake brings the loop in within one poll");
+  assert.equal(woken.run, true, "the wake brings the runner in within one poll");
   assert.equal(woken.reason, "scheduled");
 });
 
@@ -166,7 +166,7 @@ test("a queued per-role prompt is due by itself, past every schedule gate", () =
   // The durable form of wake due-ness: the queue file, not the wake marker, carries the
   // demand. A wake consumed while a tick is in flight is clobbered by that tick's end-save
   // (wokenAt and nextRunAt both overwritten), but the prompt it enqueued survives — so a
-  // loop inside a fresh min-gap, hours from its clock, even backing off, must run the
+  // role inside a fresh min-gap, hours from its clock, even backing off, must run the
   // queued request on the first poll after its current tick ends.
   const r = runner("qa");
   const now = Date.now();
@@ -176,7 +176,7 @@ test("a queued per-role prompt is due by itself, past every schedule gate", () =
   r.state.lastMainHead = "abc";
   assert.equal(isEligible(r, now, "abc", 0).run, false, "asleep inside its own gap");
   const due = isEligible(r, now, "abc", 1);
-  assert.equal(due.run, true, "the queued prompt pulls the loop in");
+  assert.equal(due.run, true, "the queued prompt pulls the runner in");
   assert.equal(due.reason, "inbox");
   // A raised backoff ladder does not hold a user request either — the director's inbox
   // never waited for one.
@@ -200,14 +200,14 @@ test("a queued per-role prompt does not preempt a pending resume's deliberate wa
 test("isEligible gates on the role's own interval, not the global knob", () => {
   const now = Date.now();
 
-  // Large per-role override over a small global: the loop stays ineligible inside its own
+  // Large per-role override over a small global: the role stays ineligible inside its own
   // (long) window even though nextRunAt has passed AND main moved. If isEligible read
   // config.minRunIntervalSeconds directly (20s), it would have woken here — sinceLast is
   // 21s, past the global gap.
   const slow = defaultConfig();
   slow.minRunIntervalSeconds = 20;
   slow.roles.steward!.minRunIntervalSeconds = 3600;
-  const r1 = makeLoopRunner(makeRepo(), "steward", slow);
+  const r1 = makeRoleRunner(makeRepo(), "steward", slow);
   r1.state.runs = 1;
   r1.state.lastRunEndedAt = now - 21_000; // past the global gap, deep inside the role's own
   r1.state.nextRunAt = now - 1000; // its schedule has passed too
@@ -224,7 +224,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   const fast = defaultConfig();
   fast.minRunIntervalSeconds = 3600;
   fast.roles.qa!.minRunIntervalSeconds = 20;
-  const r2 = makeLoopRunner(makeRepo(), "qa", fast);
+  const r2 = makeRoleRunner(makeRepo(), "qa", fast);
   r2.state.runs = 1;
   r2.state.lastRunEndedAt = now - 21_000; // past the role's own gap, deep inside the global
   r2.state.nextRunAt = now + 60_000; // schedule NOT passed — only a main-moved wake can run it
@@ -253,7 +253,7 @@ test("plan schedules on a zero gap while PLANS.md has planning room, idle backof
   );
 
   const t0 = Date.now();
-  const r = makeLoopRunner(makeRepo(), "plan", cfg);
+  const r = makeRoleRunner(makeRepo(), "plan", cfg);
   r.state.runs = 1;
   r.state.lastMainHead = ""; // no main-moved wake to confuse the case
 
@@ -342,7 +342,7 @@ test("a director holding a kept merge pin is due on the min-run clock, never bef
 test("the director ignores the min gap and backoff: queued prompts run back to back", () => {
   const r = runner("director");
   const now = Date.now();
-  r.state.lastRunEndedAt = now - 1000; // Just finished — a role loop would be gated.
+  r.state.lastRunEndedAt = now - 1000; // Just finished — a runner would be gated.
   r.state.nextRunAt = now + 3600_000; // Even a (stale) backoff must not block prompts.
   assert.equal(isEligible(r, now, "abc", 1).run, true);
   assert.equal(isEligible(r, now, "abc", 0).run, false);
@@ -416,7 +416,7 @@ test("workMerged: feature/bugfix/director, operator and human subjects count; ot
 
 test("deferTickReason: an operator commit admits an idle readme; a readme commit alone does not", () => {
   const NOW = Date.now();
-  const s = freshLoopState("readme");
+  const s = freshRunnerState("readme");
   s.lastResult = "no_change";
   s.lastMainHead = "abc123";
   assert.equal(deferTickReason(s, "readme", workMerged(["tumwater(operator): Edit brief"]), false, false, NOW), null);
@@ -425,7 +425,7 @@ test("deferTickReason: an operator commit admits an idle readme; a readme commit
 
 test("deferTick: only a deferrable no_change role that has seen main and got no work defers", () => {
   const NOW = Date.now();
-  const base = freshLoopState("organize");
+  const base = freshRunnerState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   assert.equal(deferTick(base, "organize", false, false, false, NOW), true);
@@ -455,7 +455,7 @@ test("deferTick: observers never defer, under every input", () => {
   // neither a function of whether main moved, so deferral's premise does not hold.
   const NOW = Date.now();
   for (const role of OBSERVER_ROLES) {
-    const s = freshLoopState(role);
+    const s = freshRunnerState(role);
     s.lastResult = "no_change";
     s.lastMainHead = "abc123";
     for (const work of [false, true]) {
@@ -474,14 +474,14 @@ test("deferTick: observers never defer, under every input", () => {
 
 test("deferTick: an open backlog defers idle maintenance even when work merged; pending business never defers", () => {
   const NOW = Date.now();
-  const base = freshLoopState("organize");
+  const base = freshRunnerState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Backlog open → deferred regardless of the work-merged verdict.
   assert.equal(deferTick(base, "organize", true, true, false, NOW), true);
   assert.equal(deferTick(base, "organize", false, true, false, NOW), true);
 
-  // Pending business (any non-no_change outcome) never defers, backlog open or not — a loop's
+  // Pending business (any non-no_change outcome) never defers, backlog open or not — a role's
   // own unfinished work must not stall behind the team's.
   for (const result of ["changed", "rejected", "error", "refused", "merge_conflict"] as const) {
     assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true, false, NOW), false);
@@ -497,7 +497,7 @@ test("deferTick: an open backlog defers idle maintenance even when work merged; 
 
 test("deferTickReason: names the clause that deferred — open backlog, else no work merged", () => {
   const NOW = Date.now();
-  const base = freshLoopState("organize");
+  const base = freshRunnerState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Backlog open → "backlog", with or without work merged (the caller short-circuits the query).
@@ -507,7 +507,7 @@ test("deferTickReason: names the clause that deferred — open backlog, else no 
   assert.equal(deferTickReason(base, "organize", false, false, false, NOW), "no-work");
   assert.equal(deferTickReason(base, "organize", true, false, false, NOW), null);
   // bugfix in search mode drops the backlog clause, so open plans still read "no-work".
-  const search = freshLoopState("bugfix");
+  const search = freshRunnerState("bugfix");
   search.lastResult = "no_change";
   search.lastMainHead = "abc123";
   assert.equal(deferTickReason(search, "bugfix", false, true, false, NOW), "no-work");
@@ -521,7 +521,7 @@ test("deferTickReason: names the clause that deferred — open backlog, else no 
 
 test("deferTick: bugfix with no open bugs defers like a maintenance role", () => {
   const NOW = Date.now();
-  const base = freshLoopState("bugfix");
+  const base = freshRunnerState("bugfix");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Its backlog is empty by precondition (openBugsNow false), so the backlog-open clause is
@@ -549,7 +549,7 @@ test("deferTick: bugfix with no open bugs defers like a maintenance role", () =>
 
 test("deferTick: bugfix with an open bug never defers, under any input", () => {
   const NOW = Date.now();
-  const s = freshLoopState("bugfix");
+  const s = freshRunnerState("bugfix");
   s.lastResult = "no_change";
   s.lastMainHead = "abc123";
   for (const work of [false, true]) {
@@ -564,7 +564,7 @@ test("deferTick: bugfix with an open bug never defers, under any input", () => {
 });
 
 test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latch)", () => {
-  const base = freshLoopState("organize");
+  const base = freshRunnerState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   base.nextRunAt = 1_000_000;
@@ -582,7 +582,7 @@ test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latc
 
 test("deferTick: a fresh operator wake overrides the need-based deferral (an explicit demand runs)", () => {
   const NOW = Date.now();
-  const base = freshLoopState("clean");
+  const base = freshRunnerState("clean");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // A completed idle tick: the gap window opened 2 s ago.
@@ -640,7 +640,7 @@ test("once mode still honors a raised backoff, which shares nextRunAt with the c
 
 test("deferTickReason: a due plan tick defers only while the plan backlog is full", () => {
   const NOW = Date.now();
-  const s = freshLoopState("plan");
+  const s = freshRunnerState("plan");
   s.lastResult = "changed";
   s.lastMainHead = "abc123";
   assert.equal(deferTickReason(s, "plan", true, true, false, NOW, true), "plans-full");

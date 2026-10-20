@@ -6,11 +6,11 @@ import { readOrchestratorInfo, writeOrchestratorInfo } from "../src/team/orchest
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { loadConfig } from "../src/config/config.js";
-import { spentLoopState } from "./fixtures/runner-fixtures.js";
-import { saveLoopState } from "../src/runner/runner-state.js";
+import { spentRunnerState } from "./fixtures/runner-fixtures.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
 import { LOCAL_FREE_MODELS_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 
-// The budget collector folds the spend/billing block from the shared reads (config, loops,
+// The budget collector folds the spend/billing block from the shared reads (config, rows,
 // roles, running, info, models path) and one pinned now; this is the small per-domain test
 // for status-budget.ts (the bulk is covered through snapshot() in status-data-budget.test.ts).
 test("collectBudget aggregates the daily spend and drives the pause sets", async () => {
@@ -20,7 +20,7 @@ test("collectBudget aggregates the daily spend and drives the pause sets", async
   const cfg = loadConfig(repo);
   const modelsFile = writeModelsFile(tmpdir("status-budget-"), LOCAL_FREE_MODELS_JSON);
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime();
-  saveLoopState(repo, spentLoopState("clean", 1.25, now));
+  saveRunnerState(repo, spentRunnerState("clean", 1.25, now));
   const snap = snapshot(repo, modelsFile, now);
   const got = collectBudget(
     repo,

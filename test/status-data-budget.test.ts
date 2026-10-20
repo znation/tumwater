@@ -11,18 +11,18 @@ import assert from "node:assert/strict";
 import { snapshot } from "../src/status/status-data.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { spentLoopState } from "./fixtures/runner-fixtures.js";
+import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { LOCAL_FREE_MODELS_JSON, MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { projectCapHit } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 
-test("snapshot carries the daily cost budget aggregated from persisted loop state", async () => {
+test("snapshot carries the daily cost budget aggregated from persisted runner state", async () => {
   const repo = makeRepo();
   await initProject(repo, "budget snapshot test"); // seeds tumwater.json with maxDailyCostUsd: 50
 
@@ -34,16 +34,16 @@ test("snapshot carries the daily cost budget aggregated from persisted loop stat
   const now = new Date();
   now.setHours(12, 0, 0, 0);
 
-  // Two loops spent in today's window; a third carries yesterday's spend (stale stamp) that
+  // Two roles spent in today's window; a third carries yesterday's spend (stale stamp) that
   // must not count toward today — the badge is a daily figure.
-  const clean = spentLoopState("clean", 1.25, now.getTime());
-  saveLoopState(repo, clean);
-  const organize = spentLoopState("organize", 0.75, now.getTime());
-  saveLoopState(repo, organize);
-  const dry = freshLoopState("dedupe");
+  const clean = spentRunnerState("clean", 1.25, now.getTime());
+  saveRunnerState(repo, clean);
+  const organize = spentRunnerState("organize", 0.75, now.getTime());
+  saveRunnerState(repo, organize);
+  const dry = freshRunnerState("dedupe");
   dry.dayStamp = "2000-01-01"; // not today's stamp → $0 today
   dry.dayCostUsd = 9;
-  saveLoopState(repo, dry);
+  saveRunnerState(repo, dry);
 
   let snap = snapshot(repo, undefined, now.getTime());
   // No provider/model is configured (pi's own default), so the team cannot be verified as
@@ -68,8 +68,8 @@ test("snapshot carries the cap-hit projection for the same spend the badge rende
   // value comes from projectCapHit at that one instant, so the two computations cannot race
   // each other's clocks (the review objection against comparing T1 and T2 Date.now() reads).
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime(); // Oct 1, noon local
-  const clean = spentLoopState("clean", 30, now);
-  saveLoopState(repo, clean);
+  const clean = spentRunnerState("clean", 30, now);
+  saveRunnerState(repo, clean);
 
   const snap = snapshot(repo, undefined, now);
   const expected = projectCapHit({ spentUsd: 30, capUsd: 50 }, now);
@@ -78,8 +78,8 @@ test("snapshot carries the cap-hit projection for the same spend the badge rende
   assert.equal(snap.budget.spentUsd, 30);
 
   // No spend, no forecast — the field stays null and the JSON payload carries the null.
-  const idle = freshLoopState("clean");
-  saveLoopState(repo, idle);
+  const idle = freshRunnerState("clean");
+  saveRunnerState(repo, idle);
   assert.equal(snapshot(repo, undefined, now).budget.capHitAt, null);
 });
 
@@ -87,11 +87,11 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   const repo = makeRepo();
   await initProject(repo, "published budget test"); // seeds tumwater.json with maxDailyCostUsd: 50
 
-  // One loop with $1 persisted. The scheduler's own gate figure is $60 — the in-flight charge
+  // One role with $1 persisted. The scheduler's own gate figure is $60 — the in-flight charge
   // its live runner states carry, which no runner-state save has landed yet (BUGS.md 2026-09-30:
   // the gate charges run-by-run, the files persist at the saves).
-  const clean = spentLoopState("clean", 1);
-  saveLoopState(repo, clean);
+  const clean = spentRunnerState("clean", 1);
+  saveRunnerState(repo, clean);
 
   // Not running: no published figure exists (the exit removes the info file), so the
   // persisted sum is the only figure there is — a stopped team's files are final.
@@ -101,7 +101,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
 
   // A running orchestrator publishing $60: the snapshot shows the scheduler's number, and the
   // rendered table keeps its total row equal to the header badge (both read the same budget
-  // block) while the per-loop cell still reads its persisted copy — the lag the publish
+  // block) while the per-role cell still reads its persisted copy — the lag the publish
   // exists to expose, visible instead of misleading.
   writeOrchestratorMarker(repo, ["clean"], { budget: { spentUsd: 60, capUsd: 50 } });
   snap = snapshot(repo);
@@ -109,8 +109,8 @@ test("snapshot prefers the running orchestrator's published budget over the pers
   assert.equal(snap.budget.capUsd, 50);
   const text = renderStatus(repo, snap);
   assert.match(text, /· budget: \$60\.00\/\$50 today/); // the header badge
-  assert.match(text, /\$1\.00/); // the per-loop today cell: the persisted copy
-  // The total row agrees with the badge, not with the per-loop cells above it.
+  assert.match(text, /\$1\.00/); // the per-role today cell: the persisted copy
+  // The total row agrees with the badge, not with the per-role cells above it.
   const totalRow = text.split("\n").find((l) => l.trimStart().startsWith("total")) ?? "";
   assert.match(totalRow, /\$60\.00/);
   assert.doesNotMatch(totalRow, /\$1\.00/);
@@ -137,21 +137,21 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
 
   // clean is exactly at its cap (held); dry carries only yesterday's spend (a stale stamp
   // reads $0 today — the hold is a daily figure); the director is exempt like the gate.
-  const clean = spentLoopState("clean", 1);
-  saveLoopState(repo, clean);
-  const dry = freshLoopState("dedupe");
+  const clean = spentRunnerState("clean", 1);
+  saveRunnerState(repo, clean);
+  const dry = freshRunnerState("dedupe");
   dry.dayStamp = "2000-01-01";
   dry.dayCostUsd = 99;
-  saveLoopState(repo, dry);
-  const director = spentLoopState("director", 1);
-  saveLoopState(repo, director);
+  saveRunnerState(repo, dry);
+  const director = spentRunnerState("director", 1);
+  saveRunnerState(repo, director);
 
   let snap = snapshot(repo);
   assert.deepEqual(snap.capPaused, ["clean"]);
 
   // A role with no cap entry is never held, however much it spent.
-  const organize = spentLoopState("organize", 99);
-  saveLoopState(repo, organize);
+  const organize = spentRunnerState("organize", 99);
+  saveRunnerState(repo, organize);
   snap = snapshot(repo);
   assert.deepEqual(snap.capPaused, ["clean"]);
 
@@ -163,7 +163,7 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   assert.deepEqual(snap.capPaused, []);
 });
 
-// The gate groups instance loop ids under their base role and sums their spend
+// The gate groups instance role ids under their base role and sums their spend
 // (role-cap-gates.ts), so `capPaused` must list every instance whose base group crossed the
 // cap, not only the instance whose own spend did — otherwise `feature-2` reads queued while
 // the scheduler holds it beside `feature`.
@@ -177,8 +177,8 @@ test("snapshot resolves a per-role cap through the base role and its summed inst
 
   // Neither instance is over alone ($0.60 each); together they cross the $1 base cap.
   for (const id of ["feature", "feature-2"]) {
-    const st = spentLoopState(id, 0.6);
-    saveLoopState(repo, st);
+    const st = spentRunnerState(id, 0.6);
+    saveRunnerState(repo, st);
   }
 
   const snap = snapshot(repo);
@@ -203,10 +203,10 @@ test("snapshot lists the roles whose budget tier resolved to pause in budgetPaus
   cfg.review = { ...cfg.review, enabled: false };
   saveConfig(repo, cfg);
 
-  const clean = spentLoopState("clean", 1);
-  saveLoopState(repo, clean);
-  const plan = spentLoopState("plan", 0.2);
-  saveLoopState(repo, plan);
+  const clean = spentRunnerState("clean", 1);
+  saveRunnerState(repo, clean);
+  const plan = spentRunnerState("plan", 0.2);
+  saveRunnerState(repo, plan);
 
   const models = path.join(tmpdir("budget-paused-models-"), "models.json");
   fs.mkdirSync(path.dirname(models), { recursive: true });

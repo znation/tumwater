@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { StatusSnapshot } from "../../src/status/status-data.js";
-import { freshLoopState } from "../../src/runner/runner-state.js";
+import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { applyTickOutcome } from "../../src/tick/tick-apply.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { piLogPath, worktreesDir } from "../../src/paths.js";
@@ -48,16 +48,16 @@ export const DEFAULT_BUDGET: StatusSnapshot["budget"] = {
 };
 
 export function snapshotWith(
-  loops: Array<
-    Partial<ReturnType<typeof freshLoopState>> & {
+  roles: Array<
+    Partial<ReturnType<typeof freshRunnerState>> & {
       role: string;
       custom?: boolean;
       /** The model-fallback episode tag (status-data's active-episode row field), which a
-       * literal LoopState does not carry — a test passes it to exercise the `on fallback`
+       * literal RunnerState does not carry — a test passes it to exercise the `on fallback`
        * name-cell suffix. */
       fallback?: StatusSnapshot["loops"][number]["fallback"];
-      /** The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
-       * a literal LoopState does not carry — a test passes it to exercise the images alert. */
+      /** The role's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
+       * a literal RunnerState does not carry — a test passes it to exercise the images alert. */
       imageInput?: boolean | null;
       imageRerouteLabel?: string | null;
     }
@@ -100,8 +100,8 @@ export function snapshotWith(
     questions: 0,
     // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
     // to false so existing all-built-in tables stay byte-identical.
-    loops: loops.map((partial) => ({
-      ...freshLoopState(partial.role),
+    loops: roles.map((partial) => ({
+      ...freshRunnerState(partial.role),
       ...partial,
       custom: partial.custom ?? false,
       // The image-input surface (plans/image-input.md "Surfaces", part 5/5) is always
@@ -173,8 +173,8 @@ export function rowOf(out: string, role: string): string {
   return row.trimEnd();
 }
 
-export function pendingFeature(): ReturnType<typeof freshLoopState> {
-  const s = freshLoopState("feature");
+export function pendingFeature(): ReturnType<typeof freshRunnerState> {
+  const s = freshRunnerState("feature");
   applyTickOutcome(s, defaultConfig(), "feature", { result: "refused", summary: "objected to the plan" });
   applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   return s;

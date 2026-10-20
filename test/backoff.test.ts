@@ -1,4 +1,4 @@
-/** backoff (src/scheduling/backoff.ts): the loop's CLOCK policy — pure functions, no I/O, so
+/** backoff (src/scheduling/backoff.ts): the role's CLOCK policy — pure functions, no I/O, so
  * every
  * rule here is tested directly: the wake levers (clearBackoff, restoreMidTickWake), the
  * yield-scaled clock (pushYieldOutcome's ring, yieldMultiplier's ladder), and the backoff
@@ -18,14 +18,14 @@ import {
   scheduleAtMinInterval,
   ERROR_BACKOFF,
 } from "../src/scheduling/backoff.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 
 function ladder(initialSeconds = 30, factor = 2, maxSeconds = 600) {
   return { initialSeconds, factor, maxSeconds };
 }
 
 test("clearBackoff: zeroes the ladder, pulls nextRunAt to now, stamps wokenAt, preserves everything else", () => {
-  const s = freshLoopState("docs");
+  const s = freshRunnerState("docs");
   s.backoffSeconds = 3600;
   s.nextRunAt = 1_000;
   s.recentOutcomes = "Lnnn";
@@ -47,7 +47,7 @@ test("clearBackoff: zeroes the ladder, pulls nextRunAt to now, stamps wokenAt, p
 });
 
 test("restoreMidTickWake: no wake recorded — reports false, leaves the schedule alone", () => {
-  const s = freshLoopState("tests");
+  const s = freshRunnerState("tests");
   s.lastRunStartedAt = 1_000;
   s.lastRunEndedAt = 2_000;
   s.nextRunAt = 62_000;
@@ -60,7 +60,7 @@ test("restoreMidTickWake: no wake recorded — reports false, leaves the schedul
 });
 
 test("restoreMidTickWake: a wake older than the tick's start was already honored — not restored", () => {
-  const s = freshLoopState("tests");
+  const s = freshRunnerState("tests");
   s.lastRunStartedAt = 1_000;
   s.wokenAt = 1_000; // tie with the tick's start: the ordinary self-clearing must hold
   assert.equal(restoreMidTickWake(s), false);
@@ -70,7 +70,7 @@ test("restoreMidTickWake: a wake older than the tick's start was already honored
 });
 
 test("restoreMidTickWake: a cut-off tick's resumePending deliberately blocks the wake shortcut", () => {
-  const s = freshLoopState("tests");
+  const s = freshRunnerState("tests");
   s.lastRunStartedAt = 1_000;
   s.wokenAt = 1_500;
   s.resumePending = true;
@@ -80,7 +80,7 @@ test("restoreMidTickWake: a cut-off tick's resumePending deliberately blocks the
 
 test("restoreMidTickWake: live wake re-applied — backoff cleared, nextRunAt re-stamped past the end", () => {
   const now = Date.now();
-  const s = freshLoopState("tests");
+  const s = freshRunnerState("tests");
   s.lastRunStartedAt = now - 10_000;
   s.lastRunEndedAt = now - 5_000;
   s.wokenAt = now - 3_000; // woke mid-tick
@@ -94,7 +94,7 @@ test("restoreMidTickWake: live wake re-applied — backoff cleared, nextRunAt re
 });
 
 test("restoreMidTickWake: an end stamp in the future wins the max — wokenAt lands just past it", () => {
-  const s = freshLoopState("tests");
+  const s = freshRunnerState("tests");
   s.lastRunStartedAt = 1_000;
   s.lastRunEndedAt = Date.now() + 60_000; // clock skew / fast tick
   s.wokenAt = 2_000;
@@ -105,7 +105,7 @@ test("restoreMidTickWake: an end stamp in the future wins the max — wokenAt la
 });
 
 test("pushYieldOutcome: merges are L, everything productive-or-empty is n, error classes never enter the ring", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   pushYieldOutcome(s, "changed");
   pushYieldOutcome(s, "queued");
   pushYieldOutcome(s, "no_change");
@@ -116,7 +116,7 @@ test("pushYieldOutcome: merges are L, everything productive-or-empty is n, error
 });
 
 test("pushYieldOutcome: the ring is bounded at YIELD_RING, oldest entries fall off", () => {
-  const s = freshLoopState("feature");
+  const s = freshRunnerState("feature");
   for (let i = 0; i < YIELD_RING + 5; i++) pushYieldOutcome(s, "no_change");
   assert.equal(s.recentOutcomes?.length, YIELD_RING);
   assert.equal(s.recentOutcomes, "n".repeat(YIELD_RING));
@@ -163,7 +163,7 @@ test("nextBackoffSeconds: the first step is the (capped) initial, later steps mu
 });
 
 test("scheduleBackoff: advances from the state's current seconds, not from the ladder's bottom", () => {
-  const s = freshLoopState("docs");
+  const s = freshRunnerState("docs");
   s.backoffSeconds = 300;
   const before = Date.now();
 
@@ -186,7 +186,7 @@ test("ERROR_BACKOFF: one broken git costs minutes, never the idle ladder's hours
 });
 
 test("scheduleAtMinInterval: the productive-side cadence is the role's own min interval", () => {
-  const s = freshLoopState("readme");
+  const s = freshRunnerState("readme");
   const before = Date.now();
 
   scheduleAtMinInterval(s, { minRunIntervalSeconds: 120 });

@@ -249,7 +249,7 @@ test("snapshot tolerates a foreign fallbackDemotions shape in orchestrator.json"
   assert.equal(snap!.running, true, "the running orchestrator still reads as running");
 });
 
-test("pausedLoops holds the loop ids the scheduler treats as paused by the marker", async () => {
+test("pausedLoops holds the role ids the scheduler treats as paused by the marker", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   const config = loadConfig(repo);

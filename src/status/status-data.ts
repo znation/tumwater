@@ -1,9 +1,9 @@
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { baseRoleOf, loopIds, loopPaused } from "../roles/runner-ids.js";
+import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
@@ -62,14 +62,14 @@ export interface StatusSnapshot {
    * every claimed model whose probe failed (fresh verdict), labelled as `<provider>/<model>`.
    * Empty when nothing failed or no probe ran — the amber probe alert keys on this. */
   imageProbeFailures: string[];
-  /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
+  /** One row per enabled role. `custom` marks user-defined roles (tumwater.json's
    * customRoles) for the dashboards' asterisk — display-only metadata computed here at the
    * source, from the same last-known-good config that produced the role list, so a transiently
    * broken tumwater.json keeps marking its customs rather than flipping them unmarked
-   * mid-poll. LoopState itself stays the persisted type; this intersection is view-layer only. */
-  loops: Array<LoopState & {
+   * mid-poll. RunnerState itself stays the persisted type; this intersection is view-layer only. */
+  loops: Array<RunnerState & {
     custom: boolean;
-    /** The selector this loop's pi runs resolve at (`provider/id[:thinking]`, the
+    /** The selector this role's pi runs resolve at (`provider/id[:thinking]`, the
      * configForRole view) — present whenever a model resolves, both for a single string
      * `model` and under a tier map. The model seam tier (roleSeamTier) is a tier-map-only
      * affordance (model-tiers.md part 7a, "Observability"): it stays absent with a single
@@ -84,13 +84,13 @@ export interface StatusSnapshot {
      * either the flag or its default, since a tier map always resolves a model. */
     modelFromPi?: true;
     /** While a model-fallback episode is active (PLANS.md "Model failure fallback"): the
-     * tier-resolved fallback pair this loop's ticks run on, when the episode began, and the
+     * tier-resolved fallback pair this role's ticks run on, when the episode began, and the
      * provider-class failure that tripped it. Absent while the episode is not running the
      * fallback (no episode, or a due probe on the primary), so the common row shape is
      * unchanged. */
     fallback?: ModelFallbackView;
-    /** The pooled worktree slot this loop holds (a live tick or verification lease) or is
-     * pinned to, named by basename; absent when the loop has no slot. `slotPinned` marks a pin
+    /** The pooled worktree slot this role holds (a live tick or verification lease) or is
+     * pinned to, named by basename; absent when the role has no slot. `slotPinned` marks a pin
      * (a pending resume waiting on the same checkout) rather than the slot's live lease. */
     slot?: string;
     slotPinned?: boolean;
@@ -98,14 +98,14 @@ export interface StatusSnapshot {
      * instance row so a dashboard can group and label parallel work instances
      * (plans/parallel-work-instances.md "Observability", part 6/7). Absent on the bare role. */
     instanceOf?: string;
-    /** The loop's image-input capability (plans/image-input.md "Surfaces", part 5/5): true
+    /** The role's image-input capability (plans/image-input.md "Surfaces", part 5/5): true
      * when its own model reads images, false when it is text-only, null when the team cannot
      * tell (an unknown pair). Always present, so both observer surfaces answer without running
      * doctor. */
     imageInput: boolean | null;
-    /** The loop's image reroute target as `<tier> (<model>)`, or null when no other tier reads
+    /** The role's image reroute target as `<tier> (<model>)`, or null when no other tier reads
      * images — the `reruns on …` the images alert and role page name. Named `imageRerouteLabel`
-     * to avoid the persisted LoopState.imageReroute handoff record. Always present. */
+     * to avoid the persisted RunnerState.imageReroute handoff record. Always present. */
     imageRerouteLabel: string | null;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
@@ -114,13 +114,13 @@ export interface StatusSnapshot {
    * needs a badge even on a disabled team. While the orchestrator runs, `spentUsd` is the
    * scheduler's OWN published figure (the gate's poll, over the runners' live in-memory
    * states — BUGS.md 2026-09-30): what an operator sees is what the scheduler enforces. Not
-   * running, it is the persisted loop states' sum — a stopped team's files are final. The
-   * per-loop rows always read their persisted copies, so while ticks are in flight the
-   * per-loop cells can sit under the header/total figure: that difference is exactly the
+   * running, it is the persisted runner states' sum — a stopped team's files are final. The
+   * per-role rows always read their persisted copies, so while ticks are in flight the
+   * per-role cells can sit under the header/total figure: that difference is exactly the
    * charge the scheduler has already counted. `free` is true when every model the team could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi/pi-models.ts):
    * spend can never accumulate against a cap that cannot be reached, so both dashboards read
-   * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model role loops
+   * `· budget: n/a` instead of a dollar figure. `fallback` is the cost-free model roles
    * switch to once the cap is reached (plans/fallback-model.md) — non-null ONLY when one is
    * configured AND pi's definitions price it at zero, i.e. exactly when the gate would engage
    * it rather than pausing, so the dashboards' three-valued gate matches the scheduler's. */
@@ -147,7 +147,7 @@ export interface StatusSnapshot {
      * pair) leaves it undefined so the badge keeps today's single-pair text byte-identical.
      * Optional so literal budget blocks in the tests stand. The labels come from the same
      * resolution (resolveTierFallbacks over the published demotions) the per-role pause set
-     * above reads, so the badge and the loop rows cannot disagree about which pair a tier
+     * above reads, so the badge and the role rows cannot disagree about which pair a tier
      * runs on. */
     tiers?: Partial<Record<string, string>> | null;
   };
@@ -171,48 +171,48 @@ export interface StatusSnapshot {
     heldUntil: number | null;
   };
   /** True while the operator has paused the team (`tumwater pause` marker present): every
-   * idle role loop's state cell reads `paused`. Fresh per poll like `questions` — no cache,
+   * idle role runner's state cell reads `paused`. Fresh per poll like `questions` — no cache,
    * because a 2-second-stale pause flag would mislead an operator mid-resume. */
   paused: boolean;
   /** The roles the operator has individually paused (`tumwater pause --role <id>` marker
-   * set): an idle loop in this set also reads `paused`, the same cell as under the team
+   * set): an idle role in this set also reads `paused`, the same cell as under the team
    * pause. Fresh per poll like `paused` — no cache, for the same mid-resume reason. */
   pausedRoles: string[];
-  /** The loop ids the scheduler treats as paused by the per-role marker (`loopPaused`): a loop
+  /** The role ids the scheduler treats as paused by the per-role marker (`runnerPaused`): a role
    * whose own id, base role, or — for instance 1 — `<role>-1` key is in `pausedRoles`. The display
    * surfaces read this, while `pausedRoles` stays the raw marker `resume --role` takes. */
   pausedLoops: string[];
-  /** The loop ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle loop
+  /** The role ids the per-role daily cost cap holds (`maxDailyCostUsdPerRole`): an idle role
    * in this set reads `cap paused`, its own spend state — more specific than the team's
    * `budget paused`. Computed with the gate's own grouped verdict (roleCapVerdicts): instance
-   * loop ids share their base role's cap and its SUMMED spend, and the director is exempt,
+   * role ids share their base role's cap and its SUMMED spend, and the director is exempt,
    * exactly as the scheduler's gate groups and exempts them (role-cap-gates.ts). Uses the caps
-   * of the same last-known-good config that produced the loop list (a transiently broken
+   * of the same last-known-good config that produced the role list (a transiently broken
    * tumwater.json degrades with the whole config, like `quietHours`), so the verdict an
    * operator sees is the scheduler's. Always present, empty when none — the `pausedRoles`
    * shape. Fresh per poll, like `pausedRoles`: a live `config set` edit shows on the next
    * poll, and local midnight lifts the hold by itself. */
   capPaused: string[];
   /** The maintenance allowance (plans/work-ratio.md, part 1b/4): the rolling-24 h window's
-   * `allowance` and `used` (maintenance merges plus maintenance loops in flight), and the
-   * enabled maintenance loop ids the scheduler holds while `used >= allowance`. Computed by the
+   * `allowance` and `used` (maintenance merges plus maintenance roles in flight), and the
+   * enabled maintenance role ids the scheduler holds while `used >= allowance`. Computed by the
    * same pure verdict the gate folds (maintenance-quota.ts) against this process's own memo of
    * the event log, so an observer shows the hold the scheduler enforces. Always present, empty
-   * `held` while the gate is open — the `capPaused` shape with the figures the loop cell's
+   * `held` while the gate is open — the `capPaused` shape with the figures the role cell's
    * `held: maintenance quota <used>/<allowance>` label renders. Fresh per poll, like capPaused. */
   maintenanceQuota: { allowance: number; used: number; held: string[] };
   /** The new-project bootstrap (plans/work-ratio.md, part 2/2) while it is active: its progress
    * against `bootstrap.untilPlansDone`. Absent once the latch is written or the config entry
    * removed, so the surfaces render exactly as before in a normal project. */
   bootstrap?: { plansDone: number; untilPlansDone: number };
-  /** The loops the bootstrap gate holds (see `bootstrap`): every role but plan, feature and
-   * director — and bugfix while BUGS.md `## Open` is empty. An idle loop in this set reads
+  /** The roles the bootstrap gate holds (see `bootstrap`): every role but plan, feature and
+   * director — and bugfix while BUGS.md `## Open` is empty. An idle role in this set reads
    * `held: bootstrap`. Always present, empty when bootstrap is inactive — the `capPaused`
    * shape. Recomputed per poll from the gate's own predicate (bootstrap-gates.ts), so the hold
    * an operator sees is the hold the scheduler enforces. */
   bootstrapHeld: string[];
   /** The roles whose budget tier resolved to pause while the cap is reached (part 5c/8): a
-   * loop whose `model` tier (roleSeamTier) has no usable free pair — none configured, one
+   * role whose `model` tier (roleSeamTier) has no usable free pair — none configured, one
    * priced above zero, or its fallback breaker demoted — reads `budget paused`, the same cell
    * the team gate's old team-wide verdict filled. Computed with resolveTierFallbacks over
    * the SAME usable predicate the scheduler's gate folds (price at zero, and not among the
@@ -222,12 +222,12 @@ export interface StatusSnapshot {
    * it. Always present, empty when none — the `capPaused` shape. Fresh per poll, like
    * `capPaused`. */
   budgetPausedRoles: string[];
-  /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by LOOP
-   * id (`feature-2`, so loopPhase's `[s.role]` lookup finds the row) to that role's window
+  /** The roles the per-role quiet-hours window holds (`quietHoursPerRole`): keyed by ROLE
+   * id (`feature-2`, so rolePhase's `[s.role]` lookup finds the row) to that role's window
    * string as written (trimmed by quietHoursStatus's parser rule — the schedule as written,
    * not a reformat). The window is looked up by BASE role, exactly as the scheduler's own
    * gate does (gate-polls.ts's roleQuietHeld): config keys are base role ids, so an
-   * instance loop reads its base's window. An idle loop in this map reads the team gate's
+   * instance role reads its base's window. An idle role in this map reads the team gate's
    * own quiet wording, scoped to its window — `quiet until <end>`. Computed with
    * roleQuietHold against the same last-known-good config as `capPaused` (a transiently
    * broken tumwater.json degrades with the whole config), the director exempt exactly as
@@ -270,7 +270,7 @@ export interface StatusSnapshot {
    * `paused`: a live `config set quietHours` edit shows on the next poll, the same
    * fresh-read rule the gate itself follows. */
   quietHours?: string;
-  /** True while the LOCAL wall clock sits inside that window: idle role loops start no new
+  /** True while the LOCAL wall clock sits inside that window: idle roles start no new
    * ticks (the director keeps steering). Decided by quiet-hours.ts's inQuietHours — the
    * scheduler's own predicate — so the dashboards and the hold cannot disagree. Fresh per
    * poll, like `quietHours`. */
@@ -280,10 +280,10 @@ export interface StatusSnapshot {
    * its dist carries no stamp. Both dashboards render it in the header — a stale build is the one
    * fact about the team that nothing inside the team can otherwise see. */
   build: BuildStatus | null;
-  /** Prompts queued per loop (`tumwater prompt --role <id>`),
-   * keyed by role id for every enabled loop except the director — the director's queue IS the
+  /** Prompts queued per role (`tumwater prompt --role <id>`),
+   * keyed by role id for every enabled role except the director — the director's queue IS the
    * shared `inbox` above, so counting it here too would double-report the same prompts. Every
-   * enabled loop appears (0 included) so `status --json` consumers see one stable shape, like
+   * enabled role appears (0 included) so `status --json` consumers see one stable shape, like
    * `mergeQueue`; the dashboards render a `p:N` marker and the GUI's per-row prompt affordance
    * from it. Counts only — full previews stay in each queue file, readable via
    * `tumwater prompt --list --role <id>`. Fresh per poll (a directory listing per role, no
@@ -383,8 +383,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // same last-known-good config the caps read, so the dashboards show the hold the scheduler
   // enforces. Null when no bootstrap is configured.
   const bootstrapNow = bootstrapStatus(root, cfg);
-  // One row per loop id (part 5b/7): an instance role shows `feature` and `feature-2`.
-  const roles = loopIds(cfg);
+  // One row per role id (part 5b/7): an instance role shows `feature` and `feature-2`.
+  const roles = runnerIds(cfg);
   const markerRoles = pausedRoles(root);
   const markerSet = new Set(markerRoles);
   // One read of the orchestrator info file per poll: it serves both the displayed pid and the
@@ -394,7 +394,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // tick or verification) or is pinned to — threaded into the roles collector so `running`,
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
-  const loops = collectRoleRows(root, cfg, now, slots, modelsPath);
+  const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath);
   // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
   // the amber probe alert and `status --json` both answer from the same collector.
   const imageProbeFailures = collectImageProbeFailures(root, now);
@@ -442,7 +442,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   const { budget, claudeWindow, budgetPausedRoles, capPaused } = collectBudget(
     root,
     cfg,
-    loops,
+    roleRows,
     roles,
     running,
     info,
@@ -462,7 +462,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     roleInboxPrompts,
     questions: openQuestions(root).length,
     imageProbeFailures,
-    loops,
+    loops: roleRows,
     // Unconditional (never null): a disabled team still shows its spend and the badge is
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
@@ -474,7 +474,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     ...(running && info?.providerHolds && info.providerHolds.length > 0 ? { providerHolds: info.providerHolds } : {}),
     paused: teamPause !== null,
     pausedRoles: markerRoles,
-    pausedLoops: roles.filter((id) => loopPaused(markerSet, id)),
+    pausedLoops: roles.filter((id) => runnerPaused(markerSet, id)),
     capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler
@@ -483,29 +483,29 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     maintenanceQuota: maintenanceQuotaForPoll(
       root,
       cfg.maintenancePerWorkMerge,
-      loops,
+      roleRows,
       new Set(merges.map((e) => e.role)),
       now,
     ),
     // The new-project bootstrap hold (plans/work-ratio.md, part 2/2): the same read-only
     // verdict the gate computes (bootstrapStatus), so the dashboards and the scheduler agree.
-    // The held set is computed with the gate's own predicate over the same loop list.
+    // The held set is computed with the gate's own predicate over the same role list.
     bootstrap:
       bootstrapNow?.active
         ? { plansDone: bootstrapNow.plansDone, untilPlansDone: bootstrapNow.untilPlansDone }
         : undefined,
     bootstrapHeld:
       bootstrapNow?.active
-        ? loops.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
+        ? roleRows.filter((l) => bootstrapHoldsRole(l.role, openBugs(root).length > 0)).map((l) => l.role)
         : [],
     budgetPausedRoles,
     // The per-role quiet windows' held roles (PLANS.md quietHoursPerRole): keyed role →
     // window, so the dashboards can render the same `quiet until <end>` wording the team
-    // badge uses, scoped to the loop's own schedule. The window string comes back out of
+    // badge uses, scoped to the role's own schedule. The window string comes back out of
     // the same config the hold was decided from, so the label cannot name a window that is
     // not holding (roleQuietHold true implies a parseable, non-empty string there).
     roleQuietPaused: Object.fromEntries(
-      loops
+      roleRows
         .filter((l) => l.role !== DIRECTOR_ROLE && roleQuietHold(cfg.quietHoursPerRole, baseRoleOf(l.role), new Date()))
         .map((l) => [l.role, cfg.quietHoursPerRole?.[baseRoleOf(l.role)] ?? ""]),
     ),
