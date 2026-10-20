@@ -896,3 +896,50 @@ test("a placeholder added to a non-empty BUGS.md section yields the stray-placeh
 
   assert.equal(findings.filter((f) => f.includes("BUGS.md's \"## Open\" section holds 1 entry")).length, 1);
 });
+
+test("added lines that stack run on runs or running, or a run's run, yield the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n" +
+      "// while the role's next run" + " runs\n" +
+      "// with no director run" + " running\n" +
+      "// the authoring run's" + " run\n" +
+      "// this run's pi" + " run\n" +
+      "// across runs and" + " runs\n",
+  );
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+    f.includes("garbled rename wording"),
+  );
+
+  assert.equal(findings.length, 1);
+  for (const n of [2, 3, 4, 5, 6]) assert.ok(findings[0]!.includes(`src/a.ts:${n} `), `line ${n}`);
+});
+
+test("a garbled phrase split across two added comment lines yields the garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n// the alert stays up while the role's next run" + "\n// runs and clears after\n",
+  );
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) =>
+    f.includes("garbled rename wording"),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/a\.ts:2-3/);
+});
+
+test("the prescribed agent-run wording yields no garbled-wording finding", async () => {
+  const { wt } = await repoWith({ "src/a.ts": "export const a = 1;\n" });
+  fs.writeFileSync(
+    path.join(wt, "src/a.ts"),
+    "export const a = 1;\n// this run's agent run\n// the role has run twice; it ran once\n// a run, and then the next\n",
+  );
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
+});

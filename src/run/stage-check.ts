@@ -33,9 +33,11 @@
  * exists but lost lines found verbatim in another file, and lists the lines that still name the
  * old file's path (outside record prose), which may describe code that now lives elsewhere.
  *
- * A fifth check, `garbledWordingFindings`, reports added lines (outside record prose) that carry
+ * A seventh check, `garbledWordingFindings`, reports added lines (outside record prose) that carry
  * the broken participles and doubled "run" wording a word-swap rename leaves (has/have/had … ran,
- * a hyphen before ran, "run" repeated back to back). Like the path checks, the gate does not
+ * a hyphen before ran, "run" repeated back to back or followed by "running", a possessive run
+ * followed by "run", "run" joined to "run" by and/or, including a phrase split across two added
+ * lines). Like the path checks, the gate does not
  * run it.
  *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
@@ -828,41 +830,75 @@ function newlineFindings(diff: string): string[] {
 /** Patterns for the garbled English a rote "tick" → "run" word swap leaves, in order: a broken
  * past participle after an auxiliary, "ran" hyphenated onto another word (the class stays a
  * letter range so this line does not match itself), "run" followed by a form of "to be" and
- * "running", and "run" stacked directly on "run". */
+ * "running", and "run" stacked directly on "run". Three more patterns catch "run" followed by
+ * "run", "runs" or "running"; a possessive run followed, with at most one word between, by
+ * "run" or "runs" (not when that word is "agent", the wording the rename series prescribes); and
+ * "run" joined to "run" by "and" or "or". */
 const GARBLED_WORDING: readonly RegExp[] = [
   /\b(?:has|have|had|having)\s+(?:\w+ly\s+|never\s+|not\s+|already\s+|just\s+)?ran\b/i,
   /[A-Za-z]-ran\b/i,
   /\bruns?\s+(?:is|are|was|were|already|still)\s+(?:still\s+|already\s+)?running\b/i,
   /\b(?:run|runs|running)\s+(?:a|the|no)\s+run\b/i,
+  /\bruns?\s+run(?:s|ning)?\b/i,
+  /\bruns?'s?\s+(?:(?!agent\b)[a-z]+\s+)?runs?\b/i,
+  /\bruns?\s+(?:and|or)\s+runs?\b/i,
 ];
 
+/** The first GARBLED_WORDING match in `joined` that starts before `joinAt` and ends after it. */
+function spanningGarbled(joined: string, joinAt: number): string | null {
+  for (const re of GARBLED_WORDING) {
+    const g = new RegExp(re.source, re.flags + "g");
+    for (const m of joined.matchAll(g)) {
+      if (m.index < joinAt && m.index + m[0].length > joinAt) return m[0];
+    }
+  }
+  return null;
+}
+
 /** (e) Added lines, outside record prose, that match GARBLED_WORDING: at most one hit per line,
- * reported as `file:line "matched text"` in a single finding. */
+ * reported as `file:line "matched text"` in a single finding. A phrase split across two
+ * consecutive added lines is reported as `file:N-M`. */
 function garbledWordingFindings(diff: string): string[] {
   const hits: string[] = [];
   let file: string | null = null;
   let lineNo = 0;
+  let prevAdded: string | null = null;
   for (const line of diff.split("\n")) {
     const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
     if (header) {
       file = header[1]!;
+      prevAdded = null;
       continue;
     }
     const hunk = /^@@ .*\+(\d+)(?:,\d+)? @@/.exec(line);
     if (hunk) {
       lineNo = Number(hunk[1]);
+      prevAdded = null;
       continue;
     }
-    if (!line.startsWith("+") || line.startsWith("+++ ")) continue;
+    if (!line.startsWith("+") || line.startsWith("+++ ")) {
+      prevAdded = null;
+      continue;
+    }
+    const cur = line.slice(1);
     if (file !== null && !isRecordProse(file)) {
+      let hit = false;
       for (const re of GARBLED_WORDING) {
-        const m = re.exec(line.slice(1));
+        const m = re.exec(cur);
         if (m) {
           hits.push(`${file}:${lineNo} "${m[0]}"`);
+          hit = true;
           break;
         }
       }
+      if (!hit && prevAdded !== null) {
+        const head = prevAdded.trimEnd();
+        const joined = head + " " + cur.replace(/^\s*(?:\/\/+|\*|#)\s*/, "");
+        const split = spanningGarbled(joined, head.length);
+        if (split) hits.push(`${file}:${lineNo - 1}-${lineNo} "${split}"`);
+      }
     }
+    prevAdded = cur;
     lineNo++;
   }
   if (hits.length === 0) return [];
