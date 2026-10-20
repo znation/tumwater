@@ -4,6 +4,7 @@ import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_BACKLOG_JS } from "../src/ui/gui/gui-client-backlog.js";
 import { GUI_CLIENT_FEED_JS } from "../src/ui/gui/gui-client-feed.js";
 import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
+import { sleep } from "./helpers/wait.js";
 
 // The dashboard's team-view backlog panel (src/ui/gui/gui-client-backlog.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
@@ -332,7 +333,7 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
 
 // The 250 ms debounce plus a margin: enough for the searchFeed timer to fire and its fetch to
 // settle before the assertions run.
-const feedSettle = () => new Promise((r) => setTimeout(r, 320));
+const feedSettle = () => sleep(320);
 
 test("the Activity feed narrows to one role when its Role picker is set", () => {
   const { scope, panels } = feedScope({ "feed-role": "feature" });
@@ -474,9 +475,9 @@ test("a stale search response never paints over a newer filter", async () => {
   assert.deepEqual(calls, ["/api/logs?grep=first", "/api/logs?grep=second"]);
   // The newer answer lands, then the stale one — which must not repaint.
   resolvers[1]!({ events: [{ ts: 2, source: "qa", type: "merged", message: "second match" }] });
-  await new Promise((r) => setTimeout(r, 10));
+  await sleep(10);
   resolvers[0]!({ events: [{ ts: 1, source: "qa", type: "merge_failed", message: "first match" }] });
-  await new Promise((r) => setTimeout(r, 10));
+  await sleep(10);
   assert.match(panels["feed"] ?? "", /second match/);
   assert.doesNotMatch(panels["feed"] ?? "", /first match/);
 });

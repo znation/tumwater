@@ -9,6 +9,7 @@ import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js
 import { pauseTeam } from "../src/team/team-state.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { sleep } from "./helpers/wait.js";
 
 // Unit seam for cli/cli-run.ts's onceSummary — the one-line `tumwater run --once` summary a cron
 // log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
@@ -113,7 +114,7 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
 test("armDeadlineTimer does not fire an over-32-bit duration immediately", async () => {
   let fired = 0;
   const timer = armDeadlineTimer(90 * 24 * 60 * 60 * 1000, () => fired++);
-  await new Promise((r) => setTimeout(r, 100));
+  await sleep(100);
   assert.equal(fired, 0, "an overflow duration must be chunked, not clamped to 1ms");
   timer.clear();
 });
@@ -121,11 +122,11 @@ test("armDeadlineTimer does not fire an over-32-bit duration immediately", async
 test("armDeadlineTimer fires a short duration on schedule and clear() retracts it", async () => {
   let fired = 0;
   const firedTimer = armDeadlineTimer(50, () => fired++);
-  await new Promise((r) => setTimeout(r, 300));
+  await sleep(300);
   assert.equal(fired, 1);
   const cleared = armDeadlineTimer(50, () => fired++);
   cleared.clear();
-  await new Promise((r) => setTimeout(r, 300));
+  await sleep(300);
   assert.equal(fired, 1, "clear() must retract the armed timer");
   firedTimer.clear(); // Already fired; clear() is still safe.
 });

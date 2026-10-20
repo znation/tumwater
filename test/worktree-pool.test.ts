@@ -14,11 +14,8 @@ import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
 import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
+import { sleep } from "./helpers/wait.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** Poll until `fn` returns a value, so a waiter test does not assume how many macrotasks its
  * release-to-claim path takes (the claim itself is synchronous, but the git prepare is not). */

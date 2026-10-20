@@ -11,6 +11,7 @@ import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withPi } from "./fakes/fake-pi.js";
 import { cli, exitCode } from "./helpers/cli-harness.js";
+import { sleep } from "./helpers/wait.js";
 import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
 
 // A running team's boot output and SIGTERM shutdown: the banner and roster, the
@@ -55,8 +56,8 @@ test("a team that goes down unasked runs the notify hook once", async () => {
     assert.equal(r.code, 1);
     const lines = () => (fs.existsSync(out) ? fs.readFileSync(out, "utf8").split("\n").filter((l) => l !== "") : []);
     const deadline = Date.now() + 10_000;
-    while (lines().length < 1 && Date.now() < deadline) await new Promise((res) => setTimeout(res, 50));
-    await new Promise((res) => setTimeout(res, 200));
+    while (lines().length < 1 && Date.now() < deadline) await sleep(50);
+    await sleep(200);
     assert.deepEqual(lines(), ["supervisor_exit|tumwater"]);
   });
 });

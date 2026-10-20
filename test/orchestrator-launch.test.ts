@@ -29,7 +29,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { waitFor } from "./helpers/wait.js";
+import { waitFor, sleep } from "./helpers/wait.js";
 import { captureStderr } from "./helpers/exit-capture.js";
 
 /** A stand-in runner: only what launchDueTicks reads. `config` is what runConfig returns —
@@ -353,7 +353,7 @@ test("a warning whose event write throws is reported to stderr, not left as an u
     fs.writeFileSync(c.root, "");
     await waitFor(() => c.roleInFlight.size === 0, "the rejected task to leave the bucket");
     // Give a leaked rejection a turn to surface before the assertions.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await sleep(20);
   } finally {
     stderr.restore();
     process.off("unhandledRejection", onRejection);

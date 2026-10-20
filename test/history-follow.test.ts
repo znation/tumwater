@@ -6,6 +6,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
+import { sleep } from "./helpers/wait.js";
 
 // `history -f` runs in-process with the follow's parent-death seams, the way
 // log-commands.test.ts drives `logs -f`.
@@ -29,15 +30,15 @@ async function follow(args: string[], seed: string, appended: string[]): Promise
   let done = false;
   try {
     void cmdHistory(repo, args, { ppid: () => parent, intervalMs: 10 }).then(() => (done = true));
-    await new Promise((r) => setTimeout(r, 100));
+    await sleep(100);
     for (const a of appended) fs.appendFileSync(file, a);
-    await new Promise((r) => setTimeout(r, 1200));
+    await sleep(1200);
     parent = 1;
-    for (let i = 0; i < 500 && !done; i++) await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < 500 && !done; i++) await sleep(10);
     assert.ok(done, "follow resolves once the parent is gone");
     const before = cap.out();
     fs.appendFileSync(file, start("clean", 90, 90) + end("clean", 90, 91, "changed"));
-    await new Promise((r) => setTimeout(r, 1200));
+    await sleep(1200);
     assert.equal(cap.out(), before, "nothing printed after the follow ended");
     return before;
   } finally {

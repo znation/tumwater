@@ -8,6 +8,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { captureStdout } from "./helpers/exit-capture.js";
+import { sleep } from "./helpers/wait.js";
 
 // The follow half of `tumwater logs` (`-f`) never returns — it polls until Ctrl+C — so the
 // end-to-end tests run it in a spawned child. That leaves the in-process coverage of both
@@ -93,7 +94,7 @@ async function assertFollowEndsWithParent(args: string[], file: (repo: string) =
     ensureParentDir(file(repo));
     fs.appendFileSync(file(repo), line + "\n");
     const until = async (cond: () => boolean) => {
-      for (let i = 0; i < 500 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+      for (let i = 0; i < 500 && !cond(); i++) await sleep(10);
       assert.ok(cond(), "condition met within 5s");
     };
     await until(() => seen.test(cap.out()));
@@ -102,7 +103,7 @@ async function assertFollowEndsWithParent(args: string[], file: (repo: string) =
     await until(() => done);
     const before = cap.out();
     fs.appendFileSync(file(repo), later + "\n");
-    await new Promise((r) => setTimeout(r, 700));
+    await sleep(700);
     assert.equal(cap.out(), before, "nothing printed after the follow ended");
   } finally {
     cap.restore();

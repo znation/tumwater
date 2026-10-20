@@ -51,7 +51,7 @@ async function untilFlash(flash: () => string, re: RegExp, timeoutMs = 10000): P
   const deadline = Date.now() + timeoutMs;
   while (!re.test(flash())) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${re}`);
-    await new Promise((r) => setTimeout(r, 20));
+    await sleep(20);
   }
 }
 

@@ -15,13 +15,14 @@ import {
   ensureProviderLease,
   withProviderLease,
 } from "../src/concurrency/provider-lease.js";
+import { sleep } from "./helpers/wait.js";
 
 function cfg(provider: string, model = "m"): ResolvedModelConfig {
   return { agent: "pi", provider, model, thinking: undefined } as ResolvedModelConfig;
 }
 
 function settle(ms = 20): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+  return sleep(ms);
 }
 
 test("ensureProviderLease is a no-op without a lease in context", async () => {

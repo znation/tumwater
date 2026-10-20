@@ -20,6 +20,7 @@ import { APPROVE, drained, entry, makePipeline, pinnedCommit, pumpUntil, runners
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
+import { sleep } from "./helpers/wait.js";
 
 test("review.afterMerge accepts known base role ids and rejects the director and unknown ids", () => {
   assert.doesNotThrow(() => validateConfig({ review: { afterMerge: ["clean", "dedupe", "coverage"] } }));
@@ -75,7 +76,7 @@ function setup(verdict: string) {
 async function drainUntilRevert(ctx: MergePipelineContext, p: ReturnType<typeof newMergePipeline>): Promise<void> {
   for (let i = 0; i < 200 && p.revert === null; i++) {
     drainPostReviews(ctx, p);
-    await new Promise((r) => setTimeout(r, 10));
+    await sleep(10);
   }
 }
 

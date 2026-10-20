@@ -12,13 +12,13 @@ const realSetTimeout = globalThis.setTimeout;
 
 /** A plain real-time sleep — the one home for the suite's sleeps: every test or fixture that
  * pauses in real time calls this instead of hand-rolling `new Promise((r) => setTimeout(r, ms))`.
- * It always uses the captured
- * real setTimeout, so it keeps sleeping in real time under a test that mocks the timer APIs
- * instead. Deliberately not sleeps, and left as-is: the value-resolving timeout promises in
- * semaphore.test.ts and cli-operators-team.test.ts (they race and resolve a value, not a gap),
- * the runner-script string in build-check-process.test.ts (executed by a child process that
- * cannot import this module), and the two src-side sites (lock.ts, runner-pi.ts), which cannot
- * import a test helper. */
+ * Zero-delay `setTimeout(r, 0)` yields in gui-report.test.ts and tui-keys.test.ts stay. It
+ * always uses the captured real setTimeout, so it keeps sleeping in real time under a test
+ * that mocks the timer APIs instead. Deliberately not sleeps, and left as-is: the
+ * value-resolving timeout promises in semaphore.test.ts and cli-operators-team.test.ts (they
+ * race and resolve a value, not a gap), the runner-script string in build-check-process.test.ts
+ * (executed by a child process that cannot import this module), and the two src-side sites
+ * (lock.ts, runner-pi.ts), which cannot import a test helper. */
 export const sleep = (ms: number): Promise<void> => new Promise((resolve) => realSetTimeout(resolve, ms));
 
 /** Yield to the event loop once: setImmediate's callback runs after every microtask already

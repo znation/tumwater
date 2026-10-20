@@ -24,6 +24,7 @@ import { eventsLogPath, worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
+import { sleep } from "./helpers/wait.js";
 
 /** Give a linked worktree a tracked modified file, an untracked file, an ignored `build/`
  * dir, an ignored `.log`, and a nested repository — the shape part 2/4's acceptance criterion
@@ -213,7 +214,7 @@ test("ReclaimController runs one pass per drop, then lets the disk hold engage",
   // The pass is backgrounded; poll returns true until it settles, then false — and starts no
   // second pass for the same drop.
   for (let i = 0; i < 500 && controller.poll(low, 40); i++) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await sleep(10);
   }
   assert.equal(controller.poll(low, 40), false, "settled while still low: the hold may engage");
   assert.equal(fs.existsSync(path.join(wt, "build")), false, "the pass cleaned the worktree");
@@ -310,7 +311,7 @@ test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors
   // the outputs before runPass records lastReclaim, so under a loaded suite the two can be
   // observed out of order.
   for (let i = 0; i < 500 && controller.lastReclaim?.mode !== "idle"; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await sleep(10);
   }
   assert.equal(fs.existsSync(path.join(wt, "build")), false, "idle pass cleaned the worktree");
   assert.equal(controller.lastReclaim?.mode, "idle");
@@ -321,7 +322,7 @@ test("ReclaimController.pollIdle cleans once, throttles the next arm, and honors
   fs.writeFileSync(path.join(wt, "build", "out.bin"), "again\n");
   writeJsonAtomic(worktreeUsePath(root), { feature: { lastUsedAt: Date.now() - 25 * hour } });
   controller.pollIdle(24);
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await sleep(100);
   assert.equal(fs.existsSync(path.join(wt, "build")), true, "second idle pass is throttled");
 
   controller.pollIdle(0); // 0 disables idle mode: a no-op, never starts a pass
@@ -360,7 +361,7 @@ test("ReclaimController.requestManual runs a manual pass over every candidate", 
 
   controller.requestManual();
   for (let i = 0; i < 500 && controller.lastReclaim?.mode !== "manual"; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await sleep(10);
   }
   assert.equal(fs.existsSync(path.join(wt, "build")), false, "manual pass cleaned the worktree");
   assert.equal(controller.lastReclaim?.mode, "manual");
