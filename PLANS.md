@@ -478,4 +478,22 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
+### A `budget_warning` names the roles spending most today, so the 80% page says where the money went (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
+
+**Goal.** `budget_warning` is on the notify allowlist (`NOTIFY_EVENT_TYPES`, src/events/notify.ts), and docs/config.md says it means "time to raise the cap or fix the fallback before the pause". But the page carries only the team total: the live log's two warnings in the last three days read `spentUsd` 12.01 of `capUsd` 15 and 16.02 of 20, with no role named. To decide whether to raise the cap, pause one role, or lower one role's `maxDailyCostUsd`, the operator then has to run `tumwater report`. The poll that logs the warning already holds every role's state, and each one has its daily window (`dailyCost`, src/budget/budget.ts), so the event can name the top spenders itself.
+
+**Approach.**
+- In src/budget/budget.ts, add `export function topDailySpenders(states: RunnerState[], now = Date.now(), limit = 3): { role: string; spentUsd: number }[]` beside `teamDailyCost`. It returns today's `dailyCost(s, now)` per state, keeps only spend above 0, sorts by spend descending (ties by `role` ascending, so output is deterministic), and keeps the first `limit`. Each state counts as its own role, so `feature` and `feature-2` are listed apart, the same way `RunnerState.role` names them.
+- In `pollBudgetGate` (src/gates/budget-gates.ts), the `budget_warning` emission adds `topRoles: topDailySpenders(states, now)` when that list is not empty (omit the field when empty, the codebase's omit-when-absent idiom). Use the poll's own `now` and `states`. No other budget event changes: `budget_paused`/`budget_fallback` already name the fallback, and this plan keeps to the warning.
+- In src/events/event-format.ts, `case "budget_warning"` renders a valid `topRoles` array as ` (most by feature $5.20, plan $3.10, director $1.40)` between "of the daily cap spent" and "; runs still start". Money goes through `usd` (src/text/format.ts). Entries that are not an object with a string `role` and a finite `spentUsd` are skipped, the same defensive reads the other cases use (`textOr`/`finiteNumber`). A missing, empty, or all-invalid array renders today's line unchanged, so older logged events read the same.
+- Document `topRoles` in the `budget_warning` comment of the `HarnessEvent` type union in src/events/events.ts. In docs/config.md's `budget_warning` row, say the event names up to three roles that spent the most today.
+
+**Files touched.** src/budget/budget.ts, src/gates/budget-gates.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md, test/budget-gates.test.ts, test/event-format-team.test.ts, test/budget.test.ts.
+
+**Acceptance criteria.**
+- A new test for `topDailySpenders` covers four cases. Four roles with today's spend come back as the top three, highest first. A tie is ordered by role name. A role with a stale `dayStamp` or zero spend is left out. No spend at all returns `[]`.
+- In test/budget-gates.test.ts, the existing "exactly one budget_warning" case also asserts that `events[0]!.topRoles` deep-equals `[{ role: "feature", spentUsd: threshold }]`. A new case with two roles spending asserts both appear, highest first.
+- test/event-format-team.test.ts: a `budget_warning` with `topRoles` renders `budget warning — $40.01 of $50.00 of the daily cap spent (most by feature $30.00, plan $10.01); runs still start`. The existing test without `topRoles` still renders the current line unchanged, and a `topRoles` holding only malformed entries renders that same line too.
+- `npm run test:gate` passes.
+
 ## Done
