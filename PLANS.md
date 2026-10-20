@@ -261,6 +261,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### docs/invariants.md gains a display-format section, so a fixer touching token counts, money, sizes, short hashes or the prompt-note separator reads what src/text/format.ts promises instead of rebuilding it from tests (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Appends after whatever invariants section is last, so it only rebases over the local-time section if that merges first. Touches docs/invariants.md, test/format.test.ts and a doc-comment move in src/text/format.ts)
 
+**Refused 2026-10-20 by feature: the INV-AA prefix fails test/invariants-doc.test.ts (ID_RE is /^INV-[A-Z]\d+$/, one letter) and INV-Z is reserved by the local-time plan, so no valid prefix is free; the plan needs a replan (widen ID_RE in the guard, or fold into an existing section).**
+
 **Goal.** src/text/format.ts is the single home of the display formats every surface renders through: `compactTokens` (status table columns, commit trailer ctx), `shortSha`, `usd`/`usdCap`, `formatGB`/`formatBytes`, and `appendPromptNote`, the one `\n\n` separator the run prompt assemblers stack sections with. `grep -n 'format.ts' docs/invariants.md` finds nothing today. test/format.test.ts pins most of the rules. `appendPromptNote` has no direct test (`grep -rn appendPromptNote test` finds nothing), so this plan adds one rather than citing a test that does not check it. The module also has a misplaced comment: `compactTokens`'s doc comment sits directly above `appendPromptNote`'s, so editors and hovers attach it to the wrong function. This plan moves it.
 
 **Approach.**
