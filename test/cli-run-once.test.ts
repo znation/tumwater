@@ -37,6 +37,22 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
   });
 });
 
+test("run --once --role with a comma list runs exactly the listed roles and exits 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run once scoped list");
+  writeConfig(repo, fastConfig(["clean", "dedupe", "organize"]));
+
+  await withIdlePi(async () => {
+    const r = await cli(repo, "run", "--once", "--role", "clean,dedupe");
+    assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
+    assert.match(r.stdout, /roles: clean, dedupe\n/, `the banner names the listed roles: ${r.stdout}`);
+    assert.match(r.stdout, /once: 2 runs — 2 no_change/, `the summary counts both ticks: ${r.stdout}`);
+    assert.equal(loadLoopState(repo, "clean").runs, 1);
+    assert.equal(loadLoopState(repo, "dedupe").runs, 1);
+    assert.equal(loadLoopState(repo, "organize").runs, 0, "the unlisted role never ran");
+  });
+});
+
 test("run --once exits 3 and names the role when its tick ended in error", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run once failed");

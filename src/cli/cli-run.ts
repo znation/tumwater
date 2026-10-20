@@ -15,7 +15,7 @@ import {
   flagValue,
   parseBranchFlag,
   parseDurationFlag,
-  parseRoleFlag,
+  parseRoleListFlag,
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
@@ -117,14 +117,14 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const startup = await runStartupCheck(root, branchArg);
   if ("problem" in startup) fail(startup.problem);
   const { config, mainBranch } = startup;
-  // A scoped once round: `--role <id>` names the one loop that runs. Parsed here, where the
+  // A scoped once round: `--role <id>[,<id>...]` names the runners that run. Parsed here, where the
   // live config is readable, and validated against the ENABLED ids — not the full catalog —
   // so an unknown id and a disabled one fail fast with the same wording (a scoped round that
   // booted a disabled role's runner would run nothing while claiming to serve the operator
   // who just queued that loop a prompt). Custom loops are valid targets: knownRoleIds
   // accepts them, and an enabled custom passes this check like any built-in. Daemon
   // `run --role` stays an error: scoping is a once-round concept.
-  const roleFilter = parseRoleFlag(args, loopIds(config));
+  const roleFilter = parseRoleListFlag(args, loopIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
   // The refusal an operator hits by trying to start a second team in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
@@ -182,7 +182,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   startParentDeathWatch(stop, expectedPpid !== undefined ? { expectedPpid } : {});
   const enabled = loopIds(config);
   // A scoped round's loop list is exactly the filter; otherwise every enabled loop runs.
-  const roles = roleFilter !== null ? [roleFilter] : enabled;
+  const roles = roleFilter ?? enabled;
   // Main's green verdicts outlive this generation: the redeployer and the loops' red-main gate
   // start from the ones the previous generation verified instead of re-running the suite.
   (await import("../baseline/main-baseline.js")).persistBaselineVerdicts(root);

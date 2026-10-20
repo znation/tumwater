@@ -195,7 +195,7 @@ export function onceRound(
   const done = runRepoOrchestrator(repo, {
     pollMs: FAST_POLL_MS,
     once: true,
-    roleFilter,
+    roleFilter: roleFilter !== undefined ? [roleFilter] : undefined,
   });
   return withHangGuard(done, "once round did not exit on its own");
 }

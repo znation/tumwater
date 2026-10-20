@@ -145,6 +145,20 @@ test("run --once --role validates against enabled ids: a disabled built-in reads
   });
 });
 
+test("run --once --role rejects a list naming a disabled role before booting", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run role list disabled");
+  const cfg = defaultConfig();
+  cfg.roles.readme!.enabled = false;
+  writeConfig(repo, cfg);
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--once", "--role", "clean,readme");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /unknown role: readme \(valid ids: /);
+    assert.equal(readEvents(repo).length, 0, "no events — the round never started");
+  });
+});
+
 test("the startup gate is asked before the --role guards: a not-ready repo reports the gate", async () => {
   // A git repo with commits but no tumwater.json: if the --role guard ran first, stderr would
   // say "--role is only valid with --once"; the gate running first must name the real problem.

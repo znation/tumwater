@@ -39,7 +39,7 @@ function newReload(
   config: TumwaterConfig,
   runners: ReturnType<typeof makeLoopRunner>[],
   sem: Semaphore,
-  roleFilter?: string,
+  roleFilter?: string | readonly string[],
 ) {
   return newLiveConfigReload({
     root,
@@ -48,7 +48,7 @@ function newReload(
     runnerSignal: new AbortController().signal,
     runners,
     semaphore: sem,
-    roleFilter,
+    roleFilter: typeof roleFilter === "string" ? [roleFilter] : roleFilter,
   });
 }
 
@@ -329,6 +329,20 @@ test("a scoped round's filter skips runners for other roles, and still logs thei
   assert.ok(!runners.some((r) => r.role === "qa"), "a mid-round enable does not widen the scope");
   assert.equal(warnMessages(root).filter((m) => m.includes("role qa enabled")).length, 1,
     "the enabling is still logged");
+});
+
+test("a scoped round with two roles creates runners for both and no other", () => {
+  const config = cloneConfig(defaultConfig());
+  for (const id of ["qa", "readme"]) {
+    config.roles[id] = { ...(config.roles[id] ?? { enabled: true }), enabled: true };
+  }
+  const root = makeRepo();
+  writeConfig(root, config);
+  const runners = [makeLoopRunner(root, "improve", config)];
+  const live = newReload(root, config, runners, new Semaphore(1), ["improve", "qa"]);
+  live.poll();
+  assert.ok(runners.some((r) => r.role === "qa"), "a runner for the second listed role");
+  assert.ok(!runners.some((r) => r.role === "readme"), "no runner for an unlisted role");
 });
 
 test("raising an instance count appends the new loop's runner; lowering keeps it (part 5b/7)", () => {

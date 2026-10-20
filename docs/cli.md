@@ -24,7 +24,7 @@ tumwater start --gui        # ... and serve the browser dashboard at http://127.
 tumwater start --tui        # ... and host the TUI in this same terminal (the `tumwater tui` view; quitting it stops the team like Ctrl+C)
 tumwater start --for 2h     # run for a bounded window (capped at 90d), then finish current work, print a per-role summary of the window, and exit (one window across updates); shown as `stops in …` on status, the TUI, and the dashboard
 tumwater start --once       # one full round of runs, finishes the merges it produced, and exits (for cron/CI); exits 3 if a run failed;
-                            # add --role <id> to scope the round to one role
+                            # add --role <id>[,<id>...] to scope the round to the listed roles
 tumwater start --branch <name>  # merge into that branch instead of baseBranch in tumwater.json or the checked-out branch; it must exist
 ```
 

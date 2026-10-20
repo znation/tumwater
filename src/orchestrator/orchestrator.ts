@@ -86,12 +86,12 @@ interface RunOptions {
    * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
   once?: boolean;
-  /** Scope the whole round to this one role (`run --once --role <id>`): the runners map
-   * starts with just it, the director never runs, and a mid-round config edit that enables
+  /** Scope the whole round to these roles (`run --once --role <id>[,<id>...]`): the runners map
+   * starts with just them, the director never runs, and a mid-round config edit that enables
    * another role does not widen the round (config-live skips runners past the filter). The
    * merge queue still drains fully before exit. cmdRun validates the id against the enabled
    * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
-  roleFilter?: string;
+  roleFilter?: readonly string[];
   /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
    * show when the team stops. The deadline timer itself lives in cmdRun. */
   stopsAt?: number;
@@ -126,7 +126,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Parallel work instances (part 5b/7): the runner list is every runner id the config enables
   // (`feature`, `feature-2`, …), so `instances` creates real runners. A `--once --role` filter
   // targets exactly that runner id.
-  const enabled = opts.roleFilter !== undefined ? [opts.roleFilter] : runnerIds(config);
+  const enabled = opts.roleFilter !== undefined ? [...opts.roleFilter] : runnerIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
   // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
   // defaults they can fall back to. With a role filter this is unreachable — cmdRun validated

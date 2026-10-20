@@ -17,14 +17,14 @@ Usage:
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
                                    lists them), --dry-run: write nothing)
-  tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]
+  tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>[,<id>...]] [--gui] [--tui]
                                    Start the team: every enabled role runs in turn (headless;
                                    Ctrl+C finishes current work, then stops);
                                    --once does one round of runs, finishes the
                                    merges it produced, and exits (for cron/CI);
                                    exits 3 when a run ended in error, review failed,
                                    a merge conflicted or was blocked, or main's check is failing;
-                                   --once --role <id> limits that round to one role;
+                                   --once --role <id>[,<id>...] limits that round to the listed roles;
                                    --for <duration> runs for that window then finishes current work, prints a per-role summary
                                    (one window across self-redeploys),
                                    and exits like Ctrl+C would (for an overnight

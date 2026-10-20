@@ -128,11 +128,19 @@ export function parseRoleScope(root: string, args: string[]): string | null {
  * Each piece is validated like parseRoleScope's id; empty pieces are dropped, and a value with
  * no piece left fails with ROLE_VALUE_ERROR. */
 export function parseRoleListScope(root: string, args: string[]): string[] | null {
-  if (!args.includes("--role")) return null;
+  return args.includes("--role") ? parseRoleListFlag(args, knownRoleIdsCached(root)) : null;
+}
+
+/** Parse `--role <id>[,<id>...]`: the listed role ids (canonical, deduplicated, first-seen
+ * order), or null when the flag is absent. Empty pieces are dropped, and a value with no piece
+ * left fails with ROLE_VALUE_ERROR. `validIds` defaults to the built-in catalog, as
+ * parseRoleFlag. */
+export function parseRoleListFlag(args: string[], validIds?: string[]): string[] | null {
   const typed = flagValue(args, "--role");
+  if (typed === null) return null;
   const pieces = (typed ?? "").split(",").map((p) => p.trim()).filter(Boolean);
   if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
-  const ids = knownRoleIdsCached(root);
+  const ids = validIds ?? allRoleIds();
   const out: string[] = [];
   for (const piece of pieces) {
     const role = canonicalRoleId(piece);
