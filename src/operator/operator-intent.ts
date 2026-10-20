@@ -74,7 +74,7 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // the affected runners' in-memory copies and the runners save them, and writes the file for a
   // requested role that has no runner (a disabled role). Rewriting the files here too would be
   // a second writer racing those whole-file saves — an overwrite from a snapshot the
-  // orchestrator has since moved past (a just-ended tick's result, a claim, a schedule), which
+  // orchestrator has since moved past (a just-ended run's result, a claim, a schedule), which
   // the lost update discards. So with a live team only the marker is written; with none there
   // is no concurrent writer and the direct write is what carries the reset to the next run.
   const { live, when } = markerApplyNote(root);
@@ -131,9 +131,9 @@ export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: 
  * team stopped at submit (or restarted before the deadline) does not wake early;
  * consumeWakeRequest clears the schedules when it consumes the marker at or after the
  * deadline. The "wakes in" phrase is inMs itself, not the deadline minus a second clock read
- * (the rule timedPauseBits follows): a caller-computed deadline let a millisecond tick between
- * the two reads print "wakes in 2699999ms" for `--in 45m`. Returns the confirmation the CLI
- * prints verbatim and the GUI flashes. */
+ * (the rule timedPauseBits follows): a caller-computed deadline let a millisecond of clock
+ * time between the two reads print "wakes in 2699999ms" for `--in 45m`. Returns the
+ * confirmation the CLI prints verbatim and the GUI flashes. */
 export function requestWake(root: string, roles: string[], inMs?: number): string {
   const now = Date.now();
   // Deferred only for a genuinely positive delay: zero or less reads as immediate, so the
@@ -277,7 +277,7 @@ export function requestAbort(root: string, role: string): RequestResult {
   writeJsonAtomic(abortRequestPath(root, role), { at: Date.now() });
   let confirmation = `abort requested for ${role} — the running team applies it within ~2s`;
   if (role === DIRECTOR_ROLE) {
-    // The director's in-flight prompt was dequeued from the inbox file at tick start and an
+    // The director's in-flight prompt was dequeued from the inbox file at run start and an
     // abort discards it without re-queueing — say so, since the discard is otherwise silent.
     confirmation +=
       "; its current in-flight prompt will be discarded (re-submit with `tumwater prompt` if you want it retried)";
@@ -343,8 +343,8 @@ export function rolePauseMessage(
 /** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
  * Ctrl+P for the same no-drift reason. Carries the team-pause interplay note cmdResume
  * phrases: the team pause is the stronger gate, so with its marker present a freshly
- * resumed role still starts no ticks (the director is exempt from that gate, so its
- * resumption is real) — saying nothing would promise ticking the scheduler then deny, the
+ * resumed role still starts no runs (the director is exempt from that gate, so its
+ * resumption is real) — saying nothing would promise running the scheduler then deny, the
  * same honest-confirmation contract markerApplyNote's tail serves. */
 export function roleResumeMessage(root: string, role: string, changed: boolean): string {
   if (!changed) return `role ${role} was not paused`;

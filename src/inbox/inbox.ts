@@ -15,7 +15,7 @@ import { isPromptImageSibling } from "./inbox-attachments.js";
 /** File-based queues of user prompts. Any process can enqueue; the orchestrator pops. Ordering
  * comes from the timestamped filenames. The director's queue is the historical one at the inbox
  * root; every other role has its own subdirectory (roleInboxDir), so `tumwater prompt --role <id>`
- * queues a request only that role's next tick sees.
+ * queues a request only that role's next run sees.
  *
  * This module is the store: enqueueing, listing, peeking, and dequeuing, plus the shared
  * takeQueuedFile race policy. The cancel half — position-, list-, and file-addressed removal
@@ -54,7 +54,7 @@ let seq = 0;
  * prompt_enqueued line, and PendingPrompt's re-queue of an unfulfilled prompt calls this directly.
  * The write is atomic (writeTextAtomic) because the queue's readers — the dashboards' 1 s poll,
  * `tumwater prompt --list`, and the dequeuing role — run in other processes, and a read that
- * raced a plain writeFileSync could see a truncated prompt and run a tick on a half user request.
+ * raced a plain writeFileSync could see a truncated prompt and run a run on a half user request.
  * The optional decorate hook runs before that one write with the file's path and may return the
  * final text instead — submitPromptWithImages uses it to save the prompt's images beside the
  * queue file and append their reference lines, so the queue file is born complete and no
@@ -191,7 +191,7 @@ export function queuedRolePromptRecords(
 /** Full text of every prompt queued for one role, in execution order (oldest first) — the same
  * filename sort dequeueRolePrompt pops by. A not-yet-deliverable prompt (the not-before marker
  * still in the future) is not part of the execution order: it is skipped here, so peek and
- * dequeue can never hand a tick a prompt its time has not reached. A missing queue directory
+ * dequeue can never hand a run a prompt its time has not reached. A missing queue directory
  * reads as an empty queue, like inboxSize and dequeueRolePrompt; a file that vanishes between
  * listing and reading (a concurrent dequeue or cancel) is skipped rather than throwing, so a
  * polled snapshot can never crash on it. Unchanged files are served from the stat-keyed cache
@@ -253,7 +253,7 @@ export function queuedListRows(root: string, role: string | null, validIds: stri
   const prompts: QueuedListRow[] = [];
   const record = (r: string, position: number, e: { file: string; text: string; queuedAtMs: number | null; notBeforeMs: number | null }) =>
     // The marker is stripped from the text both shapes print (stripNotBeforeMarker): the
-    // prose and --json are the operator's view of what a role will tick, and the marker is
+    // prose and --json are the operator's view of what a role will run, and the marker is
     // plumbing, not content. Full verbatim prompt text minus plumbing, still not a preview.
     prompts.push({ role: r, position, file: e.file, text: stripNotBeforeMarker(e.text), queuedAtMs: e.queuedAtMs, notBeforeMs: e.notBeforeMs });
   if (role !== null) {
@@ -339,9 +339,9 @@ export function takeQueuedFile(file: string): string | null {
  * by a hyphen (`a-notes.md` beside `a.md`), and deleting it would take another prompt with
  * this one — files like that are left alone. ENOENT-tolerant through removeQueueFile, and a
  * queue directory that is already gone leaves nothing to clean. Called by the cancel paths
- * (inbox-cancel.ts's takeCancelledPrompt) and by a fulfilled tick's settle sweep
+ * (inbox-cancel.ts's takeCancelledPrompt) and by a fulfilled run's settle sweep
  * (src/inbox/pending-prompt.ts's settleImages): a cancelled or consumed prompt takes its
- * attachments with it. A DEQUEUE does not call this — the tick's agent still reads the
+ * attachments with it. A DEQUEUE does not call this — the run's agent still reads the
  * referenced files, so they must survive until the prompt is fulfilled or cancelled, and a
  * requeue first moves them to the new queue file's stem (movePromptImages) so this sweep
  * finds them under the stem the requeued file actually names.
@@ -377,11 +377,11 @@ export function removeSameStemSiblings(root: string, role: string, file: string)
 /** Remove and return the oldest queued prompt, or null when empty — including when a
  * concurrent `tumwater prompt --cancel` removes it between listing and reading (or between
  * reading and removal): the module's race policy is that a vanished file is skipped rather
- * than throwing, so the director sees an empty inbox and skips its tick instead of failing
+ * than throwing, so the director sees an empty inbox and skips its run instead of failing
  * with a raw ENOENT. When the removal itself hits ENOENT the cancel won after our read —
  * the prompt was cancelled, so it must not be executed: null (skip), never the text we
  * already read. Non-ENOENT errors (e.g. EACCES) are rethrown — they are not a race with a
- * cancel. A caller that must clean the prompt's attachments afterwards (a tick's
+ * cancel. A caller that must clean the prompt's attachments afterwards (a run's
  * pending-prompt bookkeeping) needs the file's stem too, so dequeueRolePromptEntry also
  * returns the queue file it took. */
 export function dequeueRolePromptEntry(root: string, role: string): { text: string; file: string } | null {
@@ -400,7 +400,7 @@ export function dequeueRolePrompt(root: string, role: string): string | null {
  * preview seam behind `tumwater role <id>`'s next-prompt view. Same reader, listing order,
  * and race policy as queuedRolePrompts (a file that vanishes mid-listing is skipped, not
  * thrown), but the queue file is never unlinked: a preview can never cost a queued prompt
- * its tick, which is the property test/run-prompt.test.ts pins through the preview seam.
+ * its run, which is the property test/run-prompt.test.ts pins through the preview seam.
  * A missing queue directory reads as null, like dequeueRolePrompt. */
 export function peekRolePrompt(root: string, role: string): string | null {
   return queuedRolePrompts(root, role)[0] ?? null;

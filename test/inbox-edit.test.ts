@@ -92,7 +92,7 @@ test("editRolePrompt refuses an over-cap replacement, like every enqueue path", 
   const root = tmpdir();
   enqueuePrompt(root, "short enough");
 
-  // The edited text rides into the target tick's prefill exactly like a queued prompt, so
+  // The edited text rides into the target run's prefill exactly like a queued prompt, so
   // the submission cap applies: an edit must not smuggle in the megabyte a submit rejects.
   const overCap = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   assert.throws(

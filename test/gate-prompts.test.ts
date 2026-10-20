@@ -2,7 +2,7 @@
  * rebase, the adversarial pre-merge review, and the conflict hand-back note; the other notes
  * are covered in gate-notes.test.ts. Split out of prompt.test.ts, which keeps the role prompt
  * builders' tests; gate prompts are started by the harness's merge/review pipeline, not the
- * role ticks, so their contracts live beside their own module. */
+ * role runs, so their contracts live beside their own module. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -143,7 +143,7 @@ test("buildConflictPrompt forbids state-changing git commands (tumwater conclude
 
 // BUGS.md 2026-10-05: told only to keep the tests passing, a resolver guessed `npx vitest run` in
 // a node:test repo and killed the suite's tests mid-run. The prompt names the project's own check
-// the way the tick rules do, and carries the shared test-runner rule either way. Since 2026-10-12
+// the way the run rules do, and carries the shared test-runner rule either way. Since 2026-10-12
 // it names the check as the one the HARNESS runs on the resolved tree and tells the resolver not
 // to run it: resolvers' own suite runs were 86% of their wall time, inside the serial merge slot.
 test("buildConflictPrompt names the project's declared check and tells the resolver not to run it", () => {

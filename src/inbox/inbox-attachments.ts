@@ -253,7 +253,7 @@ export function imageReferenceLines(paths: readonly string[]): string {
  * counterpart to imageReferenceLines. Used by the edit path to carry an attached prompt's
  * references (and so their sibling files) over a text rewrite: an edit replaces the prompt's
  * text, not its attachments, which travel with the prompt until a cancel or the fulfilling
- * tick's sweep removes them. A line that is not exactly the writer's shape is content, not a
+ * run's sweep removes them. A line that is not exactly the writer's shape is content, not a
  * reference, and is ignored. */
 export function imageReferencePaths(text: string): string[] {
   const paths: string[] = [];
@@ -266,7 +266,7 @@ export function imageReferencePaths(text: string): string[] {
 
 /** Move a re-queued prompt's attachments from its old queue file's stem to the new queue
  * file's stem and rewrite their `[image attached: …]` lines, so an attachment always travels
- * with the prompt's current queue file: the cancel sweep and the fulfilling tick's sweep
+ * with the prompt's current queue file: the cancel sweep and the fulfilling run's sweep
  * (removeSameStemSiblings, keyed on that file's stem) then find it, and a requeue can never
  * strand a file under a stem no queue file names. Only a line naming a same-stem sibling of
  * `fromFile` inside its directory is treated as an attachment — a hand-typed or edited
@@ -333,7 +333,7 @@ export function stripImageReferenceLines(text: string): string {
 }
 
 /** Drop the `[image attached: …]` lines whose files are no longer on disk from a prompt being
- * re-queued after a tick whose attached image is gone (removed out of band, or by a cancel),
+ * re-queued after a run whose attached image is gone (removed out of band, or by a cancel),
  * so a re-queued copy would otherwise send the role's agent after files that are gone. Each
  * vanished line is replaced by one honest note naming what
  * happened; references whose files still exist are kept. Unchanged text comes back untouched

@@ -178,6 +178,3 @@ function mergedShaOf(
   }
   return newestMergedCommit(scoped, merge.ts - merge.durationMs, merge.ts);
 }
-
-/** @deprecated Use readRunDetail. */
-export const readTickDetail = readRunDetail;

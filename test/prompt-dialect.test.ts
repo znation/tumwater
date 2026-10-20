@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDirectorPrompt,
-  buildTickPrompt,
+  buildRunPrompt,
   contextBudgetRule,
   roleNotesInstruction,
 } from "../src/prompt/prompt.js";
@@ -51,13 +51,13 @@ test("claude's dialect differs only in the tool name and output-spill wording", 
 test("every backend's run prompt names the tumwater-notes command, and none names the old tools", () => {
   const role = roleById("feature")!;
   for (const agent of ["pi", "claude", "opencode"] as const) {
-    const prompt = buildTickPrompt({ role, agent });
+    const prompt = buildRunPrompt({ role, agent });
     assert.match(prompt, /tumwater-notes write <<'TUMWATER_NOTES'/, `${agent} names the notes command`);
     assert.ok(!prompt.includes("role_notes"), `${agent} never names the pi tool`);
     assert.ok(!prompt.includes("mcp__tumwater__role_notes"), `${agent} never names claude's MCP tool`);
     assert.ok(!prompt.includes("tumwater_role_notes"), `${agent} never names opencode's MCP tool`);
   }
-  const claude = buildTickPrompt({ role, agent: "claude" });
+  const claude = buildRunPrompt({ role, agent: "claude" });
   assert.match(claude, /saved to a file the tool names/);
 });
 
@@ -76,7 +76,7 @@ test("opencode's dialect carries both backend rules", () => {
   assert.match(roleNotesInstruction(), /tumwater-notes write <<'TUMWATER_NOTES'/, "the instruction names the command");
 
   const role = roleById("feature")!;
-  const opencode = buildTickPrompt({ role, agent: "opencode" });
+  const opencode = buildRunPrompt({ role, agent: "opencode" });
   assert.match(opencode, /tumwater-notes write <<'TUMWATER_NOTES'/, "the opencode prompt names the notes command");
   assert.ok(!opencode.includes("call role_notes with"), "opencode never sees the pi tool name");
   assert.ok(!opencode.includes("mcp__tumwater__role_notes"), "opencode never sees claude's MCP name");
@@ -91,13 +91,13 @@ test("pi and claude prompts stay byte-identical: no backend blank line in the re
   // backendRuleLines returns "" for a dialect with no backendRules (pi, claude), so each
   // prompt's Reading budget block is exactly its pre-dialect rule text from the dialect's own
   // contextBudgetRule, followed by one blank line before "Where you work" — rendered through
-  // the full buildTickPrompt so the block is compared byte-for-byte, the regression for the
+  // the full buildRunPrompt so the block is compared byte-for-byte, the regression for the
   // earlier blank-line bug (a backend rule rendered as an empty line doubled that separator).
   for (const [agent, dialect] of [
     ["pi", PI_DIALECT],
     ["claude", CLAUDE_DIALECT],
   ] as const) {
-    const prompt = buildTickPrompt({ role: roleById("feature")!, agent });
+    const prompt = buildRunPrompt({ role: roleById("feature")!, agent });
     const marker = "Reading budget:";
     const block = prompt.slice(
       prompt.indexOf(marker) + marker.length,

@@ -268,7 +268,7 @@ test("consumeAbortRequests tolerates a missing .tumwater directory", () => {
   assert.equal(a.aborts, 0);
 });
 
-test("consumeAbortRequests aborts a running role's tick and logs run_aborted", () => {
+test("consumeAbortRequests aborts a running role's run and logs run_aborted", () => {
   const root = tmpdir();
   const a = fakeRunner("coverage", true);
   const marker = abortRequestPath(root, "coverage");

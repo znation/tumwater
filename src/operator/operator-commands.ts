@@ -7,8 +7,8 @@ import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from ".
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "./revert.js";
 import { runMergedSha, runNotFoundMessage } from "../run/run-detail.js";
-import { readTickDetail } from "../run/run-detail-data.js";
-import { readTickRows } from "../history/history-data.js";
+import { readRunDetail } from "../run/run-detail-data.js";
+import { readRunRows } from "../history/history-data.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
@@ -133,7 +133,7 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
 }
 
 /** `tumwater wake [--role <id>[,<id>...]] [--in <duration> | --cancel | --list [--json]]`: tell the
- * team "whatever the roles were failing on is fixed — try again", so the named roles tick
+ * team "whatever the roles were failing on is fixed — try again", so the named roles run
  * within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
@@ -166,7 +166,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
   const inMs = inRaw !== null ? parseDurationFlag("wake --in", inRaw) : undefined;
   if (inMs !== undefined) failOverDurationCap("wake --in", inMs, PAUSE_FOR_MAX_MS);
   // requestWake takes the duration, not a deadline: it reads the clock once for both the
-  // marker's deadline and its "wakes in" phrase, so no tick between two reads can reword
+  // marker's deadline and its "wakes in" phrase, so no clock advance between two reads can reword
   // "45m" as "2699999ms".
   say(requestWake(root, targetRoles(root, args), inMs));
 }
@@ -206,7 +206,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
  * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortRun kills the pi child and resets the worktree to main). Requires a live harness —
  * with no team there is nothing to consume the marker. The role stays enabled: it backs
- * off normally and later ticks proceed as usual. */
+ * off normally and later runs proceed as usual. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
   // user-defined roles; a missing --role fails before it is ever needed.
@@ -231,8 +231,8 @@ export async function cmdRestart(root: string, _args: string[]): Promise<void> {
 
 /** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
  * each), stop THAT role from
- * starting new ticks — in-flight ones finish, every other role (the director included)
- * keeps running; without one, stop every role from starting NEW ticks while in-flight
+ * starting new runs — in-flight ones finish, every other role (the director included)
+ * keeps running; without one, stop every role from starting NEW runs while in-flight
  * ones finish and the director keeps running (its prompts outrank operator gates, like
  * under the budget cap). The markers
  * are persistent state, not one-shot requests: presence means paused until `resume` removes
@@ -324,7 +324,7 @@ export function signalOrchestrator(pid: number): "signalled" | "gone" {
   }
 }
 
-/** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight ticks and
+/** `tumwater stop`: SIGTERM the running orchestrator, which drains its in-flight runs and
  * exits — exactly the shutdown the supervised child's own SIGINT/SIGTERM handler performs, so
  * Ctrl+C and `stop` from another terminal are the same code path (the supervisor needs no
  * signal of its own: a clean child exit already ends its loop). Unlike the marker commands
@@ -386,7 +386,7 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
   const { when, tail } = markerApplyNote(root);
   // The per-role pause outlives a team resume (the markers are independent), so the resumed
   // team's confirmation must name the roles still individually paused instead of claiming
-  // "roles tick again" for roles the scheduler keeps gated.
+  // "roles run again" for roles the scheduler keeps gated.
   const still = pausedRoles(root);
   const roleNote = still.length > 0
     ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
@@ -461,10 +461,10 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
   const ids = knownRoleIdsCached(root);
   if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (${REVERT_USAGE})`);
   const run = last
-    ? (readTickRows(root, 1, role)[0]?.run ?? null)
+    ? (readRunRows(root, 1, role)[0]?.run ?? null)
     : parseCountFlag("revert <n>", positionals[1]);
   if (run === null) fail(`no completed run of ${role} in the event log`);
-  const detail = readTickDetail(root, role, run);
+  const detail = readRunDetail(root, role, run);
   if (detail === null) fail(runNotFoundMessage(role, run));
   if (detail.result !== "merged")
     fail(`${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert`);

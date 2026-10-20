@@ -55,7 +55,7 @@ export interface RetireStatus {
   dirty: boolean;
   /** The role is enabled in tumwater.json — retire expects it disabled first. */
   enabledInConfig: boolean;
-  /** The role's persisted state says a tick is in flight (best-effort; cleared on start). */
+  /** The role's persisted state says a run is in flight (best-effort; cleared on start). */
   midRun: boolean;
 }
 

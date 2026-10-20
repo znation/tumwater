@@ -2,7 +2,7 @@
 // The removal is plain git + file work on the repo (no running harness involved), so the whole
 // surface is testable with fixtures: an initialized repo plus the ensureWorktree artifacts a
 // retired role leaves behind. The safety rails (enabled role, unmerged commits, dirty worktree,
-// mid-tick) must refuse without removing anything; --force overrides; a second run is
+// mid-run) must refuse without removing anything; --force overrides; a second run is
 // idempotent, reporting what was already gone.
 
 import test from "node:test";
@@ -50,7 +50,7 @@ test("retire removes a disabled role's worktree, branch, and merge ref", async (
   assert.equal(branchGone, null, "branch deleted");
 });
 
-test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a mid-tick role; --force goes through", async () => {
+test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a mid-run role; --force goes through", async () => {
   const { root, wt } = await initializedWorktree();
 
   // Enabled role: refuse, nothing removed.
@@ -76,7 +76,7 @@ test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a 
   assert.ok(!fs.existsSync(worktreePath(root, "improve")));
 });
 
-test("retire refuses a dirty worktree and a mid-tick role before removing anything", async () => {
+test("retire refuses a dirty worktree and a mid-run role before removing anything", async () => {
   const { root, wt } = await initializedWorktree();
   disableRole(root, "improve");
 

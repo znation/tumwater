@@ -23,15 +23,15 @@ import { roleLabel } from "../roles/role-labels.js";
  * the validation, and the submit wrappers the TUI, GUI, and CLI all go through. */
 
 /** Cap on a submitted prompt's length: the same ceiling for every role's queue, director and
- * role alike, because every prompt rides into its target tick's prefill — a megabyte pasted
+ * role alike, because every prompt rides into its target run's prefill — a megabyte pasted
  * into the TUI, a GUI POST, or a shell-mistaken `tumwater prompt $(cat …)` would otherwise
- * ride into the next tick's context wholesale. submitPrompt and submitRolePrompt reject
+ * ride into the next run's context wholesale. submitPrompt and submitRolePrompt reject
  * over-long text before it is queued, so no surface can enqueue it. */
 export const DIRECTOR_PROMPT_MAX_CHARS = INITIAL_PROMPT_MAX_CHARS;
 
 /** The one length rule for a submitted prompt, scoped to the role it targets: the error
  * message when the trimmed text exceeds DIRECTOR_PROMPT_MAX_CHARS, null when it fits. The
- * message names the target role's tick — `--role qa` must not be told its text rides into
+ * message names the target role's run — `--role qa` must not be told its text rides into
  * the director's prefill. submitPrompt/submitRolePrompt throw it before anything is queued
  * or logged; the GUI asks it first so an over-long prompt answers 400 (a user-input error)
  * while an unexpected submit failure (a broken inbox's EACCES) stays the 500 its
@@ -50,7 +50,7 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
 /** The image-input submit guidance for one role (plans/image-input.md "Surfaces" and
  * "Attachments", part 5/5): what an image-carrying prompt to `role` means. `refusal` is the
  * throw-and-submit-nothing message when the role's seam reads no images and no peer tier can
- * (an attachment no configured model can read is refused at submit, not discovered at tick
+ * (an attachment no configured model can read is refused at submit, not discovered at run
  * time); `notice` is what a surface prints/shows when the prompt will instead rerun on another
  * tier. Both null when the role's own model reads images (or capability is unknown — an
  * unknown seam is never assumed incapable, mirroring the doctor's `tier models` stance), so
@@ -88,7 +88,7 @@ export function imagePromptGuidance(root: string, role: string): { refusal?: str
  * operator. An optional images array (the GUI composer's drop/paste attachments) rides
  * through savePromptImages beside the queue file, with one [image attached: …] reference line
  * appended to the queued text; image problems throw before anything is queued — and so does
- * an over-cap composed text: the reference lines ride into the tick's prefill just like the
+ * an over-cap composed text: the reference lines ride into the run's prefill just like the
  * prompt body, so the length cap is enforced on the final text (body + image lines), not the
  * body alone.
  * An optional `notBeforeMs` defers the prompt (PLANS.md "tumwater prompt --at <duration>"):
@@ -107,7 +107,7 @@ export function submitRolePrompt(
     if (imageProblem) throw new Error(imageProblem);
     // Image input gate (plans/image-input.md "Attachments", part 5/5): an attachment no
     // configured model can read is refused here, before anything is queued or written — the
-    // tick would only fail discovering it. A role that reroutes a blind read is not refused;
+    // run would only fail discovering it. A role that reroutes a blind read is not refused;
     // the surface prints/shows the notice instead (imagePromptGuidance is called again there).
     const guidance = imagePromptGuidance(root, role);
     if (guidance.refusal) throw new Error(guidance.refusal);
@@ -137,7 +137,7 @@ function submitPromptWithImages(root: string, role: string, text: string, images
       if ("problem" in saved) throw new Error(saved.problem); // Unreachable: validated above.
       savedImagePaths = saved.paths;
       final = prompt + imageReferenceLines(saved.paths);
-      // The image reference lines ride into the target tick's prefill exactly like the
+      // The image reference lines ride into the target run's prefill exactly like the
       // prompt body, so the shared length cap applies to the composed text, not the body
       // alone. This runs inside the decorate hook, before enqueueRolePrompt's one atomic
       // write, so an over-cap composition queues nothing; the images saved above are

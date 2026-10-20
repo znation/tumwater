@@ -8,7 +8,7 @@ import { oneLine } from "./helpers/oracles.js";
 // SAME pi
 // session as an interrupted run, which already carries the original prompt and work — so it
 // only bridges the gap. Its contract matters: without the restated sentinel/SUMMARY rules the
-// harness could not parse a resumed tick's end. One home for every cause's bridge, extracted
+// harness could not parse a resumed run's end. One home for every cause's bridge, extracted
 // from test/prompt.test.ts, where the cluster was scattered across three regions.
 
 test("buildResumePrompt tells the resumed session to finish the same task", () => {
@@ -21,7 +21,7 @@ test("buildResumePrompt tells the resumed session to finish the same task", () =
   assert.match(p, /verify its effect/i);
   // Continue the interrupted task rather than picking a new one.
   assert.match(p, /Continue the SAME task/);
-  // The harness contract that lets a resumed tick end cleanly is restated: one focused
+  // The harness contract that lets a resumed run end cleanly is restated: one focused
   // task, no git commits by pi, and the sentinel + SUMMARY line the harness parses.
   assert.match(p, /ONE focused task/);
   assert.match(p, /Never create, amend, or revert git commits/);
@@ -54,14 +54,14 @@ test("buildResumePrompt names a quiet-kill so the session does not re-run the hu
   assert.ok(p.includes(NOTHING_TO_DO));
 });
 
-// The fourth resume cause — a run the tick time limit stopped while it was still making
+// The fourth resume cause — a run the run time limit stopped while it was still making
 // progress (src/run/run-verdict.ts's quiet_killed with resumeCause "timeout"). Its bridge
 // differs from a restart's in the load-bearing way: the limit will bite again, so the resumed run
 // must budget against it rather than only verifying a cut-off tool call.
 test("buildResumePrompt names a run timeout and asks for a finish that fits the limit", () => {
   const p = buildResumePrompt("coverage", "timeout");
   assert.match(p, /"coverage"/);
-  // The real cause is named: the tick time limit, framed as slow — not a failed run, not a
+  // The real cause is named: the run time limit, framed as slow — not a failed run, not a
   // restart — so the resumed session does not treat its preserved work as suspect.
   assert.match(p, /run time limit/i);
   assert.match(p, /a slow run, not a failed one/i);

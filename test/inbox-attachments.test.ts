@@ -161,7 +161,7 @@ test("savePromptImages keeps the validated extension when the client name's safe
   assert.equal(path.basename(saved.paths[1]!), `${stem}.jpeg`, "so does a mixed-script one");
   for (const p of saved.paths) assert.ok(fs.existsSync(p) && !fs.existsSync(p + ".md"));
   // The cancel-side cleanup matches exactly these extension'd shapes and takes them with the
-  // prompt (a dequeue leaves them for the tick to read; cancel removes them).
+  // prompt (a dequeue leaves them for the run to read; cancel removes them).
   assert.equal(cancelQueuedFile(root, "qa", path.basename(queueFile)).status, "cancelled");
   assert.deepEqual(fs.readdirSync(dir), [], "no orphaned image survives the cancel");
 });
@@ -200,7 +200,7 @@ test("dequeuing keeps a prompt's image files for the run; cancelling removes the
   fs.writeFileSync(neighbor, "next prompt");
   assert.ok(fs.existsSync(saved.paths[0]!));
   assert.equal(dequeueRolePrompt(root, "qa"), "look");
-  // Regression (BUGS.md 2026-10-11): the tick's pi agent reads these files during its run,
+  // Regression (BUGS.md 2026-10-11): the run's pi agent reads these files during its run,
   // so a dequeue must leave them on disk; only fulfillment or cancel removes them.
   assert.ok(fs.existsSync(saved.paths[0]!), "dequeue keeps the first image for the run");
   assert.ok(fs.existsSync(saved.paths[1]!), "dequeue keeps the second image for the run");
@@ -265,7 +265,7 @@ test("requeueUnfulfilled never re-queues a dangling image reference", () => {
   const queued = submitRolePrompt(root, "qa", "look at this", [png()]);
   const image = imageReferencePaths(queued)[0]!;
   assert.equal(dequeueRolePrompt(root, "qa"), queued); // the dequeue leaves the image on disk
-  fs.rmSync(image); // ... but something outside the tick removed it before the requeue
+  fs.rmSync(image); // ... but something outside the run removed it before the requeue
   const pending = new PendingPrompt(root, "qa");
   pending.record(queued);
   pending.requeueUnfulfilled(pending.get());

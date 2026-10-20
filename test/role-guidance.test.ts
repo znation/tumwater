@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
+import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { roleById } from "../src/roles/roles.js";
 import {
   DECOMPOSITION_GUIDANCE,
@@ -45,7 +45,7 @@ test("plan and bugfix role prompts include the shared decomposition guidance", (
   for (const id of ["plan", "bugfix"]) {
     const role = roleById(id);
     assert.ok(role, `role ${id} exists`);
-    const prompt = buildTickPrompt({ role });
+    const prompt = buildRunPrompt({ role });
     assert.ok(prompt.includes(DECOMPOSITION_GUIDANCE), `${id} prompt carries the guidance`);
   }
 });
@@ -68,7 +68,7 @@ test("the validation-gap guidance renders every tag in the closed vocabulary", (
 test("the bugfix prompt requires the validation-gap trace line for every fixed entry", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const prompt = buildTickPrompt({ role });
+  const prompt = buildRunPrompt({ role });
   assert.ok(prompt.includes(VALIDATION_GAP_GUIDANCE), "embeds the shared constant verbatim");
   assert.match(prompt, /write the required validation-gap trace line/);
 });

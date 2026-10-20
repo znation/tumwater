@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTickPrompt } from "../src/prompt/prompt.js";
+import { buildRunPrompt } from "../src/prompt/prompt.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // Prompt contract for the steward role (plans/steward-role.md): a markdown-only curation
-// role on a slow clock. Every tick is a fresh session with no memory of earlier curation
+// role on a slow clock. Every run is a fresh session with no memory of earlier curation
 // moves, so the find text must carry the move list, the markdown-only restriction, and its
 // deletion/principles powers in prose; these assertions pin that contract. Same whitespace-
 // collapsed matching as the refusal and questions contracts above — the prose is hard-wrapped
-// and formatting ticks reflow it, so assertions match content, not layout.
+// and formatting runs reflow it, so assertions match content, not layout.
 
 const steward = roleById("steward");
 
@@ -29,7 +29,7 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
   assert.match(find, /Re-read the brief, PRINCIPLES\.md, PLANS\.md, BUGS\.md/);
   assert.match(find, /and QUESTIONS\.md if it exists/);
   assert.match(find, /skim the codebase's shape \(sizes, module list, test count\)/);
-  // One move per tick, and the five planned moves: prune plans (with an epitaph), flag
+  // One move per run, and the five planned moves: prune plans (with an epitaph), flag
   // drift as a PLANS.md note, tighten or update a principle or complexity budget in
   // PRINCIPLES.md, record a structural risk in BUGS.md, promote a recurring gap tag.
   assert.match(find, /make ONE curation move, the most valuable one/);
@@ -75,8 +75,8 @@ test("the steward's epitaph keeps the entry's title for the citation guard and l
   assert.match(find, /`plans-citations\.test\.ts` fails when a `PLANS\.md "<title>"` citation/);
 });
 
-test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
-  const prompt = buildTickPrompt({ role: steward! });
+test("buildRunPrompt for steward carries the find text plus the shared rules", () => {
+  const prompt = buildRunPrompt({ role: steward! });
   assert.match(prompt, /"steward" role \(backlog curator\)/);
   assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
 });

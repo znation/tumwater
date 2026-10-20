@@ -591,5 +591,3 @@ export function readRunRowsSince(root: string, sinceMs: number, role: RoleScope)
 export const summarizeTickRows = summarizeRunRows;
 /** @deprecated Use RunRow. */
 export type TickRow = RunRow;
-/** @deprecated Use readRunRows. */
-export const readTickRows = readRunRows;

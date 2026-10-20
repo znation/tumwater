@@ -105,7 +105,7 @@ function warnStatePersistFailed(root: string, role: string, err: unknown): void 
 
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI zeroed the
  * state files only when no team was running; this zeroes the affected runners' in-memory
- * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
+ * copies (which then re-save), or their next run's save would resurrect the pre-reset values,
  * and writes the zeroed state file directly for requested roles with no runner, which the CLI
  * left to its marker. */
 export function consumeResetRequest(root: string, runners: RoleRunner[]): void {
@@ -154,7 +154,7 @@ export function consumeResetRequest(root: string, runners: RoleRunner[]): void {
  * deliberately skipped it. A non-numeric or non-finite value (a hand edit's `1e999`) reads as
  * immediate (defensive; validation happens at the CLI) — leaving Infinity as a deadline would hold
  * `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes. Each
- * woken role logs the existing `wake` event with the operator reason, so the team's early ticks
+ * woken role logs the existing `wake` event with the operator reason, so the team's early runs
  * read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: RoleRunner[]): void {
   // A legacy wake.json (the pre-upgrade build wrote scheduled wakes here) keeps its deadline.
@@ -298,10 +298,10 @@ export function consumeReclaimRequest(root: string, reclaim: { requestManual(): 
 }
 
 /** Consume per-role abort requests from `tumwater abort --role <id>`: one marker file per role (no
- * parsing needed), so a request for an idle OR disabled role is still cleaned up. A running tick
+ * parsing needed), so a request for an idle OR disabled role is still cleaned up. An in-flight run
  * gets killed and logs exactly one event; anything else is a silent no-op — the marker's presence
  * IS the request, removing it acknowledges. Since merge queue 3/5 a role's in-flight work is often
- * a MERGE rather than a tick, so the merge's controller is passed in: an abort for the role being
+ * a MERGE rather than a run, so the merge's controller is passed in: an abort for the role being
  * merged right now kills that too (the drain's task sees `userAborted` and discards the pinned ref
  * when the merge ends). There can be several in-flight units at once (land-queue speed 2c) — one
  * per change being verified, the merge slot's stack, and each verified change waiting for it
@@ -320,7 +320,7 @@ export function consumeAbortRequests(
   try {
     markers = fs.readdirSync(path.join(root, STATE_DIR));
   } catch {
-    return; // .tumwater/ missing — nothing to consume (a fresh repo before the first tick).
+    return; // .tumwater/ missing — nothing to consume (a fresh repo before the first run).
   }
   // Best-effort report of one marker's failure: the warning can itself throw when the
   // unwritable event feed is what failed, and there is nothing left to report on then.

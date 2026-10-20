@@ -4,7 +4,7 @@ import { readTextOrNull } from "../files/files.js";
 import { truncateWithNote } from "../text/text.js";
 
 /** Cap on the PRINCIPLES.md text injected into every prompt, so a runaway file cannot blow up
- * each tick's prefill. */
+ * each run's prefill. */
 export const PRINCIPLES_MAX_CHARS = 4000;
 
 /** The project's design principles (PRINCIPLES.md), capped for injection into prompts. Empty

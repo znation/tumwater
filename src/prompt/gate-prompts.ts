@@ -8,7 +8,7 @@ import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
 
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
- * roles' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
+ * roles' authoring runs (those live in prompt.ts): conflict resolution after a rebase
  * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the conflict hand-back
  * note. The other notes that carry the gate's verdicts back to the role that authored the
  * change live in gate-notes.ts. The machine-detectable half of the gate's reply contract —
@@ -68,7 +68,7 @@ function listsHunks(files: readonly (string | ConflictedFile)[]): boolean {
 }
 
 /** The prompt for resolving merge conflicts left in a role's worktree. `check` — the project's
- * resolved check, as the tick prompt threads it — is named so the resolver knows which command
+ * resolved check, as the run prompt threads it — is named so the resolver knows which command
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
  * that check itself: merge-to-main.ts's verifyMerge runs it on the resolved tree before
@@ -342,7 +342,7 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
   ${VERDICT_ENDING}`;
 }
 
-/** The one-turn follow-up sent into a tick's OWN session (--continue) when the harness's
+/** The one-turn follow-up sent into a run's OWN session (--continue) when the harness's
  * pre-queue self-check found problems likely to get the change rejected. Only some findings are
  * the merge gate's own deterministic checks; the rest (path drift, plan dependencies) are
  * heuristics, so the prompt never claims the gate rejects every one — claiming it did made an
@@ -351,7 +351,7 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
  * the gate keeps its final say, and the fix costs one bounded turn instead of a rejection cycle.
  * A finding the author believes is wrong is answered in RISK rather than forced away; the reply
  * re-states the closing block because the harness re-derives the commit message from it.
- * Carries the tick prompt's no-git rule (the harness commits). */
+ * Carries the run prompt's no-git rule (the harness commits). */
 export function buildStageFixPrompt(findings: string[]): string {
   return `Your change is about to commit, but tumwater's pre-queue self-check found problems the
 merge gate or its review is likely to reject:
@@ -364,7 +364,7 @@ When done, reply with ONLY the closing block again — no tool calls, no other t
 ${SUMMARY_BLOCK}`;
 }
 
-/** The note appended to a role's tick prompt when a change was handed back to it with the
+/** The note appended to a role's run prompt when a change was handed back to it with the
  * conflict markers left in place (PLANS.md "Robust conflict landing, part 2/2"): the merge
  * resolver could not settle it, so the author — who knows what the change was for — resolves it
  * over current main. `reason` says whether it was an approved change whose merge kept

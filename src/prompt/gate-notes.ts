@@ -12,8 +12,8 @@ import { NO_REASONS } from "./gate-prompts.js";
  * conflict resolution, the review, the stage fix — live in gate-prompts.ts, with the conflict
  * hand-back note that shares the resolver prompt's conflict blocks. */
 
-/** The note injected into a role's next tick prompt after its previous change was rejected in
- * review. Every tick starts a fresh pi session, so this is the only cross-tick memory of what
+/** The note injected into a role's next run prompt after its previous change was rejected in
+ * review. Every run starts a fresh pi session, so this is the only cross-run memory of what
  * was built and why it failed — it carries the full reasons, not a summary of them. The whole
  * `lastReview` rides in, not just the reasons: the timestamp and reviewed head let the author
  * weigh a stale objection against main's current state (main may have satisfied it since). */
@@ -37,7 +37,7 @@ export function buildRejectedReviewNote(review: {
   // rejection runs this note exists to end, so feature is sent to replan the entry instead.
   // A plan-less role has no downstream role to replan for it, so it is sent to its own
   // notebook instead: it records the abandoned purpose and any instances that remain
-  // unhandled, then takes a different theme on the next tick. Re-authoring the same purpose
+  // unhandled, then takes a different theme on the next run. Re-authoring the same purpose
   // from the same objections is what restarted the round and produced the long rejection
   // runs this note exists to end. The markdown-only replan note merges review-exempt, but a
   // merged change clears the standing rejection (clearSupersededRejection, run-apply.ts), so
@@ -52,9 +52,9 @@ export function buildRejectedReviewNote(review: {
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
 }
 
-/** The note injected into a role's tick prompt when its rejected change has been re-applied to
+/** The note injected into a role's run prompt when its rejected change has been re-applied to
  * current main as uncommitted edits (plans/revise-rejected.md, runner/revision.ts's
- * applyRevision): this tick's one task is to revise the change already in the worktree, not
+ * applyRevision): this run's one task is to revise the change already in the worktree, not
  * author a new one. The prior objections are numbered so the author can work through them; a
  * revision round past the first also reaches here. The chain keeps revising while each round
  * fixes the prior objection; it ends only on a repeated objection or the backstop (BUGS.md
@@ -77,7 +77,7 @@ or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} i
 tumwater drops the change.`;
 }
 
-/** The note appended to a work instance's tick prompt when it holds a claim (plans/parallel-
+/** The note appended to a work instance's run prompt when it holds a claim (plans/parallel-
  * work-instances.md "Claims", part 4/7): the harness has already picked its entry, so the
  * charter's choosing step is replaced. A pure function so its shape is pinned in tests; the
  * range is optional because a claim whose entry was already released still gets the note. */
@@ -165,7 +165,7 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
 /** The note injected into the `bugfix` healer's prompt when main's own suite is red (PLANS.md
  * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
  * the one role allowed to author on a red main is told what failed and that fixing it is this
- * tick's job. The healer's normal charter is a starting point, not a fit — a red main blocks
+ * run's job. The healer's normal charter is a starting point, not a fit — a red main blocks
  * every other code role, and the gate's deterministic pre-check rejects any change that leaves
  * the suite red, so authoring anything else first is waste. A pure function so its shape is
  * pinned in tests; script/headline are optional because a red carries a failing script, but the

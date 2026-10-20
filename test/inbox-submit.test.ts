@@ -61,7 +61,7 @@ test("submitPrompt's event preview never carries a lone surrogate", () => {
   assert.equal(String(events[0]?.preview), `${"x".repeat(78)}…`);
 });
 
-test("a role prompt's over-cap error names the target role's tick, not the director's", () => {
+test("a role prompt's over-cap error names the target role's run, not the director's", () => {
   const dir = tmpdir();
   const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   assert.throws(() => submitRolePrompt(dir, "qa", over), (err: unknown) => {
@@ -84,7 +84,7 @@ test("the director prompt length cap applies to role prompts too", () => {
 test("an image-carrying prompt is capped on its composed text, not its body alone", () => {
   const dir = tmpdir();
   // The body fits (50 chars of headroom) but the four [image attached: …] reference
-  // lines push the composed text past the cap — the lines ride into the tick's prefill
+  // lines push the composed text past the cap — the lines ride into the run's prefill
   // exactly like the body, so the cap must see them.
   const body = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS - 50);
   const images = Array.from({ length: 4 }, (_, i) => ({
@@ -109,7 +109,7 @@ test("an image-carrying prompt is capped on its composed text, not its body alon
 
 // Image input, part 5/5 (plans/image-input.md "Attachments"): the submit gate. An attachment
 // to a role whose seam reads no images and that has no reroute target is refused before
-// anything is queued or written; with a reroute target the prompt is accepted (its tick would
+// anything is queued or written; with a reroute target the prompt is accepted (its run would
 // rerun on the vision tier, so nothing is refused).
 test("image prompts are refused when no configured model reads images, accepted when a tier reroutes", async () => {
   const dir = tmpdir();

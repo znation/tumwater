@@ -120,7 +120,7 @@ test("cmdWake clears the named role's backoff and pulls nextRunAt to now, leavin
 // The "wakes in" phrase once came from the deadline minus a second clock read: cmdWake read
 // the clock for the deadline, requestWake read it again on entry, and a millisecond tick
 // between the two printed "wakes in 2699999ms" for `--in 45m`. A clock that advances on every
-// read makes that tick certain instead of a rare flake.
+// read makes that run certain instead of a rare flake.
 test("cmdWake --in echoes the operator's duration even when the clock ticks between reads", async (t) => {
   const root = tmpdir();
   let clock = Date.now();
@@ -326,7 +326,7 @@ test("cmdPause and cmdResume accept --role feature-1, the instance-1 pause key, 
   assert.match(stderr, /unknown role: feature-1/);
 });
 
-test("cmdResume --role while the team pause holds names the stronger gate instead of promising ticks", async () => {
+test("cmdResume --role while the team pause holds names the stronger gate instead of promising runs", async () => {
   const root = tmpdir();
   await expectOk(() => cmdPause(root)); // team pause: the stronger gate
   await expectOk(() => cmdPause(root, ["--role", "clean"]));

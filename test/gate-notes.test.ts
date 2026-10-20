@@ -11,7 +11,7 @@ import {
 } from "../src/prompt/gate-notes.js";
 import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
 
-// The rejected-review note is the ONLY cross-tick memory of a failed change: every tick
+// The rejected-review note is the ONLY cross-run memory of a failed change: every run
 // starts a fresh pi session, so if this note loses or mangles the reviewer's reasons the
 // author role retries the same rejected work with no idea why it was refused.
 

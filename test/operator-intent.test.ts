@@ -252,7 +252,7 @@ test("requestAbort drops a per-role marker for a live team and notes the directo
   if (!r.ok) throw new Error("unreachable");
   assert.match(r.message, /^abort requested for fix — the running team applies it within ~2s$/);
   assert.ok(readJsonFile(path.join(root, STATE_DIR, "abort-fix.json")));
-  // The director's in-flight prompt is dequeued at tick start, so its abort says the prompt is
+  // The director's in-flight prompt is dequeued at run start, so its abort says the prompt is
   // discarded — an ordinary role's confirmation must not carry that note.
   const d = requestAbort(root, "director");
   if (!d.ok) throw new Error("unreachable");
@@ -300,7 +300,7 @@ test("roleResumeMessage reports the no-op and the team-pause interplay note", ()
   assert.doesNotMatch(roleResumeMessage(dead, "fix", true), /team pause is still active/);
 
   // With the team pause marker present, a non-director resume must say the stronger gate
-  // still holds — silence would promise ticks the scheduler then denies.
+  // still holds — silence would promise runs the scheduler then denies.
   writeMarker(pausedPath(dead), { at: Date.now() });
   assert.match(roleResumeMessage(dead, "fix", true), /the team pause is still active — `tumwater resume` lifts it/);
   // The director is exempt from that gate, so its resumption is real and the note is absent.

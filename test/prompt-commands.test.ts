@@ -737,7 +737,7 @@ test("prompt --edit <n> with a buffer over the prompt cap fails with the length 
   const dir = dirOf(root, "clean");
   const file = path.join(dir, fs.readdirSync(dir)[0] as string);
   const before = fs.readFileSync(file);
-  // The edited text rides into the target tick's prefill exactly like a queued prompt, so the
+  // The edited text rides into the target run's prefill exactly like a queued prompt, so the
   // bare editor form enforces the same cap as a submission (editPromptAtFile, inbox-edit.ts).
   const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   const { result } = await withEditor(root, `fs.writeFileSync(file, ${JSON.stringify(over)});`, () =>

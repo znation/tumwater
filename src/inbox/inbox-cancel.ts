@@ -30,7 +30,7 @@ export type CancelOutcome = { status: "cancelled"; text: string } | { status: "g
 function takeCancelledPrompt(root: string, role: string, file: string): CancelOutcome {
   const text = takeQueuedFile(file);
   if (text === null) return { status: "gone" };
-  // A cancelled prompt's image attachments go with it; a dequeue leaves them for the tick to
+  // A cancelled prompt's image attachments go with it; a dequeue leaves them for the run to
   // read and they are removed on fulfillment (src/inbox/pending-prompt.ts).
   removeSameStemSiblings(root, role, file);
   logEventBestEffort(root, { source: role, type: "prompt_cancelled", preview: promptPreview(text) });

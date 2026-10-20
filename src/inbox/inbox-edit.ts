@@ -45,7 +45,7 @@ export type EditOutcome =
  *
  * Carries an attached prompt's `[image attached: …]` reference lines (and so their sibling
  * files) over the rewrite — the edit replaces the prompt's text, not its attachments, which
- * stay beside the edited queue file until a cancel or the fulfilling tick's sweep removes
+ * stay beside the edited queue file until a cancel or the fulfilling run's sweep removes
  * them. An optional `images` array (the CLI's
  * `prompt --edit … --attach`) appends its newly saved reference lines after the carried ones,
  * so one command corrects the text and the images in place instead of cancel-and-re-queue;
@@ -53,7 +53,7 @@ export type EditOutcome =
  * new files again.
  *
  * Enforces the same prefill length cap as a submission (promptLengthProblem): the edited
- * text plus its carried image lines ride into the target tick's prefill exactly like a
+ * text plus its carried image lines ride into the target run's prefill exactly like a
  * queued prompt, so an edit to an over-cap value must not bypass the cap every enqueue path
  * applies. The initial text check throws before any read or write; the composed check (body
  * plus carried image lines) throws before the write when the body alone fit.
@@ -98,7 +98,7 @@ function editPromptAtFile(root: string, role: string, file: string, newText: str
       if ("problem" in saved) throw new Error(saved.problem);
       savedImagePaths = saved.paths;
     }
-    // The composed text is what a tick's prefill receives, so the submission cap covers the
+    // The composed text is what a run's prefill receives, so the submission cap covers the
     // body plus every reference line; the carried paths stay first, the new ones append after
     // them in one reference block.
     composed = text + imageReferenceLines([...carriedPaths, ...savedImagePaths]);

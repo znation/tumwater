@@ -20,7 +20,7 @@ test("buildCutOffNote counts the failed runs and offers nothing-to-do as the hon
 });
 
 test("buildSummaryRequestPrompt asks for exactly the closing block and nothing else", () => {
-  // The follow-up for a changed tick whose reply lacked SUMMARY (src/runner/runner-pi.ts
+  // The follow-up for a changed run whose reply lacked SUMMARY (src/runner/runner-pi.ts
   // requestSummary): it must name every label the commit-message parser reads and forbid
   // further tool use.
   const p = buildSummaryRequestPrompt();
@@ -51,11 +51,11 @@ test("the VERIFIED line asks for observations beyond the suite total, not a coun
 test("buildHandoffPrompt names the prior model and the image for an image-reroute", () => {
   const p = buildHandoffPrompt(
     "feature",
-    "TICK_PROMPT",
+    "RUN_PROMPT",
     "image-reroute",
     { from: "local/text", path: "/x/s.png" },
   );
-  assert.ok(p.startsWith("TICK_PROMPT"));
+  assert.ok(p.startsWith("RUN_PROMPT"));
   assert.match(p, /on local\/text stopped/);
   assert.match(p, /read \/x\/s\.png/);
   assert.match(p, /because that model cannot read images/);

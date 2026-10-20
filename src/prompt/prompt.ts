@@ -11,13 +11,13 @@ import { plural } from "../text/phrases.js";
 import { worktreePath } from "../paths.js";
 import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
 
-/** Prompt construction for the roles' pi runs (tick and director). The reply contract those
+/** Prompt construction for the roles' pi runs (run and director). The reply contract those
  * runs must follow — the TUMWATER_NOTHING_TO_DO sentinel, the TUMWATER_REFUSED line, the
  * SUMMARY/WHY/RISK/VERIFIED block format, the three endings, and the claims rules — lives in
  * reply-contract.ts; this module weaves it into each prompt. The follow-up prompts that pick a
- * session back up — the resume bridge, the missing-summary recovery, and the fresh-tick cut-off
+ * session back up — the resume bridge, the missing-summary recovery, and the fresh-run cut-off
  * note — live in prompt-followup.ts. The merge gate's pi runs (conflict resolution, build fix,
- * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit message
+ * review) build their prompts in gate-prompts.ts; assembling a reply into the run's commit message
  * lives in git/commit-message.ts.
  *
  * The prose is tuned for the team's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
@@ -37,9 +37,9 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * the principles block is fed from lives in principles.ts (readPrinciples, with its injection
  * cap). */
 
-/** The context-budget rule every run carries. Under the old 87k window half of all ticks ended
+/** The context-budget rule every run carries. Under the old 87k window half of all runs ended
  * at the ceiling merging nothing (308 of 733 in the autonomous fortnight; 216 of 245 no-change
- * ticks in the first week of September), almost all of it whole-file reads: the model, told only
+ * runs in the first week of September), almost all of it whole-file reads: the model, told only
  * to "work economically", read the codebase file by file (277 whole-file reads against 6 ranged
  * ones in the bugfix/improve/clean logs). Every token read is prefill and dilutes the model's
  * attention, so the rule states the cost in numbers and the one habit that prevents it: check
@@ -51,7 +51,7 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * The bundled context-budget extension (src/pi-extension/context-budget.ts) complements this rule
  * with the live fill level. Stated once so the run rules and prompt-followup.ts's resume bridge
  * cannot drift. Must not contain the phrase "ran out of context" — the loop tests use it to tell
- * a fresh tick from a cut-off resume. */
+ * a fresh run from a cut-off resume. */
 export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
   return `- Everything you read stays in your context until the run ends and is re-sent on every turn;
   a run that fills the window merges nothing. A whole read of a 500-line file costs ~5k tokens.
@@ -64,7 +64,7 @@ export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
 - ${dialect.oversizedOutput}`;
 }
 
-/** The process-kill rule every run that may run commands carries, word for word: the tick and
+/** The process-kill rule every run that may run commands carries, word for word: the run and
  * director rules (full and compact, each adding its own reason), the conflict resolver, and the
  * reviewer. The team's runs and tumwater's own checks share one host, so a kill by pattern
  * reaches them all. On 2026-10-18 a feature run's `pkill -f "dist/test/test-runner.js"; pkill -f
@@ -75,7 +75,7 @@ export const KILL_BY_PID_RULE = `Never kill processes by name or pattern (\`pkil
   \`pgrep … | xargs kill\`): stop only a process you started, by its PID (\`kill $!\` right after
   backgrounding it).`;
 
-/** The test-runner rule every run that may run tests carries: the tick and director rules, the
+/** The test-runner rule every run that may run tests carries: the run and director rules, the
  * conflict resolver, and the reviewer. Project-neutral on purpose — a team works on any codebase
  * (npm, cargo, pytest, a configured check.command), so the rule names no ecosystem's runner as THE
  * right one: it points at the declared check or the framework already in use, and its one example
@@ -98,7 +98,7 @@ function backendRuleLines(rules: readonly string[] | undefined): string {
   return "\n" + rules.map((rule) => `- ${rule}`).join("\n");
 }
 
-/** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
+/** The date line every pi prompt carries — run and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
  * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's and NEEDS_REPLAN_NOTE's
@@ -127,13 +127,13 @@ export const DEFAULT_SCOPE = `- Do exactly ONE focused task, then stop. Small, c
   need more than roughly 60 tool calls, or most of the codebase in view, is too big for one
   run — take a smaller one.`;
 
-/** The rules every role prompt carries — tick and director alike, so the two cannot drift.
+/** The rules every role prompt carries — run and director alike, so the two cannot drift.
  * `check` — the project's resolved check (plans/portability.md §6/7) — names the actual
  * verification command in the Leave-the-project-working rule instead of asserting npm, and
  * only an npm check keeps the node_modules borrowing sentence: false and actively misleading
  * in a repo with no node_modules anywhere (a Python, Rust, or Go repo, or one with no check
  * at all). Undefined keeps the generic wording, exactly as prompts read before a check could
- * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the tick's role
+ * be configured. `scope` is the Scope section's rules: DEFAULT_SCOPE unless the run's role
  * states its own (Role.scope). Orientation differs for an `assigned` run, which reads its entry
  * first and the brief only when the entry needs it — reading the brief in full cost a median
  * ~2.5k tokens of every run before its first edit (2026-10-17 audit). */
@@ -243,7 +243,7 @@ export function principleBullets(principles: string): string {
   return first <= 0 ? principles : lines.slice(first).join("\n");
 }
 
-/** The <principles> block injected into every tick and director prompt: the project's codified
+/** The <principles> block injected into every run and director prompt: the project's codified
  * taste, phrased positively so roles follow it rather than merely avoid violations — its bullets
  * only (principleBullets). The file itself is read by principles.ts's readPrinciples. */
 function principlesBlock(principles: string): string {
@@ -267,20 +267,20 @@ function savedClause(savedDay?: string, today?: string): string {
   return `last saved ${savedDay}, ${plural(age, "day")} ago; `;
 }
 
-/** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
+/** The role's notebook as shown to it: its own earlier runs' note, labeled as unverified.
  * Rides only when there is a non-empty note; the standing instruction to write one is always
- * present (roleNotesInstruction), so a role's FIRST tick — with no note yet — still learns the
+ * present (roleNotesInstruction), so a role's FIRST run — with no note yet — still learns the
  * command exists and can seed the notebook. */
 function roleNotesBlock(notes: string, savedDay?: string, today?: string): string {
   return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
 relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
-/** The standing instruction that makes the notebook seedable: every role tick is told it may
- * write one, so the first tick (when no note exists yet) can create it. The note content block
+/** The standing instruction that makes the notebook seedable: every role run is told it may
+ * write one, so the first run (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. Every backend speaks the
  * same shell command (plans/notes-command.md §3), and the director never reaches
- * buildTickPrompt, so it never carries one. */
+ * buildRunPrompt, so it never carries one. */
 export function roleNotesInstruction(): string {
   return `Before you end, if you learned something the next run of your role should know (where
 things live, what you ruled out and why, what you would look at next), save the full replacement
@@ -293,7 +293,7 @@ TUMWATER_NOTES
 Do not copy backlog entries into it — PLANS.md and BUGS.md hold the work itself.`;
 }
 
-interface TickPromptInput {
+interface RunPromptInput {
   role: Role;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
@@ -305,12 +305,12 @@ interface TickPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
-  /** Rendered actionable backlog index (see backlog-index.ts); every tick carries it. */
+  /** Rendered actionable backlog index (see backlog-index.ts); every run carries it. */
   backlogIndex?: string;
   /** The role's notebook (roleNotesPath, read by run-prompt.ts): the note its own earlier
-   * ticks wrote. A missing/empty/whitespace-only note is passed as undefined, so the
+   * runs wrote. A missing/empty/whitespace-only note is passed as undefined, so the
    * <role-notes> block is omitted; the write instruction is always present. The director
-   * never reaches buildTickPrompt, so it never carries either. */
+   * never reaches buildRunPrompt, so it never carries either. */
   notes?: string;
   /** The note file's mtime as a local YYYY-MM-DD (read by run-prompt.ts). Omitted: the notes
    * heading carries no age. */
@@ -324,10 +324,10 @@ interface TickPromptInput {
   /** The bugfix run's flake tally, rendered by run-prompt.ts; omitted for every other role and
    * when no flake was excused in the window. */
   flakyChecks?: string;
-  /** A per-role prompt the user queued for this role's next tick (`tumwater prompt --role <id>`),
+  /** A per-role prompt the user queued for this role's next run (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
    * The role still owns find-something-to-do: the request steers, the role's rules and the
-   * merge gate still apply unchanged. Omitted: no queued request this tick. */
+   * merge gate still apply unchanged. Omitted: no queued request this run. */
   userRequest?: string;
   /** The project's resolved check (detectBuildCheck against the live config), when one is
    * configured or detected (plans/portability.md §6/7) — names the verify command in the
@@ -362,7 +362,7 @@ export const OLDER_NAMES_SENTENCE = `Older tumwater names still appear in code, 
 
 /** Shared opening of every role prompt: where the run happens and what day it is. The brief is
  * not inlined: the rules send each run to the brief file, which holds the same text. Defined
- * once so the tick and director prompts cannot drift — and so the one sentence telling every
+ * once so the run and director prompts cannot drift — and so the one sentence telling every
  * role to date its records from dateLine, not from the repo, reaches each of them without
  * editing any role text. */
 function sharedPreamble(today?: string): string[] {
@@ -378,7 +378,7 @@ from the repo.`,
 }
 
 /** The prompt for one role run. */
-export function buildTickPrompt(input: TickPromptInput): string {
+export function buildRunPrompt(input: RunPromptInput): string {
   const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
@@ -407,18 +407,21 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   return parts.join("\n\n");
 }
 
-/** The prompt for a director tick, which routes a user request into the project. */
+/** @deprecated Use buildRunPrompt. */
+export const buildTickPrompt = buildRunPrompt;
+
+/** The prompt for a director run, which routes a user request into the project. */
 export function buildDirectorPrompt(
   userPrompt: string,
   principles?: string,
-  /** The project's resolved check (plans/portability.md §6/7) — same threading as the tick
+  /** The project's resolved check (plans/portability.md §6/7) — same threading as the run
    * prompt, since commonRules is shared by both builders. */
   check?: BuildCheck,
   /** The resolved brief file's name (plans/portability.md §7a/7) — same threading again. */
   briefFile?: string,
   /** Today's local date (see dateLine). Omitted: todayStamp() — tests pin it. */
   today?: string,
-  /** Rendered actionable backlog index (see backlog-index.ts); the tick prompt carries it
+  /** Rendered actionable backlog index (see backlog-index.ts); the run prompt carries it
    * too, so the director can route against the same bounded view of the backlog. */
   backlogIndex?: string,
   /** The agent backend the director resolves to, selecting the prompt dialect (./dialect.ts).
@@ -481,7 +484,7 @@ work yourself:
   );
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   // Before the shared rules, not after them: the closing reply contract stays the last thing
-  // in the prompt, where a model attends to it most (the tick prompt's invariant too).
+  // in the prompt, where a model attends to it most (the run prompt's invariant too).
   parts.push(
     `Note on one boundary in the rules below, director only: user-defined-role requests are
 executed by writing .tumwater-config-request.json in your worktree (shape and worked example

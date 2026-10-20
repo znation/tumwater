@@ -11,7 +11,7 @@ import { roleInboxDir } from "../src/paths.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// pending-prompt.ts holds the requeue policy for every tick outcome that leaves a user
+// pending-prompt.ts holds the requeue policy for every run outcome that leaves a user
 // request unfulfilled — the subtle fresh-vs-resume bookkeeping runner.ts rides on. These tests
 // pin that policy directly against a real queue directory (the same mechanics inbox.test.ts
 // exercises), because a wrong requeue either loses a user request or runs it twice.
@@ -112,7 +112,7 @@ test("reclaimForResume consumes the flag even when not resuming — a stale reco
 
   pending.reclaimForResume(s, false);
   assert.equal(s.resumePromptFile, undefined);
-  // Not resuming: the prompt stays queued for a later fresh tick; memory keeps its value.
+  // Not resuming: the prompt stays queued for a later fresh run; memory keeps its value.
   assert.equal(inboxSize(dir, "feature"), 1);
   fs.rmSync(file);
 });
@@ -162,20 +162,20 @@ test("settleImages removes a fulfilled request's images and keeps a requeued req
   assert.ok("paths" in saved);
   const text = "look" + imageReferenceLines(saved.paths);
   const pending = new PendingPrompt(root, "qa");
-  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a run would
   pending.record(text, file);
   assert.ok(fs.existsSync(saved.paths[0]!));
   pending.settleImages();
   assert.ok(!fs.existsSync(saved.paths[0]!), "a fulfilled request's image is removed");
 
   // Unfulfilled: the request is handed back to the queue, so its image must survive the
-  // settle for the next tick to read — moved to the requeued file's stem.
+  // settle for the next run to read — moved to the requeued file's stem.
   const file2 = enqueueRolePrompt(root, "qa", "look again");
   const saved2 = savePromptImages(root, "qa", file2, [png("b.png")]);
   assert.ok("paths" in saved2);
   const text2 = "look again" + imageReferenceLines(saved2.paths);
   const pending2 = new PendingPrompt(root, "qa");
-  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a run would
   pending2.record(text2, file2);
   pending2.requeueUnfulfilled(text2);
   pending2.settleImages();
@@ -192,7 +192,7 @@ test("cancel removes an image a requeue moved to the new queue file's stem", () 
   assert.ok("paths" in saved);
   const text = "look" + imageReferenceLines(saved.paths);
   const pending = new PendingPrompt(root, "qa");
-  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a run would
   pending.record(text, file);
   pending.requeueUnfulfilled(text);
   pending.settleImages();
@@ -210,7 +210,7 @@ test("a requeue whose prompt lost one attachment still carries the survivors", (
   assert.ok("paths" in saved);
   const text = "look" + imageReferenceLines(saved.paths);
   const pending = new PendingPrompt(root, "qa");
-  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a tick would
+  dequeueRolePrompt(root, "qa"); // consume the original queue entry, as a run would
   pending.record(text, file);
   fs.rmSync(saved.paths[1]!); // one attachment vanishes out of band before the requeue
   pending.requeueUnfulfilled(text);
@@ -238,7 +238,7 @@ test("settleImages never deletes a file named by hand-typed prompt text", () => 
   assert.ok(fs.existsSync(victim), "a hand-typed writer-shaped line is content, not an attachment");
 });
 
-/** A user prompt enqueued while the interrupted tick's request sits re-queued — the
+/** A user prompt enqueued while the interrupted run's request sits re-queued — the
  * interleaving the reclaim must see through. */
 function enqueueLater(dir: string, text: string): void {
   enqueueRolePrompt(dir, "feature", text);

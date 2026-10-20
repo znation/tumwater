@@ -224,7 +224,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
     // Image-input gate, `--edit`'s twin of the submit branch below (plans/image-input.md
     // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
-    // tick-time discovery the submit gate prevents, so the refusal promise holds across every
+    // run-time discovery the submit gate prevents, so the refusal promise holds across every
     // CLI attach surface — an image no configured model can read is refused before a byte is
     // written, and a role that reroutes a blind read is told where the prompt will run. The
     // target role is resolved first (the same resolution the verb below makes) so the gate can

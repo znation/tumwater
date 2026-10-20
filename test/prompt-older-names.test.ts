@@ -2,7 +2,7 @@
  * (plans/terminology.md "Glossary"). */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OLDER_NAMES_SENTENCE, buildDirectorPrompt, buildTickPrompt } from "../src/prompt/prompt.js";
+import { OLDER_NAMES_SENTENCE, buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { buildConflictPrompt, buildReviewPrompt } from "../src/prompt/gate-prompts.js";
 import { buildCutOffNote, buildResumePrompt, buildSummaryRequestPrompt, type ResumeCause } from "../src/prompt/prompt-followup.js";
 import { ROLES, customRole } from "../src/roles/roles.js";
@@ -24,7 +24,7 @@ function assertPlain(name: string, prompt: string, mapped: boolean, scan = true)
 
 test("every catalog role, custom role and the director open plainly and map the older names once", () => {
   for (const role of [...ROLES, customRole("docs", "Keep the docs current.")]) {
-    const prompt = buildTickPrompt({ role });
+    const prompt = buildRunPrompt({ role });
     assert.ok(prompt.startsWith(`You are the "${role.id}" role (${role.title}) on this project's tumwater team`), role.id);
     // Catalog role text is the roles series' to convert (it still quotes machine trailers such
     // as `Tick: readme #N`); the custom role's prompt scans the shared opener, preamble and rules.
@@ -37,7 +37,7 @@ test("every catalog role, custom role and the director open plainly and map the 
 });
 
 test("the shared preamble spells the attribution stamps", () => {
-  const prompt = buildTickPrompt({ role: ROLES[0]! });
+  const prompt = buildRunPrompt({ role: ROLES[0]! });
   assert.match(prompt, /\(found by the <role> role YYYY-MM-DD\)/);
   assert.match(prompt, /fixed YYYY-MM-DD by the <role> role/);
   assert.match(prompt, /\(planned YYYY-MM-DD by the <role> role/);

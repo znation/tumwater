@@ -6,7 +6,7 @@ import {
   ROOT_FROM_WORKTREE,
   TEST_RUNNER_RULE,
   buildDirectorPrompt,
-  buildTickPrompt,
+  buildRunPrompt,
   contextBudgetRule,
   principleBullets,
 } from "../src/prompt/prompt.js";
@@ -30,7 +30,7 @@ Every role's prompt carries these.
 function feature(assigned?: boolean): string {
   const role = roleById("feature");
   assert.ok(role);
-  return buildTickPrompt({
+  return buildRunPrompt({
     role,
     principles: PRINCIPLES,
     check: NPM_CHECK,
@@ -123,12 +123,12 @@ test("principleBullets starts at the first list item and keeps a file without on
 test("the rules keep the npm-only and dialect-specific lines conditional", () => {
   const role = roleById("bugfix");
   assert.ok(role);
-  const cargo = buildTickPrompt({
+  const cargo = buildRunPrompt({
     role,
     check: { kind: "command", command: "cargo test", cwd: ".", timeoutMs: 300_000 },
   });
   assert.ok(!cargo.includes("node_modules"), "no node_modules line outside an npm project");
-  const claude = buildTickPrompt({ role, agent: "claude" });
+  const claude = buildRunPrompt({ role, agent: "claude" });
   assert.ok(claude.includes(contextBudgetRule(CLAUDE_DIALECT)));
 });
 
@@ -140,7 +140,7 @@ test("a backend's own rules ride the run prompt", () => {
   const rules = OPENCODE_DIALECT.backendRules ?? [];
   assert.ok(rules.length > 0);
   for (const assigned of [false, true]) {
-    const prompt = buildTickPrompt({ role, agent: "opencode", assigned });
+    const prompt = buildRunPrompt({ role, agent: "opencode", assigned });
     for (const rule of rules) assert.ok(prompt.includes(`- ${rule}`), `${assigned ? "assigned" : "unassigned"} prompt states: ${rule}`);
   }
 });
