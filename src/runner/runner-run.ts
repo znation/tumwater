@@ -34,7 +34,7 @@ import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
-import { planTickStart, type TickStartPlan } from "../run/run-resume.js";
+import { planRunStart, type RunStartPlan } from "../run/run-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { seamAgent } from "../config/model-selector.js";
@@ -43,7 +43,7 @@ import { stageTickMerge, foldAgentCommitsSince } from "../run/run-stage.js";
 import { stageCheckFindings } from "../run/stage-check.js";
 import { planBacklogFull } from "../scheduling/claims.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
-import { finalizeTick } from "../run/run-finalize.js";
+import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { appendPromptNote } from "../text/format.js";
 import type { RunUsage } from "../run/run-usage.js";
@@ -155,7 +155,7 @@ async function markerBearingFiles(wt: string): Promise<string[]> {
 }
 
 /** Run one full tick of a role runner: resolve the config (including the model-fallback probe),
- * log the start, run the pipeline, then let finalizeTick schedule the next run. Never throws: a
+ * log the start, run the pipeline, then let finalizeRun schedule the next run. Never throws: a
  * failed tick is an "error" result, saved and logged like any other so the runner stays
  * resumable and observable. */
 export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
@@ -200,7 +200,7 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
       model: r.model,
       thinking: r.thinking,
     });
-    // The marker is NOT cleared here: planTickStart reads its `from`/`path` when it builds
+    // The marker is NOT cleared here: planRunStart reads its `from`/`path` when it builds
     // the handoff note (and clears it then), so a tick skipped before the plan (an empty
     // inbox) leaves the reroute pending for the next eligible tick.
     s.imageRerouteActive = true;
@@ -310,15 +310,15 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   // start time are passed through as captured above: both must describe the tick run_start
   // announced, not whatever resetCounters (a documented mid-tick operation) may have left
   // on the shared state by finalize time.
-  const finalizeResult = await finalizeTick({
+  const finalizeResult = await finalizeRun({
     root: ctx.root,
     role: ctx.role,
     mainBranch: ctx.mainBranch,
     config: cfg,
     state: s,
     outcome,
-    tick,
-    tickStartedAt,
+    runNumber: tick,
+    runStartedAt: tickStartedAt,
     usage: ctx.usage,
     recoveryFailure: ctx.recoveryFailure,
   });
@@ -341,14 +341,14 @@ export async function runTickPhase(
   // is the resume policy, not runner mechanics: it lives in src/run/run-resume.ts, which also
   // consumes the resume flags and reclaims the interrupted tick's re-queued prompt. A null
   // plan means the runner has nothing to run.
-  const plan = planTickStart({
+  const plan = planRunStart({
     root: ctx.root,
     role: ctx.role,
     state: s,
     pending: ctx.pending,
     runPrompt: (agent) => ctx.runPrompt(agent),
     agent: cfg.agent ?? DEFAULT_AGENT,
-    // The team's configured claude config dir, so planTickStart's claude resume guard looks
+    // The team's configured claude config dir, so planRunStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
     claudeConfigDir: resolvedAgentConfig(cfg, "claude").configDir,
     // A director with no prompt but a kept merge pin still runs the tick, for its recovery.
@@ -358,8 +358,8 @@ export async function runTickPhase(
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
     // The image-reroute one-shot marker routes exactly ONE tick onto the image-capable
-    // target (plans/image-input.md part 4/5, INV-J2): for a role runner, planTickStart consumes
-    // it after reading its handoff-note facts. The director never resumes, so planTickStart's
+    // target (plans/image-input.md part 4/5, INV-J2): for a role runner, planRunStart consumes
+    // it after reading its handoff-note facts. The director never resumes, so planRunStart's
     // image-reroute branch never runs for it and the marker would otherwise linger and
     // re-route every later director tick off its own tier. It is cleared here — after this
     // tick is confirmed to run (an empty-inbox skip above returns before this, leaving the
@@ -404,7 +404,7 @@ export function slotPinnedForResume(
  * leases next. */
 async function runTickInLeasePhase(
   ctx: RunnerRunContext,
-  plan: TickStartPlan,
+  plan: RunStartPlan,
   cfg: ResolvedModelConfig,
   fallbackCtx: FallbackRunContext,
 ): Promise<TickOutcome> {
@@ -455,7 +455,7 @@ async function checkoutRoleBranchPhase(ctx: RunnerRunContext, dir: string): Prom
 
 async function tickWithWorktreePhase(
   ctx: RunnerRunContext,
-  plan: TickStartPlan,
+  plan: RunStartPlan,
   cfg: ResolvedModelConfig,
   fallbackCtx: FallbackRunContext,
   /** The leased slot the tick runs in; omitted by the director, which ensures its own. */

@@ -252,7 +252,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       kind = "no_change";
     } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
       // A clustered result with no error text still owns its time: an abort's run_end never
-      // carries one (planTickStart clears s.lastError, run-finalize logs error: undefined),
+      // carries one (planRunStart clears s.lastError, run-finalize logs error: undefined),
       // and a malformed error tick can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
       ({ key, example } = pooledClusterCause(ev.error));

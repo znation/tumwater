@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
-import { assembleTickPrompt } from "../src/run/run-prompt.js";
+import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
@@ -17,11 +17,11 @@ import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.j
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-/** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's tick actually runs
+/** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's run actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
  * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
  * (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
- * cross-tick memory notes (rejected review, conflict discard, cut-off streak) appended in
+ * cross-run memory notes (rejected review, conflict discard, cut-off streak) appended in
  * order — the only memory a fresh session has of why the last attempt failed. */
 
 const BRIEF = readmeTemplate("proj", "Build a tiny thing.\nWith care.");
@@ -39,17 +39,17 @@ function state(overrides: Partial<RunnerState> = {}): RunnerState {
   return { ...freshRunnerState("coverage"), ...overrides };
 }
 
-/** assembleTickPrompt with the suite's standing inputs — defaultConfig() and a fresh role
+/** assembleRunPrompt with the suite's standing inputs — defaultConfig() and a fresh role
  * state carrying the same role — so a call site cannot pass a role that disagrees with its
  * state's. `overrides` carries the few custom configs and pinned state fields; the
- * preview-seam tests below keep calling assembleTickPrompt directly, since they share one
+ * preview-seam tests below keep calling assembleRunPrompt directly, since they share one
  * input object between peek and dequeue. */
 function promptFor(
   root: string,
   role: string,
   overrides: { config?: ReturnType<typeof defaultConfig>; state?: Partial<RunnerState> } = {},
-): ReturnType<typeof assembleTickPrompt> {
-  return assembleTickPrompt({
+): ReturnType<typeof assembleRunPrompt> {
+  return assembleRunPrompt({
     root,
     config: overrides.config ?? defaultConfig(),
     role,
@@ -72,12 +72,12 @@ test("a role run prompt names the brief file and embeds the principles and the r
 });
 
 test("an explicit agent override selects the dialect over the config's primary", () => {
-  // The effective-agent seam planTickStart drives: a role whose config resolves to pi but
+  // The effective-agent seam planRunStart drives: a role whose config resolves to pi but
   // whose active fallback is claude must get claude's prompt dialect. `agent` overrides the
   // role's primary `configForRole(...).agent`; omitted, the primary still wins (pinned by the
   // tests above, whose prompts carry pi's wording).
   const dir = root();
-  const result = assembleTickPrompt({
+  const result = assembleRunPrompt({
     root: dir,
     config: defaultConfig(),
     role: "coverage",
@@ -92,7 +92,7 @@ test("an explicit agent override selects the dialect over the config's primary",
 
 test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
   // The degraded-but-running state: an operator edit (or a docs role rewrite) can strip the
-  // markers, leaving no file that owns the brief. The team must keep ticking — readInitialPrompt
+  // markers, leaving no file that owns the brief. The team must keep running — readInitialPrompt
   // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");
@@ -151,7 +151,7 @@ test("a director's instructions override rides the preview peek without consumin
   const config = defaultConfig();
   config.roles[DIRECTOR_ROLE] = { ...config.roles[DIRECTOR_ROLE], enabled: true, instructions: "Prefer vitest." };
   const input = { root: dir, config, role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }) };
-  const preview = assembleTickPrompt({ ...input, preview: true });
+  const preview = assembleRunPrompt({ ...input, preview: true });
   assert.ok(preview);
   assert.match(preview.prompt, /Additional standing instructions from the user:\nPrefer vitest\./);
   assert.equal(inboxSize(dir, DIRECTOR_ROLE), 1); // peeked, not dequeued
@@ -212,7 +212,7 @@ test("the plan prompt reports zero eligible plans and other roles omit the count
   assert.doesNotMatch(feature.prompt, /It holds/);
 });
 
-// The role notebook (PLANS.md "Role notebook"): the tick reads the role's note file from disk.
+// The role notebook (PLANS.md "Role notebook"): the run reads the role's note file from disk.
 // A missing file omits the block; the standing write instruction rides either way. The
 // director's branch never reads the path, so its prompt carries neither.
 test("a role run prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
@@ -379,7 +379,7 @@ test("a custom role's task is its find-something-to-do text, titled by its name"
 test("a runner whose role answers to nothing throws the shared unknown-role message, custom ids included", () => {
   // The race the defensive path exists for: a live tumwater.json edit removes a custom role
   // while its runner is still alive (runners are built at start and survive reloads), so the
-  // next tick's assembly finds neither a catalog entry nor a customRoles task. It must throw
+  // next run's assembly finds neither a catalog entry nor a customRoles task. It must throw
   // the shared unknownRoleMessage — the same wording the CLI's parseRoleFlag and the operator
   // commands use — with the valid ids as the live config sees them, so if it ever fires it
   // reads as the harness bug it is instead of a bare dead end.
@@ -533,7 +533,7 @@ test("a clean state appends none of the cross-run notes", () => {
 });
 
 // `tumwater prompt --role <id>` queues a prompt only that
-// role's next tick sees — dequeued here, riding as the tick's userPrompt and an explicit
+// role's next run sees — dequeued here, riding as the run's userPrompt and an explicit
 // <user-request> block in the prompt text.
 test("a queued per-role prompt is dequeued into that role's prompt only", () => {
   const dir = root();
@@ -583,7 +583,7 @@ test("a delivered deferred director prompt rides without its not-before marker l
 
 // The clean role's stranded-plan block (src/backlog/backlog-structure.ts, plans part 3/4): the
 // repair
-// evidence rides in the tick prompt only when the primary checkout's PLANS.md is stranded.
+// evidence rides in the run prompt only when the primary checkout's PLANS.md is stranded.
 
 const STRANDED_PLANS = `# Plans
 
@@ -630,7 +630,7 @@ test("other roles never see the <backlog-structure> block, and the clean find te
 });
 
 // --- the preview seam (`tumwater role <id>`'s next-prompt view) ---
-// A preview must assemble the same prompt a real tick would run on — queued user request,
+// A preview must assemble the same prompt a real run would run on — queued user request,
 // state-derived notes, everything — while provably consuming nothing: the queued prompt is
 // peeked (read, never unlinked), so an inspection can never cost a role its queued work.
 
@@ -638,15 +638,15 @@ test("preview mode assembles the queued prompt without consuming it", () => {
   const dir = root();
   enqueueRolePrompt(dir, "coverage", "please look at the cache module");
   const input = { root: dir, config: defaultConfig(), role: "coverage", state: state({ role: "coverage" }) };
-  const first = assembleTickPrompt({ ...input, preview: true });
-  const second = assembleTickPrompt({ ...input, preview: true });
+  const first = assembleRunPrompt({ ...input, preview: true });
+  const second = assembleRunPrompt({ ...input, preview: true });
   assert.ok(first && second);
   assert.match(first.prompt, /<user-request>\nplease look at the cache module\n<\/user-request>/);
   // Two previews read the same queue: identical prompts, and the queue file still there.
   assert.equal(first.prompt, second.prompt);
   assert.equal(inboxSize(dir, "coverage"), 1);
   // The real dequeue still consumes — the preview path is the only thing that changed.
-  const real = assembleTickPrompt(input);
+  const real = assembleRunPrompt(input);
   assert.ok(real);
   assert.match(real.prompt, /please look at the cache module/);
   assert.equal(inboxSize(dir, "coverage"), 0);
@@ -682,15 +682,15 @@ test("a director preview peeks its inbox and an empty inbox still assembles to n
   const dir = root();
   enqueuePrompt(dir, "add a changelog");
   const input = { root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }) };
-  const preview = assembleTickPrompt({ ...input, preview: true });
+  const preview = assembleRunPrompt({ ...input, preview: true });
   assert.ok(preview);
   assert.match(preview.prompt, /add a changelog/);
   assert.equal(inboxSize(dir, DIRECTOR_ROLE), 1); // peeked, not dequeued
   // An empty inbox (here: the whole state dir removed) assembles to null in both modes —
   // preview changes the read, never the nothing-to-run answer.
   fs.rmSync(path.join(dir, ".tumwater"), { recursive: true, force: true });
-  assert.equal(assembleTickPrompt({ ...input, preview: true }), null);
-  assert.equal(assembleTickPrompt(input), null);
+  assert.equal(assembleRunPrompt({ ...input, preview: true }), null);
+  assert.equal(assembleRunPrompt(input), null);
 });
 
 function flake(dir: string, headline: string): void {
@@ -761,7 +761,7 @@ test("a run's queued request counts as unassigned, so it keeps the backlog index
 test("a director run reads the brief file instead of carrying the brief", () => {
   const dir = root();
   enqueuePrompt(dir, "what should we build next");
-  const result = assembleTickPrompt({ root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }), preview: true });
+  const result = assembleRunPrompt({ root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }), preview: true });
   assert.ok(result);
   assert.doesNotMatch(result.prompt, /<project-prompt>|Build a tiny thing/);
   assert.match(result.prompt, /First read the project brief \(README\.md\) in full/);

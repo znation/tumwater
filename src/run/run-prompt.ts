@@ -30,9 +30,9 @@ import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
 import { renderBacklogIndexBlock } from "../backlog/backlog-index.js";
 
-/** One role's inputs for assembling its tick prompt: read-only views of what RoleRunner
+/** One role's inputs for assembling its run prompt: read-only views of what RoleRunner
  * holds, so the assembly stays a pure function of (root, config, role, state). */
-export interface TickPromptInput {
+interface RunPromptInput {
   root: string;
   config: TumwaterConfig;
   role: string;
@@ -41,8 +41,8 @@ export interface TickPromptInput {
    * not dequeued, so assembling a preview can never consume a queued request. Everything
    * else — brief, principles, check, the state-derived notes — is assembled identically. */
   preview?: boolean;
-  /** The effective agent backend this tick RUNS on — the model-fallback pair while an episode
-   * is active — selecting the prompt dialect. planTickStart passes the same `cfg.agent` the
+  /** The effective agent backend this run RUNS on — the model-fallback pair while an episode
+   * is active — selecting the prompt dialect. planRunStart passes the same `cfg.agent` the
    * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
   agent?: string;
@@ -64,12 +64,12 @@ function missingEntryPaths(root: string, file: string, range: { start: number; e
 /** Read a role's notebook through files.ts's readTextOrNull — the one read-and-swallow
  * step — or undefined when it is missing or unreadable (an empty or whitespace-only note is
  * left for buildTickPrompt to omit). The degradation is deliberate: a torn or absent
- * runtime-state file must never fail a tick.
+ * runtime-state file must never fail a run.
  *
  * The note is bounded on read as well as on write: the write path rejects text over
  * ROLE_NOTES_MAX_BYTES, but the file lives in hand-editable runtime state, so an oversized
  * note (an old build, a manual edit) would otherwise ride into every one of this role's
- * prefill-heavy tick prompts uncapped. The same defensive backstop readPrinciples and the
+ * prefill-heavy run prompts uncapped. The same defensive backstop readPrinciples and the
  * initial-prompt reader apply to their hand-editable files. A UTF-8 character is never
  * fewer than one byte, so a note the tool accepted (≤ 4096 bytes) is always ≤ 4096 chars
  * and never trips this bound; only an over-cap file is cut, with truncateWithNote's visible
@@ -103,31 +103,31 @@ function flakyChecksNote(root: string): string | undefined {
   );
 }
 
-/** Assemble the prompt a role's next tick runs on — the whole "what should this tick see"
+/** Assemble the prompt a role's next run runs on — the whole "what should this run see"
  * concern, split out of runner.ts so the runner owns only lifecycle and the prompt owns only
- * content. Returns null when the role has nothing to run this tick (a director with an empty
+ * content. Returns null when the role has nothing to run this run (a director with an empty
  * inbox); `userPrompt` carries the dequeued user request — the director's, or a per-role one
  * queued by `tumwater prompt --role <id>` — back so the runner can record it as pending and
- * re-queue it if the tick leaves it unfulfilled; `userPromptFile` is the queue file it came
+ * re-queue it if the run leaves it unfulfilled; `userPromptFile` is the queue file it came
  * from, so that bookkeeping can clean the prompt's attachments by that file's stem. */
-export function assembleTickPrompt(
-  { root, config, role, state, preview = false, agent }: TickPromptInput,
+export function assembleRunPrompt(
+  { root, config, role, state, preview = false, agent }: RunPromptInput,
 ): { prompt: string; userPrompt: string | null; userPromptFile: string | null } | null {
   // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
   // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
   // README.md. "README.md" is the fallback for a repo with no marked file yet — the team
   // runs blind on prompts either way, so the name in the rules should still point somewhere.
   const brief = briefFile(root) ?? "README.md";
-  // The project's design principles ride along in every prompt — tick and director alike — so
+  // The project's design principles ride along in every prompt — run and director alike — so
   // all roles share one standard of taste. Empty when the repo has no PRINCIPLES.md.
   const principles = readPrinciples(root);
   // The project's resolved check (plans/portability.md §6/7): the prompt names the actual
   // verify command instead of asserting npm. Detection is a handful of stat calls — a
-  // per-tick recompute keeps a config edit live on the next tick.
+  // per-run recompute keeps a config edit live on the next run.
   const check = detectBuildCheck(root, config) ?? undefined;
-  // The bounded actionable index every tick and director prompt carries, replacing the model's
-  // per-tick `grep -n '^##'` map of the backlog files (BUGS.md 2026-10-06). One render serves
-  // both branches; the worktree starts at main at tick start, so the ranges hold then.
+  // The bounded actionable index every run and director prompt carries, replacing the model's
+  // per-run `grep -n '^##'` map of the backlog files (BUGS.md 2026-10-06). One render serves
+  // both branches; the worktree starts at main at run start, so the ranges hold then.
   const backlogIndex = renderBacklogIndexBlock(root);
   let prompt: string;
   let userPrompt: string | null = null;
@@ -135,7 +135,7 @@ export function assembleTickPrompt(
   if (role === DIRECTOR_ROLE) {
     // A deferred director prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts),
-    // not content — stripped here exactly like the per-role path below, so the director's tick
+    // not content — stripped here exactly like the per-role path below, so the director's run
     // prompt and the runner's re-queue both see the operator's text alone.
     const entry = preview ? null : dequeuePromptEntry(root);
     const dequeued = preview ? peekPrompt(root) : entry?.text ?? null;
@@ -155,14 +155,14 @@ export function assembleTickPrompt(
     const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
     if (!resolved) {
       // The shared unknownRoleMessage (parseRoleFlag, the operator commands) names the valid
-      // ids; this defensive path — a runner asked to tick a role no catalog entry or
+      // ids; this defensive path — a runner asked to run a role no catalog entry or
       // customRoles task can answer — says the same, so if it ever fires it reads as the
       // harness bug it is instead of a bare dead end.
       const validIds = [...allRoleIds(), ...config.customRoles.map((c) => c.name)];
       throw new Error(unknownRoleMessage(role, validIds));
     }
     // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides
-    // in the tick's prompt; PendingPrompt records it as pending and re-queues it on every
+    // in the run's prompt; PendingPrompt records it as pending and re-queues it on every
     // unfulfilled outcome — including a red-main gate block, which returns before any run.
     // A deferred prompt's `tumwater:not-before` marker line is plumbing
     // (src/inbox/prompt-not-before.ts), not
@@ -172,9 +172,9 @@ export function assembleTickPrompt(
     const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
     // The selfcheck role's evidence is the harness's own event log, one level outside this
-    // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
+    // worktree, so its evidence module renders it (telemetryDigest) and the run injects it.
     const digest = base === "selfcheck" ? telemetryDigest(root) : undefined;
-    // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
+    // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
     // runtime state, and a missing or unreadable one degrades to no block
     // (plans/observer-roles.md 2/2).
@@ -190,7 +190,7 @@ export function assembleTickPrompt(
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
     const backlogStructure = base === "clean" ? renderBacklogStructureBlock(root) : undefined;
-    // The role's notebook (PLANS.md "Role notebook"): its own earlier ticks' note. A missing,
+    // The role's notebook (PLANS.md "Role notebook"): its own earlier runs' note. A missing,
     // empty, or unreadable file yields undefined, so the block is omitted; the write
     // instruction in buildTickPrompt is present either way. The director branch above never
     // reads this path, so it carries no notebook.
@@ -233,7 +233,7 @@ export function assembleTickPrompt(
       agent: agent ?? configForRole(config, role).agent,
       assigned,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
-      // request block; its text is also the tick's userPrompt,
+      // request block; its text is also the run's userPrompt,
       // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on merge)
       // treats it exactly like the director's dequeued request.
       userRequest: request ?? undefined,
@@ -245,8 +245,8 @@ export function assembleTickPrompt(
   }
   // A work instance holding a claim is told which entry is its one task (plans/parallel-work-
   // instances.md "Claims", part 4/7) — the harness picked it, so the charter's choosing step
-  // is replaced. A tick that dequeued a user request runs that request instead and keeps the
-  // claim for the next non-request tick. The range is looked up by key in the current checkout,
+  // is replaced. A run that dequeued a user request runs that request instead and keeps the
+  // claim for the next non-request run. The range is looked up by key in the current checkout,
   // so it survives a moved section boundary.
   const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
   if (claim && userPrompt === null) {
@@ -262,17 +262,17 @@ export function assembleTickPrompt(
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));
   }
-  // A change rejected in review is the only cross-tick memory of what was built and why it
-  // failed — every tick starts a fresh session, so the full reasons ride along on the next
+  // A change rejected in review is the only cross-run memory of what was built and why it
+  // failed — every run starts a fresh session, so the full reasons ride along on the next
   // prompt until the role's next reviewed change replaces them.
   if ((state.lastReview?.verdict === "reject" || state.lastReview?.verdict === "reverted") && !state.revision) {
     prompt = appendPromptNote(prompt, buildRejectedReviewNote(state.lastReview, role));
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
-  // its next change (the discarding tick itself appends it after recovery — see runOnce).
+  // its next change (the discarding run itself appends it after recovery — see runOnce).
   const discard = state.conflictDiscard;
   if (discard) prompt = appendPromptNote(prompt, buildConflictDiscardNote(discard.summary, discard.attempts));
-  // A fresh tick after the previous run(s) were cut off at the context ceiling (the role
+  // A fresh run after the previous run(s) were cut off at the context ceiling (the role
   // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
   // memory that the last attempt was too big for the window is this note.
   if ((state.cutOffStreak ?? 0) > 0) {
@@ -280,3 +280,6 @@ export function assembleTickPrompt(
   }
   return { prompt, userPrompt, userPromptFile };
 }
+
+/** @deprecated Use assembleRunPrompt. */
+export const assembleTickPrompt = assembleRunPrompt;

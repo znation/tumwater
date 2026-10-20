@@ -4,84 +4,84 @@ import { hasOutstandingWork, saveRunnerState, type RunnerState } from "../runner
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
-import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyTickOutcome } from "./run-apply.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyRunOutcome } from "./run-apply.js";
 import { restoreMidTickWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
-import type { TickOutcome, TickResult } from "./run-outcome.js";
+import type { RunOutcome, RunResult } from "./run-outcome.js";
 import type { RunUsage } from "./run-usage.js";
 
-/** What finalizeTick needs from the runner: everything the post-outcome bookkeeping reads,
+/** What finalizeRun needs from the runner: everything the post-outcome bookkeeping reads,
  * passed explicitly so the policy below stays a free function over plain state. */
-interface FinalizeTickDeps {
+interface FinalizeRunDeps {
   root: string;
   role: string;
   mainBranch: string;
-  /** The role-resolved config view (src/config/config-views.ts's configForRole result) this tick
-   * already computed — applyTickOutcome schedules the next run from its interval overrides. */
+  /** The role-resolved config view (src/config/config-views.ts's configForRole result) this run
+   * already computed — applyRunOutcome schedules the next run from its interval overrides. */
   config: TumwaterConfig;
   state: RunnerState;
-  outcome: TickOutcome;
-  /** The tick number run_start announced, captured at tick start — NOT re-read from
-   * `state.runs` here: `resetCounters` zeroes `state.runs` in place mid-tick (the
+  outcome: RunOutcome;
+  /** The run number run_start announced, captured at run start — NOT re-read from
+   * `state.runs` here: `resetCounters` zeroes `state.runs` in place mid-run (the
    * documented running-team reset), so a finalize-time re-read could emit a run_end
-   * numbered 0 (or a later tick's number) under a run_start that announced the real one. */
-  tick: number;
-  /** When this tick started (the runner stamps state.lastRunStartedAt at tick start);
-   * captured once so the run_end span measures the tick's own wall clock. */
-  tickStartedAt: number;
-  /** The tick's usage accumulator (src/run/run-usage.ts): its costUsd rides the run_end
+   * numbered 0 (or a later run's number) under a run_start that announced the real one. */
+  runNumber: number;
+  /** When this run started (the runner stamps state.lastRunStartedAt at run start);
+   * captured once so the run_end span measures the run's own wall clock. */
+  runStartedAt: number;
+  /** The run's usage accumulator (src/run/run-usage.ts): its costUsd rides the run_end
    * event. */
   usage: RunUsage;
-  /** The merge failure this tick's leftover recovery is retrying, if any (set by
-   * finishRecoveryRun); undefined for a tick that ran no leftover recovery. */
+  /** The merge failure this run's leftover recovery is retrying, if any (set by
+   * finishRecoveryRun); undefined for a run that ran no leftover recovery. */
   recoveryFailure?: string;
 }
 
-/** The tick results that end an instance's claim: the tick found nothing to do, refused the
+/** The run results that end an instance's claim: the run found nothing to do, refused the
  * entry, was aborted by the user, or was skipped — none of them leaves work in flight. */
-const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
+const CLAIM_RELEASING: ReadonlySet<RunResult> = new Set([
   "no_change",
   "refused",
   "user_aborted",
   "skipped",
 ]);
 
-/** Fold a finished tick's outcome into the role's state and the event feed — everything that
+/** Fold a finished run's outcome into the role's state and the event feed — everything that
  * happens AFTER the pi run, extracted from RoleRunner.run (src/runner/runner.ts) so the runner
- * keeps only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
+ * keeps only run lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
- * outcome's folds are applied to state before applyTickOutcome schedules the next run, the
+ * outcome's folds are applied to state before applyRunOutcome schedules the next run, the
  * main-head read happens while `running` is still true (a poll that runs in that window must not
  * double-wake the role), and the warnings read the streaks exactly once per episode, after the
  * schedule. */
-export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome> {
-  const { root, role, mainBranch, config, state: s, usage, tick } = deps;
+export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
+  const { root, role, mainBranch, config, state: s, usage, runNumber } = deps;
   let { outcome } = deps;
-  // A re-queued leftover's merge failure is not the tick's own result, so it rides the
-  // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
+  // A re-queued leftover's merge failure is not the run's own result, so it rides the
+  // outcome separately: applyRunOutcome feeds it into the error streak, and the warning
   // below names it — even though runOnce cleared `lastError` so it never latched onto
   // `run_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
-  // A main_red tick's cause is written for that result (src/baseline/main-red.ts), not a leftover
+  // A main_red run's cause is written for that result (src/baseline/main-red.ts), not a leftover
   // merge failure: fold it onto the state here so `run_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean
   // (BUGS.md 2026-09-28). runOnce cleared `lastError` at its start, so nothing foreign
   // can precede this.
   if (outcome.error !== undefined) s.lastError = outcome.error;
 
-  // Read main's current head while this tick is still reserved (running=true): the
-  // applyTickOutcome below clears running, and a poll that runs between that clear and a later
+  // Read main's current head while this run is still reserved (running=true): the
+  // applyRunOutcome below clears running, and a poll that runs between that clear and a later
   // head update would see a stale lastMainHead and wake the role again on the very move
-  // that triggered this tick — a duplicate wake event plus an extra tick for one world change.
+  // that triggered this run — a duplicate wake event plus an extra run for one world change.
   // branchHead reads the ref files first (microsecond-scale, like the orchestrator's per-poll
   // watch) and spawns `git rev-parse` only when they cannot resolve it; a null result keeps
   // the previous value rather than waking on "main moved" to nowhere.
   s.lastMainHead = (await branchHead(root, mainBranch)) ?? s.lastMainHead;
   // Record the outcome on state and schedule the next run (see src/run/run-apply.ts for the
   // per-result policy: prompt retry, backoff, bounded cut-off resumes).
-  applyTickOutcome(s, config, role, outcome);
-  // A tick that ends without producing or keeping work releases this instance's backlog claim
-  // (plans/parallel-work-instances.md "Claims", part 4/7): the next tick may take a different
+  applyRunOutcome(s, config, role, outcome);
+  // A run that ends without producing or keeping work releases this instance's backlog claim
+  // (plans/parallel-work-instances.md "Claims", part 4/7): the next run may take a different
   // entry. Every other result — queued, changed, rejected with a revision, an error, an abort
   // that resumes — keeps the claim so the same instance retries it; an outstanding revision or
   // a pending resume also holds it, because the entry is still this instance's task.
@@ -94,19 +94,19 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     s.claim = undefined;
     logEventBestEffort(root, { source: role, type: "claim", action: "released", title, reason: outcome.result });
   }
-  // A wake consumed while this tick ran stamped the shared state in place, but the outcome
+  // A wake consumed while this run ran stamped the shared state in place, but the outcome
   // schedule above overwrites it (lastRunEndedAt past wokenAt, nextRunAt a fresh gap or
   // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
   // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
-  // arriving one poll after the tick ended.
+  // arriving one poll after the run ended.
   restoreMidTickWake(s);
   saveRunnerState(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
-  // looked like a quiet team). applyTickOutcome increments the streak on error-class
-  // outcomes, preserves it across a plain `queued` tick (the tick's merge resolves it),
+  // looked like a quiet team). applyRunOutcome increments the streak on error-class
+  // outcomes, preserves it across a plain `queued` run (the run's merge resolves it),
   // and resets it on any other completed result — so warn only when THIS outcome incremented
   // the streak up to the threshold: a preserved streak already sitting at the bar must not
-  // re-warn on the queued tick's end. A rejection's crossing warns from the merge side
+  // re-warn on the queued run's end. A rejection's crossing warns from the merge side
   // instead (writeMergeOutcome, src/merge/merge-slot.ts), which is where rejections resolve.
   if (
     (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&
@@ -122,59 +122,59 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     );
   }
   // One warning per quiet-kill episode (BUGS.md 2026-09-18): a role burning an hour per
-  // tick with no output must not look like a sleeping role. applyTickOutcome grows the
+  // run with no output must not look like a sleeping role. applyRunOutcome grows the
   // streak on each kill and resets it on any other result, so the crossing fires once;
   // the give-up (fresh session + backoff) follows on the next kill.
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
     warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive stalls (no progress): ${s.lastError ?? "unknown hang"}`);
   }
-  // Per-tick usage: the event feed is where operators see
-  // spend — this tick's tokens and cost ride on run_end so a budget pause or a money-burning
-  // no_change/error/rejected/refused tick shows what it spent without diffing status-table
-  // snapshots. Both fields are per-tick windows (reset at tick start, folded in over every
-  // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
-  // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
-  // The tick's wall-clock span rides on run_end too: the
-  // failure digest prices a tick by its own durationMs first (src/failure/failure-data.ts
-  // tickDurationMs), so the field is ALWAYS present — a tick that ends within the same
-  // Date.now() millisecond it started (an instant early-abort error tick) or crosses a
+  // Per-run usage: the event feed is where operators see
+  // spend — this run's tokens and cost ride on run_end so a budget pause or a money-burning
+  // no_change/error/rejected/refused run shows what it spent without diffing status-table
+  // snapshots. Both fields are per-run windows (reset at run start, folded in over every
+  // pi run of the run); they ride on HarnessEvent's index signature like other payloads and
+  // are omitted when zero so skipped runs render byte-identical to a pre-feature line.
+  // The run's wall-clock span rides on run_end too: the
+  // failure digest prices a run by its own durationMs first (src/failure/failure-data.ts
+  // runDurationMs), so the field is ALWAYS present — a run that ends within the same
+  // Date.now() millisecond it started (an instant early-abort error run) or crosses a
   // backward clock step still attests its 0 ms, where the old omit-when-zero convention
   // dropped the field and broke the "every run_end carries a span" contract (BUGS.md
   // 2026-09-29). Unlike the usage fields, run_end's renderer never prints the span, so an
   // always-present 0 changes no rendered line.
-  const tickDurationMs = Math.max(0, Date.now() - deps.tickStartedAt);
-  // The account state (plans/agent-backends.md part 6a): fold this tick's billing answer and
+  const runDurationMs = Math.max(0, Date.now() - deps.runStartedAt);
+  // The account state (plans/agent-backends.md part 6a): fold this run's billing answer and
   // rate-window readings into .tumwater/state/claude-account.json for the sibling parts that
   // throttle or display the subscription window. Best-effort — the file is a cache, and an
-  // unwritable state dir must not fail a tick whose real work is already done.
+  // unwritable state dir must not fail a run whose real work is already done.
   if (usage.billing !== undefined || usage.rateWindows !== undefined) {
     try {
       observeClaudeAccount(root, { billing: usage.billing, rateWindows: usage.rateWindows });
     } catch {
-      // The next reporting run rewrites it; nothing this tick depends on is lost.
+      // The next reporting run rewrites it; nothing this run depends on is lost.
     }
   }
-  // The per-provider split of this tick's usage (plans: per-provider spend in the day
+  // The per-provider split of this run's usage (plans: per-provider spend in the day
   // report): a Record<provider, {costUsd, notionalCostUsd}> for the report's `Cost by
-  // provider` line. Omitted when empty like the prompt-token fields, so a tick whose runs
+  // provider` line. Omitted when empty like the prompt-token fields, so a run whose runs
   // carried no provider renders byte-identically to today.
   const providerCost = usage.serializeProviderCost();
   logEventBestEffort(root, {
     source: role,
     type: "run_end",
-    run: tick,
+    run: runNumber,
     result: outcome.result,
     summary: outcome.summary,
     error: s.lastError,
-    durationMs: tickDurationMs,
+    durationMs: runDurationMs,
     ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
     ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
-    // The billing answer the tick's runs reported, so the report can tell notional spend from
+    // The billing answer the run's runs reported, so the report can tell notional spend from
     // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
     ...(usage.billing !== undefined ? { billing: usage.billing } : {}),
-    // Per-tick prompt-token telemetry: how many prompt
-    // tokens the tick sent, how many were cache reads, and how many went out before its first
-    // edit. Omitted when zero like usageFragment's fields, so a tick that sent no prompt — and
+    // Per-run prompt-token telemetry: how many prompt
+    // tokens the run sent, how many were cache reads, and how many went out before its first
+    // edit. Omitted when zero like usageFragment's fields, so a run that sent no prompt — and
     // every run_end written by an older build — renders byte-identically.
     ...(usage.promptTokens > 0 ? { promptTokens: usage.promptTokens } : {}),
     ...(usage.cacheReadTokens > 0 ? { cacheReadTokens: usage.cacheReadTokens } : {}),

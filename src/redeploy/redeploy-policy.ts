@@ -94,7 +94,7 @@ export interface InFlightCounts {
   roleInFlight: number;
   directorInFlight: number;
   /** p75 of recent completed work-bearing role-tick durations (ms) — ticks that ended with
-   * something to show, never a seconds-long `no_change` re-check (runTimedRoleTick filters
+   * something to show, never a seconds-long `no_change` re-check (runTimedRoleRun filters
    * them out; BUGS.md 2026-09-30) — or null/absent when too few samples: the drain window
    * tracks the team's real tick duration instead of the cold-start constant
    * (BUGS.md 2026-09-18). */

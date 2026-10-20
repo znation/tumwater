@@ -7,7 +7,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { promptPreview } from "../inbox/inbox.js";
-import { assembleTickPrompt } from "../run/run-prompt.js";
+import { assembleRunPrompt } from "../run/run-prompt.js";
 import { RunnerPi } from "./runner-pi.js";
 import {
   configForRole,
@@ -253,7 +253,7 @@ export class RoleRunner {
    * the runner has nothing to run (an empty director inbox); a role runner's assembly never
    * returns null. */
   private runPrompt(agent?: string): string | null {
-    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
+    const assembled = assembleRunPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
     if (assembled.userPrompt !== null) {
       logEventBestEffort(this.root, { source: this.role, type: "prompt_taken", run: this.state.runs, preview: promptPreview(assembled.userPrompt) });

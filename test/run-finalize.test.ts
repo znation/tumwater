@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { eventsLogPath } from "../src/paths.js";
-import { finalizeTick } from "../src/run/run-finalize.js";
+import { finalizeRun } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, loadRunnerState, zeroCounters } from "../src/runner/runner-state.js";
 import { RunUsage } from "../src/run/run-usage.js";
-import type { TickOutcome } from "../src/run/run-outcome.js";
+import type { RunOutcome } from "../src/run/run-outcome.js";
 import {
   applyMergeOutcome,
   ERROR_STREAK_WARN,
@@ -17,34 +17,34 @@ import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
-/** Run finalizeTick with the standard shape: an initialized repo, a fresh-ish role state
- * reserved for a tick that started 50ms ago, and the project's default config. Tests override
+/** Run finalizeRun with the standard shape: an initialized repo, a fresh-ish role state
+ * reserved for a run that started 50ms ago, and the project's default config. Tests override
  * only what they exercise. */
 async function run(
   root: string,
   role: string,
   state: RunnerState,
-  outcome: TickOutcome,
-  opts: { tick?: number; usage?: RunUsage; recoveryFailure?: string; mainBranch?: string } = {},
-): Promise<TickOutcome> {
-  const tick = opts.tick ?? 1;
+  outcome: RunOutcome,
+  opts: { runNumber?: number; usage?: RunUsage; recoveryFailure?: string; mainBranch?: string } = {},
+): Promise<RunOutcome> {
+  const runNumber = opts.runNumber ?? 1;
   state.lastRunStartedAt = Date.now() - 50;
   state.running = true;
-  return finalizeTick({
+  return finalizeRun({
     root,
     role,
     mainBranch: opts.mainBranch ?? "main",
     config: defaultConfig(),
     state,
     outcome,
-    tick,
-    tickStartedAt: state.lastRunStartedAt,
+    runNumber,
+    runStartedAt: state.lastRunStartedAt,
     usage: opts.usage ?? new RunUsage(),
     ...(opts.recoveryFailure !== undefined ? { recoveryFailure: opts.recoveryFailure } : {}),
   });
 }
 
-test("finalizeTick folds the outcome onto the state, persists it, and logs run_end", async () => {
+test("finalizeRun folds the outcome onto the state, persists it, and logs run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   const returned = await run(root, "organize", s, {
@@ -52,15 +52,15 @@ test("finalizeTick folds the outcome onto the state, persists it, and logs run_e
     summary: "nothing to do",
   });
   assert.equal(returned.result, "no_change");
-  // The state was folded and saved: the tick is no longer running, the main head the
-  // finalize read while the tick was reserved is persisted, and the completed pair is set.
+  // The state was folded and saved: the run is no longer running, the main head the
+  // finalize read while the run was reserved is persisted, and the completed pair is set.
   const saved = loadRunnerState(root, "organize");
   assert.equal(saved.running, false);
   assert.notEqual(saved.lastMainHead, "");
   assert.equal(saved.lastResult, "no_change");
   assert.equal(saved.lastSummary, "nothing to do");
   assert.equal(saved.phase, undefined);
-  // run_end carries the tick's own span.
+  // run_end carries the run's own span.
   const ends = eventsOfType(root, "run_end");
   assert.equal(ends.length, 1);
   const end = ends[0]!;
@@ -74,17 +74,17 @@ test("finalizeTick folds the outcome onto the state, persists it, and logs run_e
   assert.equal(end.costUsd, undefined);
 });
 
-test("finalizeTick logs the tick number it was handed, not a re-read of state.ticks", async () => {
+test("finalizeRun logs the run number it was handed, not a re-read of state.runs", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  // resetCounters zeroes state.ticks in place mid-tick; finalize must still announce the
-  // tick number run_start announced (deps.tick), never the zeroed counter.
+  // resetCounters zeroes state.runs in place mid-run; finalize must still announce the
+  // run number run_start announced (deps.runNumber), never the zeroed counter.
   Object.assign(s, zeroCounters(s));
-  await run(root, "organize", s, { result: "no_change" }, { tick: 7 });
+  await run(root, "organize", s, { result: "no_change" }, { runNumber: 7 });
   assert.equal(eventsOfType(root, "run_end")[0]!.run, 7);
 });
 
-test("finalizeTick rides nonzero per-tick usage on run_end", async () => {
+test("finalizeRun rides nonzero per-run usage on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   s.generatedTokens = 4321;
@@ -96,7 +96,7 @@ test("finalizeTick rides nonzero per-tick usage on run_end", async () => {
   assert.equal(end.costUsd, 0.0125);
 });
 
-test("finalizeTick rides per-tick prompt-token telemetry on run_end", async () => {
+test("finalizeRun rides per-run prompt-token telemetry on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   const usage = new RunUsage();
@@ -110,7 +110,7 @@ test("finalizeTick rides per-tick prompt-token telemetry on run_end", async () =
   assert.equal(end.preEditPromptTokens, 250);
 });
 
-test("finalizeTick rides the per-provider spend split on run_end", async () => {
+test("finalizeRun rides the per-provider spend split on run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   const usage = new RunUsage();
@@ -124,7 +124,7 @@ test("finalizeTick rides the per-provider spend split on run_end", async () => {
   });
 });
 
-test("finalizeTick omits providerCost when the tick's runs carried no provider", async () => {
+test("finalizeRun omits providerCost when the agent runs carried no provider", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   const usage = new RunUsage();
@@ -134,10 +134,10 @@ test("finalizeTick omits providerCost when the tick's runs carried no provider",
   assert.equal(end.providerCost, undefined, "an empty provider split renders no field");
 });
 
-test("finalizeTick warns once at the error-streak crossing and re-arms after a healthy tick", async () => {
+test("finalizeRun warns once at the error-streak crossing and re-arms after a healthy run", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const error = (n: number): TickOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
+  const error = (n: number): RunOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
   for (let n = 1; n < ERROR_STREAK_WARN; n++) {
     await run(root, "organize", s, error(n));
     assert.equal(eventsOfType(root, "warning").length, 0, `no warning at streak ${n}`);
@@ -151,7 +151,7 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   // Past the crossing the streak keeps counting without re-warning.
   await run(root, "organize", s, error(ERROR_STREAK_WARN + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
-  // A healthy tick resets the streak, re-arming the episode.
+  // A healthy run resets the streak, re-arming the episode.
   await run(root, "organize", s, { result: "no_change" });
   await run(root, "organize", s, error(1));
   await run(root, "organize", s, error(2));
@@ -159,23 +159,23 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   assert.equal(eventsOfType(root, "warning").length, 2);
 });
 
-test("a queued tick preserving the streak at the bar does not re-warn — the merge resolves the episode", async () => {
-  // BUGS.md 2026-09-30: with review rejections feeding the streak, an authoring tick ends
+test("a queued run preserving the streak at the bar does not re-warn — the merge resolves the episode", async () => {
+  // BUGS.md 2026-09-30: with review rejections feeding the streak, an authoring run ends
   // `queued` while the streak stands at the bar — the old `=== ERROR_STREAK_WARN` gate would
-  // re-warn on every such tick's end. The warn belongs to the outcome that did the
+  // re-warn on every such run's end. The warn belongs to the outcome that did the
   // incrementing; the rejection's own crossing warns from the merge side
   // (writeMergeOutcome, pinned in the merge-slot tests).
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const error = (n: number): TickOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
+  const error = (n: number): RunOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
   await run(root, "organize", s, error(1));
   await run(root, "organize", s, error(2));
   await run(root, "organize", s, error(3));
   assert.equal(eventsOfType(root, "warning").length, 1);
   // The authoring run succeeds and enqueues: the streak stands preserved at the bar, and the
-  // queued tick's end must not re-warn on it.
+  // queued run's end must not re-warn on it.
   await run(root, "organize", s, { result: "queued", commit: "a".repeat(40) });
-  assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN, "the queued tick preserves the streak");
+  assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN, "the queued run preserves the streak");
   assert.equal(eventsOfType(root, "warning").length, 1, "no re-warn from the preserved streak");
   // The merge rejects: the streak climbs past the bar, still one episode, one warning.
   applyMergeOutcome(s, "rejected", { sha: "a".repeat(40), summary: "x" });
@@ -191,10 +191,10 @@ test("a queued tick preserving the streak at the bar does not re-warn — the me
   assert.equal(eventsOfType(root, "warning").length, 2, "the next episode warns again");
 });
 
-test("finalizeTick warns once at the quiet-kill streak crossing", async () => {
+test("finalizeRun warns once at the quiet-kill streak crossing", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const killed = (n: number): TickOutcome => ({ result: "quiet_killed", summary: `kill ${n}` });
+  const killed = (n: number): RunOutcome => ({ result: "quiet_killed", summary: `kill ${n}` });
   for (let n = 1; n < QUIET_KILL_RESUME_LIMIT; n++) {
     await run(root, "organize", s, killed(n));
     assert.equal(eventsOfType(root, "warning").length, 0, `no warning at streak ${n}`);
@@ -208,10 +208,10 @@ test("finalizeTick warns once at the quiet-kill streak crossing", async () => {
   assert.equal(eventsOfType(root, "warning").length, 1);
 });
 
-test("a leftover recovery failure feeds the error streak but never rides the tick's run_end", async () => {
+test("a leftover recovery failure feeds the error streak but never rides the run's run_end", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  // The tick itself ends `queued`; the re-queued pin's merge failure rides recoveryFailure.
+  // The run itself ends `queued`; the re-queued pin's merge failure rides recoveryFailure.
   await run(root, "organize", s, { result: "queued", summary: "retried the pin" }, {
     recoveryFailure: "review gate errored",
   });
@@ -230,7 +230,7 @@ test("a leftover recovery failure feeds the error streak but never rides the tic
   assert.match(warnings[0]!.message as string, /3 runs failed in a row: review gate errored$/);
 });
 
-test("finalizeTick folds a main_red cause onto lastError so run_end logs it", async () => {
+test("finalizeRun folds a main_red cause onto lastError so run_end logs it", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   await run(root, "organize", s, {
@@ -243,13 +243,13 @@ test("finalizeTick folds a main_red cause onto lastError so run_end logs it", as
   assert.equal(loadRunnerState(root, "organize").lastError, "build failed on main");
 });
 
-test("finalizeTick restores a mid-tick wake instead of making it wait out the interval", async () => {
+test("finalizeRun restores a mid-run wake instead of making it wait out the interval", async () => {
   const root = await initializedRepo();
-  // Control: no mid-tick wake — the outcome schedules the next run an interval out.
+  // Control: no mid-run wake — the outcome schedules the next run an interval out.
   const plain = freshRunnerState("organize");
   await run(root, "organize", plain, { result: "no_change" });
-  assert.ok(plain.nextRunAt > Date.now(), "a plain tick schedules an interval out");
-  // A wake consumed while the tick ran stamped wokenAt past the tick's start; the outcome
+  assert.ok(plain.nextRunAt > Date.now(), "a plain run schedules an interval out");
+  // A wake consumed while the run ran stamped wokenAt past the run's start; the outcome
   // schedule overwrote it, so finalize must re-apply the demand: next run now, no backoff.
   const woken = freshRunnerState("organize");
   // A minute ahead, so it reads as stamped after lastRunStartedAt (run() sets that to now-50)
@@ -263,13 +263,13 @@ test("finalizeTick restores a mid-tick wake instead of making it wait out the in
   // silent-wait the restore exists to prevent. Bounded by a read taken after the run, not by
   // the end stamp: a stall of over a millisecond between the end-save and the restore is
   // ordinary under load (BUGS.md 2026-09-30).
-  assert.ok(woken.nextRunAt > (woken.lastRunEndedAt ?? 0), "the wake reads newer than the tick's end");
+  assert.ok(woken.nextRunAt > (woken.lastRunEndedAt ?? 0), "the wake reads newer than the run's end");
   assert.ok(woken.nextRunAt <= after + 1, "the wake was restored to now");
   // The restored wake persists with the state.
   assert.equal(loadRunnerState(root, "organize").nextRunAt, woken.nextRunAt);
 });
 
-test("finalizeTick keeps the previous main head when main's head cannot be resolved", async () => {
+test("finalizeRun keeps the previous main head when main's head cannot be resolved", async () => {
   // The contract the ?? fallback encodes: branchHead returning null (a branch name that
   // resolves nowhere) must NOT wake the role on "main moved" to nowhere — the previous head
   // stands. Driven with a mainBranch that resolves to nothing.
@@ -281,7 +281,7 @@ test("finalizeTick keeps the previous main head when main's head cannot be resol
   });
   assert.equal(loadRunnerState(root, "organize").lastMainHead, "0123456789abcdef0123456789abcdef01234567",
     "the unresolvable head must not overwrite the previous one");
-  // The tick still ended normally — the missing head is not an error.
+  // The run still ended normally — the missing head is not an error.
   assert.equal(eventsOfType(root, "run_end").length, 1);
 });
 
@@ -297,12 +297,12 @@ test("the error-streak warning falls back to 'unknown error' when no cause is re
   assert.match(warnings[0]!.message as string, /^3 runs failed in a row: unknown error$/);
 });
 
-test("the quiet-kill warning names the recorded error when the crossing tick carries one", async () => {
-  // The quiet-kill message prefers the state's lastError (folded from this tick's outcome)
+test("the quiet-kill warning names the recorded error when the crossing run carries one", async () => {
+  // The quiet-kill message prefers the state's lastError (folded from this run's outcome)
   // over the 'unknown hang' fallback: a kill whose outcome says why reports that reason.
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
-  const killed = (n: number): TickOutcome => ({ result: "quiet_killed", summary: `kill ${n}` });
+  const killed = (n: number): RunOutcome => ({ result: "quiet_killed", summary: `kill ${n}` });
   await run(root, "organize", s, killed(1));
   await run(root, "organize", s, killed(2));
   await run(root, "organize", s, { ...killed(3), error: "watchdog killed the session" });
@@ -314,7 +314,7 @@ test("the quiet-kill warning names the recorded error when the crossing tick car
   );
 });
 
-test("a cut-off outcome keeps resumePending's delay against a mid-tick wake", async () => {
+test("a cut-off outcome keeps resumePending's delay against a mid-run wake", async () => {
   const root = await initializedRepo();
   const s = freshRunnerState("organize");
   s.wokenAt = Date.now() + 1;
@@ -333,7 +333,7 @@ test("a claim is released on a terminal result and kept while the change merges"
     at: Date.now(),
     source: "assigned" as const,
   };
-  // no_change: the tick produced nothing, so the instance drops the entry.
+  // no_change: the run produced nothing, so the instance drops the entry.
   const s = freshRunnerState("feature-2");
   s.claim = { ...claim };
   await run(root, "feature-2", s, { result: "no_change", summary: "nothing" });
@@ -349,11 +349,11 @@ test("a claim is released on a terminal result and kept while the change merges"
   assert.equal(held.claim?.key, "plan a");
 });
 
-test("an unwritable events feed cannot reject finalizeTick — the outcome still folds and saves", async () => {
+test("an unwritable events feed cannot reject finalizeRun — the outcome still folds and saves", async () => {
   const root = await initializedRepo();
   // A directory where events.jsonl belongs makes every append throw EISDIR while the state
-  // file still writes. The tick's post-run events are bookkeeping, not its result: a throw
-  // from one must not turn a completed tick into a rejected one, and must not skip the save
+  // file still writes. The run's post-run events are bookkeeping, not its result: a throw
+  // from one must not turn a completed run into a rejected one, and must not skip the save
   // that persists the claim release and the next-run schedule (every raw logEvent/warnEvent
   // here ran after an irreversible fold).
   const feed = eventsLogPath(root);
@@ -374,7 +374,7 @@ test("an unwritable events feed cannot reject finalizeTick — the outcome still
   assert.equal(returned.result, "no_change");
   assert.equal(s.claim, undefined, "the claim release happened despite the unwritable feed");
   const saved = loadRunnerState(root, "feature-2");
-  assert.equal(saved.running, false, "the end-of-tick save still ran");
+  assert.equal(saved.running, false, "the end-of-run save still ran");
   assert.equal(saved.lastResult, "no_change");
   assert.equal(saved.claim, undefined, "the release was persisted, not lost to the feed failure");
 });

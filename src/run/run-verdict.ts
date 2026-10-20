@@ -189,7 +189,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // is not discarded: the next tick starts directly on that target over the kept worktree.
     // The one-shot field carries the target seam plus the `from`/`path` facts the handoff
     // note needs; the tick ends `aborted` with the `image-reroute` resume cause, and
-    // applyTickOutcome schedules it promptly (nextRunAt = now) while planTickStart hands the
+    // applyTickOutcome schedules it promptly (nextRunAt = now) while planRunStart hands the
     // kept worktree off to a FRESH session on the target.
     const regime = ctx.rerouteRegime ?? "primary";
     const target =

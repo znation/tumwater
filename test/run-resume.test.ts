@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { planTickStart } from "../src/run/run-resume.js";
+import { planRunStart } from "../src/run/run-resume.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
@@ -11,7 +11,7 @@ import { recordSession } from "../src/agent/session-ledger.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { runAgent } from "../src/agent/run-agent.js";
 import { resolveTickVerdict } from "../src/run/run-verdict.js";
-import { applyTickOutcome } from "../src/run/run-apply.js";
+import { applyRunOutcome } from "../src/run/run-apply.js";
 import { slotPinnedForResume } from "../src/runner/runner-run.js";
 import { defaultConfig } from "../src/config/config.js";
 import { fallbackRoleConfig } from "../src/config/config-fallbacks.js";
@@ -28,10 +28,10 @@ import { setEnv } from "./helpers/env.js";
 registerAgentBackend(piBackend);
 registerAgentBackend(claudeBackend);
 
-// run-resume.ts owns planTickStart — the decision every tick starts with: whether it resumes
+// run-resume.ts owns planRunStart — the decision every run starts with: whether it resumes
 // the interrupted session (and under which cause), what prompt it runs, and which side effects
 // (flag consumption, lastError capture, prompt reclaim) happen even on the paths that skip the
-// work. runner.ts consumes the plan verbatim, so a wrong decision here misroutes whole ticks.
+// work. runner.ts consumes the plan verbatim, so a wrong decision here misroutes whole runs.
 // These tests pin the decision table directly, against a real session dir and a real prompt
 // queue, the way pending-prompt.test.ts pins the requeue policy.
 
@@ -71,7 +71,7 @@ function plan(
     agent?: string;
   } = {},
 ) {
-  return planTickStart({
+  return planRunStart({
     root,
     role: s.role,
     state: s,
@@ -99,9 +99,9 @@ test("a fresh run takes the assembled prompt and derives the restart cause", () 
 });
 
 test("a fresh run hands the effective agent to the prompt assembly", () => {
-  // plans/agent-backends.md, part 5/7: the tick's prompt dialect must match the backend the
-  // run actually uses. planTickStart receives the effective `cfg.agent` (the model-fallback
-  // pair while an episode is active) and passes it to the fresh-tick assembly; deriving the
+  // plans/agent-backends.md, part 5/7: the run's prompt dialect must match the backend the
+  // run actually uses. planRunStart receives the effective `cfg.agent` (the model-fallback
+  // pair while an episode is active) and passes it to the fresh-run assembly; deriving the
   // dialect from the role's primary instead would speak claude's MCP dialect to a pi run.
   const dir = tmpdir();
   const s = state();
@@ -129,7 +129,7 @@ test("a resumable session resumes with the restart bridge and skips the assemble
   assert.equal(p.resumeCause, "restart");
   assert.match(String(p.prompt), /the "feature" role/);
   assert.match(String(p.prompt), /was restarted/);
-  // Consumed: the next tick must not resume again unless another shutdown sets the flag.
+  // Consumed: the next run must not resume again unless another shutdown sets the flag.
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
 });
@@ -265,9 +265,9 @@ test("a claude author resumes its id even when a newer gate line shares the dir"
 
 // plans/agent-backends.md "Sessions", PLANS.md part 3d: a `--resume` whose id no longer has
 // a transcript fails with `resumeMissing`; the verdict keeps the worktree and arms
-// `resumePending`, so the next tick sees our own author line as unresumable. That is a
+// `resumePending`, so the next run sees our own author line as unresumable. That is a
 // handoff, not a reset: the interrupted edits survive into a FRESH session that carries the
-// assembled tick prompt plus the bridge.
+// assembled run prompt plus the bridge.
 test("a claude author whose transcript is gone handoffs over the kept worktree", () => {
   const root = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());
@@ -296,7 +296,7 @@ test("a claude author whose transcript is gone handoffs over the kept worktree",
 // PLANS.md part 3d: the resume-missing run itself, not just the hand-constructed state. A
 // real fake-claude `--resume` run that answers "No conversation found" yields
 // `resumeMissing`; fed through resolveTickVerdict against a dirty worktree, the failed turn
-// must arm `resumePending`; the next tick then hands off over the kept worktree instead of
+// must arm `resumePending`; the next run then hands off over the kept worktree instead of
 // resetting it. This is the verdict half the part-3d acceptance criterion calls out.
 test("a fake-claude resumeMissing run arms resumePending, and the next run hands off", async () => {
   const { root, wt } = await initializedWorktree("feature");
@@ -324,7 +324,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
     assert.equal(run.ok, false);
     assert.equal(run.producedAssistantContent, false, "the error turn carries no content");
 
-    // The interrupted tick's edits are on disk, so the verdict keeps the worktree.
+    // The interrupted run's edits are on disk, so the verdict keeps the worktree.
     fs.writeFileSync(path.join(wt, "wip.txt"), "half-done\n");
     const s = freshRunnerState("feature");
     const outcome = await resolveTickVerdict({
@@ -348,7 +348,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
     // The resume-missing verdict, not the filesystem, is what makes the session
     // gone — a transcript lingering under claude's project dir must not re-arm a
     // resume the backend just rejected. The transcript the fake planted (and the
-    // resume run refreshed) is still present, yet the next tick must hand off.
+    // resume run refreshed) is still present, yet the next run must hand off.
     assert.ok(fs.existsSync(claudeTranscriptPath(cwd, "c1")), "the transcript lingers");
     const p = plan(root, s, { agent: "claude" });
     assert.ok(p);
@@ -362,7 +362,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
 // BUGS.md 2026-10-09: the resume-missing verdict must be remembered on every path that arms
 // the next resume, not just the failed-dirty one. An aborted (shutdown) run keeps the session
 // and worktree and resumes; when that run had already answered "No conversation found", the
-// record must survive so the next tick hands off instead of re-resuming a dead session whose
+// record must survive so the next run hands off instead of re-resuming a dead session whose
 // transcript file still exists.
 test("an aborted resumeMissing run records the missing session for the next run's handoff", async () => {
   const root = tmpdir();
@@ -388,7 +388,7 @@ test("an aborted resumeMissing run records the missing session for the next run'
     });
     assert.equal(outcome?.result, "aborted");
     assert.equal(s.resumeMissing, true, "the killed run's missing-session verdict is remembered");
-    // applyTickOutcome arms the resume for an aborted tick (run-apply.ts); the next tick must
+    // applyRunOutcome arms the resume for an aborted run (run-apply.ts); the next run must
     // hand off over the kept worktree rather than re-resume the session claude just rejected.
     s.resumePending = true;
     assert.ok(fs.existsSync(claudeTranscriptPath(fs.realpathSync(wt), "c1")), "the transcript lingers");
@@ -427,7 +427,7 @@ test("a claude resume whose only ledger line names another agent hands off", () 
 // PLANS.md part 4d/7 ("Selectors"): the resume check and the spawn must read the same
 // `cfg.agent`. While a model-fallback episode is active the resolved view is the fallback pair,
 // so a claude primary whose tier falls back to a pi pair runs — and resumes — as pi: the
-// interrupted claude session is not pi's to continue, so the next tick hands off.
+// interrupted claude session is not pi's to continue, so the next run hands off.
 test("the fallback view's routed agent drives the resume check", () => {
   const root = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());
@@ -504,7 +504,7 @@ test("a resume reclaims its re-queued prompt; a fresh run clears the stale recor
   assert.deepEqual(queuedRolePrompts(dir, "feature"), [], "the reclaim takes the exact file");
 
   // A fresh fallback clears the stale record without consuming the queue: the prompt stays
-  // queued for the fresh tick's ordinary dequeue instead of vanishing with the record.
+  // queued for the fresh run's ordinary dequeue instead of vanishing with the record.
   const freshState = state({ resumePromptFile: file });
   const freshPending = new PendingPrompt(dir, "feature");
   enqueueRolePrompt(dir, "feature", "still queued");
@@ -518,7 +518,7 @@ test("a resume reclaims its re-queued prompt; a fresh run clears the stale recor
 
 // PLANS.md part 6e/7: a subscription claude run cut off by a rejected usage window keeps its
 // session and worktree edits and resumes after the window resets, instead of committing partial
-// work or taking a fresh tick that resets the worktree. The rejected-window reading (not a bare
+// work or taking a fresh run that resets the worktree. The rejected-window reading (not a bare
 // 429) is the signal, so a pi 429 keeps the existing within-run retry.
 test("a subscription claude rejected-window run resumes over the kept worktree once the window resets", async () => {
   const { root, wt } = await initializedWorktree("feature");
@@ -567,7 +567,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
     });
     assert.equal(outcome?.result, "error", "the window rejection is a hold, not a merge");
     // The lease release evaluates the pin condition right after the verdict, before
-    // applyTickOutcome runs; if the arm has not armed resumePending by then the slot is
+    // applyRunOutcome runs; if the arm has not armed resumePending by then the slot is
     // detached and the half-done edits are lost.
     assert.equal(s.resumePending, true, "the verdict arms the resume before the lease pins the slot");
     assert.equal(
@@ -575,13 +575,13 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
       true,
       "the lease keeps the slot pinned across the hold",
     );
-    applyTickOutcome(s, defaultConfig(), "feature", outcome!);
+    applyRunOutcome(s, defaultConfig(), "feature", outcome!);
     assert.equal(s.resumePending, true, "the next eligible run resumes the session");
     assert.equal(s.resumeCause, "rate-limit", "the resume names the held window");
     assert.equal(fs.readFileSync(path.join(wt, "wip.txt"), "utf8"), "half-done\n", "the edits survive");
 
     // After the hold lifts (resetsAt passes), the same claude session resumes — not a fresh
-    // tick, and not a handoff, since the agent never changed.
+    // run, and not a handoff, since the agent never changed.
     const p = plan(root, s, { agent: "claude" });
     assert.ok(p);
     assert.equal(p.resuming, true, "the same claude session resumes");
@@ -623,12 +623,12 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
       merge: async () => "changed" as const,
       finishAbortedRun: async () => ({ result: "aborted" as const }),
     });
-    // A budget cap is a handback, not a failed tick: the verdict arms the resume before the
+    // A budget cap is a handback, not a failed run: the verdict arms the resume before the
     // lease release reads it, and nothing resets the kept edits.
     assert.equal(outcome?.result, "aborted", "a cap ends the run as an interruption");
     assert.equal(s.resumePending, true, "the verdict arms the next resume before the lease pins the slot");
     assert.equal(slotPinnedForResume(s, outcome), true, "the lease keeps the worktree for the resume");
-    applyTickOutcome(s, defaultConfig(), "feature", outcome!);
+    applyRunOutcome(s, defaultConfig(), "feature", outcome!);
     assert.equal(s.resumeCause, "budget-capped", "the resume names the cap");
     assert.equal(fs.readFileSync(path.join(wt, "wip.txt"), "utf8"), "half-done\n", "the edits survive");
 

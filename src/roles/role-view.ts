@@ -20,7 +20,7 @@ import { baseRoleOf, runnerIds, runnerPaused } from "./runner-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
-import { assembleTickPrompt } from "../run/run-prompt.js";
+import { assembleRunPrompt } from "../run/run-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
@@ -431,7 +431,7 @@ export function rolePayload(
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the role its queued work — the property the run-prompt test pins.
     nextPrompt:
-      assembleTickPrompt({
+      assembleRunPrompt({
         root,
         config: cfg,
         role,

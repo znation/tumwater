@@ -240,7 +240,7 @@ test("the write-back pairs the merge's result with the queued tick's summary, ac
 test("a rejection crossing the error-streak bar warns from the merge side, once per episode", () => {
   // BUGS.md 2026-09-30: a review rejection resolves AFTER the tick's end-save, so the
   // streak-crossing warn belongs to writeMergeOutcome — same bar, same once-per-episode
-  // shape the tick side (finalizeTick) upholds. The two sites share one episode: a queued
+  // shape the tick side (finalizeRun) upholds. The two sites share one episode: a queued
   // tick preserves the streak it was given, so a streak the tick side already warned at
   // must not warn again here, and a crossing the tick side never saw (2 → 3 at the
   // merge) warns from here instead.

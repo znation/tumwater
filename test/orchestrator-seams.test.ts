@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   awaitMergeForHandoff,
-  p75TickDurationMs,
+  p75RunDurationMs,
   runTimedRoleTick,
   sleepInterruptible,
 } from "../src/run/run-timing.js";
@@ -114,12 +114,12 @@ test("runTimedRoleTick releases its permit when the tick throws", async () => {
   assert.equal(h.calls.release, 1); // the finally block, not the happy path
 });
 
-test("p75TickDurationMs: null below the sample floor, then the p75 of the samples", () => {
-  assert.equal(p75TickDurationMs([]), null);
-  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9]), null, "nine samples is below the floor");
+test("p75RunDurationMs: null below the sample floor, then the p75 of the samples", () => {
+  assert.equal(p75RunDurationMs([]), null);
+  assert.equal(p75RunDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9]), null, "nine samples is below the floor");
   // Ten samples 1..10: floor(10 * 0.75) = 7 -> the 8th value, 8.
-  assert.equal(p75TickDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), 8);
-  assert.equal(p75TickDurationMs([10, 1, 9, 2, 8, 3, 7, 4, 6, 5]), 8, "order-independent");
+  assert.equal(p75RunDurationMs([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), 8);
+  assert.equal(p75RunDurationMs([10, 1, 9, 2, 8, 3, 7, 4, 6, 5]), 8, "order-independent");
 });
 
 test("sleepInterruptible sleeps out its duration when the signal never aborts", async () => {

@@ -39,7 +39,7 @@ import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import type { RetentionPruner } from "./retention.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
-import { p75TickDurationMs } from "../run/run-timing.js";
+import { p75RunDurationMs } from "../run/run-timing.js";
 import { pollTeamGates, type TeamGateStates } from "../gates/gate-polls.js";
 import type { ReclaimController } from "../team/reclaim.js";
 import { heldProviders, windowHeldProviders } from "../team/team-hold.js";
@@ -108,7 +108,7 @@ export function newPollState(): PollState {
 }
 
 /** The start gate every reserved tick passes the moment its permit is granted
- * (runTimedRoleTick's `held`): closed while a restart is pending, and after one is decided so
+ * (runTimedRoleRun's `held`): closed while a restart is pending, and after one is decided so
  * no waiter the shutdown hands a permit to starts on the build being replaced. One predicate,
  * so another team-wide hold on new ticks can close the same gate point. */
 function tickStartHeld(state: PollState): boolean {
@@ -278,7 +278,7 @@ export async function pollRedeploy(
     {
       roleInFlight: ctx.rolePermitHolders.size,
       directorInFlight: ctx.directorInFlight.size,
-      roleTickP75Ms: p75TickDurationMs(ctx.roleTickDurationsMs),
+      roleTickP75Ms: p75RunDurationMs(ctx.roleTickDurationsMs),
     },
     liveConfig.autoRestart,
     now,

@@ -5,7 +5,7 @@
  * the poll's gate verdicts and the backlog state; this module takes its output, the
  * `reasons` map of due runners, and turns each into a reserved, semaphore-gated, in-flight
  * tick: the probe admission for the fallback breaker, the wake event, the
- * reservation/parking bookkeeping, runTimedRoleTick's wiring (slot acquisition, the start
+ * reservation/parking bookkeeping, runTimedRoleRun's wiring (slot acquisition, the start
  * gate, breaker evidence), and the in-flight-bucket bookkeeping the drain and the p75
  * duration sample read. Split out of orchestrator.ts — whose poll loop otherwise reads as
  * one decision after another — so the launch mechanics read as one step of that loop. The
@@ -30,7 +30,7 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
-import { runTimedRoleTick } from "../run/run-timing.js";
+import { runTimedRoleRun } from "../run/run-timing.js";
 
 /** How many recent work-bearing tick durations the p75 sample keeps (drainInFlightWork's
  * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent tick pace, not all-time
@@ -100,7 +100,7 @@ interface LaunchContext {
 }
 
 /** Launch one due runner's tick: reserve it, park it in the semaphore, and start it under
- * runTimedRoleTick with the breaker-evidence wiring. Returns the task promise already added
+ * runTimedRoleRun with the breaker-evidence wiring. Returns the task promise already added
  * to its in-flight bucket (its `finally` self-removes and folds the duration sample). */
 export function launchDueTicks(ctx: LaunchContext): void {
   const {
@@ -158,7 +158,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     runner.state.parkedOn = usesSlot && parkKey ? seamConcurrencyKey(parkKey, piDefault) : undefined;
     // The tick's own run time (null when it never ran, was cut off, or ended without
     // work): the drain-window sample is taken only for a work-bearing tick that finished
-    // on its own (runTimedRoleTick; BUGS.md 2026-09-30).
+    // on its own (runTimedRoleRun; BUGS.md 2026-09-30).
     let durationMs: number | null = null;
     // Whether runner.run() was ever called — false when the start gate (or a shutdown)
     // turned the tick away at its permit.
@@ -173,7 +173,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // runs — so a full provider admits no further grants until the director releases.
     let directorLease: Awaited<ReturnType<Semaphore["forceLease"]>> | null = null;
     const task = (async () => {
-      durationMs = await runTimedRoleTick(
+      durationMs = await runTimedRoleRun(
         signal,
         usesSlot
           ? async () => {

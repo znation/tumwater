@@ -30,7 +30,7 @@ export class PendingPrompt {
     private readonly role: string,
   ) {}
 
-  /** Record the user request a just-dequeued tick prompt carries (assembleTickPrompt's
+  /** Record the user request a just-dequeued tick prompt carries (assembleRunPrompt's
    * userPrompt) together with the queue file it came from (userPromptFile), so an unfulfilled
    * tick can re-queue it instead of losing the request and a fulfilled one can clean its
    * attachments. */
