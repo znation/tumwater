@@ -2713,3 +2713,63 @@ leaves ## Done untouched", "moveEntryToTop moves a middle entry above the first"
 file's last entry keeps the file's trailing newline and doubles no blank", "a body holding a
 fenced ### line and a Refused note move whole" and "position 1 and an out-of-range position fail
 and leave the file byte-identical".
+
+## Role change view: every known role answers, degraded rather than failing, with a bounded patch
+
+`src/change/change-data.ts` collects what `tumwater diff`, `tumwater diff --role <id>` and the
+dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all.
+
+### INV-AU1: a role query never fails on a degraded team
+
+**Guarantee.** A missing baseline is `no-base`, a missing or half-deleted worktree is `absent`,
+and a malformed slots.json falls back to the legacy worktree. Every degraded field is zero or
+empty.
+
+**Binds.** `src/change/change-data.ts` (`collectRoleChange`), `src/git/slots-state.ts`
+(`roleWorktreeDir`), `src/git/worktree.ts` (`isUsableWorktree`).
+
+**Pinned by.** `test/change-data.test.ts` — "a configured base branch that does not exist degrades
+to no-base" and "a malformed slots.json degrades to no pooled slot instead of crashing the
+reader"; `test/change-render.test.ts` — "a half-deleted worktree — the directory survives, its git
+link does not — degrades to absent"; `test/cli-diff.test.ts` — "a role with no worktree yet
+degrades to a line, exit 0".
+
+### INV-AU2: the baseline is the configured baseBranch, then the primary checkout's branch
+
+**Guarantee.** A configured `baseBranch` is the diff's baseline; without one the primary checkout's
+branch is. The role's checkout is a slot leased for its run when one exists, else the legacy
+worktree.
+
+**Binds.** `src/change/change-data.ts` (`collectRoleChange`), `src/git/slots-state.ts`
+(`roleWorktreeDir`).
+
+**Pinned by.** `test/cli-diff.test.ts` — "a configured baseBranch is the diff's baseline, not the
+checked-out branch"; `test/change-data.test.ts` — "a slot leased for a role's run serves its
+change to the diff reader".
+
+### INV-AU3: the uncommitted half is `git diff HEAD`, bounded by DIFF_MAX_BYTES
+
+**Guarantee.** Staged and unstaged tracked edits both appear in the patch below the cap. Untracked
+paths appear in `dirtyFiles` only. Over `DIFF_MAX_BYTES` the patch becomes a truncation note plus
+the `--stat` summary.
+
+**Binds.** `src/change/change-data.ts` (`cappedWorkingDiff`).
+
+**Pinned by.** `test/change-data-scope.test.ts` — "a staged and an unstaged edit below the cap
+both appear in the uncommitted patch"; `test/change-render.test.ts` — "untracked files show in the
+dirty list with no patch text" and "an uncommitted diff over the cap truncates to a note plus the
+--stat summary".
+
+### INV-AU4: the team view has one entry per known role and no patch fields
+
+**Guarantee.** `collectTeamChanges` lists the catalog, then custom roles, then parallel instance
+ids, selfcheck (disabled by default) included, each with its counts and commit subjects. Neither
+patch field rides the team view.
+
+**Binds.** `src/change/change-data.ts` (`collectTeamChanges`), `src/config/config.ts`
+(`knownRoleIdsCached`).
+
+**Pinned by.** `test/change-data-scope.test.ts` — "the team view lists custom roles and parallel
+instances after the catalog, each with its own change"; `test/change-data.test.ts` — "the team
+view keeps the counts and drops the patch fields"; `test/cli-diff.test.ts` — "team diff --json
+prints the roster: one entry per known role, no patch fields".
