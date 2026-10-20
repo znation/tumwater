@@ -2442,3 +2442,48 @@ times in `src/gui/gui-prompt-commands.ts`.
 
 **Pinned by.** `test/gui-server-api.test.ts` — "gui /api/prompt-cancel removes one queued prompt by
 file, answers gone on a race".
+
+## Git execution: every git call is bounded in time and output, decodes UTF-8 whole, and fails with a GitError that says why
+
+Every harness git call goes through `execGitBounded` in its own detached process group, because a
+timeout that signalled only git once leaked grandchildren for days (2026-09-21, in `execGitBounded`'s
+doc comment). The `GitError` text is what a person reads as a role's lastError, so it has to say why.
+
+### INV-AP1: a failed git call is a GitError naming the argv, the exit code or spawn errno, and the cause when there is one
+
+**Guarantee.** An argv value containing whitespace is JSON-quoted in the message, so the failing
+command reads unambiguously. A silent nonzero exit is reported by its code alone, with no dangling
+colon. A spawn failure with empty stderr falls back to the spawn error's message. A noisy nonzero
+exit keeps git's stderr as the cause.
+
+**Binds.** `src/git/git-run.ts` (`GitError`, `runGit`).
+
+**Pinned by.** `test/git.test.ts` — "runGit names the spawn failure when git cannot be started
+(empty stderr)", "runGit reports a silent nonzero exit by its code alone, with no dangling colon",
+"runGit quotes a whitespace-bearing argv value so the failing command reads unambiguously" and
+"runGit keeps git's stderr on a noisy nonzero exit (format unchanged)".
+
+### INV-AP2: a git call settles by timeoutMs + killGraceMs, takes its whole process group down, and fails rather than truncate past EXEC_MAX_BUFFER on either stream
+
+**Guarantee.** A hung git is stopped at `timeoutMs` and the error names the deadline; a git that
+ignores SIGTERM is SIGKILLed after the grace, together with its grandchild. A git whose stdout or
+stderr passes `EXEC_MAX_BUFFER` is killed and fails with `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`, never
+with truncated output. The deadline itself is `armGroupDeadline` (see INV-AO1).
+
+**Binds.** `src/git/git-run.ts` (`execGitBounded`, `GIT_TIMEOUT_MS`, `runGit`).
+
+**Pinned by.** `test/git.test.ts` — "runGit times out a hung git and names the deadline instead of
+stalling forever", "runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it",
+"runGit SIGKILLs a git that floods stdout past the buffer cap and reports the overflow" and "runGit
+SIGKILLs a git that floods stderr past the buffer cap and reports the overflow".
+
+### INV-AP3: output is decoded as UTF-8 across chunk boundaries, and extraEnv overlays the inherited environment
+
+**Guarantee.** A multibyte character split across two output chunks is reassembled, because both
+streams are `setEncoding("utf8")`. `extraEnv` is merged over `process.env` by `childEnv`, so an
+override adds a variable and the child keeps PATH and the rest.
+
+**Binds.** `src/git/git-run.ts` (`execGitBounded`), `src/process/process.ts` (`childEnv`).
+
+**Pinned by.** `test/git.test.ts` — "runGit reassembles a UTF-8 character split across two output
+chunks" and "runGit's extraEnv adds to the inherited environment rather than replacing it".

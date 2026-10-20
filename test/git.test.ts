@@ -605,6 +605,32 @@ test("runGit SIGKILLs a git that floods stderr past the buffer cap and reports t
   }
 });
 
+test("runGit reassembles a UTF-8 character split across two output chunks", async () => {
+  const dir = tmpdir("split-utf8-git-");
+  // The euro sign is the bytes 342 202 254; the pause makes the first two arrive alone.
+  writeScript(path.join(dir, "git"), String.raw`printf '\342\202'
+sleep 0.2
+printf '\254\n'`);
+  const restorePath = pathPrepend(dir);
+  try {
+    assert.equal(await runGit(dir, ["status"]), "€");
+  } finally {
+    restorePath();
+  }
+});
+
+test("runGit's extraEnv adds to the inherited environment rather than replacing it", async () => {
+  const dir = tmpdir("extra-env-git-");
+  writeScript(path.join(dir, "git"), `printf '%s|%s' "$TUMWATER_GIT_RUN_PROBE" "$PATH"`);
+  const restorePath = pathPrepend(dir);
+  try {
+    const out = await runGit(dir, ["status"], { TUMWATER_GIT_RUN_PROBE: "set" });
+    assert.equal(out, `set|${process.env.PATH}`);
+  } finally {
+    restorePath();
+  }
+});
+
 test("subjectsBetween lists main's subjects since a head, newest first; null for an unknown base", async () => {
   const repo = makeRepo(); // one seed commit on main
   const base = await headOf(repo, "main");
