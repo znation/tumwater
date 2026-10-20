@@ -116,7 +116,7 @@ Usage:
                                    (--prompt also shows each run's exact prompt text)
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
-  tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>]
+  tumwater history [--role <id>[,<id>...]] [-n N] [-f/--follow] [--since <duration>] [--grep <text>]
                    [--result <merged|none|refused|problems>[,...]] [--model <selector>[,...]]
                    [--summary] [--by role|model] [--json]
                                    One row per completed run, newest first — time, role,
@@ -125,6 +125,9 @@ Usage:
                                    shows the window's runs instead of the last N (capped at
                                    7d, like logs --since); --grep <text> keeps only rows whose
                                    line matches, case-insensitively (like logs --grep);
+                                   -f prints the last N rows oldest first, then one row
+                                   per run as it ends, until Ctrl+C or its parent exits (not
+                                   with --since, --summary or --json);
                                    --role takes a comma list, keeping the rows of any listed role;
                                    --result <class>[,<class>...] narrows to the listed outcome classes — merged
                                    (merged or waiting to merge), none (no_change/skipped/user_aborted),

@@ -236,6 +236,7 @@ async function main(): Promise<void> {
       }
       rejectUnknownArgs("history", args, [
         N_FLAG,
+        { names: ["-f", "--follow"] },
         sinceFlagSpec("history --since"),
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
         resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),

@@ -48,6 +48,18 @@ export function widestWidths(rows: TickRow[]): RowWidths {
   return widths;
 }
 
+/** The column-wise maximum of two width sets: the running widths of a follow, which only grow. */
+export function widenWidths(a: RowWidths, b: RowWidths): RowWidths {
+  return {
+    loop: Math.max(a.loop, b.loop),
+    tick: Math.max(a.tick, b.tick),
+    result: Math.max(a.result, b.result),
+    model: Math.max(a.model, b.model),
+    duration: Math.max(a.duration, b.duration),
+    usage: Math.max(a.usage, b.usage),
+  };
+}
+
 /** One aligned table line: fixed-width columns over the row set, then the free-text detail.
  * Every cell is padded to its column's width even when empty — usage is the one cell that can
  * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,

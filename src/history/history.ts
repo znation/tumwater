@@ -1,9 +1,13 @@
 // vocabulary: plain
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, tickRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
-import { renderModelSummary, renderRow, renderSummary, widestWidths } from "./history-render.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, tickRows, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, tickRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js";
+import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
+import type { HarnessEvent } from "../events/events.js";
+import { eventsLogPath } from "../paths.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
@@ -35,15 +39,20 @@ export const HISTORY_MODEL_VALUE_ERROR = "history --model needs a model selector
 /** The missing-value error for a valueless or empty `--by`, exported for cli.ts's flag spec. */
 export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
 
-/** `tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>] [--result
- * <class>] [--model <selector>[,...]]`: print the last N completed ticks, newest first — or,
+/** How many trailing events `history -f` keeps: the seed read and the rolling buffer a finished
+ * run's start is paired from. */
+const HISTORY_FOLLOW_BUFFER_EVENTS = 2000;
+
+/** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>] [--grep <text>]
+ * [--result <class>] [--model <selector>[,...]]`: print the last N completed ticks, newest
+ * first — or,
  * with `--since`, the ticks of a bounded past window over the same record, the same shape
  * `logs --since` and `report --since` speak. `--grep` keeps rows whose rendered line matches,
  * `--result` narrows to the listed outcome classes (changes/none/problems, the dashboard History
  * filter's buckets) and `--model` keeps runs that started on the listed models; all compose
  * with --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
  * event log prints `no runs yet` and exits 0. */
-export async function cmdHistory(root: string, args: string[]): Promise<void> {
+export async function cmdHistory(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `run_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
   // both observing views answer substring questions the same way. The flag scan itself — the
@@ -61,8 +70,23 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // against.
   let rows: TickRow[];
   let covered = true;
+  const follow = rest.includes("-f") || rest.includes("--follow");
+  if (follow) {
+    if (rest.includes("--since"))
+      failRivalShapes("history --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
+    if (rest.includes("--summary"))
+      failRivalShapes("history --summary", "-f/--follow", "a summary tallies a bounded set; -f follows from now on");
+    if (rest.includes("--json"))
+      failRivalShapes("history --json", "-f/--follow", "--json prints one document; -f streams rows");
+  }
+  const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
-  if (sinceMs !== null) {
+  if (followTail !== null) {
+    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_TICKS) : HISTORY_DEFAULT_TICKS;
+    // The seed goes through readTickRows, which widens its window until it finds `limit` rows;
+    // the tail buffer only feeds the live follow.
+    rows = readTickRows(root, limit, parseRoleListScope(root, rest));
+  } else if (sinceMs !== null) {
     if (nRaw !== null) failRivalShapes("history --since", "-n", "a count and a window are rival shapes");
     const role = parseRoleListScope(root, rest);
     const windowed = readTickRowsSince(root, sinceMs, role);
@@ -126,6 +150,10 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     models = pieces;
     rows = tickRowsOnModels(rows, pieces);
   }
+  if (followTail !== null) {
+    await followHistory(root, rest, rows, followTail, (r) => rowKept(r, grepPattern, resultClasses, models), seams);
+    return;
+  }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
@@ -181,4 +209,45 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
   // the unproven case, whether the cause is rotation or idleness.
   if (!covered) say(SPARSE_WINDOW_NOTE);
+}
+
+/** The row filters `--grep`, `--result` and `--model` apply, as one predicate for followed rows. */
+function rowKept(row: TickRow, grep: string | null, classes: HistoryResultClass[] | null, models: string[] | null): boolean {
+  if (grep !== null && tickRowsMatchingGrep([row], grep).length === 0) return false;
+  if (classes !== null && !classes.includes(historyClass(row.result))) return false;
+  return models === null || tickRowsOnModels([row], models).length > 0;
+}
+
+/** `history -f`: print the seed rows oldest first, then one row per `run_end` as it lands. A run
+ * whose change waits to merge prints `queued` and no second line when the merge resolves. */
+async function followHistory(
+  root: string,
+  rest: string[],
+  seed: TickRow[],
+  tail: { events: HarnessEvent[]; coveredEnd: number },
+  keep: (row: TickRow) => boolean,
+  seams: FollowSeams,
+): Promise<void> {
+  const ordered = [...seed].reverse();
+  let widths = widestWidths(ordered);
+  if (ordered.length > 0) say(ordered.map((r) => renderRow(r, widths)).join("\n"));
+  const seen = new Set(seed.map((r) => `${r.role}#${r.run}`));
+  const buffer = [...tail.events];
+  const role = parseRoleListScope(root, rest);
+  await followUntilParentGone(eventsLogPath(root), tail.coveredEnd, (lines) => {
+    for (const line of lines.filter(Boolean)) {
+      const e = parseEventLine(line);
+      if (!e) continue;
+      buffer.push(e);
+      if (buffer.length > HISTORY_FOLLOW_BUFFER_EVENTS) buffer.splice(0, buffer.length - HISTORY_FOLLOW_BUFFER_EVENTS);
+      if (e.type !== "run_end") continue;
+      const row = tickRows(buffer, 1, role)[0];
+      if (!row) continue;
+      const key = `${row.role}#${row.run}`;
+      if (seen.has(key) || !keep(row)) continue;
+      seen.add(key);
+      widths = widenWidths(widths, widestWidths([row]));
+      say(renderRow(row, widths));
+    }
+  }, seams);
 }

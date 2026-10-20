@@ -92,14 +92,14 @@ function typeEmpty(type: string, pieces: string[]): string {
 
 /** Test seams for the follow's parent-death watch: they exist so a test can drive it without
  * reparenting a real process. */
-interface FollowSeams {
+export interface FollowSeams {
   ppid?: () => number;
   intervalMs?: number;
 }
 
 /** Follow `file` until Ctrl+C or until the process that started this one is gone (the shape of
  * a `logs -f` leaked to PPID 1 that polled for days). Resolves once the parent is gone. */
-function followUntilParentGone(
+export function followUntilParentGone(
   file: string,
   offset: number,
   onLines: (lines: string[]) => void,
