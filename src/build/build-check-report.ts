@@ -38,6 +38,12 @@ const ERROR_MESSAGE_LINE = /^\S*Error\b[^:]*:\s/;
  * detail ends the output, so it names the test the tail's message and stack belong to. */
 const FAILED_TEST_LINE = /^✖ (?!failing tests:)/;
 
+/** A stack frame inside Node's own runtime (the test runner, the task queue): the same in every
+ * failure and silent about the code under test. Matches `at fn (node:internal/…)` and a bare
+ * `at node:internal/…`; not frames in other built-in modules (`node:fs`, `node:async_hooks`) nor
+ * in project files. */
+const NODE_INTERNAL_FRAME = /^at\s(?:.*\()?node:internal\//;
+
 /** How many failing test titles parseFailingTests keeps; a list that long may be cut short. */
 export const FAILING_TESTS_MAX = 50;
 
@@ -65,9 +71,14 @@ export function parseFailingTests(output: string): string[] {
  * name the failure instead of a stack frame or an error property; likewise the failed test's
  * name line (FAILED_TEST_LINE) above it, so the headline says WHICH test — an assertion's
  * message alone (`Expected values to be strictly equal:`) names none, and a flake reported only
- * that way could not be traced (BUGS.md 2026-09-30). Twelve lines at most. */
+ * that way could not be traced (BUGS.md 2026-09-30). Frames NODE_INTERNAL_FRAME matches are dropped
+ * first so the window keeps more of the assertion's diff (output made only of them is kept as is);
+ * when the dropped frame is `at async Test.processPendingSubtests (…) {`, the property dump's
+ * opening `{` goes with it. Twelve lines at most. */
 export function clipBuildTail(output: string): string[] {
-  const lines = output.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !/^>\s/.test(l));
+  const meaningful = output.split("\n").map((l) => l.trim()).filter((l) => l !== "" && !/^>\s/.test(l));
+  const external = meaningful.filter((l) => !NODE_INTERNAL_FRAME.test(l));
+  const lines = external.length > 0 ? external : meaningful;
   const tail = lines.slice(-10);
   const cut = [...lines.slice(0, -10)].reverse();
   const message = cut.find((l) => ERROR_MESSAGE_LINE.test(l));
@@ -132,7 +143,10 @@ export function describeCheck(check: BuildCheck): string {
  * headline is failureHeadline's — the first line that is not a stack frame — not outputTail[0]: a
  * suite that dies on an unhandled rejection opens mid-stack, and naming the frame tells the author
  * where it broke, never what (BUGS.md 2026-09-19). One definition for every red that rejects a
- * change: the gate's pre-check, a batch's single-change red, and a single merge's in-lock check. */
+ * change: the gate's pre-check, a batch's single-change red, and a single merge's in-lock check.
+ * In the verified branch, tail lines the headline already carries are dropped: the headline
+ * itself, the test-name or marker line (duration removed) it opens with, and the message line it
+ * ends with. */
 export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcome): string[] {
   const tail = outcome.outputTail ?? [];
   // An unverified rejection already says what happened — the check never finished, the tree is
@@ -146,6 +160,14 @@ export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcom
   const headline = failureHeadline(tail);
   const what = describeCheck(check);
   return headline !== undefined
-    ? [`check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
+    ? [`check failed (${what}): ${headline}`, ...tail.filter((l) => !headlineCarries(headline, l))]
     : [`check failed (${what})`];
+}
+
+/** Whether a failureHeadline already says tail line `l`: equal to it, its name part (duration
+ * removed), or the message after its ` — `. */
+function headlineCarries(headline: string, l: string): boolean {
+  if (l === headline || headline.endsWith(` — ${l}`)) return true;
+  const bare = l.replace(/ \([\d.]+m?s\)$/, "");
+  return bare === headline || headline.startsWith(`${bare} — `);
 }

@@ -267,7 +267,9 @@ test("failureHeadline names the failed test even when the stack and assertion du
   ].join("\n");
   const tail = clipBuildTail(output);
   assert.equal(tail[0], "✖ the wake was restored (0.62ms)", "the name line is rescued above the window");
-  assert.equal(tail.length, 12, "the window plus the rescued name and message");
+  assert.equal(tail.length, 11, "the rescued name plus the window");
+  assert.ok(tail.includes("1 !== 0"), "the assertion's diff line survives the window");
+  assert.ok(!tail.some((l) => l.includes("node:internal/")), "no node:internal frame is kept");
   assert.equal(
     failureHeadline(tail),
     "✖ the wake was restored — AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
@@ -297,4 +299,40 @@ test("parseFailingTests lists each failed title once, durations stripped, in out
   assert.deepEqual(parseFailingTests("tsc: error TS2304"), []);
   const many = Array.from({ length: 80 }, (_, i) => `✖ t${i}`).join("\n");
   assert.equal(parseFailingTests(many).length, 50);
+});
+
+test("clipBuildTail drops node:internal frames but keeps project and other built-in frames", () => {
+  const output = [
+    "AssertionError [ERR_ASSERTION]: boom",
+    "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
+    "at Test.runInAsyncScope (node:async_hooks:226:14)",
+    "at Test.run (node:internal/test_runner/test:1397:25)",
+    "at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
+    "actual: 1,",
+  ].join("\n");
+  assert.deepEqual(clipBuildTail(output), [
+    "AssertionError [ERR_ASSERTION]: boom",
+    "at TestContext.<anonymous> (file:///w/dist/test/x.test.js:3:35)",
+    "at Test.runInAsyncScope (node:async_hooks:226:14)",
+    "actual: 1,",
+  ]);
+});
+
+test("clipBuildTail keeps an all-internal output rather than returning nothing", () => {
+  const lines = [
+    "at Test.run (node:internal/test_runner/test:1397:25)",
+    "at node:internal/process/task_queues:95:5",
+  ];
+  assert.deepEqual(clipBuildTail(lines.join("\n")), lines);
+});
+
+test("a red check's reasons do not repeat the test name or message the headline carries", () => {
+  const reasons = checkFailureReasons(
+    NPM_CHECK,
+    outcome({ outputTail: ["✖ t (1.5ms)", "AssertionError [ERR_ASSERTION]: boom", "actual: 1,"] }),
+  );
+  assert.deepEqual(reasons, [
+    "check failed (`npm run test`): ✖ t — AssertionError [ERR_ASSERTION]: boom",
+    "actual: 1,",
+  ]);
 });
