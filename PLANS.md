@@ -720,38 +720,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### The TUI's History trail steps back through older runs with Ctrl+P, so the terminal can read any recent run's trail, not only the newest (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight dashboard and CLI history plans touch src/gui/, src/ui/gui/, src/history/history.ts, src/cli/ and src/tick/, none of the files below; the blocked plain-terms parts rename identifiers in src/ui/tui/ later, which is only a rebase. Touches src/ui/tui/tui-pane-history.ts src/ui/tui/tui-panes.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts test/tui-keys.test.ts test/tui-frame.test.ts docs/cli.md docs/how-it-works.md)
-
-**Goal.** On the TUI History pane, `Ctrl+N` swaps the rows for a run's event trail, but only ever for the newest completed run in the pane's scope (`loadTrail` in src/ui/tui/tui-pane-history.ts reads `readTickRows(session.root, 1, historyRole)[0]`). To read any older run, the operator has to leave the TUI and type `tumwater history <role> <n>`, or open the dashboard drill-down. This plan lets `Ctrl+P` step the on-screen trail back one run at a time.
-
-**Decided scope (no open question).**
-- `Ctrl+P` works only while the History pane shows a trail (`trailMode`). It replaces the trail with the next older completed run in the same scope as `Ctrl+N`: the exact role `Ctrl+G` set (`historyRole`), else the whole team. The trail is rendered the same way, through `readTickDetail`/`renderTickDetail`, with the async stat footer.
-- Steps go through `readTickRows(session.root, trailIndex + 2, historyRole)`, whose rows are newest first, and take row `trailIndex + 1`. When there is no older row, or the next index would reach `HISTORY_MAX_TICKS` (src/history/history-data.ts), the trail wraps back to the newest run (index 0) and flashes `oldest run reached; back to the newest`. This wraps like the pane's other cycle keys (`Ctrl+G`, `Ctrl+S`, `Ctrl+O`).
-- Stepping ignores the pane's window (`Ctrl+S`), outcome filter (`Ctrl+O`) and search (`/`), as `Ctrl+N` already does. One rule covers both keys. Making the trail follow the filters is a separate change.
-- No "newer" key. `Ctrl+N` returns to the rows, and pressing `Ctrl+N` again reopens the newest run. Every nearby Ctrl key already means something else on some view (`Ctrl+F` pauses the team, `Ctrl+B` edits the budget), and wrap-around reaches the newest run anyway.
-- `Ctrl+P` with the trail off, or on any other view, keeps today's behavior. The router returns false, so the Activity provider-caps editor (view 0) and the Transcript pause editor (role views), which both run in the editors ahead of the panes, are unaffected.
-
-**Approach.**
-- **src/ui/tui/tui-pane-history.ts** (`createHistoryPane`):
-  - Add `let trailIndex = 0`, the 0-based newest-first position of the shown run, documented beside `trailMode`.
-  - Generalize `loadTrail(onEmpty)` to `loadTrail(onEmpty, index = 0)`. It reads `readTickRows(session.root, index + 1, historyRole)[index]`. When that row is `undefined`, it behaves as today, which is the only case at index 0. On success it sets `trailIndex = index`. Keep its `trailGen++` and try/catch.
-  - `refreshTrail` (the Ctrl+G and roster-drop path), the Ctrl+N toggle in both directions and `reset()` all set or return to index 0, so a scope change still shows the new scope's newest run.
-  - Add a `key.ctrl && key.name === "p"` arm. It returns false unless `session.view === session.roleIds.length + 4` and `trailMode`. When `!promptLineFree(ctx.es)`, it consumes the key with a render, as the Ctrl+N arm does. Otherwise it computes `next = trailIndex + 1`. When `next < HISTORY_MAX_TICKS` and `loadTrail(null, next)` returns true, the step is done. Otherwise it calls `loadTrail(null, 0)` and flashes the wrap message. Either way it sets `session.paneScroll = 0` and requests a render.
-  - Expose `trailIndex` in `state()`. Update the module and `trailMode` doc comments to name Ctrl+P.
-- **src/ui/tui/tui-panes.ts** `handleKey`: add `if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;` beside the Ctrl+S/Ctrl+Y history routes.
-- **src/ui/tui/tui-keys.ts**: add `trailIndex: number` to the state type beside `trailMode`/`trailCache`, with a doc comment. **src/ui/tui/tui-panes.ts** copies it into the aggregated state as `trailIndex: hist.trailIndex`, beside `trailCache: hist.trailCache`.
-- **src/ui/tui/tui-frame.ts**: in the history hint, when `view.trail` is true, insert `["Ctrl+P", "older run"]` after the Ctrl+N pair.
-- **docs/cli.md**: add a TUI-keys row: `Ctrl+P` | History (on a run trail) | the next older run's trail in the pane's scope, wrapping to the newest after the oldest. **docs/how-it-works.md**: append a sentence after "`Ctrl+N` again returns to the rows." that says the same.
-
-**Acceptance criteria.**
-- test/tui-keys.test.ts, new tests beside "Ctrl+G while a trail is shown re-reads the new scope's newest tick":
-  - With clean runs 1 and 2 (run 2 newest) and a qa run between them, Ctrl+N shows clean 2. With the pane scoped to clean, Ctrl+P shows `renderTickDetail(readTickDetail(root, "clean", 1)!)` and `trailIndex` is 1. A second Ctrl+P wraps to clean 2, `trailIndex` is 0, and the flash matches `/oldest run reached/`. Team-scoped, Ctrl+P steps from clean 2 to qa's run.
-  - Ctrl+P with the trail off on History leaves `trailMode` false and `trailCache` null. Ctrl+N after a Ctrl+P (off, then on again) shows the newest run with `trailIndex` 0. Ctrl+G after a Ctrl+P shows the new scope's newest run.
-  - A late stat from the run that Ctrl+P left does not overwrite the stepped-to trail, with the `resolves` pattern of "a late stat never overwrites a trail that was exited or re-read".
-  - The existing test "Ctrl+P opens the provider-caps editor on Activity and the pause editor on a role's Transcript" still passes unchanged.
-- test/tui-frame.test.ts: the history hint contains `Ctrl+P older run` with `trail: true` and does not contain it with `trail: false`.
-- `npm run test:gate` passes.
-
 ### Logs role filter, part 1/2: `tumwater logs --transcript <id> [--prompt]` becomes the agent-transcript view, freeing `logs --role` for the event feed (planned 2026-10-19 by the plan role, from the user's 2026-10-19 answer in QUESTIONS.md "What flag should scope `tumwater logs`' event feed to some roles?" (option 2); no dependency on any Planned entry. Part 2/2 below gives `--role` its new meaning. The in-flight `history <role> <n> --transcript` plan adds a boolean `TRANSCRIPT_FLAG` to src/cli/cli-flag-specs.ts for `history`; this part's spec is a separate valued constant, so whichever lands second rebases and keeps both. Touches src/cli.ts src/cli/cli-flag-specs.ts src/cli/cli-args.ts src/cli/log-commands.ts src/cli/help.ts docs/cli.md, comment-only edits in src/ui/transcript-tail.ts src/gui/gui-endpoints.ts src/config/config-field-checks.ts src/operator/operator-commands.ts, and the tests listed below)
 
 **Goal.** The user chose to make `tumwater logs --role` filter the event feed and to move the transcript view to its own flag. This part does the move: `tumwater logs --transcript <id> [-f] [-n N] [--prompt]` prints and follows one role's agent transcript exactly as `logs --role <id>` does today. After this part, `logs` no longer accepts `--role`; the `rejectUnknownArgs` gate reports it as an unknown flag. Part 2/2 then adds `--role` back as the event-feed filter. Each part merges and works on its own.

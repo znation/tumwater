@@ -187,6 +187,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The History pane names its tick-trail toggle in the Ctrl+N hint, the row list or the trail.
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N run trail/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+P older run/);
+  assert.doesNotMatch(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+P/);
   // The History pane names its Summary toggle in the Ctrl+Y hint, the summary or the rows.
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: null }), /Ctrl\+Y summary/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false, summary: "role" }), /Ctrl\+Y by model/);

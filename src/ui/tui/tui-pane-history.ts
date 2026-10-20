@@ -2,6 +2,7 @@
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import {
   HISTORY_DEFAULT_TICKS,
+  HISTORY_MAX_TICKS,
   historyClass,
   readTickRows,
   readTickRowsSince,
@@ -22,8 +23,9 @@ import { nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPane
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
  * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
- * and the Ctrl+N completed-tick trail, each with its cache and body window. Split out of the
- * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and
+ * and the Ctrl+N completed-tick trail (Ctrl+P steps it to older runs), each with its cache and
+ * body window. Split out of the pane-navigation monolith; it owns the pane's
+ * window/result/scope/search/trail state and
  * the arms that touch them. */
 export function createHistoryPane(
   session: TuiPaneSession,
@@ -54,7 +56,11 @@ export function createHistoryPane(
   // trail (renderTickDetail over readTickDetail) — the same text `tumwater tick --last` and
   // the dashboard's History drill-down serve. Session-only like the other pane snapshots:
   // computed once on entry and only re-windowed each frame.
+  // Ctrl+P steps the trail back one run: trailIndex is the shown run's 0-based newest-first
+  // position in the pane's scope (0 = newest), reset to 0 whenever the trail opens, closes or
+  // follows a scope change.
   let trailMode = false;
+  let trailIndex = 0;
   let trailCache: string | null = null;
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
 
@@ -160,15 +166,16 @@ export function createHistoryPane(
    * into trailCache, appending the tick commit's per-file stat once it resolves — the reader
    * both the initial Ctrl+N toggle and the scope-change refreshes share, so the trail cannot
    * keep showing a retired role's tick after Ctrl+G or a roster change drops the History scope.
-   * Returns true when a tick actually rendered (the caller turns the trail on); a scope holding
-   * none leaves trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
+   * `index` is the 0-based newest-first position to read (Ctrl+P steps it). Returns true when a
+   * tick actually rendered (the caller turns the trail on); a scope holding none leaves
+   * trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
    * "no completed runs to inspect" flash) so the user learns why nothing changed. The reader
    * throw is caught and flashed rather than escaping a key or sync path — the guard the two
    * original readers each carried. */
-  const loadTrail = (onEmpty: (() => void) | null): boolean => {
+  const loadTrail = (onEmpty: (() => void) | null, index = 0): boolean => {
     trailGen++;
     try {
-      const row = readTickRows(session.root, 1, historyRole)[0];
+      const row = readTickRows(session.root, index + 1, historyRole)[index];
       if (row === undefined) {
         if (onEmpty !== null) onEmpty();
         return false;
@@ -176,6 +183,7 @@ export function createHistoryPane(
       const detail = readTickDetail(session.root, row.role, row.run);
       trailCache = detail === null ? null : renderTickDetail(detail);
       if (detail !== null) loadTrailStat(detail);
+      trailIndex = index;
       return true;
     } catch (err) {
       trailCache = null;
@@ -229,6 +237,7 @@ export function createHistoryPane(
         trailGen++;
         trailMode = false;
         trailCache = null;
+        trailIndex = 0;
       } else {
         // Toggle the trail on: read the pane-scoped newest completed tick. A scope holding
         // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a tick turns
@@ -236,6 +245,22 @@ export function createHistoryPane(
         if (loadTrail(() => session.flashMessage("no completed runs to inspect"))) trailMode = true;
       }
       session.paneScroll = 0; // either way the pane starts at its head
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "p") {
+      // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
+      // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the
+      // Activity caps and Transcript pause editors' routing.
+      if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
+      if (promptLineFree(ctx.es)) {
+        const next = trailIndex + 1;
+        if (!(next < HISTORY_MAX_TICKS && loadTrail(null, next))) {
+          loadTrail(null, 0);
+          session.flashMessage("oldest run reached; back to the newest");
+        }
+        session.paneScroll = 0;
+      }
       session.requestRender();
       return true;
     }
@@ -313,6 +338,7 @@ export function createHistoryPane(
       trailGen++;
       trailMode = false;
       trailCache = null;
+      trailIndex = 0;
     },
     dropScopes(roles) {
       // The same drop for History's exact-role scope: a retired or renamed role must not keep
@@ -335,6 +361,7 @@ export function createHistoryPane(
         historyGrep,
         historySummary,
         trailMode,
+        trailIndex,
         trailCache,
       };
     },

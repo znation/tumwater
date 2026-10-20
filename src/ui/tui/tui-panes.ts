@@ -138,6 +138,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return report.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "o") {
       // The Activity type cycle is routed first on its own view (0); on the Health view the
@@ -258,6 +259,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       historyGrep: hist.historyGrep,
       historySummary: hist.historySummary,
       trailMode: hist.trailMode,
+      trailIndex: hist.trailIndex,
       trailCache: hist.trailCache,
       selectedQueued: que.selectedQueued,
       queuedRows: que.queuedRows,

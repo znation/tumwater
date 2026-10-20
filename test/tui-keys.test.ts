@@ -987,6 +987,83 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest tick of any role");
 });
 
+function steppingRoot(): string {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "clean one" },
+    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 },
+    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 },
+    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" },
+  ]);
+  return root;
+}
+
+function openSteppingHistory(keys: ReturnType<typeof makeKeys>["keys"]): void {
+  keys.syncSnapshot(0, false, ["clean", "qa"]);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+}
+
+test("Ctrl+P steps the trail back through the scope's runs and wraps to the newest", () => {
+  const root = steppingRoot();
+  const { keys } = makeKeys(root, () => 0);
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → clean
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailIndex, 1);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(keys.state().trailIndex, 0);
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+  assert.match(keys.state().flash!, /oldest run reached/);
+});
+
+test("Ctrl+P on a team-scoped trail steps from the newest run to the next one", () => {
+  const { keys } = makeKeys(steppingRoot(), () => 0);
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.match(keys.state().trailCache ?? "", /qa work/);
+});
+
+test("Ctrl+P with the trail off does nothing, and Ctrl+N or Ctrl+G after it start from the newest", () => {
+  const { keys } = makeKeys(steppingRoot(), () => 0);
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(keys.state().trailMode, false);
+  assert.equal(keys.state().trailCache, null);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // off
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // on again
+  assert.equal(keys.state().trailIndex, 0);
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  keys.handleKey(undefined, { ctrl: true, name: "g" }); // team → clean
+  assert.equal(keys.state().trailIndex, 0);
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+});
+
+test("a late stat from the run Ctrl+P left does not overwrite the stepped-to trail", async () => {
+  const root = steppingRoot();
+  const resolves: Array<(s: string) => void> = [];
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>((r) => resolves.push(r)));
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  const stepped = keys.state().trailCache;
+  resolves[0]!("stale");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().trailCache, stepped);
+  resolves[1]!("fresh");
+  await new Promise((r) => setImmediate(r));
+  assert.match(keys.state().trailCache ?? "", /fresh$/);
+});
+
 test("a roster change that retires the trail's scope re-reads it from the team", () => {
   const root = makeRoot();
   writeEvents(root, [

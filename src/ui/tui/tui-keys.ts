@@ -155,6 +155,9 @@ interface TuiKeysState {
   /** Whether the History pane shows one completed tick's full event trail (Ctrl+N) instead
    * of the row list — true only on the History view while its pane holds a trail. */
   trailMode: boolean;
+  /** The shown trail's 0-based newest-first position in the pane's scope (Ctrl+P steps it
+   * older); 0 is the newest run. */
+  trailIndex: number;
   /** The trail view's rendered TickDetail text (renderTickDetail), computed once on Ctrl+N
    * entry and windowed by paneBody; null while the rows are shown or when the newest
    * completed tick could not be read. */
