@@ -484,4 +484,24 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/event-format-team.test.ts: in "formatEvent renders the budget transition events plainly with spend and cap", a `budget_paused` with `topRoles: [{ role: "feature", spentUsd: 40 }, { role: "plan", spentUsd: 10.12 }]` renders `budget paused — $50.12 of $50.00 daily cost reached (most by feature $40.00, plan $10.12); roles start no new runs …`. A `budget_fallback` with the same list renders `… daily cost reached (most by feature $40.00, plan $10.12); roles continue on …`. The existing assertions without `topRoles` still match unchanged, and "formatEvent names the top spenders on a budget warning and ignores malformed entries" still passes untouched.
 - `npm run test:gate` passes.
 
+### A per-run provider-failure warning names the provider/model it failed on, so a mixed-provider team can tell which backend is down from the feed alone (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
+
+**Goal.** On 2026-10-20 the claude window fallback (`fallback_switched`, 06:11 UTC) moved every tier to `qwenrunner/qwen3.8-27b`. That endpoint was unreachable, and from 06:11 to 07:20 UTC the feed carried 14 `run_end` "Connection error." failures and 26 warnings reading only `provider backend failure (connection error) — the transient retry does not cover this kind; the team-wide wait watches for a storm`. Claude, huggingface and qwenrunner seams were all in use that week, and the per-run warnings in src/runner/runner-pi.ts name none of them. The team-wide `rate_limit_hold` does carry `provider`, but it forms only on a storm. A single role's failure, or a retry line ("provider rate-limited the request (429 …) — retrying the agent run once"), leaves the operator guessing which backend misbehaved. `runWithTransientRetry` already knows the seam: `opts.config` is the config this agent run actually ran on (a fallback pair included; see its `seamHoldKey(opts.config)` comment). So naming it costs one string.
+
+**Approach.**
+- In `runWithTransientRetry` (src/runner/runner-pi.ts), compute once `const on = opts.config.model !== undefined ? \` on ${seamPairName(opts.config)}\` : "";`. With no model (pi's own saved default), `seamPairName` would print `?/?`, so the label is omitted rather than guessed.
+- Insert `on` into each retry-branch warning right after its leading phrase and parenthetical, before the ` — ` separator. The results: `pi crashed on malformed JSON (<detail>)${on} — resuming the session once`, `provider rate-limited the request (429…)${on} — retrying the agent run once`, `provider severed the in-flight stream (terminated)${on} — …`, `provider request timed out after accepting the connection${on} — …`, `model server timed out an idle predict stream (e.g. machine sleep)${on} — …`.
+- `warnBackendKindFloor(run)` takes the same label as a second parameter (`warnBackendKindFloor(run: PiRunResult, on: string)`), passed at both call sites. Its text becomes `provider backend failure (${backendKindPhrase(run.backendKind)})${on} — the transient retry does not cover this kind; …`. The retry runs on the same `opts` (`runPi({ ...opts, continueSession: true })`), so one label serves both attempts.
+- Do not touch the `fallbackClone` warning (it names its model already), the 429/backend folds, or any event shape. These are `warning` messages only.
+- Update the `warnBackendKindFloor` docblock to say the line names the seam's pair.
+
+**Files touched.** src/runner/runner-pi.ts, test/runner-pi-retry.test.ts.
+
+**Acceptance criteria.**
+- Existing assertions keep matching with no edit, because the label lands after the substrings they test. That covers test/runner-pi-retry.test.ts's `/provider backend failure \(connection error\)/` and `/rate-limited the request \(429, retry after 3s\)/`, test/runner-2.test.ts's pi-crash regex, and the `retrying the agent run once` substring checks in test/runner-4.test.ts and test/runner-transient-retry.test.ts. `defaultConfig()` sets no model, so those tests' warnings carry no label.
+- New test in test/runner-pi-retry.test.ts, "the backend-kind floor warning names the seam's provider/model pair". A `cfg` with `agent = "pi"`, `provider = "omlx"`, `model = "qwen"` (the shape of "a 429 agent run folds its seam hold key …") and a first run of `errorLine("Connection error.")` produce exactly one warning that starts with `provider backend failure (connection error) on omlx/qwen — `.
+- New test in the same file, "a retry warning names the seam's provider/model pair": the same cfg with a 429 first run (retry after 3s) yields `warns[0]` matching `/^provider rate-limited the request \(429, retry after 3s\) on omlx\/qwen — retrying the agent run once$/`.
+- New assertion: "a backend-kind failure the retry does not cover warns once and earns no retry" (default config) also asserts `!warns[0]!.includes(" on ")`, so no `?/?` label appears.
+- `npm run test:gate` passes.
+
 ## Done
