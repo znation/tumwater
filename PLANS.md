@@ -809,4 +809,36 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing `--transcript` test passes unchanged, and the new test passes.
 - `npm run test:gate` passes.
 
+### `tumwater history -f --json` streams one compact JSON row per line, the scriptable twin of `logs -f --json` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Touches src/history/history.ts src/cli/help.ts docs/cli.md test/history-follow.test.ts)
+
+**Goal.** `tumwater history -f` prints a live feed of finished runs, but only as padded table rows: `history -f --json` currently fails as rival shapes ("--json prints one document; -f streams rows"). `logs -f --json` already streams NDJSON (one `sayJsonLine` per event), so a script that wants each finished run's result, model, duration, tokens and cost has to rebuild them from raw `run_start`/`run_end` events itself. Make `history -f --json` print each row as one compact JSON object per line. Each object is the `TickRow` (src/history/history-data.ts) that `history --json` puts in its `{ rows }` array, with `ts`, `tokens` and `costUsd` kept raw. A watcher can then `tumwater history -f --json --result refused,problems | while read -r row; …` without parsing the table.
+
+**Approach (src/history/history.ts).**
+- In `cmdHistory`'s `if (follow)` block, delete the `failRivalShapes("history --json", "-f/--follow", …)` line. The `--since` and `--summary` rivals stay. `--by` still needs `--summary`, so `-f --by` fails as before.
+- Add a `json: boolean` parameter to `followHistory` and pass `rest.includes("--json")` from the call site.
+- In `followHistory`, with `json` set:
+  - Print the seed oldest first as `for (const r of ordered) sayJsonLine(r)` instead of the joined `renderRow` block.
+  - Print each live row as `sayJsonLine(row)` instead of `say(renderRow(row, widths))`. Skip the `widths` bookkeeping in JSON mode.
+  - Leave the `seen` dedupe, the `keep` filter (`--grep`/`--result`/`--model`), the `--role` scope and the `followUntilParentGone` ending exactly as they are.
+- Import `sayJsonLine` from `../cli/cli-output.js`.
+- An empty seed prints nothing in JSON mode, the same as the table follow. It never prints prose and never prints a `{"rows":[]}` document.
+- Update `followHistory`'s doc comment to say that with `--json` each row is one `sayJsonLine` object.
+- `--grep` keeps matching against the rendered row text (`tickRowsMatchingGrep`), as it does in the one-shot `history --json`.
+
+**Help and docs.**
+- src/cli/help.ts, `history` listing stanza: change `(not with --since, --summary or --json);` to `(not with --since or --summary); with --json, one compact JSON row per line (the --json row shape), like logs -f --json;`. Keep the stanza's line breaks in the existing column style.
+- docs/cli.md, the "Watch run history" row: change `(not with \`--since\`, \`--summary\` or \`--json\`)` to `(not with \`--since\` or \`--summary\`; with \`--json\` each row is one compact JSON object per line, like \`logs -f --json\`)`.
+- Completion derives from HELP, and `--json` is already a `history` flag, so src/cli/completion.ts needs no change.
+
+**Tests (test/history-follow.test.ts).**
+- "history -f fails with its rival shapes": drop `["--json"]` from the rival list. The `--since` and `--summary` asserts stay.
+- New test "history -f --json streams one JSON row per line, seed oldest first". Call `follow(["-f", "--json"], seed, [start("clean", 3, 5, "acme/m2"), end("clean", 3, 6, "changed")])`. Split the output on newlines and `JSON.parse` every line. Assert three objects in `role`/`run` order `clean#1`, `feature#2`, `clean#3`. Assert the third has `model === "acme/m2"` and a numeric `ts`.
+- New test "history -f --json applies --result to followed rows". Reuse the `more` events from the --role/--result test with `["--result", "merged", "-f", "--json"]`. Assert that the parsed runs include 7 and exclude 6.
+
+**Acceptance criteria.**
+- `tumwater history -f --json` exits 0 and prints each seed row, then each newly finished run, as one `JSON.parse`-able line. The keys are those of a `history --json` row.
+- `--role`, `--result`, `--model`, `--grep` and `-n` compose with `-f --json` exactly as they do with `-f`.
+- `history -f --since 1h` and `history -f --summary` still fail as rival shapes. `history --json` without `-f` still prints the indented `{ rows }` document unchanged.
+- `npm run test:gate` passes.
+
 ## Done
