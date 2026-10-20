@@ -2617,3 +2617,50 @@ branch and merge ref in place, and `previewRetire` leaves a paused marker in pla
 
 **Pinned by.** `test/retire.test.ts` — "retire --dry-run previews the removal and changes nothing"
 and "previewRetire lists a paused marker and leaves it in place".
+
+## Prompt submission: a prompt is capped, gated and queued in one step, or nothing is queued
+
+`src/inbox/inbox-submit.ts` is the one submit pipeline the TUI, GUI and CLI share: the length cap,
+the image gate and the enqueue.
+
+### INV-AS1: an over-cap prompt is refused before anything is queued or logged
+
+**Guarantee.** A prompt over the cap is refused before anything is queued or logged. The cap
+applies to the composed text (body plus image reference lines), and an over-cap composition leaves
+no image files behind. The error names the target role's run.
+
+**Binds.** `src/inbox/inbox-submit.ts` (`promptLengthProblem`, `submitRolePrompt`,
+`submitPromptWithImages`).
+
+**Pinned by.** `test/inbox-submit.test.ts` — "submitPrompt rejects an over-long prompt before
+anything is queued or logged", "a role prompt's over-cap error names the target role's run, not the
+director's", "the director prompt length cap applies to role prompts too" and "an image-carrying
+prompt is capped on its composed text, not its body alone".
+
+### INV-AS2: an image no configured model can read, or a malformed image, is refused at submit
+
+**Guarantee.** An image no configured model can read is refused at submit. A reroute tier accepts
+it, with a notice, and a probe-failed pi claim reads as text-only. A malformed image is refused
+before the role's inbox directory is created.
+
+**Binds.** `src/inbox/inbox-submit.ts` (`imagePromptGuidance`, `submitRolePrompt`).
+
+**Pinned by.** `test/inbox-submit.test.ts` — "image prompts are refused when no configured model
+reads images, accepted when a tier reroutes", "imagePromptGuidance returns a refusal or a reroute
+notice, and nothing when the role reads images" and "imagePromptGuidance treats a probe-failed pi
+claim as text-only, matching the surfaces"; `test/inbox-submit-guards.test.ts` — "a malformed image
+is refused before the role's inbox is touched".
+
+### INV-AS3: the queue write is the durable effect, and notBeforeMs defers a prompt on both paths
+
+**Guarantee.** An unwritable events feed does not fail a submit on either the text or the image
+path. `notBeforeMs` defers the prompt on both paths: it is listed but not deliverable until the
+time passes.
+
+**Binds.** `src/inbox/inbox-submit.ts` (`submitRolePrompt`, `submitPromptWithImages`).
+
+**Pinned by.** `test/inbox-event-best-effort.test.ts` — "submitPrompt queues the prompt and reports
+success when the events feed is unwritable" and "submitRolePrompt's image path queues the prompt
+when the events feed is unwritable"; `test/status-data-inbox.test.ts` — "snapshot's director inbox
+deliverability advances with its pinned clock" (text path); `test/inbox-submit-guards.test.ts` — "an
+image-carrying prompt submitted with notBeforeMs is queued deferred" (image path).
