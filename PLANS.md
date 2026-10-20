@@ -552,4 +552,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/failure-render.test.ts. The table holding `[{ type: "team_resumed" }, "team resumed — roles run again"]` gains rows for `{ type: "team_resumed", expired: true }` and `{ type: "role_resumed", role: "docs", expired: true }`, each ending in `(its timed pause ran out)`.
 - `npm run test:gate` passes.
 
+### A `main_red_hold` names the failing tests it lets past, so the notify page and `logs` say which test is red, not only how many (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/baseline/main-red.ts src/events/events.ts docs/config.md test/main-red.test.ts)
+
+**Goal.** Since Fast merge part 8/14, a red main whose check names its failing tests logs `main_red_hold` with the message `main <sha> is red (<n> failing tests); changes that add no new failures still merge` (built in `warnMainRedOnce`, src/baseline/main-red.ts). The event carries only `sha`, `script` and `message`. The live log's newest two holds both read `(1 failing tests)`: the count is mis-pluralized, and neither the notify page nor `logs` says which test is failing. The names are already in hand, since `namedFailures(red)` computes them for the heal key. This plan puts them on the event and the first one in the message. The no-names branch (`redMainMessage(red, "code merges blocked until main is green")`) is unchanged.
+
+**Approach.**
+- **src/baseline/main-red.ts, `warnMainRedOnce`.**
+  - When `named.length > 0`, the event gains `failingTests: named`. `namedFailures` already caps the list below `FAILING_TESTS_MAX` (50). With no named failures the event has no `failingTests` key.
+  - The named-branch message becomes `` `${mainRedPhrase(red.sha)} (${plural(named.length, "failing test")}: ${first}${more}); changes that add no new failures still merge` ``. `first` is `clipToWidth(named[0], 80)` (src/text/text-width.ts). `more` is `` `, +${named.length - 1} more` `` when there is more than one name, else empty. `plural` comes from src/text/phrases.ts, which main-red.ts already imports `mainRedPhrase` from. Example: `main 1645a5c0 is red (1 failing test: startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it); changes that add no new failures still merge`.
+  - The heal-key logic and the once-per-SHA guard stay as they are.
+- **src/events/event-format.ts.** No change: `case "main_red_hold"` renders `message`, so `logs`, the dashboards and the notify line pick up the new wording.
+- **src/events/events.ts.** Extend the `main_red_hold` union comment: it carries `failingTests` (the named failures, fewer than `FAILING_TESTS_MAX`) when the red names them, and its message then names the first one. Events logged before this change carry no `failingTests`.
+- **docs/config.md.** Fix the `main_red_hold` row in the notify event table. It says every code role is held until a fix merges, which has been false for a red that names its failing tests since Fast merge part 8/14. New text: "Main's own check is failing. When the check names its failing tests, the message names the first and roles keep working on changes that add no new failures; otherwise every code role is held until a fix merges."
+
+**Out of scope.** Listing every name in the message: the event's `failingTests` carries the full list. The failure digest, the doctor, and `main_check` events.
+
+**Acceptance criteria.**
+- test/main-red.test.ts, "mainRedGate lets a role run on a red main that names its failing tests, once per failing set". Replace the `(2 failing tests); …` substring check with an assertion that the message contains `(2 failing tests: known-red-alpha, +1 more); changes that add no new failures still merge`. Also assert the hold's `failingTests` deep-equals `["known-red-alpha", "known-red-beta"]`.
+- test/main-red.test.ts. Add a test with one named failure (script `echo '✖ known-red-alpha (1.2ms)'; exit 1`). Its message contains `(1 failing test: known-red-alpha); changes that add no new failures still merge` and does not contain `failing tests`.
+- test/main-red.test.ts. Add a test, or an assertion in an existing red-with-no-named-tests test, that the hold logged by the unnamed branch has no `failingTests` key and its message still ends `code merges blocked until main is green`.
+- `npm run test:gate` passes.
+
 ## Done
