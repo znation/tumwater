@@ -22,7 +22,7 @@ import {
 
 test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
   // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed
-  // swap — inside the 12 h window the team keeps ticking on the stale build instead of holding
+  // swap — inside the cooldown window the team keeps ticking on the stale build instead of holding
   // for another drain (BUGS.md).
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);

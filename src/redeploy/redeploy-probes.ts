@@ -46,7 +46,7 @@ export class PrewarmProbes {
 
   /** Run the deferred head's green check, then its staged compile, once per SHA — the same
    * effects the episode itself runs, so their cost lands inside the dead window instead of
-   * stretching it; the 12 h rate limit keeps protecting against churn, and this keeps it from
+   * stretching it; the restart rate limit keeps protecting against churn, and this keeps it from
    * also idling away verification work a known-stale build owes. */
   prewarm(head: string, pending: boolean): void {
     if (pending) return;

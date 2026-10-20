@@ -308,36 +308,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Self-redeploy's restart cooldown drops from 12 h to 4 h, so fixes merged on main reach the running team the same working day (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/redeploy/redeploy-policy.ts, src/redeploy/redeployer.ts, src/redeploy/redeploy-probes.ts, docs/how-it-works.md, test/redeployer.test.ts, test/redeploy-prewarm.test.ts and test/redeploy-wiring.test.ts)
-
-**Goal.** `RESTART_COOLDOWN_MS` (src/redeploy/redeploy-policy.ts) allows at most one completed auto-restart per 12 h. It was set for BUGS.md 2026-09-11, when a drain's measured p50 was 46 min and its p75 82 min, so back-to-back drains halted the team. Drains are now short. The `restart` events' `finishedMs` for the last eight restarts (2026-10-17T17:51Z to 2026-10-20T12:42Z) were 2 s, 487 s, 835 s, 1562 s, 1596 s, 385 s, 363 s and 44 s. That is a median of about 7 min, and only one of them aborted runs (two, on 2026-10-19). The 12 h wait now costs more than the drains it prevents. On 2026-10-20 the team ran build 9a8ff490 (05:40 PDT) from 12:42Z. Two fixes that landed after it waited for the next restart, allowed only at 2026-10-21T00:42Z:
-- 36d70ba86 (06:15 PDT), "Stand down a primary whose eligible entries siblings all hold". Until it ran, the primary `feature` runner kept paying for model runs that could only end in nothing-to-do. There were 58 `run_end` `no_change` results on `feature` that day, mostly 3–10 s runs started on a `main moved` wake or right after its own claim was released.
-- 5aed15103 (05:56 PDT), "Merge PLANS.md, BUGS.md and QUESTIONS.md conflicts entry by entry". Until it ran, 23 `conflict_handback` events that day named PLANS.md as the only conflicted file. `git merge-file --diff3` reproduces the conflict for each of the seven sampled.
-
-Each self-check extension merged that day also waits up to 12 h before it can stop a rejection. A 4 h cooldown allows at most six restarts a day. At the median drain, that holds new runs for about 42 min a day, against about 14 min today. In return, a merged fix runs within 4 h instead of within 12 h.
-
-**Approach.**
-- src/redeploy/redeploy-policy.ts: set `RESTART_COOLDOWN_MS = 4 * 60 * 60_000`. Rewrite its doc comment: keep the 2026-09-11 reason, then add the 2026-10-20 re-derivation with the drain figures above. Add `export const RESTART_COOLDOWN_HOURS = RESTART_COOLDOWN_MS / 3_600_000;` beside it, with a one-line doc comment modelled on `RESTART_URGENT_COOLDOWN_MIN`'s: the one home of the ms→h division the operator-facing warning uses. In the `RESTART_URGENT_COOLDOWN_MS` doc comment and in the red-build doc comment that names "the 12 h deferral", say "the ordinary cooldown" instead of "12 h".
-- src/redeploy/redeployer.ts: in `poll`'s cooldown warning, replace the literal `" (at most one completed restart per 12 h)"` with `` ` (at most one completed restart per ${RESTART_COOLDOWN_HOURS} h)` `` and import the constant beside `RESTART_COOLDOWN_MS`. Change the three comments that say "12 h": the `urgentLapseWarnedFor` doc, the `effectiveCooldownUntil` doc, and the comment above the urgent-lapse warning. Each should say "the ordinary cooldown" or "the announced deadline" in place of the hour count.
-- src/redeploy/redeploy-probes.ts: in `prewarm`'s doc comment, "the 12 h rate limit" becomes "the restart rate limit".
-- docs/how-it-works.md: in the self-redeploy paragraph, "at most once every 12 hours" becomes "at most once every 4 hours", and "the 12-hour clock" becomes "the 4-hour clock".
-- Tests. The timing assertions already derive from `RESTART_COOLDOWN_MS`, and every hard-coded offset in test/redeployer.test.ts and test/redeploy-prewarm.test.ts is 1 h or 2 h, which stays inside a 4 h cooldown. Do not change any offset. In test/redeployer.test.ts:
-  - Change the two `assert.match(..., /per 12 h/)` to `/per 4 h/`.
-  - Retitle "a red RUNNING build cuts the cooldown to the urgent window: the episode starts minutes, not 12 h, after the swap" so that it ends "…starts minutes, not the ordinary cooldown, after the swap".
-  - Change the present-tense comments and assertion messages that say "12 h" (the waive-the-cooldown comment, "the urgent lapse starts the episode — not 12 h later", "the ordinary 12 h deadline stands", "keeps the full 12 h cooldown", "still inside the ordinary 12 h cooldown", "skips the 12 h cooldown", "its announced 12 h deadline") to say "the ordinary cooldown" or "its announced deadline".
-  - Do the same for "inside the 12 h window" in test/redeploy-prewarm.test.ts and "must not cut a 12 h cooldown" in test/redeploy-wiring.test.ts.
-  - Leave the two dated past-tense incident lines unchanged, since they describe what happened then: the "BUGS.md 2026-09-30 (urgency carve-out)" comment in test/redeployer.test.ts, and "The 2026-09-30 shape" in test/redeploy-prewarm.test.ts.
-- Out of scope: `RESTART_URGENT_COOLDOWN_MS`, `STALE_ESCALATE_AFTER_MS`, the drain window, the forced-restart path, and any new config knob. This is a default change, not a setting.
-
-**Files touched.** src/redeploy/redeploy-policy.ts, src/redeploy/redeployer.ts, src/redeploy/redeploy-probes.ts, docs/how-it-works.md, test/redeployer.test.ts, test/redeploy-prewarm.test.ts, test/redeploy-wiring.test.ts.
-
-**Acceptance criteria.**
-- `grep -rn "12 h\|12-hour\|12 hours" src/redeploy docs/how-it-works.md` finds nothing.
-- `grep -n "12 h" test/redeployer.test.ts test/redeploy-prewarm.test.ts test/redeploy-wiring.test.ts` prints only lines inside the two dated 2026-09-30 incident comments named above.
-- `grep -n "RESTART_COOLDOWN_HOURS" src/redeploy/redeployer.ts` prints the import and the warning's use.
-- In test/redeployer.test.ts, the cooldown-warning assertions match `/per 4 h/`. The existing tests that poll at `swappedAt + RESTART_COOLDOWN_MS` and expect the episode to start still pass with no offset edited.
-- `npm run test:gate` passes.
-
 ### docs/invariants.md gains an init section, so a fixer touching `tumwater init` reads what it promises a user's repo instead of rebuilding it from tests (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches docs/invariants.md only)
 
 **Goal.** `tumwater init` is the one command that writes into a user's existing project. `initProject` (src/init/init.ts) makes promises about that: it never clobbers a file, never drops a prompt silently, refuses before any side effect, commits only what it created, and a dry run writes nothing. Only tests in test/init.test.ts and test/init-templates.test.ts pin those promises. `grep -n 'src/init\|initProject' docs/invariants.md` finds nothing. This plan adds the section, as the 2026-10-20 claims, backlog-archive and fallback-breaker sections did for their subsystems. It is docs only: every guarantee must already be pinned by an existing test. No code or test changes. It is independent of the provider-concurrency invariants plan above; both append a section, so whichever merges second appends after the other.

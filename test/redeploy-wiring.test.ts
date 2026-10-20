@@ -113,7 +113,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   );
 
   // A witness red that does not reproduce on the immediate re-run is a flake, not a red tree
-  // (BUGS.md 2026-09-30): one suite run failing 1 of 2,458 tests must not cut a 12 h cooldown
+  // (BUGS.md 2026-09-30): one suite run failing 1 of 2,458 tests must not cut the ordinary cooldown
   // to 15 min. The script fails its first run and passes every later one — exactly the
   // load-flake shape the gate's rule exists for.
   const failOnce = "node -e 'const fs=require(\"fs\"),p=\".flake-marker\";if(fs.existsSync(p))process.exit(0);fs.writeFileSync(p,\"x\");process.exit(1)'";

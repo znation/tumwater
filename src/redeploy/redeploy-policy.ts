@@ -54,15 +54,20 @@ export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 /** How often a COMPLETED auto-restart may land — at most once per this window (BUGS.md
  * 2026-09-11): under sustained main churn every stale head would otherwise drive a full
  * hold+drain+swap episode back to back, halting the team for a drain over and over. Bounds
- * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. */
-export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
+ * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. Cut from twelve
+ * hours to four on 2026-10-20: the last eight drains took a median of about 7 min (2 s to
+ * 26 min) and only one aborted runs, so the longer wait cost more than the drains it prevented. */
+export const RESTART_COOLDOWN_MS = 4 * 60 * 60_000;
+
+/** The cooldown in whole hours — the one home of that ms→h division, for the warning text. */
+export const RESTART_COOLDOWN_HOURS = RESTART_COOLDOWN_MS / 3_600_000;
 
 /** The cooldown's urgency carve-out (BUGS.md 2026-09-30): when the RUNNING build's own commit
- * carries a red baseline verdict, the deferral is cut to this window instead of the full 12 h —
- * a red running build is not churn but the exact predicament the self-redeploy exists to end,
- * and the rate limit protects against storms, not against a team knowingly executing code its
- * own tree fails. Still a real delay, so consecutive reds cannot storm: one episode per this
- * window at most, each swap giving the team a chance to merge on green. */
+ * carries a red baseline verdict, the deferral is cut to this window instead of the ordinary
+ * cooldown — a red running build is not churn but the exact predicament the self-redeploy exists
+ * to end, and the rate limit protects against storms, not against a team knowingly executing
+ * code its own tree fails. Still a real delay, so consecutive reds cannot storm: one episode
+ * per this window at most, each swap giving the team a chance to merge on green. */
 export const RESTART_URGENT_COOLDOWN_MS = 15 * 60_000;
 
 /** The urgent carve-out in whole minutes — the one home of that ms→min division, beside the
@@ -122,7 +127,7 @@ export interface RedeployDeps {
   bootProblem(): Promise<string | null>;
   /** Does `buildSha` — the RUNNING build's own commit — carry a red baseline verdict? The
    * cooldown's urgency carve-out asks this (BUGS.md 2026-09-30): a red running build cuts the
-   * 12 h deferral to RESTART_URGENT_COOLDOWN_MS. A verdict already in the team-shared cache
+   * ordinary deferral to RESTART_URGENT_COOLDOWN_MS. A verdict already in the team-shared cache
    * answers free; a cold cache — no worktree has baselined this SHA in this process, which is
    * the standing state for a stale build since checkMainBaseline only ever runs at main's tip
    * — is recovered by running the baseline check ONCE on the build SHA itself, in a dedicated

@@ -363,11 +363,11 @@ conflict resolution could not settle is dropped instead, and the role's next pro
 When the project being built is tumwater itself, the team notices when main's code differs from
 the running build and shows `Update available`. With `autoRestart` (default true) it confirms
 main's check passes, compiles it, finishes in-flight runs, swaps the new build into `dist/`, and
-restarts, at most once every 12 hours. The commit it builds is main's newest one whose full check
+restarts, at most once every 4 hours. The commit it builds is main's newest one whose full check
 passed and that is newer than the running build, so a red tip does not stall an update that an older
 green commit allows. A failing check on main (with no green commit newer than the running build) or a failed compile keeps the old
 build running and shows `restart BLOCKED`, with the reason. You do not have to wait out the
-12-hour clock: the dashboard's update alert has a refresh button that waives the cooldown
+4-hour clock: the dashboard's update alert has a refresh button that waives the cooldown
 and starts the pending update immediately — every other gate (a passing check on main, a
 successful compile, in-flight runs finishing) still applies. From the terminal, run
 `tumwater restart` to press the same button: both write the marker the redeployer consumes.

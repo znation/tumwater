@@ -280,7 +280,7 @@ test("main moving during a pending restart supersedes it: the new head is evalua
 
 test("a forced restart waives the cooldown: the deferred head starts its episode on the next poll", async () => {
   // The dashboard's restart button (PLANS.md 2026-09-30): the operator presses the stale-build
-  // alert's refresh icon rather than waiting out the 12 h cooldown. The force clears ONLY the
+  // alert's refresh icon rather than waiting out the ordinary cooldown. The force clears ONLY the
   // deferral — verify-green, compile, drain, and swap run through the ordinary machinery.
   const f = fakeDeps();
   const { r, types } = harness(f.deps);
@@ -369,7 +369,7 @@ test("a forced restart request evaporates with the pending restart it targeted: 
   );
 });
 
-test("a red RUNNING build cuts the cooldown to the urgent window: the episode starts minutes, not 12 h, after the swap", async () => {
+test("a red RUNNING build cuts the cooldown to the urgent window: the episode starts minutes, not the ordinary cooldown, after the swap", async () => {
   // BUGS.md 2026-09-30 (urgency carve-out): the incident left the team executing a build whose
   // own commit was red for the full 12 h cooldown while a fixed main sat one commit ahead. The
   // carve-out defers to a short fixed window instead — long enough that consecutive reds cannot
@@ -400,7 +400,7 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS),
     "hold",
-    "the urgent lapse starts the episode — not 12 h later",
+    "the urgent lapse starts the episode — not the ordinary cooldown later",
   );
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 10),
@@ -414,13 +414,13 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the prewarmed verdict is adopted, not re-run");
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 3, "one warning per distinct deadline: ordinary, urgent, then the urgent lapse");
-  assert.match(String(warnings[0]!.message), /per 12 h/);
+  assert.match(String(warnings[0]!.message), /per 4 h/);
   assert.match(String(warnings[1]!.message), /fails its check — the cooldown is cut to 15 min/);
   assert.match(String(warnings[2]!.message), /fails its check, the cooldown was cut to 15 min and that deadline has already passed/);
 });
 
 test("the urgency onset mid-cooldown warns once more with the earlier deadline", async () => {
-  // The red verdict is re-consulted on every poll: a deferral first warned at the ordinary 12 h
+  // The red verdict is re-consulted on every poll: a deferral first warned at the ordinary
   // deadline must say so again — once — when the running build's red arrives and the deadline
   // moves earlier (the warning is keyed to the deadline, not a bare once-per-episode flag).
   const f = fakeDeps();
@@ -444,7 +444,7 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
   );
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 2, "one warning per distinct deadline: the ordinary one, then the urgent one");
-  assert.match(String(warnings[0]!.message), /per 12 h/);
+  assert.match(String(warnings[0]!.message), /per 4 h/);
   assert.match(String(warnings[1]!.message), /fails its check — the cooldown is cut to 15 min/);
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + 3 * 60_000),
@@ -455,7 +455,7 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
 });
 
 test("an unknown or unsettled running-build verdict never triggers the urgent window", async () => {
-  // Cold cache, skip, or error: anything short of a settled red keeps the full 12 h cooldown —
+  // Cold cache, skip, or error: anything short of a settled red keeps the full ordinary cooldown —
   // the carve-out is fail-safe in the direction of the old behavior.
   const f = fakeDeps();
   const { r } = harness(f.deps);
@@ -466,7 +466,7 @@ test("an unknown or unsettled running-build verdict never triggers the urgent wi
   assert.equal(
     r.status(swappedAt + 90_000).restartBlocked,
     `cooldown until ${new Date(swappedAt + RESTART_COOLDOWN_MS).toISOString()}`,
-    "null is not red: the ordinary 12 h deadline stands",
+    "null is not red: the ordinary deadline stands",
   );
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS),
@@ -494,7 +494,7 @@ test("a red RUNNING build after the urgent window already passed keeps the episo
 test("a red RUNNING build whose cut deadline already passed proceeds early with a warning, not in silence", async () => {
   // BUGS.md 2026-09-30: the incident's red arrived when the 15 min urgent window it cuts to had
   // already lapsed, so the deferred-branch warning never fired and the team restarted hours
-  // before its announced 12 h deadline with no event naming why. A lapse the carve-out caused
+  // before its announced deadline with no event naming why. A lapse the carve-out caused
   // must say so — once per ordinary deadline.
   const f = fakeDeps();
   const { r, events } = harness(f.deps);
@@ -502,7 +502,7 @@ test("a red RUNNING build whose cut deadline already passed proceeds early with 
   assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60_000), "none");
   f.red(true);
   await settle();
-  // Past the 15 min urgent window, still inside the ordinary 12 h cooldown: the carve-out is
+  // Past the 15 min urgent window, still inside the ordinary cooldown: the carve-out is
   // what lets this poll into the episode, so it must say so.
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 60_000),
@@ -558,7 +558,7 @@ test("a completion write killed mid-flight leaves the previous timestamp intact"
   // Model a process killed between write and close (SIGKILL, ENOSPC, EIO) at the swap, right
   // before the restart exit: the writer leaves a partial prefix, then throws. The atomic write
   // must surface that failure without replacing the good file, or the respawned team boots
-  // with lastAt null and skips the 12 h cooldown entirely — restarting again on the next stale
+  // with lastAt null and skips the ordinary cooldown entirely — restarting again on the next stale
   // head instead of holding to the rate limit.
   const restore = dieMidWrite();
   try {

@@ -11,6 +11,7 @@ import {
   type InFlightCounts,
   type RedeployAction,
   type RedeployDeps,
+  RESTART_COOLDOWN_HOURS,
   RESTART_COOLDOWN_MS,
   RESTART_DRAIN_MAX_MS,
   RESTART_URGENT_COOLDOWN_MIN,
@@ -126,7 +127,7 @@ export class Redeployer {
   private cooldownWarnedUntil: number | null = null;
   /** The ordinary cooldown deadline whose urgent lapse has already warned: when the red-carved
    * deadline sits in the past, the deferred-branch warning above cannot fire, and the episode
-   * would otherwise start with no event naming why the announced 12 h deadline was abandoned
+   * would otherwise start with no event naming why the announced deadline was abandoned
    * (BUGS.md 2026-09-30). Keyed to the ordinary deadline — one warning per cooldown, the same
    * discipline as cooldownWarnedUntil. */
   private urgentLapseWarnedFor: number | null = null;
@@ -253,7 +254,7 @@ export class Redeployer {
     this.buildRed = track(this.deps.buildRed(this.build.sha));
   }
 
-  /** The deadline this deferral holds to: the ordinary 12 h rate limit, cut to the urgent
+  /** The deadline this deferral holds to: the ordinary cooldown, cut to the urgent
    * window when the RUNNING build's own commit carries a settled red verdict (BUGS.md
    * 2026-09-30). The verdict is whatever the background check has produced so far — an
    * unsettled or unknown verdict reads as not-red, so a cold cache leaves the ordinary
@@ -345,7 +346,7 @@ export class Redeployer {
           `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()}` +
             (urgent
               ? ` (the running version ${shortSha(this.build.sha)} fails its check — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MIN} min)`
-              : " (at most one completed restart per 12 h)"),
+              : ` (at most one completed restart per ${RESTART_COOLDOWN_HOURS} h)`),
         );
       }
       this.probes.prewarm(mainHead, this.pendingHead !== null);
@@ -356,7 +357,7 @@ export class Redeployer {
     // The carve-out's second silence (BUGS.md 2026-09-30): a red verdict arriving after the
     // 15 min urgent window has passed cuts the deadline to a point already gone, so the
     // deferred-branch warning above never ran and the episode below started with no word of
-    // why the announced 12 h deadline was abandoned. urgent here means now is still inside the
+    // why the announced deadline was abandoned. urgent here means now is still inside the
     // ordinary cooldown and the running build is red — say why the episode starts early, once
     // per ordinary deadline.
     if (urgent && this.urgentLapseWarnedFor !== this.cooldownUntil()) {
