@@ -4002,3 +4002,15 @@ state save or the event write fails; each failure warns and nothing throws.
 **Pinned by.** `test/merge-slot.test.ts` — "a failed role-state save still logs the outcome and drops
 the settled entry", "an unwritable events feed still drops the settled entry — the queue never
 retries" and "a merge's nonzero usage rides its merge_done event and the entry is dropped".
+
+## Run end: a failed state save still ends the run
+
+### INV-BY1: a failed role-state save warns and the run still ends
+
+**Guarantee.** `finalizeRun` resolves with the run's outcome and logs `run_end` even when the role's
+state save or the events feed fails; a failed save warns under the role's id.
+
+**Binds.** `src/run/run-finalize.ts` (`finalizeRun`); `src/runner/runner-state.ts`
+(`saveRunnerStateBestEffort`).
+
+**Pinned by.** `test/run-finalize.test.ts` — "a failed role-state save cannot reject finalizeRun — run_end still logs and the run warns", "an unwritable events feed cannot reject finalizeRun — the outcome still folds and saves" and "finalizeRun folds the outcome onto the state, persists it, and logs run_end".

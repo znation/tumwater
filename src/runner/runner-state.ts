@@ -365,9 +365,10 @@ export function saveRunnerState(root: string, state: RunnerState): void {
   writeJsonAtomic(statePath(root, state.role), state);
 }
 
-/** Save for the orchestrator's poll loop, which has no catch: a failed write warns under the
- * role's id and returns. The in-memory state stays ahead of the file until the runner's next
- * successful save. */
+/** Save for callers that cannot afford a throw — the orchestrator's poll loop, which has no
+ * catch, and a run's end, where a throw would skip run_end and the launch task's breaker fold:
+ * a failed write warns under the role's id and returns. The in-memory state stays ahead of the
+ * file until the runner's next successful save. */
 export function saveRunnerStateBestEffort(root: string, state: RunnerState): void {
   try {
     saveRunnerState(root, state);

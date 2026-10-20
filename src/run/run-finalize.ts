@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { hasOutstandingWork, saveRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
@@ -99,7 +99,10 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
   // arriving one poll after the run ended.
   restoreMidRunWake(s);
-  saveRunnerState(root, s);
+  // A failed save warns and the run still ends: the in-memory state already holds the fold and
+  // the runner's next save writes it, while a throw here would skip run_end and the launch
+  // task's breaker fold.
+  saveRunnerStateBestEffort(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
   // looked like a quiet team). applyRunOutcome increments the streak on error-class
   // outcomes, preserves it across a plain `queued` run (the run's merge resolves it),

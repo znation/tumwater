@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { eventsLogPath } from "../src/paths.js";
+import { eventsLogPath, statePath } from "../src/paths.js";
 import { finalizeRun } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, zeroCounters } from "../src/runner/runner-state.js";
@@ -15,7 +15,8 @@ import {
 } from "../src/run/run-apply.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** Run finalizeRun with the standard shape: an initialized repo, a fresh-ish role state
@@ -378,4 +379,23 @@ test("an unwritable events feed cannot reject finalizeRun — the outcome still 
   assert.equal(saved.running, false, "the end-of-run save still ran");
   assert.equal(saved.lastResult, "no_change");
   assert.equal(saved.claim, undefined, "the release was persisted, not lost to the feed failure");
+});
+
+test("a failed role-state save cannot reject finalizeRun — run_end still logs and the run warns", async () => {
+  const root = await initializedRepo();
+  const s = freshRunnerState("feature-2");
+  const undo = failRenameSyncOn(statePath(root, "feature-2"), "EACCES fake");
+  let returned: RunOutcome;
+  try {
+    returned = await run(root, "feature-2", s, { result: "queued", summary: "queued it" });
+  } finally {
+    undo();
+  }
+  assert.equal(returned.result, "queued");
+  assert.equal(s.running, false, "the fold happened in memory");
+  const ends = eventsOfType(root, "run_end");
+  assert.equal(ends.length, 1);
+  assert.equal(ends[0]?.result, "queued");
+  const warnings = warningMessages(root).filter((m) => m.includes("could not save the role's state: EACCES fake"));
+  assert.equal(warnings.length, 1);
 });
