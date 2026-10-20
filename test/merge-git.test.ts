@@ -11,6 +11,8 @@ import {
   ffMainToOrWhy,
   hasConflictMarkers,
   mainCommitsTouching,
+  overwriteBlockedReason,
+  overwriteBlockers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
 } from "../src/merge/merge-git.js";
@@ -223,6 +225,39 @@ test("ffMainToOrWhy names main having moved off the ref's base, with its new hea
   commitIn(root, "hand commit on main");
   const why = await ffMainToOrWhy(root, ref, "main");
   assert.match(why ?? "", /^main moved outside the merge lock \(now [0-9a-f]+ hand commit on main\)$/);
+});
+
+test("overwriteBlockers reads both of git's would-be-overwritten lists", () => {
+  const err =
+    "git merge --ff-only abc failed (1): error: Your local changes to the following files would be overwritten by merge:\n\tf.txt\n\tg.txt\nPlease commit your changes or stash them before you merge.\nerror: The following untracked working tree files would be overwritten by merge:\n\tnew.txt\nPlease move or remove them before you merge.\nAborting";
+  assert.deepEqual(overwriteBlockers(err), { uncommitted: ["f.txt", "g.txt"], untracked: ["new.txt"] });
+  assert.deepEqual(overwriteBlockers("fatal: not possible"), { uncommitted: [], untracked: [] });
+});
+
+test("overwriteBlockedReason lists at most 5 names per group", () => {
+  const names = ["a", "b", "c", "d", "e", "f", "g"].map((n) => `${n}.txt`);
+  assert.match(
+    overwriteBlockedReason({ uncommitted: names, untracked: [] }),
+    /\(uncommitted: a\.txt, b\.txt, c\.txt, d\.txt, e\.txt, \+2 more\)/,
+  );
+});
+
+test("ffMainToOrWhy names the primary checkout's files the fast-forward would overwrite", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "shared.txt"), "s\n");
+  commitIn(root, "add shared");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "shared.txt"), "branch\n");
+  fs.writeFileSync(path.join(wt, "fresh.txt"), "branch\n");
+  commitIn(wt, "branch change");
+  fs.writeFileSync(path.join(root, "shared.txt"), "dirty\n");
+  fs.writeFileSync(path.join(root, "fresh.txt"), "dirty\n");
+  const before = headSha(root);
+  assert.equal(
+    await ffMainToOrWhy(root, headSha(wt), "main"),
+    "fast-forward failed: the merge would overwrite files in the primary checkout (uncommitted: shared.txt; untracked: fresh.txt) — commit, stash or remove them there",
+  );
+  assert.equal(headSha(root), before);
 });
 
 test("ffMainToOrWhy returns null when the fast-forward succeeds", async () => {

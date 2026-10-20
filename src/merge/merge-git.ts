@@ -281,8 +281,8 @@ export async function ffMainToOrWhy(
 }
 
 /** Why a fast-forward to `ref` failed: main having moved off `ref`'s base (a commit that did not
- * take the merge lock) is named with its new head and subject; any other cause reports git's own
- * error, e.g. a dirty primary checkout. */
+ * take the merge lock) is named with its new head and subject; a dirty primary checkout is
+ * reported with the files it would overwrite; any other cause reports git's first error line. */
 async function ffFailureReason(
   root: string,
   ref: string,
@@ -293,7 +293,48 @@ async function ffFailureReason(
     const now = await gitTry(root, "log", "-1", "--format=%h %s", mainBranch);
     return `main moved outside the merge lock (now ${now?.trim() ?? mainBranch})`;
   }
+  const blockers = overwriteBlockers(errorMessage(err));
+  if (blockers.uncommitted.length > 0 || blockers.untracked.length > 0) {
+    return overwriteBlockedReason(blockers);
+  }
   return `fast-forward failed: ${errorMessage(err).trim().split("\n")[0]}`;
+}
+
+interface OverwriteBlockers {
+  uncommitted: string[];
+  untracked: string[];
+}
+
+/** The files git lists under its two "would be overwritten by merge:" headers. */
+export function overwriteBlockers(gitError: string): OverwriteBlockers {
+  const out: OverwriteBlockers = { uncommitted: [], untracked: [] };
+  let group: string[] | null = null;
+  for (const line of gitError.split("\n")) {
+    if (line.includes("Your local changes to the following files would be overwritten by merge:")) {
+      group = out.uncommitted;
+    } else if (line.includes("untracked working tree files would be overwritten by merge:")) {
+      group = out.untracked;
+    } else if (group && line.startsWith("\t")) {
+      group.push(line.trim());
+    } else {
+      group = null;
+    }
+  }
+  return out;
+}
+
+const MAX_BLOCKERS_LISTED = 5;
+
+/** The warning for a fast-forward a dirty primary checkout blocks: up to 5 files per group. */
+export function overwriteBlockedReason(blockers: OverwriteBlockers): string {
+  const list = (names: string[]): string =>
+    names.slice(0, MAX_BLOCKERS_LISTED).join(", ") +
+    (names.length > MAX_BLOCKERS_LISTED ? `, +${names.length - MAX_BLOCKERS_LISTED} more` : "");
+  const groups: string[] = [];
+  if (blockers.uncommitted.length > 0) groups.push(`uncommitted: ${list(blockers.uncommitted)}`);
+  if (blockers.untracked.length > 0) groups.push(`untracked: ${list(blockers.untracked)}`);
+  const where = `the primary checkout (${groups.join("; ")})`;
+  return `fast-forward failed: the merge would overwrite files in ${where} — commit, stash or remove them there`;
 }
 
 /** Boolean form of ffMainToOrWhy for callers that need no reason. */
