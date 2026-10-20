@@ -791,4 +791,18 @@ Replanned 2026-10-19 by the plan role. The single 14/14 sweep was rejected after
 - test/tui-frame.test.ts: the History footer shows `Ctrl+R` with `transcript` on a trail, and shows no `Ctrl+R` on the rows.
 - `npm run test:gate` passes, including test/tui-keys-doc.test.ts.
 
+### Split `reviewAttempt` in src/review/review.ts into a gate-decision phase and a reviewer-run phase (planned 2026-10-19 by the organize role; no dependency on any Planned entry. Touches src/review/review.ts, a new src/review/review-run.ts, test/review*.test.ts only if they import moved names)
+
+**Cost today.** `reviewAttempt` (src/review/review.ts, lines 265–790) is one ~525-line async function and makes review.ts the third-largest production module (829 lines). It holds two responsibilities in one closure scope: (1) the deterministic gate that decides before any reviewer exists (already-approved head, conflict-marker / protected-edit / secret-leak / false-fix / backlog-structure rejects, the exempt fast path, the build pre-check or overlapped check, the `afterMerge` and `patchApproved` approvals); (2) the reviewer run itself (resume-vs-fresh session choice, prompt build, run, suite-rerun nudge, verdict-recovery turn, verdict parse, approve/reject bookkeeping). They share only a few closures (`reject`, `keep`, `settleFailedCheck`) and a few locals (`head`, `files`, `overlap`, `knownMainFailures`, `patchApproved`), so the seam is narrow but invisible while it is one function.
+
+**Target structure.**
+- review.ts keeps `ReviewContext`, `GateResult`, `reviewAheadOfMain`, the retry loop, `leaseCheckSlot` / `startOverlappedCheck`, and the gate-decision phase of `reviewAttempt` (everything up to and including the `patchApproved` / `afterMerge` early approvals). It builds a small `ReviewRunInput` object (head, files, overlap, knownMainFailures, retry, summary, commitBody, highFriction, and the `reject` / `keep` / `settleFailedCheck` closures) and calls `runReviewer(ctx, state, input)`.
+- New src/review/review-run.ts exports `runReviewer` (the model-selector resolution through the approve/reject tail) and may split the nudge / recovery-turn block into one named helper local to that file. Move `withRuns` and `restoreReviewedHead` with it only if the gate phase no longer uses them (grep before moving).
+- No behavior change: same event order, same `state` mutations, same return values. This is a pure extraction; the `reject` closure stays defined once in `reviewAttempt` and is passed in.
+
+**Acceptance criteria.**
+- review.ts is under ~450 lines and no function in review.ts or review-run.ts exceeds ~300 lines.
+- A grep for each moved name over src/, test/ and the markdown docs finds no stale reference.
+- `npm run test:gate` passes with no test edits beyond import paths.
+
 ## Done
