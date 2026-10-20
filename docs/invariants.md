@@ -2664,3 +2664,52 @@ success when the events feed is unwritable" and "submitRolePrompt's image path q
 when the events feed is unwritable"; `test/status-data-inbox.test.ts` — "snapshot's director inbox
 deliverability advances with its pinned clock" (text path); `test/inbox-submit-guards.test.ts` — "an
 image-carrying prompt submitted with notBeforeMs is queued deferred" (image path).
+
+## Backlog release and reorder: a release lifts one hold from one entry, and a refused write leaves the file as it was
+
+`src/backlog/backlog-release.ts` holds the writers behind `tumwater plan|bug --release <n>` and
+`--top <n>`, and the non-exiting `try…` twins the TUI and dashboard call.
+
+### INV-AT1: a release lifts one note, Refused first, from the addressed entry only
+
+**Guarantee.** A release lifts the entry's Refused note or, when it has none, its
+Waiting-for-the-next-failure note: one note per release, so an entry carrying both needs two
+releases and loses the Refused note first. Only the addressed entry's lines are filtered, and its
+Needs review note stays. An entry with neither note is refused and the file is left as it was.
+
+**Binds.** `src/backlog/backlog-release.ts` (`liftRefusal`, `releaseEntry`, `tryReleaseEntry`),
+`src/backlog/backlog-eligibility.ts` (`withoutRefusalNotes`, `withoutWaitingNotes`).
+
+**Pinned by.** `test/backlog-release-holds.test.ts` — "a release lifts the Refused note first and
+leaves the Waiting note for a second release" and "a release touches only the addressed entry and
+keeps its Needs review note"; `test/backlog-write-cancel.test.ts` — "releaseEntry lifts a
+waiting-for-the-next-failure note"; `test/backlog-eligibility.test.ts` — "withoutRefusalNotes drops
+Refused note lines and the blank line after one between blanks".
+
+### INV-AT2: the try… twins write the CLI writers' bytes and refuse as data without writing
+
+**Guarantee.** `tryReleaseEntry` and `tryMoveEntryToTop` leave the same file bytes as
+`releaseEntry` and `moveEntryToTop`. They answer `gone` (no such position), `moved` (the title at
+that position differs from the expected one), `not_refused` and `already_first` as data, and write
+nothing. In the code, each decision is made inside `withPrimaryWorktreeLock`; no test checks the
+lock itself.
+
+**Binds.** `src/backlog/backlog-release.ts` (`tryReleaseEntry`, `tryMoveEntryToTop`).
+
+**Pinned by.** `test/backlog-write-cancel.test.ts` — "tryReleaseEntry leaves the bytes
+releaseEntry leaves and refuses without writing"; `test/backlog-write-top.test.ts` —
+"tryMoveEntryToTop leaves the bytes moveEntryToTop leaves and refuses without writing".
+
+### INV-AT3: a move to the top moves the entry whole, and a refused move changes no byte
+
+**Guarantee.** A move to the top moves the entry's lines whole (a fenced `###` line and a Refused
+note included), leaves `## Done` untouched and keeps the file's trailing newline. Position 1 and
+an out-of-range position fail and leave the file byte-identical.
+
+**Binds.** `src/backlog/backlog-release.ts` (`moveEntryToTop`, `spliceEntryToTop`).
+
+**Pinned by.** `test/backlog-write-top.test.ts` — "moveEntryToTop moves the last entry first and
+leaves ## Done untouched", "moveEntryToTop moves a middle entry above the first", "moving the
+file's last entry keeps the file's trailing newline and doubles no blank", "a body holding a
+fenced ### line and a Refused note move whole" and "position 1 and an out-of-range position fail
+and leave the file byte-identical".
