@@ -14,6 +14,7 @@ import { withGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
+import { GUI_CLIENT_REPORT_CHART_JS } from "../src/ui/gui/gui-client-report-chart.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 
@@ -391,7 +392,7 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     fmtUsd: (n: number) => "$" + n.toFixed(2),
   };
   const keys = Object.keys(inject);
-  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
     ...args: unknown[]
   ) => { fetchReport(throttled?: boolean): Promise<void> };
   await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
@@ -435,7 +436,7 @@ test("the scoped Usage render drops the team-only tiles and prints the scope lin
       fmtUsd: (n: number) => "$" + n.toFixed(2),
     };
     const keys = Object.keys(inject);
-    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
       ...args: unknown[]
     ) => { fetchReport(throttled?: boolean): Promise<void> };
     await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
@@ -484,7 +485,7 @@ test("the report Role picker offers base roles only, so an instance id never lab
     fmtUsd: (n: number) => "$" + n.toFixed(2),
   };
   const keys = Object.keys(inject);
-  const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+  const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
     ...args: unknown[]
   ) => { fetchReport(): Promise<void> };
   await make(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
@@ -536,7 +537,7 @@ test("the Usage trailing-window control fetches ?sinceMs, renders markdown, and 
     fmtUsd: (n: number) => "$" + n.toFixed(2),
   };
   const keys = Object.keys(inject);
-  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
     ...args: unknown[]
   ) => { fetchReport(throttled?: boolean): Promise<void> };
   const { fetchReport } = run(...keys.map((k) => inject[k as keyof typeof inject]));
@@ -588,7 +589,7 @@ test("the report window pickers normalize a persisted value outside their menu",
       fmtUsd: (n: number) => "$" + n.toFixed(2),
     };
     const keys = Object.keys(inject);
-    const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    const make = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
       ...args: unknown[]
     ) => { fetchReport(): Promise<void> };
     await make(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();
@@ -653,7 +654,7 @@ test("the Usage notional chart and Spent-tile figure render only when notional s
       fmtUsd: (n: number) => "$" + n.toFixed(2),
     };
     const keys = Object.keys(inject);
-    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
       ...args: unknown[]
     ) => { fetchReport(throttled?: boolean): Promise<void> };
     await run(...keys.map((k) => inject[k as keyof typeof inject])).fetchReport();

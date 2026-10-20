@@ -95,8 +95,9 @@ export function memoSetLru<K, V>(cache: Map<K, V>, key: K, value: V, max: number
  * failure-data.ts's outcome table, and time-spend.ts's time-and-spend table). `sortByValueDesc`
  * is the deliberate sibling for the same value-descending shape that wants a code-unit tiebreak
  * instead of localeCompare, and unlike these two it sorts its input array in place. The one
- * deliberate exception to both orderings is ui/gui/gui-client-report.ts's reportRoleOrder, which
- * keeps its own copy by design: it runs in the browser, where harness modules cannot be imported.
+ * deliberate exception to both orderings is ui/gui/gui-client-report-chart.ts's reportRoleOrder,
+ * which keeps its own copy by design: it runs in the browser, where harness modules cannot be
+ * imported.
  * These two helpers return a fresh sorted array; their input is never mutated. */
 export function rankByCount<T>(
   items: Iterable<T>,
