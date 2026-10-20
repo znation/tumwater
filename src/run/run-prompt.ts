@@ -12,7 +12,7 @@ import { briefFile } from "../brief/brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
-import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-prompts.js";
+import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";

@@ -18,9 +18,9 @@ import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's run actually runs
- * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
- * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
- * (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
+ * on. The builders themselves (prompt.ts, gate-prompts.ts, gate-notes.ts) are covered elsewhere;
+ * this is the composition: brief resolution (TUMWATER.md before README.md), the director's inbox
+ * dequeue (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
  * cross-run memory notes (rejected review, conflict discard, cut-off streak) appended in
  * order — the only memory a fresh session has of why the last attempt failed. */
 

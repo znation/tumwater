@@ -7,7 +7,7 @@ import { BUILD_CHECK_TIMEOUT_MS, mergeCommandOf } from "../build/build-check-det
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
-import { buildMainRedNote } from "../prompt/gate-prompts.js";
+import { buildMainRedNote } from "../prompt/gate-notes.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TickOutcome } from "../run/run-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";

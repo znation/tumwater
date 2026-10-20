@@ -19,7 +19,7 @@ import {
 } from "../src/scheduling/claims.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
-import { buildAssignmentNote } from "../src/prompt/gate-prompts.js";
+import { buildAssignmentNote } from "../src/prompt/gate-notes.js";
 import { makeRepo, commitIn } from "./fixtures/repo-fixtures.js";
 
 const PLANNED = [

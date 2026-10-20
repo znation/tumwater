@@ -13,13 +13,13 @@ import { useWorktree } from "../git/worktree-use.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
+import { buildConflictHandbackNote } from "../prompt/gate-prompts.js";
 import {
   buildConflictDiscardNote,
-  buildConflictHandbackNote,
   buildMainKnownRedNote,
   buildRevisionNote,
   buildRejectedReviewNote,
-} from "../prompt/gate-prompts.js";
+} from "../prompt/gate-notes.js";
 import type { RunnerPi } from "./runner-pi.js";
 import {
   modelSelectorField,

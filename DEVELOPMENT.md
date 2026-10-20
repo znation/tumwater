@@ -254,7 +254,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/process/`: process spawning and supervision — the supervisor, process groups, the
   process table, and the macOS LaunchServices guard.
 - `src/prompt/`: the prompt dialect, principles, and the merge's pi-run prompt text
-  (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`) a run's prefill is assembled from.
+  (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`, `gate-notes.ts`) a run's prefill is assembled from.
 - `src/roles/`: the role catalog, its role ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
