@@ -11,6 +11,8 @@ interface FallbackContext {
   root: string;
   role: string;
   state: RunnerState;
+  /** Best-effort: a failed write warns under the role's id and returns; the end-of-run save
+   * persists the same state later. */
   save(): void;
 }
 

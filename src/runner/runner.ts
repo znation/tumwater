@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { BackendFailureKind, PiRunOptions } from "../pi/pi.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { saveRunnerState, zeroCounters, type RunnerState } from "./runner-state.js";
+import { saveRunnerState, saveRunnerStateBestEffort, zeroCounters, type RunnerState } from "./runner-state.js";
 import { loadRunnerState } from "./runner-state-load.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -359,7 +359,7 @@ export class RoleRunner {
       usage: this.usage,
       pending: this.pending,
       pi: this.pi,
-      save: () => this.save(),
+      save: () => saveRunnerStateBestEffort(this.root, this.state),
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
       runPrompt: (backend) => this.runPrompt(backend),

@@ -4174,3 +4174,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/review/review-run.ts` (`runReviewer`), `src/merge/merge-core.ts` (`reviewPinnedChange`, `mergeApprovedChangeIn`'s `recheckResolved`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/merger.test.ts` — "an unwritable state file mid-review still folds the reviewer runs and settles a rejected re-review" (covers the phase, verdict and `recheckResolved` saves; the resume-count and `reviewResume` saves are covered by the swap only).
+
+## Runner run path: a failed state save never fails the run
+
+### INV-CN1: a run whose role-state saves fail resolves with its agent run's own result, folds its model-fallback verdict, and warns, never rejecting
+
+**Guarantee.** The run context's `save` is best-effort: a failed write (full disk, EACCES) of the start-of-run state or the model-fallback fold logs a "could not save the role's state" warning instead of throwing, so `run()` keeps its never-throws contract, the agent run's own result is kept and the fallback verdict still folds. The end-of-run save persists the same in-memory state later.
+
+**Binds.** `src/runner/runner.ts` (`runContext`), `src/runner/runner-run.ts` (`runPhase`), `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`).
+
+**Pinned by.** `test/runner-fallback.test.ts` — "an unwritable state file cannot reject a run or turn it into an error — its fallback verdict still folds (skip ${skip})"; the title is a template over `skip` in {0, 1}.

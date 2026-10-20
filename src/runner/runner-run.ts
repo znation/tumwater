@@ -80,6 +80,8 @@ export interface RunnerRunContext {
   usage: RunUsage;
   pending: PendingPrompt;
   pi: RunnerPi;
+  /** Best-effort: a failed write warns under the role's id and returns; the end-of-run save
+   * persists the same state later. */
   save(): void;
   warn(message: string): void;
   /** The signal a run's pi runs watch: harness shutdown OR this run's abort controller. */

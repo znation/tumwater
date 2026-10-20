@@ -18,9 +18,10 @@ import { defaultConfig } from "../src/config/config.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
-import { eventsLogPath } from "../src/paths.js";
+import { eventsLogPath, statePath } from "../src/paths.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { transientErrorText } from "./fakes/transient.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
@@ -283,6 +284,44 @@ test("an unwritable events feed cannot reject a run — its fallback verdict sti
   assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
   assert.equal(loadRunnerState(repo, "clean").running, false, "the end-of-run save ran");
 });
+
+for (const skip of [0, 1]) {
+  test(`an unwritable state file cannot reject a run or turn it into an error — its fallback verdict still folds (skip ${skip})`, async () => {
+    const repo = await initializedRepo();
+    const config = defaultConfig();
+    config.model = "primary/m1";
+    config.fallback = "backup/f1";
+    const runner = makeRoleRunner(repo, "clean", config);
+    runner.state.modelFallback = {
+      failures: 0,
+      since: Date.now() - 1000,
+      probeAt: Date.now() - 1,
+      cooldownMs: 5 * 60_000,
+      reason: "server",
+    };
+    const stateTmp = `${statePath(repo, "clean")}.tmp-`;
+    let writes = 0;
+    await withIdlePi(async () => {
+      const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
+        const file = args[0];
+        if (typeof file === "string" && file.startsWith(stateTmp) && writes++ >= skip) {
+          throw errnoError("ENOSPC");
+        }
+        return orig(...args);
+      });
+      try {
+        assert.equal((await runner.run()).result, "no_change");
+      } finally {
+        undo();
+      }
+    });
+    assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded");
+    assert.ok(
+      warningMessages(repo).some((m) => m.startsWith("could not save the role's state")),
+      "a failed save warns",
+    );
+  });
+}
 
 // --- foldModelFallbackPhase unit tests ------------------------------------------------------
 
