@@ -44,7 +44,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       // holds the line, in which case Ctrl+S is the toggle-out arm. Entering pre-fills the
       // override from the FILE's raw `roles.<base>.minRunIntervalSeconds` (empty when unset —
       // empty means "clear it, fall back to the team-wide interval" on save) and saves the
-      // prompt text; leaving restores it. There is no director exemption: the director ticks
+      // prompt text; leaving restores it. There is no director exemption: the director runs
       // on the same clock, so `--min-run-interval` is accepted for it too.
       if (!intervalMode && !(ctx.view >= 1 && ctx.view <= ctx.roleIds.length)) return false;
       const role = ctx.roleIds[ctx.view - 1]!;

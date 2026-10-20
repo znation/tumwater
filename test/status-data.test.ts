@@ -146,7 +146,7 @@ test("snapshot serves unchanged runner state from the stat-keyed cache without r
     (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}clean.json`),
   );
 
-  // A same-size edit is picked up via mtime, not just size: ticks 3 → 4 keeps the file's byte
+  // A same-size edit is picked up via mtime, not just size: runs 3 → 4 keeps the file's byte
   // length identical, so utimes forces a distinct mtime regardless of filesystem timestamp
   // granularity (two fast writes could otherwise share one on coarse-grained filesystems).
   const bumped = freshRunnerState("clean");

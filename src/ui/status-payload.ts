@@ -16,7 +16,7 @@ import { teamAlerts } from "./team-alerts.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
- * out the routine ones (tick starts, wakes, passing checks). */
+ * out the routine ones (run starts, wakes, passing checks). */
 const RECENT_EVENTS = 80;
 /** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
 export const DASHBOARD_ANSWERED_QUESTIONS = 5;
@@ -71,8 +71,8 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     return {
       role: s.role,
       // The role's own failure-streak tell (onErrorStreak, status-model.ts): the red
-      // "failing tick after tick" alert keys on this rather than the rendered phase, so it
-      // stays up while the role's next tick runs (phase reads "working") and clears only
+      // "failing run after run" alert keys on this rather than the rendered phase, so it
+      // stays up while the role's next run is in progress (phase reads "working") and clears only
       // when the streak resets (BUGS.md 2026-10-14).
       errorStreak: onErrorStreak(s),
       // User-defined-role marker (computed in snapshot — see StatusSnapshot.loops): the GUI
@@ -89,7 +89,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // spread as `model`, present on exactly the rows that carry the flag.
       ...(s.modelFromPi ? { modelFromPi: true } : {}),
       // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
-      // while the role's ticks run off-model, so the common row shape is unchanged.
+      // while the role's runs use another model, so the common row shape is unchanged.
       ...(s.fallback ? { fallback: s.fallback } : {}),
       ...(s.slot ? { slot: s.slot, slotPinned: s.slotPinned === true } : {}),
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part
@@ -112,12 +112,12 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // GUI's row actions derive their own live flag from the phase instead (BUGS.md
       // 2026-10-06).
       inFlight: isActivePhase(phase),
-      // The stuck alert's silence span (ms since the last pi log write, capped to the tick by
-      // progressOfTick) — the dashboards render it as "for <duration>" on a tool-call stall.
+      // The stuck alert's silence span (ms since the last pi log write, capped to the run by
+      // progressOfRun) — the dashboards render it as "for <duration>" on a tool-call stall.
       // Present only while the role holds a live tail, so the common payload shape is unchanged.
       ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
       // What a working role is doing right now (first assistant text of the in-flight run).
-      // Null when idle — never show a stale item from a finished tick.
+      // Null when idle — never show a stale item from a finished run.
       currentWork: live?.currentWork ?? null,
       runs: s.runs,
       commits: s.commits,
@@ -129,7 +129,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       todayUsd: dailyCost(s),
       lastResult: s.lastResult ?? null,
       lastSummary: s.lastSummary ?? null,
-      // The last failure's text (a tick error, a failed merge's reason); the dashboard shows it
+      // The last failure's text (a run error, a failed merge's reason); the dashboard shows it
       // beside a problem result that carries no summary of its own.
       lastError: s.lastError ?? null,
       lastRunEndedAt: s.lastRunEndedAt ?? null,
@@ -146,8 +146,8 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // clocks, PLANS.md): the payload carries the computed number, not the ring, so the
       // GUI's JS twin applies the same display rule without re-deriving the role sets.
       yieldMultiplier: yieldMultiplierFor(s),
-      // The consecutive no-change streak (run-apply.ts applyTickOutcome's noChangeStreak, an
-      // observational counter): how many completed ticks in a row returned nothing to do. The
+      // The consecutive no-change streak (run-apply.ts applyRunOutcome's noChangeStreak, an
+      // observational counter): how many completed runs in a row returned nothing to do. The
       // TUI reads it off the rendered label; the GUI's phaseDetailBase re-derives the ` · no
       // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
       // JS twin applies the same display rule without re-parsing the phase text.

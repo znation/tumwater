@@ -22,8 +22,8 @@ import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
 import { abortRequestPath, branchName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
-import { readTickDetail } from "../src/run/run-detail-data.js";
-import { renderTickDetail, runTranscriptLines } from "../src/run/run-detail.js";
+import { readRunDetail } from "../src/run/run-detail-data.js";
+import { renderRunDetail, runTranscriptLines } from "../src/run/run-detail.js";
 import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
@@ -57,11 +57,11 @@ async function untilFlash(flash: () => string, re: RegExp, timeoutMs = 10000): P
   }
 }
 
-function makeKeys(root: string, now: () => number, tickStat?: () => Promise<string>) {
+function makeKeys(root: string, now: () => number, runStat?: () => Promise<string>) {
   const quit = (): number => (quit.count += 1);
   quit.count = 0;
   let renders = 0;
-  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}), tickStat }); // Health never resolves: no real probes
+  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}), runStat }); // Health never resolves: no real probes
   return { keys, quitCount: () => quit.count, renders: () => renders };
 }
 
@@ -892,7 +892,7 @@ test("the `/` search filters the Backlog pane's active entries, clears, and pers
   assert.equal(keys.state().input, "/", "`/` on a non-search view types into the prompt");
 });
 
-test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
+test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the run rows", () => {
   const root = makeRoot();
   // Twelve completed runs so the history pane's rows overflow the pane budget and page.
   writeEvents(
@@ -910,7 +910,7 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   keys.setLineBudgets(5, 4);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage → failures → history
   assert.equal(keys.state().view, 4, "History is the last view (roleIds.length + 4)");
-  assert.match(keys.state().paneCache ?? "", /feature #12/, "the newest tick's row is cached for the pane");
+  assert.match(keys.state().paneCache ?? "", /feature #12/, "the newest run's row is cached for the pane");
   keys.handleKey(undefined, { name: "pagedown" });
   assert.equal(keys.state().paneScroll, 5, "PgDn advances the history window by the event budget");
   keys.handleKey(undefined, { name: "pageup" });
@@ -942,7 +942,7 @@ test("Ctrl+N on the History pane swaps the rows for the newest completed run's t
   assert.equal(keys.state().trailMode, false, "History opens on the rows");
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().trailMode, true);
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().trailMode, false, "a second Ctrl+N returns to the rows");
   assert.equal(keys.state().trailCache, null);
@@ -989,8 +989,8 @@ test("Ctrl+R on the History trail cycles the agent transcript off, plain, prompt
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.deepEqual(keys.state(), rows, "Ctrl+R on the rows changes nothing");
   keys.handleKey(undefined, { ctrl: true, name: "n" });
-  const detail = readTickDetail(root, "clean", 1)!;
-  const bare = renderTickDetail(detail);
+  const detail = readRunDetail(root, "clean", 1)!;
+  const bare = renderRunDetail(detail);
   assert.equal(keys.state().trailTranscript, "off");
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().trailTranscript, "plain");
@@ -1017,7 +1017,7 @@ test("Ctrl+R on a run with no transcript segment shows the note", () => {
   openHistory(keys);
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   keys.handleKey(undefined, { ctrl: true, name: "r" });
-  const note = runTranscriptLines(root, "clean", 1, readTickDetail(root, "clean", 1)!).note;
+  const note = runTranscriptLines(root, "clean", 1, readRunDetail(root, "clean", 1)!).note;
   assert.ok((keys.state().trailCache ?? "").endsWith(`\n\n${note}`));
 });
 
@@ -1031,18 +1031,18 @@ test("the History trail composes detail, stat, then transcript whichever finishe
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   resolve(" a.ts | 1 +");
   await new Promise((r) => setImmediate(r));
-  const detail = readTickDetail(root, "clean", 1)!;
+  const detail = readRunDetail(root, "clean", 1)!;
   const plain = runTranscriptLines(root, "clean", 1, detail).found.join("\n");
-  assert.equal(keys.state().trailCache, `${renderTickDetail(detail)}\n\n a.ts | 1 +\n\n${plain}`);
+  assert.equal(keys.state().trailCache, `${renderRunDetail(detail)}\n\n a.ts | 1 +\n\n${plain}`);
 });
 
-test("the History trail appends the tick commit's stat once it resolves", async () => {
+test("the History trail appends the run commit's stat once it resolves", async () => {
   const root = historyTrailRoot();
   let resolve!: (s: string) => void;
   const { keys, renders } = makeKeys(root, () => 0, () => new Promise<string>((r) => (resolve = r)));
   openHistory(keys);
   keys.handleKey(undefined, { ctrl: true, name: "n" });
-  const plain = renderTickDetail(readTickDetail(root, "clean", 1)!);
+  const plain = renderRunDetail(readRunDetail(root, "clean", 1)!);
   assert.equal(keys.state().trailCache, plain, "the trail shows at once, before the stat");
   const before = renders();
   resolve(" a.ts | 1 +");
@@ -1080,7 +1080,7 @@ test("a rejecting stat leaves the plain trail and flashes", async () => {
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   await new Promise((r) => setImmediate(r));
   assert.equal(keys.state().trailMode, true);
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   assert.match(keys.state().flash!, /git exploded/);
 });
 
@@ -1094,9 +1094,9 @@ test("Ctrl+N on an empty History flashes and leaves the rows shown", () => {
   assert.match(keys.state().flash!, /no completed runs to inspect/);
 });
 
-test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () => {
+test("Ctrl+G while a trail is shown re-reads the new scope's newest run", () => {
   const root = makeRoot();
-  // clean's tick is newer than qa's, so the team read and the qa-scoped read differ.
+  // clean's run is newer than qa's, so the team read and the qa-scoped read differ.
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "qa", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
     { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" }, // retired-name-ok: legacy event field in a fixture
@@ -1115,7 +1115,7 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   assert.match(keys.state().trailCache ?? "", /qa work/, "the trail follows the new scope");
   keys.handleKey(undefined, { ctrl: true, name: "g" }); // qa → team
   assert.equal(keys.state().historyRole, null);
-  assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest tick of any role");
+  assert.match(keys.state().trailCache ?? "", /clean work/, "the team trail is the newest run of any role");
 });
 
 function steppingRoot(): string {
@@ -1144,7 +1144,7 @@ test("Ctrl+P steps the trail back through the scope's runs and wraps to the newe
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.match(keys.state().trailCache ?? "", /clean two/);
   keys.handleKey(undefined, { ctrl: true, name: "p" });
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   assert.equal(keys.state().trailIndex, 1);
   keys.handleKey(undefined, { ctrl: true, name: "p" });
   assert.equal(keys.state().trailIndex, 0);
@@ -1203,10 +1203,10 @@ test("Ctrl+N under a result filter opens the newest matching run, and Ctrl+P wra
   openSteppingHistory(keys);
   pressResultUntil(keys, "problems");
   keys.handleKey(undefined, { ctrl: true, name: "n" });
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   assert.equal(keys.state().trailIndex, 0);
   keys.handleKey(undefined, { ctrl: true, name: "p" });
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   assert.match(keys.state().flash!, /oldest run reached/);
 });
 
@@ -1217,7 +1217,7 @@ test("changing the result filter with the trail on re-reads it, and an empty cla
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.match(keys.state().trailCache ?? "", /clean two/);
   pressResultUntil(keys, "problems");
-  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailCache, renderRunDetail(readRunDetail(root, "clean", 1)!));
   pressResultUntil(keys, "refused");
   assert.equal(keys.state().trailMode, true);
   assert.equal(keys.state().trailCache, null);
@@ -1285,7 +1285,7 @@ test("a roster change that retires the trail's scope re-reads it from the team",
 
 test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache", () => {
   const root = makeRoot();
-  // One failed feature tick with tokens: it lands in the usage report's totals and the
+  // One failed feature run with tokens: it lands in the usage report's totals and the
   // failure digest's per-role table, so scoping to clean changes both renders.
   writeEvents(root, [
     { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
@@ -1331,7 +1331,7 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
 
 test("Ctrl+G cycles base roles only, so an instance id never labels another scope's body", () => {
   const root = makeRoot();
-  // One failed feature tick with tokens, so the Usage body carries the collected `role` line.
+  // One failed feature run with tokens, so the Usage body carries the collected `role` line.
   writeEvents(root, [
     { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
     { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
@@ -1453,7 +1453,7 @@ test("Ctrl+G on a Transcript is inert while an editor holds the prompt line, and
 
 test("syncSnapshot recomputes an on-screen report pane when it clears a retired scope", () => {
   const root = makeRoot();
-  // A failed feature tick with tokens: scoping to the team and to feature render differently.
+  // A failed feature run with tokens: scoping to the team and to feature render differently.
   writeEvents(root, [
     { ts: Date.now(), loop: "feature", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
     { ts: Date.now(), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 500, costUsd: 0.5 }, // retired-name-ok: legacy event field in a fixture
@@ -1475,7 +1475,7 @@ test("syncSnapshot recomputes an on-screen report pane when it clears a retired 
 test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and resets the scroll", () => {
   const root = makeRoot();
   const now = Date.now();
-  // One tick 30 minutes old (inside 1h) and one three days old (only inside 7d).
+  // One run 30 minutes old (inside 1h) and one three days old (only inside 7d).
   writeEvents(root, [
     { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
     { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
@@ -1498,7 +1498,7 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
   assert.doesNotMatch(keys.state().paneCache ?? "", /result:/, "a window without an outcome filter names no result header");
   assert.match(keys.state().paneCache ?? "", /feature #1/);
-  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #2/, "the 1h window drops the three-day-old tick");
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #2/, "the 1h window drops the three-day-old run");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the body at its head");
 
   keys.handleKey(undefined, { ctrl: true, name: "s" });
@@ -1507,7 +1507,7 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
   assert.equal(keys.state().historySince, "1d");
   keys.handleKey(undefined, { ctrl: true, name: "s" });
   assert.equal(keys.state().historySince, "7d");
-  assert.match(keys.state().paneCache ?? "", /feature #2/, "7d reaches the three-day-old tick");
+  assert.match(keys.state().paneCache ?? "", /feature #2/, "7d reaches the three-day-old run");
   assert.match(keys.state().paneCache ?? "", /oldest retained event/, "the 7d read hedges its coverage with the sparse-window note");
   keys.handleKey(undefined, { ctrl: true, name: "s" });
   assert.equal(keys.state().historySince, null, "the cycle wraps to the default window");
@@ -1555,9 +1555,9 @@ test("Ctrl+S is inert in the prompt-line modes and off the History view only mov
 test("Ctrl+E cycles the Usage and Failures panes' trailing report window and resets the scroll", () => {
   const root = makeRoot();
   const now = Date.now();
-  // One feature tick 30 minutes old (inside 1h) and one three days old (only inside 7d), with
-  // distinct token counts so the windowed usage totals name which ticks they aggregated. Both
-  // are errors so the failure digest's window tick count names the same split.
+  // One feature run 30 minutes old (inside 1h) and one three days old (only inside 7d), with
+  // distinct token counts so the windowed usage totals name which runs they aggregated. Both
+  // are errors so the failure digest's window run count names the same split.
   writeEvents(root, [
     { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 }, // retired-name-ok: legacy event field in a fixture
     { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "error", tokens: 1_000_000 }, // retired-name-ok: legacy event field in a fixture
@@ -1568,7 +1568,7 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   assert.equal(keys.state().view, 2, "Usage is roleIds.length + 2");
   assert.equal(keys.state().reportSince, null, "the report pane opens on the default day window");
-  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default day report aggregates both ticks");
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default day report aggregates both runs");
   assert.match(keys.state().paneCache ?? "", /2 runs/);
 
   keys.handleKey(undefined, { name: "pagedown" });
@@ -1578,7 +1578,7 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   assert.equal(keys.state().reportSince, "1h");
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
   assert.match(keys.state().paneCache ?? "", /100 output tokens/);
-  assert.doesNotMatch(keys.state().paneCache ?? "", /1\.0M/, "the 1h window drops the three-day-old tick's tokens");
+  assert.doesNotMatch(keys.state().paneCache ?? "", /1\.0M/, "the 1h window drops the three-day-old run's tokens");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the body at its head");
 
   keys.handleKey(undefined, { ctrl: true, name: "e" });
@@ -1588,22 +1588,22 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, "7d");
   assert.match(keys.state().paneCache ?? "", /window: last 7d/);
-  assert.match(keys.state().paneCache ?? "", /1\.0M/, "7d reaches the three-day-old tick");
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "7d reaches the three-day-old run");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, null, "the cycle wraps to the default window");
-  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default read aggregates both ticks again");
+  assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default read aggregates both runs again");
 
-  // Failures: the same Ctrl+E cycle over the digest, whose window line names its tick count.
+  // Failures: the same Ctrl+E cycle over the digest, whose window line names its run count.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → failures
   assert.equal(keys.state().view, 3, "Failures is roleIds.length + 3");
   assert.equal(keys.state().reportSince, null, "the digest opens on the default day window");
-  assert.match(keys.state().paneCache ?? "", /· 2 runs/, "the default digest aggregates both error ticks");
+  assert.match(keys.state().paneCache ?? "", /· 2 runs/, "the default digest aggregates both error runs");
   keys.handleKey(undefined, { name: "pagedown" });
   assert.equal(keys.state().paneScroll, 1, "the digest body overflows the one-line budget");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, "1h");
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
-  assert.match(keys.state().paneCache ?? "", /· 1 runs/, "the 1h digest drops the three-day-old error tick");
+  assert.match(keys.state().paneCache ?? "", /· 1 runs/, "the 1h digest drops the three-day-old error run");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the digest at its head");
 });
 
@@ -1728,7 +1728,7 @@ test("Ctrl+O cycles the History pane's outcome class, filters rows by historyCla
 test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () => {
   const root = makeRoot();
   const now = Date.now();
-  // The only "changed" tick is three days old; a "no_change" tick sits inside 1h.
+  // The only "changed" run is three days old; a "no_change" run sits inside 1h.
   writeEvents(root, [
     { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
     { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
@@ -1747,13 +1747,13 @@ test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () =>
   assert.doesNotMatch(cache, /feature #/);
 });
 
-test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-empty claim", () => {
+test("Ctrl+O over a zero-row read keeps the pane's no-runs note, not a filter-empty claim", () => {
   const root = makeRoot();
   writeEvents(root, []);
   const { keys } = makeKeys(root, () => Date.now());
   keys.syncSnapshot(0, false, []);
   for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
-  assert.equal(keys.state().paneCache, "", "an empty log opens on the pane's own no-ticks note");
+  assert.equal(keys.state().paneCache, "", "an empty log opens on the pane's own no-runs note");
   keys.handleKey(undefined, { ctrl: true, name: "o" }); // → merged
   assert.equal(keys.state().historyResult, "merged");
   assert.equal(keys.state().paneCache, "", "an empty log is not blamed on the outcome filter");
@@ -2590,7 +2590,7 @@ test("Ctrl+D quits through the dep, Ctrl+C flashes a no-task notice, and the mod
   assert.equal(keys.state().budgetMode, true);
 });
 
-test("Ctrl+C interrupts the director's in-flight tick: abort marker when in flight, notice when not", () => {
+test("Ctrl+C interrupts the director's in-flight run: abort marker when in flight, notice when not", () => {
   const root = makeRoot();
   const { keys, quitCount } = makeKeys(root, () => 0);
   // A live harness marker (this process's pid) so requestAbort passes its liveness gate.
@@ -2599,7 +2599,7 @@ test("Ctrl+C interrupts the director's in-flight tick: abort marker when in flig
   keys.handleKey(undefined, { ctrl: true, name: "c" });
   assert.equal(quitCount(), 0, "Ctrl+C quits nothing");
   assert.equal(keys.state().flash, "no director task in flight");
-  assert.ok(!fs.existsSync(abortRequestPath(root, "director")), "no marker without a tick in flight");
+  assert.ok(!fs.existsSync(abortRequestPath(root, "director")), "no marker without a run in flight");
 
   keys.syncSnapshot(0, false, ["director"], true);
   keys.handleKey(undefined, { ctrl: true, name: "c" });

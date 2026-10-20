@@ -1,5 +1,5 @@
 /** The rendered status table suite: renderStatus's table-level behavior (totals, clipping,
- * work items, pauses, ordering). The per-cell suites (lastTickCell, today, last result,
+ * work items, pauses, ordering). The per-cell suites (lastRunCell, today, last result,
  * next run) live beside it in status-render-cells.test.ts, the status-model suite
  * (rolePhase, workingDetail) in status-model.test.ts, the header badges' in
  * status-header.test.ts, and the badges' in badges.test.ts; the fixtures both assemble
@@ -126,7 +126,7 @@ test("renderStatus with maxWidth clips every line and truncates wide cells", () 
     {
       role: "improve",
       lastResult: "changed",
-      lastSummary: "an extremely long tick summary that would normally blow the table out past eighty columns easily",
+      lastSummary: "an extremely long run summary that would normally blow the table out past eighty columns easily",
       runs: 3,
       commits: 1,
     },
@@ -152,16 +152,16 @@ test("narrow terminals never receive a wrapping line even below column minimums"
   }
 });
 
-test("gen/peak ctx combine persisted totals with live in-tick progress for running roles only", () => {
+test("gen/peak ctx combine persisted totals with live in-run progress for running roles only", () => {
   const root = tmpdir();
-  // In-flight tick: this run's session plus two completed turns (800 output, peak 12k).
+  // In-flight run: this run's session plus two completed turns (800 output, peak 12k).
   writePiLog(root, "clean", [
     SESSION,
     assistantLine("turn one", { tokens: 8_000, output: 300 }),
     assistantLine("turn two", { tokens: 12_000, output: 500 }),
   ]);
-  // Idle role whose log tail is its last COMPLETED tick (already in the persisted totals).
-  writePiLog(root, "dedupe", [SESSION, assistantLine("done tick", { tokens: 5_000, output: 500 })]);
+  // Idle role whose log tail is its last COMPLETED run (already in the persisted totals).
+  writePiLog(root, "dedupe", [SESSION, assistantLine("done run", { tokens: 5_000, output: 500 })]);
   const snap = snapshotWith([
     { role: "clean", generatedTokens: 1_000, peakContextTokens: 6_000, running: true },
     { role: "dedupe", generatedTokens: 2_000, peakContextTokens: 4_000 },
@@ -186,13 +186,13 @@ test("renderStatus prepends the current work item to a working role's state cell
     assistantLine('implement plan "Linear history on main"'),
     toolStart("bash", { command: "npm test" }),
   ]);
-  // Orchestrator running (snap.running) so the in-flight tick renders as working.
+  // Orchestrator running (snap.running) so the in-flight run renders as working.
   const snap = { ...snapshotWith([{ role: "feature", running: true, lastRunStartedAt: Date.now() - 5_000 }]), running: true };
   const out = renderStatus(root, snap);
   assert.match(out, /implement plan "Linear history on main" · working \ds · turn 2/);
 });
 
-test("renderStatus does not leak a finished tick's work item into an idle role's state cell", () => {
+test("renderStatus does not leak a finished run's work item into an idle role's state cell", () => {
   const root = tmpdir();
   writePiLog(root, "feature", [SESSION, assistantLine("old finished work")]);
   // Orchestrator running but the role itself is idle (queued/sleeping).
@@ -236,7 +236,7 @@ test("rolePhase shows failing for idle roles stuck on an error streak, not sleep
   s.nextRunAt = Date.now() + 1_800_000;
   assert.equal(rolePhase(s, true), "failing", "the streak at the threshold outranks sleep");
 
-  // Below the threshold the role keeps its ordinary label — a few failed ticks are
+  // Below the threshold the role keeps its ordinary label — a few failed runs are
   // retryable transients, not a health state.
   const shallow = freshRunnerState("feature");
   shallow.lastResult = "error";
@@ -250,7 +250,7 @@ test("rolePhase shows failing for idle roles stuck on an error streak, not sleep
   deep.consecutiveErrors = 4;
   assert.equal(rolePhase(deep, true), "failing");
 
-  // A streak fed by leftover-recovery merge failures reads failing even though the tick's
+  // A streak fed by leftover-recovery merge failures reads failing even though the run's
   // own result is healthy (BUGS.md 2026-09-21): the merge failure, not `lastResult`, is the
   // tell. Before the fix this cell showed "sleeping" while a dead reviewer backend wedged the
   // pin forever.
@@ -260,7 +260,7 @@ test("rolePhase shows failing for idle roles stuck on an error streak, not sleep
   recovered.nextRunAt = Date.now() + 1_800_000;
   assert.equal(rolePhase(recovered, true), "failing", "a recovery-failure streak outranks sleep");
 
-  // In-flight ticks are untouched (the label describes the finished tick only).
+  // In-flight runs are untouched (the label describes the finished run only).
   const running = freshRunnerState("feature");
   running.running = true;
   running.lastResult = "error";
@@ -383,7 +383,7 @@ test("renderStatus shows paused in idle roles' state cells ahead of waiting: bud
 test("renderStatus keeps roles working under the fallback and pauses them without one", () => {
   const root = tmpdir();
   const roles = [{ role: "feature" }, { role: "director" }];
-  // At the cap WITH a usable free fallback: the roles keep ticking on it, so no row reads
+  // At the cap WITH a usable free fallback: the roles keep running on it, so no row reads
   // `waiting: budget spent` — the header badge is where the operator learns the cap is spent.
   const degraded = renderStatus(root, {
     ...snapshotWith(roles, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
@@ -403,10 +403,10 @@ test("renderStatus keeps roles working under the fallback and pauses them withou
   assert.match(stopped, /feature\s+waiting: budget spent/);
 });
 
-test("status table groups a merge role above queued/sleeping rows with newer last ticks", () => {
+test("status table groups a merge role above queued/sleeping rows with newer last runs", () => {
   const root = tmpdir();
   const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60000;
-  // A sleeping role and a queued role, both with a NEWER last tick than the merge role —
+  // A sleeping role and a queued role, both with a NEWER last run than the merge role —
   // grouping must still put the merge role first, the same active-first rule as the GUI
   // table. Before the fix renderStatus emitted payload order, so merge sank with the idles.
   const sleeping = freshRunnerState("sleepy");
@@ -427,8 +427,8 @@ test("status table groups a merge role above queued/sleeping rows with newer las
   const lines = renderStatus(root, snap).split("\n");
   const rowOf = (role: string) => lines.findIndex((l) => l.startsWith(role));
   assert.ok(rowOf("landing-r") >= 0, "the merge role has a row");
-  assert.ok(rowOf("landing-r") < rowOf("sleepy"), "merge sorts above a sleeping row with a newer last tick");
-  assert.ok(rowOf("landing-r") < rowOf("queued-z"), "merge sorts above a queued row with a newer last tick");
+  assert.ok(rowOf("landing-r") < rowOf("sleepy"), "merge sorts above a sleeping row with a newer last run");
+  assert.ok(rowOf("landing-r") < rowOf("queued-z"), "merge sorts above a queued row with a newer last run");
   assert.match(lines[rowOf("landing-r")]!, /merging \dm\d+s/);
 });
 
@@ -540,7 +540,7 @@ test("a rendered team shows active rows equal to permit holders: parked waiters 
   await initProject(repo, "test project");
   // A live-looking orchestrator (this process's pid) so rolePhase renders in-flight states.
   writeOrchestratorMarker(repo, []);
-  // One permit-holding tick (running, no parkedSince) and two parked waiters.
+  // One permit-holding run (running, no parkedSince) and two parked waiters.
   const holder = freshRunnerState("feature");
   holder.running = true;
   holder.lastRunStartedAt = Date.now() - 5_000; // renders the elapsed working detail
@@ -655,7 +655,7 @@ function hostileWorkItem(): { root: string; snap: StatusSnapshot } {
 }
 
 // The terminal boundary for the status table's live work item (BUGS.md 2026-10-07, the
-// terminal-escape fix): `currentWork` is the first assistant text of the in-flight tick — model
+// terminal-escape fix): `currentWork` is the first assistant text of the in-flight run — model
 // output — and the state cell prepends it, so both terminal consumers must strip its control
 // bytes: `tumwater status` through say(), and the TUI through sanitizeFrameLines() on the final
 // frame. The table's own render stays raw by design, so these drive the real boundaries rather

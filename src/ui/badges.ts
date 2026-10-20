@@ -292,7 +292,7 @@ export function roleWakeMarker(
  * or already-expired deadline renders nothing — the read side treats an expired marker as
  * unpaused, so the badge never claims a countdown that is over. The duration goes through
  * pauseCountdown, the one home of that guard and rounding. renderStatus renders it in
- * the TUI/status header after the budget badge; the GUI recomputes the ticking number
+ * the TUI/status header after the budget badge; the GUI recomputes the counting-down number
  * client-side from the payload's raw `pausedUntil` (status-payload.ts) using its own
  * humanSeconds copy, pinned against this one by test. `reason` (the operator's
  * `pause --reason <text>` note) rides after the countdown — and makes the untimed pause
@@ -315,7 +315,7 @@ export function pauseBadge(pausedUntil: number | undefined, now: number, reason?
  * countdowns, shared by pauseBadge's header fragment and team-alerts.ts's paused alert
  * title, so the two surfaces cannot disagree about how much time remains. The guard is this
  * function's own; the ms→seconds rounding rides datetime.ts's secondsUntil. The GUI's pause
- * control recomputes the ticking number client-side from the payload's raw `pausedUntil`
+ * control recomputes the counting-down number client-side from the payload's raw `pausedUntil`
  * (gui-client-operator.ts) — a separate runtime that cannot import TypeScript. */
 export function pauseCountdown(pausedUntil: number | undefined, now: number): string | null {
   if (pausedUntil === undefined || pausedUntil <= now) return null;

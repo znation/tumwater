@@ -32,7 +32,7 @@ const SESSION = JSON.stringify({ type: "session", version: 3, id: "x" });
 test("status payload carries the pooled worktree slot a role holds or is pinned to", async () => {
   const repo = makeRepo();
   await initProject(repo, "pool slot test");
-  // A live tick lease: the row names the slot, unpinned.
+  // A live run lease: the row names the slot, unpinned.
   writeSlotsState(repo, {
     slots: [
       {
@@ -123,13 +123,13 @@ test("status payload marks user-defined roles with the custom flag", async () =>
 test("status payload combines persisted + live token metrics for running roles only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui metrics test");
-  // Persisted totals from completed ticks…
+  // Persisted totals from completed runs…
   const s = freshRunnerState("feature");
   s.generatedTokens = 1_000;
   s.peakContextTokens = 6_000;
-  s.running = true; // a tick is in flight
+  s.running = true; // a run is in flight
   saveRunnerState(repo, s);
-  // …and the in-flight tick's log tail (800 output so far, peak context 12k).
+  // …and the in-flight run's log tail (800 output so far, peak context 12k).
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
   const payload = statusPayload(repo) as {
@@ -144,13 +144,13 @@ test("status payload combines persisted + live token metrics for running roles o
 test("status payload carries the current work item for running roles only", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui work item test");
-  // A running role whose in-flight tick has spoken its work item…
+  // A running role whose in-flight run has spoken its work item…
   const s = freshRunnerState("feature");
   s.running = true;
   saveRunnerState(repo, s);
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine('implement plan "Linear history on main"')]);
-  // …and an idle role whose log tail is a finished tick (must not leak its item).
+  // …and an idle role whose log tail is a finished run (must not leak its item).
   saveRunnerState(repo, freshRunnerState("clean"));
   const file2 = piLogPath(repo, "clean");
   writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
@@ -189,7 +189,7 @@ test("status payload carries todayUsd per role from its daily window", async () 
   assert.equal(payload.roles.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
   assert.equal(payload.roles.find((l) => l.role === "dedupe")?.todayUsd, 0, "stale stamp reads zero");
 
-  // A role that never ticked (default state file) also carries an explicit zero field.
+  // A role that never ran (default state file) also carries an explicit zero field.
   saveRunnerState(repo, freshRunnerState("organize"));
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.roles.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
@@ -202,7 +202,7 @@ test("status payload carries the consecutive no-change streak per role", async (
   const streaked = freshRunnerState("clean");
   streaked.noChangeStreak = 4;
   saveRunnerState(repo, streaked);
-  // A role that never ticked (absent field) reads as an explicit zero.
+  // A role that never ran (absent field) reads as an explicit zero.
   saveRunnerState(repo, freshRunnerState("organize"));
 
   let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number }> };

@@ -589,11 +589,7 @@ export function readRunRowsSince(root: string, sinceMs: number, role: RoleScope)
 
 /** @deprecated Use summarizeRunRows. */
 export const summarizeTickRows = summarizeRunRows;
-/** @deprecated Use summarizeRunRowsByModel. */
-export const summarizeTickRowsByModel = summarizeRunRowsByModel;
 /** @deprecated Use RunRow. */
 export type TickRow = RunRow;
 /** @deprecated Use readRunRows. */
 export const readTickRows = readRunRows;
-/** @deprecated Use readRunRowsSince. */
-export const readTickRowsSince = readRunRowsSince;

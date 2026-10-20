@@ -1,15 +1,15 @@
-/** The status table's per-cell suites, split out of status-render.test.ts: the last-tick cell
- * (lastTickCell), the today column, the last-result cell, and the next-run column (nextRunCell).
+/** The status table's per-cell suites, split out of status-render.test.ts: the last-run cell
+ * (lastRunCell), the today column, the last-result cell, and the next-run column (nextRunCell).
  * The remaining renderStatus surface stays in status-render.test.ts; the status-model suite
  * (rolePhase, workingDetail) lives in status-model.test.ts, the header badges' in
  * status-header.test.ts, and the fixtures these assemble snapshots from are in
  * status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lastTickCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
+import { lastRunCell, lastMergedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { rolePhase } from "../src/ui/status-model.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import { applyMergeOutcome, applyTickOutcome } from "../src/run/run-apply.js";
+import { applyMergeOutcome, applyRunOutcome } from "../src/run/run-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -29,39 +29,39 @@ import {
   pendingFeature,
 } from "./fixtures/status-fixtures.js";
 
-// Last tick cell: absolute local time of the last tick end alongside the relative age.
+// Last run cell: absolute local time of the last run end alongside the relative age.
 
-test("lastTickCell shows the absolute local time plus relative age", () => {
+test("lastRunCell shows the absolute local time plus relative age", () => {
   const ts = Date.now() - 180_000; // three minutes ago, same day: no date prefix
-  assert.equal(lastTickCell(ts), `${stampOf(ts)} · 3m ago`);
+  assert.equal(lastRunCell(ts), `${stampOf(ts)} · 3m ago`);
 });
 
-test("lastTickCell prefixes the date once older than a day", () => {
+test("lastRunCell prefixes the date once older than a day", () => {
   const ts = Date.now() - 2 * 86_400_000;
   // MM-DD, dropped from the raw-parts day key — the same slice production's monthDay renders.
   const prefix = dayKey(ts).slice(5);
-  assert.equal(lastTickCell(ts), `${prefix} ${stampOf(ts)} · 2d ago`);
+  assert.equal(lastRunCell(ts), `${prefix} ${stampOf(ts)} · 2d ago`);
 });
 
-test("lastTickCell is a bare dash for roles that never ticked", () => {
-  assert.equal(lastTickCell(undefined), "-");
+test("lastRunCell is a bare dash for roles that never ran", () => {
+  assert.equal(lastRunCell(undefined), "-");
 });
 
-test("lastMergedCell reuses the last-tick clock cell: absolute time plus relative age, dash when never merged", () => {
+test("lastMergedCell reuses the last-run clock cell: absolute time plus relative age, dash when never merged", () => {
   const ts = Date.now() - 180_000;
   assert.equal(lastMergedCell(ts), `${stampOf(ts)} · 3m ago`);
   assert.equal(lastMergedCell(undefined), "-");
-  assert.equal(lastMergedCell(ts), lastTickCell(ts), "merged and tick clock cells cannot drift");
+  assert.equal(lastMergedCell(ts), lastRunCell(ts), "merged and run clock cells cannot drift");
 });
 
-test("renderStatus shows the absolute last-tick time in the table row", () => {
+test("renderStatus shows the absolute last-run time in the table row", () => {
   const ts = Date.now() - 180_000;
   const snap = snapshotWith([{ role: "clean", lastRunEndedAt: ts }]);
   const row = renderStatus(tmpdir(), snap).split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.ok(row.includes(`${stampOf(ts)} · 3m ago`), `row missing the stamp: ${JSON.stringify(row)}`);
 });
 
-test("last tick shrinks last: narrow width takes from last result, then state, then last tick", () => {
+test("last run shrinks last: narrow width takes from last result, then state, then last run", () => {
   const root = tmpdir();
   // A working role with a work-item-style wide state cell and a long last-result summary,
   // so all three flexible columns have room to shrink.
@@ -87,28 +87,28 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
   };
   const col = (w: number[], i: number): number => w[i] ?? -1;
   const natural = tableCells(renderStatus(root, snap)).widths; // unclipped render
-  assert.equal(col(natural, 8), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
+  assert.equal(col(natural, 8), 17, "fixture sanity: last run column is HH:MM:SS · 3m ago");
   const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
 
   // Stage 1: only `last result` shrinks.
   let w = tableCells(renderStatus(root, snap, total - 5)).widths;
   assert.equal(col(w, 10), col(natural, 10) - 5, "last result absorbs the first overflow");
   assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
-  assert.equal(col(w, 8), col(natural, 8), "last tick untouched until the others are exhausted");
+  assert.equal(col(w, 8), col(natural, 8), "last run untouched until the others are exhausted");
 
   // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
   w = tableCells(renderStatus(root, snap, total - (col(natural, 10) - 12) - 5)).widths;
   assert.equal(col(w, 10), 12, "last result clamped at its minimum");
   assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
-  assert.equal(col(w, 8), col(natural, 8), "last tick still untouched");
+  assert.equal(col(w, 8), col(natural, 8), "last run still untouched");
 
-  // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
+  // Stage 3: both at their minimums; `last run` shrinks last, down to a bare HH:MM:SS.
   w = tableCells(
     renderStatus(root, snap, total - (col(natural, 10) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
   ).widths;
   assert.equal(col(w, 10), 12);
   assert.equal(col(w, 1), 12);
-  assert.equal(col(w, 8), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
+  assert.equal(col(w, 8), 10, "last run shrinks last and only to its HH:MM:SS minimum");
 
   // And at a hard 80 columns nothing wraps.
   for (const line of renderStatus(root, snap, 80).split("\n")) {
@@ -121,7 +121,7 @@ test("renderStatus shows the last-merged age in the table row, dash when never m
   const mergeDone = snapshotWith([{ role: "clean", lastRunEndedAt: ts, lastMergedAt: ts - 60_000 }]);
   const mergeDoneRow = renderStatus(tmpdir(), mergeDone).split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.ok(mergeDoneRow.includes(`${stampOf(ts - 60_000)} · 4m ago`), `row missing the merged age: ${JSON.stringify(mergeDoneRow)}`);
-  // A role that has never merged shows the same dash as a never-ticked role.
+  // A role that has never merged shows the same dash as a role that has never run.
   const fresh = snapshotWith([{ role: "new", lastRunEndedAt: ts }]);
   const { lines: freshLines, cellAt, headers } = tableCells(renderStatus(tmpdir(), fresh));
   const freshRow = freshLines.find((l) => l.startsWith("new")) ?? "";
@@ -129,20 +129,20 @@ test("renderStatus shows the last-merged age in the table row, dash when never m
 });
 
 // The per-role today-spend column: `today` sits between cost
-// and last tick, showing each role's daily budget window via dailyCost — $0.00 while its stamp
-// is stale or missing, so roles that never ticked read zero without a save. It is not flexible
+// and last run, showing each role's daily budget window via dailyCost — $0.00 while its stamp
+// is stale or missing, so roles that never ran read zero without a save. It is not flexible
 // (a short fixed-width cell like cost), and the totals row sums the same windows as the badge.
 
 // Header labels are padded to their column widths, so they cannot be split on the two-space
 // gap — derive each label by slicing at the separator line's offsets instead.
-test("the status table has a today column between cost and last tick", () => {
+test("the status table has a today column between cost and last run", () => {
   const { headers: cols } = tableCells(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
   assert.ok(cols.includes("today"), "table has a today column");
   assert.equal(cols.indexOf("cost"), cols.indexOf("today") - 1, "today sits directly after cost");
   assert.equal(
     cols.indexOf("last run"),
     cols.indexOf("today") + 1,
-    "today sits directly before last tick",
+    "today sits directly before last run",
   );
 });
 
@@ -154,7 +154,7 @@ test("the today cell shows the role's daily window and zeros for stale or missin
   const stale = freshRunnerState("dedupe");
   stale.dayStamp = todayStamp(Date.now() - 86_400_000);
   stale.dayCostUsd = 5.67;
-  // Missing: a role that never ticked (freshRunnerState defaults) also reads zero, no save needed.
+  // Missing: a role that never ran (freshRunnerState defaults) also reads zero, no save needed.
   const snap = snapshotWith([fresh, stale, freshRunnerState("organize")]);
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
@@ -215,13 +215,13 @@ test("the today column keeps its natural width under overflow like cost", () => 
   assert.equal(w[cols.indexOf("today")], natural[cols.indexOf("today")], "today keeps its natural width — never flexible");
   assert.equal(w[cols.indexOf("cost")], natural[cols.indexOf("cost")], "cost likewise stays fixed");
 });
-// The "last result" cell is the last COMPLETED outcome (BUGS.md 2026-09-23). A tick that commits
+// The "last result" cell is the last COMPLETED outcome (BUGS.md 2026-09-23). A run that commits
 // and enqueues its change ends `queued`, which is in-flight work — the state column's `merge
 // <elapsed>` and the header's merge queue badge already show it — so the cell must keep the prior
 // result WITH the prior summary while the change is pending. Driven through the real
-// applyTickOutcome so the pin covers the state write, not a hand-built fixture.
+// applyRunOutcome so the pin covers the state write, not a hand-built fixture.
 
-/** A queued tick's pinned commit — the sha its stashed summary and the merge queue entry share. */
+/** A queued run's pinned commit — the sha its stashed summary and the merge queue entry share. */
 
 test("the last-result cell keeps the prior completed result and its summary while a change is pending", () => {
   const s = pendingFeature();
@@ -249,7 +249,7 @@ test("the last-result cell keeps the prior completed result and its summary whil
 
 test("the last-result cell shows the merge's outcome beside the summary of the change it merged", () => {
   // The second window: once the merge resolves, its result — success or failure — takes the
-  // cell, paired with the queued change's summary, never with the prior tick's.
+  // cell, paired with the queued change's summary, never with the prior run's.
   for (const result of ["changed", "rejected"] as const) {
     const s = pendingFeature();
     applyMergeOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
@@ -260,15 +260,15 @@ test("the last-result cell shows the merge's outcome beside the summary of the c
   }
 });
 
-test("a pending change after a main-red tick does not keep the state cell reading main red", () => {
+test("a pending change after a main-red run does not keep the state cell reading main red", () => {
   // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
   // state cell's "main's check is failing" says the role is blocked NOW — and a queued change
-  // got past the red-main gate, so main was green at its tick.
+  // got past the red-main gate, so main was green at its run.
   const s = freshRunnerState("feature");
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
-  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the blocked tick reads main red");
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
-  assert.match(rolePhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
+  applyRunOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
+  assert.equal(rolePhase(s, true), "main's check is failing", "fixture sanity: the blocked run reads main red");
+  applyRunOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
+  assert.match(rolePhase(s, true), /^sleeping/, "the pending change's run was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }), "feature");
   assert.doesNotMatch(row, /^feature\s+main's check is failing/);
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, mergeQueue: { depth: 1 } }));

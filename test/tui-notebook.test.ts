@@ -7,7 +7,7 @@ import { roleNotesPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
 // Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
-// role's notebook and next tick's prompt (PLANS.md "Inspect a loop's notebook and next tick
+// role's notebook and next run's prompt (PLANS.md "Inspect a loop's notebook and next tick
 // prompt in the TUI"), and swaps back — the terminal view of what the dashboard drawer shows.
 
 /** Seed a role's notebook file. */
@@ -17,7 +17,7 @@ function seedNote(repo: string, role: string, text: string): void {
   fs.writeFileSync(note, text);
 }
 
-test("Ctrl+N shows the viewed role's notebook and next tick prompt, and toggles back", async () => {
+test("Ctrl+N shows the viewed role's notebook and next run prompt, and toggles back", async () => {
   const repo = await makeTuiRepo();
   seedNote(repo, "clean", "the scheduler lives in team.ts\n");
   enqueueRolePrompt(repo, "clean", "check the scheduler first");

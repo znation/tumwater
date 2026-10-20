@@ -158,7 +158,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // Whether the director has work in flight is Ctrl+C's interrupt gate (tui-keys.ts): the
     // render already computes the per-role rows, so it feeds them back rather than re-deriving.
     // The row's `inFlight` flag is the permit-holder set, which deliberately excludes the
-    // exempt director's own `director working` tick (BUGS.md 2026-10-06), so accept that phase
+    // exempt director's own `director working` run (BUGS.md 2026-10-06), so accept that phase
     // too — the same live set the GUI's row actions read. A director merge still carries
     // `merge …` (inFlight true) because rolePhase checks the merge marker first.
     const director = status.roles.find((r) => r.role === "director");
@@ -226,7 +226,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // and claims the terminal's stdin: the useTuiKeys hook inside the tree parses keys via
   // ink's `useInput` and dispatches them through the extracted handler (tui-keys.ts).
   // exitOnCtrlC is false because the TUI owns its own keys: Ctrl+D quits and Ctrl+C
-  // interrupts the director's in-flight tick (tui-keys.ts); console patching stays
+  // interrupts the director's in-flight run (tui-keys.ts); console patching stays
   // off so console.* keeps writing past the TUI exactly as before it; and the render is
   // unthrottled (maxFps 0) because the loop drives rendering itself — once a second and
   // on each keypress — so ink's fps limiter would only defer frames this loop already
@@ -243,7 +243,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   // The useTuiKeys hook inside the tree set raw mode on mount (and restores it at unmount).
   // Raw mode appears once ink's tree effects have mounted; production terminals type long
-  // after that, and the test harness waits a tick before pressing keys.
+  // after that, and the harness waits a tick before keys. // retired-name-ok: event-loop tick
   const timer = setInterval(render, 1000);
   render();
 

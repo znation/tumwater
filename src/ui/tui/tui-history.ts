@@ -1,23 +1,23 @@
 // vocabulary: plain
-/** The TUI's History pane body: the completed-tick rows `tumwater history` prints (and the
+/** The TUI's History pane body: the completed-run rows `tumwater history` prints (and the
  * dashboard's History view renders), one line each, newest first. history-data.ts already
- * builds the rows (`readTickRows`); this only renders them for the pane, so the TUI, the CLI,
- * and the GUI cannot disagree about what a tick's row says. Deliberately unaligned — the pane
+ * builds the rows (`readRunRows`); this only renders them for the pane, so the TUI, the CLI,
+ * and the GUI cannot disagree about what a run's row says. Deliberately unaligned — the pane
  * has no full terminal width to measure columns against — so the parity with `history` is the
  * rows and their fields, not the CLI table's padding. Pure: a function of the rows it is
  * handed. */
-import { runRowCells, type TickRow } from "../../history/history-data.js";
+import { runRowCells, type RunRow } from "../../history/history-data.js";
 
-/** The pane body for a set of tick rows: `time  role #tick  result  duration`, then `model`
+/** The pane body for a set of run rows: `time  role #run  result  duration`, then `model`
  * (between the result and the duration), and `usage` and `detail` when they carry anything,
  * joined newest-first by newlines. The cells come from history-data.ts's runRowCells, the one
- * home the CLI's table builds on too, so a null `durationMs` (the tick's start sits outside
+ * home the CLI's table builds on too, so a null `durationMs` (the run's start sits outside
  * the scanned window) shows the em dash here the same way; an empty `model` (the start named
  * none or sat outside the window), an empty `usage` (neither tokens nor cost), and an empty
  * `detail` are omitted rather than leaving a gap. No rows renders `""`, which the pane's
  * `emptyNote` replaces. `row.result` is the string history-data.ts resolved (including a
  * joined merge verdict), never reclassified here. */
-export function historyPaneText(rows: readonly TickRow[]): string {
+export function historyPaneText(rows: readonly RunRow[]): string {
   return rows
     .map((row) => {
       const { duration } = runRowCells(row);

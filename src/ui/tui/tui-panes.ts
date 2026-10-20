@@ -187,7 +187,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     const page = pageDir(key.name);
     if (page !== null) {
       // Within-body page routing in today's order: the Activity tail, the notebook/change
-      // (transcript) and tick-trail (history) bodies, the Markdown panes from report on, then
+      // (transcript) and run-trail (history) bodies, the Markdown panes from report on, then
       // the backlog entry body.
       if (activity.handleKey?.(key, ctx)) return true;
       if (transcript.handleKey?.(key, ctx)) return true;

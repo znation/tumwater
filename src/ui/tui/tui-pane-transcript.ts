@@ -14,7 +14,7 @@ import type { TuiPaneSession } from "./tui-pane-session.js";
  * the notebook/change mode state and the arms that touch them. */
 export function createTranscriptPane(session: TuiPaneSession) {
   // Ctrl+N toggles the viewed role's pane between its live transcript and a read-only
-  // notebook view (its note and next tick's prompt). Like paneCache, noteCache is computed
+  // notebook view (its note and next run's prompt). Like paneCache, noteCache is computed
   // once on entry and only re-windowed each frame; both reset when the mode changes or the
   // view cycles.
   let noteMode = false;
@@ -80,7 +80,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
           },
         );
       } else {
-        // rolePayload reads the notebook and assembles the next tick's prompt off disk; a
+        // rolePayload reads the notebook and assembles the next run's prompt off disk; a
         // throw leaves the transcript shown (the mode stays off) and flashes the reason
         // instead of escaping the handler and killing the TUI.
         try {
@@ -122,7 +122,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
     if (page !== null && (noteMode || changeMode)) {
       // Within-body scroll in the notebook and change views: PgDn/PgUp page the cached
       // inspection Markdown, clamped at both ends, exactly like the usage/failures panes
-      // below. (The tick-trail view's arm lives in the history module beside trailMode.)
+      // below. (The run-trail view's arm lives in the history module beside trailMode.)
       session.paneScroll = pageMarkdownBody(session.paneScroll, noteMode ? noteCache : changeCache, session.eventBudget, page);
       session.requestRender();
       return true;

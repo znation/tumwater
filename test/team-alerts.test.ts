@@ -207,10 +207,10 @@ test("a lone failing or stuck role reads singular; three roles list as a, b, and
   assert.equal(stuckOne?.detail, "feature: tool call stalled: bash");
 });
 
-// A failing streak is the alert's tell, not the rendered phase: while a role's own tick runs
-// the phase reads "working"/"merging", but the red "failing run after run" banner must stay
-// up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working role with no
-// streak raises nothing.
+// A failing streak is the alert's tell, not the rendered phase: while a role's own run is in
+// progress the phase reads "working"/"merging", but the red "failing run after run"
+// banner must stay up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain
+// working role with no streak raises nothing.
 test("a streak behind a working label still raises the failing alert; a healthily working role raises none", () => {
   const now = Date.now();
   const streakWorking: AlertRole[] = [
@@ -258,7 +258,7 @@ test("a fallback names its provider or nothing; a plain stale build asks for a m
 // the maintenance allowance ("waiting: maintenance allowance used <used>/<allowance>") each
 // stop whole roles and each get a team banner, so an operator sees why roles are idling without
 // reading every row. The cap hold is an amber ask (raise the cap); the maintenance hold informs
-// (gray, self-clearing — roles tick again as work merges).
+// (gray, self-clearing — roles run again as work merges).
 test("a role over its daily cap raises one amber role-cap alert; an empty hold raises none", () => {
   const held = teamAlerts(
     { ...base, capPaused: ["feature"] },

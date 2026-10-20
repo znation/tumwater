@@ -3,7 +3,7 @@ import { roleRank } from "./status-model.js";
 
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of
  * status-model.ts (which keeps only the status display model: role phases, badges, row cells):
- * the tone palette both surfaces color by, a tick result's tone, and what kind of news an
+ * the tone palette both surfaces color by, a run result's tone, and what kind of news an
  * event is for the activity feeds. Kept apart from the renderers (status-render.ts,
  * tui-frame.ts) so "what color is this" lives in one place while "how a terminal draws it"
  * stays with the layout. The dashboard draws the same families in its own tones
@@ -13,7 +13,7 @@ import { roleRank } from "./status-model.js";
  * attention red, a held role yellow, a merged change green, a change on its way to merge
  * cyan; idle states and neutral outcomes stay uncolored. */
 
-/** The colors the observer surfaces share for role state and tick outcomes, as the terminal's
+/** The colors the observer surfaces share for role state and run outcomes, as the terminal's
  * base palette names them — so they follow the user's terminal theme. */
 export type Tone = "blue" | "red" | "yellow" | "green" | "cyan" | "magenta" | "dim";
 
@@ -24,7 +24,7 @@ export function phaseTone(phase: string): Tone | undefined {
   return rank <= 1 ? "blue" : rank === 2 ? "red" : rank === 3 ? "yellow" : undefined;
 }
 
-/** A tick result's tone (run-outcome.ts TickResult): a completed merge (changed) green,
+/** A run result's tone (run-outcome.ts RunResult): a completed merge (changed) green,
  * queued to merge cyan, the failures red, the held-back outcomes (refused, rejected, aborted,
  * quiet_killed) yellow. */
 export function resultTone(result: string | undefined | null): Tone | undefined {
@@ -50,12 +50,12 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
 }
 
 /** What kind of news an event is, for the activity feeds: a merge, a problem, a question for
- * the operator, a notice about the team, or routine bookkeeping (a tick starting, a passing
+ * the operator, a notice about the team, or routine bookkeeping (a run starting, a passing
  * check). The dashboard's activity card filters on it and both surfaces tone by it; the page's
  * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */
 type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
 
-/** The tick results that make a `run_end` a problem — one home of the list, also fed to the
+/** The run results that make a `run_end` a problem — one home of the list, also fed to the
  * dashboard's browser twin (gui-client-model.ts interpolates it into its script, both for
  * eventKind and for resultWhy's "does this result carry an error" check), so a newly problem
  * result cannot be classified on one surface and not the other. */

@@ -106,7 +106,7 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   }) as unknown as typeof clearInterval;
 
   // runTui's body runs synchronously up to its main await; ink's input subscription mounts
-  // with its tree's effects, which withTui flushes with one macrotask tick before the
+  // with its tree's effects, which withTui flushes with one macrotask run before the
   // test body presses any key.
   const done = runTui(root, { stdin: stdin as unknown as TuiStdin, ...seams });
 
@@ -139,7 +139,7 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   }
 
   /** Ctrl+D (shell EOF — the TUI's quit key) and wait for runTui to finish, then restore
-   * every patched global. The extra tick after `done` lets ink's deferred raw-mode teardown
+   * every patched global. The extra run after `done` lets ink's deferred raw-mode teardown
    * microtask (queued at unmount) run before assertions read `rawModes`. */
   async function quit(): Promise<void> {
     press(undefined, "d", { ctrl: true });

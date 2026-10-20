@@ -47,7 +47,7 @@ test("Ctrl+P toggles the viewed role's pause marker and flashes the CLI's wordin
 
 test("Ctrl+P's resume flash carries the team-pause interplay note while the team is paused", async () => {
   const repo = await makeTuiRepo();
-  pauseTeam(repo); // the stronger gate: a resumed role still starts no ticks under it
+  pauseTeam(repo); // the stronger gate: a resumed role still starts no runs under it
   await withTui(repo, async (tui) => {
     // The interplay note makes the resume flash longer than the default fake 100 columns, and
     // every rendered line is clipped to the width — widen the fake terminal so the note fits.
@@ -136,12 +136,12 @@ test("Ctrl+A flashes the abort confirmation with a live harness and the liveness
 // rendered snapshot itself (the director row's in-flight phase), so the wiring — not just the
 // handler's branch — decides what a Ctrl+C does. The handler-level test (tui-keys.test.ts)
 // passes syncSnapshot's flag by hand; this one drives the real render path.
-test("Ctrl+C interrupts a director tick in flight through the rendered snapshot, and refuses without", async () => {
+test("Ctrl+C interrupts a director run in flight through the rendered snapshot, and refuses without", async () => {
   const repo = await makeTuiRepo();
   const cfg = loadConfig(repo);
   cfg.roles.director!.enabled = true;
   saveConfig(repo, cfg);
-  // A director mid-tick: running with a started-at stamp renders its own `director working`
+  // A director mid-run: running with a started-at stamp renders its own `director working`
   // phase (outside the permit-holder inFlight set, which the gate no longer keys off alone);
   // the orchestrator marker keeps the team live for the gate. The state column clips the
   // label at this width, so match its prefix.
@@ -155,7 +155,7 @@ test("Ctrl+C interrupts a director tick in flight through the rendered snapshot,
   });
 });
 
-test("Ctrl+C with no director tick in flight flashes the notice and writes no marker", async () => {
+test("Ctrl+C with no director run in flight flashes the notice and writes no marker", async () => {
   const repo = await makeTuiRepo();
   const cfg = loadConfig(repo);
   cfg.roles.director!.enabled = true;

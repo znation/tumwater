@@ -1,14 +1,14 @@
 /** `historyPaneText` (src/ui/tui/tui-history.ts): the TUI's History pane body. Pure over the
- * TickRow[] that history-data.ts already resolved, so these tests seed rows directly and pin
+ * RunRow[] that history-data.ts already resolved, so these tests seed rows directly and pin
  * the one-line-per-row rendering — every field present, the null-duration dash, the omitted
  * empty usage/detail, and the no-rows empty string. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { historyPaneText } from "../src/ui/tui/tui-history.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
-import type { TickRow } from "../src/history/history-data.js";
+import type { RunRow } from "../src/history/history-data.js";
 
-function row(over: Partial<TickRow> = {}): TickRow {
+function row(over: Partial<RunRow> = {}): RunRow {
   return {
     ts: 0,
     time: "14:03",
@@ -25,7 +25,7 @@ function row(over: Partial<TickRow> = {}): TickRow {
   };
 }
 
-test("a seeded row renders its time, role, tick, result, duration, usage, and detail", () => {
+test("a seeded row renders its time, role, run, result, duration, usage, and detail", () => {
   assert.equal(historyPaneText([row()]), "14:03  feature #7  changed  90s  $0.42  Add the history pane");
 });
 
@@ -56,7 +56,7 @@ test("rows render newest-first, one line each, and no rows is the empty string",
   assert.equal(historyPaneText([]), "");
 });
 
-test("an empty history pane falls back to the no-ticks note, not entryBodyWindow's placeholder", () => {
+test("an empty history pane falls back to the no-runs note, not entryBodyWindow's placeholder", () => {
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const empty = paneBody({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
@@ -67,14 +67,14 @@ test("an empty history pane falls back to the no-ticks note, not entryBodyWindow
   assert.equal(rows.emptyNote, "(no runs yet)");
 });
 
-test("a history pane's tick trail windows the cached detail and holds the no-trail note when null", () => {
+test("a history pane's run trail windows the cached detail and holds the no-trail note when null", () => {
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const pane = { kind: "history", since: null, result: null, role: null, grep: null, trail: true } as const;
   const empty = paneBody(pane, { root: "/nonexistent", width: 300, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no run trail)");
 
-  const trail = "clean tick #1 — changed · 90s\n14:00 run_start\n14:01 landed";
+  const trail = "clean run #1 — changed · 90s\n14:00 run_start\n14:01 landed";
   const shown = paneBody(pane, { root: "/nonexistent", width: 300, eventBudget: 5, entryBudget: 4, state: { ...state, trailCache: trail } });
   assert.equal(shown.body.map((l) => l.map((s) => s.text).join("")).join("\n"), trail);
   assert.equal(shown.emptyNote, "(no run trail)");

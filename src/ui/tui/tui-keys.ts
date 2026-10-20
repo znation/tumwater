@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { TickDetail } from "../../run/run-detail-data.js";
+import type { RunDetail } from "../../run/run-detail-data.js";
 import { runDetailStat } from "../../run/run-detail.js";
 import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
@@ -42,7 +42,7 @@ interface TuiKeysDeps {
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
   /** The History trail's per-file stat footer; defaults to run-detail's runDetailStat so
    * tests need not shell out to git. */
-  tickStat?(root: string, detail: TickDetail): Promise<string>;
+  runStat?(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** The state render reads back each frame: the prompt line, the modes it names in the hint
@@ -156,15 +156,15 @@ interface TuiKeysState {
   /** The notebook view's rendered Markdown, computed once on Ctrl+N entry and windowed by
    * paneBody; null when the live transcript is shown. */
   noteCache: string | null;
-  /** Whether the History pane shows one completed tick's full event trail (Ctrl+N) instead
+  /** Whether the History pane shows one completed run's full event trail (Ctrl+N) instead
    * of the row list — true only on the History view while its pane holds a trail. */
   trailMode: boolean;
   /** The shown trail's 0-based newest-first position in the pane's scope (Ctrl+P steps it
    * older); 0 is the newest run. */
   trailIndex: number;
-  /** The trail view's rendered TickDetail text (renderTickDetail), computed once on Ctrl+N
+  /** The trail view's rendered RunDetail text (renderRunDetail), computed once on Ctrl+N
    * entry and windowed by paneBody; null while the rows are shown or when the newest
-   * completed tick could not be read. */
+   * completed run could not be read. */
   trailCache: string | null;
   /** The trail's agent transcript level (Ctrl+R): off, the plain transcript, or the transcript
    * with each agent run's prompt — `history <role> <n> --transcript [--prompt]`'s text. */
@@ -212,7 +212,7 @@ interface TuiKeysState {
   eventBudget: number;
   entryBudget: number;
   roleIds: string[];
-  /** Whether the director role currently has a tick in flight (render's feed, Ctrl+C's gate). */
+  /** Whether the director role currently has a run in flight (render's feed, Ctrl+C's gate). */
   directorInFlight: boolean;
   /** The live flash notice, or null when none is armed or the clock passed its expiry. */
   flash: string | null;
@@ -255,7 +255,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
   const collectChange = deps.collectChange ?? collectRoleChange;
-  const tickStat = deps.tickStat ?? runDetailStat;
+  const runStat = deps.runStat ?? runDetailStat;
   // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
   // and fixed bugs), read fresh — tui-backlog.ts's one definition, shared with the render so
   // stale-selection clamping cannot drift.
@@ -297,10 +297,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     runDoctor: runDoctorSeam,
     killOrphans: killOrphansSeam,
     collectChange,
-    tickStat,
+    runStat,
   });
   // Whether the director's status row is in flight, fed by render each frame: the gate for
-  // Ctrl+C's interrupt — with no director tick running, Ctrl+C flashes a notice instead of
+  // Ctrl+C's interrupt — while no director run is in progress, Ctrl+C flashes a notice instead of
   // writing an abort marker nothing would consume.
   let directorInFlight = false;
 
@@ -330,7 +330,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       return;
     }
     if (key.ctrl && key.name === "c") {
-      // Ctrl+C interrupts the director's in-flight tick (shell-EOF behavior moved to
+      // Ctrl+C interrupts the director's in-flight run (shell-EOF behavior moved to
       // Ctrl+D): when the director row is in flight, write the same abort marker the
       // CLI's `abort --role director` does, through the shared requestAbort core so the
       // marker format and wording cannot drift; when none is, flash a notice and leave

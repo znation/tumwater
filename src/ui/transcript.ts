@@ -81,7 +81,7 @@ function renderAssistantMessage(content: unknown): string[] {
 }
 
 /** Render a completed user message into transcript lines: each `text` content block split on
- * newlines, in order (the exact tick prompt). Only used when the renderer is opted into
+ * newlines, in order (the exact run prompt). Only used when the renderer is opted into
  * prompts; empty or non-text content renders nothing, leaving the run separator on its own. */
 function renderUserPrompt(content: unknown): string[] {
   const out: string[] = [];
@@ -123,7 +123,7 @@ interface TranscriptRenderer {
  * bookkeeping are never rendered; feed() skips even parsing them via a fast path over pi's compact
  * `type`-first JSON shape.
  *
- * User messages (in particular the multi-KB tick prompt sent each run) are suppressed by default,
+ * User messages (in particular the multi-KB run prompt sent each run) are suppressed by default,
  * but `includePrompts` opts into rendering them after their run separator — the `tumwater logs
  * --role <id> --prompt` surface. The dashboards' polled reader (readTranscript) keeps the default.
  *
@@ -170,7 +170,7 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
             if (runOpen && runTime === null && typeof message.timestamp === "number") {
               runTime = formatTimestamp(message.timestamp);
             }
-            if (!includePrompts) return []; // never render user content (the tick prompt)
+            if (!includePrompts) return []; // never render user content (the run prompt)
             // emitSeparator() runs here for the first time in this run, so the assistant's
             // later call returns [] — the separator is not duplicated.
             return [...emitSeparator(), ...renderUserPrompt(message.content)];

@@ -14,20 +14,20 @@ import {
   inFlightDetail,
   inFlightLabel,
   progressKind,
-  tickProgress,
+  runProgress,
   workingDetail,
 } from "./run-progress-model.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeChange } from "../merge/merge-slot.js";
 
 /** The status DISPLAY MODEL: the role's cycle position (the phase ladder), its merge cell,
  * and its per-role row derivation (the header badges live next door in badges.ts, the
- * in-flight tick's live progress detail in run-progress-model.ts) — derived from the status
+ * in-flight run's live progress detail in run-progress-model.ts) — derived from the status
  * data (status/status-data.ts) and shared by BOTH observer surfaces: the terminal table
  * (status-render.ts's renderStatus/stateCell) and the JSON/GUI payload (status-payload.ts).
  * Kept apart from status-render.ts so the GUI payload depends on the shared model, not on the
  * TUI table module — "what to show" (here) is separate from "how a terminal lays it out"
  * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
- * and never collects team state itself (live tick detail is display-only). */
+ * and never collects team state itself (live run detail is display-only). */
 
 type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSince">;
 
@@ -57,19 +57,19 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
 
 /** The role's state label — the one precedence ladder shared by the status table and both
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
- * merge (the role's tick already ended "queued" while its change merges, so the marker
- * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
+ * merge (the role's run already ended "queued" while its change merges, so the marker
+ * supplies the label); an in-flight run ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both team gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
  * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling
  * poll's recorded skip (`idle: …` / `deferred (…)`, from RunnerState.skipReason), else
  * "queued".
- * Pass `root` so an in-flight tick expands into live detail (elapsed · turn · ctx · tool);
+ * Pass `root` so an in-flight run expands into live detail (elapsed · turn · ctx · tool);
  * without it a working role shows plain "working". `live`, when given, is the frame's
- * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight tick
+ * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight run
  * reads on its own. `budgetPaused` marks the team's daily cost budget as reached: idle
  * roles show `budget paused` instead of their sleep/queue state — that is why they are not
- * ticking. `userPaused` marks an operator pause (`tumwater pause` marker present): idle
+ * running. `userPaused` marks an operator pause (`tumwater pause` marker present): idle
  * roles show `paused`, checked before the budget gate because user intent is more specific
  * than spend state — while both hold, "paused" tells the operator what to do (`resume`).
  * `merge`, when given for this role, is its change's record in the snapshot's in-flight
@@ -80,17 +80,17 @@ export function idleClaimText(s: { claim?: RunnerState["claim"]; role: string },
  * it reads
  * plainly queued.)
  * `mainCheck`, when given (roleRowCells passes the snapshot's), lets the main-red label
- * retire itself between ticks: main's newest merge-scope check passing AFTER this role's red
- * tick ended means main is green now — the role's `main_red` verdict is stale until its next
- * tick, which sleep, a full slot pool, a pause, or a spent budget can defer for hours
+ * retire itself between runs: main's newest merge-scope check passing AFTER this role's red
+ * run ended means main is green now — the role's `main_red` verdict is stale until its next
+ * run, which sleep, a full slot pool, a pause, or a spent budget can defer for hours
  * (BUGS.md 2026-09-30), so the label falls through to the ordinary idle state and the
  * teamAlerts banner follows. A check that is newer but failed keeps the label (main is
- * genuinely red); so does one older than the red tick or with no known pass at all — the
- * blockage stands until the role's own next tick re-verdicts it.
+ * genuinely red); so does one older than the red run or with no known pass at all — the
+ * blockage stands until the role's own next run re-verdicts it.
  * Otherwise its elapsed is the CHANGE's own merge (its record's startedAt — from its verification's
- * start, never another change's), never the authoring tick's,
+ * start, never another change's), never the authoring run's,
  * and its stage scopes the cell to the phase the merge is actually in: `reviewing` carries
- * the reviewer run's live detail exactly as a reviewing tick does (`merge 3m · reviewing ·
+ * the reviewer run's live detail exactly as a reviewing run does (`merge 3m · reviewing ·
  * turn 2 · ctx 18.0k · bash npm test`), and `resolving` the conflict resolver's the same way;
  * `build-check`, `resolve-wait` and `merging` render just the stage (`merge 1m · build
  * check`) and never read the log — no reviewer or resolver is running then, and the log's
@@ -101,10 +101,10 @@ export function onErrorStreak(s: Pick<RunnerState, "consecutiveErrors" | "lastRe
   // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN), or
   // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
   // that makes rolePhase read "failing", split out so the team alert (team-alerts.ts) can
-  // key its red "failing tick after tick" banner on the streak rather than on the rendered
-  // phase — an in-flight tick hides the streak behind a `working`/`merge` label (rolePhase
-  // ranks running work above failing), but the alert must stay up while the role's next tick
-  // runs and clear only when the streak resets (BUGS.md 2026-10-14).
+  // key its red "failing run after run" banner on the streak rather than on the rendered
+  // phase — an in-flight run hides the streak behind a `working`/`merge` label (rolePhase
+  // ranks running work above failing), but the alert must stay up while the role's next
+  // run is in flight and clear only when the streak resets (BUGS.md 2026-10-14).
   return (
     (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN ||
     (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
@@ -141,7 +141,7 @@ export function rolePhase(
     if (merge.stage !== "reviewing" && merge.stage !== "resolving") return staged;
     // The reviewer writes the role's own log from its leased pooled slot, and the conflict
     // resolver from the merge worktree, both as gate runs (runner-pi.ts): the GATE accumulator,
-    // read here rather than taken from `live` — the merge role's tick has ended, so the
+    // read here rather than taken from `live` — the merge role's run has ended, so the
     // frame's per-running-role tail is not this run's (callers pass null for it). Each run's
     // `tumwater_run` marker resets that accumulator, so neither shows the other's counts.
     return inFlightDetail(staged, root ? readLiveProgress(root, s.role, "gate") : null);
@@ -167,24 +167,24 @@ export function rolePhase(
       }
       return `waiting to start ${parkedTime}`;
     }
-    // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight tick
+    // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight run
     // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
     // excludes while still carrying the live detail, so its work stays visible without
     // counting as a permit holder (BUGS.md 2026-10-06). The bare label matches the working
     // branch's no-root shape.
     if (s.role === DIRECTOR_ROLE) {
-      return root ? inFlightDetail(inFlightLabel(s, "director working"), tickProgress(root, s, live)) : "director working";
+      return root ? inFlightDetail(inFlightLabel(s, "director working"), runProgress(root, s, live)) : "director working";
     }
-    // The tick's work is committed and under adversarial review: the raw log tail now
+    // The run's work is committed and under adversarial review: the raw log tail now
     // describes the reviewer run — show its live progress with a "reviewing" label. The
     // reviewer's run writes the same role log as the author's (each `session` event names
     // its worktree), so read the GATE accumulator here — the author one still holds the
     // finished authoring run (BUGS.md 2026-09-22).
     if (s.phase === "review") {
-      const p = root ? tickProgress(root, s, live, "gate") : null;
+      const p = root ? runProgress(root, s, live, "gate") : null;
       return inFlightDetail(inFlightLabel(s, "reviewing"), p);
     }
-    // In-flight ticks finish even while the budget is paused — only NEW ticks are blocked,
+    // In-flight runs finish even while the budget is paused — only NEW runs are blocked,
     // so a running role keeps its live detail.
     return root ? workingDetail(root, s, live) : "working";
   }
@@ -214,7 +214,7 @@ export function rolePhase(
   if (budgetPaused) return "waiting: budget spent";
   // The disk floor (plans/disk-floor.md, part 4/4): the team starts no new work below the
   // floor, so an idle role reads "disk hold" — the team-wide gate's own wording, ranked with
-  // the budget pause (ROLE_RANK_RULES). In-flight ticks keep their live detail above, exactly
+  // the budget pause (ROLE_RANK_RULES). In-flight runs keep their live detail above, exactly
   // as under every autonomous gate.
   if (diskHeld) return "waiting: low disk";
   // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle role is held until enough
@@ -224,31 +224,31 @@ export function rolePhase(
   // figures so the operator sees how far over the window is; the string is preformatted by the
   // snapshot's holder, like roleQuietPaused's window.
   if (maintenanceQuotaHold) return maintenanceQuotaHold;
-  // Main's own suite is known red at this role's last tick: code-producing roles are blocked
+  // Main's own suite is known red at this role's last run: code-producing roles are blocked
   // from authoring until main is green (the red-main baseline check). Shown before sleep/queue
   // because it explains why the role keeps waking and merge nothing; self-correcting, since
-  // each blocked tick re-records main_red while red and a green wake overwrites lastResult.
+  // each blocked run re-records main_red while red and a green wake overwrites lastResult.
   // Except a green wake that queues a change: `queued` is in flight, not a completed result,
   // so it leaves the main_red pair in place until its merge resolves (run-apply.ts's
-  // applyTickOutcome) — its stashed summary is the tell that the role's latest tick got past
+  // applyRunOutcome) — its stashed summary is the tell that the role's latest run got past
   // the red-main gate, so main was green then and "main red" would be stale.
-  // Except too when main's newest merge-scope check PASSED after this role's red tick ended:
+  // Except too when main's newest merge-scope check PASSED after this role's red run ended:
   // the team-level verdict is fresher than the role's own, so the label is stale until the
-  // role's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
-  // red tick, a failed or skipped one, or an unknown tick end all keep the label.
+  // role's next run — which can be hours away (BUGS.md 2026-09-30). A check older than the
+  // red run, a failed or skipped one, or an unknown run end all keep the label.
   if (heldByMainRed(s, mainCheck)) return "main's check is failing";
   // An error streak at or past the warning threshold (run-apply.ts's ERROR_STREAK_WARN): the
   // role is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
-  // alone is the tell, not `lastResult`: a tick whose leftover recovery failed keeps the
+  // alone is the tell, not `lastResult`: a run whose leftover recovery failed keeps the
   // pin while its own authoring run may end `no_change`/`queued`, so a dead reviewer
   // backend must still read "failing" (BUGS.md 2026-09-21). Self-clearing: the first
-  // healthy tick resets the streak, and each retry re-arms it while the environment stays
+  // healthy run resets the streak, and each retry re-arms it while the environment stays
   // broken.
   if (onErrorStreak(s)) return "failing";
   // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
   // names what a role has been RETURNING, so the consecutive no-change streak rides on it
-  // (run-apply.ts applyTickOutcome's noChangeStreak, persisted in RunnerState). A role that
+  // (run-apply.ts applyRunOutcome's noChangeStreak, persisted in RunnerState). A role that
   // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
   // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
   // healthy idle role. Observational only: a legitimately idle maintenance role with an empty
@@ -285,7 +285,7 @@ export function rolePhase(
         cell = "due";
     }
   }
-  // Two or more consecutive no-change ticks earn the suffix (N=1 is a single quiet tick —
+  // Two or more consecutive no-change runs earn the suffix (N=1 is a single quiet run —
   // ordinary, not yet a pattern).
   const streak = s.noChangeStreak ?? 0;
   if (streak >= 2) cell += ` · no change ×${streak}`;
@@ -293,7 +293,7 @@ export function rolePhase(
 }
 
 /** One rendered role-table row's sort key: the role name, its rendered phase label
- * (rolePhase), and its last tick end. Both the TUI/status table and the GUI page's browser
+ * (rolePhase), and its last run end. Both the TUI/status table and the GUI page's browser
  * copy carry these three fields. */
 interface RoleSortRow {
   role: string;
@@ -305,7 +305,7 @@ interface RoleSortRow {
  * (renderStatus's withMetrics map and statusPayload's roles map): a single live tail read
  * (the running-and-not-parked gate, read at the phase's progressKind), the token metrics
  * over that tail, and the rendered phase string. The phase's snapshot-level gates are
- * derived here too — budget paused (only `paused` stops a role; `fallback` keeps it ticking
+ * derived here too — budget paused (only `paused` stops a role; `fallback` keeps it running
  * on the free model, which the header badge names), the team pause plus the per-role one
  * (one `paused` flag to rolePhase covers both), and the role's merge cell (merge queue
  * 4/5) — so the two dashboards' per-role cells cannot drift apart. */
@@ -315,7 +315,7 @@ export function roleRowCells(
   s: RunnerState,
 ): { live: LiveProgress | null; generated: number; peakCtx: number; phase: string } {
   const live = s.running && !s.parkedSince
-    ? tickProgress(root, s, undefined, progressKind(s))
+    ? runProgress(root, s, undefined, progressKind(s))
     : null;
   const m = displayTokenMetrics(root, s, live);
   const phase = rolePhase(
@@ -325,7 +325,7 @@ export function roleRowCells(
     // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable
     // free pair reads `budget paused` — per role, not the team-wide verdict, so a demoted
     // strong pair no longer paints the whole team paused while small and default keep
-    // ticking on their own pairs.
+    // running on their own pairs.
     snap.budgetPausedRoles.includes(s.role),
     live,
     // The per-role pause reads the same `paused` cell as the team pause: one flag to
@@ -333,7 +333,7 @@ export function roleRowCells(
     snap.paused || snap.pausedRunners.includes(s.role),
     mergeForRole(snap.mergeQueue, s.role),
     // The snapshot's newest merge-scope check lets a stale main-red phase retire itself
-    // between ticks (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
+    // between runs (BUGS.md 2026-09-30) — the banner (teamAlerts) reads this same phase.
     snap.mainCheck,
     // The per-role cap's verdict, computed once per poll in the snapshot (status/status-data.ts
     // roleCapPaused): an idle role over its own cap reads `cap paused` on every surface.
@@ -398,7 +398,7 @@ export function isActivePhase(phase: string): boolean {
  * DIRECTOR — live work of its own, outside the maxConcurrent cap it bypasses, so it groups
  * apart and never inflates the permit-holder count (BUGS.md 2026-10-06); 0 live work —
  * working, reviewing, merge (isActivePhase); 1 work waiting in the pipeline — a approved change
- * awaiting the merge slot, or a tick parked awaiting a permit; 2 needs attention — failing, or
+ * awaiting the merge slot, or a run parked awaiting a permit; 2 needs attention — failing, or
  * blocked by a red main; 3 paused — by the operator, by the budget, or by the role's own
  * per-role cap; 4 everything else (idle: sleeping, queued, the director waiting for prompts, a
  * stopped team). The dashboard groups its role table by these ranks; the TUI/status table
@@ -436,9 +436,9 @@ export function roleRank(phase: string): number {
 }
 
 /** The role tables' shared row order: by roleRank (live work, then work waiting in the
- * pipeline, then roles that need attention, then paused, then idle); within a rank by last tick
- * most-recent-first, a never-ticked (null) row after any timestamp, ties broken by role
- * ascending. This is the TUI/status table's comparator; the GUI page's browser copy
+ * pipeline, then roles that need attention, then paused, then idle); within a rank by last run
+ * most-recent-first, a row for a role that has never run (null) after any timestamp, ties
+ * broken by role ascending. This is the TUI/status table's comparator; the GUI page's browser copy
  * (gui-client-model.ts) cannot import TS, so test/gui.test.ts cross-checks the two over the
  * same fixtures to keep them in lockstep. /api/status and `status --json` keep
  * their payload (config) order — only the rendered tables sort. */
@@ -454,14 +454,14 @@ export function sortRolesByState<T extends RoleSortRow>(roles: readonly T[]): T[
   });
 }
 
-/** Token metrics for display. gen / peak ctx are per-tick windows — runner-run.ts resets them at
- * tick start, so the persisted values hold only what the current (mid-flight) or last
- * completed tick used, never lifetime totals. While a tick is in flight the on-disk values
+/** Token metrics for display. gen / peak ctx are per-run windows — runner-run.ts resets them at
+ * run start, so the persisted values hold only what the current (mid-flight) or last
+ * completed run used, never lifetime totals. While a run is in flight the on-disk values
  * are 0 and the live log tail supplies exactly this run's output; idle roles show their
- * last completed tick as-is. Only running roles combine persisted + live: an idle role's
- * log tail describes its last COMPLETED tick, whose tokens ARE the persisted values
+ * last completed run as-is. Only running roles combine persisted + live: an idle role's
+ * log tail describes its last COMPLETED run, whose tokens ARE the persisted values
  * (combining would double-count), while a stale `running` flag after a crash is still
- * correct to combine because that unfinished tick's counters were reset to 0 at tick start
+ * correct to combine because that unfinished run's counters were reset to 0 at run start
  * and never re-saved. `live`, when given, is the frame's precomputed tail — it skips the log
  * read; without it a running role reads on its own (standalone callers). Module-private:
  * roleRowCells is the only reader now that both dashboards derive their rows through it. */
@@ -471,7 +471,7 @@ function displayTokenMetrics(
   live?: LiveProgress | null,
 ): { generated: number; peakCtx: number } {
   const p = s.running && !s.parkedSince
-    ? tickProgress(root, s, live)
+    ? runProgress(root, s, live)
     : null;
   return {
     generated: s.generatedTokens + (p?.outputTokens ?? 0),

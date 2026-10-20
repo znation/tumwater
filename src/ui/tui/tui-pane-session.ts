@@ -3,7 +3,7 @@ import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
-import type { TickDetail } from "../../run/run-detail-data.js";
+import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
@@ -33,7 +33,7 @@ export interface TuiPanesDeps {
   runDoctor(root: string): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
-  tickStat(root: string, detail: TickDetail): Promise<string>;
+  runStat(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** Every Ctrl+<key> cycle walks its own ReadonlyArray<[key, label]> table one slot at a time,
@@ -64,8 +64,8 @@ const SESSION_WINDOW_TAIL: ReadonlyArray<[number, string]> = [
 /** The History pane's session window cycle, Ctrl+S: the default newest-N read, then the same
  * trailing windows the dashboard's History view and `tumwater history --since` offer — 1h,
  * 6h, 1d, and the 7d cap the CLI's flag and the dashboard both stop at. The label is what the
- * hint line names; the length is what readTickRowsSince takes. `null` is the default read
- * through readTickRows, kept first so the pane opens on today's behavior. */
+ * hint line names; the length is what readRunRowsSince takes. `null` is the default read
+ * through readRunRows, kept first so the pane opens on today's behavior. */
 export const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
   [null, "default"],
   ...SESSION_WINDOW_TAIL,
@@ -86,7 +86,7 @@ export function scopeCycle(roleIds: readonly string[]): Array<string | null> {
   return [null, ...bases];
 }
 
-/** The History pane's session outcome cycle, Ctrl+O: all ticks, then the canonical classes
+/** The History pane's session outcome cycle, Ctrl+O: all runs, then the canonical classes
  * `tumwater history --result` and the dashboard's History filter speak. The class list comes
  * from history-data.ts (HISTORY_RESULT_CLASSES) rather than a copy, so the TUI, the CLI, and
  * the dashboard bucket a result the same way; the class id doubles as the label. `null` is no
@@ -159,7 +159,7 @@ export interface TuiPaneSession {
   runDoctor(root: string): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
-  tickStat(root: string, detail: TickDetail): Promise<string>;
+  runStat(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** Build the shared pane session from the disk-side deps the aggregator received. The pane
@@ -191,6 +191,6 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
     collectChange: deps.collectChange,
-    tickStat: deps.tickStat,
+    runStat: deps.runStat,
   };
 }

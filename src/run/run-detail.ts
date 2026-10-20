@@ -227,6 +227,3 @@ export async function cmdRunDetail(
     say([renderRunDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
   }
 }
-
-/** @deprecated Use renderRunDetail. */
-export const renderTickDetail = renderRunDetail;

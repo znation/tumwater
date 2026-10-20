@@ -287,7 +287,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
       }),
     ]);
   // Seed the event log with explicit ts values (logEvent always stamps Date.now(), so direct
-  // append is the controllable path): ticks across two roles on two days plus one merge.
+  // append is the controllable path): runs across two roles on two days plus one merge.
   const eventsFile = path.join(repo, ".tumwater", "log", "events.jsonl");
   writeLogLines(eventsFile, [
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
@@ -305,7 +305,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     // clipped at the terminal width, so match the start that fits).
     assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notes · Ctrl\+X role model/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
-    assert.doesNotMatch(frame, /Build a thing/); // …but never the user's tick prompt
+    assert.doesNotMatch(frame, /Build a thing/); // …but never the user's run prompt
 
     tui.key(undefined, "t", { ctrl: true });
     frame = tui.lastFrame();
@@ -336,14 +336,14 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     frame = tui.lastFrame();
     assert.match(frame, /\[Failures\]/);
     // The pane shows exactly renderFailureMarkdown(collectFailureReport(root, 14)): the
-    // digest head, with a real outcome row for the seeded ticks' roles.
+    // digest head, with a real outcome row for the seeded runs' roles.
     assert.match(frame, /# tumwater failure digest/);
     assert.match(frame, /## Outcome by role/);
 
     tui.key(undefined, "t", { ctrl: true }); // → history
     frame = tui.lastFrame();
     assert.match(frame, /\[History\]/);
-    // The pane shows readTickRows(root, 20, null) one line per tick: the seeded feature #1
+    // The pane shows readRunRows(root, 20, null) one line per run: the seeded feature #1
     // row (newest first) and the clean #2 row, with a dash for the unpaired duration.
     assert.match(frame, /feature #1/);
     assert.match(frame, /clean #2/);

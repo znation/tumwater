@@ -9,7 +9,7 @@ import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
-import { tickProgress } from "./run-progress-model.js";
+import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
@@ -23,19 +23,19 @@ import { refusedEntryTitles } from "../backlog/backlog-eligibility.js";
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
  * display model (status-model.ts); this module decides column widths and layout. Depends on
  * status/status-data.ts one way — rendering reads the snapshot; it never collects team state
- * itself (live tick detail is display-only). */
+ * itself (live run detail is display-only). */
 
 function ago(ts: number | undefined): string {
   if (!ts) return "-";
   return humanAgo(ts, Date.now());
 }
 
-/** The table's `last tick` cell: the absolute local time of the last tick end alongside its
+/** The table's `last run` cell: the absolute local time of the last run end alongside its
  * relative age ("14:32:05 · 3m ago"). Zero-padded HH:MM:SS in local time, prefixed `MM-DD `
- * once older than a day so multi-day runs stay unambiguous; "-" for roles that never ticked.
+ * once older than a day so multi-day runs stay unambiguous; "-" for roles that never ran.
  * The GUI renders the same cell (absolute stamp plus relative age) from its own JS copy in
  * gui-client.ts — formatting at each surface, per the fmtTokens precedent. */
-export function lastTickCell(ts: number | undefined): string {
+export function lastRunCell(ts: number | undefined): string {
   if (!ts) return "-";
   const d = new Date(ts);
   let s = formatTime(d);
@@ -44,14 +44,14 @@ export function lastTickCell(ts: number | undefined): string {
 }
 
 /** The table's `last merged` cell: when the role last merged a change on main, in the SAME
- * absolute-time-plus-relative-age shape as the `last tick` cell (lastTickCell), so the two
+ * absolute-time-plus-relative-age shape as the `last run` cell (lastRunCell), so the two
  * columns cannot drift on what "ago" means. A role that has never merged shows the same dash
- * lastTickCell uses for a never-ticked role. */
+ * lastRunCell uses for a role that has never run. */
 export function lastMergedCell(ts: number | undefined): string {
-  return lastTickCell(ts);
+  return lastRunCell(ts);
 }
 
-/** The table's `next run` cell: when the role may tick again, or `-` when that is not the
+/** The table's `next run` cell: when the role may run again, or `-` when that is not the
  * operator's question — a role in flight (an active rendered phase: working/reviewing/merge,
  * or `s.running`) has no next run to speak of, and a stopped team renders no schedule at all
  * (its `nextRunAt`s are stale leftovers, not plans). A due idle role reads `now`; a future one
@@ -66,7 +66,7 @@ export function nextRunCell(s: RunnerState, phase: string, now: number, teamRunn
   if (!teamRunning || s.running || isActivePhase(phase)) return "-";
   const remain = secondsUntil(s.nextRunAt, now);
   // The yield multiplier rides the cell as `×N` (yield-scaled clocks, PLANS.md): a scalable
-  // role whose recent ticks merged nothing keeps a longer effective gap than nextRunAt's
+  // role whose recent runs merged nothing keeps a longer effective gap than nextRunAt's
   // countdown shows, and the suffix is what makes that visible. The multiplier gates the
   // scheduled gap and the main-moved wake in isEligible, so a `now`-due cell at ×4 is a
   // role waiting out its stretched gap, not a broken clock.
@@ -76,10 +76,10 @@ export function nextRunCell(s: RunnerState, phase: string, now: number, teamRunn
 
 /** The table's state cell: a role's phase label (rolePhase, computed once per row by
  * renderStatus so the same label drives the row order), with the current work item prepended
- * while a tick is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
+ * while a run is in flight ("implement plan X · working 3m · turn 2"). Prepending — not
  * appending — so the item survives ellipsis clipping on narrow terminals; the live detail
  * after it is what gets clipped first. Idle roles are untouched: their log tail describes a
- * finished tick and must not leak its work item into the state cell. (The GUI shows the same
+ * finished run and must not leak its work item into the state cell. (The GUI shows the same
  * item in its own `current` column instead, so its state cell stays clean.) */
 function stateCell(root: string, s: RunnerState, phase: string, live?: LiveProgress | null): string {
   // While under review the log tail's "current work" is the reviewer's own output, not the
@@ -94,16 +94,16 @@ function stateCell(root: string, s: RunnerState, phase: string, live?: LiveProgr
     const idle = idleClaimText(s, phase);
     return idle ? `${idle} · ${phase}` : phase;
   }
-  const p = tickProgress(root, s, live);
+  const p = runProgress(root, s, live);
   const work = p?.currentWork;
   return work ? `${work} · ${phase}` : phase;
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
- * first: `last result` (holds the tick summary), then `state` (live working detail), then
- * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
- * lines clip; its minimum is a bare HH:MM:SS. `last merged` sits right of `last tick` and is
- * not flexible: it is a short sibling time cell whose width follows lastTickCell's, and the
+ * first: `last result` (holds the run summary), then `state` (live working detail), then
+ * `last run` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
+ * lines clip; its minimum is a bare HH:MM:SS. `last merged` sits right of `last run` and is
+ * not flexible: it is a short sibling time cell whose width follows lastRunCell's, and the
  * whole-line clip that already protects the header also bounds it. Indices are positional in
  * the `cols` array below — renumber when columns change. (`today`, like `cost`, is a short
  * fixed-width cell: never flexible.)
@@ -206,7 +206,7 @@ function budgetTone(
 
 /** The role facts one status render computed, for callers that build more on them (the TUI's
  * attention lines): each role's rendered phase, whether its own failure streak is at the
- * alarm threshold (onErrorStreak — the red "failing tick after tick" alert keys on this, not
+ * alarm threshold (onErrorStreak — the red "failing run after run" alert keys on this, not
  * the phase, so it stays up while a streak stands behind a `working` label; BUGS.md
  * 2026-10-14), whether it is in flight, its last error. */
 interface StatusRoleRow {
@@ -229,8 +229,8 @@ export function renderStatusSpans(
   const name = projectName(root);
   const lines: StatusLine[] = [];
   // One clock read per render, shared by the timed-pause badge's countdown and every row's
-  // next-run cell — a per-site Date.now() could tick over between them and disagree with
-  // itself.
+  // next-run cell — a per-site Date.now() could tick over // retired-name-ok
+  // between them and disagree with itself.
   const now = Date.now();
   // The questions badge (like the inbox one) appears only when something needs an answer.
   // The budget badge is standing information for a money-spending system in EVERY cap state
@@ -283,12 +283,12 @@ export function renderStatusSpans(
   ]);
   lines.push([]);
   // `today` is the role's daily budget window (dailyCost): $0.00 while its stamp is stale
-  // or missing, so roles that never ticked — or last ticked yesterday — read zero without a
+  // or missing, so roles that never ran — or last ran yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
   // `next run` is a short fixed-width cell like `today`, never flexible: the columns that
   // give way when the table is wider than the terminal are `last result`, then `state`, then
-  // `last tick`, in FLEXIBLE_COLUMNS' order.
+  // `last run`, in FLEXIBLE_COLUMNS' order.
   const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
   // One live tail read per running role per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
@@ -320,7 +320,7 @@ export function renderStatusSpans(
   // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS;
   // its width derives from row content and it shrinks only after those,
   // so the extra character widens it.
-  // Rows are ordered by the shared display rule (status-model's roleRank, then last tick most
+  // Rows are ordered by the shared display rule (status-model's roleRank, then last run most
   // recent first) so the TUI/status table groups roles the way the GUI table does.
   // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain), the
   // last result tones its outcome word, a backoff countdown reads yellow.
@@ -364,7 +364,7 @@ export function renderStatusSpans(
       cell(compactTokens(m.peakCtx)),
       cell(usd(s.totalCostUsd)),
       cell(usd(dailyCost(s))),
-      cell(lastTickCell(s.lastRunEndedAt)),
+      cell(lastRunCell(s.lastRunEndedAt)),
       cell(lastMergedCell(s.lastMergedAt)),
       s.lastResult
         ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]

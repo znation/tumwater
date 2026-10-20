@@ -16,17 +16,17 @@ import { nonNegativeNumber } from "../files/json-object.js";
 import { worktreesDir } from "../paths.js";
 import { statRoleLog, readCompleteLines, type TailState, withTail } from "../files/tail.js";
 
-/** Live view of an in-flight tick, derived from the tail of the role's raw pi log.
- * The log is append-only across ticks AND runs: a role makes several kinds of pi run into
- * the one `piLogPath` file — the authoring tick's run in its own worktree, and the review
- * gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
+/** Live view of an in-flight run, derived from the tail of the role's raw pi log.
+ * The log is append-only across run numbers AND agent runs: a role makes several kinds of
+ * agent run into the one `piLogPath` file — the authoring agent run in its own worktree, and
+ * the review gate's runs (reviewer, conflict resolver) in a lease's pooled slot (legacy logs: its
  * `_land-<role>` merge slot worktree). Every run starts with the harness's `tumwater_run` marker
  * (src/agent/run-agent.ts), written before pi spawns so it precedes pi's first `session`
  * event; a kind-bearing marker names the run's kind, and a
  * session no kind-bearing marker preceded falls back to the legacy `cwd` test (the worktree
  * the session's `cwd` names). The reader keeps one accumulator per run kind
- * (readLiveProgress's `kind`), so a gate run starting mid-tick resets only the gate's counts,
- * never the working tick's (BUGS.md 2026-09-22). Everything after a run's opening marker (or,
+ * (readLiveProgress's `kind`), so a gate run starting mid-run resets only the gate's counts,
+ * never the working run's (BUGS.md 2026-09-22). Everything after a run's opening marker (or,
  * for a legacy log, its `session` event) is folded into that run's accumulator; lines from two
  * truly concurrent runs of different kinds interleave unattributed and land in the newer run's
  * accumulator — the best attribution the line format allows, since only the marker and
@@ -76,7 +76,7 @@ const TAIL_BYTES = 4 * 1024 * 1024;
 /** Byte offset a first observation of the log (size `size`) seeds from: the start of the
  * smallest suffix window, grown from TAIL_BYTES in doubling steps, that contains a complete
  * `session` event line — or 0 when the log carries none. A bare `size - TAIL_BYTES` seed
- * opens mid-run whenever the log (which accumulates across ticks up to logMaxBytes) is
+ * opens mid-run whenever the log (which accumulates across runs up to logMaxBytes) is
  * larger than the window, and the first observation then counts every assistant turn after
  * that offset as if it were one run — a number with no defined meaning (BUGS.md 2026-09-22).
  * Seeding at the window that contains the last session anchors the read at a real run
@@ -94,9 +94,9 @@ export function findSeedOffset(file: string, size: number, window = TAIL_BYTES):
   }
 }
 
-/** Which of a role's pi run kinds a LiveProgress describes: `author` — the tick's own
- * run in the role's worktree (the working cell's subject) — or `gate` — the review gate's
- * runs in a leased pool slot (the reviewing cell's subject). The same union the
+/** Which of a role's pi run kinds a LiveProgress describes: `author` — the authoring
+ * agent run in the role's worktree (the working cell's subject) — or `gate` — the review
+ * gate's runs in a leased pool slot (the reviewing cell's subject). The same union the
  * raw-log marker carries (pi-event-line.ts's PiRunKind), named here for the display layer. */
 export type ProgressRunKind = PiRunKind;
 
@@ -207,7 +207,7 @@ interface ProgressEvent {
 /** Apply one parsed progress event to a progress object (mutates it). */
 function feedLine(progress: LiveProgress, event: ProgressEvent): void {
   switch (event.type) {
-    case "session": // A new run starts: everything before it was a previous tick — restore the at-time-zero state.
+    case "session": // A new run starts: everything before it was a previous run — restore the at-time-zero state.
       Object.assign(progress, freshProgress(progress.quietMs));
       break;
     case "tool_execution_start": {
@@ -294,7 +294,7 @@ export function toolCallStallMs(root: string): number {
  * line, so this runs on every read rather than in feedLine; `now` and `stallMs` are injectable
  * for tests (freshly fed lines stamp Date.now(), so nothing is stalled right after parsing).
  * A call whose stdout is piped or redirected holds its bytes away from pi until it exits
- * (BUGS.md 2026-09-28: the tick prompt itself prescribes `npm run test 2>&1 | tail`), so its
+ * (BUGS.md 2026-09-28: the run prompt itself prescribes `npm run test 2>&1 | tail`), so its
  * silence is the prescribed shape and never evidence of a hang — but the command can still
  * hang (a leaked grandchild holding the pipe open), so past a wall-clock threshold it is
  * flagged anyway (BUGS.md 2026-10-06), the same threshold runPi's warning applies so the
@@ -348,7 +348,7 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
       // accumulator as soon as the marker's stage says `reviewing` — a poll that can land
       // before the session event. Resetting here means a previous run's turns/context (the
       // last review, or another run the gate spent) can never show in the new run's cell.
-      // Safe for the in-tick reviewing cell too: a role's gate is serial, so a marker ends
+      // Safe for the in-run reviewing cell too: a role's gate is serial, so a marker ends
       // the previous run.
       tail.cur = kind;
       tail.kindFromMarker = true;
@@ -364,8 +364,8 @@ function feedDemuxed(tail: RoleLogTail, line: string, gateCwd: string): void {
   feedLine(tail[tail.cur], event);
 }
 
-/** Live progress for one of a role's pi run kinds (`author` — the in-flight tick's run in
- * the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
+/** Live progress for one of a role's agent run kinds (`author` — the in-flight authoring agent
+ * run in the role's own worktree, the default; `gate` — the review gate's runs in a leased pool
  * slot, what the reviewing cell shows), or null when there is no log yet. The raw log is
  * append-only while pi runs and every run starts with a `tumwater_run` marker
  * (src/agent/run-agent.ts), so after seeding from the tail window once we only read and parse

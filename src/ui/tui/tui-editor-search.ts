@@ -2,13 +2,13 @@
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
 import type { TuiEditorSession } from "./tui-editor-session.js";
 
-/** The shared `/` search editor on the prompt line: over the History pane's tick rows or the
+/** The shared `/` search editor on the prompt line: over the History pane's run rows or the
  * Activity feed's events. It owns its mode flag (`searchMode`), its target pane (`searchFor`),
  * its saved-draft pair, and the applyHistorySearch / applyActivitySearch leaves. Mutually
  * exclusive with the other editors via the session's held registry. */
 export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
   let searchMode = false;
-  // Which pane the shared `/` editor feeds: History's tick search, Activity's event search, or
+  // Which pane the shared `/` editor feeds: History's run search, Activity's event search, or
   // the Backlog pane's entry search. The target is captured when `/` opens so a roster change
   // mid-edit cannot retarget Enter.
   let searchFor: "history" | "activity" | "backlog" = "history";
@@ -35,7 +35,7 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
       (ctx.view === 0 || ctx.view === ctx.roleIds.length + 1 || ctx.view === ctx.roleIds.length + 4) && session.input === ""
     ) {
       // `/` opens a free-text search on the prompt line (the pager's search key; this project
-      // already reserves `/` for a meta action): over the History pane's tick rows on History,
+      // already reserves `/` for a meta action): over the History pane's run rows on History,
       // over the Activity feed's events on Activity, and over the Backlog pane's active entries
       // on Backlog. Guarded to those three views and to an empty line, so elsewhere it types
       // into the prompt as today and a director draft is never disturbed. Pre-fills the applied

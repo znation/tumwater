@@ -45,13 +45,13 @@ test("parseProgress counts turns/tools and tracks the latest context size", () =
   assert.equal(p.quietMs, 5000);
 });
 
-test("parseProgress resets at a new session (previous tick's events ignored)", () => {
+test("parseProgress resets at a new session (previous run's events ignored)", () => {
   const lines = [
     SESSION,
-    assistantLine("old tick", { tokens: 9999 }),
+    assistantLine("old run", { tokens: 9999 }),
     toolStart("bash", { command: "old" }),
     SESSION,
-    assistantLine("new tick", { tokens: 100 }),
+    assistantLine("new run", { tokens: 100 }),
   ];
   const p = parseProgress(lines, 0);
   assert.equal(p.turns, 1);
@@ -79,9 +79,9 @@ test("parseProgress accumulates output tokens and peak context for the current r
 test("parseProgress resets output/peak at a new session", () => {
   const lines = [
     SESSION,
-    assistantLine("old tick", { tokens: 99_000, output: 5_000 }),
+    assistantLine("old run", { tokens: 99_000, output: 5_000 }),
     SESSION,
-    assistantLine("new tick", { tokens: 1_000, output: 42 }),
+    assistantLine("new run", { tokens: 1_000, output: 42 }),
   ];
   const p = parseProgress(lines, 0);
   assert.equal(p.outputTokens, 42);
@@ -131,7 +131,7 @@ test("parseProgress captures the first assistant text as the current work item",
 test("parseProgress resets the work item at a new session", () => {
   const lines = [
     SESSION,
-    assistantLine("old tick's work item"),
+    assistantLine("old run's work item"),
     SESSION,
     toolStart("bash", { command: "npm test" }), // no text yet in the new run
   ];
@@ -179,7 +179,7 @@ test("readLiveProgress reads the role's raw log and reports quiet time", () => {
   // clock's granularity (Linux stamps mtimes from a coarse kernel clock) — not a fixed 5 s a
   // stalled host could exceed.
   assert.ok(p.quietMs <= read - written + 50, `quietMs ${p.quietMs} vs ${read - written} ms since the write`);
-  assert.equal(readLiveProgress(root, "never-ran"), null);
+  assert.equal(readLiveProgress(root, "idle-role"), null);
 });
 
 test("readLiveProgress accumulates appended lines across polls", () => {
@@ -195,12 +195,12 @@ test("readLiveProgress accumulates appended lines across polls", () => {
   assert.equal(p?.lastTool, "bash npm test");
 });
 
-// A role's log carries several pi run kinds — the authoring tick's run and the review gate's
+// A role's log carries several agent run kinds — the authoring agent run and the review gate's
 // runs (reviewer, conflict resolver) in the role's pooled slot (legacy logs: its `_land-<role>`
 // merge slot worktree) — each with its own `session` event (cwd names the worktree). A gate session
 // must reset only the gate's
-// counts, never the working tick's (BUGS.md 2026-09-22: a merge's reviewer run reset the
-// author's cell to turn 1 mid-tick and its turns/ctx/tool described the wrong run).
+// counts, never the working run's (BUGS.md 2026-09-22: a merge's reviewer run reset the
+// author's cell to turn 1 mid-run and its turns/ctx/tool described the wrong run).
 
 test("a merge slot (gate) session mid-log does not reset the author run's counts", () => {
   const root = tmpdir();
@@ -215,7 +215,7 @@ test("a merge slot (gate) session mid-log does not reset the author run's counts
       SESSION,
       assistantLine("author turn one", { tokens: 100 }),
       assistantLine("author turn two", { tokens: 200 }),
-      gateSession, // the merge's reviewer run starts mid-tick
+      gateSession, // the merge's reviewer run starts mid-run
       assistantLine("reviewer turn", { tokens: 300 }),
     ]);
   const author = readLiveProgress(root, "clean");
@@ -244,14 +244,14 @@ test("the next author session resets only the author accumulator, and gate lines
   });
   writeLogLines(file, [
       SESSION,
-      assistantLine("old tick", { tokens: 999 }),
+      assistantLine("old run", { tokens: 999 }),
       gateSession,
       assistantLine("reviewer", { tokens: 50 }),
-      authorSession, // the role's next tick starts
-      assistantLine("new tick", { tokens: 10 }),
+      authorSession, // the role's next run starts
+      assistantLine("new run", { tokens: 10 }),
     ]);
   const author = readLiveProgress(root, "clean");
-  assert.equal(author?.turns, 1, "the new tick's run starts from zero");
+  assert.equal(author?.turns, 1, "the new agent run starts from zero");
   assert.equal(author?.contextTokens, 10);
   const gate = readLiveProgress(root, "clean", "gate");
   assert.equal(gate?.turns, 1, "the finished reviewer run's counts survive untouched");
@@ -345,11 +345,11 @@ test("readLiveProgress does not count a torn trailing line until it is complete"
 test("readLiveProgress reseeds when the log is rotated (renamed) mid-observation", () => {
   const root = tmpdir();
   const file = piLogPath(root, "clean");
-  writeLogLines(file, [SESSION, assistantLine("old tick", { tokens: 999 })]);
+  writeLogLines(file, [SESSION, assistantLine("old run", { tokens: 999 })]);
   assert.equal(readLiveProgress(root, "clean")?.turns, 1);
   // rotateIfLarge renames the log and a fresh file starts for the next run.
   fs.renameSync(file, file + ".1");
-  writeLogLines(file, [SESSION, assistantLine("new tick", { tokens: 7 })]);
+  writeLogLines(file, [SESSION, assistantLine("new run", { tokens: 7 })]);
   const p = readLiveProgress(root, "clean");
   assert.equal(p?.turns, 1);
   assert.equal(p?.contextTokens, 7);
@@ -615,7 +615,7 @@ test("toolCallStallMs resolves the configured threshold, defaulting to five minu
 });
 
 // A first observation seeds from a bare `size - TAIL_BYTES` offset (BUGS.md 2026-09-22): when
-// the log is larger than that window — role logs accumulate across ticks up to logMaxBytes —
+// the log is larger than that window — role logs accumulate across runs up to logMaxBytes —
 // the window opens mid-run and the turns it reports counted from an arbitrary byte offset,
 // a number with no defined meaning. The fix grows the seed window until it contains the
 // log's last `session` event, anchoring the read at a real run boundary.
@@ -649,7 +649,7 @@ test("readLiveProgress counts a run past the default tail window from its sessio
   // deltas: the last 4 MB hold no session and no turns, so the old seed reported 0 turns
   // for a run whose real count is 1.
   const filler = JSON.stringify({ type: "message_update", delta: "x".repeat(120) });
-  const lines = [assistantLine("old tick", { tokens: 1 }), SESSION, assistantLine("current", { tokens: 9 })];
+  const lines = [assistantLine("old run", { tokens: 1 }), SESSION, assistantLine("current", { tokens: 9 })];
   const need = 4 * 1024 * 1024 + 1024 - lines.join("\n").length;
   for (let i = 0, n = Math.ceil(need / filler.length); i < n; i++) lines.push(filler);
   writeLogLines(file, lines);

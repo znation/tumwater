@@ -140,8 +140,8 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(baseline!.counts, undefined);
 
   // A merge-scope check older than the default 200-event tail still badges the header: a
-  // burst of quiet ticks logs hundreds of events without moving main, and a tail that ends
-  // before the last check would make the badge vanish and reappear as ticks tick by. The
+  // burst of quiet runs logs hundreds of events without moving main, and a tail that ends
+  // before the last check would make the badge vanish and reappear as runs go by. The
   // tail grows (MAIN_CHECK_SCAN_MAX_EVENTS, src/status/status-polls.ts) until the check is
   // inside it — every event after the check is newer, so one window holds the whole derivation.
   const busy = makeRepo();
@@ -152,7 +152,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
       ts: base + 2000 + i,
       loop: "feature", // retired-name-ok: legacy event field in a fixture
       type: "wake",
-      reason: "quiet tick filler",
+      reason: "quiet run filler",
     })),
   ]);
   const deep = snapshot(busy).mainCheck;

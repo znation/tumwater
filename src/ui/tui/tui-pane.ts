@@ -39,8 +39,8 @@ interface TuiPaneState {
   /** The notebook view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
    * entry like paneCache; null when the live transcript is shown. */
   noteCache: string | null;
-  /** The tick-trail view's rendered text (renderTickDetail), computed once on Ctrl+N entry
-   * from the History pane; null while the rows are shown or the newest tick could not be read. */
+  /** The run-trail view's rendered text (renderRunDetail), computed once on Ctrl+N entry
+   * from the History pane; null while the rows are shown or the newest run could not be read. */
   trailCache: string | null;
   /** The change view's rendered text (renderRoleChange), null until its async collector
    * resolves; windowed by paneBody in change mode. */
@@ -73,7 +73,7 @@ export function activityEvents(root: string, role: string | null, grep: string |
   );
 }
 
-/** One role's notebook and next tick prompt, rendered as the same Markdown the TUI's notebook
+/** One role's notebook and next run prompt, rendered as the same Markdown the TUI's notebook
  * view windows: inspectMarkdownLines over the role's rolePayload. Split out of the keypress
  * handler so the Ctrl+N branch can catch a collector throw and flash it. */
 export function roleInspectMarkdown(root: string, role: string): string {
@@ -198,8 +198,8 @@ export function paneBody(
     };
   }
   if (pane.kind === "history") {
-    // The tick trail (Ctrl+N) windows the cached renderTickDetail text; a null cache (the
-    // read found no tick) paints the pane's own note rather than entryBodyWindow's placeholder.
+    // The run trail (Ctrl+N) windows the cached renderRunDetail text; a null cache (the
+    // read found no run) paints the pane's own note rather than entryBodyWindow's placeholder.
     if (pane.trail) {
       if (state.trailCache === null) return { body: [], emptyNote: "(no run trail)" };
       const win = entryBodyWindow(state.trailCache, state.paneScroll, eventBudget, width);
@@ -208,7 +208,7 @@ export function paneBody(
         emptyNote: "(no run trail)",
       };
     }
-    // historyPaneText returns "" when the log holds no completed ticks; return no lines
+    // historyPaneText returns "" when the log holds no completed runs; return no lines
     // (rather than windowing an empty string, which entryBodyWindow replaces with its
     // "no details" placeholder) so the frame prints the pane's own empty note instead.
     const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };

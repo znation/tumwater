@@ -400,7 +400,7 @@ test("the dashboard page's inline script is syntactically valid JavaScript", asy
 
 test("the GUI last run cell shows absolute time plus relative age, mirroring the TUI", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
-  const { lastTickCell } = await import("../src/ui/status-render.js");
+  const { lastRunCell } = await import("../src/ui/status-render.js");
 
   // Extract the marked region — same regex-extract + new Function pattern as the esc test and
   // sortRoles. fmtLastRun is pure (no DOM), so nothing is injected.
@@ -442,8 +442,8 @@ test("the GUI last run cell shows absolute time plus relative age, mirroring the
   assert.equal(fmtLastRun(t3d), `${day3} ${abs(t3d)} · 3d ago`);
 
   // The whole cell — absolute stamp and age bucketing — must stay byte-identical to the TUI's
-  // lastTickCell, so a drift in either surface fails here.
-  for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastRun(ts), lastTickCell(ts));
+  // lastRunCell, so a drift in either surface fails here.
+  for (const ts of [t45, t190, t2h, t3d]) assert.equal(fmtLastRun(ts), lastRunCell(ts));
 });
 
 // Full backlog entries:

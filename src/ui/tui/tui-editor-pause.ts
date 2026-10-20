@@ -153,7 +153,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     // Per-role controls on the transcript pane: Ctrl+P toggles the viewed role's pause,
-    // Ctrl+A aborts its in-flight tick, Ctrl+V zeroes its counters, Ctrl+W opens the wake
+    // Ctrl+A aborts its in-flight run, Ctrl+V zeroes its counters, Ctrl+W opens the wake
     // editor (Ctrl+R opens the role-prompt editor for it — the prompt editor's arms handle
     // that key). They call the
     // same marker-writing/submit cores the CLI's --role flags do, so the surfaces cannot

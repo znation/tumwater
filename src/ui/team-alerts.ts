@@ -43,9 +43,9 @@ export interface TeamAlert {
 }
 
 /** The role facts teamAlerts reads: whether the role's OWN failure streak is at or past the
- * alert threshold (onErrorStreak, src/ui/status-model.ts) — the tell the red "failing tick
- * after tick" banner keys on, independent of the rendered phase, so the alert stays up while
- * the role's next tick runs (its phase reads "working") and clears only once the streak
+ * alert threshold (onErrorStreak, src/ui/status-model.ts) — the tell the red "failing run
+ * after run" banner keys on, independent of the rendered phase, so the alert stays up while
+ * the role's next run is in progress (its phase reads "working") and clears only once the streak
  * resets; plus its rendered phase (for the main-red and stuck banners), whether it is in
  * flight, and its last recorded error. */
 export interface AlertRole {
@@ -62,7 +62,7 @@ export interface AlertRole {
    * Absent (or null) when no other tier reads images — the amber no-target alert. */
   imageReroute?: string | null;
   /** ms the in-flight run has been silent (its stall span), from the live tail's quietMs and
-   * capped to the tick by progressOfTick; absent when the caller holds no live tail. */
+   * capped to the run by progressOfRun; absent when the caller holds no live tail. */
   stuckMs?: number;
 }
 
@@ -94,7 +94,7 @@ function listRoleIds(ids: readonly string[]): string {
 
 /** The stuck alert's per-role detail: the stall phrase the phase rendered, plus — when that
  * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
- * ms since the role's last pi log write, capped to the tick by progressOfTick). A
+ * ms since the role's last pi log write, capped to the run by progressOfRun). A
  * "no agent output for <d>" phrase already carries its duration, so only a tool-call stall gets
  * a " for <duration>" suffix, and only when the caller holds a live tail (stuckMs present). */
 function stuckDetail(l: AlertRole): string {
@@ -111,7 +111,7 @@ function localizeInstants(text: string): string {
 }
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing tick after tick, roles that look stuck, a stale running build, open
+ * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, a pause, a stopped team. `now` is passed so a timed pause's
  * countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -239,11 +239,11 @@ export function teamAlerts(
     });
   }
   // A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
-  // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing tick after
-  // tick" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
-  // role's next tick runs — where rolePhase reads "working"/"merge"/"reviewing" rather
+  // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing run after
+  // run" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
+  // role's next run is in progress — where rolePhase reads "working"/"merge"/"reviewing" rather
   // than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
-  // wording names what happened (a streak of failed or rejected ticks), not a single repeated
+  // wording names what happened (a streak of failed or rejected runs), not a single repeated
   // error, because a rejection streak is three different rejected changes.
   const failing = roles.filter((l) => l.errorStreak);
   if (failing.length) {
@@ -312,7 +312,7 @@ export function teamAlerts(
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
   // inside the window needs the same explanation the pause alert gives a paused team —
-  // why nothing ticks, and when it starts again. The window end comes from quiet-hours.ts's
+  // why nothing runs, and when it starts again. The window end comes from quiet-hours.ts's
   // quietWindowEnd, the same helper quietBadge uses for the header.
   if (snap.inQuietHours && snap.quietHours) {
     const end = quietWindowEnd(snap.quietHours);
@@ -326,7 +326,7 @@ export function teamAlerts(
   }
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): by design and self-clearing —
   // the scheduler holds maintenance roles at the rolling 24 h allowance until merges free room,
-  // then they tick again on their own — so it informs (gray, no actions), the quiet alert's
+  // then they run again on their own — so it informs (gray, no actions), the quiet alert's
   // tone, rather than amber like the failed/refused asks. An operator watching idle maintenance
   // roles gets the same explanation the hold's own row carries, team-wide.
   if (snap.maintenanceQuota.held.length > 0) {
@@ -384,7 +384,7 @@ export function teamAlerts(
     });
   }
   // Image input (plans/image-input.md "Surfaces", part 5/5): a role whose model cannot read
-  // images. Blue when every text-only role has a reroute target (a tick that reads an image
+  // images. Blue when every text-only role has a reroute target (a run that reads an image
   // stops and reruns — nothing fails); amber when some text-only role has none (a blind read
   // fails and image submissions are refused); a separate amber when a claimed model failed
   // doctor's live probe (the claim is contradicted, whatever any role resolved to). No alert

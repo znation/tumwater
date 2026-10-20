@@ -53,7 +53,7 @@ test("snapshot role rows carry the resolved selector always and the seam tier on
 
 // Model failure fallback, part 2/2: the snapshot's role row carries the resolved fallback
 // pair, the episode's start, and the tripping reason only while the episode is active (its
-// ticks run off-model); a due probe runs the primary, so the field is absent then.
+// runs use another model); a due probe runs the primary, so the field is absent then.
 test("snapshot rows carry the active model-fallback episode", async () => {
   const repo = makeRepo();
   await initProject(repo, "model fallback rows");
@@ -79,7 +79,7 @@ test("snapshot rows carry the active model-fallback episode", async () => {
   const payload = statusPayload(repo, now) as { roles: Array<{ role: string; fallback?: unknown }> };
   assert.deepEqual(payload.roles.find((l) => l.role === "feature")?.fallback, active?.fallback);
 
-  // Probe due: this tick runs the primary, so the row stops naming the fallback.
+  // Probe due: this run uses the primary, so the row stops naming the fallback.
   state.modelFallback.probeAt = now - 1;
   saveRunnerState(repo, state);
   assert.equal(snapshot(repo, undefined, now).roles.find((l) => l.role === "feature")?.fallback, undefined);

@@ -3,8 +3,8 @@ import type { RunnerState } from "../runner/runner-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
 
-/** The in-flight tick's PROGRESS display model (split from status-model.ts, which keeps the
- * role-phase ladder, the merge cells, and the row derivations): how a running tick renders
+/** The in-flight run's PROGRESS display model (split from status-model.ts, which keeps the
+ * role-phase ladder, the merge cells, and the row derivations): how an in-flight run renders
  * its live detail — elapsed, turn, context, current tool, stall — derived from the live log
  * tail (progress-data.ts) and shared by BOTH observer surfaces: the terminal table
  * (status-render.ts's state cell) and the JSON/GUI payload (status-payload.ts), plus the
@@ -24,35 +24,35 @@ export function duration(ms: number): string {
   return `${Math.floor(totalMinutes / 60)}h${totalMinutes % 60}m`;
 }
 
-/** The label for a role's in-flight tick: `<label>` plus how long it has been running
+/** The label for a role's in-flight run: `<label>` plus how long it has been running
  * ("working 3m", "reviewing 2m") — shared by workingDetail and the review-gate branch of
- * rolePhase so their elapsed formatting cannot drift. A tick with no recorded start time
- * renders as just the bare label. (A merge's elapsed is its marker's, never the tick's —
+ * rolePhase so their elapsed formatting cannot drift. A run with no recorded start time
+ * renders as just the bare label. (A merge's elapsed is its marker's, never the run's —
  * rolePhase's merge branch builds that head itself.) */
 export function inFlightLabel(s: RunnerState, label: string): string {
   const elapsed = s.lastRunStartedAt ? duration(Date.now() - s.lastRunStartedAt) : "";
   return `${label} ${elapsed}`.trim();
 }
 
-/** One rule for whether a log tail's progress describes THIS tick: the log's newest write
- * (quietMs is measured from the raw log's mtime) must have happened after the tick started.
- * Until this tick's pi run writes its first line, the log's tail is the PREVIOUS run — the
- * baseline check (worktree reset plus suite) can take 30–130 s, and a tick waking after 5+
+/** One rule for whether a log tail's progress describes THIS run: the log's newest write
+ * (quietMs is measured from the raw log's mtime) must have happened after the run started.
+ * Until the current agent run writes its first line, the log's tail is the PREVIOUS run — the
+ * baseline check (worktree reset plus suite) can take 30–130 s, and a run waking after 5+
  * minutes idle would otherwise show the earlier run's turn/context/tool and a "no pi output"
- * quiet time measured from before the tick even began, tripping the STALL alert on every
- * such tick's baseline (BUGS.md 2026-09-30). Once the run writes, its mtime is inside the
- * tick, so quietMs can never exceed the tick's own age and the honest quiet measure survives.
+ * quiet time measured from before the run even began, tripping the STALL alert on every
+ * such run's baseline (BUGS.md 2026-09-30). Once the run writes, its mtime is inside the
+ * run, so quietMs can never exceed the run's own age and the honest quiet measure survives.
  * Applied by every progress reader (workingDetail, the reviewing branch of rolePhase, the
  * token metrics, roleRowCells' precomputed tail) and by status-render's state cell via
- * tickProgress, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
+ * runProgress, so the TUI, the GUI payload, and the alert cannot drift apart. A state with
  * no recorded start (a stale `running` flag after a crash) cannot be judged and keeps the
  * tail as before. `p` may be undefined (the caller's "no tail fetched" sentinel) or null
  * ("no log"); both read as no progress. */
-function progressOfTick(s: RunnerState, p: LiveProgress | null | undefined): LiveProgress | null {
+function progressOfRun(s: RunnerState, p: LiveProgress | null | undefined): LiveProgress | null {
   if (!p) return null;
   if (s.lastRunStartedAt === undefined) return p;
   const elapsed = Math.max(0, Date.now() - s.lastRunStartedAt);
-  if (p.quietMs > elapsed) return null; // Newest write predates this tick: a previous run's tail.
+  if (p.quietMs > elapsed) return null; // Newest write predates this run: a previous run's tail.
   return { ...p, quietMs: Math.min(p.quietMs, elapsed) };
 }
 
@@ -69,7 +69,7 @@ export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no agent output f
 export const STALL_RE = new RegExp(STALL_SOURCE);
 
 /** The shared parts assembly for an in-flight state cell: `head` (the phase label with its
- * own elapsed — inFlightLabel for a tick, the merge branch's own for a merge) plus turn,
+ * own elapsed — inFlightLabel for a run, the merge branch's own for a merge) plus turn,
  * live context, current tool, and the ≥5-min no-output stall flag. `p` is null when there is
  * no progress (no log yet) — falls back to the bare head. */
 export function inFlightDetail(head: string, p: LiveProgress | null): string {
@@ -88,7 +88,7 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
 }
 
 /** Which pi run kind (progress-data.ts's ProgressRunKind) a role's in-flight cells should read:
- * the review gate's reviewer run ("gate") while the tick is under review — its `session`
+ * the review gate's reviewer run ("gate") while the run is under review — its `session`
  * event is the log's newest and its counts are what "reviewing" describes — the author's
  * own run ("author") for every other in-flight phase. One home for the rule so the TUI
  * table and the GUI payload cannot drift (the precomputed `live` tail must name the same
@@ -97,7 +97,7 @@ export function progressKind(s: RunnerState): ProgressRunKind {
   return s.phase === "review" ? "gate" : "author";
 }
 
-/** progressOfTick with the tail read folded in — the one home for the
+/** progressOfRun with the tail read folded in — the one home for the
  * `live === undefined ? readLiveProgress(...) : live` idiom. Callers holding this frame's
  * already-fetched tail pass it as `live` (renderStatus reads once per running role and
  * threads it through every helper); standalone callers pass undefined and this reads the
@@ -105,13 +105,13 @@ export function progressKind(s: RunnerState): ProgressRunKind {
  * tail-reading caller outside this module routes through it; status-model.ts's staged branch
  * is the one exception, keeping its raw readLiveProgress call because it feeds inFlightDetail
  * a freshly read gate tail for the merge label, not a per-frame threaded one. */
-export function tickProgress(
+export function runProgress(
   root: string,
   s: RunnerState,
   live?: LiveProgress | null,
   kind: ProgressRunKind = "author",
 ): LiveProgress | null {
-  return progressOfTick(s, live === undefined ? readLiveProgress(root, s.role, kind) : live);
+  return progressOfRun(s, live === undefined ? readLiveProgress(root, s.role, kind) : live);
 }
 
 /** The state cell for a working role: elapsed · turns · live context · current tool. Pass
@@ -119,6 +119,6 @@ export function tickProgress(
  * threads it through every helper) — to avoid re-reading the log; without it, this reads on
  * its own for standalone callers. */
 export function workingDetail(root: string, s: RunnerState, live?: LiveProgress | null): string {
-  const p = tickProgress(root, s, live);
+  const p = runProgress(root, s, live);
   return inFlightDetail(inFlightLabel(s, "working"), p);
 }
