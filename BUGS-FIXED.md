@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it (893.990625ms)
+AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path; 4 SIGUSR2 sent, loop broke on ESRCH (grandchild exited without writing gone), expected ppid 25156, ppids the grandchild saw per poll: 25156 1
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-5/dist/test/supervisor.test.js:464:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
+**Cause:** the test grandchild's poll is a SIGUSR2 listener, and the watch releases the poll (removing that listener) before running its stop path; a SIGUSR2 from the test's retry loop landing in that window hit the default action and killed the grandchild before it wrote `gone`. Fix: the test grandchild keeps a no-op SIGUSR2 listener, and its stop path busy-waits 300ms so the window is always exercised (without the no-op listener the test failed on the first run; with it, it passed). Production code is unchanged.
+
+**Validation gap:** none — the test's own failure message (ESRCH break, ppids seen) pointed at the cause; widening the window reproduced it deterministically.
+
 ### Nothing checks that a run's writes landed in its worktree: a role that edits the primary checkout is silently orphaned — the harness commits the empty worktree and records `no_change` (reported by the user 2026-10-20) — fixed 2026-10-20 by the bugfix role
 
 - **Symptom:** every authoring run starts in its own worktree (`cwd: wt` at `src/runner/runner-pi.ts:150`, and the same at `src/review/review-run.ts:165`, `src/review/post-merge-review.ts:101`, `src/build/build-check.ts:269`) and the role prompt forbids editing the primary checkout, but nothing enforces it. When a run writes an absolute path under the repo root instead, the write never appears in the worktree: `commitAll(ctx.wt, message)` (`src/run/run-stage.ts:319` → `src/git/git.ts:527`, `git add -A` + `git commit` with `cwd` = the worktree) stages only the worktree, and the run's own `changedFiles(ctx.wt)` reads (`src/run/run-stage.ts:255`) see a clean tree, so the run ends `no_change` and nothing is committed, pinned or queued. The role's work then sits in the primary checkout forever — uncommitted, unreferenced by any commit, and invisible to `doctor`'s backlog reads — while the run's record says it did nothing. The only in-tree statement of the rule is prompt text: `BUGS-FIXED.md:2977` records the tick/director rule "says to run commands from the worktree (or a scratch temp dir), never cd to the repo root, and never build, test, or edit files in that primary checkout" — advice, not a check.

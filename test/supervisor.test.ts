@@ -489,7 +489,13 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         // is dead and the grandchild reparented: the verdict follows the signal, not a real
         // poll budget, so a loaded host cannot stretch it. The handler is registered before
         // `started` is written, so the test never signals a default-action death.
-        `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, {\n` +
+        // The watch releases its poll (removing the SIGUSR2 listener) before running the stop
+        // path, and a SIGUSR2 with no listener kills the process by default. The test keeps
+        // signalling until it sees `gone`, so a late signal would land in that window and
+        // end the grandchild without a verdict; a no-op listener keeps it alive, and the
+        // busy-wait before writing `gone` widens the window so the test always exercises it.
+        `process.on("SIGUSR2", () => {});\n` +
+        `startParentDeathWatch(() => { const t = Date.now(); while (Date.now() - t < 300); fs.writeFileSync(gone, "gone"); process.exit(0); }, {\n` +
         `  expectedPpid: Number(expectedPpid),\n` +
         `  poll: (check) => {\n` +
         `    const onSignal = () => { fs.appendFileSync(seen, process.ppid + " "); check(); };\n` +

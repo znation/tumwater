@@ -41,23 +41,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
-### `startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it` failed, then passed on the same tree (quarantined by tumwater 2026-10-20)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it (893.990625ms)
-AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path; 4 SIGUSR2 sent, loop broke on ESRCH (grandchild exited without writing gone), expected ppid 25156, ppids the grandchild saw per poll: 25156 1
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_slot-5/dist/test/supervisor.test.js:464:16)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: false,
-expected: true,
-operator: '==',
-diff: 'simple'
-}
-~~~~
-
 ## Fixed
 
 ## Verified
