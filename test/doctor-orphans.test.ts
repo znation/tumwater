@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkOrphans, killOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
+import { checkOrphans, killOrphans, reapPreviousTeamOrphans, type OrphanSignals } from "../src/doctor/doctor-orphans.js";
 import { runDoctor } from "../src/doctor/doctor.js";
 import type { ProcessProbe } from "../src/process/process-table.js";
+import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakeBins, fakeProbe, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
 
@@ -339,4 +340,53 @@ test("killOrphans reports a refused signal and an unreadable table", async () =>
   const none = fakeSignals();
   assert.deepEqual(await killOrphans(root, broken, none.signals), { error: "ps missing" });
   assert.deepEqual(none.sent, []);
+});
+
+test("reapPreviousTeamOrphans kills only the dead previous harness's marked orphans and logs what it killed", async () => {
+  const root = readyRepo();
+  const dead = 999_999_999;
+  fs.mkdirSync(path.join(root, ".tumwater", "worktrees", "qa"), { recursive: true });
+  const { probe } = fakeProbe(
+    [
+      { pid: 3100, command: "node /tmp/twprobe/server.js" },
+      { pid: 3101, ppid: 3100, command: "node child.js" },
+      { pid: 3200, command: "node /tmp/other.js" },
+      { pid: 3300, command: "node /tmp/shared.js" },
+      { pid: 3400, command: "node unmarked.js" },
+    ],
+    { 3400: path.join(fs.realpathSync(root), ".tumwater", "worktrees", "qa") },
+    { 3100: `${dead}-aa`, 3200: "999999998-bb", 3300: `${dead}-cc,${process.pid}-dd` },
+  );
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapPreviousTeamOrphans(root, dead, probe, signals), 1);
+  assert.deepEqual(sent.filter(([, s]) => s === "SIGTERM").map(([p]) => p).sort((a, b) => a - b), [3100, 3101]);
+  const warnings = readEvents(root).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1);
+  assert.match(
+    String((warnings[0] as { message?: string }).message),
+    /^killed 1 orphaned process left by tumwater 999999999's runs at team start: pid 3100 \(\+1 descendant\) node \/tmp\/twprobe\/server\.js/,
+  );
+});
+
+test("reapPreviousTeamOrphans scans nothing while the previous harness is alive", async () => {
+  const root = readyRepo();
+  let listed = 0;
+  const { probe } = fakeProbe([{ pid: 3100, command: "node x.js" }], {}, { 3100: `${process.pid}-aa` });
+  const counting: ProcessProbe = { ...probe, list: async () => { listed++; return probe.list(); } };
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapPreviousTeamOrphans(root, process.pid, counting, signals), 0);
+  assert.equal(listed, 0);
+  assert.deepEqual(sent, []);
+});
+
+test("reapPreviousTeamOrphans returns 0 and logs nothing on an unreadable table or no match", async () => {
+  const root = readyRepo();
+  const dead = 999_999_999;
+  const { probe } = fakeProbe([{ pid: 3100, command: "node x.js" }], {}, { 3100: "999999998-aa" });
+  const broken: ProcessProbe = { ...probe, list: async () => { throw new Error("ps missing"); } };
+  const { signals, sent } = fakeSignals();
+  assert.equal(await reapPreviousTeamOrphans(root, dead, broken, signals), 0);
+  assert.equal(await reapPreviousTeamOrphans(root, dead, probe, signals), 0);
+  assert.deepEqual(sent, []);
+  assert.deepEqual(readEvents(root).filter((e) => e.type === "warning"), []);
 });

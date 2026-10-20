@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
+import { readOrchestratorInfo, writeOrchestratorInfo, type OrchestratorInfo } from "../team/orchestrator-info.js";
 import { runnerIds } from "../roles/runner-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -43,6 +43,7 @@ import {
 } from "../run/run-timing.js";
 import { newTeamGateStates, type TeamGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../team/reclaim.js";
+import { reapPreviousTeamOrphans } from "../doctor/doctor-orphans.js";
 import { runStartupMigrations } from "./startup-migration-steps.js";
 import { archiveAtTeamStart } from "../backlog/backlog-archive.js";
 
@@ -174,6 +175,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
   if (redeploy) info.build = redeploy.status();
   if (opts.stopsAt !== undefined) info.stopsAt = opts.stopsAt;
+  const previous = readOrchestratorInfo(root);
   writeOrchestratorInfo(root, info);
   // Best-effort, like every other event write in this function (see `emit` below): this runs
   // BEFORE the try/finally and its cleanup, so a raw logEvent throw here would not just stop
@@ -197,6 +199,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // The mergeRefs migration moved legacy landing pins but keeps a dangling one (setRef refuses a
   // missing object); this drops what is left before any run.
   await dropDanglingTumwaterPins(root);
+  // A clean stop removes the info file, so only a crashed predecessor leaves a pid to reap for.
+  if (previous !== null && previous.pid !== process.pid) void reapPreviousTeamOrphans(root, previous.pid);
   // Finished backlog entries still in the live files move to the archives now
   // (plans/backlog-archive.md), while no merge is in progress and no run is in flight: a
   // repository migrates on its first start with this build, and an entry a hand commit moved is

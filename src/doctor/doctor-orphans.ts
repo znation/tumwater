@@ -5,6 +5,7 @@ import { worktreesDir } from "../paths.js";
 import { pidAlive } from "../process/process.js";
 import { GROUP_POLL_MS, KILL_GRACE_MS } from "../process/process-group.js";
 import { type ProcessProbe, type ProcessRow, systemProcessProbe } from "../process/process-table.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage, truncate } from "../text/text.js";
 import { plural } from "../text/phrases.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -252,10 +253,12 @@ const systemSignals: OrphanSignals = {
 
 /** What `doctor --kill-orphans` did: the orphans killed (with how many descendants went with
  * each), the pids that could not be signalled, or why the table could not be scanned. */
+interface KilledOrphan { pid: number; command: string; descendants: number; }
+
 type OrphanKillReport =
   | { error: string }
   | {
-      killed: { pid: number; command: string; descendants: number }[];
+      killed: KilledOrphan[];
       failed: { pid: number; reason: string }[];
     };
 
@@ -270,7 +273,18 @@ export async function killOrphans(
 ): Promise<OrphanKillReport> {
   const scan = await findOrphans(root, probe);
   if ("error" in scan) return { error: scan.error };
-  const children = childrenOf(scan.rows);
+  return killTrees(root, scan.rows, scan.orphans, signals);
+}
+
+/** The signal-and-wait half of killOrphans: SIGTERM each chosen row's tree from `rows`, wait,
+ * SIGKILL the rest, and report what went. */
+async function killTrees(
+  root: string,
+  rows: ProcessRow[],
+  chosen: ProcessRow[],
+  signals: OrphanSignals,
+): Promise<{ killed: KilledOrphan[]; failed: { pid: number; reason: string }[] }> {
+  const children = childrenOf(rows);
   const refused = new Map<number, string>();
   const send = (pid: number, signal: NodeJS.Signals): void => {
     try {
@@ -279,7 +293,7 @@ export async function killOrphans(
       if ((err as NodeJS.ErrnoException).code !== "ESRCH") refused.set(pid, errorMessage(err));
     }
   };
-  const trees = scan.orphans.map((r) => ({ r, pids: [r.pid, ...descendantPids(children, r.pid)] }));
+  const trees = chosen.map((r) => ({ r, pids: [r.pid, ...descendantPids(children, r.pid)] }));
   const all = [...new Set(trees.flatMap((t) => t.pids))];
   for (const pid of all) send(pid, "SIGTERM");
   const stillAlive = (): number[] => all.filter((pid) => !refused.has(pid) && signals.alive(pid));
@@ -287,7 +301,7 @@ export async function killOrphans(
   while (stillAlive().length > 0 && Date.now() < deadline)
     await new Promise((resolve) => setTimeout(resolve, signals.pollMs));
   for (const pid of stillAlive()) send(pid, "SIGKILL");
-  const killed: { pid: number; command: string; descendants: number }[] = [];
+  const killed: KilledOrphan[] = [];
   const failed: { pid: number; reason: string }[] = [];
   for (const { r, pids } of trees) {
     const bad = pids.find((pid) => refused.has(pid));
@@ -295,4 +309,46 @@ export async function killOrphans(
     else failed.push({ pid: bad, reason: refused.get(bad) ?? "" });
   }
   return { killed, failed };
+}
+
+/** Team start's reap of a crashed predecessor's leaks: kill the parentless processes whose run
+ * marks all name dead harnesses and at least one names `previousPid`, the orchestrator the
+ * info file recorded. Safe without an operator's judgment: a mark proves a tumwater run
+ * started the process, the previous-pid match scopes it to this repo, and the dead-harness
+ * test excludes any run whose own sweep is still coming. A live `previousPid` (a hand-off
+ * whose old orchestrator is draining) scans nothing. Orphans caught only by argv or cwd carry
+ * no mark read (findOrphans asks marks only of processes argv did not settle) and stay for
+ * `doctor --kill-orphans`. Returns the killed count; never throws. */
+export async function reapPreviousTeamOrphans(
+  root: string,
+  previousPid: number,
+  probe: ProcessProbe = systemProcessProbe,
+  signals: OrphanSignals = systemSignals,
+): Promise<number> {
+  try {
+    if (pidAlive(previousPid)) return 0;
+    const scan = await findOrphans(root, probe);
+    if ("error" in scan) return 0;
+    const chosen = scan.orphans.filter((r) => {
+      const marks = scan.marks.get(r.pid) ?? [];
+      return marks.length > 0 && marks.every((m) => harnessGone(m) === true) &&
+        marks.some((m) => m.startsWith(`${previousPid}-`));
+    });
+    if (chosen.length === 0) return 0;
+    const { killed, failed } = await killTrees(root, scan.rows, chosen, signals);
+    const items = killed.map((k) => {
+      const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
+      return `pid ${k.pid}${tree} ${k.command}`;
+    });
+    const refused = failed.map((f) => `could not kill pid ${f.pid}: ${f.reason}`);
+    warnEventBestEffort(
+      root,
+      TUMWATER_SOURCE,
+      `killed ${plural(killed.length, "orphaned process", "orphaned processes")} left by tumwater ` +
+        `${previousPid}'s runs at team start: ${[...items, ...refused].join("; ")}`,
+    );
+    return killed.length;
+  } catch {
+    return 0;
+  }
 }
