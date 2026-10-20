@@ -4106,3 +4106,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
 
 **Pinned by.** `test/main-watch.test.ts` — "a filing whose quarantine.json write failed is not filed again on the next poll".
+
+## OpenCode catalog seed: startup reports its failures
+
+### INV-CG1: the startup seed's failed catalog fetch or cache write logs one warning event per process and never fails the startup check
+
+**Guarantee.** `runStartupCheck` seeds the opencode models catalog once per root per process and passes the seed a `warn` that logs through `warnEventBestEffort`. A failed fetch or a failed cache save therefore logs one warning event (stderr when the events log is unwritable), a second startup check on the same root adds none, and the check still returns no `problem`.
+
+**Binds.** `src/gates/startup-gate.ts` (`runStartupCheck`, `seedOpencodeCatalog`).
+
+**Pinned by.** `test/startup-gate.test.ts` — "the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved".

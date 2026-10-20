@@ -22,6 +22,7 @@ import {
   refreshOpencodeCatalog,
   type CatalogFetch,
 } from "../agent/opencode/opencode-catalog.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { backendById } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
@@ -130,10 +131,14 @@ export async function runStartupCheck(
   // opencode seams from the cached `.tumwater/state/opencode-models.json`, and an absent cache
   // reads every opencode seam NOT free (the safe direction for the budget gate). Mirroring the
   // claude seed above, it runs once per root per process when a model job routes to opencode;
-  // a failed fetch keeps the last good cache (or an empty one) and never blocks startup.
+  // a failed fetch keeps the last good cache (or an empty one) and never blocks startup; a
+  // failed fetch or cache write logs one warning event.
   if (!opencodeSeedAttempted.has(root) && backendsInUse(config).includes("opencode")) {
     opencodeSeedAttempted.add(root);
-    await seedOpencodeCatalog(root, config, opencodeSeed);
+    await seedOpencodeCatalog(root, config, {
+      ...opencodeSeed,
+      warn: (message) => warnEventBestEffort(root, TUMWATER_SOURCE, message),
+    });
   }
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
@@ -142,7 +147,7 @@ export async function runStartupCheck(
 
 /** Refresh the opencode models catalog for the config's opencode seams: the one seed both the
  * startup check and a live edit that first routes a seam to opencode run. `warn` receives the
- * refresh's own warnings (startup passes none). */
+ * refresh's own warnings; every caller passes one (startup logs through warnEventBestEffort). */
 export function seedOpencodeCatalog(
   root: string,
   config: TumwaterConfig,

@@ -21,6 +21,8 @@ import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { claudeAccountPath, opencodeModelsPath } from "../src/paths.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
 
@@ -427,4 +429,60 @@ test("a failing periodic catalog refresh warns once per retry interval and never
   r.poll(config);
   await settle();
   assert.equal(warnings.filter((m) => m.startsWith("open code model catalog fetch failed")).length, 1);
+});
+
+test("the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved", async () => {
+  const opencodeBin = tmpdir("startup-opencode-warn-");
+  writeScript(path.join(opencodeBin, "opencode"), "exit 0");
+  registerAgentBackend({
+    id: "opencode",
+    label: "opencode",
+    defaultBin: "opencode",
+    binEnv: "TUMWATER_OPENCODE_BIN",
+    resolveBin: () => ({ bin: path.join(opencodeBin, "opencode"), source: "config" }),
+    invocation: () => ({ args: [], env: process.env }),
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  });
+  const opencodeRepo = async (name: string): Promise<string> => {
+    const repo = makeRepo();
+    await initProject(repo, name);
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
+    cfg.backend = "opencode";
+    cfg.model = "deepseek-v4.1-flash-free";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    return repo;
+  };
+  await withPi("exit 0", async () => {
+    const repoA = await opencodeRepo("startup seed warn fetch");
+    const failing = await runStartupCheck(repoA, null, {
+      fetch: async () => {
+        throw new Error("offline");
+      },
+      now: () => 1_000,
+    });
+    assert.ok(!("problem" in failing), JSON.stringify(failing));
+    const fetchWarning = "open code model catalog fetch failed; keeping the cached copy";
+    const countFetch = (): number => warningMessages(repoA).filter((m) => m.includes(fetchWarning)).length;
+    assert.equal(countFetch(), 1);
+    await runStartupCheck(repoA, null, { fetch: async () => { throw new Error("offline"); }, now: () => 2_000 });
+    assert.equal(countFetch(), 1, "the per-root guard keeps a second startup from warning again");
+
+    const repoB = await opencodeRepo("startup seed warn save");
+    const body = {
+      opencode: { models: { "deepseek-v4.1-flash-free": { cost: { input: 0, output: 0 }, limit: { context: 200000 } } } },
+    };
+    const restore = failRenameSyncOn(opencodeModelsPath(repoB), "disk full");
+    try {
+      const saved = await runStartupCheck(repoB, null, { fetch: async () => body, now: () => 1_000 });
+      assert.ok(!("problem" in saved), JSON.stringify(saved));
+    } finally {
+      restore();
+    }
+    const saveWarnings = warningMessages(repoB).filter((m) => m.startsWith("could not save the open code model catalog: "));
+    assert.equal(saveWarnings.length, 1);
+    assert.ok(saveWarnings[0]?.includes("disk full"), String(saveWarnings[0]));
+  });
 });
