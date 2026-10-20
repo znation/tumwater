@@ -28,6 +28,8 @@ import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { collectReportSince } from "../src/report/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
+import { entryKey } from "../src/backlog/backlog-eligibility.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { collectFailureReportSince } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { setConfigKey } from "../src/config/config-write.js";
@@ -1888,6 +1890,21 @@ test("handleBacklogCancel removes the entry, answers gone for a stale title, 400
   }
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+});
+
+test("handleBacklogCancel adds workingNote only when a role holds the entry's claim", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1\n\nbody\n\n### p2\n\nbody" }, { heading: "## Done" }]);
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "feature-2"),
+    claim: { file: "PLANS.md", key: entryKey("p1"), title: "p1", at: 1, source: "assigned" },
+  });
+  const serve = (body: unknown) => captureJson((res) => handleBacklogCancel(fakeReq(JSON.stringify(body)), res, root));
+  const claimed = await serve({ kind: "plan", position: 1, title: "p1" });
+  assert.equal((claimed.data as { status: string }).status, "cancelled");
+  assert.ok(String((claimed.data as { workingNote?: string }).workingNote).includes("tumwater abort --role feature-2"));
+  const free = await serve({ kind: "plan", position: 1, title: "p2" });
+  assert.ok(!("workingNote" in (free.data as object)));
 });
 
 test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing", async () => {

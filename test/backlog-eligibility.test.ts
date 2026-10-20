@@ -6,6 +6,7 @@ import {
   withoutRefusalNotes,
   backlogHolds,
   backlogInProgress,
+  cancelledClaimNote,
   inProgressMark,
   eligibleEntries,
   entryHold,
@@ -442,6 +443,13 @@ test("backlogInProgress names the runner holding each entry's claim; inProgressM
   assert.deepEqual(backlogInProgress(dir), { plans: ["feature-2", null], bugs: ["bugfix"] });
   assert.equal(inProgressMark(null), "");
   assert.equal(inProgressMark("feature-2"), " [working on it: feature #2]");
+});
+
+test("cancelledClaimNote is empty unclaimed and names the role and the abort command", () => {
+  assert.equal(cancelledClaimNote(null), "");
+  const note = cancelledClaimNote("feature-2");
+  assert.ok(note.includes("feature #2 is still working on it"), note);
+  assert.ok(note.includes("`tumwater abort --role feature-2`"), note);
 });
 
 test("plansWaitingOn follows requires clauses transitively and stops on a cycle", () => {

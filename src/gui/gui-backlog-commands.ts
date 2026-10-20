@@ -8,6 +8,8 @@
  * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
+import { cancelledClaimNote, entryKey } from "../backlog/backlog-eligibility.js";
+import { allLiveClaims } from "../runner/runner-state.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryMoveEntryToTop, tryReleaseEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-write.js";
@@ -158,11 +160,13 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   const pair = checkedEntryPositionAndTitle(res, body);
   if (!pair) return;
   const { position, title } = pair;
+  const claims = allLiveClaims(root);
   const outcome = outcomeOrBadRequest<CancelEntryOutcome>(res, () => tryCancelEntry(root, kind, position, title));
   if (outcome === null) return;
   if (outcome.status === "cancelled") {
+    const workingNote = cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null);
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed });
+    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed, ...(workingNote === "" ? {} : { workingNote }) });
   } else {
     okGone(res);
   }

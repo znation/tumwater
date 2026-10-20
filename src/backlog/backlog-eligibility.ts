@@ -520,6 +520,15 @@ export function inProgressMark(runner: string | null): string {
   return runner === null ? "" : ` [working on it: ${roleLabel(runner)}]`;
 }
 
+/** The note a cancel surface adds when the cancelled entry was claimed: empty for `null`, else
+ * names the role (through roleLabel) and the `abort` that stops its run, which the cancel itself
+ * leaves going. */
+export function cancelledClaimNote(runner: string | null): string {
+  return runner === null
+    ? ""
+    : `${roleLabel(runner)} is still working on it — its run goes on; \`tumwater abort --role ${runner}\` stops it`;
+}
+
 /** The entries `role` may take now, in file order: PLANS.md's `## Planned` entries for
  * feature, BUGS.md's `## Open` entries for bugfix, minus every entry entryHold holds, each with
  * its stamp-free key, verbatim title and 1-based line range. Reads the primary checkout through

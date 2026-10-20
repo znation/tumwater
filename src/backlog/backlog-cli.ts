@@ -21,7 +21,8 @@ import {
   entryMatches,
   filingDate,
 } from "./backlog.js";
-import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
+import { allLiveClaims } from "../runner/runner-state.js";
+import { backlogHolds, backlogInProgress, cancelledClaimNote, entryKey, holdMark, inProgressMark } from "./backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -206,10 +207,16 @@ export async function cancelAndAnnounce(
   rejectUnknownArgs(command, rest, []);
   if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
   await requireReadyRepo(root);
+  // Snapshot the claims first: the orchestrator may release the claim once the heading leaves.
+  const claims = allLiveClaims(root);
   const removed = cancel(position);
+  const workingOn = claims.get(entryKey(removed.title)) ?? null;
   warnIfUncommitted(await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`)), removed.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-  if (json) sayJson({ file: removed.file, title: removed.title });
-  else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
+  if (json) sayJson({ file: removed.file, title: removed.title, ...(workingOn === null ? {} : { workingOn }) });
+  else {
+    say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
+    if (workingOn !== null) say(cancelledClaimNote(workingOn));
+  }
 }
 
 /** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce

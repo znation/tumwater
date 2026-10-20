@@ -29,6 +29,8 @@ import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { waitFor, waitForFile, sleep } from "./helpers/wait.js";
+import { entryKey } from "../src/backlog/backlog-eligibility.js";
+import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { setConfigKey } from "../src/config/config-write.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
@@ -354,6 +356,19 @@ function backlogCancelRig() {
   const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
   return { root, keys, down, ctrlX, ctrlV, read, plans, bugs };
 }
+
+test("backlog Ctrl+X cancel of a claimed plan flashes who is still working on it", () => {
+  const { root, keys, down, ctrlX } = backlogCancelRig();
+  const title = "Plan one (planned 2026-10-02 by test)";
+  saveRunnerState(root, {
+    ...loadRunnerState(root, "feature-2"),
+    claim: { file: "PLANS.md", key: entryKey(title), title, at: 1, source: "assigned" },
+  });
+  down(1);
+  ctrlX();
+  ctrlX();
+  assert.match(keys.state().flash ?? "", /cancelled plan #1: .*is still working on it/);
+});
 
 test("backlog Ctrl+X arms, then a second Ctrl+X cancels the selected bug", () => {
   const { keys, down, ctrlX, read, plans, bugs } = backlogCancelRig();

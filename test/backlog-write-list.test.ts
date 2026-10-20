@@ -350,6 +350,38 @@ test("plan --list marks the entry a role is working on, and --json carries inPro
   assert.deepEqual(j.entries.map((e) => e.inProgress), ["feature-2", null]);
 });
 
+test("plan --cancel on a claimed entry names the role and its abort; unclaimed adds nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cancel claim note");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
+  saveRunnerState(repo, {
+    ...loadRunnerState(repo, "feature-2"),
+    claim: { file: "PLANS.md", key: entryKey(p1), title: p1, at: 1, source: "assigned" },
+  });
+  const r = await cli(repo, "plan", "--cancel", "1");
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(!fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes(p1));
+  assert.ok(r.stdout.includes("cancelled plan in PLANS.md:"), r.stdout);
+  assert.ok(r.stdout.includes("tumwater abort --role feature-2"), r.stdout);
+  const plain = await cli(repo, "plan", "--cancel", "1", "--json");
+  assert.equal(plain.code, 0, plain.stderr);
+  assert.ok(!("workingOn" in JSON.parse(plain.stdout)), plain.stdout);
+});
+
+test("plan --cancel --json carries workingOn for a claimed entry", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cancel claim note");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
+  saveRunnerState(repo, {
+    ...loadRunnerState(repo, "feature-2"),
+    claim: { file: "PLANS.md", key: entryKey(p1), title: p1, at: 1, source: "assigned" },
+  });
+  const r = await cli(repo, "plan", "--cancel", "1", "--json");
+  assert.equal(JSON.parse(r.stdout).workingOn, "feature-2");
+});
+
 test("plan --list shows a blocked series as one line with its positions", async () => {
   const repo = makeRepo();
   fs.writeFileSync(
