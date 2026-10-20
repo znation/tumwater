@@ -18,6 +18,7 @@ import { applyConfigRequest } from "../config/config-write.js";
 import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
+import { errorMessage } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
@@ -318,13 +319,19 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
     // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
     // line it left mid-stream is not a finished verdict, so recording it would advance the
     // rotation past a check that did not complete. Only a run that was not cut off records.
-    if (ctx.flow && !diagnosis.cutOff)
-      recordFlow(
-        ctx.root,
-        ctx.flow.flow,
-        ctx.flow.result,
-        ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
-      );
+    if (ctx.flow && !diagnosis.cutOff) {
+      // The ledger only orders the qa menu, so a failed write warns rather than failing the run.
+      try {
+        recordFlow(
+          ctx.root,
+          ctx.flow.flow,
+          ctx.flow.result,
+          ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
+        );
+      } catch (err) {
+        ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
+      }
+    }
     // A prompt-driven (director) run that answers a question in prose ends `no_change` with
     // no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
     // and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as

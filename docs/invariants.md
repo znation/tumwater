@@ -3956,3 +3956,19 @@ check, and a dropped entry reads as unprobed.
 ones" and "the probe cache round-trips and a verdict expires after the 7-day TTL" (a valid entry still
 survives); `test/status-data-models.test.ts` — "a foreign entry in the probe cache leaves
 collectImageProbeFailures and snapshot standing".
+
+## QA flow coverage: a failed ledger write never fails a run
+
+### INV-BW1: a failed qa-coverage.json write warns and the run keeps its outcome
+
+**Guarantee.** A `recordFlow` write failure in `stageRunMerge` or `resolveRunVerdict` warns once and
+the run keeps its `queued` or `no_change` outcome, so a full disk or read-only `.tumwater` does not
+count toward the role's error streak.
+
+**Binds.** `src/run/run-stage.ts` (`stageRunMerge`), `src/run/run-verdict.ts` (`resolveRunVerdict`),
+`src/run/qa-coverage.ts` (`recordFlow`).
+
+**Pinned by.** `test/run-stage.test.ts` — "a failed qa coverage write warns and the run still ends
+queued" and "a qa flow record from the reply is written into the coverage file" (on the healthy path
+the flow is still recorded); `test/run-verdict.test.ts` — "a failed qa coverage write warns and the
+no_change run stands" and "a no_change run records its qa flow".

@@ -11,6 +11,8 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
+import { qaCoveragePath } from "../src/paths.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -710,6 +712,29 @@ test("a passed qa flow records no summary", async () => {
     lastRunAt: coverage["unit tests"]!.lastRunAt,
     result: "passed",
   });
+});
+
+test("a failed qa coverage write warns and the run still ends queued", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "SUMMARY: fixed the bug\n",
+    flow: { flow: "unit tests", result: "bug" },
+  });
+
+  const undo = failRenameSyncOn(qaCoveragePath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await stageRunMerge(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(queueDepth(root), 1);
+  assert.deepEqual(readQaCoverage(root), {});
+  assert.equal(calls.warnings.length, 1);
+  assert.match(calls.warnings[0]!, /qa flow "unit tests" not recorded: EACCES fake/);
 });
 
 // ── The pre-queue self-check follow-up (PLANS.md "Pre-queue self-check, part 1/2") ──

@@ -18,7 +18,7 @@ import {
 import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
-import { squash } from "../text/text.js";
+import { errorMessage, squash } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
@@ -359,12 +359,19 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   const finalSummary = highFriction
     ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
     : summary;
-  if (ctx.flow)
-    recordFlow(
-      ctx.root,
-      ctx.flow.flow,
-      ctx.flow.result,
-      ctx.flow.result === "bug" ? summary : undefined,
-    );
+  if (ctx.flow) {
+    // The merge is already queued and the ledger only orders the qa menu, so a failed write
+    // warns rather than failing the run.
+    try {
+      recordFlow(
+        ctx.root,
+        ctx.flow.flow,
+        ctx.flow.result,
+        ctx.flow.result === "bug" ? summary : undefined,
+      );
+    } catch (err) {
+      ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
+    }
+  }
   return { result: "queued", summary: finalSummary, commit, highFriction };
 }

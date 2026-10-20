@@ -47,27 +47,5 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `git diff --stat` shows no src/ file changed except src/agent/opencode/opencode-catalog.ts.
 - Every test name cited in the new section exists verbatim (`grep -rF` each one in test/).
 
-### QA flow coverage: a failed `qa-coverage.json` write warns instead of failing a run whose merge is already queued (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/run/run-stage.ts + src/run/run-verdict.ts + test/run-stage.test.ts + test/run-verdict.test.ts + docs/invariants.md)
-
-**Goal.** `recordFlow` (src/run/qa-coverage.ts) writes the qa ledger with `writeJsonAtomic` and does not catch a write failure. Its two callers do not catch it either:
-- `stageRunMerge` (src/run/run-stage.ts) calls `recordFlow` after the merge is queued, after the pin, and after the best-effort `merge_queued` event.
-- `resolveRunVerdict` (src/run/run-verdict.ts) calls it on the no-change path, before returning `no_change`.
-
-So a full disk, a read-only `.tumwater`, or any other failed ledger write throws out of the run. The catch in `runPhase` (src/runner/runner-run.ts) then turns the outcome into `error` and sets `lastError`. `finalizeRun` (src/run/run-finalize.ts) counts that toward the role's error streak, even when the work was committed and queued. On 2026-10-20 the plan role confirmed this with a scratch test (since deleted). The test was a copy of "a qa flow record from the reply is written into the coverage file" with `failRenameSyncOn(qaCoveragePath(root), "EACCES fake")` installed. `stageRunMerge` rejected with `Error: EACCES fake` while `queueDepth(root)` was 1. A second scratch test called `resolveRunVerdict` with test/run-verdict.test.ts's `makeCtx(root, wt, "qa", { flow: { flow: "status", result: "passed" } })`. Without the fault it returned `no_change` and recorded the flow. With the same fault installed it rejected with `Error: EACCES fake`. The ledger only orders the qa role's flow menu. The run-stage comment beside `logEventBestEffort` already says that observability must not reject a run whose work is queued, and the ledger is in the same position.
-
-**Approach.**
-1. src/run/run-stage.ts: wrap the `recordFlow(…)` call in `try { … } catch (err) { ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`); }`. Import `errorMessage` from ../text/text.js. Add a one-line comment saying the merge is already queued and the ledger only orders the qa menu, so a failed write warns rather than failing the run. Its return value and every other step stay as they are.
-2. src/run/run-verdict.ts: make the same change at the `ctx.flow && !diagnosis.cutOff` site, keeping that guard as it is, with the same warning text. Leave `recordFlow` and `readQaCoverage` in src/run/qa-coverage.ts unchanged. Their own tests call `recordFlow` directly and expect a write.
-3. test/run-stage.test.ts: after "a passed qa flow records no summary", add "a failed qa coverage write warns and the run still ends queued". Set it up as "a qa flow record from the reply is written into the coverage file" does (flow `{ flow: "unit tests", result: "bug" }`). Install `failRenameSyncOn(qaCoveragePath(root), "EACCES fake")` from ./helpers/fs-faults.js, with `qaCoveragePath` from ../src/paths.js, and undo it in a `finally`. Assert that `outcome.result` is `"queued"`, that `queueDepth(root)` is 1, that `readQaCoverage(root)` deep-equals `{}`, and that `calls.warnings` holds exactly one entry matching `/qa flow "unit tests" not recorded: EACCES fake/`.
-4. test/run-verdict.test.ts: no test there passes a non-null `flow` yet, so add two tests after "a role runner's prompt-less nothing-to-do is not treated as an answer". Both use `initializedWorktree("qa")` and `makeCtx(root, wt, "qa", { flow: { flow: "status", result: "passed" } })`.
-   - "a no_change run records its qa flow": the outcome is `no_change` and `readQaCoverage(root).status?.result` is `"passed"`.
-   - "a failed qa coverage write warns and the no_change run stands": run with `failRenameSyncOn(qaCoveragePath(root), "EACCES fake")` installed and undone in a `finally`. The outcome is `no_change`, `readQaCoverage(root)` deep-equals `{}`, and `warns` is exactly one entry matching `/qa flow "status" not recorded: EACCES fake/`.
-5. docs/invariants.md: append "## QA flow coverage: a failed ledger write never fails a run" after the last section. For the INV prefix, run `grep -n '^### INV-' docs/invariants.md | tail` and read the "was free" notes in PLANS.md's Planned entries. On 2026-10-20, BT had merged, BU (Image-probe cache) and BV (OpenCode catalog cache) were planned, and BW was free. Use the Guarantee / Binds / Pinned by layout with one guarantee: a `recordFlow` write failure in `stageRunMerge` or `resolveRunVerdict` warns once and the run keeps its `queued` or `no_change` outcome. Binds `stageRunMerge`, `resolveRunVerdict` and `recordFlow`. Pinned by the three new tests plus "a qa flow record from the reply is written into the coverage file". Cite each test by its full name. Leave INV-D2 unchanged: it pins the FLOW parse and the cut-off guard, not the write.
-
-**Acceptance criteria.**
-- With the `try` removed from either call site, the matching new failure test fails (the call rejects).
-- `npm run test:gate` passes.
-- `git diff --stat` shows no src/ file changed except src/run/run-stage.ts and src/run/run-verdict.ts.
-- Every test name cited in the new section exists verbatim (`grep -rF` each one in test/).
 
 ## Done

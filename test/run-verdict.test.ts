@@ -8,7 +8,9 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
-import { configRequestPath } from "../src/paths.js";
+import { configRequestPath, qaCoveragePath } from "../src/paths.js";
+import { readQaCoverage } from "../src/run/qa-coverage.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fakes/fake-pi.js";
@@ -148,6 +150,36 @@ test("a role runner's prompt-less nothing-to-do is not treated as an answer", as
 
   assert.equal(outcome?.result, "no_change");
   assert.equal(outcome?.summary, undefined);
+});
+
+test("a no_change run records its qa flow", async () => {
+  const { root, wt } = await initializedWorktree("qa");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx } = makeCtx(root, wt, "qa", { pi, flow: { flow: "status", result: "passed" } });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(readQaCoverage(root).status?.result, "passed");
+});
+
+test("a failed qa coverage write warns and the no_change run stands", async () => {
+  const { root, wt } = await initializedWorktree("qa");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx, warns } = makeCtx(root, wt, "qa", { pi, flow: { flow: "status", result: "passed" } });
+  const undo = failRenameSyncOn(qaCoveragePath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await resolveRunVerdict(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome?.result, "no_change");
+  assert.deepEqual(readQaCoverage(root), {});
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /qa flow "status" not recorded: EACCES fake/);
 });
 
 test("a blind image read fails the run with an error naming the file and the model", async () => {
