@@ -3916,3 +3916,28 @@ twice" and "with no free runner the revision waits in reverted.json and is assig
 
 **Pinned by.** `test/main-revert.test.ts` — "a failed reverted.json rewrite warns, and the next poll
 does not hand the commit out twice".
+
+## Post-merge reviews: post-review.json never throws out of the merge drain
+
+### INV-BT1: a torn post-review.json entry is dropped
+
+**Guarantee.** An entry that is not an object with a string commit, role and summary is dropped, as
+is one whose `rejected` is not an array. The next write leaves it out.
+
+**Binds.** `src/review/post-merge-review.ts` (`readPostReviews`).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a torn post-review.json entry is dropped and the
+well-formed one is still reviewed".
+
+### INV-BT2: a failed post-review.json write warns and never throws
+
+**Guarantee.** A failed post-review.json write warns under `tumwater` and never throws, so a
+revert's settle still frees the merge slot and a skip check still logs its reason.
+
+**Binds.** `src/review/post-merge-review.ts` (`writePostReviews`, `addPostReview`,
+`settlePostReview`).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a failed post-review.json write after a revert
+warns and still frees the merge slot", "a failed post-review.json write in the revert skip check
+still logs why it does not revert", and "a rejecting post-merge review reverts the commit and hands
+it back as a revision" (on the healthy path the entry is still dropped).

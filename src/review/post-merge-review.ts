@@ -1,7 +1,8 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir } from "../paths.js";
 import { reviewRunConfig } from "../config/config-views.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
+import { isJsonObject } from "../files/json-object.js";
 import { gitTry } from "../git/git-run.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
@@ -35,21 +36,42 @@ export function isAfterMergeRole(config: TumwaterConfig, role: string): boolean 
   return (config.review.afterMerge ?? []).includes(baseRoleOf(role));
 }
 
+/** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and
+ * summary, or a `rejected` that is not an array) is dropped, and the next write leaves it out. */
 export function readPostReviews(root: string): PostReview[] {
-  const saved = readJsonFile<{ pending?: PostReview[] }>(postReviewPath(root));
-  return Array.isArray(saved?.pending) ? saved.pending : [];
+  const saved = readJsonFile<{ pending?: unknown }>(postReviewPath(root));
+  if (!Array.isArray(saved?.pending)) return [];
+  const entries: PostReview[] = [];
+  for (const raw of saved.pending as unknown[]) {
+    if (!isJsonObject(raw)) continue;
+    const { commit, role, summary, body, failures, rejected } = raw;
+    if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
+    if (rejected !== undefined && !Array.isArray(rejected)) continue;
+    const entry: PostReview = { commit, role, summary };
+    if (typeof body === "string") entry.body = body;
+    if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
+    if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+    entries.push(entry);
+  }
+  return entries;
 }
 
 function writePostReviews(root: string, pending: PostReview[]): void {
-  writeJsonAtomic(postReviewPath(root), { pending });
+  try {
+    writeJsonAtomic(postReviewPath(root), { pending });
+  } catch (err) {
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not write post-review.json: ${errorMessage(err)}`);
+  }
 }
 
-/** Queue the merged commit for its review. */
+/** Queue the merged commit for its review. Never throws: a failed write warns and leaves the file
+ * as it was, so the commit goes unreviewed. */
 export function addPostReview(root: string, entry: PostReview): void {
   writePostReviews(root, [...readPostReviews(root).filter((e) => e.commit !== entry.commit), entry]);
 }
 
-/** Replace the entry for `commit` with `next`, or drop it when `next` is null. */
+/** Replace the entry for `commit` with `next`, or drop it when `next` is null. Never throws: a
+ * failed write warns and leaves the file as it was, so a later poll handles the entry again. */
 export function settlePostReview(root: string, commit: string, next: PostReview | null): void {
   const rest = readPostReviews(root).filter((e) => e.commit !== commit);
   writePostReviews(root, next ? [...rest, next] : rest);

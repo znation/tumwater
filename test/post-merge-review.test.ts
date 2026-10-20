@@ -11,7 +11,8 @@ import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-
 import { addPostReview, readPostReviews } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
-import { rejectedRefName } from "../src/paths.js";
+import { postReviewPath, rejectedRefName } from "../src/paths.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -163,4 +164,63 @@ test("no post-merge review is queued when review is disabled or the merged diff 
   const exempt = await mergeListed("NOTES.md", { enabled: true });
   assert.equal(eventsOfType(exempt, "merged").length, 1);
   assert.equal(readPostReviews(exempt).length, 0);
+});
+
+test("a torn post-review.json entry is dropped and the well-formed one is still reviewed", async () => {
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  const torn = [
+    null,
+    { commit: 7 },
+    { commit, role: "improve", summary: "s", rejected: "x" },
+    { commit, role: "improve", summary: "add x", failures: "2", rejected: ["r", 3] },
+  ];
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: torn }));
+  assert.deepEqual(readPostReviews(root), [{ commit, role: "improve", summary: "add x", rejected: ["r"] }]);
+  const good = { commit, role: "improve", summary: "add x" };
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [...torn.slice(0, 3), good] }));
+  const p = newMergePipeline();
+  assert.doesNotThrow(() => drainPostReviews(ctx, p));
+  assert.ok(p.postReview);
+  await p.postReview.promise;
+  assert.equal(readPostReviews(root).length, 0);
+});
+
+test("a failed post-review.json write after a revert warns and still frees the merge slot", async () => {
+  const { root, ctx } = setup("VERDICT: reject\n1. bad");
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  await drainUntilRevert(ctx, p);
+  assert.ok(p.revert);
+  const undo = failRenameSyncOn(postReviewPath(root), "pr write refused");
+  try {
+    drainMerge(ctx, p);
+    await p.merge!.promise;
+  } finally {
+    undo();
+  }
+  assert.equal(p.merge, null);
+  assert.equal(readPostReviews(root).length, 1);
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "tumwater");
+  assert.equal(warnings.length, 1);
+  assert.match(String(warnings[0]!.message), /pr write refused/);
+});
+
+test("a failed post-review.json write in the revert skip check still logs why it does not revert", async () => {
+  const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "director", summary: "s", rejected: ["r"] }] }),
+  );
+  const p = newMergePipeline();
+  const undo = failRenameSyncOn(postReviewPath(root), "pr write refused");
+  try {
+    drainPostReviews(ctx, p);
+    const messages = () => eventsOfType(root, "warning").map((e) => String(e.message));
+    for (let i = 0; i < 200 && !messages().some((m) => m.includes("not reverting")); i++) await sleep(10);
+    assert.ok(messages().some((m) => m.includes("not reverting")));
+    assert.ok(messages().some((m) => m.includes("pr write refused")));
+  } finally {
+    undo();
+  }
 });
