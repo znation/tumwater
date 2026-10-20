@@ -33,7 +33,8 @@ import {
 } from "../src/backlog/backlog-eligibility.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,

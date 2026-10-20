@@ -4,7 +4,7 @@ import { initProject } from "../src/init/init.js";
 import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fastConfig } from "./fixtures/orchestrator-fixtures.js";
 import { withIdlePi, withPi } from "./fakes/fake-pi.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The scoped `run --once --role` happy path through the real CLI. The pre-boot `--role` guards

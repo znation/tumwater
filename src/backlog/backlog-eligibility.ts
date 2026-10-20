@@ -11,7 +11,7 @@
 
 import path from "node:path";
 import { statOrNull } from "../files/files.js";
-import { allLiveClaims } from "../runner/runner-state.js";
+import { allLiveClaims } from "../runner/runner-state-load.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";

@@ -7,7 +7,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { questionAsker } from "../src/backlog/question-answer.js";
 import { wakeQuestionAsker } from "../src/operator/operator-intent.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { wakeRequestPath } from "../src/paths.js";
 
 // Answering a question wakes the role named in the heading's `(asked by <role> …)` clause.

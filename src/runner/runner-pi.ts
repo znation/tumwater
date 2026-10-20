@@ -11,7 +11,7 @@ import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { observeOpencodeRun, opencodeModelKey } from "../agent/opencode/opencode-catalog.js";
 import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
-import { loadRunnerState } from "./runner-state.js";
+import { loadRunnerState } from "./runner-state-load.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";

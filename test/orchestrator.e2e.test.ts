@@ -19,12 +19,8 @@ import { initProject } from "../src/init/init.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import { readEvents } from "../src/events/event-read.js";
-import {
-  freshRunnerState,
-  loadRunnerState,
-  saveRunnerState,
-  zeroCounters,
-} from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState, zeroCounters } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { nextBackoffSeconds } from "../src/scheduling/backoff.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { resetRequestPath, worktreePath } from "../src/paths.js";

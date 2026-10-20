@@ -11,7 +11,8 @@ import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "..
 import type { RoleRunner } from "../src/runner/runner.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";

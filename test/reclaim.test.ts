@@ -19,7 +19,8 @@ import {
 import { beginWorktreeUse } from "../src/git/worktree-use.js";
 import { readEvents } from "../src/events/event-read.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { eventsLogPath, worktreeUsePath, worktreesDir } from "../src/paths.js";
 import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";

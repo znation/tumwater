@@ -13,7 +13,8 @@ import { readMergeMarker, writeMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import {
   abortRequestPath,
   branchName,

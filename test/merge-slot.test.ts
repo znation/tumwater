@@ -27,7 +27,8 @@ import {
 import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { applyRunOutcome, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";

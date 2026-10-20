@@ -68,7 +68,7 @@ import { childEnv } from "../process/process.js";
 import { opencodeBackend, OPENCODE_MIN_VERSION } from "../agent/opencode/opencode-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { spawnSync } from "node:child_process";
-import { loadRunnerState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";

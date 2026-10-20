@@ -15,7 +15,7 @@ import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSa
 import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } from "./roles.js";
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../team/team-state.js";
-import { loadRunnerState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "./runner-ids.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";

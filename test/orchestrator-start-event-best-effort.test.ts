@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { makeFastRepo, onceRound } from "./fixtures/orchestrator-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { withIdlePi } from "./fakes/fake-pi.js";

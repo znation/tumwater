@@ -13,7 +13,7 @@ import path from "node:path";
 import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { loadRunnerState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { BYTES_PER_GB, sampleFreeBytes } from "../gates/disk-gate.js";
 import { subdirectoryNames } from "../files/files.js";
 import {

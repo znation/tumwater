@@ -17,7 +17,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { eventsLogPath } from "../src/paths.js";
 import { readRunLines, withPi, withIdlePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";

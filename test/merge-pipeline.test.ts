@@ -17,7 +17,8 @@ import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { mergeChanges, readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import {
   APPROVE,

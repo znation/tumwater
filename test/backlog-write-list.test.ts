@@ -5,7 +5,8 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { openBugs, plannedPlans, entryAgeSuffix } from "../src/backlog/backlog.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 

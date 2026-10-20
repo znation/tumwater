@@ -22,11 +22,8 @@ import { writeJsonAtomic, writeJsonFile } from "../src/files/json-files.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { configPath } from "../src/paths.js";
 import { ROLE_VALUE_ERROR } from "../src/cli/cli-flag-specs.js";
-import {
-  freshRunnerState,
-  loadRunnerState,
-  saveRunnerState,
-} from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import {
   abortRequestPath,
   pausedPath,

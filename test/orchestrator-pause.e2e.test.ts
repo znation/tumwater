@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { pauseRole, resumeRole } from "../src/team/team-state.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { pausedPath } from "../src/paths.js";

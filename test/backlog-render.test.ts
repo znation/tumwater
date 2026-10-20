@@ -4,7 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 

@@ -15,7 +15,7 @@ import {
   targetBranch,
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
-import { loadRunnerState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { branchName, mergeRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";

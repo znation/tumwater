@@ -10,7 +10,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { initProject } from "../src/init/init.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 

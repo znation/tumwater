@@ -24,7 +24,8 @@ import {
   STATE_DIR,
 } from "../src/paths.js";
 import type { RoleRunner } from "../src/runner/runner.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { readJsonFile } from "../src/files/json-files.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";

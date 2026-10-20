@@ -7,7 +7,8 @@ import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
-import { loadRunnerState, saveRunnerState, zeroCounters } from "../runner/runner-state.js";
+import { saveRunnerState, zeroCounters } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {

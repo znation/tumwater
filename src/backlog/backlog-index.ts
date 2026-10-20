@@ -10,7 +10,7 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { FINISHED_ARCHIVES } from "./backlog-md.js";
-import { allLiveClaims } from "../runner/runner-state.js";
+import { allLiveClaims } from "../runner/runner-state-load.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import {
   actionableEntryRanges,

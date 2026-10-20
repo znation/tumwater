@@ -4,7 +4,8 @@ import fs from "node:fs";
 import { eventsLogPath } from "../src/paths.js";
 import { finalizeRun } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshRunnerState, loadRunnerState, zeroCounters } from "../src/runner/runner-state.js";
+import { freshRunnerState, zeroCounters } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { RunUsage } from "../src/run/run-usage.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import {

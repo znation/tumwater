@@ -11,7 +11,7 @@ import { startVerify } from "../../src/merge/merge-verify.js";
 import { dropMerge, headMerge, queuedMergeFiles } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
-import { loadRunnerState } from "../../src/runner/runner-state.js";
+import { loadRunnerState } from "../../src/runner/runner-state-load.js";
 import { logEvent } from "../../src/events/events.js";
 import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../../src/redeploy/redeployer.js";

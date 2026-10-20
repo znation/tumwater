@@ -10,7 +10,8 @@ import {
   stepEntryScroll,
   visibleBacklogIndexes,
 } from "../src/ui/tui/tui-backlog.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { backlogMarks, holdMark } from "../src/backlog/backlog-eligibility.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";

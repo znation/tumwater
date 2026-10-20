@@ -8,7 +8,8 @@ import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
-import { freshRunnerState, loadRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { freshRunnerState, type RunnerState } from "../runner/runner-state.js";
+import { loadRunnerState } from "../runner/runner-state-load.js";
 import { eventsLogPath, statePath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import {

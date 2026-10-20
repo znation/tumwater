@@ -29,7 +29,8 @@ import { collectTeamChanges, collectRoleChange } from "../src/change/change-data
 import { collectReportSince } from "../src/report/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { collectFailureReportSince } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { setConfigKey } from "../src/config/config-write.js";

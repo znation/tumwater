@@ -5,7 +5,7 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { initProject } from "../src/init/init.js";
 import { loadConfig } from "../src/config/config.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { orchestratorStatePath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
 import { signalOrchestrator } from "../src/operator/operator-commands.js";
 import { seedCounters } from "./fixtures/runner-fixtures.js";

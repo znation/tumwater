@@ -4,12 +4,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  freshRunnerState,
-  loadRunnerState,
-  saveRunnerState,
-  zeroCounters,
-} from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState, zeroCounters } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";

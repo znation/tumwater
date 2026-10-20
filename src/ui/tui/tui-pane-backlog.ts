@@ -3,7 +3,7 @@ import { tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write
 import { tryMoveEntryToTop, tryReleaseEntry } from "../../backlog/backlog-release.js";
 import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
-import { allLiveClaims } from "../../runner/runner-state.js";
+import { allLiveClaims } from "../../runner/runner-state-load.js";
 import { requestWake } from "../../operator/operator-intent.js";
 import { moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
 import { arrowDir, pageDir } from "./tui-keymap.js";

@@ -30,7 +30,8 @@ import { readJson } from "./helpers/json-read.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { waitFor, waitForFile, sleep } from "./helpers/wait.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
-import { loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
+import { saveRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { setConfigKey } from "../src/config/config-write.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */

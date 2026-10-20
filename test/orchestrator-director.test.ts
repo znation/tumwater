@@ -27,7 +27,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";

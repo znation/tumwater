@@ -12,7 +12,7 @@ import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig, customRoleNames, loadConfig } from "../src/config/config.js";
 import { enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
-import { loadRunnerState } from "../src/runner/runner-state.js";
+import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/run/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
