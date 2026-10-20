@@ -846,3 +846,83 @@ carries code gets none.
 "initProject seeds bootstrap in a repo with no commits", "initProject seeds bootstrap when a
 repo's only history is scaffolding" and "initProject seeds no bootstrap when the repo already
 carries code".
+
+## The usage report fold: a warm read equals a cold one
+
+`collectReport` and `collectReportSince` (`src/report/report-data.ts`) both fold the event log
+through `foldWindowEvents`. It keeps a bounded memo (`reportFoldCache`, `REPORT_FOLD_CACHE_MAX`)
+and either reuses it, folds the appended complete lines, or falls back to a full
+`readWindowEvents` pass. The memo is correct only if every warm answer equals the cold one.
+
+### INV-R1: a warm fold equals the cold read, and an appended event counts once
+
+**Guarantee.** A cache hit on an unchanged log (same dev, ino, mtime and size, by
+`sameStatIdentity`) returns the stored fold. Growth on the same file folds only the lines past the
+stored offset. The offset a full pass seeds is the scan's own end (`raw.liveEnd`), not the earlier
+stat's size, so an event appended between the stat and the read is never folded twice. A legacy
+`merged` line appended to a warm fold folds as `merge_done`.
+
+**Binds.** `src/report/report-fold.ts` (`foldWindowEvents`, `foldLineInto`, `foldEventInto`),
+`src/files/files.ts` (`sameStatIdentity`).
+
+**Pinned by.** `test/report-fold-cache.test.ts` — "warm collectReport equals the cold read before
+and after appends", "a merge appended after a warm fold counts once, including in the role split"
+and "a legacy `merged` line appended after a warm fold folds as merge_done";
+`test/report-data.test.ts` — "collectReport does not double-count an event appended between the
+cache's stat and its read".
+
+### INV-R2: a torn trailing write folds only once its newline lands
+
+**Guarantee.** The append arm reads through `readCompleteLines`, which holds back a newline-less
+tail. A grown log with no complete new line returns the stored fold unchanged, and the next call
+folds the completed line whole.
+
+**Binds.** `src/report/report-fold.ts` (`foldWindowEvents`), `src/files/tail.ts`
+(`readCompleteLines`).
+
+**Pinned by.** `test/report-fold-cache.test.ts` — "a torn trailing write is ignored until its
+newline lands".
+
+### INV-R3: a replaced or shrunken log refolds from scratch
+
+**Guarantee.** The append arm runs only when the size grew and dev and ino match the stored
+entry. A log replaced by a different file (even one larger than the stored offset) or a shrunken
+one takes the full `readWindowEvents` pass, so no fold mixes two files' bytes.
+
+**Binds.** `src/report/report-fold.ts` (`foldWindowEvents`, `ReportFoldEntry`'s `dev` and `ino`).
+
+**Pinned by.** `test/report-fold-cache.test.ts` — "a rotated log replaced by a fresh larger one
+refolds instead of folding the new log's bytes" and "a shrunken log (rotation) refolds instead of
+misaligning the byte offset".
+
+### INV-R4: the coverage proof follows the window
+
+**Guarantee.** The memo key includes `fromKey`, so a moved window gets a fresh entry and its own
+`fileCovers` instead of carrying an older window's proof. An empty or missing log reads as fully
+covered, not truncated, and the proof updates when the first event is appended.
+
+**Binds.** `src/report/report-fold.ts` (`foldWindowEvents`), `src/report/report-data.ts`
+(`collectReport`, `collectReportSince`).
+
+**Pinned by.** `test/report-fold-cache.test.ts` — "the coverage proof follows the window, not the
+memo's seed: empty-log vacuous arm flips on first append"; `test/report-data.test.ts` —
+"collectReportSince treats an empty or missing event log as fully covered, not truncated" and
+"collectReportSince proves coverage on a same-day log start and notes a log born inside the
+window".
+
+### INV-R5: both reports aggregate through one fold, with the merge share named
+
+**Guarantee.** `collectReport` and `collectReportSince` fold every event through
+`foldUsageEvent`, so a trailing window and a same-seed day slice agree. Merge-slot tokens and cost
+go into `mergeTokens` and `mergeCostUsd`, never into `tokensOut` or `costUsd` inside the fold, and
+each collector adds the merge share to its surfaced totals. A role-scoped window excludes the
+merge share.
+
+**Binds.** `src/report/report-fold.ts` (`foldUsageEvent`, `UsageFold`),
+`src/report/report-data.ts` (`collectReport`, `collectReportSince`).
+
+**Pinned by.** `test/report-data.test.ts` — "collectReportSince aggregation matches a same-seed
+collectReport slice", "collectReport folds merge_done/merge_failed usage into the day and totals,
+with the merge share named", "collectReportSince folds merge_done/merge_failed usage into the
+window totals" and "collectReportSince scopes a trailing window to one role, excluding the merge
+share".
