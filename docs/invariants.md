@@ -87,6 +87,35 @@ refuses as legacy-only" (reads the example's key list out of `helpTopic("config"
 `setConfigKey` does not refuse each as legacy, and that the list names `fallback` and not
 `fallbackModel`).
 
+### INV-A5: a Markdown table's separator always matches its header
+
+**Guarantee.** `markdownTable` derives the separator row from the header, one `---` cell per
+header cell (`---:` where `align` says `right`, left past the end of `align`), and renders cells
+verbatim. So the failure digest's tables and the usage report's day table can never emit a
+separator that collapses the table into plain text.
+
+**Binds.** `src/text/markdown.ts` (`markdownTable`), `src/failure/failure-render.ts`,
+`src/report/report-render.ts`.
+
+**Pinned by.** `test/markdown.test.ts` — "markdownTable's separator always carries as many cells
+as the header" and "markdownTable defaults every column to left alignment".
+
+### INV-A6: the prompt and CLI numbered lists number through one helper
+
+**Guarantee.** `numberedList` numbers items from 1 as `N. item`, one per line, and returns its
+`empty` argument verbatim for no items. The review prompt's prior objections and findings, the
+rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it. Two surfaces number their own lines and are not bound:
+the TUI's queued-prompt rows (`src/ui/tui/tui.tsx`) push one styled row per item, and the merge
+queue's rows (`src/merge/merge-queue-render.ts`) are indented and carry per-row columns.
+
+**Binds.** `src/text/markdown.ts` (`numberedList`), `src/prompt/gate-prompts.ts`,
+`src/prompt/gate-notes.ts`, `src/backlog/question-answer.ts`, `src/operator/operator-intent.ts`
+(`renderWakeList`).
+
+**Pinned by.** `test/markdown.test.ts` — "numberedList numbers items from 1, one per line" and
+"numberedList returns the empty fallback verbatim for no items"; `test/operator-intent.test.ts` —
+"renderWakeList numbers wakes and words the empty case".
+
 ## Reader and writer over a persisted or appended file
 
 A file that one process appends to or persists and another reads has two ends to agree on: the

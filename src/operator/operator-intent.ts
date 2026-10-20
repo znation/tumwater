@@ -18,6 +18,7 @@ import { writeJsonAtomic } from "../files/json-files.js";
 import { reclaimPass } from "../team/reclaim.js";
 import { formatGB } from "../text/format.js";
 import { plural } from "../text/phrases.js";
+import { numberedList } from "../text/markdown.js";
 import { cancelScheduledWakes, pendingScheduledWakes } from "./operator-requests.js";
 import {
   abortRequestPath,
@@ -116,10 +117,10 @@ export function listWakes(root: string, roles: string[] | undefined, now: number
 
 /** `wake --list`'s text: one numbered line per wake, or the empty wording `cancelWakes` uses. */
 export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, roles?: string[]): string {
-  if (wakes.length === 0) return noWakePending(roles);
-  return wakes
-    .map((w, i) => `${i + 1}. in ${humanUntil(w.atMs, now)} — ${w.roles.join(", ")}`)
-    .join("\n");
+  return numberedList(
+    wakes.map((w) => `in ${humanUntil(w.atMs, now)} — ${w.roles.join(", ")}`),
+    noWakePending(roles),
+  );
 }
 
 /** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:

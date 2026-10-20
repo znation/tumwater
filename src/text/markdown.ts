@@ -28,13 +28,16 @@ export function markdownTable(
   ];
 }
 
-/** `items` as a `1. …` ordered list, one line each, joined with newlines — the single home of
+/** `items` as a `1. …` ordered list, one line each, joined with newlines — the home of
  * the `map((item, i) => `${i + 1}. ${item}`).join("\n")` step, shared by the review prompt's
  * prior objections, its stage-fix findings, and the rejected/revision notes
- * (prompt/gate-notes.ts) and `tumwater questions`' open-question list
- * (backlog/question-answer.ts), so the numbering shape cannot drift between the surfaces that
- * read a numbered list. `empty` is returned verbatim when `items` is empty (the reasons
- * sites pass `(no reasons recorded)`; the others keep the default empty string). */
+ * (prompt/gate-notes.ts), `tumwater questions`' open-question list
+ * (backlog/question-answer.ts) and `tumwater wake --list`'s wake lines
+ * (operator/operator-intent.ts `renderWakeList`), so the numbering shape cannot drift between
+ * those surfaces (the TUI queued-prompt rows and the merge queue rows number their own
+ * lines). `empty` is returned verbatim when `items` is empty
+ * (the reasons sites
+ * pass `(no reasons recorded)`; the others keep the default empty string). */
 export function numberedList(items: readonly string[], empty = ""): string {
   return items.length > 0 ? items.map((item, i) => `${i + 1}. ${item}`).join("\n") : empty;
 }
