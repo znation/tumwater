@@ -175,7 +175,7 @@ test("pollTeamGates: a used-up claude window moves claude roles to the fallback 
   ];
   const config = paidFallbackConfig(10);
   config.provider = undefined;
-  config.model = "claude/claude-sonnet-5-5";
+  config.backend = "claude"; config.model = "claude-sonnet-5-5";
   const states = newTeamGateStates(config);
   const ctx = {
     root,
@@ -220,7 +220,7 @@ test("pollTeamGates: fallback_switched is logged once per chain change and orche
   const runners = [fakeRunner("feature", spentLoopState("feature", 1), null, [], "claude")];
   const config = paidFallbackConfig(10);
   config.provider = undefined;
-  config.model = "claude/claude-sonnet-5-5";
+  config.backend = "claude"; config.model = "claude-sonnet-5-5";
   const states = newTeamGateStates(config);
   const info: Record<string, unknown> = { pid: process.pid, startedAt: 0, roles: ["feature"] };
   const ctx = { root, runners, liveConfig: config, modelsPath, now, info: info as never };
@@ -256,7 +256,7 @@ test("pollTeamGates: a cap reopen while the claude window is still used up hands
   const runners = [fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude")];
   const config = paidFallbackConfig(10);
   config.provider = undefined;
-  config.model = "claude/claude-sonnet-5-5";
+  config.backend = "claude"; config.model = "claude-sonnet-5-5";
   const states = newTeamGateStates(config);
   const ctx = {
     root,

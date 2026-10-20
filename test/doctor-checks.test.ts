@@ -222,7 +222,7 @@ test("checkAgentBinary joins each agent's verdict for a mixed pi and claude team
 // claude and opencode are all registered and no provider maps to any other id.
 test("checkAgentBinary fails on a registered opencode seam with no installed binary, naming it", () => {
   const root = readyRepo();
-  writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   const out = checkAgentBinary(root, fakeBins("pi"));
   assert.equal(out.level, "fail");
   assert.match(
@@ -805,7 +805,7 @@ test("checkProviderConcurrency warns on a cap key no seam resolves to", () => {
   const cfg = {
     ...defaultConfig(),
     maxConcurrent: 4,
-    model: { default: "claude/m" },
+    backend: "claude", model: { default: "m" },
     maxConcurrentPerProvider: { omlx: 3 },
   };
   const out = checkProviderConcurrency(cfg, readyRepo());
@@ -1228,7 +1228,7 @@ test("checkBuildCheck appends the passing merge check timing from the last 24h",
 // opencode seam.
 test("checkOpencodeVersion fails a 1.x or too-old opencode and passes at the floor", async () => {
   const root = readyRepo();
-  writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   const bin = tmpdir("doctor-opencode-version-");
 
   writeScript(path.join(bin, "opencode"), 'echo "opencode v1.19.3"');

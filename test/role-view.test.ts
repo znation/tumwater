@@ -602,7 +602,7 @@ test("the role view names the fallback step a live orchestrator moved the role's
 // just the role's own seam.
 test("a pi role with a claude reviewer shows claude billing; a pi reviewer does not", () => {
   const dir = root();
-  writeConfig(dir, { review: { enabled: true, model: "claude/claude-sonnet-5-5" } });
+  writeConfig(dir, { review: { enabled: true, backend: "claude", model: "claude-sonnet-5-5" } });
   writeClaudeAccount(dir, {
     billing: "subscription",
     observedAt: Date.now(),

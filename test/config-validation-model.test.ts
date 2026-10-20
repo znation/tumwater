@@ -158,7 +158,7 @@ test("backend beside model: the id must fit the backend", () => {
     /model\.strong\.model "claude-opus-5-5" has no provider but model\.strong\.backend is "pi"/,
   );
   assert.match(
-    validationError({ review: { backend: "pi", model: "claude/claude-opus-5-5" } }),
+    validationError({ review: { backend: "pi", model: "claude/claude-opus-5-5" } }), // legacy spelling, retired in part 5/5
     /review\.model "claude\/claude-opus-5-5" names the backend "claude" as its provider.*drop the "claude\/" namespace/,
   );
 });

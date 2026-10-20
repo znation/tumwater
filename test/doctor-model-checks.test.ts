@@ -371,7 +371,7 @@ test("checkTierModels warns when pi's definitions name a reserved agent id", asy
 // built-in `opencode` gateway.
 test("checkTierModels notes opencode-routed models and the built-in opencode caveat", async () => {
   const root = readyRepo();
-  writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   let probed = 0;
   const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => {
     probed++;
@@ -396,7 +396,7 @@ test("checkTierModels warns when pi's definitions name the reserved opencode pro
   const root = readyRepo();
   // opencode declares no tier defaults, so name an explicit model to get past the
   // "no models declared" early return and reach the reserved-provider warning.
-  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   const outcome = await checkTierModels(root, file, async () => "ready");
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /declare provider "opencode" — the name is reserved for an agent backend/);
@@ -499,7 +499,7 @@ test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", 
 // so these stood down and the fallback's binary/auth/version were never verified.
 test("claude checks run when claude appears only as a fallback", async () => {
   const root = readyRepo();
-  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   const bin = tmpdir("doctor-claude-fallback-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   const auth = await checkClaudeAuth(root, bin);
@@ -532,7 +532,7 @@ test("checkTierModels checks a pi fallback's provider", async () => {
 // disagree: covered above for the checks, and by the startup-gate fallback test for the seed.
 test("a claude-only fallback is reported by the doctor's binary/credential/version checks together", async () => {
   const root = readyRepo();
-  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   const bin = tmpdir("doctor-claude-fallback-2-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   // Both surfaces see claude — the auth check runs (not "no model jobs run on claude") proving
@@ -935,7 +935,7 @@ test("checkOpencode stands down on a pi-only config and reads the free model as 
   assert.deepEqual(await checkOpencode(root, empty, empty), { level: "ok", detail: "no model jobs run on opencode" });
 
   // A free opencode model in the catalog cache reads "free" at ok.
-  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   writeOpencodeCache(root, {
     fetchedAt: Date.now(),
     models: { "opencode/deepseek-v4.1-flash-free": { free: true, context: 200_000 } },
@@ -958,7 +958,7 @@ test("checkOpencode stands down on a pi-only config and reads the free model as 
 
 test("checkOpencode fails a model missing from the catalog cache", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "opencode", model: "opencode/not-in-catalog" });
+  writeConfig(root, { backend: "opencode", model: "not-in-catalog" });
   const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), tmpdir("doctor-opencode-home-"));
   assert.equal(out.level, "fail");
   // The seam resolves the bare model (the routing strips the `opencode/` backend prefix); the
@@ -968,7 +968,7 @@ test("checkOpencode fails a model missing from the catalog cache", async () => {
 
 test("checkOpencode notes a thinking level the catalog has no effort for as dropped", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "high" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free", thinking: "high" });
   // The catalog lists efforts but not `high`: the level is dropped.
   writeOpencodeCache(root, {
     fetchedAt: Date.now(),
@@ -990,7 +990,7 @@ test("checkOpencode notes a thinking level the catalog has no effort for as drop
 
 test("checkOpencode warns a non-gateway provider opencode does not list a credential for", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "opencode", model: "opencode/anthropic/claude-sonnet" });
+  writeConfig(root, { model: { default: { backend: "opencode", model: "anthropic/claude-sonnet" } } });
   // The seam resolves `anthropic/claude-sonnet`, and that is the catalog key too.
   writeOpencodeCache(root, {
     fetchedAt: Date.now(),
@@ -1019,7 +1019,7 @@ test("checkOpencode warns a non-gateway provider opencode does not list a creden
 
 test("checkOpencode warns about the operator's global config that leaks an MCP server and instructions", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   writeOpencodeCache(root, {
     fetchedAt: Date.now(),
     models: { "opencode/deepseek-v4.1-flash-free": { free: true } },
@@ -1047,7 +1047,7 @@ test("checkOpencode warns about the operator's global config that leaks an MCP s
 
 test("checkOpencode scans the XDG config home, not ~/.config, when XDG_CONFIG_HOME is set", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   writeOpencodeCache(root, {
     fetchedAt: Date.now(),
     models: { "opencode/deepseek-v4.1-flash-free": { free: true } },

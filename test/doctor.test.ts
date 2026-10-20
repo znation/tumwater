@@ -177,7 +177,7 @@ test("renderDoctor prints the routing table and runDoctor lists a fallback seam"
   assert.match(rendered, /\(claude\)/);
 
   const root = readyRepo();
-  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  writeConfig(root, { model: "local/free-model", fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
   assert.ok(
     report.routing.some((s) => s.label === "fallback:default" && s.backend === "claude"),

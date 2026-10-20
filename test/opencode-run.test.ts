@@ -24,7 +24,7 @@ function opencodeRun(dir: string, over: Partial<PiRunOptions> = {}): PiRunOption
   return {
     cwd: fs.realpathSync(dir),
     prompt: "p",
-    config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free" },
+    config: { ...defaultConfig(), agent: "opencode", model: "deepseek-v4.1-flash-free" },
     sessionDir: path.join(dir, ".tumwater", "sessions", "t"),
     sessionName: "t",
     rawLogFile: path.join(dir, ".tumwater", "log", "t.opencode.jsonl"),
@@ -101,7 +101,7 @@ test("the catalog supplies the thinking variant and the image-input answer (part
   await withOpencodeReplay(opencodeCaptures.editRun, async (fake) => {
     // high is among the fixture's efforts, so the invocation rides it as #high.
     let run = opencodeRun(dir, {
-      config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "high" },
+      config: { ...defaultConfig(), agent: "opencode", model: "deepseek-v4.1-flash-free", thinking: "high" },
     });
     let result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -109,7 +109,7 @@ test("the catalog supplies the thinking variant and the image-input answer (part
 
     // medium is not among the fixture's efforts, so no variant is passed.
     run = opencodeRun(dir, {
-      config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", thinking: "medium" },
+      config: { ...defaultConfig(), agent: "opencode", model: "deepseek-v4.1-flash-free", thinking: "medium" },
     });
     result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -214,7 +214,7 @@ test("a hang the quiet watchdog kills never runs the export and leaves the resul
   const fake: FakeOpencodeReplay = fakeOpencodeReplay(opencodeCaptures.editRun, { hang: true });
   try {
     const run = opencodeRun(dir, {
-      config: { ...defaultConfig(), agent: "opencode", model: "opencode/deepseek-v4.1-flash-free", runTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
+      config: { ...defaultConfig(), agent: "opencode", model: "deepseek-v4.1-flash-free", runTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
     });
     const result = await runAgent(run);
     assert.equal(result.ok, false, "the killed run is a failure");
@@ -301,7 +301,7 @@ test("the invocation caps tool output at pi's window-scaled limits (part 6f/7)",
 
     // A model with no catalog entry keeps the 128k values: 16000 bytes / 400 lines.
     run = opencodeRun(dir, {
-      config: { ...defaultConfig(), agent: "opencode", model: "opencode/not-in-cache" },
+      config: { ...defaultConfig(), agent: "opencode", model: "not-in-cache" },
     });
     result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);

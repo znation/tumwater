@@ -251,7 +251,7 @@ test("checkClaudeWindow: a chain naming a moved tier says it moved to fallbacks"
   assert.equal(out.level, "warn");
   assert.match(out.detail, /5h window rejected — default moved to fallbacks until it resets in/);
   assert.doesNotMatch(out.detail, /wait/);
-  const cfg = { model: { default: "claude/claude-sonnet-5-5", strong: "claude/claude-opus-5-5" } } as unknown as TumwaterConfig;
+  const cfg = { backend: "claude", model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" } } as unknown as TumwaterConfig;
   assert.match(checkClaudeWindow(root, CW_NOW, chain, cfg).detail, /; small, strong wait$/);
 });
 

@@ -127,7 +127,7 @@ test("the startup gate checks every enabled seam's agent and names that agent's 
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { claude: { bin: "/no/such/claude" } };
-    cfg.review = { model: "claude/claude-opus-5-5" };
+    cfg.review = { backend: "claude", model: "claude-opus-5-5" };
     fs.writeFileSync(file, JSON.stringify(cfg));
     assert.match(
       String(await runStartupProblem(repo, null)),
@@ -151,7 +151,7 @@ test("a claude seam that exists only as a fallback is checked and its account se
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { claude: { bin: path.join(claudeBin, "claude") } };
-    cfg.fallback = "claude/claude-sonnet-5-5";
+    cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
     cfg.roles = { feature: { enabled: true } };
     fs.writeFileSync(file, JSON.stringify(cfg));
     const check = await runStartupCheck(repo, null);
@@ -194,7 +194,7 @@ test("an opencode seam with a missing configured binary fails startup, naming th
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: missingBin } };
-    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
     assert.match(
       (await runStartupProblem(repo, null)) ?? "",
@@ -241,7 +241,7 @@ test("a registered opencode adapter whose binary exists passes the gate", async 
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
-    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
     // The seed runs for an opencode boot, but this test is about the gate, not the catalog: a
     // throwing fake fetch keeps the run offline (a failed seed never blocks startup).
@@ -262,7 +262,8 @@ test("opencodeProviders names every models.dev provider the config routes throug
   const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
   // A bare gateway id (no provider) and a provider route on the strong tier; the gateway is
   // always kept by the parse, so only the provider route adds a name.
-  cfg.model = { default: "opencode/deepseek-v4.1-flash-free", strong: "opencode/anthropic/claude-haiku-5-5" };
+    cfg.backend = "opencode";
+  cfg.model = { default: "deepseek-v4.1-flash-free", strong: { backend: "opencode", model: "anthropic/claude-haiku-5-5" } };
   fs.writeFileSync(file, JSON.stringify(cfg));
   assert.deepEqual(opencodeProviders(loadConfig(repo)), ["anthropic"]);
 });
@@ -287,7 +288,7 @@ test("the startup gate seeds the catalog cache for an opencode boot, fetching on
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
-    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
     // No cache on disk yet: the seed must fetch (via the injected fake, offline) and persist
     // the parsed catalog. Without the seed, no cache would ever be written.
@@ -333,7 +334,7 @@ test("a fresh on-disk catalog cache is reused without fetching (offline boot)", 
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
-    cfg.model = "opencode/deepseek-v4.1-flash-free";
+    cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
     writeOpencodeCache(repo); // a fresh cache, so the seed reuses it instead of fetching
     const before = fs.readFileSync(opencodeModelsPath(repo), "utf8");

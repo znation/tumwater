@@ -45,7 +45,7 @@ test("collectBudget prices an opencode-free team free (part 6b/7)", async () => 
   const repo = makeRepo();
   await initProject(repo, "status opencode free");
   writeOpencodeCache(repo);
-  writeConfig(repo, { model: "opencode/deepseek-v4.1-flash-free" });
+  writeConfig(repo, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
   const cfg = loadConfig(repo);
   const modelsFile = writeModelsFile(tmpdir("status-opencode-"), LOCAL_FREE_MODELS_JSON);
   const now = new Date(2026, 9, 1, 12, 0, 0).getTime();

@@ -490,10 +490,10 @@ test("applyFallbackModel keeps a free seam while moving a priced one", () => {
 
 test("applyFallbackModel keeps a free seam's ambient thinking level", () => {
   const config: TumwaterConfig = defaultConfig();
-  config.model = { default: "claude/claude-sonnet-5-5", strong: "paid/gpt-x" };
+  config.model = { default: { backend: "claude", model: "claude-sonnet-5-5" }, strong: "paid/gpt-x" };
   config.thinking = "high";
   config.fallback = "free/qwen-free";
-  config.review = { ...config.review, enabled: true, model: "claude/claude-sonnet-5-5" };
+  config.review = { ...config.review, enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   config.roles.feature = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
   const resolved = resolveTierFallbacks(config, () => true);
   const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
@@ -650,7 +650,7 @@ test("agent: claude with no model runs each seam on its tier's claude default", 
 test("a provider/id selector routes its seam alone to that agent", () => {
   const config: TumwaterConfig = defaultConfig();
   config.backend = "pi";
-  config.review = { ...config.review, model: "claude/claude-opus-5-5:high" };
+  config.review = { ...config.review, model: "claude/claude-opus-5-5:high" }; // legacy spelling, retired in part 5/5
   const review = reviewConfig(config);
   assert.equal(review.agent, "claude");
   assert.equal(review.model, "claude-opus-5-5");
@@ -798,18 +798,20 @@ test("a fallback list runs its first usable step, then borrows, and seamsInUse l
 test("a Claude step is marked extraUsage when a Claude model comes earlier in its chain", () => {
   const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
   const chain = (cfg: TumwaterConfig) => tierChainSteps(cfg).map((s) => s.pair.extraUsage === true);
+  const sonnet = { backend: "claude", model: "claude-sonnet-5-5" } as const;
+  const haiku = { backend: "claude", model: "claude-haiku-5-5" } as const;
   assert.deepEqual(
-    chain({ ...claude, fallback: ["claude/claude-sonnet-5-5", "claude/claude-haiku-5-5", "omlx/qwen"] }),
+    chain({ ...claude, fallback: [sonnet, haiku, "omlx/qwen"] }),
     [true, true, false],
     "a Claude primary makes every Claude step extra usage",
   );
   const pi: TumwaterConfig = { ...defaultConfig(), provider: "omlx", model: "qwen" };
   assert.deepEqual(
-    chain({ ...pi, fallback: ["claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5", "omlx/qwen"] }),
+    chain({ ...pi, fallback: [sonnet, sonnet, "omlx/qwen"] }),
     [false, true, false],
     "with a pi primary the first Claude step stays on the subscription",
   );
-  const mapped = { ...pi, fallback: { default: ["claude/claude-sonnet-5-5"], strong: ["omlx/qwen", "claude/claude-sonnet-5-5"] } };
+  const mapped = { ...pi, fallback: { default: [sonnet], strong: ["omlx/qwen", sonnet] } };
   assert.deepEqual(chain(mapped), [false, false, false], "each tier's chain marks by its own order, so a second chain's first Claude step is unmarked");
 });
 
@@ -886,7 +888,7 @@ test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () 
     return c;
   };
   const review = mk({ model: "qwenrunner/qwen3.8-27b" });
-  review.review = { ...review.review, model: "opencode/anthropic/claude-sonnet-5-5" };
+  review.review = { ...review.review, model: "opencode/anthropic/claude-sonnet-5-5" }; // legacy spelling, retired in part 5/5
   const cases: Record<string, TumwaterConfig> = {
     "string model": mk({ model: "anthropic/claude-sonnet-5-5:high" }),
     "string model legacy provider": mk({ provider: "qwenrunner", model: "qwen3.8-27b" }),
@@ -894,13 +896,13 @@ test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () 
       model: { default: "qwenrunner/qwen3.8-27b", strong: "huggingface/zai-org/GLM-5.3-Flash:together:low" },
     }),
     "bare claude id under pi": mk({ model: "claude-opus-5-5" }),
-    "claude namespace under pi": mk({ model: "claude/claude-opus-5-5" }),
-    "opencode namespace under pi": mk({ model: "opencode/anthropic/claude-sonnet-5-5" }),
+    "claude namespace under pi": mk({ model: "claude/claude-opus-5-5" }), // legacy spelling, retired in part 5/5
+    "opencode namespace under pi": mk({ model: "opencode/anthropic/claude-sonnet-5-5" }), // legacy spelling, retired in part 5/5
     "anthropic id under claude backend": mk({ backend: "claude", model: "anthropic/claude-sonnet-5-5" }),
     "claude backend no model": mk({ backend: "claude" }),
     "opencode backend no model": mk({ backend: "opencode" }),
     "role selector override": withRole({ model: "qwenrunner/qwen3.8-27b" }, "feature", {
-      model: "claude/claude-haiku-5-5",
+      model: "claude/claude-haiku-5-5", // legacy spelling, retired in part 5/5
       thinking: "low",
     }),
     "role tier-name override": withRole(
@@ -1032,7 +1034,7 @@ test("an explicit fallback step backend resolves to the pair its namespace spell
   assert.equal(explicit && fallbackDisplayPair(explicit, "pi default"), "claude/claude-sonnet-5-5");
   const capped = { backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 2 };
   const a = tierChainSteps(withFallback("pi", [capped]))[0]?.pair;
-  const b = tierChainSteps(withFallback("pi", [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 2 }]))[0]?.pair;
+  const b = tierChainSteps(withFallback("pi", [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 2 }]))[0]?.pair; // legacy spelling, retired in part 5/5
   assert.deepEqual(a, b);
   assert.equal(a?.maxDailyCostUsd, 2);
 });

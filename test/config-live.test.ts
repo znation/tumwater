@@ -366,7 +366,7 @@ test("a live edit adding a claude reviewer verifies the binary and seeds the acc
   writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   const next = cloneConfig(start);
   next.backends = { claude: { bin: path.join(claudeBin, "claude") } };
-  next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
+  next.review = { ...next.review, backend: "claude", model: "claude-sonnet-5-5" };
   writeConfig(root, next);
   live.poll();
   const binary = readEvents(root).filter((e) => e.type === "backend_binary");
@@ -388,7 +388,7 @@ test("a live edit adding a missing claude binary warns but keeps the team runnin
   live.poll();
   const next = cloneConfig(start);
   next.backends = { claude: { bin: "/no/such/claude" } };
-  next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
+  next.review = { ...next.review, backend: "claude", model: "claude-sonnet-5-5" };
   writeConfig(root, next);
   live.poll();
   const warnings = warnMessages(root).filter((m) => m.includes("newly routed claude backend"));

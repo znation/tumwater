@@ -272,7 +272,7 @@ test("a claude-routed selector is never free, even if models.json prices its nam
   assert.equal(teamModelsFree(cfg, file), false, "a claude-routed seam is not free");
   // The same for a fallback selector that routes to claude by its provider namespace.
   assert.equal(
-    fallbackModelFree({ ...cfg, fallback: "claude/claude-sonnet-5-5" }, file),
+    fallbackModelFree({ ...cfg, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] }, file),
     false,
     "a claude-routed fallback is refused",
   );
@@ -293,7 +293,7 @@ test("a subscription claude seam is free; API billing, overage, and an absent ac
   assert.equal(teamModelsFree(cfg, file, api), false, "API billing is never free");
   assert.equal(teamModelsFree(cfg, file, sub), true, "subscription claude is free");
   // A claude-routed fallback pair is accepted as free only under subscription billing.
-  const withFallback = { ...cfg, fallback: "claude/claude-sonnet-5-5" };
+  const withFallback = { ...cfg, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] };
   assert.equal(fallbackModelFree(withFallback, file, api), false, "an API claude fallback is refused");
   assert.equal(fallbackModelFree(withFallback, file, sub), true, "a subscription claude fallback is free");
   // An agent-less claude provider namespace under a subscription is free too.
@@ -397,6 +397,7 @@ const OPENCAT: OpencodeCatalogCache = {
 /** A config whose every tier (roles, review, strong resolver) routes to one model selector. */
 function opencodeTeamAt(model: string | { default?: string; strong?: string }): TumwaterConfig {
   const cfg: TumwaterConfig = defaultConfig();
+  cfg.backend = "opencode";
   cfg.model = model;
   return cfg;
 }
@@ -425,13 +426,13 @@ test("a pi seam keeps judging by models.json even when a catalog is passed (part
 test("a team whose every tier is a catalog-free opencode model reads free (part 6b/7)", () => {
   // All tiers (roles, review, strong resolver) on the free gateway model: free with the cache,
   // and a null cache (nothing to read) is not free — the badge must not lie.
-  const cfg = opencodeTeamAt("opencode/deepseek-v4.1-flash-free");
+  const cfg = opencodeTeamAt("deepseek-v4.1-flash-free");
   assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, OPENCAT), true);
   assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, null), false, "no cache: not free");
   // One priced opencode tier anywhere keeps the dollar badge.
   const onePriced = opencodeTeamAt({
-    default: "opencode/deepseek-v4.1-flash-free",
-    strong: "opencode/deepseek-v4.1-flash",
+    default: "deepseek-v4.1-flash-free",
+    strong: "deepseek-v4.1-flash",
   });
   assert.equal(teamModelsFree(onePriced, path.join(tmpdir(), "absent.json"), null, OPENCAT), false, "priced strong tier");
 });
@@ -441,10 +442,10 @@ test("fallbackModelFree accepts a catalog-free opencode fallback for a priced pr
   const paid = teamAt("paid", "gpt-x");
   assert.equal(teamModelsFree(paid, file), false, "the primary itself is priced");
   // The free gateway model is a valid fallback; a null cache and a priced model are refused.
-  const freeFallback = { ...paid, fallback: "opencode/deepseek-v4.1-flash-free" };
+  const freeFallback = { ...paid, fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash-free" }] };
   assert.equal(fallbackModelFree(freeFallback, file, null, OPENCAT), true, "catalog-free opencode fallback");
   assert.equal(fallbackModelFree(freeFallback, file, null, null), false, "no cache: refused");
-  const pricedFallback = { ...paid, fallback: "opencode/deepseek-v4.1-flash" };
+  const pricedFallback = { ...paid, fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash" }] };
   assert.equal(fallbackModelFree(pricedFallback, file, null, OPENCAT), false, "catalog-priced fallback refused");
 });
 

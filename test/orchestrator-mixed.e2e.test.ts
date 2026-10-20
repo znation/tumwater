@@ -27,7 +27,7 @@ test("a pi author and a claude reviewer run in one team and the change merges on
   await initProject(repo, "mixed pi + claude team");
   const cfg = fastConfig(["feature"]);
   cfg.model = "omlx/qwen-mlx"; // the authoring tier runs on pi's omlx provider
-  cfg.review = { ...(cfg.review ?? {}), enabled: true, model: "claude/claude-sonnet-5-5" };
+  cfg.review = { ...(cfg.review ?? {}), enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   cfg.maxConcurrent = 2;
   saveConfig(repo, cfg);
 

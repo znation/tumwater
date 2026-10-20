@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backend/model split, part 4/5: Move test fixtures from namespace ids to the explicit `backend` form (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches the test files that write `"claude/…"` or `"opencode/…"` selectors in a config — today test/opencode-catalog.test.ts test/budget-gates.test.ts test/doctor-model-checks.test.ts test/pi-models.test.ts test/config-views.test.ts test/opencode-run.test.ts test/startup-gate.test.ts and about fifteen more, found by `grep -rlE '"(claude|opencode)/' test`) — done 2026-10-19 by the feature role
+
+**Goal.** Part 5/5 makes the namespace spellings load errors; this part moves every test config that relies on them to the explicit form first, so 5/5's diff is only the behavior change. Series goal and siblings: part 1/5.
+
+**Approach.** Mechanical, one theme: in each test's config literal, `model: "claude/<id>"` becomes `backend: "claude", model: "<id>"` on the same section (a tier-map entry becomes the object form, a fallback step the object step); `opencode/<id>` likewise with `backend: "opencode"`; a bare `claude-…` id under a pi default gains `backend: "claude"`. Leave untouched: assertions on rendered labels (`claude/claude-sonnet-5-5` stays the display form, `agentQualifiedSelector`), opencode argv assertions (`--model opencode/<id>` is OpenCode's own spelling), and the cases in test/model-selector.test.ts, test/config-views.test.ts and test/config-validation*.test.ts that exist to pin the legacy routing rules — 5/5 turns those into error cases. No src change.
+
+**Acceptance criteria.**
+- After the change, `grep -rnE 'model: "(claude|opencode)/' test` lists only the legacy-rule pin cases named above, and each remaining hit carries a `// legacy spelling, retired in part 5/5` comment.
+- `npm test` passes with no src file changed.
+
+**Done note.** Config literals moved to the explicit form; a nested opencode id (`anthropic/…`) is a `{ backend: "opencode", model }` tier entry because the top-level `backend` is only the default for selectors that name none. The remaining `model: "(claude|opencode)/…"` hits in test/ are the legacy-rule pins (each commented) and non-config data (opencode catalog keys, event and history fixtures, seam keys), which stay. budget-gates' derived view now shows the bare id for a free opencode tier.
+
 ### Backend/model split, part 3/5: Document the two axes (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches README.md docs/backends.md docs/config.md docs/glossary.md plans/agent-backends.md plans/model-tiers.md plans/opencode-backend.md plans/provider-concurrency.md plans/fallback-chain.md plans/terminology.md; done 2026-10-19 by the feature role)
 
 **Goal.** The docs teach `backend` beside `model` as the way to pick a backend per tier, role or fallback step, and name the namespace spellings only as retiring. Series goal and siblings: part 1/5.

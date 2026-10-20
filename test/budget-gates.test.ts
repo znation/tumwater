@@ -124,7 +124,7 @@ test("at the cap an opencode-free team keeps its primary; a priced pi role moves
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = defaultConfig();
   // Every tier's own seam routes to the catalog-free opencode gateway model.
-  cfg.model = "opencode/deepseek-v4.1-flash-free";
+  cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
   // A free pi fallback pair, so the gate has a pair to engage when the cap is reached.
   cfg.fallbackModel = { provider: "free", model: "qwen-free" };
   cfg.maxDailyCostUsd = 10;
@@ -138,8 +138,8 @@ test("at the cap an opencode-free team keeps its primary; a priced pi role moves
   // The free opencode tiers keep their own primary selector in the derived view — they are
   // free, so the cap must not move them to the pi fallback.
   const modelView = p.roleConfig.model as Record<string, string>;
-  assert.equal(modelView.default, "opencode/deepseek-v4.1-flash-free");
-  assert.equal(modelView.strong, "opencode/deepseek-v4.1-flash-free");
+  assert.equal(modelView.default, "deepseek-v4.1-flash-free");
+  assert.equal(modelView.strong, "deepseek-v4.1-flash-free");
   // The priced pi role is the one moved: its override is stripped so it runs its tier's
   // free fallback pair, and the opencode model map never sends it back to `paid/gpt-x`.
   assert.equal(p.roleConfig.roles.feature?.provider, undefined);
@@ -299,7 +299,7 @@ test("a claude-routed fallback cannot engage even when models.json prices its na
     JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5", cost: { input: 0, output: 0 } }] } } }),
   );
   const cfg = configWith(10);
-  cfg.fallback = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
   const state = newBudgetGateState(cfg);
 
   const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
@@ -322,7 +322,7 @@ test("an unseeded claude fallback cannot engage — the startup seed is what fre
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
-  cfg.fallback = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
   const state = newBudgetGateState(cfg);
   const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused");
@@ -337,7 +337,7 @@ test("a subscription claude fallback engages at the cap", () => {
   );
   writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
   const cfg = configWith(10);
-  cfg.fallback = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
   const state = newBudgetGateState(cfg);
 
   const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
@@ -606,7 +606,7 @@ test("a used-up claude window moves subscription claude roles to the fallback be
   rejectedWindow(root);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
   cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
   cfg.roles.bugfix = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
@@ -633,7 +633,7 @@ test("chain: a rejected window puts the claude tier on its fallback step; under 
   rejectedWindow(root, resetsAt);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   const p = poll(root, newBudgetGateState(cfg), cfg, models, [spentLoopState("feature", 1)]);
   assert.deepEqual(p.chain.default, { pair: "free/qwen-free", step: 1, of: 1, reason: "window", returnsAt: resetsAt });
 
@@ -701,7 +701,7 @@ test("a used-up claude window refuses a subscription claude fallback pair", () =
   );
   rejectedWindow(root);
   const cfg = configWith(10);
-  cfg.fallback = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
   const state = newBudgetGateState(cfg);
   const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(p.gate, "paused", "a claude pair meets the same window, so the cap pauses");
@@ -725,7 +725,7 @@ test("a used-up claude window moves a subscription claude director to its tier's
   rejectedWindow(root);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   const state = newBudgetGateState(cfg);
   const p = poll(root, state, cfg, models);
   const director = configForRole(p.directorConfig, DIRECTOR_ROLE);
@@ -742,7 +742,7 @@ test("the cap alone never moves the director, and a window with no fallback leav
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   const capped = poll(root, newBudgetGateState(cfg), cfg, models, [spentLoopState("feature", 10)]);
   assert.equal(capped.onFallback, true);
   assert.equal(capped.directorConfig, cfg, "the cap leaves the director on its Claude model");
@@ -750,7 +750,7 @@ test("the cap alone never moves the director, and a window with no fallback leav
   rejectedWindow(root);
   const bare = configWith(10);
   bare.provider = undefined;
-  bare.model = "claude/claude-sonnet-5-5";
+  bare.backend = "claude"; bare.model = "claude-sonnet-5-5";
   bare.fallback = undefined;
   bare.fallbackModel = undefined;
   assert.equal(poll(root, newBudgetGateState(bare), bare, models).directorConfig, bare);
@@ -806,7 +806,7 @@ test("one gate state follows a priced step's spend across its own cap during a w
   rejectedWindow(root);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
   cfg.fallback = [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }, "free/qwen-free"];
   cfg.fallbackModel = undefined;
@@ -838,8 +838,8 @@ test("a Claude step after the subscription primary spends extra usage within its
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
-  cfg.fallback = [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 5 }, "free/qwen-free"];
   cfg.fallbackModel = undefined;
   const account = (extra: Record<string, unknown>, resetsAt = Date.now() + 3_600_000) =>
     writeClaudeAccount(root, {
@@ -877,7 +877,7 @@ test("an overage account with no later Claude step moves a subscription Claude t
   });
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
   const p = poll(root, newBudgetGateState(cfg), cfg, models);
   assert.equal(p.windowOut?.type, "five_hour");
@@ -889,8 +889,8 @@ test("a reserve crossing moves the team's Claude tiers, skips the extra-usage st
   const models = writeModelsFile(root, MODELS_JSON);
   const cfg = configWith(10);
   cfg.provider = undefined;
-  cfg.model = "claude/claude-sonnet-5-5";
-  cfg.fallback = [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, "free/qwen-free"];
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 10 }, "free/qwen-free"];
   cfg.fallbackModel = undefined;
   cfg.claudeWindowReserve = { seven_day: 0.8 };
   const account = (utilization: number, extra: Record<string, unknown> = {}) =>

@@ -884,16 +884,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### Backend/model split, part 4/5: Move test fixtures from namespace ids to the explicit `backend` form (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires part 2/5 landed; touches the test files that write `"claude/…"` or `"opencode/…"` selectors in a config — today test/opencode-catalog.test.ts test/budget-gates.test.ts test/doctor-model-checks.test.ts test/pi-models.test.ts test/config-views.test.ts test/opencode-run.test.ts test/startup-gate.test.ts and about fifteen more, found by `grep -rlE '"(claude|opencode)/' test`)
-
-**Goal.** Part 5/5 makes the namespace spellings load errors; this part moves every test config that relies on them to the explicit form first, so 5/5's diff is only the behavior change. Series goal and siblings: part 1/5.
-
-**Approach.** Mechanical, one theme: in each test's config literal, `model: "claude/<id>"` becomes `backend: "claude", model: "<id>"` on the same section (a tier-map entry becomes the object form, a fallback step the object step); `opencode/<id>` likewise with `backend: "opencode"`; a bare `claude-…` id under a pi default gains `backend: "claude"`. Leave untouched: assertions on rendered labels (`claude/claude-sonnet-5-5` stays the display form, `agentQualifiedSelector`), opencode argv assertions (`--model opencode/<id>` is OpenCode's own spelling), and the cases in test/model-selector.test.ts, test/config-views.test.ts and test/config-validation*.test.ts that exist to pin the legacy routing rules — 5/5 turns those into error cases. No src change.
-
-**Acceptance criteria.**
-- After the change, `grep -rnE 'model: "(claude|opencode)/' test` lists only the legacy-rule pin cases named above, and each remaining hit carries a `// legacy spelling, retired in part 5/5` comment.
-- `npm test` passes with no src file changed.
-
 ### Backend/model split, part 5/5: Retire the namespace spellings as load errors and drop the scalar budget backend (planned 2026-10-19 by user, split 2026-10-19 by the plan role; requires parts 3/5–4/5 landed; touches src/config/model-selector.ts src/config/config-views.ts src/config/config-fallbacks.ts src/config/config-validation.ts src/config/config-aliases.ts src/status/status-budget.ts src/ui/badges.ts docs/config.md docs/backends.md docs/glossary.md test/model-selector.test.ts test/config-validation.test.ts test/config-validation-model.test.ts test/config-views.test.ts test/config-aliases.test.ts test/badges.test.ts)
 
 **Needs review 2026-10-19 by plan: merging this makes the live tumwater.json's `claude/…` model ids a load error, so the operator first migrates it — `model` loses the namespace (`"claude-sonnet-5-5"`, `"strong": "claude-opus-5-5"`) under the existing `"backend": "claude"`, and the pi fallback becomes `{ "backend": "pi", "model": "qwenrunner/qwen3.8-27b" }` (valid once parts 1/5-2/5 land) — then removes this note**
