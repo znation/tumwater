@@ -124,6 +124,11 @@ test("team and role pauses render fixed and role-named lines", () => {
     describeStateChange(ev({ type: "role_paused", role: "steward" })),
     "role steward paused — it starts no new runs",
   );
+  const roleUntil = Date.UTC(2026, 9, 20, 12, 0, 0);
+  assert.equal(
+    describeStateChange(ev({ type: "role_paused", role: "steward", until: roleUntil })),
+    `role steward paused — it starts no new runs until ${formatTime(new Date(roleUntil))}`,
+  );
   assert.equal(describeStateChange(ev({ type: "role_resumed", role: "steward" })), "role steward resumed — it runs again");
   // A missing role renders as "?" rather than "undefined".
   assert.equal(describeStateChange(ev({ type: "role_paused" })), "role ? paused — it starts no new runs");

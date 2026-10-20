@@ -253,6 +253,14 @@ test("formatEvent renders the per-role pause and resume events with the role nam
     `the pause must name the role and what keeps running: ${paused}`,
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
+  const until = Date.UTC(2026, 9, 20, 12, 0, 0);
+  const timed = formatEvent({ ts: 0, source: "tumwater", type: "role_paused", role: "docs", until } as never);
+  assert.match(
+    timed,
+    new RegExp(`role docs paused — it starts no new runs until ${formatTime(new Date(until))} \\(the rest of the team keeps running\\)$`),
+  );
+  const junk = formatEvent({ ts: 0, source: "tumwater", type: "role_paused", role: "docs", until: "soon" } as never);
+  assert.equal(junk, paused);
 
   const resumed = formatEvent({ ts: 0, source: "tumwater", type: "role_resumed", role: "docs" } as never);
   assert.match(resumed, /tumwater\s+role docs resumed — it runs again$/, `resume line: ${resumed}`);

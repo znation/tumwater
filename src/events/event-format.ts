@@ -360,7 +360,7 @@ export function eventMessage(e: HarnessEvent): string {
       return teamResumePhrase() + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
     case "role_paused":
       // Routine state change, like team_paused — no warning prefix.
-      return `${rolePausePhrase(textOr(e.role))} (the rest of the team keeps running)`;
+      return `${rolePausePhrase(textOr(e.role))}${pauseSuffix(e.until, undefined)} (the rest of the team keeps running)`;
     case "role_resumed":
       return roleResumePhrase(textOr(e.role)) + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
     case "role_streak_paused":

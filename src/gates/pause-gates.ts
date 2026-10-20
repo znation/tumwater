@@ -45,7 +45,10 @@ export function newPauseGateState(): PauseGateState {
  * same persistent marker read fresh per cycle, but one named role instead of the team. Unlike
  * the team pause the director is NOT exempt: the operator named the role deliberately, and its
  * queued prompts simply wait in the inbox (the same effect the team pause has on the director).
- * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible). */
+ * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible).
+ * A timed role pause's `role_paused` events carry its shared deadline as `until`:
+ * `standingRolePause` returns it only while the set is non-empty and an expired marker reads as
+ * empty, so a logged `until` is the live deadline. */
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
   const marker = standingTeamPause(root);
   const userPaused = marker !== null;
@@ -73,7 +76,7 @@ export function pollPauseGates(root: string, state: PauseGateState): PauseGates 
   const pausedRolesSet = new Set(pausedRolesNow);
   for (const r of pausedRolesNow)
     if (!state.prevPausedRoles.has(r))
-      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_paused", role: r });
+      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_paused", role: r, ...(rolesUntil !== undefined ? { until: rolesUntil } : {}) });
   for (const r of state.prevPausedRoles)
     if (!pausedRolesSet.has(r))
       logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_resumed", role: r, ...(rolesExpired ? { expired: true } : {}) });

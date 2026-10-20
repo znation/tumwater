@@ -53,6 +53,17 @@ test("pollPauseGates: restart mid-pause logs one event on the first poll", () =>
   assert.deepEqual(eventTypes(root, "team_paused", "team_resumed"), ["team_paused"]);
 });
 
+test("pollPauseGates: role_paused carries the shared deadline of a timed role pause", () => {
+  const root = tmpdir("pause-gates-");
+  const until = Date.now() + 60_000;
+  pauseRole(root, "tests", until);
+  pollPauseGates(root, newPauseGateState());
+  const events = eventsOfType(root, "role_paused");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.role, "tests");
+  assert.equal(events[0]!.until, until);
+});
+
 test("pollPauseGates: per-role pause/resume logs role events per crossing", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
@@ -62,6 +73,7 @@ test("pollPauseGates: per-role pause/resume logs role events per crossing", () =
   assert.equal(gates.userPaused, false);
   assert.deepEqual(gates.pausedRoles, new Set(["tests"]));
   assert.deepEqual(eventTypes(root, "role_paused", "role_resumed"), ["role_paused"]);
+  assert.ok(!("until" in eventsOfType(root, "role_paused")[0]!), "a standing role pause carries no until");
 
   // Same set again: no duplicate event.
   pollPauseGates(root, state);

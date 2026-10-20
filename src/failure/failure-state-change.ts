@@ -116,6 +116,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "role_paused":
       text = rolePausePhrase(field(ev.role ?? "?"));
+      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatTime(new Date(finiteNumber(ev.until, 0)))}`;
       break;
     case "role_resumed":
       text = roleResumePhrase(field(ev.role ?? "?")) + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
