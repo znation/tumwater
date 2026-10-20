@@ -2955,3 +2955,53 @@ then BUGS-FIXED.md's, and reads a missing file as empty.
 
 **Pinned by.** `test/fix-claim-archive.test.ts` — "fixedEntriesAt lists BUGS.md's Fixed entries
 before BUGS-FIXED.md's, reads the bugsMd text when given, and reads a missing file as empty".
+
+## Backlog conflicts: a backlog rebase conflict settles without a model only when no authored bytes need judgment
+
+`src/merge/backlog-conflicts.ts` settles backlog rebase conflicts without a model run in two
+passes: `resolveInsertOnlyText` hunk by hunk, then `mergeBacklogEntries` entry by entry.
+
+### INV-AY1: a hunk settles only in its insert-only shapes
+
+**Guarantee.** A hunk settles only in its three insert-only shapes. Any other hunk, a malformed
+conflict, or a non-diff3 conflict leaves the file to the resolver.
+
+**Binds.** `src/merge/backlog-conflicts.ts` (`resolveInsertOnlyText`).
+
+**Pinned by.** `test/backlog-conflicts.test.ts` — "resolveInsertOnlyText refuses a hunk with a
+non-empty base section", "resolveInsertOnlyText refuses a hunk with an empty side",
+"resolveInsertOnlyText leaves near misses of an entry above a deleted entry to the resolver" and
+"resolveInsertOnlyText refuses a malformed (non-diff3) conflict".
+
+### INV-AY2: the entry merge keeps each side's changes and returns null when judgment is needed
+
+**Guarantee.** The entry-by-entry merge keeps each side's finished and added entries and places an
+added entry after its nearest surviving predecessor. It returns null for an entry both sides
+edited, an edit against a delete, a duplicate heading, a renamed section, an unclosed fence, and
+a preamble or section header both sides changed.
+
+**Binds.** `src/merge/backlog-conflicts.ts` (`mergeBacklogEntries`).
+
+**Pinned by.** `test/backlog-conflicts.test.ts` — "mergeBacklogEntries merges entries each side
+finished or added", "mergeBacklogEntries bails out when judgment is needed" and
+"mergeBacklogEntries keeps a heading inside a fence as body text";
+`test/backlog-conflicts-entries.test.ts` — "mergeBacklogEntries places the change's new entry
+after its nearest surviving predecessor, keeps one copy of an entry both sides added, and settles
+a preamble or header only one side changed".
+
+### INV-AY3: only settled repo-root backlog files are written; the rest stay conflicted
+
+**Guarantee.** A settled file is written atomically and staged. An unreadable file, a non-backlog
+file, or an archive file the hunk settler cannot settle is returned as still conflicted with its
+markers kept.
+
+**Binds.** `src/merge/backlog-conflicts.ts` (`resolveBacklogInsertConflicts`,
+`mergeStagedEntries`).
+
+**Pinned by.** `test/backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts rewrites and
+stages an insert-only PLANS.md", "resolveBacklogInsertConflicts leaves a non-insert-only backlog
+file untouched", "resolveBacklogInsertConflicts ignores non-backlog and non-root files",
+"resolveBacklogInsertConflicts treats an unreadable path as still conflicted" and
+"resolveBacklogInsertConflicts leaves the conflicted file intact when a write dies mid-way";
+`test/backlog-conflicts-entries.test.ts` — "resolveBacklogInsertConflicts leaves an archive
+conflict the hunk settler cannot settle to the resolver".
