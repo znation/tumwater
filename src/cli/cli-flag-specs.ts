@@ -252,6 +252,17 @@ export function sinceFlagSpec(label: string): FlagSpec {
   };
 }
 
+/** The `--until <duration>` flag spec of `logs`: ends the `--since` window that long ago. */
+export const LOGS_UNTIL_FLAG: FlagSpec = {
+  names: ["--until"],
+  value: true,
+  valueName: "<duration>",
+  missingValue: "logs --until needs a value",
+  validate: (value) => {
+    parseDurationFlag("logs --until", value);
+  },
+};
+
 /** The `-n <count>` flag spec, shared by the two tail views that take a row count (logs,
  * history): one definition of the flag's spelling and value shape, beside sinceFlagSpec, so the
  * gate's accepted vocabulary and parseCountFlag's error messages cannot drift apart. validate

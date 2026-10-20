@@ -787,3 +787,50 @@ test("logs --role with no match names the roles", async () => {
   const json = await cli(repo, "logs", "--json", "--role", "qa");
   assert.equal(json.stdout.trim(), "");
 });
+
+test("logs --since --until prints only the events between the two edges, oldest-first", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs until window");
+  seedEvents(repo, [3 * 86_400_000, 2 * 86_400_000 - 3_600_000, 30 * 3_600_000, 2 * 3_600_000]);
+
+  const r = await cli(repo, "logs", "--since", "2d", "--until", "1d");
+  assert.equal(r.code, 0);
+  const two = r.stdout.indexOf("run #2 started");
+  const three = r.stdout.indexOf("run #3 started");
+  assert.ok(two > -1 && three > two, r.stdout);
+  assert.ok(!r.stdout.includes("run #1 started"), r.stdout);
+  assert.ok(!r.stdout.includes("run #4 started"), r.stdout);
+
+  const c = await cli(repo, "logs", "--since", "2d", "--until", "1d", "--count", "--json");
+  assert.deepEqual(JSON.parse(c.stdout), { run_start: 2 });
+});
+
+test("logs --until with an empty window names both edges", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs until empty");
+  seedEvents(repo, [10 * 60_000]);
+
+  const r = await cli(repo, "logs", "--since", "2h", "--until", "1h");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events between 2h and 1h ago/);
+});
+
+test("logs --until is refused without --since or when not shorter", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs until refused");
+
+  const bare = await cli(repo, "logs", "--until", "1h");
+  assert.equal(bare.code, 1);
+  assert.match(bare.stderr, /logs --until requires --since/);
+  const follow = await cli(repo, "logs", "-f", "--until", "1h");
+  assert.equal(follow.code, 1);
+  assert.match(follow.stderr, /logs --until requires --since/);
+  for (const until of ["2h", "1h"]) {
+    const r = await cli(repo, "logs", "--since", "1h", "--until", until);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /logs --until \(.*\) must be shorter than --since/);
+  }
+  const missing = await cli(repo, "logs", "--since", "1h", "--until");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /logs --until needs a value/);
+});

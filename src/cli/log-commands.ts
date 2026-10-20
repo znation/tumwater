@@ -120,8 +120,9 @@ export function followUntilParentGone(
   });
 }
 
-/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>[,<id>...]]
- * [--transcript <id>] [--prompt]`: follow or dump the harness event log, with `--since` a bounded
+/** `tumwater logs [-f] [-n <count>] [--since <duration>] [--until <duration>]
+ * [--role <id>[,<id>...]] [--transcript <id>] [--prompt]`: follow or dump the harness event log,
+ * with `--since` a bounded
  * past window of it and `--role` keeping only the listed roles' events (a base role id takes its
  * instances too),
  * or with `--transcript` one role's agent transcript (see cmdLogsTranscript). `-f` follows until
@@ -200,6 +201,10 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // N", and --transcript swaps in a transcript rather than this log — and each failure names
   // both flags. (--prompt requires --transcript, so it is excluded with it.)
   const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
+  const untilMs = parseSinceFlag(rest, "logs --until", LOGS_SINCE_MAX_MS, "--until");
+  if (untilMs !== null && ms === null) fail("logs --until requires --since");
+  if (untilMs !== null && ms !== null && untilMs >= ms)
+    fail(`logs --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(ms)})`);
   if (ms !== null) {
     if (follow)
       failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
@@ -207,7 +212,10 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     rejectTranscriptViewRival(rest, "--since", true);
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
-    const { events, covered } = readEventsSince(root, ms);
+    const { cutoff, events: windowEvents, covered } = readEventsSince(root, ms);
+    const events = untilMs === null ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + ms - untilMs);
+    const windowPhrase =
+      untilMs === null ? `in ${durationLabel(ms)}` : `between ${durationLabel(ms)} and ${durationLabel(untilMs)} ago`;
     // `--grep`, `--type` and `--role` all filter the window through feedFilter: only the
     // window events that pass are printed, and an all-filtered window answers with the
     // no-match prose (the filter's own line) instead of the generic empty-window one —
@@ -220,8 +228,8 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
         if (grepPattern !== null && type !== null)
           say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
         else if (type !== null) say(typeEmpty(type, typePieces));
-        else if (grepPattern !== null) say(`no events matching "${grepPattern}" in ${durationLabel(ms)}`);
-        else say(roles !== null ? `${roleEmpty} in ${durationLabel(ms)}` : `no events in ${durationLabel(ms)}`);
+        else if (grepPattern !== null) say(`no events matching "${grepPattern}" ${windowPhrase}`);
+        else say(roles !== null ? `${roleEmpty} ${windowPhrase}` : `no events ${windowPhrase}`);
       }
       return;
     }
