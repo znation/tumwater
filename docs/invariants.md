@@ -1019,3 +1019,83 @@ everything before the cutoff", "a run spanning the cutoff renders a dash: the ts
 its start too", "a queued run whose pin sits before the --since cutoff still resolves (BUGS.md
 2026-09-30)", "covered is false while the log starts inside the window, true once an event
 predates the cutoff" and "a missing or empty log reads as no rows over a covered window".
+
+## Status polls: an observer never throws, and shows only what is still true
+
+`tumwater status`, `tumwater queue`, `tumwater doctor`, the TUI and the GUI read the cached readers
+in `src/status/status-polls.ts` every second, in a process separate from the orchestrator. Every
+reader must therefore tolerate a torn, foreign or stale file, and show only what is still true.
+
+### INV-T1: main's badge is the newest merge-scope check, and an unproven check shows nothing
+
+**Guarantee.** `mainCheckForPoll` reports the newest build_check whose scope `isFullCheckScope`
+accepts: `merge`, `batch` or `baseline`, and never a `gate` check or one with `full: false`. The
+sha comes from the merge_done event that follows the check, otherwise main's branch head, otherwise
+the merge_done before it. The event tail grows up to `MAIN_CHECK_SCAN_MAX_EVENTS`, past which the
+badge drops. A check whose status is not one of the three (`isMainCheckStatus`) or which has no
+numeric ts reads as no check.
+
+**Binds.** `src/status/status-polls.ts` (`mainCheckForPoll`, `scanMainCheck`, `isMainCheckStatus`,
+`MAIN_CHECK_SCAN_MAX_EVENTS`), `src/build/build-check-events.ts` (`isFullCheckScope`).
+
+**Pinned by.** `test/status-data-team.test.ts` — "snapshot carries mainCheck from the newest
+merge-scope build_check event" and "a merge-scope check with a foreign status reads as no
+mainCheck"; `test/status-header.test.ts` — "the status header carries a mainCheck badge only after
+a merge-scope check".
+
+### INV-T2: a red-main hold stands until a newer passed check retires it, and status and doctor agree
+
+**Guarantee.** `heldByMainRed` is true only when the role's last result is `main_red`, it has no
+queued summary, and no passed check is stamped strictly after its last run ended
+(`mainCheckRecovered`). It is the one predicate behind the status phase's red-main label and
+doctor's `checkMainRed`.
+
+**Binds.** `src/status/status-polls.ts` (`heldByMainRed`, `mainCheckRecovered`),
+`src/ui/status-model.ts` (`rolePhase`), `src/doctor/doctor-holds.ts` (`checkMainRed`).
+
+**Pinned by.** `test/status-model.test.ts` — "rolePhase shows main red for idle roles whose last
+run was blocked by a red main", "rolePhase retires a stale main red when main's newest check passed
+after it" and "roleRowCells retires the stale main red and teamAlerts raises no banner for it";
+`test/doctor-holds.test.ts` — "checkMainRed: a role with a queued summary is ok" and "checkMainRed:
+a passed merge check newer than the red tick retires the hold".
+
+### INV-T3: the merge marker displays only while the orchestrator lives and a queued change it names is unfinished
+
+**Guarantee.** `queueInFlight` returns nothing unless `running` is true. `liveMergeMarker` shows an
+older-format marker only while its sha is queued. A per-change marker keeps only its well-formed
+records whose sha is queued, and shows only while one of them is not `done`. A malformed record is
+dropped, never read.
+
+**Binds.** `src/status/status-polls.ts` (`queueInFlight`, `liveMergeMarker`),
+`src/merge/merge-slot.ts` (`isMergeChange`, `readMergeMarker`).
+
+**Pinned by.** `test/cli-queue.test.ts` — "queue prints the in-flight label only while an
+orchestrator is alive"; `test/status-polls.test.ts` — "liveMergeMarker shows a single-change marker
+only while its sha is queued", "liveMergeMarker keeps only the queued records and hides a marker
+whose queued records are all done" and "liveMergeMarker drops a null or malformed record instead of
+throwing".
+
+### INV-T4: a broken tumwater.json never blinds an observer
+
+**Guarantee.** `configForStatus` never throws. It returns the fresh config when it is valid,
+otherwise the last valid config this process loaded for that root, otherwise defaults. A fixed file
+is picked up on the next poll.
+
+**Binds.** `src/status/status-polls.ts` (`configForStatus`), `src/config/config.ts`
+(`loadConfigCached`).
+
+**Pinned by.** `test/status-data.test.ts` — "snapshot survives a broken tumwater.json and recovers
+when it is fixed".
+
+### INV-T5: each poll owns its runner state, and an unchanged file is not re-read
+
+**Guarantee.** `runnerStateForPoll` serves an unchanged state file from the stat-keyed cache and
+returns a copy, so a caller's mutation never reaches the next poll. A missing file yields a fresh
+state.
+
+**Binds.** `src/status/status-polls.ts` (`runnerStateForPoll`), `src/files/stat-cache.ts`
+(`cachedByStat`).
+
+**Pinned by.** `test/status-data.test.ts` — "snapshot serves unchanged runner state from the
+stat-keyed cache without re-reading" (it pins the cache hit and the per-poll copy; the missing-file
+case is not pinned by a test).
