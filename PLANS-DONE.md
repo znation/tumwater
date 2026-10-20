@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater revert` refuses a root or merge commit, as its `--dry-run` already does, so `tumwater revert <init sha>` no longer deletes the brief and the backlog (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — those edit src/config, src/cli/config-commands.ts, src/cli/cli-query-commands.ts, src/roles/role-view.ts, src/operator/operator-intent.ts and the src/tick→src/run move; this one touches src/operator/revert.ts, docs/cli.md and test/operator-revert.test.ts only; done 2026-10-20 by the feature role)
+
+**Goal.** `previewRevert` (src/operator/revert.ts) refuses a commit that does not have exactly one parent (`<short> has <n> parents; revert previews a single-parent commit only`). `revertMergedCommit`, which `cmdRevert` (src/operator/operator-commands.ts) and the dashboard's revert (`gui-operator-commands.ts`) both call, has no such guard. So the preview refuses a commit that the real revert goes on to change. Checked on 2026-10-20 against main's built CLI in a fresh `git init` + `tumwater init hello` repo: `tumwater revert HEAD`, where HEAD is the `tumwater: init` root commit, exits 0, prints `main is now <sha>` and commits `tumwater(operator): Revert <sha>`. That commit deletes README.md (the brief), PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md and .gitignore, and leaves tumwater.json untracked. It then prints `the reverted role may redo the work`, though no role made that commit. For a merge commit, `git revert --no-commit <merge>` fails without `-m`, and `revertCommitIn` reports this as `reverting <short> conflicted`, which is not what happened. The fix is to refuse both cases the way the preview does. Supporting `-m` is out of scope: harness merges are fast-forwards, and the preview already sets the single-parent-only policy.
+
+**Approach (src/operator/revert.ts).**
+- Pull the preview's inline parent count out into one module-private helper, `async function parentRefusal(root: string, full: string): Promise<string | null>`. It runs `runGit(root, ["rev-list", "--parents", "-n", "1", full])` and counts the words after the first. When the count is not 1 it returns `` `${shortSha(full)} has ${n} parents; tumwater revert undoes a single-parent commit only, so nothing was written` ``. Otherwise it returns null.
+- `previewRevert` calls it in place of its inline check: a non-null result → `{ ok: false, error }`. Its try/catch stays as it is.
+- `revertMergedCommit` calls it inside the lock, right after `resolveRevertTarget` succeeds and before the dirty-tree check: a non-null result → `{ ok: false, error }`, with nothing staged or committed. Its outer try/catch already turns a git failure into the `did not complete` error.
+- Leave `revertCommitIn` and `resolveRevertTarget` alone. The automatic culprit revert in src/baseline/main-revert.ts (INV-L1 in docs/invariants.md) and the dashboard's `handleTick` on-base check call them, and neither should change.
+- No CLI or GUI edit is needed. `cmdRevert` passes `result.error` to `fail` and the dashboard's revert handler returns it, so both pick up the refusal. The `--dry-run` text changes from `revert previews …` to the shared wording.
+
+**Docs.** In docs/cli.md's "Steer the project" row, extend `refusing off the base branch, on an unknown or unmerged ref, and on a conflict` to `refusing off the base branch, on an unknown or unmerged ref, on a root or merge commit, and on a conflict`.
+
+**Tests (test/operator-revert.test.ts).** Use the file's existing `makeRepo`/`seedCommit`/`sh`/`headSha` fixtures and its `statusPorcelain` helper.
+- `revertMergedCommit(repo, <root sha>)` (root from `git rev-list --max-parents=0 HEAD`, after one `seedCommit`) returns `ok: false` with an error matching `/has 0 parents; tumwater revert undoes a single-parent commit only/`. HEAD is unchanged and `statusPorcelain` is empty.
+- A merge commit: branch off, `seedCommit` on the branch, check the base branch back out, `git merge --no-ff -m merge <branch>`. `revertMergedCommit(repo, "HEAD")` returns `ok: false` matching `/has 2 parents/`, leaves HEAD at the merge commit, and `statusPorcelain` is empty. `previewRevert(repo, "HEAD")` refuses with the same error.
+- The existing "previewRevert refuses an unknown ref and a root commit" test (`/has 0 parents/`) passes unchanged.
+
+**Acceptance criteria.**
+- `tumwater revert <root sha>` and `tumwater revert <merge sha>` exit 1 with `tumwater: <short> has <n> parents; tumwater revert undoes a single-parent commit only, so nothing was written`, and leave HEAD and the tracked tree alone.
+- `tumwater revert <sha> --dry-run` on either one prints the same error, and the dashboard's revert returns the same text in its `error`.
+- A single-parent revert behaves as before: every existing test in test/operator-revert.test.ts and test/cli-operators.test.ts passes unchanged.
+- src/baseline/main-revert.ts and `revertCommitIn` are untouched (`git diff --stat` shows neither).
+- `npm run test:gate` passes.
+
 ### `tumwater config set <key> <value>` says `already` and writes nothing when the key already resolves to that value (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the `role <id> --enable`/`--disable` entry makes the same "already" change in src/cli/cli-query-commands.ts and calls setConfigKey only when the state differs, so the two do not overlap; this one touches src/config/config-write.ts, src/cli/config-commands.ts, test/config-commands.test.ts and docs/cli.md's `tumwater config` row); done 2026-10-20 by the feature role
 
 **Goal.** On a fresh project, `tumwater config set maxConcurrent 6` exits 0 and prints `set maxConcurrent to 6`, and `config set roles.selfcheck.enabled false` prints `set roles.selfcheck.enabled to false` (checked against main's built CLI on 2026-10-20). Neither changed anything: 6 is the resolved run cap and selfcheck ships disabled. The confirmation reads as if the command did something, so an operator who expected a change learns nothing. `config unset` already reports its no-op (`<key> is not set in tumwater.json, so nothing was removed`); `set` should do the same.

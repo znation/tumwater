@@ -64,6 +64,15 @@ export async function resolveRevertTarget(
   return { ok: true, full, primary };
 }
 
+/** The refusal for a commit without exactly one parent (a root or a merge), or null. Shared by
+ * the revert and its preview: `git revert` of a root deletes the whole tree, of a merge needs
+ * `-m`. */
+async function parentRefusal(root: string, full: string): Promise<string | null> {
+  const parents = (await runGit(root, ["rev-list", "--parents", "-n", "1", full])).split(" ").length - 1;
+  if (parents === 1) return null;
+  return `${shortSha(full)} has ${parents} parents; tumwater revert undoes a single-parent commit only, so nothing was written`;
+}
+
 interface RevertPreview {
   ok: true;
   sha: string;
@@ -87,9 +96,8 @@ export async function previewRevert(
     const target = await resolveRevertTarget(root, ref);
     if (!target.ok) return target;
     const { full, primary } = target;
-    const parents = (await runGit(root, ["rev-list", "--parents", "-n", "1", full])).split(" ").length - 1;
-    if (parents !== 1)
-      return { ok: false, error: `${shortSha(full)} has ${parents} parents; revert previews a single-parent commit only` };
+    const refusal = await parentRefusal(root, full);
+    if (refusal !== null) return { ok: false, error: refusal };
     const subject = await runGit(root, ["log", "-1", "--format=%s", full]);
     const paths = (await runGit(root, ["diff", "--name-only", "--no-renames", full + "^", full]))
       .split("\n")
@@ -128,6 +136,8 @@ export async function revertMergedCommit(
       const target = await resolveRevertTarget(root, ref);
       if (!target.ok) return target;
       const { full } = target;
+      const refusal = await parentRefusal(root, full);
+      if (refusal !== null) return { ok: false, error: refusal };
       // `head` is captured before the revert so a future caller can compare before/after.
       const head = await headOf(root, "HEAD");
 

@@ -185,3 +185,36 @@ test("previewRevert refuses an unknown ref and a root commit", async () => {
   if (r.ok) return;
   assert.match(r.error, /has 0 parents/);
 });
+
+test("revertMergedCommit refuses a root commit and writes nothing", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const root = sh(repo, "git", "rev-list", "--max-parents=0", "HEAD").trim();
+  const before = headSha(repo);
+  const r = await revertMergedCommit(repo, root);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /has 0 parents; tumwater revert undoes a single-parent commit only/);
+  assert.equal(headSha(repo), before);
+  assert.equal(statusPorcelain(repo), "");
+});
+
+test("revertMergedCommit and previewRevert refuse a merge commit", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const base = sh(repo, "git", "rev-parse", "--abbrev-ref", "HEAD").trim();
+  sh(repo, "git", "checkout", "-qb", "side");
+  seedCommit(repo, "b.txt", "b\n", "add b");
+  sh(repo, "git", "checkout", "-q", base);
+  seedCommit(repo, "c.txt", "c\n", "add c");
+  sh(repo, "git", "merge", "-q", "--no-ff", "-m", "merge", "side");
+  const before = headSha(repo);
+  const r = await revertMergedCommit(repo, "HEAD");
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /has 2 parents/);
+  assert.equal(headSha(repo), before);
+  assert.equal(statusPorcelain(repo), "");
+  const p = await previewRevert(repo, "HEAD");
+  assert.deepEqual(p, { ok: false, error: r.error });
+});
