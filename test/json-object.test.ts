@@ -1,9 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  canonicalUsageBlock,
   finiteNumber,
   isJsonObject,
   nonNegativeNumber,
+  objectOrEmpty,
   parseJsonObject,
   stringList,
 } from "../src/files/json-object.js";
@@ -120,4 +122,23 @@ test("parseJsonObject parses an object and reads every other JSON value as no da
   for (const text of ["null", "[]", "[1,2]", '"x"', "5", "true", "", "not json", "{"]) {
     assert.equal(parseJsonObject(text), null, `\`${text}\` is not a JSON object`);
   }
+});
+
+test("objectOrEmpty keeps a plain object and reads every other value as an empty section", () => {
+  const section = { a: 1 };
+  assert.equal(objectOrEmpty(section), section, "the same reference comes back");
+  for (const value of [null, undefined, [], [{ a: 1 }], "x", 0, true]) {
+    assert.deepEqual(objectOrEmpty(value), {}, `${String(value)} reads as an empty section`);
+  }
+});
+
+test("canonicalUsageBlock sums the four counts into totalTokens and wraps the cost", () => {
+  assert.deepEqual(canonicalUsageBlock(1, 2, 3, 4, 0.5), {
+    input: 1,
+    cacheRead: 2,
+    cacheWrite: 3,
+    output: 4,
+    totalTokens: 10,
+    cost: { total: 0.5 },
+  });
 });

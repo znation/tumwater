@@ -1861,3 +1861,71 @@ not stripped, so machine-readable output stays byte-exact.
 
 **Pinned by.** `test/text.test.ts` — "stripTerminalControls removes ESC/C0/C1/DEL and keeps only
 newline and tab".
+
+## Untrusted JSON: a torn, foreign or wrong-shaped value reads as no data, never as a throw or a stand-in
+
+`src/files/json-object.ts` and `src/files/json-files.ts` are the one home of the reads every state
+file, event-log line, pi or backend wire line and request body goes through. Keeping the rule in
+one place means one consumer cannot accept a value the others reject.
+
+### INV-AF1: null, an array and a scalar are never a JSON object, and a non-object section reads as empty
+
+**Guarantee.** `isJsonObject` is true only for a non-null, non-array object, so JSON null,
+an array and every scalar are refused. `objectOrEmpty` returns the same object when given one and
+a fresh empty object for anything else, so a caller can index a section without a guard.
+
+**Binds.** `src/files/json-object.ts` (`isJsonObject`, `objectOrEmpty`).
+
+**Pinned by.** `test/json-object.test.ts` — "a plain object is a JSON object, narrowed to an
+indexable record", "an array is not a JSON object (an array is an object in JS)", "scalar values are not JSON objects" and
+"objectOrEmpty keeps a plain object and reads every other value as an empty section".
+
+### INV-AF2: a line that does not parse to an object reads as null, never a throw
+
+**Guarantee.** `parseJsonObject` returns the parsed object for text that is a JSON object, and
+null for a torn line, an empty string, or valid JSON that is null, an array or a scalar.
+
+**Binds.** `src/files/json-object.ts` (`parseJsonObject`).
+
+**Pinned by.** `test/json-object.test.ts` — "parseJsonObject parses an object and reads every
+other JSON value as no data".
+
+### INV-AF3: a list field keeps only its strings, and a number field is finite or the caller's fallback
+
+**Guarantee.** `stringList` keeps the string entries of an array and reads a non-array as the empty
+list. `finiteNumber` accepts any finite number, negative included, and `nonNegativeNumber` accepts
+zero and positives; each returns the caller's fallback for NaN, an infinity or a non-number (and
+`nonNegativeNumber` for a negative). It matters because a NaN or negative cost makes every
+budget-cap comparison false.
+
+**Binds.** `src/files/json-object.ts` (`stringList`, `finiteNumber`, `nonNegativeNumber`).
+
+**Pinned by.** `test/json-object.test.ts` — "stringList keeps only the string entries of a mixed
+array", "stringList reads a non-array field as the empty list", "finiteNumber accepts any finite
+number, negative included, and rejects poison" and "nonNegativeNumber keeps zero and positives,
+rejects negatives and poison".
+
+### INV-AF4: a missing, torn or non-object state file reads as null, and an atomic write never leaves a torn file or a tmp remnant
+
+**Guarantee.** `readJsonFile` returns null for a missing file, a torn file, or valid JSON that is
+not an object. `writeJsonAtomic` replaces the target in one step with the caller's newline
+convention; a failed write is rethrown, its tmp file is removed and the target keeps its old bytes.
+
+**Binds.** `src/files/json-files.ts` (`readJsonFile`, `writeJsonAtomic`).
+
+**Pinned by.** `test/json-files.test.ts` — "readJsonFile treats missing or torn files as no data,
+not errors", "readJsonFile treats a valid JSON non-object as no data", "writeJsonAtomic replaces
+the target atomically, honoring the caller's newline convention" and "writeJsonAtomic rethrows a
+failed write, removes its tmp, and leaves the target untouched".
+
+### INV-AF5: both backends' usage blocks carry totalTokens as the sum of the four counts
+
+**Guarantee.** `canonicalUsageBlock` builds the usage block with `totalTokens` equal to input plus
+cache read plus cache write plus output, and the cost wrapped as `{ total }`, so the two stream
+translators cannot drift apart on the sum or the envelope.
+
+**Binds.** `src/files/json-object.ts` (`canonicalUsageBlock`); consumers
+`src/agent/claude/claude-stream.ts` and `src/agent/opencode/opencode-stream.ts`.
+
+**Pinned by.** `test/json-object.test.ts` — "canonicalUsageBlock sums the four counts into
+totalTokens and wraps the cost".
