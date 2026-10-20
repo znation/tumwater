@@ -1910,6 +1910,20 @@ test("handleBacklogCancel adds workingNote only when a role holds the entry's cl
   assert.ok(!("workingNote" in (free.data as object)));
 });
 
+test("handleBacklogCancel adds releasedNote naming the planned part that required the cancelled one", async () => {
+  const root = tmpdir();
+  const p1 = "S, part 1/2: a (planned 2026-10-01)";
+  const p2 = "S, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)";
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: `### ${p1}\n\nbody\n\n### ${p2}\n\nbody\n\n### p3\n\nbody` }, { heading: "## Done" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogCancel(fakeReq(JSON.stringify(body)), res, root));
+  const plain = await serve({ kind: "plan", position: 2, title: "p3" });
+  assert.ok(!("releasedNote" in (plain.data as object)));
+  const required = await serve({ kind: "plan", position: 1, title: p1 });
+  const note = String((required.data as { releasedNote?: string }).releasedNote);
+  assert.match(note, /plan #1 required it/);
+  assert.ok(note.includes("S, part 2/2: b"));
+});
+
 test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing", async () => {
   const root = tmpdir();
   const note = "**Refused 2026-10-16 by feature: x**";

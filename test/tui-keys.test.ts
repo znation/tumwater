@@ -385,6 +385,19 @@ test("backlog Ctrl+X cancel of a claimed plan flashes who is still working on it
   assert.match(keys.state().flash ?? "", /cancelled plan #1: .*is still working on it/);
 });
 
+test("backlog Ctrl+X cancel of a required series part flashes the parts that no longer wait", () => {
+  const { root, keys, down, ctrlX } = backlogCancelRig();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "## Planned\n\n### S, part 1/2: a (planned 2026-10-02 by test)\n\nbody\n\n### S, part 2/2: b (planned 2026-10-02 by test; requires part 1/2 landed)\n\nbody\n",
+  );
+  keys.syncSnapshot(0, false, []);
+  down(1);
+  ctrlX();
+  ctrlX();
+  assert.match(keys.state().flash ?? "", /required it/);
+});
+
 test("backlog Ctrl+X arms, then a second Ctrl+X cancels the selected bug", () => {
   const { keys, down, ctrlX, read, plans, bugs } = backlogCancelRig();
   down(4); // plan 1, plan 2, bug 1, bug 2

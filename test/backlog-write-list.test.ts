@@ -382,6 +382,26 @@ test("plan --cancel --json carries workingOn for a claimed entry", async () => {
   assert.equal(JSON.parse(r.stdout).workingOn, "feature-2");
 });
 
+test("plan --cancel names the planned parts that required the cancelled part", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cancel released note");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const json = await cli(repo, "plan", "--cancel", "1", "--json");
+  const released = JSON.parse(json.stdout).released;
+  assert.equal(released.length, 1);
+  assert.equal(released[0].position, 1);
+  assert.match(released[0].title, /^Export series, part 2\/2: add import/);
+
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const prose = await cli(repo, "plan", "--cancel", "1");
+  assert.match(prose.stdout, /plan #1 required it/);
+  assert.match(prose.stdout, /part 2\/2/);
+
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const dependent = await cli(repo, "plan", "--cancel", "2", "--json");
+  assert.ok(!("released" in JSON.parse(dependent.stdout)), dependent.stdout);
+});
+
 test("plan --list shows a blocked series as one line with its positions", async () => {
   const repo = makeRepo();
   fs.writeFileSync(

@@ -20,7 +20,9 @@ import {
   refusedEntryTitles,
   waitingNote,
   planDependencyProblems,
+  plansReleasedBy,
   plansWaitingOn,
+  releasedPartsNote,
   requiredParts,
   seriesPart,
   waitingPartRanges,
@@ -559,4 +561,32 @@ test("refusedEntryTitles lists the refused plans then the refused bugs, and [] w
     ].join("\n"),
   );
   assert.deepEqual(refusedEntryTitles(dir), ["Dead plan (planned 2026-10-03)", "Dead bug (reported 2026-10-02)"]);
+});
+
+test("plansReleasedBy lists only direct dependents of a cancelled part, by post-cancel position", () => {
+  const entry = (title: string): BacklogEntry => ({ title, body: "" } as BacklogEntry);
+  const afterCancel = [
+    "Other (planned 2026-10-01)",
+    "S, part 2/3: b (planned 2026-10-02; requires part 1/3 landed)",
+    "S, part 3/3: c (planned 2026-10-02; requires part 2/3 landed)",
+  ].map(entry);
+  assert.deepEqual(plansReleasedBy(afterCancel, "S, part 1/3: a (planned 2026-10-01)"), [
+    { position: 2, title: "S, part 2/3: b" },
+  ]);
+  assert.deepEqual(plansReleasedBy(afterCancel, "Not a series (planned 2026-10-01)"), []);
+  const stillCarried = [...afterCancel, entry("S, part 1/3: a again (planned 2026-10-03)")];
+  assert.deepEqual(plansReleasedBy(stillCarried, "S, part 1/3: a (planned 2026-10-01)"), []);
+});
+
+test("releasedPartsNote words none, one and several released parts", () => {
+  const tail = " — cancel what cannot stand alone with `tumwater plan --cancel <n>`";
+  assert.equal(releasedPartsNote([]), "");
+  assert.equal(
+    releasedPartsNote([{ position: 4, title: "A" }]),
+    `plan #4 required it and no longer waits on it: A${tail}`,
+  );
+  assert.equal(
+    releasedPartsNote([{ position: 4, title: "A" }, { position: 6, title: "B" }]),
+    `plans #4, #6 required it and no longer wait on them: A; B${tail}`,
+  );
 });

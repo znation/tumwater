@@ -147,7 +147,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/backlog-cancel", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
-          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "")
+          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d) + (d.workingNote ? " — " + d.workingNote : "") + (d.releasedNote ? " — " + d.releasedNote : "")
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-release") {

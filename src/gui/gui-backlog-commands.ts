@@ -8,7 +8,8 @@
  * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
-import { cancelledClaimNote, entryKey } from "../backlog/backlog-eligibility.js";
+import { cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote } from "../backlog/backlog-eligibility.js";
+import { plannedPlanEntries } from "../backlog/backlog.js";
 import { allLiveClaims } from "../runner/runner-state.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
@@ -151,7 +152,8 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
  * `tumwater plan|bug --cancel <n>` through the non-exiting tryCancelEntry. Body `{"kind":
  * "bug"|"plan", "position": <1-based>, "title": "<heading>"}`; a missing position or a
  * different heading there answers 200 { ok: true, status: "gone" } (the list moved since the
- * poll). No wake and no inbox prompt: removing work must not wake a role. */
+ * poll). A cancelled plan that planned parts required adds `releasedNote` naming them, as
+ * `plan --cancel` prints. No wake and no inbox prompt: removing work must not wake a role. */
 export async function handleBacklogCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
@@ -165,8 +167,9 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   if (outcome === null) return;
   if (outcome.status === "cancelled") {
     const workingNote = cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null);
+    const releasedNote = kind === "plan" ? releasedPartsNote(plansReleasedBy(plannedPlanEntries(root), outcome.title)) : "";
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed, ...(workingNote === "" ? {} : { workingNote }) });
+    sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed, ...(workingNote === "" ? {} : { workingNote }), ...(releasedNote === "" ? {} : { releasedNote }) });
   } else {
     okGone(res);
   }

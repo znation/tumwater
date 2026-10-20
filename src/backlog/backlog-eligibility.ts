@@ -211,6 +211,35 @@ export function plannedPartKeys(planned: readonly BacklogEntry[]): Set<string> {
   return keys;
 }
 
+/** The planned parts a cancel released: the 1-based positions and stamp-free titles of the entries
+ * in `planned` (read after the cancel) whose requiredParts name the cancelled title's part, by
+ * partKey. Only direct dependents count — a part further down the chain is still held by its own
+ * prerequisite. [] when the title has no series part, or when another planned entry still carries
+ * the same part key, because the dependents are then still held. */
+export function plansReleasedBy(planned: readonly BacklogEntry[], cancelledTitle: string): { position: number; title: string }[] {
+  const own = seriesPart(cancelledTitle);
+  if (own === null) return [];
+  const key = partKey(own.series, own.part);
+  if (plannedPartKeys(planned).has(key)) return [];
+  const released: { position: number; title: string }[] = [];
+  planned.forEach((entry, i) => {
+    if (requiredParts(entry.title).some((ref) => partKey(ref.series, ref.part) === key)) {
+      released.push({ position: i + 1, title: stripEntryStamp(entry.title) });
+    }
+  });
+  return released;
+}
+
+/** The note a plan cancel adds for plansReleasedBy's result: "" for none, else the positions and
+ * titles of the parts that no longer wait, and the command that cancels one. */
+export function releasedPartsNote(parts: readonly { position: number; title: string }[]): string {
+  if (parts.length === 0) return "";
+  const tail = " — cancel what cannot stand alone with `tumwater plan --cancel <n>`";
+  const titles = parts.map((p) => p.title).join("; ");
+  if (parts.length === 1) return `plan #${parts[0]!.position} required it and no longer waits on it: ${titles}${tail}`;
+  return `plans ${parts.map((p) => `#${p.position}`).join(", ")} required it and no longer wait on them: ${titles}${tail}`;
+}
+
 /** The doctor's count of a refusal's stranded dependents: the ascending indexes into `planned` of
  * the entries that require `planned[index]`'s own part, directly or through a chain of parts.
  * Matching is by partKey, as entryHoldAgainst matches. [] when that entry has no series part. A

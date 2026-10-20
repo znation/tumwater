@@ -22,7 +22,7 @@ import {
   filingDate,
 } from "./backlog.js";
 import { allLiveClaims } from "../runner/runner-state.js";
-import { backlogHolds, backlogInProgress, cancelledClaimNote, entryKey, holdMark, inProgressMark } from "./backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, cancelledClaimNote, entryKey, holdMark, inProgressMark, plansReleasedBy, releasedPartsNote } from "./backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -212,10 +212,12 @@ export async function cancelAndAnnounce(
   const removed = cancel(position);
   const workingOn = claims.get(entryKey(removed.title)) ?? null;
   warnIfUncommitted(await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`)), removed.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-  if (json) sayJson({ file: removed.file, title: removed.title, ...(workingOn === null ? {} : { workingOn }) });
+  const released = command === "plan" ? plansReleasedBy(plannedPlanEntries(root), removed.title) : [];
+  if (json) sayJson({ file: removed.file, title: removed.title, ...(workingOn === null ? {} : { workingOn }), ...(released.length === 0 ? {} : { released }) });
   else {
     say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
     if (workingOn !== null) say(cancelledClaimNote(workingOn));
+    if (released.length > 0) say(releasedPartsNote(released));
   }
 }
 

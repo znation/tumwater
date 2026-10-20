@@ -1,6 +1,7 @@
 // vocabulary: plain
 import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
-import { cancelledClaimNote, entryKey } from "../../backlog/backlog-eligibility.js";
+import { cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-eligibility.js";
+import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state.js";
 import { requestWake } from "../../operator/operator-intent.js";
 import { moveEntrySelection, pageMarkdownBody, visibleBacklogIndexes, type labeledBacklogEntries } from "./tui-backlog.js";
@@ -84,10 +85,12 @@ export function createBacklogPane(
     try {
       const claims = allLiveClaims(session.root);
       const outcome = tryCancelEntry(session.root, kind, position, armedTitle);
-      const note = outcome.status === "cancelled" ? cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null) : "";
+      const claimNote = outcome.status === "cancelled" ? cancelledClaimNote(claims.get(entryKey(outcome.title)) ?? null) : "";
       if (outcome.status === "cancelled") {
         session.commitBacklogEdit(outcome.file, `Cancel ${kind}: ${outcome.title}`);
       }
+      const releasedNote = outcome.status === "cancelled" && kind === "plan" ? releasedPartsNote(plansReleasedBy(plannedPlanEntries(session.root), outcome.title)) : "";
+      const note = [claimNote, releasedNote].filter((n) => n !== "").join(" — ");
       selectedEntry = null;
       entryScroll = 0;
       session.flashMessage(
