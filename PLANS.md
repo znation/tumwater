@@ -324,4 +324,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/invariants-doc.test.ts and test/text.test.ts pass.
 - `npm run test:gate` passes.
 
+### docs/invariants.md pins the shared Markdown table and numbered-list builders, and `wake --list` numbers through `numberedList` (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches src/text/markdown.ts doc comments, src/operator/operator-intent.ts `renderWakeList`, docs/invariants.md's cross-surface section)
+
+**Goal.** src/text/markdown.ts says it is "the one place" a Markdown table is joined and "the one place an ordered list is numbered". No invariant states that, so a fixer touching the failure digest, the usage report or the review prompts cannot read it. The second claim is also false today: `renderWakeList` in src/operator/operator-intent.ts (`tumwater wake --list`) builds its own `.map((w, i) => \`${i + 1}. …\`).join("\n")`. Move that site onto `numberedList`, then add two entries to the "Cross-surface agreement: one fact, one computation" section. They use the section's own prefix (`INV-A5`, `INV-A6`), so they pass the guard's current one-letter `ID_RE` and do not wait on the two-letter-prefix plan.
+
+**Approach.**
+- src/operator/operator-intent.ts: import `numberedList` from `../text/markdown.js`. Make the body of `renderWakeList` `return numberedList(wakes.map((w) => \`in ${humanUntil(w.atMs, now)} — ${w.roles.join(", ")}\`), noWakePending(roles));`, dropping the early return. `noWakePending` is a pure string builder, so computing it eagerly changes nothing. The output stays byte-for-byte the same, and test/operator-intent.test.ts "renderWakeList numbers wakes and words the empty case" must pass unedited.
+- src/text/markdown.ts: in `numberedList`'s doc comment, add `tumwater wake --list`'s wake lines (operator/operator-intent.ts `renderWakeList`) to the list of sharers. Change no code there.
+- Leave alone src/merge/merge-queue-render.ts's indented `  ${i + 1}. …` lines, which are pushed one per entry into a larger block with a two-space indent, and test/review-verdict.test.ts's fixture. Those are not the `numberedList` shape.
+- docs/invariants.md, append after `INV-A4` in "Cross-surface agreement" and match its entry format (**Guarantee.** / **Binds.** / **Pinned by.**):
+  - `### INV-A5: a Markdown table's separator always matches its header`. Guarantee: `markdownTable` derives the separator row from the header, one `---` cell per header cell (`---:` where `align` says `right`, left past the end of `align`), and renders cells verbatim. So the failure digest's tables and the usage report's day table can never emit a separator that collapses the table into plain text. Binds: `src/text/markdown.ts` (`markdownTable`), `src/failure/failure-render.ts`, `src/report/report-render.ts`. Pinned by: `test/markdown.test.ts`, "markdownTable's separator always carries as many cells as the header" and "markdownTable defaults every column to left alignment".
+  - `### INV-A6: every numbered list numbers through one helper`. Guarantee: `numberedList` numbers items from 1 as `N. item`, one per line, and returns its `empty` argument verbatim for no items. The review prompt's prior objections and findings, the rejected/revision notes, `tumwater questions`' list and `wake --list` all build through it. Binds: `src/text/markdown.ts` (`numberedList`), `src/prompt/gate-prompts.ts`, `src/prompt/gate-notes.ts`, `src/backlog/question-answer.ts`, `src/operator/operator-intent.ts` (`renderWakeList`). Pinned by: `test/markdown.test.ts`, "numberedList numbers items from 1, one per line" and "numberedList returns the empty fallback verbatim for no items", plus `test/operator-intent.test.ts`, "renderWakeList numbers wakes and words the empty case".
+  - Before writing, run `grep -n '^### INV-A' docs/invariants.md` to confirm `INV-A5`/`INV-A6` are still free, and take the next free numbers if not. Re-check each Binds file with `grep -n 'markdownTable\|numberedList'`, and drop any that no longer calls the helper.
+
+**Files touched.** src/operator/operator-intent.ts, src/text/markdown.ts (doc comment only), docs/invariants.md.
+
+**Acceptance criteria.**
+- `grep -rn 'i + 1}\. ' src` lists only src/text/markdown.ts (the helper and its doc comment) and src/merge/merge-queue-render.ts.
+- `renderWakeList` calls `numberedList`. "renderWakeList numbers wakes and words the empty case" passes with no edit to its assertions.
+- docs/invariants.md has the two new entries under "Cross-surface agreement", and "this repo's docs/invariants.md is honest" (test/invariants-doc.test.ts) passes. Each quoted test title must match a test in the cited file.
+- `npm run test:gate` passes.
+
 ## Done
