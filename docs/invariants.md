@@ -3884,3 +3884,35 @@ failed queue write warns and leaves the kept pin to the role's leftover recovery
 **Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues
 the change", "a main_red re-queue whose queue write fails warns instead of throwing" and "a main_red
 pin is re-queued once main's head moves, and not before".
+
+## Pending reverts: a hand-back from reverted.json never throws and never hands a commit out twice
+
+### INV-BS1: a torn reverted.json entry is dropped
+
+**Guarantee.** A reverted.json entry that is not an object with a string commit, a string role and an
+array of reasons is dropped, and the reasons keep only their strings.
+
+**Binds.** `src/merge/merge-drain.ts` (`pendingReverts`).
+
+**Pinned by.** `test/main-revert.test.ts` — "a torn reverted.json entry is dropped and the well-formed
+one is still handed back".
+
+### INV-BS2: assigning pending reverts never throws
+
+**Guarantee.** `assignPendingReverts` never throws. A failed state save warns under the taker's id and
+the entry still counts as assigned, and a failed rewrite warns under `tumwater`.
+
+**Binds.** `src/merge/merge-drain.ts` (`handBackRevert`, `assignPendingReverts`).
+
+**Pinned by.** `test/main-revert.test.ts` — "a hand-back whose state save fails warns and still counts
+as assigned", "a failed reverted.json rewrite warns, and the next poll does not hand the commit out
+twice" and "with no free runner the revision waits in reverted.json and is assigned once one frees".
+
+### INV-BS3: a commit already handed back is never handed out again
+
+**Guarantee.** A commit some runner's `lastReview` records as reverted is never handed out again.
+
+**Binds.** `src/merge/merge-drain.ts` (`assignPendingReverts`).
+
+**Pinned by.** `test/main-revert.test.ts` — "a failed reverted.json rewrite warns, and the next poll
+does not hand the commit out twice".

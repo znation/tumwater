@@ -8,6 +8,7 @@ import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { isJsonObject, stringList } from "../files/json-object.js";
 import { recordRevertedChange } from "./merge-core.js";
 import { revertedPendingPath } from "../paths.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
@@ -93,7 +94,12 @@ async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert)
   const taker = own && runnerIsFree(queued, own) ? own : candidates.find((r) => runnerIsFree(queued, r));
   if (taker === undefined) return false;
   await recordRevertedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
-  saveRunnerState(ctx.root, taker.state);
+  try {
+    saveRunnerState(ctx.root, taker.state);
+  } catch (err) {
+    // The in-memory state holds the revision; the runner's next successful save writes it.
+    warnEventBestEffort(ctx.root, taker.role, `could not save the reverted change's revision: ${errorMessage(err)}`);
+  }
   return true;
 }
 
@@ -107,9 +113,17 @@ async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Prom
   writeJsonAtomic(file, { reverted: [...pendingReverts(ctx.root), pending] });
 }
 
+/** The parked reverted changes. A torn or hand-edited entry (not an object with a string commit, a
+ * string role and an array of reasons) is dropped, and the next rewrite leaves it out. */
 function pendingReverts(root: string): PendingRevert[] {
-  const saved = readJsonFile<{ reverted?: PendingRevert[] }>(revertedPendingPath(root));
-  return Array.isArray(saved?.reverted) ? saved.reverted : [];
+  const saved = readJsonFile<{ reverted?: unknown }>(revertedPendingPath(root));
+  if (!Array.isArray(saved?.reverted)) return [];
+  const pending: PendingRevert[] = [];
+  for (const e of saved.reverted as unknown[]) {
+    if (!isJsonObject(e) || typeof e.commit !== "string" || typeof e.role !== "string" || !Array.isArray(e.reasons)) continue;
+    pending.push({ commit: e.commit, role: e.role, reasons: stringList(e.reasons) });
+  }
+  return pending;
 }
 
 /** A rejected commit whose revert failed stays on main: its role gets the reviewer's reasons in its
@@ -125,15 +139,22 @@ function sendReviewToRole(ctx: MergePipelineContext, c: MainCulprit, reason: str
 }
 
 /** Each poll: assign the parked reverted changes to runners that have freed up, dropping each
- * one once assigned. */
+ * one once assigned. It never throws, because the poll loop calls it with no catch; the
+ * already-assigned check keeps a retry after a failed rewrite from handing a commit out twice. */
 export async function assignPendingReverts(ctx: MergePipelineContext): Promise<void> {
   const all = pendingReverts(ctx.root);
   if (all.length === 0) return;
   const left: PendingRevert[] = [];
   for (const pending of all) {
-    if (!(await handBackRevert(ctx, pending))) left.push(pending);
+    const assigned = ctx.runners.some((r) => r.state.lastReview?.verdict === "reverted" && r.state.lastReview.head === pending.commit);
+    if (!assigned && !(await handBackRevert(ctx, pending))) left.push(pending);
   }
-  if (left.length !== all.length) writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: left });
+  if (left.length === all.length) return;
+  try {
+    writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: left });
+  } catch (err) {
+    warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `could not rewrite the pending reverted changes: ${errorMessage(err)}`);
+  }
 }
 
 /** Settle every approved change `tumwater abort --role` flagged (consumeAbortRequests over

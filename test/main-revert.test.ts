@@ -9,12 +9,13 @@ import { assignPendingReverts, drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
-import { headSha, sh } from "./fixtures/repo-fixtures.js";
+import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
-import { revertedPendingPath, rejectedRefName } from "../src/paths.js";
+import { revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
+import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
@@ -165,4 +166,66 @@ test("a standing reverted verdict is cleared like a rejection once the revision 
   s.lastReview = { verdict: "reverted", reasons: ["x"], head: "abc", at: 1 };
   clearSupersededRejection(s);
   assert.equal(s.lastReview, undefined);
+});
+
+function pendingRoot(entries: unknown[]): { root: string; ctxOf: (runners: RoleRunner[]) => MergePipelineContext } {
+  const root = tmpdir();
+  fs.mkdirSync(path.dirname(revertedPendingPath(root)), { recursive: true });
+  fs.writeFileSync(revertedPendingPath(root), JSON.stringify({ reverted: entries }));
+  const ctxOf = (runners: RoleRunner[]) => ({ root, mainBranch: "main", runners }) as unknown as MergePipelineContext;
+  return { root, ctxOf };
+}
+
+const SHA = "a".repeat(40);
+
+test("a torn reverted.json entry is dropped and the well-formed one is still handed back", async () => {
+  const { root, ctxOf } = pendingRoot([
+    null,
+    { commit: 7 },
+    { commit: SHA, role: "improve", reasons: "x" },
+    { commit: SHA, role: "improve", reasons: ["first", 3] },
+  ]);
+  const runner = fakeRunner("improve");
+  await assignPendingReverts(ctxOf([runner]));
+  assert.equal(runner.state.revision?.sha, SHA);
+  assert.deepEqual(runner.state.lastReview?.reasons, ["first"]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+});
+
+test("a hand-back whose state save fails warns and still counts as assigned", async () => {
+  const { root, ctxOf } = pendingRoot([{ commit: SHA, role: "improve", reasons: ["r"] }]);
+  const runner = fakeRunner("improve");
+  const undo = failRenameSyncOn(statePath(root, "improve"), "state write refused");
+  try {
+    await assignPendingReverts(ctxOf([runner]));
+  } finally {
+    undo();
+  }
+  assert.equal(runner.state.revision?.sha, SHA);
+  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+  const warnings = eventsOfType(root, "warning");
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]?.source, "improve");
+  assert.match(String(warnings[0]?.message), /state write refused/);
+});
+
+test("a failed reverted.json rewrite warns, and the next poll does not hand the commit out twice", async () => {
+  const { root, ctxOf } = pendingRoot([{ commit: SHA, role: "feature", reasons: ["r"] }]);
+  const first = fakeRunner("feature");
+  const second = fakeRunner("feature-2");
+  const ctx = ctxOf([first, second]);
+  const undo = patchFsMethod("renameSync", (orig) => (a, b) => {
+    if (b === revertedPendingPath(root)) throw new Error("pending write refused");
+    return orig(a, b);
+  });
+  try {
+    await assignPendingReverts(ctx);
+  } finally {
+    undo();
+  }
+  assert.equal(first.state.revision?.sha, SHA);
+  assert.match(String(eventsOfType(root, "warning").at(-1)?.message), /pending write refused/);
+  await assignPendingReverts(ctx);
+  assert.equal(second.state.revision, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
 });
