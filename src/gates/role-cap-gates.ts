@@ -1,5 +1,5 @@
 /** The per-role daily cost cap (PLANS.md 2026-09-30, part 1/2): a role whose local-day spend
- * has reached its own `maxDailyCostUsdPerRole` entry starts no new ticks until the next local
+ * has reached its own `maxDailyCostUsdPerRole` entry starts no new runs until the next local
  * day or a live config edit — so one runaway role cannot eat the team-wide cap and starve
  * every other role for the rest of the day. The team budget gate (src/gates/budget-gates.ts)
  * bounds the SUM; this bounds each member. The stateless verdict follows that gate's own rule

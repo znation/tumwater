@@ -94,7 +94,7 @@ function fakeRunner(
   return runner as unknown as RoleRunner;
 }
 
-test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the primary", () => {
+test("pollTeamGates: a budget reopen hands in-flight fallback runs back to the primary", () => {
   const root = tmpdir("gate-polls-budget-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
@@ -106,7 +106,7 @@ test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the 
   const directorState = freshRunnerState(DIRECTOR_ROLE);
   directorState.running = true;
   const runners = [
-    // In flight on the fallback pair: exactly the tick a reopen hands back.
+    // In flight on the fallback pair: exactly the run a reopen hands back.
     fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks),
     // In flight on the primary: a reopen must not touch it.
     fakeRunner("docs", docsState, { provider: "paid", model: "gpt-x" }, handbacks),
@@ -127,7 +127,7 @@ test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the 
   };
 
   // Poll 1: the cap is reached — the fallback engages, roles are assigned the
-  // derived free-pair view, the director keeps the live (paid) config, and no tick is
+  // derived free-pair view, the director keeps the live (paid) config, and no run is
   // disturbed while the gate holds.
   const engaged = pollTeamGates(states, ctx);
   assert.equal(engaged.gate, "fallback");
@@ -139,17 +139,17 @@ test("pollTeamGates: a budget reopen hands in-flight fallback ticks back to the 
   assert.deepEqual(handbacks, []);
 
   // Poll 2: the cap is raised (the live reload) — the gate reopens and the orchestrator
-  // hands the in-flight fallback ticks back to the primary, resumably.
+  // hands the in-flight fallback runs back to the primary, resumably.
   const raised = { ...config, maxDailyCostUsd: 100 };
   const reopened = pollTeamGates(states, { ...ctx, liveConfig: raised });
   assert.equal(reopened.gate, "open");
   assert.equal(modelOf(1), "gpt-x", "the primary model is back after the reopen");
-  assert.deepEqual(handbacks, ["feature"], "only the tick on the fallback pair is handed back");
+  assert.deepEqual(handbacks, ["feature"], "only the run on the fallback pair is handed back");
 
   const events = readEvents(root, 100);
   assert.equal(events.filter((e) => e.type === "budget_resumed").length, 1);
   const handoff = events.filter((e) => e.type === "budget_handback");
-  assert.equal(handoff.length, 1, "one event names every handed-back tick");
+  assert.equal(handoff.length, 1, "one event names every handed-back run");
   assert.equal(handoff[0]!.source, "tumwater");
   assert.deepEqual(handoff[0]!.roles, ["feature"]);
   assert.equal(handoff[0]!.provider, "free");
@@ -327,7 +327,7 @@ test("pollTeamGates: a cap reopen while the claude window is still used up hands
   assert.equal(readEvents(root, 100).filter((e) => e.type === "budget_handback").length, 0);
 });
 
-// The per-provider failure hold keys on the provider each role's NEXT tick will run on
+// The per-provider failure hold keys on the provider each role's NEXT run will run on
 // (PLANS.md "Model failure fallback, part 1/2"): a role mid-episode reports its fallback
 // pair, so a storm on that pair forms its own hold while the abandoned primary stays clear —
 // and a healthy role still on the primary is not gated by the fallback hold.
@@ -454,7 +454,7 @@ test("pollTeamGates: budgetPausedRoles holds the tiers that resolved to pause, a
   const first = pollTeamGates(states, ctx);
   assert.equal(first.gate, "fallback", "review off: the strong pause holds only its own roles");
   assert.ok(first.budgetPausedRoles.has("plan"), "the strong-tier role is held");
-  assert.ok(!first.budgetPausedRoles.has("docs"), "the small-tier role borrows and keeps ticking");
+  assert.ok(!first.budgetPausedRoles.has("docs"), "the small-tier role borrows and keeps running");
   assert.ok(!first.budgetPausedRoles.has(DIRECTOR_ROLE), "the director is exempt");
 
   // Under the cap: nobody is held.

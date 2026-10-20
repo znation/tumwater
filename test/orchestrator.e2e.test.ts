@@ -648,7 +648,7 @@ test("mid-run tumwater.json edits steer the team; a broken file keeps last-known
   // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
   // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
   // pinned in its own test below. The open bug keeps that premise true: with an empty BUGS.md
-  // `## Open` bugfix defers like a maintenance role (deferTick), and a deferred run would
+  // `## Open` bugfix defers like a maintenance role (deferRun), and a deferred run would
   // starve this test of the pi runs it asserts on.
   const repo = await makeFastRepo("live reload test", ["bugfix"], "good-model");
   seedOpenBug(repo);

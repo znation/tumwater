@@ -111,7 +111,7 @@ test("claimReleaseReason releases left, ineligible, disabled-idle, paused-idle a
   );
 });
 
-test("an idle extra with a revision, a queued merge, a resume or a running tick keeps its claim", () => {
+test("an idle extra with a revision, a queued merge, a resume or a run in progress keeps its claim", () => {
   const ctx = {
     listedKeys: new Set(["plan a"]),
     eligibleKeys: new Set(["plan a"]),
@@ -243,7 +243,7 @@ test("workReserveCount drops an idle work role whose provider is full (per-provi
   assert.equal(workReserveCount(repo, [idle], opts), 1);
   assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => true }), 1);
   // A full (or capped-and-full) provider cannot use the reserved permit, so the role withholds
-  // nothing — a maintenance tick on another provider may take the slot instead.
+  // nothing — a maintenance run on another provider may take the slot instead.
   assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => false }), 0);
 });
 

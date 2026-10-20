@@ -20,7 +20,7 @@ export type { Role };
 export const DIRECTOR_ROLE = "director";
 
 /** The bugfix role's id. It is the one work role that also defers like a maintenance role while its
- * backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. With open
+ * backlog (BUGS.md `## Open`) is empty — see deferRun in src/scheduling/scheduling.ts. With open
  * bugs it never defers, but pollRunnerReasons stands it down while all of them are held. */
 export const BUGFIX_ROLE = "bugfix";
 
@@ -69,7 +69,7 @@ export const DEFERRABLE_ROLES: ReadonlySet<string> = new Set([
 /** Does this role's recent yield scale its min-tick gap (yield-scaled clocks, PLANS.md)?
  * The search/maintenance roles — the deferrable ten, the observers, and bugfix on its
  * empty-backlog search duty (it is the one work role that defers like maintenance, so its
- * idle clock stretches like one too; the open-bugs state is deferTick's concern, not the
+ * idle clock stretches like one too; the open-bugs state is deferRun's concern, not the
  * clock's: ten consecutive empty ticks are empty-yield evidence however many bugs are
  * recorded). Never the work roles whose ticks follow demand — feature, plan, director — a
  * role with a queued prompt or a fresh wake bypasses the gap entirely (isEligible), and the

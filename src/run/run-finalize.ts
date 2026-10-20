@@ -5,7 +5,7 @@ import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyRunOutcome } from "./run-apply.js";
-import { restoreMidTickWake } from "../scheduling/backoff.js";
+import { restoreMidRunWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
 import type { RunOutcome, RunResult } from "./run-outcome.js";
 import type { RunUsage } from "./run-usage.js";
@@ -99,7 +99,7 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // backoff out), so a plain `tumwater wake --role` with an empty queue would silently wait
   // out the whole interval (BUGS.md 2026-09-25). Re-apply it here — exactly like a wake
   // arriving one poll after the run ended.
-  restoreMidTickWake(s);
+  restoreMidRunWake(s);
   saveRunnerState(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every role failing identically
   // looked like a quiet team). applyRunOutcome increments the streak on error-class

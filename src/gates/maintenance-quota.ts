@@ -2,7 +2,7 @@
  * setting, and the gate behind the maintenance allowance — code-maintenance merges in a rolling
  * 24 h window are capped at `maintenancePerWorkMerge × work merges + MAINTENANCE_DAILY_FLOOR`, and
  * `pollMaintenanceQuotaGate` puts that verdict in front of the scheduler so the enabled maintenance
- * roles stop starting new ticks past it.
+ * roles stop starting new runs past it.
  *
  * The window counts `merged` events by `commitTier` (src/roles/roles.ts): feature/bugfix/director
  * are the work count, the code-maintenance roles plus readme the maintenance count, and every other
@@ -133,8 +133,8 @@ function seed(
   counter.ino = stat?.ino ?? 0;
 }
 
-/** One enabled role as the quota gate reads it: whether a maintenance-tier tick is in flight
- * (running a tick or holding a queued merge). Only the two in-flight facts matter; the tier is
+/** One enabled role as the quota gate reads it: whether a maintenance-tier run is in flight
+ * (mid-run or holding a queued merge). Only the two in-flight facts matter; the tier is
  * derived from the role here, so the caller passes every runner unchanged. */
 interface MaintenanceQuotaObservation {
   role: string;

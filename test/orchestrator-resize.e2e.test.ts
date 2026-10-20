@@ -46,7 +46,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   saveConfig(repo, base);
   // bugfix is one of the three fast-running roles this test needs to keep running between
   // merges; with an empty BUGS.md `## Open` it defers like a maintenance role instead
-  // (deferTick), so the open bug keeps it on the every-wake schedule the test was written for.
+  // (deferRun), so the open bug keeps it on the every-wake schedule the test was written for.
   seedOpenBug(repo);
   const runDir = tmpdir();
   const restore = concurrencyRecordingFakePi(runDir);

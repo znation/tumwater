@@ -204,7 +204,7 @@ test("a plain wake consumed mid-run survives the run's end-save", async () => {
   // with an EMPTY queue, consumed while the target's run is still in progress. r.wake() stamps the
   // shared in-memory state, but the run's end-save re-stamps lastRunEndedAt past wokenAt
   // and schedules a fresh gap out — the demand used to vanish and the role slept out its
-  // whole hour. restoreMidTickWake re-applies it at the end-save, so the next run follows
+  // whole hour. restoreMidRunWake re-applies it at the end-save, so the next run follows
   // within a poll, exactly like a wake arriving after the run ended.
   const repo = await makeFastRepo("mid-run wake test", ["feature"]);
   const cfg = loadConfig(repo);

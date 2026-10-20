@@ -16,7 +16,7 @@ import type { pollTeamGates, TeamGateStates } from "../gates/gate-polls.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
-import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
+import { deferRunReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, configuredInstances, instanceIndex, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
@@ -394,8 +394,8 @@ export async function pollRunnerReasons(
     // work has merged to react to — nextRunAt is left untouched, so it re-checks every poll
     // until the backlog drains and qualifying work merges. Resume wakes precede this check in
     // isEligible, the director's "inbox" reason skips it, work roles are not in
-    // DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferTick), and
-    // a fresh operator wake overrides it (deferTick's woken check — an explicit "try again
+    // DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferRun), and
+    // a fresh operator wake overrides it (deferRun's woken check — an explicit "try again
     // now" is a demand, not idle maintenance). Sitting before reasons.set also keeps a
     // deferred role out of the wake-event pass below.
     if (reason === "scheduled" || reason === "main moved") {
@@ -410,7 +410,7 @@ export async function pollRunnerReasons(
         (!workBacklogOpen || searchBugfix) && s.lastMainHead !== ""
           ? await workMergedSince.since(s.lastMainHead, mainHead)
           : true;
-      const deferral: DeferReason | null = deferTickReason(
+      const deferral: DeferReason | null = deferRunReason(
         s,
         runner.role,
         merged,
@@ -572,7 +572,7 @@ interface DeferralInputs {
  * stay deferred — queued feature/bugfix work outranks them regardless of what merged.
  * Stat-cached reads (backlog.ts): one stat per file per poll while the files are unchanged.
  * bugfix is not a maintenance role, but while BUGS.md `## Open` is empty it defers like
- * one (deferTick) — openBugsNow is that emptiness, read once here and reused for both
+ * one (deferRun) — openBugsNow is that emptiness, read once here and reused for both
  * predicates. Also the demoted fallback's half-open window (part 5c/8): the pair whose probe
  * is due, and the roles whose model tier WOULD run on that pair absent the demotion (the
  * price-based resolution — the serving resolution has already dropped the pair, which is

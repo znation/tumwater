@@ -1,11 +1,11 @@
-/** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose ticks keep failing
+/** The error-streak circuit breaker (PLANS.md 2026-09-30): a role whose runs keep failing
  * consecutively is warned at ERROR_STREAK_WARN (src/run/run-apply.ts) and named by the team-wide
  * storm alarms (src/team/error-storm.ts, src/team/failure-spread.ts), but both only talk — the
- * role keeps ticking on the error ladder's 600 s max backoff forever, burning a model slot and
- * spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed ticks this gate
+ * role keeps running on the error ladder's 600 s max backoff forever, burning a model slot and
+ * spend on a role that cannot succeed. Past ERROR_STREAK_BREAKER consecutive failed runs this gate
  * pauses the role through the same per-role pause marker the operator's `tumwater pause --role
  * <id>` writes (src/team/team-state.ts's pauseRole — the marker, lock, and idempotence come
- * free), so the scheduler's existing pausedRolesSet skip blocks new ticks with zero scheduler
+ * free), so the scheduler's existing pausedRolesSet skip blocks new runs with zero scheduler
  * changes. The director is NOT exempt: a failing director cannot process prompts anyway, and one
  * uniform rule needs no carve-out. `tumwater resume --role <id>` (or the dashboard's per-row
  * toggle) lifts it, as today.
@@ -25,10 +25,10 @@
  * one event is the honest report. A streak that resets to 0 through the role's own success clears
  * the ack: the next episode trips on its own fresh ERROR_STREAK_BREAKER failures.
  *
- * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing tick after
- * tick" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
+ * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing run after
+ * run" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
  * listing a breaker-paused role until the streak clears; the role cell's paused badge explains why
- * it is not ticking, and the role_streak_paused event tells the operator why. */
+ * it is not running, and the role_streak_paused event tells the operator why. */
 
 import { ERROR_STREAK_BREAKER } from "../run/run-apply.js";
 import type { RunnerState } from "../runner/runner-state.js";
@@ -79,7 +79,7 @@ export function pollStreakGate(
   for (const { role, state: s } of runners) {
     const streak = s.consecutiveErrors ?? 0;
     // Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
-    // paused (no ticks run), so recording it here is exactly the level the resume excuses.
+    // paused (no new runs start), so recording it here is exactly the level the resume excuses.
     if (runnerPaused(pausedRoles, role)) {
       state.acked.set(role, streak);
       continue;

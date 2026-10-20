@@ -1,9 +1,9 @@
-/** Tick-scheduling POLICY, split out of orchestrator.ts (the poll-loop runtime that calls it):
- * pure decisions over a runner's state and the world — when a role may tick, in what order
+/** Run-scheduling POLICY, split out of orchestrator.ts (the poll-loop runtime that calls it):
+ * pure decisions over a runner's state and the world — when a role may run, in what order
  * eligible roles take slots, and whether merged work or an open backlog defers idle
  * maintenance. No I/O, no process state: every function
  * takes plain data (a RoleRunner's observable fields, timestamps, commit subjects) so the
- * policy is unit-tested without running an orchestrator, and a future change to how ticks are
+ * policy is unit-tested without running an orchestrator, and a future change to how runs are
  * driven (e.g. the merge queue's async merge, PLANS.md 3/5) reuses these decisions instead of
  * re-deriving them inside the poll loop. Dependency direction: orchestrator → scheduling; this
  * module only reads RoleRunner through its public fields and imports no runtime from it. */
@@ -22,18 +22,18 @@ import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
 interface EligibilityOptions {
-  /** Once mode (`tumwater run --once`): the min-tick-interval clock is overridden — a
+  /** Once mode (`tumwater run --once`): the min-run-interval clock is overridden — a
    * one-shot is an explicit demand for a round now, and without this a round started
    * shortly after a daemon run does nothing because every role's clock is still fresh.
    * The clock lives in two fields that must be overridden together: the gap check
    * (`lastRunEndedAt`) and `nextRunAt`, which scheduleAtMinInterval also writes after a
-   * productive tick. Error and idle backoff share `nextRunAt` with the clock, so the
+   * productive run. Error and idle backoff share `nextRunAt` with the clock, so the
    * override keys on `backoffSeconds === 0` — only scheduleAtMinInterval leaves it at
    * zero; every backoff ladder leaves it raised. Resume gating, `s.running`, and
    * per-role enablement are kept as-is. */
   once?: boolean;
   /** PLANS.md still has planning room (planBacklogFull false): while true, the plan role's
-   * min-tick gap is ZERO rather than its per-role default (3600 s), so a productive plan tick
+   * min-run gap is ZERO rather than its per-role default (3600 s), so a productive plan run
    * reruns on the next poll and an unproductive one drops to the idle backoff. Every other
    * role's gap is unchanged. */
   planBacklogOpen?: boolean;
@@ -45,7 +45,7 @@ interface EligibilityOptions {
   leftoverPending?: boolean;
 }
 
-/** Should this role tick now? `inboxCount` is the calling role's own queued-prompt count
+/** Should this role run now? `inboxCount` is the calling role's own queued-prompt count
  * (the director's queue for the director, the per-role queue for everyone else) — see the
  * inbox check below. Exported for tests. */
 export function isEligible(
@@ -56,7 +56,7 @@ export function isEligible(
   opts: EligibilityOptions = {},
 ): { run: boolean; reason?: string } {
   const s = runner.state;
-  // A role disabled in tumwater.json stops ticking immediately (live-reload); re-enabling
+  // A role disabled in tumwater.json stops running immediately (live-reload); re-enabling
   // resumes within one poll cycle because the runner and its persisted state survive.
   if (!runnerEnabled(runner.config, runner.role)) return { run: false };
   if (s.running) return { run: false };
@@ -69,13 +69,13 @@ export function isEligible(
     return { run: false };
   }
 
-  // An interrupted tick (graceful abort or crash) leaves half-finished work in its pi
+  // An interrupted run (graceful abort or crash) leaves half-finished work in its pi
   // session and worktree: resume it promptly on restart instead of holding it for a full
-  // interval — the min gap below throttles scheduled ticks, not recovery. nextRunAt still
+  // interval — the min gap below throttles scheduled runs, not recovery. nextRunAt still
   // gates cut-off resumes, which deliberately wait one interval from their compacted context.
-  // A queued prompt never preempts this gate: a resuming tick assembles buildResumePrompt
+  // A queued prompt never preempts this gate: a resuming run assembles buildResumePrompt
   // and does not dequeue the per-role queue, so an early run would only resume sooner than
-  // its deliberate wait — the prompt is consumed by the fresh tick the inbox check below
+  // its deliberate wait — the prompt is consumed by the fresh run the inbox check below
   // makes due the moment the resume finishes.
   if (s.resumePending) {
     return now >= s.nextRunAt ? { run: true, reason: "resume" } : { run: false };
@@ -83,13 +83,13 @@ export function isEligible(
 
   // A queued per-role prompt is due on its own existence, exactly like the director's inbox:
   // no min-gap, no backoff, no scheduled clock. The queue is the durable record of the
-  // demand, so it survives every race a wake marker cannot — a wake consumed while a tick
-  // is in flight is overwritten by that tick's end-save (runner.ts's wake() contract), but the
+  // demand, so it survives every race a wake marker cannot — a wake consumed while a run
+  // is in flight is overwritten by that run's end-save (runner.ts's wake() contract), but the
   // prompt file it enqueued is not, and this check picks the demand up on the first poll
-  // after the tick ends.
+  // after the run ends.
   if (inboxCount > 0) return { run: true, reason: "inbox" };
 
-  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates scheduled ticks and
+  // The per-role interval (a slow clock, e.g. the steward's ~6 h) gates scheduled runs and
   // "main moved" early wakes — resolved here so a live-reloaded config applies. An operator
   // wake overrides it (the woken check below): it is an explicit demand, the same class of
   // request the director's inbox runs without any gap.
@@ -98,14 +98,14 @@ export function isEligible(
   // multiplied by the multiplier its recent results earned — a search role that keeps
   // finding nothing slows down, and the multiplication gates the "main moved" wake below
   // too, which is where the cost actually comes from (the gap check above runs first, so a
-  // scaled role inside its stretched gap neither ticks on schedule nor on a main move).
-  // One merge in the last ten counted ticks restores the plain gap; error-class results
+  // scaled role inside its stretched gap neither runs on schedule nor on a main move).
+  // One merge in the last ten counted runs restores the plain gap; error-class results
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
   // The same planBacklogOpen rule (scheduleConfigForRole) runner-run.ts schedules nextRunAt
   // from: while PLANS.md has planning room, plan runs on a zero gap; once the target is met it
-  // drops to its 3600 s default (the plans-full deferral then holds the tick). Yield scaling
+  // drops to its 3600 s default (the plans-full deferral then holds the run). Yield scaling
   // still applies to whatever gap is chosen.
   const minGapSeconds = scheduleConfigForRole(
     runner.config,
@@ -114,20 +114,20 @@ export function isEligible(
   ).minRunIntervalSeconds;
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastRunEndedAt ?? 0);
-  // An operator wake newer than the gap window's opening tick overrides the interval
+  // An operator wake newer than the gap window's opening run overrides the interval
   // (RunnerState.wokenAt): an explicit "try again now" with an empty queue must not silently
-  // wait out the remaining slow clock it ticked inside — a queued prompt carries its own
+  // wait out the remaining slow clock it ran inside — a queued prompt carries its own
   // due-ness in the inbox check above, so it never depends on this stamp surviving.
   const woken = freshlyWoken(s);
   if (sinceLast < minGap && !woken) return { run: false };
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
-  // productive tick scheduled, and the explicit round demand overrides it.
+  // productive run scheduled, and the explicit round demand overrides it.
   if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
     return { run: true, reason: s.runs === 0 ? "startup" : "scheduled" };
   }
-  // The world changed under a sleeping role: main moved since its last tick. The stretched
-  // gap above gates this wake too (the gap check runs first), so a role whose recent ticks
+  // The world changed under a sleeping role: main moved since its last run. The stretched
+  // gap above gates this wake too (the gap check runs first), so a role whose recent runs
   // merged nothing does not re-check on every merge — the multiplier's whole point.
   if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
     return { run: true, reason: "main moved" };
@@ -136,9 +136,9 @@ export function isEligible(
 }
 
 /** Fair scheduling order for one poll's eligible roles: the director always leads (it runs
- * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a stale-
- * ticked feature takes a slot over a fresh-ticked steward, because shipping work is what the
- * team exists to do — and within a tier least-recently-ticked first, so roles alternate
+ * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a long-idle
+ * feature takes a slot over a just-run steward, because shipping work is what the
+ * team exists to do — and within a tier the role that ran longest ago first, so roles alternate
  * instead of the same ones re-claiming freed slots. Never-run roles tie at zero and the stable
  * sort keeps them in role-catalog (priority) order. */
 export function fairOrder(runners: RoleRunner[]): RoleRunner[] {
@@ -170,18 +170,18 @@ export function workMerged(subjects: string[]): boolean {
   );
 }
 
-/** How long a due maintenance tick may stay deferred before it is forced to run anyway. The
- * deferral predicate keys off `lastResult`, which only a completed tick updates, so without a
- * bound an open backlog (permanently true for a healthy project) plus one `no_change` tick
+/** How long a due maintenance run may stay deferred before it is forced to run anyway. The
+ * deferral predicate keys off `lastResult`, which only a completed run updates, so without a
+ * bound an open backlog (permanently true for a healthy project) plus one `no_change` run
  * defers a role forever — the predicate's precondition is frozen by its own effect. This cap
- * breaks that latch: a deferred role ticks at least once per window, which refreshes
+ * breaks that latch: a deferred role runs at least once per window, which refreshes
  * `lastResult` and lets the next deferral episode start. Three hours is a compromise between
  * the backlog-aware intent (queued feature/bugfix work outranks idle maintenance) and
  * liveness (five roles had been off for days; BUGS.md 2026-09-17). */
 export const DEFER_MAX_MS = 3 * 3600 * 1000;
 
-/** Has a due tick been deferred past DEFER_MAX_MS? `nextRunAt` is the reference: a deferred
- * tick leaves it untouched, so `now - nextRunAt` measures how long the tick has been waiting
+/** Has a due run been deferred past DEFER_MAX_MS? `nextRunAt` is the reference: a deferred
+ * run leaves it untouched, so `now - nextRunAt` measures how long the run has been waiting
  * past its scheduled time, survives an orchestrator restart (it is persisted state), and does
  * not fire for a `main moved` wake that arrives before the role's own clock (nextRunAt is
  * still in the future). A never-scheduled role (nextRunAt 0) is never expired. */
@@ -189,40 +189,40 @@ function deferralExpired(s: RunnerState, now: number): boolean {
   return s.nextRunAt > 0 && now - s.nextRunAt >= DEFER_MAX_MS;
 }
 
-/** Should a due maintenance tick be deferred? (Need-based prioritization.) All must hold: the
+/** Should a due maintenance run be deferred? (Need-based prioritization.) All must hold: the
  * role is one of the ten deferrable built-ins — other work roles and unknown/custom never
- * defer, the harness cannot judge what an arbitrary custom role needs; its last tick did
- * nothing; it has seen main before (a never-ticked role always runs its first tick); either
+ * defer, the harness cannot judge what an arbitrary custom role needs; its last run did
+ * nothing; it has seen main before (a never-ran role always runs its first run); either
  * the backlog is open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued
  * feature/bugfix work outranks idle maintenance regardless of what merged — or no
  * feature/bugfix/director/operator/human commit merged since that head; and the deferral has not
  * outlasted DEFER_MAX_MS. Only `no_change` defers: every other outcome carries pending
  * business (retry an error, address recorded review-rejection reasons, recover a merge
  * failure) that must not stall until unrelated work merges. A blocked backlog keeps maintenance
- * deferred until the cap, then a forced tick resets the episode; clearing or revising the entry
+ * deferred until the cap, then a forced run resets the episode; clearing or revising the entry
  * lifts it on the next poll. A fresh operator wake overrides all of it: `wokenAt` newer than
- * the gap window's opening tick (the same demand predicate isEligible's min-gap exemption keys
+ * the gap window's opening run (the same demand predicate isEligible's min-gap exemption keys
  * on) is an explicit "try again now", not idle maintenance — the demand runs even with the
- * backlog open, and a wake older than the last tick's end was already consumed by the tick that
+ * backlog open, and a wake older than the last run's end was already consumed by the run that
  * ran after it.
  *
  * `bugfix` is the one work role that can defer: while BUGS.md `## Open` is empty (`openBugsNow`
  * false) it has no assigned work and behaves as a search role, so it schedules like a
  * maintenance role — same predicate, including the wake override and the DEFER_MAX_MS cap —
  * except the backlog-open clause is dropped: its backlog is empty by precondition, so it defers
- * only while no feature/bugfix/director/operator/human commit merged since its last tick (a feature
+ * only while no feature/bugfix/director/operator/human commit merged since its last run (a feature
  * merge is exactly the kind of change that creates bugs, so it wakes the search). With one or
  * more open bugs it never defers here; pollRunnerReasons stands it down while all of them are
  * held (refused, needs-review, blocked).
  */
-/** Which clause deferred a due tick: the open feature/bugfix backlog ("backlog"), or no
- * feature/bugfix/director/operator/human commit having merged since its last no-change tick
+/** Which clause deferred a due run: the open feature/bugfix backlog ("backlog"), or no
+ * feature/bugfix/director/operator/human commit having merged since its last no-change run
  * ("no-work"). The `tick_deferred` event carries it, so the feed and the failure digest name
  * the clause that actually held the role back instead of spelling the no-work case over a
  * need-based deferral. */
 export type DeferReason = "backlog" | "no-work" | "plans-full";
 
-/** The plan role's own deferral: a due tick (no fresh wake, nothing outstanding, main seen
+/** The plan role's own deferral: a due run (no fresh wake, nothing outstanding, main seen
  * before, inside DEFER_MAX_MS) while PLANS.md already holds its eligible-plan target
  * (planBacklogFull). `lastResult` does not matter: the charter would stop either way. */
 function planDeferral(s: RunnerState, planBacklogFull: boolean, now: number): DeferReason | null {
@@ -236,12 +236,12 @@ function planDeferral(s: RunnerState, planBacklogFull: boolean, now: number): De
     : null;
 }
 
-/** The deferral verdict as its clause, or null when the tick is admitted. The one home of the
- * predicate (deferTick is this function's null test) and of the clause order: a deferrable
+/** The deferral verdict as its clause, or null when the run is admitted. The one home of the
+ * predicate (deferRun is this function's null test) and of the clause order: a deferrable
  * maintenance role with the backlog open reports "backlog" even when work also merged — the
  * backlog clause stands in for the merge verdict, which the caller short-circuits — while the
  * bugfix-in-search-mode branch ignores the backlog and reports "no-work". */
-export function deferTickReason(
+export function deferRunReason(
   s: RunnerState,
   role: string,
   workMergedSinceLast: boolean,
@@ -264,8 +264,8 @@ export function deferTickReason(
   return workMergedSinceLast ? null : "no-work";
 }
 
-/** The boolean projection of deferTickReason: does this due maintenance tick defer? */
-export function deferTick(
+/** The boolean projection of deferRunReason: does this due maintenance run defer? */
+export function deferRun(
   s: RunnerState,
   role: string,
   workMergedSinceLast: boolean,
@@ -273,5 +273,5 @@ export function deferTick(
   openBugsNow: boolean,
   now: number,
 ): boolean {
-  return deferTickReason(s, role, workMergedSinceLast, workBacklogOpen, openBugsNow, now) !== null;
+  return deferRunReason(s, role, workMergedSinceLast, workBacklogOpen, openBugsNow, now) !== null;
 }

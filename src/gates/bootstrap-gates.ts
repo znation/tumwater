@@ -2,7 +2,7 @@
 /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"; part 2/2): a fresh
  * project seeds `bootstrap.untilPlansDone` in tumwater.json (part 1/2), and this gate holds
  * every maintenance role until that many plans have moved to PLANS.md's `## Done`. Only plan,
- * feature and director tick — plus bugfix while BUGS.md `## Open` is non-empty, since its
+ * feature and director run — plus bugfix while BUGS.md `## Open` is non-empty, since its
  * latent-bug search is maintenance. The hold gives a young project a steady stream of plans and
  * code before hygiene roles start churning.
  *

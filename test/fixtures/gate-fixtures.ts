@@ -17,18 +17,18 @@ import { commitIn, makeRepo } from "./repo-fixtures.js";
 /** The role the gate fixtures run as — a code-change role, so its diffs are NOT exempt. */
 export const ROLE = "improve";
 
-/** The reviewAheadOfMain context over a repo: tick 1 unless overridden. The gate's pi runs
+/** The reviewAheadOfMain context over a repo: run 1 unless overridden. The gate's pi runs
  * go through the bare runPi here (no transient retry): the tests drive the reviewer with a
  * fake-pi shim and never need the retry, which the LoopPi-level tests pin. */
-export function gateCtx(root: string, wt: string, tick = 1) {
+export function gateCtx(root: string, wt: string, runNumber = 1) {
   return {
     root,
     role: ROLE,
     wt,
     mainBranch: "main",
     config: defaultConfig(),
-    tick,
-    sessionDir: reviewRunSessionDir(root, ROLE, `${tick}-test`),
+    tick: runNumber,
+    sessionDir: reviewRunSessionDir(root, ROLE, `${runNumber}-test`),
     runGatePi: (opts: Parameters<typeof runPi>[0]) => runPi(opts),
     // A failed reviewer run is not retried in place unless a test opts in (retries) — most
     // tests count one run per attempt; the retry cases set both.

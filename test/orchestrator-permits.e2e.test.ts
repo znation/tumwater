@@ -54,7 +54,7 @@ test("a merge's reviewer run takes the same maxConcurrent permit as a role run",
   cfg.maxConcurrent = 1;
   saveConfig(repo, cfg);
   // bugfix keeps running every ~1s here; with an empty BUGS.md `## Open` it defers like a
-  // maintenance role instead (deferTick), so the open bug keeps it on the every-wake schedule
+  // maintenance role instead (deferRun), so the open bug keeps it on the every-wake schedule
   // the overlap observation below depends on.
   seedOpenBug(repo);
   const runDir = tmpdir();
@@ -125,7 +125,7 @@ test("a work-role run that becomes due later jumps ahead of maintenance waiters 
   base.maxConcurrent = 1;
   saveConfig(repo, base);
   // bugfix must become due again ~1s after its first no_change run; with an empty BUGS.md
-  // `## Open` it defers like a maintenance role instead (deferTick), so the open bug keeps it
+  // `## Open` it defers like a maintenance role instead (deferRun), so the open bug keeps it
   // on the every-wake schedule the jump-ahead assertion depends on.
   seedOpenBug(repo);
   const runDir = tmpdir();

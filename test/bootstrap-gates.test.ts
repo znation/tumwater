@@ -57,10 +57,10 @@ test("bootstrapStatus: null without bootstrap, active under the target, inactive
 
 test("bootstrapHoldsRole: plan, feature and director never; bugfix only with no open bugs", () => {
   for (const role of ["plan", "feature", "feature-2", "director"]) {
-    assert.equal(bootstrapHoldsRole(role, false), false, `${role} keeps ticking`);
+    assert.equal(bootstrapHoldsRole(role, false), false, `${role} keeps running`);
   }
   assert.equal(bootstrapHoldsRole("bugfix", false), true, "bugfix is held while BUGS.md is empty");
-  assert.equal(bootstrapHoldsRole("bugfix", true), false, "bugfix ticks once a bug is filed");
+  assert.equal(bootstrapHoldsRole("bugfix", true), false, "bugfix runs once a bug is filed");
   assert.equal(bootstrapHoldsRole("clean", true), true, "maintenance stays held either way");
   assert.equal(bootstrapHoldsRole("clean-2", true), true, "instances follow their base role");
 });
@@ -76,7 +76,7 @@ test("pollBootstrapGate: holds maintenance, admits the work roles and bugfix-wit
   assert.deepEqual(
     [...held].sort(),
     ["bugfix", "clean", "coverage", "dedupe"],
-    "plan, feature and director tick; bugfix is held with no open bugs",
+    "plan, feature and director run; bugfix is held with no open bugs",
   );
 
   // A filed bug admits bugfix — the gate reads BUGS.md fresh each poll.
@@ -85,7 +85,7 @@ test("pollBootstrapGate: holds maintenance, admits the work roles and bugfix-wit
     "# Bugs\n\n## Open\n\n### Widget leaks (reported 2026-10-08)\n\nbody\n",
   );
   const withBug = pollBootstrapGate(root, state, runners, configWith(2), Date.now());
-  assert.equal(withBug.has("bugfix"), false, "bugfix ticks once BUGS.md has an open entry");
+  assert.equal(withBug.has("bugfix"), false, "bugfix runs once BUGS.md has an open entry");
   assert.equal(withBug.has("clean"), true, "the rest of maintenance stays held");
 });
 

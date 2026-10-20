@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { gateRoleConfig, newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";
+import { gateRoleConfig, newBudgetGateState, pollBudgetGate, runOnPair } from "../src/gates/budget-gates.js";
 import { applyFallbackModel, resolveTierFallbacks } from "../src/config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
@@ -262,12 +262,12 @@ test("no budget warning at the cap itself, and none with the cap disabled", () =
   assert.deepEqual(eventTypes(root), ["budget_fallback"]);
 });
 
-test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
+test("runOnPair matches only an in-flight tick on the fallback pair", () => {
   const pair = { provider: "local", model: "local-free" };
-  assert.equal(tickOnPair({ provider: "local", model: "local-free" }, pair), true);
-  assert.equal(tickOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
-  assert.equal(tickOnPair(null, pair), false, "an idle loop has nothing to hand back");
-  assert.equal(tickOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
+  assert.equal(runOnPair({ provider: "local", model: "local-free" }, pair), true);
+  assert.equal(runOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
+  assert.equal(runOnPair(null, pair), false, "an idle loop has nothing to hand back");
+  assert.equal(runOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
   // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setRunPair now
   // keys the in-flight tick by the seam that ran (seamHoldKey → "claude"), and the fallback
   // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedFallbackProvider names the
@@ -275,13 +275,13 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
   // claude fallback tick IS handed back in both selector forms, and a tick whose provider is
   // a different seam (a pi `omlx` author here) never matches and is not returned.
   const claude = { provider: "claude", model: "claude-sonnet-5-5" };
-  assert.equal(tickOnPair({ provider: "claude", model: "claude-sonnet-5-5" }, claude), true);
+  assert.equal(runOnPair({ provider: "claude", model: "claude-sonnet-5-5" }, claude), true);
   assert.equal(
-    tickOnPair({ provider: "omlx", model: "claude-sonnet-5-5" }, claude),
+    runOnPair({ provider: "omlx", model: "claude-sonnet-5-5" }, claude),
     false,
     "a tick on a different seam is not handed back to the claude fallback",
   );
-  // A bare-selector claude fallback never reaches tickOnPair with provider undefined: the
+  // A bare-selector claude fallback never reaches runOnPair with provider undefined: the
   // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedFallbackProvider),
   // so both `claude/<id>` and a bare `<id>` on a claude team produce the `claude` pair above
   // and both hand the tick back through this same match.

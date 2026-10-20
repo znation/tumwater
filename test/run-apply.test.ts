@@ -10,7 +10,7 @@ import {
   clearBackoff,
   ERROR_BACKOFF,
   nextBackoffSeconds,
-  restoreMidTickWake,
+  restoreMidRunWake,
   YIELD_RING,
   yieldMultiplier,
 } from "../src/scheduling/backoff.js";
@@ -62,12 +62,12 @@ test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving eve
   assert.notEqual(w, s);
 });
 
-test("restoreMidTickWake re-applies a wake that was consumed while the run was in flight", () => {
+test("restoreMidRunWake re-applies a wake that was consumed while the run was in flight", () => {
   // The residual race the queue-due-ness fix leaves (BUGS.md 2026-09-25): a plain
   // `tumwater wake --role` with an empty queue consumed mid-run is clobbered by the
   // end-save — applyRunOutcome re-stamps lastRunEndedAt past wokenAt and schedules
   // nextRunAt a fresh interval out, so the demand silently waits out qa's two-hour clock.
-  // restoreMidTickWake, called by the run's end-save after applyRunOutcome, re-applies the
+  // restoreMidRunWake, called by the run's end-save after applyRunOutcome, re-applies the
   // demand exactly like a wake arriving one poll after the run ended.
   const s = freshRunnerState("qa");
   const start = Date.now() - 2000; // the run began two seconds ago and is still running
@@ -83,13 +83,13 @@ test("restoreMidTickWake re-applies a wake that was consumed while the run was i
   assert.ok(s.nextRunAt > (s.lastRunEndedAt ?? 0), "the outcome's fresh gap clock is armed");
   assert.ok((s.wokenAt ?? 0) < (s.lastRunEndedAt ?? 0), "wokenAt no longer exempts the fresh gap");
   // The end-save path re-applies the mid-run wake.
-  assert.equal(restoreMidTickWake(s), true);
+  assert.equal(restoreMidRunWake(s), true);
   assert.equal(s.backoffSeconds, 0);
   assert.ok(s.nextRunAt <= Date.now() + 1, "due now, like a wake arriving after the run (the +1 floors a same-ms wokenAt tie)");
   assert.ok((s.wokenAt ?? 0) > (s.lastRunEndedAt ?? 0), "the min-gap exemption is re-armed");
 });
 
-test("restoreMidTickWake leaves a wake older than the run's start alone", () => {
+test("restoreMidRunWake leaves a wake older than the run's start alone", () => {
   // Self-clearing must hold: a wake honored by the run that just ran (stamped before its
   // start, e.g. an old wokenAt carried in state) must not re-arm itself at every end-save.
   const s = freshRunnerState("qa");
@@ -99,11 +99,11 @@ test("restoreMidTickWake leaves a wake older than the run's start alone", () => 
   s.nextRunAt = now + 2 * 3600 * 1000;
   applyRunOutcome(s, testConfig(), "qa", { result: "no_change" });
   const scheduled = s.nextRunAt;
-  assert.equal(restoreMidTickWake(s), false);
+  assert.equal(restoreMidRunWake(s), false);
   assert.equal(s.nextRunAt, scheduled, "the outcome's own schedule stands");
 });
 
-test("restoreMidTickWake does not pull a cut-off resume past its deliberate wait", () => {
+test("restoreMidRunWake does not pull a cut-off resume past its deliberate wait", () => {
   // A cut-off outcome deliberately waits one interval before resuming the compacted session;
   // a mid-run wake must not shortcut that wait (the resume is the role acting on a demand
   // already — isEligible's resume gate is documented as intentional).
@@ -115,7 +115,7 @@ test("restoreMidTickWake does not pull a cut-off resume past its deliberate wait
   applyRunOutcome(s, testConfig(), "qa", { result: "no_change", cutOff: true });
   assert.equal(s.resumePending, true);
   const scheduled = s.nextRunAt;
-  assert.equal(restoreMidTickWake(s), false);
+  assert.equal(restoreMidRunWake(s), false);
   assert.equal(s.nextRunAt, scheduled, "the resume's deliberate wait stands");
 });
 

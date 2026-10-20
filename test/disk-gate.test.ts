@@ -1,6 +1,6 @@
 /** sampleFreeBytes / pollDiskGate (src/gates/disk-gate.ts): the disk floor's measurement, the
  * hold's hysteresis, and the edge-triggered disk_low/disk_ok events the orchestrator's poll loop
- * depends on. The gate's live wiring — role ticks, the director, verifies and merges blocked while
+ * depends on. The gate's live wiring — role runs, the director, verifies and merges blocked while
  * held, a live diskHoldGB edit lifting it — is pinned in test/gate-polls.test.ts (the sampler is
  * injectable there); this file covers the unit surface. */
 

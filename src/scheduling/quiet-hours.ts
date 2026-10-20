@@ -1,12 +1,12 @@
 // vocabulary: plain
 /** Quiet hours (plans: "Quiet hours … part 1/2, the gate"): a config-driven daily local-time
- * window — `"23:00-07:00"` — during which roles start no new ticks, so an operator can
+ * window — `"23:00-07:00"` — during which roles start no new runs, so an operator can
  * put the team on a nightly schedule once instead of typing `tumwater pause` every evening.
  * Extracted from the orchestrator's concerns the same way the pause gate is
  * (src/gates/pause-gates.ts): the parsing, the membership decision, and the edge-triggered
  * quiet/awake events live here; the orchestrator owns only the wiring. The director is
  * exempt — a human steering outranks a schedule — exactly as under the budget gate and the
- * operator pause. In-flight ticks finish; the gate sits before eligibility, so a tick due
+ * operator pause. In-flight runs finish; the gate sits before eligibility, so a run due
  * inside the window simply starts at window end. */
 
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";

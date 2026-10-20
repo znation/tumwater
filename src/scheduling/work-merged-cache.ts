@@ -33,7 +33,7 @@ export class WorkMergedCache {
     // mainHead means the ref could not be resolved: never trust or store a cache against it.
     if (mainHeadNow !== "" && checkedAt === mainHeadNow) return false;
     const subjects = await subjectsBetween(this.root, sinceHead, this.mainBranch);
-    // A range that cannot be evaluated is treated as work merged — conservative: run the tick.
+    // A range that cannot be evaluated is treated as work merged — conservative: proceed.
     const verdict = subjects === null ? true : workMerged(subjects);
     if (verdict) {
       this.noWorkAtHead.delete(sinceHead);

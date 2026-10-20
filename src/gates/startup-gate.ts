@@ -98,12 +98,12 @@ export async function runStartupCheck(
   if (unregistered !== undefined) {
     return { problem: `backend ${unregistered} is configured but this build has no adapter for it` };
   }
-  // Fail fast instead of starting roles whose every tick dies with "spawn <bin> ENOENT". Every
+  // Fail fast instead of starting roles whose every run dies with "spawn <bin> ENOENT". Every
   // enabled seam's agent — the top-level `agent` plus each enabled role's resolved view and the
   // reviewer — resolves through the same resolveAgentBin the spawn uses (and doctor's pi check);
   // a missing one names its own agent's binary, not pi's. resolveAgentBin normalizes path-shaped
   // values against THIS process's cwd, which every generation inherits, so what is checked here
-  // is exactly what the ticks spawn.
+  // is exactly what the runs spawn.
   for (const agent of agentsInUse(config)) {
     const resolved = resolveAgentBin(config, agent);
     // The shared executability rule (pi/pi-bin.ts's findAgentBinary — the one doctor's pi check

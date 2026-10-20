@@ -145,7 +145,7 @@ test("pollFailureSpread: a wide-shallow storm warning survives an unwritable eve
   assert.doesNotThrow(() => pollFailureSpread(root, FAILURE_SPREAD_QUIET, runners, T0 + 20 * 60_000));
 });
 
-test("pollTeamGates: a budget reopen hands fallback ticks back even when the feed is unwritable", () => {
+test("pollTeamGates: a budget reopen hands fallback runs back even when the feed is unwritable", () => {
   const root = tmpdir("gate-best-effort-reopen-");
   const modelsPath = writeModelsFile(root, MODELS_JSON);
 
@@ -185,5 +185,5 @@ test("pollTeamGates: a budget reopen hands fallback ticks back even when the fee
     reopened = pollTeamGates(states, { ...ctx, liveConfig: raised });
   });
   assert.equal(reopened!.gate, "open");
-  assert.deepEqual(handbacks, ["feature"], "the in-flight fallback tick is still handed back");
+  assert.deepEqual(handbacks, ["feature"], "the in-flight fallback run is still handed back");
 });

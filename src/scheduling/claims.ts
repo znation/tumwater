@@ -17,13 +17,13 @@ import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
- * day is far past any tick, so the release only catches a claim whose runner stopped taking
+ * day is far past any run, so the release only catches a claim whose runner stopped taking
  * work — an abandoned entry must return to the free pool for another instance. */
 export const CLAIM_IDLE_MAX_MS = 24 * 60 * 60 * 1000;
 
 /** The number of eligible plans PLANS.md's `## Planned` should hold before the plan role stops
  * for lack of work: one waiting plan per configured feature instance, plus one, so every
- * runner has something to take and the next planner tick still has headroom. At the default
+ * runner has something to take and the next planner run still has headroom. At the default
  * one feature instance this is 2 — the "two or more plans" threshold the plan charter has
  * always used (plans/parallel-work-instances.md "…keeping the plan role ahead", part 5c/7). */
 export function planBacklogTarget(config: TumwaterConfig): number {
@@ -32,8 +32,8 @@ export function planBacklogTarget(config: TumwaterConfig): number {
 
 /** Does PLANS.md already hold the plan role's target (planBacklogTarget eligible plans), with no
  * plan marked needs-review or needs-replan? The charter makes splitting or replanning a marked
- * plan outrank the stop, so a marked entry keeps the plan role running; otherwise a plan tick can
- * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferTickReason). */
+ * plan outrank the stop, so a marked entry keeps the plan role running; otherwise a plan run can
+ * only end in TUMWATER_NOTHING_TO_DO and the scheduler defers it (deferRunReason). */
 export function planBacklogFull(root: string, config: TumwaterConfig): boolean {
   if (eligibleEntries(root, "feature").length < planBacklogTarget(config)) return false;
   return !backlogHolds(root).plans.some((h) => h === "needs-review" || h === "needs-replan");
@@ -145,9 +145,9 @@ export function movedOutEntries(baseMd: string, headMd: string, section: string)
     .map((e) => ({ key: entryKey(e.title), title: e.title }));
 }
 
-/** Every entry an uncommitted changed tick moved out of its role's actionable section,
+/** Every entry an uncommitted changed run moved out of its role's actionable section,
  * comparing the worktree to the merge-base with `mainBranch`. A missing or unreadable file, or
- * a git hiccup, yields [] rather than failing the tick. */
+ * a git hiccup, yields [] rather than failing the run. */
 export async function stagedMovedEntries(
   wt: string,
   mainBranch: string,
@@ -161,7 +161,7 @@ export async function stagedMovedEntries(
 }
 
 /** How many permits to withhold from tier ≥ 1 acquirers this poll so a work role that has work
- * to take can claim one without waiting out a maintenance tick (plans/parallel-work-instances.md
+ * to take can claim one without waiting out a maintenance run (plans/parallel-work-instances.md
  * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
  * one — not running, with no queued merge — counts when it either holds an eligible claim or
  * its base role still has an unclaimed eligible entry. Returns min(floor(maxConcurrent / 3),
@@ -177,7 +177,7 @@ export function workReserveCount(
     queuedMergeRoles: ReadonlySet<string>;
     /** Whether an idle work role's provider still has headroom to use a reserved permit
      * (plans/provider-concurrency.md §6). With per-provider caps, withholding a team permit
-     * for a role whose provider is full only idles a slot another provider's maintenance tick
+     * for a role whose provider is full only idles a slot another provider's maintenance run
      * could use, so such a role adds nothing to the reserve. The caller supplies it from the
      * pool's snapshot() — this policy stays free of the seams. Defaults to counting every idle
      * work role, the pre-caps behavior. */
@@ -224,7 +224,7 @@ export function workReserveCount(
     if (!opts.enabled.has(r.role)) continue;
     if (r.state.running || opts.queuedMergeRoles.has(r.role)) continue;
     // A work role whose provider is full (capped and at its cap) cannot use a reserved permit
-    // anyway, so it must not withhold one from another provider's maintenance tick (§6).
+    // anyway, so it must not withhold one from another provider's maintenance run (§6).
     if (opts.providerHasHeadroom !== undefined && !opts.providerHasHeadroom(r)) continue;
     const eligible = eligibleFor(base);
     const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);

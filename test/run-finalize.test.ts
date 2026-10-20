@@ -319,7 +319,7 @@ test("a cut-off outcome keeps resumePending's delay against a mid-run wake", asy
   const s = freshRunnerState("organize");
   s.wokenAt = Date.now() + 1;
   await run(root, "organize", s, { result: "no_change", cutOff: true });
-  // restoreMidTickWake deliberately does not restore under resumePending: the next run waits
+  // restoreMidRunWake deliberately does not restore under resumePending: the next run waits
   // one interval from the compacted context, so nextRunAt stays an interval out.
   assert.ok(s.nextRunAt > Date.now());
 });

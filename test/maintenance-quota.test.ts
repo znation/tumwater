@@ -222,7 +222,7 @@ test("pollMaintenanceQuotaGate computes the allowance verdict and logs one hold 
   );
 });
 
-test("a running tick and a queued merge both count as in flight toward the used figure", () => {
+test("a run in progress and a queued merge both count as in flight toward the used figure", () => {
   const root = tmpdir();
   const now = Date.now();
   // allowance = 0 * work + 12; 10 merged + 2 in flight = 12 -> held at the boundary.

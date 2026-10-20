@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { newStreakGateState, pollStreakGate } from "../src/gates/streak-gate.js";
 import {
   applyMergeOutcome,
-  applyTickOutcome,
+  applyRunOutcome,
   ERROR_STREAK_BREAKER,
 } from "../src/run/run-apply.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
@@ -69,7 +69,7 @@ test("pollStreakGate: streak of 9 does not trip; reset to 0 then a fresh climb t
   const state = newStreakGateState();
   assert.deepEqual(pollStreakGate(root, state, [runner("docs", 9, "boom")], new Set()), []);
   assert.deepEqual(pausedRoles(root), []);
-  // A successful tick resets the streak to 0 and clears any ack with it.
+  // A successful run resets the streak to 0 and clears any ack with it.
   pollStreakGate(root, state, [runner("docs", 0)], new Set());
   assert.deepEqual(pollStreakGate(root, state, [runner("docs", 10, "boom again")], new Set()), [
     "docs",
@@ -144,7 +144,7 @@ test("pollStreakGate: the director trips like any role", () => {
 
 test("pollStreakGate: a rejection-fed streak trips the breaker through the real accumulation path", () => {
   // BUGS.md 2026-09-30: review rejections accumulate in the same consecutiveErrors field the gate
-  // polls — the authoring tick ends `queued` (preserving the streak) and the merge's rejected
+  // polls — the authoring run ends `queued` (preserving the streak) and the merge's rejected
   // branch increments it — so ERROR_STREAK_BREAKER rejections must pause the role, with the
   // rejection's own text as the recorded lastError. This drives the real queued→rejected flow, not
   // a hand-set streak, so the gate cannot pass while the accumulation point leaks.
@@ -153,7 +153,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   const s = freshRunnerState("coverage");
   const change = { sha: "a".repeat(40), summary: "address the objections" };
   for (let i = 1; i < ERROR_STREAK_BREAKER; i++) {
-    applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
+    applyRunOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
     applyMergeOutcome(s, "rejected", change);
     assert.equal(s.consecutiveErrors, i, `rejection ${i} feeds the streak the gate reads`);
   }
@@ -165,7 +165,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
     "ERROR_STREAK_BREAKER - 1 rejections leave the role running",
   );
   // The tenth rejection crosses the bar: the gate pauses the role and names the rejection.
-  applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
+  applyRunOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
   applyMergeOutcome(s, "rejected", change);
   assert.equal(s.consecutiveErrors, ERROR_STREAK_BREAKER);
   assert.deepEqual(pollStreakGate(root, state, [observation], new Set()), ["coverage"]);

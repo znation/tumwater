@@ -4,8 +4,8 @@ import {
   gateRoleConfig,
   newBudgetGateState,
   pollBudgetGate,
+  runOnPair,
   seamIsClaude,
-  tickOnPair,
   type BudgetGateState,
 } from "./budget-gates.js";
 import { fallbackDemotion, type FallbackDemotion } from "../budget/fallback-breaker.js";
@@ -71,7 +71,7 @@ import type { TierFallbackMap } from "../config/config-fallbacks.js";
 /** The gate family's cross-poll memory, constructed once per orchestrator run and mutated in place
  * by each poll. In memory only — a restart re-trusts the fallback, re-opens the hold, and can
  * re-log at most one event per gate. Two members are also mutated from outside this module: the
- * budget gate's breaker collects the start pass's tick evidence and its probe
+ * budget gate's breaker collects the start pass's run evidence and its probe
  * (src/budget/fallback-breaker.ts), and `teamHold` is the holds-per-provider map — the holds'
  * LATEST verdicts, read at permit time by the start pass's closures — read it from
  * `states.teamHold` at call time, never from a per-poll snapshot (the poll loop's docs below). Key
@@ -124,11 +124,11 @@ export function newTeamGateStates(config: TumwaterConfig): TeamGateStates {
 }
 
 /** One poll's verdicts, for the poll loop's scheduling and start passes of THIS poll: the
- * budget gate's value and the config roles tick under, the two pause views, and
+ * budget gate's value and the config roles run under, the two pause views, and
  * whether quiet hours hold now. Deliberately NOT the failure hold or the storm alarms:
  * the hold's verdict must be read fresh from `states.teamHold` wherever it gates — a
  * permit-time closure runs after later polls have advanced the hold, so a destructured
- * per-poll copy would freeze the poll-time verdict and let a parked tick start into a
+ * per-poll copy would freeze the poll-time verdict and let a parked run start into a
  * storm (or stay parked through a lift) that the latest poll already settled. */
 interface TeamGatePoll {
   gate: BudgetGate;
@@ -146,16 +146,16 @@ interface TeamGatePoll {
   maintenanceQuota: MaintenanceQuotaVerdict;
   /** The roles the new-project bootstrap holds (plans/work-ratio.md, part 2/2): every role but
    * plan, feature and director — and bugfix while BUGS.md `## Open` is empty. A held role
-   * starts no new tick unless it has a fresh operator wake or a queued prompt (the scheduling
+   * starts no new run unless it has a fresh operator wake or a queued prompt (the scheduling
    * pass admits that demand), exactly like the need-based deferral. Empty when no bootstrap is
    * configured or the latch has ended it. */
   bootstrapHeld: ReadonlySet<string>;
   /** The roles (the director excluded) whose budget tier resolved to pause while the cap is
    * reached (part 5c/8) or while a usage-window move holds the tier on a demoted fallback: a
    * role whose own `model` tier (roleSeamTier) has no usable free pair
-   * — none configured, one priced above zero, or its breaker demoted — starts no new ticks,
+   * — none configured, one priced above zero, or its breaker demoted — starts no new runs,
    * beside `capPaused` (the scheduling pass folds the sets the same way). Roles on tiers that
-   * DID resolve keep ticking under the same poll, so a demoted strong pair no longer pauses
+   * DID resolve keep running under the same poll, so a demoted strong pair no longer pauses
    * the whole team. The probe of a demoted pair pierces this set for exactly the pair's own
    * tier's roles (orchestrator-scheduling.ts's probeRoles). */
   budgetPausedRoles: ReadonlySet<string>;
@@ -234,7 +234,7 @@ export function pollTeamGates(
   });
   // Publish what observers cannot derive themselves: every pair's demotion — a per-tier
   // fallback can demote a pair the legacy single `fallback` never names, and a dashboard that
-  // only sees the engaged pair's verdict would show a tier's roles ticking while the
+  // only sees the engaged pair's verdict would show a tier's roles running while the
   // scheduler holds them (part 5c/8) — plus the engaged pair's own (the legacy
   // `fallbackDemoted` field, what `tumwater doctor` and the failure digest read) and the
   // gate's own spend/cap pair — summed over the runners' live states, which every
@@ -271,7 +271,7 @@ export function pollTeamGates(
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
-  // the reload, can never tick on the wrong model.
+  // the reload, can never run on the wrong model.
   for (const r of runners) {
     r.config = gateRoleConfig(r.role, liveConfig, roleConfig, directorConfig);
     // An image reroute must never spend past the daily cap: while the gate has the team on
@@ -281,14 +281,14 @@ export function pollTeamGates(
     r.budgetFallbackActive = onFallback;
   }
 
-  // The budget reopened: a tick that started on a fallback pair keeps it until it ends, so hand
-  // those ticks back — abort them resumably (session and worktree edits kept) and let their next
-  // tick continue the same session on the primary, whose config the assignment above already
+  // The budget reopened: a run that started on a fallback pair keeps it until it ends, so hand
+  // those runs back — abort them resumably (session and worktree edits kept) and let their next
+  // run continue the same session on the primary, whose config the assignment above already
   // installed (PLANS.md 2026-09-30). Per-tier fallbacks put different roles on different pairs
   // (part 5c/8), so the match runs over EVERY pair the price-based resolution hands out, not only
-  // one. A tick started on the primary keeps running, the director is exempt, and the merges (the
+  // one. A run started on the primary keeps running, the director is exempt, and the merges (the
   // slot's own runs) are untouched. One event per pair names who was handed back, so the resulting
-  // aborted ticks read as the budget reopening, not as unexplained failures. The subscription
+  // aborted runs read as the budget reopening, not as unexplained failures. The subscription
   // window reset (below the cap): the same hand-back for the pairs the window move used. A window
   // that resets while the cap still holds hands back nothing.
   const handBack = gateResumed || (windowResumed && !budgetActive);
@@ -302,7 +302,7 @@ export function pollTeamGates(
     for (const leftPair of fallbackPairs) {
       if (stillMoved.some((p) => p.provider === leftPair.provider && p.model === leftPair.model)) continue;
       const matching = runners.filter(
-        (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.runModelPair(), leftPair),
+        (r) => r.role !== DIRECTOR_ROLE && runOnPair(r.runModelPair(), leftPair),
       );
       if (matching.length > 0) {
         logEventBestEffort(root, {
@@ -324,7 +324,7 @@ export function pollTeamGates(
   const { userPaused, pausedRoles } = pollPauseGates(root, states.pause);
 
   // The error-streak circuit breaker (src/gates/streak-gate.ts): a role past ERROR_STREAK_BREAKER
-  // consecutive failed ticks is paused through the same per-role marker the operator's
+  // consecutive failed runs is paused through the same per-role marker the operator's
   // `pause --role` writes — act-on-it where the warn bar and the storm alarms only talk. The
   // director is not exempt; a failing director cannot process prompts anyway. Roles it just
   // paused fold into this poll's paused-roles view, so the scheduler blocks them on this very
@@ -342,7 +342,7 @@ export function pollTeamGates(
     streakPaused.length > 0 ? new Set([...pausedRoles, ...streakPaused]) : pausedRoles;
 
   // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free
-  // pair while the cap is reached starts no new ticks — the stateless verdict recomputed every
+  // pair while the cap is reached starts no new runs — the stateless verdict recomputed every
   // poll from the SAME resolution the gate's value came from, beside `capPaused` (the
   // scheduling pass folds the sets; the director is exempt, as under every autonomous gate).
   // The demoted pair's probe pierces the set for its own tier's roles only — probeRoles in the
@@ -362,7 +362,7 @@ export function pollTeamGates(
   }
 
   // The per-role daily cost cap (src/gates/role-cap-gates.ts): a role whose local-day spend has
-  // reached its own maxDailyCostUsdPerRole entry starts no new ticks — the stateless verdict
+  // reached its own maxDailyCostUsdPerRole entry starts no new runs — the stateless verdict
   // recomputed every poll, no pause marker written (the marker is anonymous; a cap pause must
   // never masquerade as an operator's), so this returns its own set beside pausedRoles and the
   // pause gates' edge bookkeeping never sees it. A live config edit applies on the next poll;
@@ -371,9 +371,9 @@ export function pollTeamGates(
 
   // The maintenance allowance (plans/work-ratio.md, part 1b/4): code-maintenance merges in a
   // rolling 24 h window are capped at `maintenancePerWorkMerge × work + MAINTENANCE_DAILY_FLOOR`.
-  // The gate counts the window, adds the maintenance roles already in flight (running a tick or
+  // The gate counts the window, adds the maintenance roles already in flight (running or
   // holding a queued merge, so six concurrent permits cannot overshoot), and logs the one
-  // hold/resume event per transition. Enabled only: a disabled role runs no tick to count. The
+  // hold/resume event per transition. Enabled only: a disabled role has no runs to count. The
   // scheduling pass spends the returned headroom one due maintenance role at a time, beside
   // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
   const queuedRoles = queuedMergeRoles(root);
@@ -391,14 +391,14 @@ export function pollTeamGates(
   );
 
   // New-project bootstrap (src/gates/bootstrap-gates.ts, plans/work-ratio.md part 2/2): a fresh
-  // project's maintenance roles start no new ticks until `bootstrap.untilPlansDone` plans are
+  // project's maintenance roles start no new runs until `bootstrap.untilPlansDone` plans are
   // Done. The gate owns the latch write and the one `bootstrap_complete` event; the scheduling
   // pass folds the held set in beside capPaused (with the fresh-wake/queued-prompt override the
   // need-based deferral honors).
   const bootstrapHeld = pollBootstrapGate(root, states.bootstrap, runners, liveConfig, now);
 
   // Per-role quiet hours (src/scheduling/quiet-hours.ts): a role whose own quietHoursPerRole window
-  // covers `now` starts no new ticks — the team window's semantics scoped to one role, the
+  // covers `now` starts no new runs — the team window's semantics scoped to one role, the
   // director exempt like every autonomous gate. Stateless, recomputed per poll exactly like
   // capPaused: no crossing events, no state — a live config edit applies on the next poll
   // by construction. A role held by BOTH windows is held once: the scheduling pass folds
@@ -411,9 +411,9 @@ export function pollTeamGates(
   }
 
   // Quiet hours (src/scheduling/quiet-hours.ts): the config-driven daily local-time window during
-  // which roles start no new ticks — the operator pause's semantics on a schedule.
+  // which roles start no new runs — the operator pause's semantics on a schedule.
   // The config value is read fresh per cycle, so a live edit applies on the next poll;
-  // exactly one quiet_hours_started/ended event per crossing. In-flight ticks finish;
+  // exactly one quiet_hours_started/ended event per crossing. In-flight runs finish;
   // the gate folds into the same hold site as the pause gates.
   const quietNow = pollQuietHoursGate(
     root,
@@ -457,7 +457,7 @@ export function pollTeamGates(
   publishInfoFields(root, info, [["disk", disk]]);
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
-  // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier
+  // episodic fields, and the provider its NEXT run will run on (runProvider — the tier
   // fallback pair while a model-fallback episode is active, else the role's resolved config;
   // undefined when pi's default is in charge). Built ONCE per poll so the hold and the spread
   // read the same list, like holdObservations on the reducer side. Keying on the effective
@@ -480,17 +480,17 @@ export function pollTeamGates(
   // Team-wide failure hold, per provider (src/team/team-hold.ts, PLANS.md 2026-10-05): once two
   // roles' runs have ended on the SAME provider AND failure kind within a short window — 429s, or a
   // connection, timeout, 5xx, or model-load backend failure — roles on THAT provider start no
-  // new ticks, and the merge queue starts no new verify, whose reviewer run has no retry and would
+  // new runs, and the merge queue starts no new verify, whose reviewer run has no retry and would
   // spend a review strike on the storm — until the hold re-opens at its own deadline (Retry-After
   // honored on the rate-limit kind, doubling on a relapse, capped). Roles on a healthy provider
-  // keep ticking; a hold on the reviewer's provider (with the review gate on) still blocks
+  // keep running; a hold on the reviewer's provider (with the review gate on) still blocks
   // everything, since nothing could merge — the orchestrator's scheduling and start passes derive
-  // that verdict from this map. The director's ticks are exempt, as under the budget gate and the
+  // that verdict from this map. The director's runs are exempt, as under the budget gate and the
   // operator pause: an explicit human prompt outranks an autonomous gate, one director run is not
   // the concurrency that sustains a storm, its 429 runs keep the per-run transient retry
-  // (backend-failure kinds ride this hold alone), and a prompt its tick fails to fulfill goes back
-  // to the inbox. In-flight ticks finish; NEW ticks are gated at scheduling like both siblings, and
-  // a role tick already parked in the semaphore meets the same hold at its permit (the start gate)
+  // (backend-failure kinds ride this hold alone), and a prompt its run fails to fulfill goes back
+  // to the inbox. In-flight runs finish; NEW runs are gated at scheduling like both siblings, and
+  // a role run already parked in the semaphore meets the same hold at its permit (the start gate)
   // and hands its reservation back instead of starting into the storm. The verdicts are written
   // back to states.teamHold — one hold per provider, lifted holds kept keyed for their relapse
   // memory but never reading as held — and the permit-time closures read the LATEST poll's map
@@ -530,8 +530,8 @@ export function pollTeamGates(
     now,
   );
 
-  // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' tick streaks
-  // fail consecutively on one shared cause, each role's own "consecutive tick failures"
+  // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' run streaks
+  // fail consecutively on one shared cause, each role's own "consecutive run failures"
   // warning still fires alone — this adds the one team-level warning that names the
   // cause (and the config knob, when the cause has one) instead of leaving the operator
   // to diff 14 streak lines. Observational only: it gates nothing, so unlike the failure

@@ -38,14 +38,14 @@ export function newPauseGateState(): PauseGateState {
  * human intent instead of spend. The marker is persistent state (presence means paused until
  * `resume` removes it), so one existsSync per cycle reads it fresh. The director is exempt for
  * the same reason as under the budget gate — a human typing prompts outranks an operator gate
- * (queued prompts simply wait in the inbox if full silence is wanted). In-flight ticks finish;
- * only NEW ticks are blocked, because the gate sits before isEligible.
+ * (queued prompts simply wait in the inbox if full silence is wanted). In-flight runs finish;
+ * only NEW runs are blocked, because the gate sits before isEligible.
  *
  * Per-role pause (`tumwater pause --role <id>`): the operator pause's narrower sibling — the
  * same persistent marker read fresh per cycle, but one named role instead of the team. Unlike
  * the team pause the director is NOT exempt: the operator named the role deliberately, and its
  * queued prompts simply wait in the inbox (the same effect the team pause has on the director).
- * In-flight ticks finish; only NEW ticks are blocked (the gate sits before isEligible).
+ * In-flight runs finish; only NEW runs are blocked (the gate sits before isEligible).
  * A timed role pause's `role_paused` events carry its shared deadline as `until`:
  * `standingRolePause` returns it only while the set is non-empty and an expired marker reads as
  * empty, so a logged `until` is the live deadline. */

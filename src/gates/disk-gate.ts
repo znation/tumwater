@@ -1,5 +1,5 @@
 /** The disk floor's hold (plans/disk-floor.md, "Disk floor 1/4"): when the volume the harness
- * worktrees live on runs low on free space, the team starts no new work — role ticks, the director,
+ * worktrees live on runs low on free space, the team starts no new work — role runs, the director,
  * merge verifies and merges — so a team of build-heavy checkouts cannot fill the disk. The syscall,
  * the hold's hysteresis, and the edge-triggered `disk_low`/`disk_ok` events live here; the
  * orchestrator owns only the wiring, exactly like the quiet-hours and pause gates. Part 2/4
