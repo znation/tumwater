@@ -727,3 +727,81 @@ test("declaredNames reads keyword and field declarations, not calls", () => {
   assert.deepEqual(declaredNames("  readonly fooBar?: string;"), ["fooBar"]);
   assert.deepEqual(declaredNames("fooBar(x);"), []);
 });
+
+// PLANS.md "The pre-queue self-check flags a doc comment that the change detached from its
+// declaration": the (e) check over the -U0 diff of JS/TS files.
+
+const DOC_A = "/** Doc A. */\nexport function a() {}\n";
+const DOC_ALIAS = "/** @deprecated Use b. */\nexport const old = b;\n\nexport function c() {}\n";
+const INSERTED = "inserted between a doc comment";
+const KEPT = "its doc comment was kept";
+
+async function detachedFindings(files: Record<string, string>, edits: Record<string, string>): Promise<string[]> {
+  const { wt } = await repoWith(files);
+  for (const [file, content] of Object.entries(edits)) {
+    fs.mkdirSync(path.dirname(path.join(wt, file)), { recursive: true });
+    fs.writeFileSync(path.join(wt, file), content);
+  }
+  return stageCheckFindings(wt, "main", EXEMPT, "feature");
+}
+
+test("code inserted between a doc comment and its declaration yields the detached-doc finding", async () => {
+  const findings = await detachedFindings(
+    { "src/a.ts": DOC_A },
+    { "src/a.ts": "/** Doc A. */\n\nfunction ins() {}\n\nexport function a() {}\n" },
+  );
+  const hits = findings.filter((f) => f.includes(INSERTED));
+
+  assert.equal(hits.length, 1);
+  assert.match(hits[0]!, /src\/a\.ts:1/);
+});
+
+test("a documented helper inserted under another doc also yields it", async () => {
+  const findings = await detachedFindings(
+    { "src/a.ts": DOC_A },
+    { "src/a.ts": "/** Doc A. */\n\n/** Doc ins. */\nfunction ins() {}\n\nexport function a() {}\n" },
+  );
+
+  assert.match(findings.find((f) => f.includes(INSERTED)) ?? "", /src\/a\.ts:1/);
+});
+
+test("a deleted declaration whose doc comment stays yields the finding", async () => {
+  const findings = await detachedFindings(
+    { "test/f.ts": DOC_ALIAS },
+    { "test/f.ts": "/** @deprecated Use b. */\n\nexport function c() {}\n" },
+  );
+  const hits = findings.filter((f) => f.includes(KEPT));
+
+  assert.equal(hits.length, 1);
+  assert.match(hits[0]!, /test\/f\.ts:1/);
+});
+
+test("deleting a declaration with its doc, adding a function after one, or editing one yields no detached-doc finding", async () => {
+  const edits: [Record<string, string>, Record<string, string>][] = [
+    [{ "test/f.ts": DOC_ALIAS }, { "test/f.ts": "\nexport function c() {}\n" }],
+    [{ "src/a.ts": DOC_A }, { "src/a.ts": `${DOC_A}\n/** Doc z. */\nexport function z() {}\n` }],
+    [{ "src/a.ts": DOC_A }, { "src/a.ts": "/** Doc A. */\nexport function a(x = 1) {}\n" }],
+  ];
+  for (const [base, head] of edits) {
+    const findings = await detachedFindings(base, head);
+    assert.deepEqual(findings.filter((f) => f.includes(INSERTED) || f.includes(KEPT)), []);
+  }
+});
+
+test("a line comment inserted between a doc and its declaration yields no finding", async () => {
+  const findings = await detachedFindings(
+    { "src/a.ts": DOC_A },
+    { "src/a.ts": "/** Doc A. */\n// eslint-disable-next-line no-console\nexport function a() {}\n" },
+  );
+
+  assert.deepEqual(findings.filter((f) => f.includes(INSERTED)), []);
+});
+
+test("a detached doc in a non-JS file is not reported", async () => {
+  const findings = await detachedFindings(
+    { "docs/a.md": DOC_A },
+    { "docs/a.md": "/** Doc A. */\n\nfunction ins() {}\n\nexport function a() {}\n" },
+  );
+
+  assert.deepEqual(findings.filter((f) => f.includes(INSERTED) || f.includes(KEPT)), []);
+});

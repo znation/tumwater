@@ -27,6 +27,9 @@
  * exempts a name the change re-declares (a move), a name another file still declares, an
  * occurrence inside a string literal (legacy-name tables and serialized keys keep old names on
  * purpose), a line marked `retired-name-ok`, and record prose, where history names old things.
+ * A fifth, `detachedDocFindings`, reads the same `-U0` diff for a JSDoc block the change
+ * separated from its declaration: code inserted between the two, or a declaration deleted
+ * while its doc stayed.
  *
  * A fifth check, `garbledWordingFindings`, reports added lines (outside record prose) that carry
  * the broken participles and doubled "run" wording a word-swap rename leaves (has/have/had … ran,
@@ -71,6 +74,8 @@ const MAX_STALE_PATHS = 10;
 const MAX_MISSING_PATHS = 10;
 /** How many files one lost-final-newline finding names before it stops. */
 const MAX_NEWLINE_FILES = 10;
+/** How many `file:line` sites one detached-doc finding names before it stops. */
+const MAX_DETACHED_DOCS = 10;
 
 /** The path a unified diff's `+++ b/<path>` header names. Strips the four-character `+++ `
  * marker and git's `b/` prefix. A deleted file's new side is `+++ /dev/null`, which carries no
@@ -357,6 +362,7 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     findings.push(...(await missingPathFindings(wt, diff, entries)));
     findings.push(...newlineFindings(diff));
     findings.push(...garbledWordingFindings(diff));
+    findings.push(...(await detachedDocFindings(wt, diff)));
     findings.push(...(await staleNameFindings(wt, diff)));
     return findings;
   } finally {
@@ -366,6 +372,97 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     // commitAll instead of the run ending no_change.
     await gitTry(wt, "reset");
   }
+}
+
+/** A line that can carry a doc comment: a keyword declaration or a class member or field. */
+const DOC_TARGET = new RegExp(
+  "^\\s*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:async\\s+)?" +
+    "(?:function\\b|const\\b|let\\b|var\\b|class\\b|interface\\b|type\\b|enum\\b)" +
+    "|^\\s*(?:(?:public|private|protected|static|readonly|async|get|set|override)\\s+)*" +
+    "#?[A-Za-z_$][\\w$]*\\??\\s*[(<:=]",
+);
+
+/** True when `lines[i]` (0-based) ends a JSDoc block: it ends with a block-comment close and the
+ * nearest line at or above it containing a block-comment open starts, trimmed, with `/**`. */
+function closesDocComment(lines: string[], i: number): boolean {
+  if (!(lines[i] ?? "").trim().endsWith("*/")) return false;
+  for (let j = i; j >= 0; j--) {
+    if (lines[j]!.includes("/*")) return lines[j]!.trim().startsWith("/**");
+  }
+  return false;
+}
+
+/** (e) Doc comments the change detached from their declaration, read from the `-U0` diff of
+ * JS/TS files. Insertion: a pure-add hunk lands code between a doc block and the declaration
+ * below it, so the doc now describes the inserted code. Deletion: a pure-delete hunk removes a
+ * declaration but leaves the doc block above it, which then documents the next declaration. */
+async function detachedDocFindings(wt: string, diff: string): Promise<string[]> {
+  interface Hunk {
+    c: number;
+    d: number;
+    removed: string[];
+    added: string[];
+  }
+  const inserted: string[] = [];
+  const deleted: string[] = [];
+  const check = (file: string, hunks: Hunk[], lines: string[]): void => {
+    const addedAt = new Set<number>();
+    for (const h of hunks) for (let k = 0; k < h.d; k++) addedAt.add(h.c + k);
+    for (const h of hunks) {
+      if (h.removed.length === 0 && h.d > 0) {
+        const target = lines[h.c + h.d - 1];
+        if (
+          h.c >= 2 && !addedAt.has(h.c - 1) && closesDocComment(lines, h.c - 2) &&
+          h.added.some((l) => DOC_TARGET.test(l)) && target !== undefined && DOC_TARGET.test(target)
+        ) inserted.push(`${file}:${h.c - 1}`);
+      } else if (h.d === 0 && h.removed.some((l) => DOC_TARGET.test(l))) {
+        if (h.c >= 1 && !addedAt.has(h.c) && closesDocComment(lines, h.c - 1)) deleted.push(`${file}:${h.c}`);
+      }
+    }
+  };
+  let file: string | null = null;
+  let hunks: Hunk[] = [];
+  let cur: Hunk | null = null;
+  const flush = async (): Promise<void> => {
+    if (file !== null && hunks.length > 0) {
+      const text = readTextOrNull(path.join(wt, file));
+      if (text !== null) check(file, hunks, text.split("\n"));
+    }
+    file = null;
+    hunks = [];
+    cur = null;
+  };
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      await flush();
+      continue;
+    }
+    if (line.startsWith("+++ ")) {
+      const p = diffPlusPath(line);
+      file = p !== "/dev/null" && JS_FILE.test(p) ? p : null;
+      continue;
+    }
+    if (file === null) continue;
+    const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (m) {
+      cur = { c: Number(m[1]), d: m[2] === undefined ? 1 : Number(m[2]), removed: [], added: [] };
+      hunks.push(cur);
+    } else if (cur && line.startsWith("-")) cur.removed.push(line.slice(1));
+    else if (cur && line.startsWith("+")) cur.added.push(line.slice(1));
+  }
+  await flush();
+  const findings: string[] = [];
+  if (inserted.length > 0) {
+    findings.push(
+      `code was inserted between a doc comment and the declaration it documents, so the doc now describes the inserted code: ${cappedList(inserted, MAX_DETACHED_DOCS)} — move the inserted code above the doc comment or below that declaration`,
+    );
+  }
+  if (deleted.length > 0) {
+    findings.push(
+      `a declaration was deleted but its doc comment was kept, so the doc now documents the next declaration: ${cappedList(deleted, MAX_DETACHED_DOCS)} — delete the doc comment with it`,
+    );
+  }
+  return findings;
 }
 
 /** How many removed identifiers one stale-name check looks up. */
