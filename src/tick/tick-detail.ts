@@ -92,6 +92,7 @@ export function renderTickDetail(d: TickDetail): string {
   const sha = tickCommitSha(d);
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
+  if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
   const trail = d.events.map(formatEvent);
   if (d.merge !== null) {
     const first = d.events[0];

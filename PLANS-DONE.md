@@ -5,6 +5,61 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A run's trail names the sha its change landed under on main, so a rebased merge's run says which commit `tumwater revert` takes (planned 2026-10-19 by the plan role; no dependency on any Planned entry — the blocked plain-terms parts rename src/tick/ and history-data.ts names later and will rebase over this; the status, prompt and history --model entries touch none of these files; touches src/tick/tick-detail-data.ts src/tick/tick-detail.ts docs/cli.md test/tick-detail-data.test.ts test/tick-detail.test.ts) — done 2026-10-19 by the feature role
+
+**Goal.** `tumwater history <role> <n>` (and the dashboard History drill-down and TUI History
+pane, which render the same `renderTickDetail` text) shows only the commit the run *pinned*
+(`tickCommitSha` in src/tick/tick-detail.ts: the `merge_queued`/`merge_done` event's
+`commit`). When the merge rebased, main holds that change under a different sha, so the
+pinned sha is not what `tumwater revert` accepts (`revertMergedCommit` in src/operator/revert.ts
+refuses a commit that is not on main), and nothing in the trail names the landed one. The
+landed sha is already logged: `merged` events carry it (`logEventBestEffort(... type: "merged",
+commit ...)` in src/merge/merge-to-main.ts, source = the role). This plan pairs that event into
+the run's payload and header. It is also the prerequisite for a later dashboard "Revert this
+change" button, which is not part of this plan.
+
+**Approach.**
+- src/tick/tick-detail-data.ts: add `mergedSha: string | null` to `TickDetail` (doc it beside
+  `merge`), filled in `detailFrom`:
+  - result `changed` with `merge === null` (a run that merged directly): the newest `merged`
+    event inside `block` whose `commit` is a non-empty string.
+  - `merge?.type === "merge_done"` (a queued run whose merge finished): the newest `merged`
+    event in `scoped` (already this role's events only) whose `commit` is a non-empty string and
+    whose `ts` lies in `[merge.ts - merge.durationMs, merge.ts]`. That is the merge's own
+    window, since `writeMergeOutcome` (src/merge/merge-slot.ts) logs `merge_done` after
+    merge-to-main logs `merged`, and `durationMs` runs from the verification's start. If
+    `durationMs` is not a finite number, the value is null. This window also covers a
+    leftover-recovery run, whose merge sits before its block.
+  - Every other case is null: no merge, a failed or pending merge, or a `merged` event that
+    rotated out. A no-op fast-forward logs no `merged` event, so it also reads null.
+- src/tick/tick-detail.ts `renderTickDetail`: after the ` · commit <short>` segment, append
+  ` · merged as <shortSha(mergedSha)>` when `mergedSha !== null && mergedSha !== sha` (when
+  they are equal, the commit segment already names it). Leave `tickCommitSha`,
+  `tickDetailStat` and `--stat` unchanged: the stat describes what the run changed, per its
+  doc comment. `cmdTick --json` and GET /api/run (`handleTick` in src/gui/gui-endpoints.ts,
+  which spreads the detail) carry the new key without edits. Check that the TUI pane
+  (src/ui/tui/tui-pane-history.ts) only renders the text.
+- docs/cli.md: in the `tumwater history <role> <n>` clause of the "Watch run history" row,
+  add that the header names the landed sha (`merged as <sha>`, the one `tumwater revert`
+  takes) when a rebased merge put the change on main under a different sha.
+
+**Acceptance criteria.**
+- test/tick-detail-data.test.ts: a new test, built on the fixture style of "a queued tick
+  resolves to its merge's verdict and outcome event; a pending merge stays queued", asserts:
+  - a queued run with `merged` (commit `landed1`) logged inside its `merge_done`'s
+    `durationMs` window reads `mergedSha === "landed1"`;
+  - a direct `changed` run with a `merged` event in its block reads that event's commit;
+  - a `merge_failed` run, a still-pending queued run, and a `merged` event outside the window
+    (e.g. another merge of the same role an hour earlier) all read `null`;
+  - another role's `merged` event inside the window is not picked.
+- test/tick-detail.test.ts: `renderTickDetail` puts `merged as <short>` in the header when the
+  landed sha differs from the pinned one, leaves it out when they are equal or `mergedSha` is
+  null, and `cmdTick --json` output includes `mergedSha`.
+- Existing tick-detail tests pass with only the new key added to any `deepEqual`'d payload.
+- `npm run test:gate` is green.
+
+_Built as planned, except the key is named `mergedSha` (not `landedSha`): the terminology guard test rejects the retired name "landed" in identifiers._
+
 ### The dashboard's Backlog Search also keeps rows whose entry body matches, through a new `GET /api/backlog-match?grep=<text>`, so it matches what the TUI Backlog pane's `/` and `tumwater backlog --grep` match (planned 2026-10-19 by the plan role; no dependency on any Planned entry: the in-flight entries edit status, prompt, history and src/tick, and none touches src/ui/gui/gui-client-team.ts's backlog region or the /api/backlog handlers; done 2026-10-19)
 
 **Goal.** The dashboard Backlog card's Search box (`backlogGrep`, `setBacklogGrep` and `renderBacklog` in src/ui/gui/gui-client-team.ts) matches only the text a row shows, because `/api/status` carries titles, not bodies. The TUI's `/` (`visibleBacklogIndexes` in src/ui/tui/tui-backlog.ts) and `tumwater backlog --grep` match the heading or the body through `entryMatches` (src/backlog/backlog.ts). So a dashboard search for a file or symbol named only inside a plan's body finds nothing. This plan closes that gap. Bodies still never ride the 1s status poll.

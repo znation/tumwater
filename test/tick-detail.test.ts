@@ -198,6 +198,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   assert.equal(payload.tokens, 1200);
   assert.equal(payload.costUsd, 0.03);
   assert.equal(payload.usage, "1200 tok · $0.03");
+  assert.equal(payload.mergedSha, null);
   assert.equal(payload.events.length, 2);
 
   // An unpaired tick keeps durationMs null in the payload.
@@ -404,4 +405,24 @@ test("a leftover-recovery run's detail shows the failed attempt it re-queued, le
   const authoring = renderTickDetail(readTickDetail(root, "bugfix", 1)!).split("\n");
   assert.match(authoring[0]!, /run #1 — rejected in review/);
   assert.match(authoring.at(-1)!, /merge of sha1abc\w* failed \(rejected in review\)/);
+});
+
+test("renderTickDetail names the landed sha only when it differs from the pinned commit", () => {
+  const base = readTickDetail(
+    (() => {
+      const root = tmpdir();
+      writeEvents(root, [
+        start({ ts: 1000 }),
+        { ts: 1500, loop: "bugfix", source: "bugfix", type: "merge_queued", commit: "aaaaaaa1111" } as HarnessEvent,
+        end({ ts: 2000 }),
+      ]);
+      return root;
+    })(),
+    "bugfix",
+    3,
+  )!;
+  const header = (mergedSha: string | null): string => renderTickDetail({ ...base, mergedSha }).split("\n")[0]!;
+  assert.match(header("bbbbbbb2222"), / · commit aaaaaaa1 · merged as bbbbbbb2$/);
+  assert.doesNotMatch(header("aaaaaaa1111"), /merged as/);
+  assert.doesNotMatch(header(null), /merged as/);
 });

@@ -193,3 +193,37 @@ test("a queued tick resolves to its merge's verdict and outcome event; a pending
   assert.equal(four.result, "changed");
   assert.equal(four.merge, null);
 });
+
+test("mergedSha pairs a run with its role's merged event inside the merge window; every other case is null", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
+  const merged = (ts: number, commit: string, loop = "feature"): HarnessEvent => ev({ ts, loop, type: "merged", commit });
+  writeEvents(root, [
+    merged(100, "old"),
+    startEvent({ ts: 1000, run: 1 }),
+    ev({ ts: 1100, type: "merge_queued", commit: "sha1" }),
+    endEvent({ ts: 1200, run: 1, result: "queued" }),
+    merged(1250, "other", "bugfix"),
+    merged(1280, "landed1"),
+    ev({ ts: 1300, type: "merge_done", commit: "sha1", result: "changed", durationMs: 100 }),
+    startEvent({ ts: 2000, run: 2 }),
+    ev({ ts: 2100, type: "merge_queued", commit: "sha2" }),
+    endEvent({ ts: 2200, run: 2, result: "queued" }),
+    ev({ ts: 2300, type: "merge_failed", commit: "sha2", result: "rejected", durationMs: 100 }),
+    startEvent({ ts: 3000, run: 3 }),
+    ev({ ts: 3100, type: "merge_queued", commit: "sha3" }),
+    endEvent({ ts: 3200, run: 3, result: "queued" }),
+    startEvent({ ts: 4000, run: 4 }),
+    merged(4050, "direct"),
+    endEvent({ ts: 4100, run: 4, result: "changed" }),
+    startEvent({ ts: 5000, run: 5 }),
+    ev({ ts: 5100, type: "merge_queued", commit: "sha5" }),
+    endEvent({ ts: 5200, run: 5, result: "queued" }),
+    ev({ ts: 3_605_000, type: "merge_done", commit: "sha5", result: "changed", durationMs: 1000 }),
+  ]);
+  assert.equal(readTickDetail(root, "feature", 1)!.mergedSha, "landed1");
+  assert.equal(readTickDetail(root, "feature", 2)!.mergedSha, null);
+  assert.equal(readTickDetail(root, "feature", 3)!.mergedSha, null);
+  assert.equal(readTickDetail(root, "feature", 4)!.mergedSha, "direct");
+  assert.equal(readTickDetail(root, "feature", 5)!.mergedSha, null);
+});

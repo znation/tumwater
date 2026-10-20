@@ -41,6 +41,12 @@ export interface TickDetail {
   usage: string;
   events: HarnessEvent[];
   merge: HarnessEvent | null;
+  /** The sha the run's change holds on main, from the role's `merged` event: the newest one in
+   * the block for a run that merged directly, or the newest inside the merge's own window
+   * (`merge_done` ts minus its `durationMs`, up to its ts) for a queued run. It differs from the
+   * pinned commit when the merge rebased. Null for every other run, and when the event rotated
+   * out or the merge was a no-op fast-forward (which logs none). */
+  mergedSha: string | null;
 }
 
 /** The event block of `role`'s tick `n`, or null when the scanned window holds no such tick.
@@ -142,5 +148,33 @@ function detailFrom(
     usage: end === null ? "" : usageText(end),
     events: block,
     merge,
+    mergedSha: mergedShaOf(result, merge, scoped, block),
   };
+}
+
+/** The commit of the newest `merged` event in `pool` (oldest-first) inside [from, to]. */
+function newestMergedCommit(pool: HarnessEvent[], from: number, to: number): string | null {
+  for (let i = pool.length - 1; i >= 0; i--) {
+    const e = pool[i]!;
+    if (e.type === "merged" && e.ts >= from && e.ts <= to && typeof e.commit === "string" && e.commit !== "") {
+      return e.commit;
+    }
+  }
+  return null;
+}
+
+/** The landed sha for a detail: see TickDetail.mergedSha. */
+function mergedShaOf(
+  result: string | null,
+  merge: HarnessEvent | null,
+  scoped: HarnessEvent[],
+  block: HarnessEvent[],
+): string | null {
+  if (merge === null) {
+    return result === "changed" ? newestMergedCommit(block, -Infinity, Infinity) : null;
+  }
+  if (merge.type !== "merge_done" || typeof merge.durationMs !== "number" || !Number.isFinite(merge.durationMs)) {
+    return null;
+  }
+  return newestMergedCommit(scoped, merge.ts - merge.durationMs, merge.ts);
 }
