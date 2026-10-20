@@ -501,3 +501,41 @@ test("history --role list composes with --since", async () => {
   const rows = (JSON.parse(r.stdout) as { rows: Array<{ role: string }> }).rows;
   assert.deepEqual(rows.map((x) => x.role), ["feature", "clean"]);
 });
+
+test("history --summary --by model tallies runs per model", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history by model");
+  writeEvents(repo, [
+    { ts: 1000, loop: "feature", type: "run_start", run: 1, model: "acme/m1" },
+    { ts: 2000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "w" },
+    { ts: 3000, loop: "clean", type: "run_start", run: 2, model: "acme/m2" },
+    { ts: 4000, loop: "clean", type: "run_end", run: 2, result: "no_change" },
+    { ts: 5000, loop: "feature", type: "run_start", run: 3, model: "acme/m1" },
+    { ts: 6000, loop: "feature", type: "run_end", run: 3, result: "no_change" },
+    { ts: 7000, loop: "bugfix", type: "run_end", run: 9, result: "error", error: "x" },
+  ]);
+  const r = await cli(repo, "history", "--summary", "--by", "model");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.match(lines[0] ?? "", /^model /);
+  assert.deepEqual(lines.slice(1).map((l) => l.split(/\s+/)[0]), ["acme/m1", "acme/m2", "(unknown)", "total"]);
+  assert.match(lines[1] ?? "", /^acme\/m1\s+2\s+1\s+1\b/);
+  const j = await cli(repo, "history", "--summary", "--by", "model", "--json");
+  const parsed = JSON.parse(j.stdout) as { models: Array<{ model: string | null }>; total: { runs: number } };
+  assert.equal(parsed.models.length, 3);
+  assert.equal(parsed.models[2]?.model, null);
+  assert.equal(parsed.total.runs, 4);
+  const plain = await cli(repo, "history", "--summary");
+  assert.equal((await cli(repo, "history", "--summary", "--by", "role")).stdout, plain.stdout);
+  const narrowed = await cli(repo, "history", "--summary", "--by", "model", "--role", "feature");
+  assert.deepEqual(narrowed.stdout.trim().split("\n").slice(1).map((l) => l.split(/\s+/)[0]), ["acme/m1", "total"]);
+  const noSummary = await cli(repo, "history", "--by", "model");
+  assert.notEqual(noSummary.code, 0);
+  assert.match(noSummary.stderr, /--summary/);
+  const typo = await cli(repo, "history", "--summary", "--by", "modle");
+  assert.notEqual(typo.code, 0);
+  assert.match(typo.stderr, /role, model/);
+  const bare = await cli(repo, "history", "--summary", "--by");
+  assert.notEqual(bare.code, 0);
+  assert.match(bare.stderr, /history --by needs role or model/);
+});

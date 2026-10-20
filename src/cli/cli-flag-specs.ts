@@ -319,6 +319,12 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--result"], value: true, valueName: "<class>", missingValue };
 }
 
+/** `history --by <role|model>`: how `--summary` groups its lines; `missingValue` is the same
+ * string the command body fails with. */
+export function byFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--by"], value: true, valueName: "<role|model>", missingValue };
+}
+
 /** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
  * (scope a --once round to one loop, parsed by parseRoleFlag), and `--gui` (also serve the

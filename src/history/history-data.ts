@@ -76,15 +76,17 @@ export interface HistorySummaryRow {
   lastChangeTs: number | null;
 }
 
-/** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
- * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
-export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]; total: HistorySummaryRow } {
+/** Tally rows into groups by `keyOf`, each row counted once; the key lands in the group row's
+ * `role` field. Groups come back in plain string order (not localeCompare) so the order is
+ * deterministic; `total` sums every row. Pure. */
+function tallyRows(rows: TickRow[], keyOf: (row: TickRow) => string): { groups: HistorySummaryRow[]; total: HistorySummaryRow } {
   const blank = (role: string): HistorySummaryRow => ({ role, runs: 0, changes: 0, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
-  const byLoop = new Map<string, HistorySummaryRow>();
+  const byKey = new Map<string, HistorySummaryRow>();
   const total = blank("total");
   for (const row of rows) {
-    let entry = byLoop.get(row.role);
-    if (!entry) byLoop.set(row.role, (entry = blank(row.role)));
+    const key = keyOf(row);
+    let entry = byKey.get(key);
+    if (!entry) byKey.set(key, (entry = blank(key)));
     const cls = historyClass(row.result);
     for (const t of [entry, total]) {
       t.runs += 1;
@@ -95,8 +97,34 @@ export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
-  const roles = [...byLoop.values()].sort((a, b) => compareCodeUnits(a.role, b.role));
-  return { roles, total };
+  const groups = [...byKey.values()].sort((a, b) => compareCodeUnits(a.role, b.role));
+  return { groups, total };
+}
+
+/** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
+ * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
+export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]; total: HistorySummaryRow } {
+  const { groups, total } = tallyRows(rows, (r) => r.role);
+  return { roles: groups, total };
+}
+
+/** What `history --summary --by` accepts: the default per-role grouping or per-model. */
+export const HISTORY_SUMMARY_GROUPS = ["role", "model"] as const;
+
+/** One model's tally: HistorySummaryRow's counts keyed by `model` instead of `role`. `null` is the
+ * bucket of rows with no model (their start sat outside the scanned window or carried none). */
+export type HistoryModelSummaryRow = Omit<HistorySummaryRow, "role"> & { model: string | null };
+
+/** Sentinel group key for rows whose model is null; no model selector can equal it. */
+const NO_MODEL_KEY = "\u0000";
+
+/** summarizeTickRows grouped by the model each run started on instead of by role. Models come back
+ * in plain string order with the null bucket last; `total` equals summarizeTickRows's. Pure. */
+export function summarizeTickRowsByModel(rows: TickRow[]): { models: HistoryModelSummaryRow[]; total: HistorySummaryRow } {
+  const { groups, total } = tallyRows(rows, (r) => r.model ?? NO_MODEL_KEY);
+  const models = groups.map(({ role, ...counts }): HistoryModelSummaryRow => ({ model: role === NO_MODEL_KEY ? null : role, ...counts }));
+  models.sort((a, b) => (a.model === null ? 1 : b.model === null ? -1 : compareCodeUnits(a.model, b.model)));
+  return { models, total };
 }
 
 /** How much of a tick's summary or error a row keeps. Long enough to name the work, short

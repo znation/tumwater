@@ -922,46 +922,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### `tumwater history --summary --by model` tallies runs per model instead of per role, so an operator mixing providers can compare what each model merged (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — none of them names src/history, src/cli, src/cli.ts or docs/cli.md; the blocked plain-terms parts run 6/20 and 7/20 rename symbols in src/history and the history tests, a rebase; touches src/history/history-data.ts src/history/history-render.ts src/history/history.ts src/cli/cli-flag-specs.ts src/cli/cli-command-args.ts src/cli.ts src/cli/help.ts docs/cli.md test/cli-history-filtering.test.ts test/history-data.test.ts)
-
-**Goal.** A team can mix models: a pi default tier, a claude strong tier, an OpenCode free tier, plus a fallback (README "Mixing providers"). Every history row already carries the model its run started on (`TickRow.model`, read from `run_start` by `tickStartModel` in src/history/history-data.ts). The report's `Runs by model` line counts starts only. Nothing tallies outcomes per model: `history --summary` groups by role (`summarizeTickRows`), and `history --grep <model>` filters rows but still groups by role. So an operator cannot answer "how many runs on the free tier merged, and what did they cost?" in one command. This plan adds `--by model` to `history --summary`. The outcome columns stay the same, and each line is one model instead of one role. Out of scope: the TUI History pane, the dashboard's History view and `/api/history` keep the per-role summary.
-
-**Approach.**
-- `src/history/history-data.ts`:
-  - Move the body of `summarizeTickRows` into a private `tallyRows(rows: TickRow[], keyOf: (row: TickRow) => string): { groups: HistorySummaryRow[]; total: HistorySummaryRow }`. `keyOf` gives each row's group key. The key is stored in the group row's `role` field. `summarizeTickRows` becomes `tallyRows(rows, (r) => r.role)`, renamed to `{ roles, total }`. Its output, order and JSON stay as they are.
-  - Export `HISTORY_SUMMARY_GROUPS = ["role", "model"] as const` and `type HistorySummaryGroup`.
-  - Export `interface HistoryModelSummaryRow`: `Omit<HistorySummaryRow, "role"> & { model: string | null }`. `null` is the bucket of rows whose `model` is null; their start was outside the scanned window or carried no model.
-  - Export `summarizeTickRowsByModel(rows: TickRow[]): { models: HistoryModelSummaryRow[]; total: HistorySummaryRow }`. It calls `tallyRows` with a key that maps a null model to a private sentinel no selector can equal, such as `"\u0000"`. It then maps each group to `{ model, ...counts }`, with the sentinel becoming `null`. Order is `compareCodeUnits` over the model strings, with the null bucket last. `total` is the same `{ role: "total", … }` object `summarizeTickRows` builds, so `total` is identical under both groupings.
-- `src/history/history-render.ts`:
-  - Move the table body of `renderSummary` into a private `renderSummaryTable(header: string, lines: { label: string; row: HistorySummaryRow | HistoryModelSummaryRow }[])`. `renderSummary` calls it with header `"role"`, each role's `roleLabel(r.role)` and the `total` line. Its output stays byte-for-byte the same; the existing test "history --summary tallies each loop's outcomes over the rows the table would print" pins this.
-  - Export `renderModelSummary(summary: { models: HistoryModelSummaryRow[]; total: HistorySummaryRow })`. It uses header `"model"`, with label `model ?? "(unknown)"` and `"total"` for the total line.
-- `src/history/history.ts` (`cmdHistory`):
-  - Export `HISTORY_BY_VALUE_ERROR = "history --by needs role or model"`.
-  - After the `--result` block, read `flagValue(rest, "--by")`. If it is missing or empty, fail with `HISTORY_BY_VALUE_ERROR`. A value other than `role`/`model` fails with `history --by must be one of role, model${gotSuffix(v)}${typoSuffix(v, [...HISTORY_SUMMARY_GROUPS])}`. If `--by` is present without `--summary`, fail with `history --by needs --summary (it picks how the summary groups runs)`.
-  - With `--by model`, the summary branch calls `summarizeTickRowsByModel` and prints `renderModelSummary`. With `--json`, it prints the `{ models, total }` payload.
-  - `--by role` is the default and behaves exactly as `--summary` does today.
-  - The empty-rows paths stay as they are: `{"rows":[]}` under `--json`, plus the existing prose.
-- `src/cli/cli-flag-specs.ts`: add `byFlagSpec(missingValue: string): FlagSpec` beside `resultFlagSpec`, as `{ names: ["--by"], value: true, valueName: "<role|model>", missingValue }`.
-- `src/cli.ts`: in the `history` case, import `HISTORY_BY_VALUE_ERROR` with the other two errors. Add `byFlagSpec(HISTORY_BY_VALUE_ERROR)` to the `rejectUnknownArgs("history", …)` list.
-- `src/cli/cli-command-args.ts`: add `"--by"` to `HISTORY_LISTING_VALUED_FLAGS`, so that `history --summary --by model` stays the listing form and is not read as the `history <role> <n>` trail form.
-- `src/cli/help.ts`: add `[--by role|model]` after `[--summary]` in the history usage line. Add one sentence after the `--summary` sentence: `--by model groups the summary by the model each run started on instead of by role; with --json, { models, total }`. The completion script derives flag names from this help text (`completionSpec` in src/cli/completion.ts), so `--by` completes with no completion.ts change.
-- `docs/cli.md`: in the "Watch run history" row, add `[--by role|model]` to the synopsis, plus a clause saying that `--summary --by model` prints one line per model with the same columns (`(unknown)` for runs whose start the log no longer holds).
-
-**Acceptance criteria.**
-- `test/history-data.test.ts`, new case:
-  - Over hand-built rows (two on model `a/m1`, one changed and one no_change; one on `b/m2`, error; one with `model: null`), `summarizeTickRowsByModel` returns `models` in the order `a/m1`, `b/m2`, `null`, with `a/m1` = `{ runs: 2, changes: 1, none: 1, … }`.
-  - Its `total` deep-equals `summarizeTickRows(sameRows).total`.
-- `test/cli-history-filtering.test.ts`, new case "history --summary --by model tallies runs per model". Seed `run_start` events carrying `model` (two models), their `run_end`s, and one `run_end` with no start.
-  - Stdout's header starts `model `, it has one line per model plus a `(unknown)` line and a `total` line, and the counts are as seeded.
-  - `--json` parses to `{ models, total }` with `models[2].model === null`.
-  - `--summary --by role` prints exactly what `--summary` prints.
-  - `--by model --role feature` narrows to feature's runs.
-  - `--by model` without `--summary` exits non-zero, naming `--summary`.
-  - `--by modle` exits non-zero, naming `role, model`.
-  - A trailing `--by` exits non-zero with `history --by needs role or model`.
-- The existing "history --summary tallies each loop's outcomes over the rows the table would print" and "history --summary keeps the empty-state output on an empty log" pass unchanged, and so do the `summarizeTickRows` cases in test/cli-run.test.ts.
-- `npm run test:gate` passes.
-
 ### `tumwater revert <sha> --dry-run` previews the revert: the commit it would undo, the paths the inverse touches, and whether it applies cleanly on main, without writing anything (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only src/operator/revert.ts, `cmdRevert`, the revert help line and docs/cli.md's revert clause)
 
 **Goal.** `tumwater revert <sha>` acts at once. It commits the inverse on main, and the only way to learn whether a revert conflicts is to try it. An operator weighing a revert of a change merged a few commits back has no way to see first what it would undo, or whether later commits have built on it. `--dry-run` answers both from git's object store. It runs the same refusals as the real revert, then a three-way merge with `git merge-tree`. It never touches the index, the worktree or a ref, and it takes no lock. This is the same preview idea that `reclaim --dry-run` and `retire --dry-run` already offer.

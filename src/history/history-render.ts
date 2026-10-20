@@ -10,7 +10,7 @@ import { formatTimestamp, humanSeconds } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
-import { tickRowCells, tickRowLine, type HistorySummaryRow, type TickRow, type TickRowCells } from "./history-data.js";
+import { tickRowCells, tickRowLine, type HistoryModelSummaryRow, type HistorySummaryRow, type TickRow, type TickRowCells } from "./history-data.js";
 
 /** Each TickRowCells column's measured width in terminal display columns. A mapped type on
  * purpose: adding a column to TickRowCells cannot leave it without a width. */
@@ -63,10 +63,22 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
  * each role's run spans, `—` when none of the role's rows carried a span; the last column,
  * `last change`, is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
 export function renderSummary(summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }): string {
-  const all = [...summary.roles, summary.total];
-  const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.role))].map(displayWidth));
+  return renderSummaryTable("role", [...summary.roles, summary.total].map((row) => ({ label: roleLabel(row.role), row })));
+}
+
+/** The `--summary --by model` text: renderSummary's table with one line per model (`(unknown)` for
+ * the null bucket), then the total line. */
+export function renderModelSummary(summary: { models: HistoryModelSummaryRow[]; total: HistorySummaryRow }): string {
+  return renderSummaryTable("model", [
+    ...summary.models.map((row) => ({ label: row.model ?? "(unknown)", row })),
+    { label: "total", row: summary.total },
+  ]);
+}
+
+function renderSummaryTable(header: string, all: { label: string; row: HistorySummaryRow | HistoryModelSummaryRow }[]): string {
+  const loopWidth = Math.max(...[header, ...all.map((r) => r.label)].map(displayWidth));
   const cols = ["runs", "changes", "none", "refused", "problems", "tokens", "cost", "time"] as const;
-  const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
+  const cell = (r: HistorySummaryRow | HistoryModelSummaryRow, c: (typeof cols)[number]): string =>
     c === "tokens"
       ? compactTokens(r.tokens)
       : c === "cost"
@@ -76,11 +88,11 @@ export function renderSummary(summary: { roles: HistorySummaryRow[]; total: Hist
             ? "—"
             : humanSeconds(r.durationMs / 1000)
           : String(c === "runs" ? r.runs : r[c]);
-  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
+  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r.row, c).length)));
   const line = (loop: string, cells: string[], lastChange: string): string =>
     [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
-    line("role", [...cols], "last change"),
-    ...all.map((r) => line(roleLabel(r.role), cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
+    line(header, [...cols], "last change"),
+    ...all.map(({ label, row }) => line(label, cols.map((c) => cell(row, c)), row.lastChangeTs === null ? "—" : formatTimestamp(row.lastChangeTs))),
   ].join("\n");
 }

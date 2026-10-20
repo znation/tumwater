@@ -24,6 +24,7 @@ import {
   N_FLAG,
   rejectUnknownArgs,
   resultFlagSpec,
+  byFlagSpec,
   ROLE_FLAG,
   RUN_FLAG_SPECS,
   sinceFlagSpec,
@@ -218,7 +219,7 @@ async function main(): Promise<void> {
       await (await import("./cli/notify-command.js")).cmdNotify(root, args);
       break;
     case "history": {
-      const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } = await import("./history/history.js");
+      const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR, HISTORY_BY_VALUE_ERROR } = await import("./history/history.js");
       if (historyTrailForm(args)) {
         await runTrailCommand(root, args);
         break;
@@ -228,6 +229,7 @@ async function main(): Promise<void> {
         sinceFlagSpec("history --since"),
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),
         resultFlagSpec(HISTORY_RESULT_VALUE_ERROR),
+        byFlagSpec(HISTORY_BY_VALUE_ERROR),
         JSON_FLAG,
         ROLE_FLAG,
         SUMMARY_FLAG,

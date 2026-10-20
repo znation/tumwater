@@ -1,8 +1,8 @@
 // vocabulary: plain
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
-import { renderRow, renderSummary, widestWidths } from "./history-render.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { renderModelSummary, renderRow, renderSummary, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -26,6 +26,9 @@ export const HISTORY_GREP_VALUE_ERROR = "history --grep needs a pattern";
  * same wording. Its sibling of HISTORY_GREP_VALUE_ERROR: each names the command that printed
  * it. */
 export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
+
+/** The missing-value error for a valueless or empty `--by`, exported for cli.ts's flag spec. */
+export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N] [--since <duration>] [--grep <text>] [--result
  * <class>]`: print the last N completed ticks, newest first — or, with `--since`, the ticks of a
@@ -107,9 +110,20 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
   // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
   // the report --json precedent: the flag's output must be parseable in every exit-0 case).
+  // `--by role|model` picks how --summary groups its lines (role by default).
+  const byRaw = flagValue(rest, "--by");
+  let byModel = false;
+  if (rest.includes("--by")) {
+    if (!byRaw) return fail(HISTORY_BY_VALUE_ERROR);
+    if (!(HISTORY_SUMMARY_GROUPS as readonly string[]).includes(byRaw)) {
+      fail(`history --by must be one of ${HISTORY_SUMMARY_GROUPS.join(", ")}${gotSuffix(byRaw)}${typoSuffix(byRaw, [...HISTORY_SUMMARY_GROUPS])}`);
+    }
+    if (!rest.includes("--summary")) fail("history --by needs --summary (it picks how the summary groups runs)");
+    byModel = byRaw === "model";
+  }
   const summary = rest.includes("--summary") && rows.length > 0;
   if (rest.includes("--json")) {
-    sayJson(summary ? summarizeTickRows(rows) : { rows });
+    sayJson(summary ? (byModel ? summarizeTickRowsByModel(rows) : summarizeTickRows(rows)) : { rows });
     return;
   }
   if (rows.length === 0) {
@@ -135,7 +149,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     );
     return;
   }
-  if (summary) say(renderSummary(summarizeTickRows(rows)));
+  if (summary) say(byModel ? renderModelSummary(summarizeTickRowsByModel(rows)) : renderSummary(summarizeTickRows(rows)));
   else {
     const widths = widestWidths(rows);
     say(rows.map((r) => renderRow(r, widths)).join("\n"));

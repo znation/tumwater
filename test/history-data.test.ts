@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, summarizeTickRows, tickRowCells, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
+import { readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowCells, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
 import { renderSummary } from "../src/history/history-render.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -732,4 +732,15 @@ test("tickRows takes a list of role ids, joining each queued row's merge verdict
   assert.deepEqual(both.map((r) => r.role).sort(), ["clean", "feature"]);
   assert.equal(both.find((r) => r.role === "feature")!.result, tickRows(events, 10, "feature")[0]!.result);
   assert.deepEqual(tickRows(events, 10, ["feature"]), tickRows(events, 10, "feature"));
+});
+
+test("summarizeTickRowsByModel tallies per model with the null bucket last and the same total", () => {
+  const row = (model: string | null, result: string): TickRow => ({
+    ts: 0, time: "", role: "feature", run: 1, result, model, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
+  });
+  const rows = [row("b/m2", "error"), row(null, "changed"), row("a/m1", "changed"), row("a/m1", "no_change")];
+  const summary = summarizeTickRowsByModel(rows);
+  assert.deepEqual(summary.models.map((m) => m.model), ["a/m1", "b/m2", null]);
+  assert.deepEqual(summary.models[0], { model: "a/m1", runs: 2, changes: 1, none: 1, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: 0 });
+  assert.deepEqual(summary.total, summarizeTickRows(rows).total);
 });
