@@ -1,17 +1,17 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
-import { loopIds } from "../roles/runner-ids.js";
+import { runnerIds } from "../roles/runner-ids.js";
 import { configForRole, teamModelLabel, modelSelectorField } from "./config-views.js";
 import { seamsInUse } from "./config-fallbacks.js";
 import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
-import { LoopRunner } from "../runner/runner.js";
+import { RoleRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 
-/** The orchestrator's live view of tumwater.json: the single reload point shared by all loops,
+/** The orchestrator's live view of tumwater.json: the single reload point shared by all roles,
  * polled once per scheduler cycle (src/orchestrator/orchestrator.ts). A broken file keeps the
  * last-known-good config and warns once per distinct error text; an unchanged file is served
  * from a stat-keyed cache (one stat per poll, no read). Owns all the edge-triggered bookkeeping
@@ -39,7 +39,7 @@ export function newLiveConfigReload(deps: {
   runnerSignal: AbortSignal;
   /** The orchestrator's runner list, mutated in place: a role enabled mid-run gets a runner
    * appended here (its persisted state survives). */
-  runners: LoopRunner[];
+  runners: RoleRunner[];
   /** The shared concurrency cap, live-resized when maxConcurrent changes. */
   semaphore: Semaphore;
   /** A scoped once round's role filter (`run --once --role <id>[,<id>...]`): a mid-round
@@ -55,7 +55,7 @@ export function newLiveConfigReload(deps: {
   // transition warnings).
   let lastConfigError: string | null = null;
   let configMissing = false;
-  let prevEnabled = new Set(loopIds(deps.config));
+  let prevEnabled = new Set(runnerIds(deps.config));
   let live = deps.config;
   // The previous successful reload's config, for the one-shot config_changed event. Seeded from
   // the startup config, so the first poll of an unchanged file logs nothing.
@@ -179,16 +179,16 @@ export function newLiveConfigReload(deps: {
           }
         }
         lastKeyCaps = nextKeyCaps;
-        const nowEnabled = loopIds(reloaded.config);
+        const nowEnabled = runnerIds(reloaded.config);
         // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
-        // runner for each newly present loop id (its persisted state survives). A lowered
-        // instance count keeps its runner; `loopEnabled` skips its future ticks. A scoped round
+        // runner for each newly present role id (its persisted state survives). A lowered
+        // instance count keeps its runner; `runnerEnabled` skips its future ticks. A scoped round
         // skips every other id: the enabling is logged (the warn loop below), but its runner
         // waits for the next unscoped round.
         for (const role of nowEnabled) {
           if (deps.roleFilter !== undefined && !deps.roleFilter.includes(role)) continue;
           if (!deps.runners.some((r) => r.role === role))
-            deps.runners.push(new LoopRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.runnerSignal));
+            deps.runners.push(new RoleRunner(deps.root, role, reloaded.config, deps.mainBranch, deps.runnerSignal));
         }
         for (const role of prevEnabled)
           if (!nowEnabled.includes(role))

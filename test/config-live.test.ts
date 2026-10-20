@@ -9,7 +9,7 @@ import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
@@ -37,7 +37,7 @@ function modelEvents(root: string): { from?: string; to?: string; roles?: { role
 function newReload(
   root: string,
   config: TumwaterConfig,
-  runners: ReturnType<typeof makeLoopRunner>[],
+  runners: ReturnType<typeof makeRoleRunner>[],
   sem: Semaphore,
   roleFilter?: string | readonly string[],
 ) {
@@ -60,7 +60,7 @@ function newReload(
 function liveReload(config: TumwaterConfig, roleFilter?: string) {
   const root = makeRepo();
   writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
+  const runners = [makeRoleRunner(root, "improve", config)];
   const sem = new Semaphore(1);
   const live = newReload(root, config, runners, sem, roleFilter);
   return { root, runners, sem, live };
@@ -338,14 +338,14 @@ test("a scoped round with two roles creates runners for both and no other", () =
   }
   const root = makeRepo();
   writeConfig(root, config);
-  const runners = [makeLoopRunner(root, "improve", config)];
+  const runners = [makeRoleRunner(root, "improve", config)];
   const live = newReload(root, config, runners, new Semaphore(1), ["improve", "qa"]);
   live.poll();
   assert.ok(runners.some((r) => r.role === "qa"), "a runner for the second listed role");
   assert.ok(!runners.some((r) => r.role === "readme"), "no runner for an unlisted role");
 });
 
-test("raising an instance count appends the new loop's runner; lowering keeps it (part 5b/7)", () => {
+test("raising an instance count appends the new role's runner; lowering keeps it (part 5b/7)", () => {
   const config = cloneConfig(defaultConfig());
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 1 };
   const { root, runners, live } = liveReload(config);
@@ -358,7 +358,7 @@ test("raising an instance count appends the new loop's runner; lowering keeps it
   assert.ok(runners.some((r) => r.role === "feature-2"), "the new instance gains a runner");
   assert.equal(warnMessages(root).filter((m) => m.includes("role feature-2 enabled")).length, 1);
 
-  // A lowered count keeps the runner (loopEnabled skips its future ticks) and warns once.
+  // A lowered count keeps the runner (runnerEnabled skips its future ticks) and warns once.
   config.roles.feature = { ...config.roles.feature, instances: 1 };
   writeConfig(root, config);
   live.poll();

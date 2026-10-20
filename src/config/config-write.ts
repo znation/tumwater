@@ -515,7 +515,7 @@ export function unsetConfigKey(
  * `{ "customRoles": [ { "name", "task" }, … ] }` — the whole array, replacing the current one.
  * Applied atomically to the live config with setDailyBudgetUsd's idiom (fresh loadConfig that
  * bypasses the stat cache, validateConfig, then writeJsonAtomic — readers poll every ~2 s), so
- * the orchestrator's live reload starts the new loop with no commit, no review gate, and no
+ * the orchestrator's live reload starts the new role with no commit, no review gate, and no
  * merge, and the request file never enters a diff.
  *
  * The permitted key set is enforced here, not in prose: `customRoles` is accepted and every
@@ -526,15 +526,15 @@ export function unsetConfigKey(
  * live. The request file is deleted on EVERY path (including every failure), so a malformed
  * request cannot retry forever and the file cannot survive into `git add -A`.
  *
- * Roles entries for custom loops the request removes are stripped before validation, from the
+ * Roles entries for custom roles the request removes are stripped before validation, from the
  * FILE's own `roles` section rather than the catalog-merged map (the rule every other
  * whole-config write follows, see preserveFileRoles): loadConfig seeds one `roles.<name>` per
- * current custom loop and validateConfig rejects an id that is neither a catalog role nor a
- * requested custom-loop name, so without the strip a removal would never apply. Only
+ * current custom role and validateConfig rejects an id that is neither a catalog role nor a
+ * requested custom-role name, so without the strip a removal would never apply. Only
  * structurally valid names feed the strip — a malformed entry stays in the array for
  * validateConfig to reject.
  *
- * Returns null when no request file exists. `applied` names the custom loops now live (empty
+ * Returns null when no request file exists. `applied` names the custom roles now live (empty
  * unless the write happened); `ignored` lists the discarded top-level keys; `error`, when set,
  * names why nothing (or only part of the work) was done — the caller turns it and `ignored`
  * into warning events. */
@@ -560,24 +560,24 @@ export function applyConfigRequest(
     for (const key of Object.keys(parsed)) {
       if (key !== "customRoles") ignored.push(key);
     }
-    const loops = parsed.customRoles;
-    if (!Array.isArray(loops))
-      throw new Error(`config request's customRoles must be an array (got ${show(loops)})`);
+    const entries = parsed.customRoles;
+    if (!Array.isArray(entries))
+      throw new Error(`config request's customRoles must be an array (got ${show(entries)})`);
     // The load-to-write sequence is one critical section under withConfigLock: a concurrent
     // `config set`/dashboard write between the load and this write must not be dropped by the
     // whole-file overwrite (see writeConfigMutation).
     withConfigLock(root, () => {
       const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
-      // Strip roles.<id> entries for custom loops this request removes (see docstring).
+      // Strip roles.<id> entries for custom roles this request removes (see docstring).
       // Structurally valid names only; anything else stays for validateConfig to reject — never
       // dereference a request entry before validation.
       const requestedNames = new Set<string>();
-      for (const entry of loops) {
+      for (const entry of entries) {
         if (isJsonObject(entry) && typeof entry.name === "string") requestedNames.add(entry.name);
       }
       // Base the roles rewrite on the FILE's own section, not the loaded (catalog-merged)
       // map: this whole-config write must not re-expand a partial section to every built-in
-      // (preserveFileRoles' rule). Only the removed custom loops' entries are stripped, and
+      // (preserveFileRoles' rule). Only the removed custom roles' entries are stripped, and
       // only from what the file actually holds.
       const rawRolesCandidate = rawConfigObject(root).roles;
       const roles = isJsonObject(rawRolesCandidate)
@@ -586,7 +586,7 @@ export function applyConfigRequest(
       for (const c of current.customRoles) {
         if (!requestedNames.has(c.name)) delete roles[c.name];
       }
-      const candidate = { ...current, customRoles: loops as TumwaterConfig["customRoles"] };
+      const candidate = { ...current, customRoles: entries as TumwaterConfig["customRoles"] };
       const candidateRecord = candidate as unknown as Record<string, unknown>;
       if (rawRolesCandidate === undefined) delete candidateRecord.roles;
       else candidateRecord.roles = roles;

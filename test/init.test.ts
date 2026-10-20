@@ -301,7 +301,7 @@ test("initProject --adopt against an already-marked TUMWATER.md brief is a plain
 });
 
 test("initProject refuses to adopt over a TUMWATER.md without markers", async () => {
-  // Create-if-absent would leave the marker-less file alone and drop the prompt — every loop
+  // Create-if-absent would leave the marker-less file alone and drop the prompt — every role
   // would run blind — so this is the one case adoption still refuses, before any side effect.
   const repo = foreignRepo();
   fs.writeFileSync(path.join(repo, "TUMWATER.md"), "# notes\n");
@@ -465,7 +465,7 @@ test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it
 test("a TUMWATER.md-owned brief never gains a duplicate README.md on a matching or bare init", async () => {
   // With the brief in TUMWATER.md and no README.md, the re-seed paths (the same prompt, or none)
   // create the backlog files and config but no README.md — one would duplicate the managed
-  // prompt + status sections in a file neither the loops nor the readme role read.
+  // prompt + status sections in a file neither the roles nor the readme role read.
   const repo = makeRepo();
   fs.writeFileSync(
     path.join(repo, "TUMWATER.md"),

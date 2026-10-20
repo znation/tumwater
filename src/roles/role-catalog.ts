@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The role catalog: one built-in loop's identity and its role-specific "find something to do"
+/** The role catalog: one built-in role's identity and its role-specific "find something to do"
  * instruction text. Split out of roles.ts (2026-10-01, organize) so the catalog's embedded
  * prompt prose lives apart from the derived registries and classification helpers, which stayed
  * in roles.ts. Pure catalog data — the shared instruction fragments role prompts embed live in
@@ -34,12 +34,12 @@ const README_TRAILER_LEGACY = "Tick: readme #"; // vocabulary-ok: legacy name re
 /** One role in the catalog: its id and title, the role-specific "find something to do" text,
  * and the model tier its runs resolve to. */
 export interface Role {
-  /** The loop's unique identifier — the .tumwater/state/<id>.json state file's name, the
+  /** The role's unique identifier — the .tumwater/state/<id>.json state file's name, the
    * tumwater.json roles.<id> config key, and what every --role CLI flag names. Built-in ids
-   * are fixed; a custom loop's id is whatever its config declares. */
+   * are fixed; a custom role's id is whatever its config declares. */
   id: string;
   /** Human-readable role name used only in the tick prompt's self-description
-   * ("You are the "<id>" loop (<title>)"), where it glosses a custom loop's
+   * ("You are the "<id>" role (<title>)"), where it glosses a custom role's
    * arbitrary id; the status surfaces render the id, not this. */
   title: string;
   /** Role-specific instructions for finding (and doing) one task. */
@@ -55,10 +55,10 @@ export interface Role {
   scope?: string;
 }
 
-/** The opinionated role catalog. Every loop runs one role; a role's `find` text is
+/** The opinionated role catalog. Every role has one job; a role's `find` text is
  * the role-specific "find something to do" half of the tick prompt.
  *
- * Order matters: it is the scheduling priority when loops are otherwise tied
+ * Order matters: it is the scheduling priority when roles are otherwise tied
  * (e.g. the startup burst), so shipping work (feature, bugfix) outranks hygiene. */
 export const ROLES: Role[] = [
   {

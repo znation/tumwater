@@ -3,7 +3,7 @@ import fs from "node:fs";
 import type { TumwaterConfig, RoleConfig } from "./config-schema.js";
 import type { ResolvedModelConfig } from "./config-views.js";
 import { allRoleIds } from "../roles/roles.js";
-import { loopIds } from "../roles/runner-ids.js";
+import { runnerIds } from "../roles/runner-ids.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
@@ -55,14 +55,14 @@ export function defaultConfig(): ResolvedModelConfig {
   // tick a couple of hours apart reads a new window rather than re-filing the same cluster.
   // It is the one opt-in role: its evidence is this harness's own event log and its charter
   // files only harness misbehavior, so on any other project every finding is a tumwater bug
-  // filed into the wrong backlog, which that project's bugfix loop rightly rejects. Tumwater's
+  // filed into the wrong backlog, which that project's bugfix role rightly rejects. Tumwater's
   // own tumwater.example.json enables it, so this repo's checkouts still get it at `init`.
   roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
   // nobody had touched. A 30 min readme clock batches a burst of merges into one sync; a 1 h
-  // plan clock leaves the slots to the loops that ship. Both still wake early when main moves —
+  // plan clock leaves the slots to the roles that ship. Both still wake early when main moves —
   // the clock only bounds how often.
   roles.readme = { enabled: true, minRunIntervalSeconds: 1800 };
   roles.plan = { enabled: true, minRunIntervalSeconds: 3600 };
@@ -107,7 +107,7 @@ export function defaultConfig(): ResolvedModelConfig {
     maxDailyCostUsd: 50,
     // Work ratio 1a/4 and 1b/4 (plans/work-ratio.md): the maintenance allowance is
     // maintenancePerWorkMerge × work merges + 12 per rolling 24 h, and the scheduler holds
-    // maintenance loops once the window reaches it. Two keeps roughly two upkeep merges per
+    // maintenance roles once the window reaches it. Two keeps roughly two upkeep merges per
     // shipped change while the fixed floor lets hygiene run on an empty backlog.
     maintenancePerWorkMerge: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
@@ -180,7 +180,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     customRoles: (cfg.customRoles ?? []).map((c) => ({ ...c })),
     roles: { ...base.roles },
   };
-  // Seed each user-defined loop into roles BEFORE the overlay loop so a file's `roles` section
+  // Seed each user-defined role into roles BEFORE the overlay loop so a file's `roles` section
   // overrides per-key for a custom exactly like for built-ins (enabled, instructions,
   // tickInterval, provider/model); seeding after would silently ignore those overrides.
   // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
@@ -188,8 +188,8 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
   for (const c of merged.customRoles) {
     // Own-property test, not a bare truthiness read: the custom name `constructor` passes the
     // lowercase charset check and collides with an Object.prototype key, whose inherited value
-    // is truthy — a bare `!merged.roles[c.name]` would skip the seed and the loop would never
-    // become an own key, so loopIds silently dropped it.
+    // is truthy — a bare `!merged.roles[c.name]` would skip the seed and the role would never
+    // become an own key, so runnerIds silently dropped it.
     if (!Object.hasOwn(merged.roles, c.name)) merged.roles[c.name] = { enabled: true };
   }
   for (const [id, rc] of Object.entries(cfg.roles ?? {})) {
@@ -370,26 +370,26 @@ export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): s
   return keys.sort();
 }
 
-/** The names of the user-defined loops, in array order (plans/user-defined-loops.md).
+/** The names of the user-defined roles, in array order (plans/user-defined-loops.md).
  * One source of truth for "which ids are user-defined" so consumers cannot drift. */
 export function customLoopNames(config: TumwaterConfig): string[] {
   return config.customRoles.map((c) => c.name);
 }
 
-/** True when `id` is a user-defined loop rather than a catalog role. */
+/** True when `id` is a user-defined role rather than a catalog role. */
 export function isCustomRole(config: TumwaterConfig, id: string): boolean {
   return config.customRoles.some((c) => c.name === id);
 }
 
-/** Every valid role id — the catalog plus the user-defined loops (the one answer for "which
+/** Every valid role id — the catalog plus the user-defined roles (the one answer for "which
  * ids exist", so consumers cannot drift from each other). */
 export function knownRoleIds(config: TumwaterConfig): string[] {
   const ids = [...allRoleIds(), ...customLoopNames(config)];
   const seen = new Set(ids);
-  // Parallel work instances (part 5b/7): an enabled role's instance loop ids (`feature-2`) are
+  // Parallel work instances (part 5b/7): an enabled role's instance role ids (`feature-2`) are
   // valid CLI and GUI targets even though they are not catalog roles. The bare ids are already
   // present, so this only appends the extras; deduping keeps the catalog+customs order intact.
-  for (const id of loopIds(config))
+  for (const id of runnerIds(config))
     if (!seen.has(id)) {
       ids.push(id);
       seen.add(id);
@@ -397,7 +397,7 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
   return ids;
 }
 
-/** Every valid role id a READ-ONLY surface accepts: the catalog plus the user-defined loops,
+/** Every valid role id a READ-ONLY surface accepts: the catalog plus the user-defined roles,
  * read through loadConfigCached (which never throws), so a transiently broken tumwater.json
  * falls back to the built-in catalog instead of taking the view down or refusing every id.
  * The one home of that fallback rule — every read-only role-id consumer resolves through it:

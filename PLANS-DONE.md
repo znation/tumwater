@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 10/14: Convert config and roles and init (planned 2026-10-16 by user; requires part 9/14 landed; design in plans/terminology.md "Code names"; touches src/config/ + src/roles/ + src/init/ + their tests); done 2026-10-19 by the feature role
+
+**Goal.** The config, role-catalog and init modules use runner and role wording; this part is mostly comments.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/config/ (config-schema.ts has about 25 comment lines, plus config.ts, config-write.ts, config-validation.ts, config-live.ts, config-fallbacks.ts, config-views.ts and config-field-checks.ts): migrate `LoopRunner`, `LoopState`, `loopIds` and `loopEnabled`, and convert comments. In comments, "custom loop" and "user-defined loop" → "custom role"; the `customLoop*` identifiers and the legacy `customLoops` config key stay for Plain terms code cleanup or for good.
+- src/roles/ (role-view.ts, role-render.ts, roles.ts, role-guidance.ts and role-catalog.ts; runner-ids.ts was part 2/14's): comments and any uses. Prompt text inside role-catalog.ts and role-guidance.ts string literals was converted by Plain terms text; do not touch strings.
+- src/init/init.ts: comments.
+- Tests: test/config*.test.ts, test/role-view.test.ts, test/roles.test.ts, test/role-guidance.test.ts, test/prompt-roles.test.ts and test/init*.test.ts.
+
+**Files touched.** src/config/*.ts, src/roles/*.ts except runner-ids.ts, src/init/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*`/`CUSTOM_LOOP_*` identifiers and the legacy `customLoops` key handling.
+- `grep -rnwiE 'loops?'` over this part's comments lists only kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
 ### `tumwater wake --cancel` and `wake --list` take a comma-separated `--role` list, so the scheduled-wake views match plain `wake --role clean,dedupe` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry. The in-flight `abort --role` entry also edits src/operator/operator-commands.ts and test/operator-commands.test.ts, but only `cmdAbort` and its tests, which this entry does not touch; done 2026-10-19 by the feature role)
 
 **Goal.** `tumwater wake --role clean,dedupe` (immediate or `--in 45m`) accepts a comma list. `wake --cancel --role clean,dedupe` and `wake --list --role clean,dedupe` do not: `failOnRoleList` (src/operator/operator-commands.ts) rejects them with `wake --cancel and --list take one --role id`. So an operator who scheduled one wake for two roles cannot cancel or list that same pair in one command. Accept the list in both branches. A single id and no `--role` behave exactly as now.

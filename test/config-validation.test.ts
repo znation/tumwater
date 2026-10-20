@@ -153,7 +153,7 @@ test("model-triple fields reject empty strings but instructions may be empty", (
 
 test("thinking values are checked against pi's accepted levels", () => {
   // pi WARNS and falls back to its own default on an unrecognized --thinking level rather than
-  // failing, so a typo would silently run every loop at the wrong reasoning depth. Reject it at
+  // failing, so a typo would silently run every role at the wrong reasoning depth. Reject it at
   // load, naming the accepted values, instead of handing it to pi.
   const bad = "hgih";
   const message = (prefix: string) =>
@@ -183,7 +183,7 @@ test("thinking values are checked against pi's accepted levels", () => {
   }
 });
 
-test("role instructions are capped like a custom loop's task", () => {
+test("role instructions are capped like a custom role's task", () => {
   // Both strings ride into every tick's prefill, so both must be bounded: an unbounded
   // instructions string is a standing per-tick cost, not just a one-off prompt edit.
   const long = "x".repeat(4097);
@@ -631,7 +631,7 @@ test("validateConfig bounds the per-role instances field to feature/bugfix and 1
   assert.match(plan, /roles\.plan\.instances is only valid for feature and bugfix \(got 2\)/);
 });
 
-test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring loop)", () => {
+test("validateConfig rejects unknown role ids (a typo would spawn a phantom erroring role)", () => {
   const msg = validationError({ roles: { featuer: { enabled: true } } });
   assert.match(msg, /roles\.featuer is not a known role \(valid ids: .*feature.*\)/);
   assert.match(msg, /— did you mean `feature`\?/);

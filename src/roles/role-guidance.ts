@@ -6,7 +6,7 @@
  * while prompt.ts embeds them too — the wording is one concern, the catalog another. */
 import { roleCommitGrep } from "./legacy-role-ids.js";
 
-/** Shared guidance for any loop about to record a plan or bug: split independent parts
+/** Shared guidance for any role about to record a plan or bug: split independent parts
  * into their own entries. Defined once so the director and role prompts cannot drift.
  * Lives here (not in prompt.ts) because two role `find` texts embed it — keeping this
  * module import-free, with the dependency running one way: prompt assembly → roles,
@@ -16,8 +16,8 @@ into independent subparts (separate features, or separate bugs). If it does, rec
 its own PLANS.md/BUGS.md entry that cross-references its siblings, so roles can pick them up
 independently; if the parts are not truly independent, keep a single entry.`;
 
-/** Shared instruction for closing a backlog entry (the feature loop moving a plan to Done,
- * the bugfix loop moving a bug to Fixed). Written against the observed failure (PLANS.md
+/** Shared instruction for closing a backlog entry (the feature role moving a plan to Done,
+ * the bugfix role moving a bug to Fixed). Written against the observed failure (PLANS.md
  * 2026-09-30, part 1/3): "move it to a Done section" reads as "create a section", and five
  * commits left PLANS.md with two `## Done` headings — so the wording names the file's EXISTING
  * resolved heading, forbids touching `## ` structure, and gives the verifiable invariant
@@ -43,7 +43,7 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
 const REQUIRES_PART_FORM = "requires part N/M landed"; // vocabulary-ok: requiredParts parses this heading syntax
 
 /** Shared sizing rule for anyone writing a plan (the plan role and the director): the feature
- * loop is one mid-sized local model working alone in one run, and the review gate rejects a
+ * role is one mid-sized local model working alone in one run, and the review gate rejects a
  * change that lands less than its entry promises — so a plan must fit that run. Oversized plans
  * were the pattern behind "half-done against its own plan" rejections. The last sentence is the
  * self-hosting build lag (BUGS.md 2026-09-23): plan 4b bundled "the merge preserves the live
@@ -133,8 +133,8 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
  * NEEDS_REPLAN_PREFIX. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
-/** The markdown note the feature loop appends to a plan it cannot finish in one run, so the plan
- * loop can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
+/** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
+ * role can split it. Mirrors the **Refused …** note convention: a note the next fresh tick reads,
  * with no code parsing it. Defined once so the feature and plan texts and the director's routing
  * clause cannot drift. */
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
@@ -144,8 +144,8 @@ export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature:
  * parsing the date or the round count out of the full template. */
 export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
 
-/** The markdown note the feature loop appends under a plan whose change was rejected after its
- * final revision round, carrying the reviewer's objections back to the strong-tier plan loop
+/** The markdown note the feature role appends under a plan whose change was rejected after its
+ * final revision round, carrying the reviewer's objections back to the strong-tier plan role
  * instead of letting feature re-author the same plan. Same convention as NEEDS_REVIEW_NOTE: a
  * note a later fresh tick reads, with no code parsing it. */
 export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds**`;
@@ -155,7 +155,7 @@ export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature:
  * mark) can match on it instead of parsing the date or the wording out of the full template. */
 export const WAITING_FOR_FAILURE_PREFIX = `**Waiting for the next failure `;
 
-/** The markdown note the bugfix loop writes under an open bug it cannot reproduce once it has made
+/** The markdown note the bugfix role writes under an open bug it cannot reproduce once it has made
  * the failure explain itself, so bugfix stops spending runs without new evidence. Same convention
  * as NEEDS_REPLAN_NOTE: a note a later fresh tick reads. It lifts when whoever records the next
  * occurrence deletes the line, or by `tumwater bug --release <n>`. */

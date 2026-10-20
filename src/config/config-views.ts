@@ -213,10 +213,10 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
 }
 
 /** The config a role's ticks SCHEDULE from: configForRole, except that while PLANS.md still
- * has planning room (planBacklogOpen — below the plan loop's eligible-plan target, or holding
+ * has planning room (planBacklogOpen — below the plan role's eligible-plan target, or holding
  * a plan that needs review/needs replan) the plan role schedules with a ZERO min gap, so a
  * productive plan tick reruns on the next poll and an unproductive one drops to the idle
- * backoff. The plan loop's own machine signal is `planBacklogFull` (src/scheduling/claims.ts):
+ * backoff. The plan role's own machine signal is `planBacklogFull` (src/scheduling/claims.ts):
  * a fresh project's empty backlog is not full, so this subsumes the old placeholder-status
  * trigger. One home for the rule: isEligible enforces the same gap when it decides whether
  * plan may start, and runner-run.ts hands this config to applyTickOutcome so nextRunAt is
@@ -317,7 +317,7 @@ export function resolvedModelFields(
  * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
  * that assembly and guard, shared by the two run-start event writers (runner-run.ts's run_start,
- * review.ts's review_start) and the per-loop status snapshot (status-data.ts) so the three
+ * review.ts's review_start) and the per-role status snapshot (status-data.ts) so the three
  * observability surfaces cannot disagree about which model a run starts on. A non-pi agent is
  * named as the selector's provider namespace (agentQualifiedSelector), so a claude run reads
  * `claude/claude-sonnet-5-5` in every surface instead of a bare model id. */
@@ -353,7 +353,7 @@ export function seamHoldKey(
   return cfg.agent !== undefined && cfg.agent !== "pi" ? cfg.agent : cfg.provider;
 }
 
-/** The `modelPairName` a resolved seam's run is charged under (LoopState.dayCostByPair): the
+/** The `modelPairName` a resolved seam's run is charged under (RunnerState.dayCostByPair): the
  * routed backend's id stands in for the provider on a non-pi seam, exactly as the fallback
  * pairs carry it (config-fallbacks.ts's seamKeyedFallbackProvider), so a run and the chain
  * step it ran on name one key. */

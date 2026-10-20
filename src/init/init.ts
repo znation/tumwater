@@ -79,7 +79,7 @@ function isScaffoldingPath(rel: string): boolean {
 /** Whether `root` has a project of its own yet: not a git repo, a repo with no commits, or a
  * repo whose tracked and untracked-non-ignored files are all init's scaffolding. Drives the
  * bootstrap seed — a project created from nothing runs plan and feature before the maintenance
- * loops (plans/work-ratio.md, part 2/2). `withCommits` is whether `root` is a repo with at least
+ * roles (plans/work-ratio.md, part 2/2). `withCommits` is whether `root` is a repo with at least
  * one commit, which initProject has already established. One `ls-files -co` lists the tracked
  * files and the untracked non-ignored ones together (the exclude rules filter only the
  * untracked side). */
@@ -191,7 +191,7 @@ export async function initProject(
       `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the team at a branch with \`tumwater start --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
   }
-  // The loops read the project's reason to exist back out of the project brief on every
+  // The roles read the project's reason to exist back out of the project brief on every
   // tick (readInitialPrompt). A README.md without the managed section is the project's own
   // documentation, so it is never rewritten: the repo is adopted instead, with the brief in
   // TUMWATER.md (plans/portability.md §7/7) — the same path `--adopt` asks for explicitly.
@@ -201,7 +201,7 @@ export async function initProject(
   const readmeExists = fs.existsSync(path.join(root, "README.md"));
   const adopted = brief === null && (opts.adopt === true || readmeExists);
   // A TUMWATER.md without the markers is create-if-absent's blind spot: it would be left
-  // untouched and the prompt silently dropped — every loop would then run blind. Fail before
+  // untouched and the prompt silently dropped — every role would then run blind. Fail before
   // creating anything so the user fixes it and re-runs.
   if (adopted && fs.existsSync(path.join(root, "TUMWATER.md"))) {
     throw new Error(

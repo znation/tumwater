@@ -1,6 +1,6 @@
 // Unit coverage for src/roles/role-view.ts (the collector behind `tumwater role <id>`) and
 // src/roles/role-render.ts (its Markdown renderer). The collector reads only persisted state —
-// tumwater.json, the loop's state file, the queue directories, the pause marker — so every
+// tumwater.json, the role's state file, the queue directories, the pause marker — so every
 // test runs against a bare fixture dir with no team, which is also the degradation claim
 // under test: a missing read yields its empty answer, never a throw.
 
@@ -15,7 +15,7 @@ import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { contextBudgetRule } from "../src/prompt/prompt.js";
 import { PI_DIALECT } from "../src/prompt/dialect.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
@@ -447,7 +447,7 @@ test("the plan payload resolves the stop target without leaking a template", () 
 test("an active model-fallback episode is reported with its pair and reason", () => {
   const dir = root();
   writeConfig(dir, { model: "prov-a/model-a", fallbackModel: { provider: "fp", model: "fm" } });
-  const state = freshLoopState("feature");
+  const state = freshRunnerState("feature");
   const since = Date.now() - 120_000;
   state.modelFallback = {
     failures: 0,
@@ -456,7 +456,7 @@ test("an active model-fallback episode is reported with its pair and reason", ()
     cooldownMs: 300_000,
     reason: "Request timed out.",
   };
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.deepEqual(p.modelFallback, { provider: "fp", model: "fm", since, reason: "Request timed out." });
   assert.match(
@@ -466,7 +466,7 @@ test("an active model-fallback episode is reported with its pair and reason", ()
 
   // A probe is due: the next tick runs the primary, so the episode line is gone.
   state.modelFallback.probeAt = Date.now() - 1;
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).modelFallback, null);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Model fallback:/);
 });
@@ -476,7 +476,7 @@ test("an active model-fallback episode is reported with its pair and reason", ()
 test("a claude model-fallback episode renders as claude/model", () => {
   const dir = root();
   writeConfig(dir, { agent: "claude", fallbackModel: { model: "claude-haiku-5-5" } });
-  const state = freshLoopState("feature");
+  const state = freshRunnerState("feature");
   const since = Date.now() - 60_000;
   state.modelFallback = {
     failures: 0,
@@ -485,7 +485,7 @@ test("a claude model-fallback episode renders as claude/model", () => {
     cooldownMs: 300_000,
     reason: "Request timed out.",
   };
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.modelFallback?.backend, "claude");
   assert.equal(p.modelFallback?.model, "claude-haiku-5-5");
@@ -656,8 +656,8 @@ test("a pi model job naming no model shows pi's own saved default", () => {
 });
 
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the role page carries an `Images:`
-// line — the loop's own capability and, when it cannot read images, where a blind read
-// reroutes. The text-only default-tier loop names its vision strong target; a vision loop says
+// line — the role's own capability and, when it cannot read images, where a blind read
+// reroutes. The text-only default-tier role names its vision strong target; a vision role says
 // yes; an unknown seam (no models file) says unknown rather than guessing.
 test("role payload reports image input and the renderer's Images line", () => {
   const dir = root();
@@ -693,7 +693,7 @@ test("role payload reports image input and the renderer's Images line", () => {
   assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
 });
 
-// Recent runs (the `tumwater role <id>` section): the loop's last few run_end
+// Recent runs (the `tumwater role <id>` section): the role's last few run_end
 // results, read from the event log so the command answers with the team stopped. Newest
 // first, at most 8, each with its time, result, duration, and summary.
 test("role payload surfaces the newest run_end outcomes ordered newest-first", () => {
@@ -753,7 +753,7 @@ test("a role with no run_end events carries no recentOutcomes", () => {
   assert.ok(!renderRoleMarkdown(p).includes("Recent runs"));
 });
 
-// The loop's own spend (PLANS.md): rolePayload sums this role's run_end usage over the same
+// The role's own spend (PLANS.md): rolePayload sums this role's run_end usage over the same
 // retained event window recentOutcomes reads, through the shared eventUsage finiteness guard,
 // and the renderer names it as a Spend line (a notional suffix only when non-zero).
 test("role payload sums the role's usage and renders a Spend line", () => {
@@ -762,7 +762,7 @@ test("role payload sums the role's usage and renders a Spend line", () => {
   writeEvents(dir, [
     { ts: now - 180_000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 6000, costUsd: 0.02 },
     { ts: now - 120_000, loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 },
-    // Another role's spend is not folded into this loop's sum.
+    // Another role's spend is not folded into this role's sum.
     { ts: now - 60_000, loop: "other", type: "run_end", run: 1, result: "changed", tokens: 99999, costUsd: 9.99 },
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
@@ -824,19 +824,19 @@ test("role markdown renders the Recent runs section before the instructions", ()
   assert.ok(md.indexOf("## Recent runs") < md.indexOf("## Instructions override"));
 });
 
-// The loop's schedule (PLANS.md): the role view says when the loop next runs and when it
+// The role's schedule (PLANS.md): the role view says when the role next runs and when it
 // last ticked, derived from the persisted nextRunAt/backoffSeconds/lastRunEndedAt and in
 // the same words and wording family as the status `next run`/`last tick` cells. The clock is
 // injected so every line is pinned by a fixed now (the renderer stays a pure function).
 test("role payload and render surface the role's schedule from persisted state", () => {
   const dir = root();
   const now = 1_700_000_000_000;
-  // A scheduled loop in backoff with a last tick: a future nextRunAt with backoffSeconds > 0.
-  const state = freshLoopState("feature");
+  // A scheduled role in backoff with a last tick: a future nextRunAt with backoffSeconds > 0.
+  const state = freshRunnerState("feature");
   state.nextRunAt = now + 300_000; // 5m away
   state.backoffSeconds = 120;
   state.lastRunEndedAt = now - 180_000; // 3m ago
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.nextRunAt, now + 300_000);
   assert.equal(p.backoffSeconds, 120);
@@ -846,21 +846,21 @@ test("role payload and render surface the role's schedule from persisted state",
   // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
   assert.match(md, /- Last run: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
 
-  // A due loop (nextRunAt at/past now) reads `due now`.
+  // A due role (nextRunAt at/past now) reads `due now`.
   state.nextRunAt = now;
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now), /- Next run: due now/);
 
-  // A scheduled loop out of backoff reads plain `in <Ns>` with no backoff prefix.
+  // A scheduled role out of backoff reads plain `in <Ns>` with no backoff prefix.
   state.nextRunAt = now + 60_000;
   state.backoffSeconds = 0;
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   const plain = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now);
   assert.match(plain, /- Next run: in 1m/);
   assert.doesNotMatch(plain, /backoff/);
 
   // A never-ticked, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
-  // payload omits lastRunEndedAt (and reads nextRunAt 0) until the loop has been scheduled.
+  // payload omits lastRunEndedAt (and reads nextRunAt 0) until the role has been scheduled.
   const freshDir = root();
   const fresh = rolePayload(freshDir, "feature", NO_MODELS);
   assert.equal(fresh.nextRunAt, 0);
@@ -871,7 +871,7 @@ test("role payload and render surface the role's schedule from persisted state",
   assert.match(freshMd, /- Last run: never/);
 });
 
-// The role view's Schedule must not understate a quiet yield-scaled loop's effective gap: a
+// The role view's Schedule must not understate a quiet yield-scaled role's effective gap: a
 // scalable role (bugfix here) whose recent-yield ring holds a run of empties earns a ×N
 // multiplier (yieldMultiplier 2 at 10 empties) that stretches its min-tick gap beyond what
 // nextRunAt's countdown shows, so the `Next tick` line rides the same `×N` suffix the status
@@ -880,24 +880,24 @@ test("role payload and render surface the role's schedule from persisted state",
 test("role schedule surfaces the yield multiplier a quiet scalable role is serving", () => {
   const dir = root();
   const now = 1_700_000_000_000;
-  // A bugfix loop 5m from its nextRunAt, out of backoff, with ten empties in its yield ring.
-  const state = freshLoopState("bugfix");
+  // A bugfix role 5m from its nextRunAt, out of backoff, with ten empties in its yield ring.
+  const state = freshRunnerState("bugfix");
   state.nextRunAt = now + 300_000;
   state.backoffSeconds = 0;
   state.recentOutcomes = "n".repeat(10); // 10 empties => yieldMultiplier 2
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   const p = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(p.yieldMultiplier, 2);
   const md = renderRoleMarkdown(p, now);
   assert.match(md, /- Next run: in 5m ×2/); // the stretched-gap suffix rides the line
-  // A due quiet loop reads `due now ×2`, matching nextRunCell's `now ×N`.
+  // A due quiet role reads `due now ×2`, matching nextRunCell's `now ×N`.
   state.nextRunAt = now;
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now), /- Next run: due now ×2/);
   // A merge inside the recent window resets the multiplier to 1, so no suffix rides.
   state.nextRunAt = now - 60_000;
   state.recentOutcomes = "L".repeat(2) + "n".repeat(8);
-  saveLoopState(dir, state);
+  saveRunnerState(dir, state);
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).yieldMultiplier, 1);
   const settled = renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now);
   assert.match(settled, /- Next run: due now$/m);
@@ -943,7 +943,7 @@ test("role payload carries the daily cap verdict and renders a Daily cap line", 
   const now = new Date(2026, 9, 16, 12, 0, 0);
   const today = dayKey(now.getTime());
   writeConfig(dir, { maxDailyCostUsdPerRole: { coverage: 1 } });
-  saveLoopState(dir, { ...freshLoopState("coverage"), dayStamp: today, dayCostUsd: 1.2 });
+  saveRunnerState(dir, { ...freshRunnerState("coverage"), dayStamp: today, dayCostUsd: 1.2 });
   const p = rolePayload(dir, "coverage", NO_MODELS, now);
   assert.deepEqual(p.dailyCap, { capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["coverage"] });
   assert.match(
@@ -952,7 +952,7 @@ test("role payload carries the daily cap verdict and renders a Daily cap line", 
   );
 
   // A spend stamped on an earlier day counts 0.
-  saveLoopState(dir, { ...freshLoopState("coverage"), dayStamp: "2020-01-01", dayCostUsd: 5 });
+  saveRunnerState(dir, { ...freshRunnerState("coverage"), dayStamp: "2020-01-01", dayCostUsd: 5 });
   const old = rolePayload(dir, "coverage", NO_MODELS, now);
   assert.equal(old.dailyCap?.over, false);
   assert.equal(old.dailyCap?.spentUsd, 0);
@@ -968,7 +968,7 @@ test("daily cap sums instances, and is absent for cap 0, the director, or no cap
     maxDailyCostUsdPerRole: { feature: 1, coverage: 0 },
   });
   for (const id of ["feature", "feature-2"]) {
-    saveLoopState(dir, { ...freshLoopState(id), dayStamp: today, dayCostUsd: 0.6 });
+    saveRunnerState(dir, { ...freshRunnerState(id), dayStamp: today, dayCostUsd: 0.6 });
   }
   const p = rolePayload(dir, "feature-2", NO_MODELS, now);
   assert.equal(p.dailyCap?.over, true);

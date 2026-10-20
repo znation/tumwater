@@ -348,7 +348,7 @@ test("autoRestart defaults on and is validated as a boolean", () => {
   assert.doesNotThrow(() => validateConfig({ autoRestart: false }));
 });
 
-// --- User-defined loops (plans/user-defined-loops.md) ---
+// --- User-defined roles (plans/user-defined-loops.md) ---
 
 test("defaultConfig carries no customRoles and no longer exempts tumwater.json from review", () => {
   // Config changes no longer ride the commit path (plans/portability.md §3/7): the director's
@@ -387,12 +387,12 @@ test("loadConfig merges customRoles into roles after the built-ins in array orde
   assert.equal(config.roles["perf-hunter"]?.enabled, true);
 });
 
-test("loadConfig seeds a custom loop whose name collides with an Object.prototype key", () => {
+test("loadConfig seeds a custom role whose name collides with an Object.prototype key", () => {
   // Custom names are validated only by charset, and "constructor" passes that lowercase
   // check while colliding with an Object.prototype key. The seeding check read
   // `!merged.roles[c.name]`, and the inherited Object.prototype value is truthy, so the seed
-  // was skipped. The loop then never became an own key of config.roles, so
-  // Object.entries/loopIds silently dropped it.
+  // was skipped. The role then never became an own key of config.roles, so
+  // Object.entries/runnerIds silently dropped it.
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
@@ -403,7 +403,7 @@ test("loadConfig seeds a custom loop whose name collides with an Object.prototyp
   const config = loadConfig(dir);
   assert.ok(
     Object.keys(config.roles).includes("constructor"),
-    "constructor custom loop is seeded into roles",
+    "constructor custom role is seeded into roles",
   );
   assert.equal(config.roles["constructor"]?.enabled, true);
 });
@@ -559,11 +559,11 @@ test("customLoopNames, isCustomRole, and knownRoleIds are the one source of trut
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
 });
 
-test("knownRoleIds carries a multi-instance role's loop ids (part 5b/7)", () => {
+test("knownRoleIds carries a multi-instance role's ids (part 5b/7)", () => {
   const config = defaultConfig();
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
   assert.equal(knownRoleIds(config).includes("feature-2"), true);
-  // One instance is the bare id alone: the loop id is known exactly while the count covers it.
+  // One instance is the bare id alone: the role id is known exactly while the count covers it.
   config.roles.feature = { ...config.roles.feature, instances: 1 };
   assert.equal(knownRoleIds(config).includes("feature-2"), false);
 });
@@ -571,7 +571,7 @@ test("knownRoleIds carries a multi-instance role's loop ids (part 5b/7)", () => 
 test("knownRoleIdsCached is the one home of the read-only fallback rule", () => {
   // No config: the built-in catalog, without touching loadConfigCached's cache contract.
   assert.deepEqual(knownRoleIdsCached(tmpdir()), allRoleIds());
-  // A config with customs: catalog plus the user-defined loops.
+  // A config with customs: catalog plus the user-defined roles.
   const withCustom = tmpdir();
   writeConfig(withCustom, { customRoles: [{ name: "docs-auditor", task: "t" }] });
   assert.deepEqual(knownRoleIdsCached(withCustom), [...allRoleIds(), "docs-auditor"]);
@@ -646,7 +646,7 @@ test("changedConfigKeys reports a roles.<id> edit per role, never the whole role
   const next = defaultConfig();
   next.roles.feature = { ...next.roles.feature!, model: "bigger" };
   assert.deepEqual(changedConfigKeys(prev, next), ["roles.feature"]);
-  // Adding a custom loop names both `customRoles` and the affected role entry.
+  // Adding a custom role names both `customRoles` and the affected role entry.
   const added = defaultConfig();
   added.customRoles.push({ name: "docs-auditor", task: "Keep docs current." });
   added.roles["docs-auditor"] = { enabled: true };

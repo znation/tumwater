@@ -133,7 +133,7 @@ export const MAX_DURATION_SECONDS = 2147483;
 
 /** Shared known-role guard for the per-role config sections (`roles.<id>` entries and
  * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customRoles cannot
- * work — a `roles` typo spawns a phantom loop that errors every tick forever; a caps typo
+ * work — a `roles` typo spawns a phantom role that errors every tick forever; a caps typo
  * silently no-ops the cap — so both reject it here with the valid ids, the same message shape
  * `tumwater logs --role` uses for a bad flag value. Returns true when the id is known. */
 export function checkKnownRoleId(
@@ -171,7 +171,7 @@ export function checkStringField(
 /** Every model-override section validates the same provider/model/thinking triple the same
  * way: empty strings are rejected (see checkStringField) and thinking is value-checked —
  * pi only recognizes THINKING_LEVELS and silently drops anything else, so a typo would run
- * the loops at pi's default depth and never say so.
+ * the roles at pi's default depth and never say so.
  *
  * `modelShape` widens `model` per plans/model-tiers.md: "selector" (the default, for the
  * legacy `fallbackModel` object) keeps it a plain selector string; "tier-map" (top level)

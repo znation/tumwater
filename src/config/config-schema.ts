@@ -5,7 +5,7 @@
  * level — the schema facts, single-homed here so adding a key edits one file: its type,
  * its default (config.ts), and its allow-list entry sit beside each other. Split out of the former
  * types.ts grab-bag — the runtime types a tick produces now live beside their consumers
- * (TickResult and TickOutcome in tick-outcome.ts, LoopState in runner-state.ts, HarnessEvent
+ * (TickResult and TickOutcome in tick-outcome.ts, RunnerState in runner-state.ts, HarnessEvent
  * in events.ts, MergeEntry in merge-queue.ts, and the pi-run types in run-agent.ts and
  * pi-run-result.ts) — so the schema the file on disk is validated against and the runtime
  * state the harness runs with
@@ -97,18 +97,18 @@ export interface RoleConfig {
   instances?: number;
 }
 
-/** A user-defined loop in tumwater.json's `customRoles` array
- * (plans/user-defined-loops.md): each entry becomes a full-citizen loop — persistent worktree +
+/** A user-defined role in tumwater.json's `customRoles` array
+ * (plans/user-defined-loops.md): each entry becomes a full-citizen role — persistent worktree +
  * branch, tick lifecycle, review gate, merge to main. Only the director may write this key; every
  * other role's prompt keeps the blanket tumwater.json ban. */
 interface CustomLoop {
-  /** The loop id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
+  /** The role id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
    * Validated at load against /^[a-z0-9][a-z0-9_-]{0,31}$/ — it becomes a filesystem path
    * and a git ref — with no collision with any catalog id (including the director) and unique
    * within the list. */
   name: string;
-  /** The loop's standing instruction — its entire find-something-to-do prompt. Capped at
-   * 4096 chars because it rides into every one of that loop's tick prefills. */
+  /** The role's standing instruction — its entire find-something-to-do prompt. Capped at
+   * 4096 chars because it rides into every one of that role's tick prefills. */
   task: string;
 }
 
@@ -166,7 +166,7 @@ export interface FallbackModelConfig {
   extraUsage?: boolean;
 }
 
-/** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
+/** Idle backoff: how long a role sleeps after a tick that changed nothing. */
 export interface BackoffConfig {
   /** Seconds to sleep after the first no-change tick. */
   initialSeconds: number;
@@ -177,10 +177,10 @@ export interface BackoffConfig {
 }
 
 /** New-project bootstrap: when `tumwater init` seeds a project from nothing it sets this so
- * the bootstrap gate (plans/work-ratio.md, part 2/2) holds the maintenance loops until
+ * the bootstrap gate (plans/work-ratio.md, part 2/2) holds the maintenance roles until
  * `untilPlansDone` plans have moved to PLANS.md's `## Done`. */
 interface BootstrapConfig {
-  /** How many plans must be Done before the maintenance loops are admitted; an integer ≥ 1. */
+  /** How many plans must be Done before the maintenance roles are admitted; an integer ≥ 1. */
   untilPlansDone?: number;
 }
 
@@ -278,7 +278,7 @@ export interface TumwaterConfig {
    * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds
    * an empty map. */
   backends?: Record<string, AgentConfig>;
-  /** Max pi runs in flight at once across all loops, merges included: every merge verify run
+  /** Max pi runs in flight at once across all roles, merges included: every merge verify run
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
@@ -312,7 +312,7 @@ export interface TumwaterConfig {
    * least 1; a value below `maxConcurrent` is allowed — permit holders then wait for a
    * slot to free. */
   worktreeSlots?: number;
-  /** Minimum seconds between two ticks of the same loop, even when woken early. */
+  /** Minimum seconds between two ticks of the same role, even when woken early. */
   minRunIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
   runTimeoutSeconds: number;
@@ -322,7 +322,7 @@ export interface TumwaterConfig {
    * would otherwise burn the whole run timeout. */
   quietTimeoutSeconds: number;
   /** Warn — without killing — when ONE tool call has been open this many seconds with no
-   * content-bearing output update: a `warning` event names the command and the loop's state
+   * content-bearing output update: a `warning` event names the command and the role's state
    * cell flags it, while the quiet watchdog still counts down. Fires even while sibling calls
    * keep streaming (total silence is not required); 0 disables the warning. */
   toolCallStallSeconds: number;
@@ -330,13 +330,13 @@ export interface TumwaterConfig {
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
-  /** Daily cost budget in USD for the team's autonomous spend: while the sum of every loop's
-   * spend for the local day has reached this, role loops stop starting new ticks until the next
+  /** Daily cost budget in USD for the team's autonomous spend: while the sum of every role's
+   * spend for the local day has reached this, roles stop starting new ticks until the next
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
   maxDailyCostUsd: number;
   /** Per-role daily cost caps in USD, keyed by role id (the per-role sibling of
-   * `maxDailyCostUsd`): a loop whose local-day spend has reached its cap starts no new ticks
+   * `maxDailyCostUsd`): a role whose local-day spend has reached its cap starts no new ticks
    * until local midnight or a live edit raises/removes it. 0 disables that role's cap; an
    * absent key means uncapped. The director is exempt — an explicit human prompt outranks the
    * autonomous-spend cap. Keys must name known roles (built-in or customRoles) — a typo is a
@@ -346,11 +346,11 @@ export interface TumwaterConfig {
    * code-maintenance merges the rolling 24 h window allows per work (feature/bugfix/director)
    * merge, on top of the fixed 12-merge floor. A number of 0 or more, default 2; there is no
    * off switch because a large value effectively disables the allowance. Once the window reaches
-   * the allowance the scheduler holds maintenance loops until it rolls under (part 1b/4), except
+   * the allowance the scheduler holds maintenance roles until it rolls under (part 1b/4), except
    * a fresh `tumwater wake` or queued prompt admits one tick. */
   maintenancePerWorkMerge: number;
   /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
-   * which role loops start no new ticks (in-flight ticks finish; a tick due inside the
+   * which roles start no new ticks (in-flight ticks finish; a tick due inside the
    * window starts at window end). A window may wrap midnight (start > end); an empty string
    * or an absent key means off. The director is exempt — a human steering outranks a
    * schedule, exactly as under the budget gate and the operator pause. */
@@ -358,7 +358,7 @@ export interface TumwaterConfig {
   /** Per-role quiet hours (PLANS.md): the scheduled sibling of `maxDailyCostUsdPerRole` —
    * keyed by role id, each value the same "HH:MM-HH:MM" window the team-wide `quietHours`
    * takes (wrapping included; an empty string or an absent key means off for that role). A
-   * loop whose own window covers the local wall clock starts no new ticks — in-flight ticks
+   * role whose own window covers the local wall clock starts no new ticks — in-flight ticks
    * finish — while the team-wide window keeps working unchanged: a role is held when
    * EITHER window covers now. The director is exempt, exactly as under the team window. */
   quietHoursPerRole?: Record<string, string>;
@@ -398,11 +398,11 @@ export interface TumwaterConfig {
    * `"pause"` (each tier's own entry is consulted when that tier runs at the cap;
    * part 5a/8). Setting `fallback` and `fallbackModel` both is a validation error. */
   fallback?: string | FallbackStep[] | Partial<Record<ModelTier, FallbackChain>>;
-  /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
+  /** The free model roles switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the team to free
    * work rather than pausing it: spend cannot advance, so the cap still holds. Absent (the
-   * default) — or present but not verifiably free — the gate pauses role loops exactly as
+   * default) — or present but not verifiably free — the gate pauses roles exactly as
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
   fallbackModel?: FallbackModelConfig;
@@ -426,13 +426,13 @@ export interface TumwaterConfig {
   autoRestart: boolean;
   /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): set by `tumwater
    * init` when it seeds a project from nothing, and read by the bootstrap gate (part 2/2) to
-   * hold the maintenance loops until this many plans have moved to PLANS.md's `## Done`.
+   * hold the maintenance roles until this many plans have moved to PLANS.md's `## Done`.
    * Absent means no bootstrap, so existing configs are unaffected. Removing it ends bootstrap
    * early. */
   bootstrap?: BootstrapConfig;
   /** Adversarial pre-merge review gate (see src/review/review.ts). */
   review: ReviewConfig;
-  /** User-defined loops (plans/user-defined-loops.md): each entry is merged into `roles` at
+  /** User-defined roles (plans/user-defined-loops.md): each entry is merged into `roles` at
    * load time as `{ enabled: true }`, appended after the built-ins in array order — that single
    * move makes every existing mechanism (runner creation, live enable/disable, configForRole,
    * status lists, gates) work unchanged. Optional in the file, defaulted to `[]`; required on
@@ -575,15 +575,15 @@ export const HARNESS_PI_FLAGS = new Map<string, string>([
 
 export const CUSTOM_LOOP_KEYS = ["name", "task"];
 
-/** A custom loop's name becomes a worktree dir and a git ref, so it is validated strictly:
+/** A custom role's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */
 export const CUSTOM_NAME_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
-/** A custom loop's task rides into every one of that loop's tick prefills, so it is capped:
+/** A custom role's task rides into every one of that role's tick prefills, so it is capped:
  * unbounded text would be a standing per-tick cost. */
 export const CUSTOM_TASK_MAX_CHARS = 4096;
 
 /** A role's extra instructions ride into every one of that role's tick prefills, so they are
- * capped like a custom loop's task: unbounded text would be a standing per-tick cost (and
+ * capped like a custom role's task: unbounded text would be a standing per-tick cost (and
  * could crowd the prompt toward the model's context ceiling). */
 export const ROLE_INSTRUCTIONS_MAX_CHARS = 4096;

@@ -8,7 +8,7 @@ import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
 // selfcheck, readme, clean, coverage, feature, bugfix, plan, steward) and the director's
-// routing text — the wording a specific loop carries. How prompts are assembled and the rules
+// routing text — the wording a specific role carries. How prompts are assembled and the rules
 // every prompt shares stay in prompt.test.ts.
 test("buildDirectorPrompt routes work to the specialist roles instead of implementing", () => {
   const prompt = buildDirectorPrompt("add dark mode");
@@ -119,7 +119,7 @@ test("the director routes role-management requests to the config request file", 
   assert.match(prompt, /standing per-run instruction/);
   assert.match(prompt, /array order is display\/scheduling order/);
   // Replace semantics and the worked example are pinned — a partial array would silently
-  // delete loops the director forgot to repeat.
+  // delete roles the director forgot to repeat.
   assert.match(prompt, /REPLACES the current one/);
   assert.match(prompt, /"name": "docs"/);
 });
@@ -370,7 +370,7 @@ test("the coverage role consults the validation-gap traces before the structural
 test("role prompts and the reply contract name npm only inside a generic instruction (non-Node projects get no npm commands)", () => {
   // BUGS.md 2026-10-04: the coverage find prescribed `npm run test:coverage` and the
   // SUMMARY_BLOCK's VERIFIED example said "npm test" verbatim, so a Rust/Python/Go project's
-  // loops were told to run npm. The npm names may appear only as the example inside a generic
+  // roles were told to run npm. The npm names may appear only as the example inside a generic
   // instruction ("for an npm project that is …"), never as the instruction itself.
   for (const role of ROLES) {
     const text = oneLine(`${role.find} ${role.title}`);

@@ -9,7 +9,7 @@ import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
-/** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
+/** The terminal's view of one role — what `tumwater role <id>` prints, rendered as Markdown
  * from the payload role-view.ts's rolePayload collects (the same document `--json` prints).
  * Like backlog-render.ts, the renderer owns no collection of its own: the CLI's --json and
  * human branches share one collection through sayJsonOrRender's thunk, so the two surfaces
@@ -18,7 +18,7 @@ import type { RoleViewPayload } from "./role-view.js";
  * prose-and-shell markdown the operator may copy verbatim — with the fence grown past any
  * backtick run the text itself contains, so a prompt that quotes a fence still round-trips.
  * Unset things render as explicit `_(none)_` lines rather than disappearing, so an
- * un-overridden loop reads as fully defaulted, not as a truncated report. */
+ * un-overridden role reads as fully defaulted, not as a truncated report. */
 
 /** A code fence one longer than any backtick run in the fenced text, so the block always
  * closes where the text itself would have ended it. */
@@ -38,7 +38,7 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
 
 /** The Notebook and Next tick prompt blocks and the "more waits" disclosure, as Markdown
  * lines — the read-only inspection the TUI's notebook view and `tumwater role <id>` share,
- * so the terminal and the CLI show one loop's notebook and assembled prompt identically.
+ * so the terminal and the CLI show one role's notebook and assembled prompt identically.
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
  * full document cannot drift. */
 export function inspectMarkdownLines(p: RoleViewPayload): string[] {
@@ -148,7 +148,7 @@ function chainStepLine(p: RoleViewPayload): string | null {
 }
 
 /** One recent tick outcome as a Markdown bullet line — `<time> · <result> · <span> —
- * <summary>` — so `tumwater role <id>` and the TUI notebook view read a loop's discrete
+ * <summary>` — so `tumwater role <id>` and the TUI notebook view read a role's discrete
  * outcomes at a glance. `time` is the same local `YYYY-MM-DD HH:MM:SS` stamp the model-
  * fallback `since` prints (formatTimestamp); `span` is the same short-duration phrasing
  * shortSpanPhrase renders for holdPhrase and the event feed's countdowns; the summary is
@@ -161,7 +161,7 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
   return line;
 }
 
-/** One quiet-hours bullet: the window, whose it is, and whether it holds the loop now — with
+/** One quiet-hours bullet: the window, whose it is, and whether it holds the role now — with
  * the same `quiet until <end>` text the status table uses. */
 function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): string {
   const whose = w.scope === "role" ? "own window" : "team window";
@@ -169,22 +169,22 @@ function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): 
   return `- Quiet hours: ${w.window} (${whose}; ${state})`;
 }
 
-/** The loop's schedule as Markdown bullet lines — `Next tick`, `Last tick`, then one
+/** The role's schedule as Markdown bullet lines — `Next tick`, `Last tick`, then one
  * `Quiet hours` line per governing window (none when the payload carries no windows) — in the
  * same words and wording family as the team surface's `next run` cell (status-render.ts's
- * nextRunCell), so the role view and the status table cannot drift on when a loop acts next:
- * a never-scheduled loop (nextRunAt 0) reads `not scheduled yet`; a due loop reads `due now`;
+ * nextRunCell), so the role view and the status table cannot drift on when a role acts next:
+ * a never-scheduled role (nextRunAt 0) reads `not scheduled yet`; a due role reads `due now`;
  * a future one reads `in <Ns>` through humanSeconds, prefixed `backoff ` while backoffSeconds
  * > 0 (the wake row-action clears exactly that) — the shared nextRunPhrase, so the role view
  * and the status `next run` cell cannot drift on the backoff prefix or the humanSeconds
  * bucketing. `Last tick` reuses formatTimestamp and the same `humanSeconds … ago` phrasing the
- * status `last tick` cell ages with, or `never` for a loop that has not ticked. `now` is
+ * status `last tick` cell ages with, or `never` for a role that has not ticked. `now` is
  * injected (default Date.now()) so the renderer stays a pure function of the payload and the
  * test can pin a fixed clock. */
 function scheduleLine(p: RoleViewPayload, now: number): string[] {
   // The yield multiplier rides the line as `×N` exactly like nextRunCell/fmtNextRun: a quiet
-  // yield-scaled loop's effective gap is longer than nextRunAt's countdown shows (isEligible
-  // gates on the multiplier too), so the Schedule must not understate when the loop acts next.
+  // yield-scaled role's effective gap is longer than nextRunAt's countdown shows (isEligible
+  // gates on the multiplier too), so the Schedule must not understate when the role acts next.
   const suffix = yieldMultiplierSuffix(p.yieldMultiplier);
   let next: string;
   if (p.nextRunAt <= 0) {
@@ -200,7 +200,7 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
   return [`- Next run: ${next}`, `- Last run: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
 }
 
-/** Render one loop's inspection payload as Markdown. `now` is injected (default Date.now())
+/** Render one role's inspection payload as Markdown. `now` is injected (default Date.now())
  * so the schedule lines stay a pure function of the payload — the test pins a fixed clock. */
 export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
@@ -221,9 +221,9 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   if (p.providerKey !== undefined && p.providerCap !== undefined) {
     lines.push(`- Provider: ${p.providerKey} (cap ${p.providerCap})`);
   }
-  // Image input (plans/image-input.md "Surfaces", part 5/5): whether this loop's own model
+  // Image input (plans/image-input.md "Surfaces", part 5/5): whether this role's own model
   // reads images, and — when it cannot — where a tick that reads an image reroutes. Not just
-  // `yes`/`no`: a text-only loop that falls back names the target, so `tumwater role <id>`
+  // `yes`/`no`: a text-only role that falls back names the target, so `tumwater role <id>`
   // explains the team alert without running doctor. Unknown (null) renders `unknown` rather
   // than guessing.
   const images =
@@ -259,10 +259,10 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
   if (p.instances !== undefined) lines.push(`- Instances: ${p.instances}`);
   lines.push(`- Inbox: ${p.inboxCount}`);
-  // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
-  // same run_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+  // The role's own spend over its retained event window (role-view.ts's usage, summed from the
+  // same run_end events recentOutcomes reads): how much the role burned on tokens and cost,
   // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
-  // (plans/agent-backends.md part 6a). Absent for a never-costly loop, so old `tumwater role`
+  // (plans/agent-backends.md part 6a). Absent for a never-costly role, so old `tumwater role`
   // goldens are byte-identical.
   if (p.usage) {
     let spend = `- Spend: ${usd(p.usage.costUsd)} · ${compactTokens(p.usage.tokens)} tokens`;
@@ -270,20 +270,20 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     lines.push(spend);
   }
   // The per-role daily cap (role-view.ts's dailyCap): today's spend against the cap and whether
-  // it holds the loop now. Absent without a cap, so old goldens are unchanged.
+  // it holds the role now. Absent without a cap, so old goldens are unchanged.
   if (p.dailyCap) {
     const dc = p.dailyCap;
     let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new runs until local midnight" : "not holding"})`;
     if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
     lines.push(cap);
   }
-  // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
+  // The role's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
   // the same persisted state): when it may tick again, and when it last did — the one
   // place the team's `next run`/`last tick` vocabulary was absent. Rendered from the
   // injected `now`, so the lines stay a pure function of the payload.
   lines.push(...scheduleLine(p, now));
-  // The loop's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):
-  // one line per outcome so `tumwater role <id>` shows what the loop has been DOING, not just
+  // The role's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):
+  // one line per outcome so `tumwater role <id>` shows what the role has been DOING, not just
   // what it is. Absent (never ticked) renders nothing new, so old goldens are byte-identical.
   if (p.recentOutcomes && p.recentOutcomes.length > 0) {
     lines.push("", "## Recent runs", "");

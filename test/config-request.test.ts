@@ -13,7 +13,7 @@ import { configRequestPath } from "../src/paths.js";
 
 // Harness-mediated config writes (plans/portability.md §3/7): the director leaves a request
 // file in its worktree; applyConfigRequest validates, applies only customRoles, and deletes
-// the request on EVERY path — so custom-loop management works with the config tracked,
+// the request on EVERY path — so custom-role management works with the config tracked,
 // gitignored, or absent, and the file never reaches a commit.
 
 function writeRequest(wt: string, value: unknown): void {
@@ -35,7 +35,7 @@ test("applyConfigRequest applies a customRoles array to the live config and dele
   assert.deepEqual(result?.applied, ["docs"]);
   assert.deepEqual(result?.ignored, []);
   assert.equal(result?.error, undefined);
-  // The loop is live (loadConfig re-reads the file) with defaults otherwise intact.
+  // The role is live (loadConfig re-reads the file) with defaults otherwise intact.
   assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"]);
   assert.equal(loadConfig(root).maxDailyCostUsd, defaultConfig().maxDailyCostUsd);
   // The request file is gone — it can never be staged by commitAll.
@@ -112,8 +112,8 @@ test("applyConfigRequest replaces the whole array and strips orphaned roles entr
   const loaded = loadConfig(root);
   assert.deepEqual(customLoopNames(loaded), ["docs"]);
   assert.equal(loaded.customRoles[0]!.task, "new task");
-  assert.equal(loaded.roles.docs?.enabled, false, "a kept loop's roles entry survives");
-  assert.ok(!("scrape" in loaded.roles), "a removed loop's roles entry is stripped");
+  assert.equal(loaded.roles.docs?.enabled, false, "a kept role's roles entry survives");
+  assert.ok(!("scrape" in loaded.roles), "a removed role's roles entry is stripped");
 });
 
 test("applyConfigRequest ignores disallowed keys with their names, and still applies customRoles", () => {
@@ -196,7 +196,7 @@ test("a request whose unlink fails is still applied, with the failed deletion su
     const result = applyConfigRequest(root, wt);
     assert.ok(result, "a present request file is never read as null");
     assert.deepEqual(result.applied, ["docs"], "the write happened before the failed cleanup");
-    assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"], "the loop is live");
+    assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"], "the role is live");
     assert.match(result.error ?? "", /could not be deleted/);
     assert.ok(fs.existsSync(configRequestPath(wt)), "the undeletable request is still on disk");
   } finally {
@@ -227,7 +227,7 @@ test("a validation failure outranks a failed deletion in the surfaced error", (t
 
 // The director's config request (applyConfigRequest) is a whole-config write too: applying it
 // must not re-expand the file's partial roles section, while still stripping the roles entry
-// of a custom loop it removes (BUGS.md 2026-10-11).
+// of a custom role it removes (BUGS.md 2026-10-11).
 test("applyConfigRequest preserves the file's own roles section", () => {
   const root = tmpdir();
   const wt = tmpdir();
@@ -245,7 +245,7 @@ test("applyConfigRequest preserves the file's own roles section", () => {
   );
 });
 
-test("applyConfigRequest strips a removed custom loop's entry from the file's own roles section", () => {
+test("applyConfigRequest strips a removed custom role's entry from the file's own roles section", () => {
   const root = tmpdir();
   const wt = tmpdir();
   fs.writeFileSync(
@@ -264,7 +264,7 @@ test("applyConfigRequest strips a removed custom loop's entry from the file's ow
   assert.deepEqual(
     (readJson(path.join(root, "tumwater.json")) as Record<string, unknown>).roles,
     { feature: { enabled: true }, docs: { enabled: false } },
-    "the kept loop's file entry survives and the removed loop's is stripped",
+    "the kept role's file entry survives and the removed role's is stripped",
   );
 });
 

@@ -82,7 +82,7 @@ const DURATION_OR_DISABLED: NumberRule = {
 
 /** A per-role instance count (`roles.feature.instances`): an integer from 1 to 8. Bounded so
  * a typo like `instances: 800` cannot spawn hundreds of runners, and integer so
- * `feature-1.5` — which no loop id can name — is refused. */
+ * `feature-1.5` — which no role id can name — is refused. */
 const INSTANCE_COUNT: NumberRule = {
   ok: (n) => Number.isInteger(n) && n >= 1 && n <= 8,
   what: "an integer from 1 to 8",
@@ -117,7 +117,7 @@ function checkPerRoleMap(
 /** Validate tumwater.json values, so a typo fails fast with an actionable message instead
  * of misbehaving at runtime — e.g. a non-numeric runTimeoutSeconds becomes NaN and kills
  * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
- * unknown role id (a misspelled entry under `roles`) spawns a phantom loop that errors every
+ * unknown role id (a misspelled entry under `roles`) spawns a phantom role that errors every
  * tick, and an unknown key is silently ignored so the intended setting never takes effect.
  * Collects every problem so one edit can fix them all; throws a single Error listing them.
  * `label` names the file in the thrown messages — validateConfig also gates the tracked
@@ -301,7 +301,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"): an absent section
   // means no bootstrap. `untilPlansDone` is a count of plans that must reach `## Done`, so it is
   // an integer of at least 1 — 0 or a fraction can never be reached and would hold the
-  // maintenance loops forever.
+  // maintenance roles forever.
   checkObjectSection(r, "bootstrap", problems, (o) => {
     checkKnownKeys(o, BOOTSTRAP_KEYS, "bootstrap", problems);
     checkNumber(o, "bootstrap.", "untilPlansDone", POSITIVE_INTEGER);
@@ -525,7 +525,7 @@ function checkSelectorValue(
     );
 }
 
-  // Custom loops (plans/user-defined-loops.md): names become worktree dirs and git refs, so
+  // Custom roles (plans/user-defined-loops.md): names become worktree dirs and git refs, so
   // they are validated strictly — a colliding name would silently shadow a built-in's prompt
   // (roleById wins in tickPrompt), validation makes that impossible instead of subtle. The
   // collected names feed the roles cross-check below: an id under `roles` is valid when it is
@@ -569,7 +569,7 @@ function checkSelectorValue(
         }
         const task = entry.task;
         // A whitespace-only task is as inert as an empty one — it rides into every one of
-        // this loop's tick prefills as blank text, so the loop has nothing to do and ticks
+        // this role's tick prefills as blank text, so the role has nothing to do and ticks
         // no_change forever. Reject both shapes with the same message; the model-triple
         // checkString rule uses the same trim-based emptiness test.
         if (!isNonBlankString(task)) {
@@ -595,7 +595,7 @@ function checkSelectorValue(
     } else {
       for (const [id, rc] of Object.entries(roles)) {
         // An id outside the catalog and customRoles cannot work: tickPrompt has no prompt for
-        // it and the loop would error every tick forever (checkKnownRoleId).
+        // it and the role would error every tick forever (checkKnownRoleId).
         if (!checkKnownRoleId("roles", id, customNames, problems)) continue;
         if (!isJsonObject(rc)) {
           problems.push(`roles.${id} must be an object (got ${show(rc)})`);
@@ -604,7 +604,7 @@ function checkSelectorValue(
         const o = rc;
         checkKnownKeys(o, ROLE_ENTRY_KEYS, `roles.${id}`, problems);
         // Empty is a deliberate "no extra instructions". A non-empty value rides into every
-        // one of this role's tick prefills, so it is capped like a custom loop's task.
+        // one of this role's tick prefills, so it is capped like a custom role's task.
         checkString(o, `roles.${id}.`, "instructions");
         const instructions = o.instructions;
         if (typeof instructions === "string" && instructions.length > ROLE_INSTRUCTIONS_MAX_CHARS)
@@ -648,7 +648,7 @@ function checkSelectorValue(
   // Per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a known role —
   // built-in or customRoles — because a typo'd id would silently no-op the cap, the exact
   // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
-  // is fully collected by this point, so a custom loop can be capped). Each value is a
+  // is fully collected by this point, so a custom role can be capped). Each value is a
   // spend threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap.
   checkPerRoleMap(r, "maxDailyCostUsdPerRole", "USD caps", customNames, problems, (id) => {
     // Same MAX_SAFE_INTEGER bound as maxDailyCostUsd's DOLLAR_CAP rule (BUGS.md

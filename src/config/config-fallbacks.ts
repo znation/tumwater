@@ -2,7 +2,7 @@
 /** The budget/tier FALLBACK side of the config views, split out of config-views.ts: how the
  * team falls back at the daily spend cap — which free pair each tier runs on
  * (resolveTierFallbacks and its BORROW_ORDER), the per-role fallback config a model-failure
- * or cap episode hands a loop (fallbackRoleConfig, applyFallbackModel), and the surfaces
+ * or cap episode hands a role (fallbackRoleConfig, applyFallbackModel), and the surfaces
  * that name those pairs (seamsInUse, modelFallbackView, tierFallbackLabels). The per-seam
  * resolution these build on — how one role/reviewer/resolver provider/model/thinking resolves
  * (configForRole, reviewConfig, withModelOverrides, …) — stays in config-views.ts, so the
@@ -142,7 +142,7 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
 
 /** Exported for imageRerouteTarget (src/agent/image-input.ts), which walks a rerouting role's
  * tier through the same borrow order the budget fallback uses (skipping the tier itself), and
- * for the doctor's `image input` check naming the tier a text-only loop reroutes to. */
+ * for the doctor's `image input` check naming the tier a text-only role reroutes to. */
 export { BORROW_ORDER };
 
 type FallbackChain = FallbackStep | FallbackStep[];
@@ -302,7 +302,7 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
   return [...seams.values()];
 }
 
-/** The active model-fallback episode (LoopState.modelFallback) resolved for display: the
+/** The active model-fallback episode (RunnerState.modelFallback) resolved for display: the
  * pair the role's ticks run on, when the episode began, and the provider-class failure that
  * tripped it. */
 export interface ModelFallbackView {
@@ -319,7 +319,7 @@ export interface ModelFallbackView {
 
 /** Build a ModelFallbackView for an episode, or null while the episode is not running the
  * fallback (no episode, or a due probe on the primary). role-view.ts's
- * RoleViewPayload.modelFallback and status/status-data.ts's per-loop row both build this
+ * RoleViewPayload.modelFallback and status/status-data.ts's per-role row both build this
  * shape, so one function keeps the two surfaces from disagreeing about the pair, its start,
  * and its reason. `now` is the caller's clock (the status snapshot passes its own poll
  * clock), so a row and its poll agree on what "active" means. */
@@ -428,7 +428,7 @@ function freeRoleModels(
   );
 }
 
-/** The config as seen by a role loop running on the free fallback model
+/** The config as seen by a role running on the free fallback model
  * (plans/fallback-model.md): the fallback's provider/model/thinking installed as the top-level
  * values AND every per-role and reviewer model override dropped, so that EVERY seam that could
  * otherwise reach a priced model — an author run, its reviewer, a conflict resolver — resolves

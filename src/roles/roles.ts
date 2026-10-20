@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The role registries and classification helpers over the built-in role catalog. The catalog
- * itself — each loop's identity and its "find something to do" prompt text — lives in
+ * itself — each role's identity and its "find something to do" prompt text — lives in
  * role-catalog.ts (split out 2026-10-01, organize); this module re-exports ROLES and Role so
  * every importer keeps the single roles.js import path, and derives from them the scheduling
  * registries (work/maintenance/observer tiers, deferrable and baseline-blocked sets) and the
@@ -13,13 +13,13 @@ import { typoSuffix } from "../text/suggest.js";
 export { ROLES };
 export type { Role };
 
-/** The director loop's id — a target that is not in ROLES (allRoleIds appends it) and is
+/** The director role's id — a target that is not in ROLES (allRoleIds appends it) and is
  * driven by operator prompts, not a find prompt: an un-targeted `tumwater prompt` queues
- * there. It keeps running through a team-wide `pause` (which stops only the role loops);
+ * there. It keeps running through a team-wide `pause` (which stops only the roles);
  * an un-targeted `stop` signals the whole orchestrator, director included. */
 export const DIRECTOR_ROLE = "director";
 
-/** The bugfix loop's id. It is the one work role that also defers like a maintenance role while its
+/** The bugfix role's id. It is the one work role that also defers like a maintenance role while its
  * backlog (BUGS.md `## Open`) is empty — see deferTick in src/scheduling/scheduling.ts. With open
  * bugs it never defers, but pollRunnerReasons stands it down while all of them are held. */
 export const BUGFIX_ROLE = "bugfix";
@@ -31,7 +31,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
 /** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not a
  * commit, and for which `no_change` means "checked, all well" rather than "found nothing to do".
- * The idle ladder's premise — a loop that keeps finding nothing stops burning model time — does
+ * The idle ladder's premise — a role that keeps finding nothing stops burning model time — does
  * not hold for these, so their no_change tick schedules at `minRunIntervalSeconds` and leaves
  * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
  * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
@@ -102,13 +102,13 @@ export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
   ...CODE_MAINTENANCE_ROLES,
 ]);
 
-/** Is this loop id blocked from authoring on a red main? True when its base role is in
+/** Is this role id blocked from authoring on a red main? True when its base role is in
  * BASELINE_BLOCKED_ROLES, so `feature-2` is blocked exactly as `feature` is. */
 export function baselineBlocked(role: string): boolean {
   return BASELINE_BLOCKED_ROLES.has(baseRoleOf(role));
 }
 
-/** Work ratio 4/4: which commit tier a loop's base role merges into, for the work vs maintenance
+/** Work ratio 4/4: which commit tier a role's base role merges into, for the work vs maintenance
  * split the report and the "Merged today" tile show and the maintenance allowance (Work ratio
  * 1a/4, src/gates/maintenance-quota.ts) counts. The one home of the split. `work` is the
  * shipping tier (feature, bugfix, director); `maintenance` is code upkeep plus readme. Every
@@ -145,10 +145,10 @@ export function unknownRoleMessage(role: string, validIds: readonly string[]): s
   return `unknown role: ${role} (valid ids: ${validIds.join(", ")})${typoSuffix(role, validIds)}`;
 }
 
-/** A user-defined loop as a Role (plans/user-defined-loops.md): its task IS the
- * role-specific find-something-to-do text, and the title is what identifies the loop inside
- * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context.
- * Custom loops run the `default` tier — the harness cannot judge what an arbitrary loop's
+/** A user-defined role as a Role (plans/user-defined-loops.md): its task IS the
+ * role-specific find-something-to-do text, and the title is what identifies the role inside
+ * its own prompt (`You are the "<name>" role (user-defined role)`) and commit context.
+ * Custom roles run the `default` tier — the harness cannot judge what an arbitrary role's
  * work needs, so it gets the team's ordinary model. */
 export function customRole(name: string, task: string): Role {
   return { id: name, title: "custom role", find: task, tier: "default" };
