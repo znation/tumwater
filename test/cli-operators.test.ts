@@ -1255,9 +1255,9 @@ test("revert rejects a flag-shaped token as a flag, before a lookup or a write",
   await initProject(repo, "cli revert flag");
   const before = headSha(repo);
 
-  const r = await cli(repo, "revert", "--json");
+  const r = await cli(repo, "revert", "--stat");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /revert takes only --dry-run and --last \(got --json\)/);
+  assert.match(r.stderr, /revert takes only --dry-run, --last and --json \(got --stat\)/);
   assert.equal(headSha(repo), before, "no commit was written");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "the tree is clean");
 });
@@ -1286,7 +1286,50 @@ test("revert --dry-run previews without writing", async () => {
   assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
-const REVERT_USAGE_RE = /revert needs a commit or a run \(usage: tumwater revert <sha>\|<role> <n>\|<role> --last \[--dry-run\]\)/;
+test("revert --dry-run --json prints the preview as data and writes nothing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert dry json");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "one\n");
+  commitIn(repo, "work to undo");
+  const clean = headSha(repo);
+  let r = await cli(repo, "revert", clean, "--dry-run", "--json");
+  assert.equal(r.code, 0);
+  let out = JSON.parse(r.stdout);
+  assert.equal(out.dryRun, true);
+  assert.equal(out.run, null);
+  assert.equal(out.sha, clean);
+  assert.deepEqual(out.paths, ["to-undo.txt"]);
+  assert.equal(out.applies, true);
+  assert.equal(headSha(repo), clean);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "two\n");
+  commitIn(repo, "edit it again");
+  const tip = headSha(repo);
+  r = await cli(repo, "revert", "--json", "--dry-run", clean);
+  assert.equal(r.code, 1);
+  out = JSON.parse(r.stdout);
+  assert.equal(out.applies, false);
+  assert.equal(headSha(repo), tip);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+});
+
+test("revert --json prints the new head as data", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert json");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "work\n");
+  commitIn(repo, "work to undo");
+  const before = headSha(repo);
+  const r = await cli(repo, "revert", before, "--json");
+  assert.equal(r.code, 0);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.dryRun, false);
+  assert.equal(out.headSha, headSha(repo));
+  assert.equal(out.beforeSha, before);
+  assert.equal(out.followUp, null);
+});
+
+const REVERT_USAGE_RE = /revert needs a commit or a run \(usage: tumwater revert <sha>\|<role> <n>\|<role> --last \[--dry-run\] \[--json\]\)/;
 
 test("revert with zero or three positionals fails with usage, and a sha plus extra is an unknown role", async () => {
   const repo = makeRepo();

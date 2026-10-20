@@ -449,13 +449,13 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
     say(`nothing to remove for role ${role}`);
 }
 
-const REVERT_USAGE = "usage: tumwater revert <sha>|<role> <n>|<role> --last [--dry-run]";
+const REVERT_USAGE = "usage: tumwater revert <sha>|<role> <n>|<role> --last [--dry-run] [--json]";
 
 /** The sha the run `<role> <n>` (or the newest completed run of `<role>` under `last`) merged
  * under, resolved the way `tumwater history <role> <n>` and the dashboard's revert resolve it
  * (`runMergedSha`). Fails, exit 1, when the run is unknown or did not merge: revert is an
  * action, so a miss is an error rather than history's exit-0 "not found". */
-function revertRunSha(root: string, positionals: string[], last: boolean): { sha: string; line: string } {
+function revertRunSha(root: string, positionals: string[], last: boolean): { sha: string; line: string; role: string; run: number } {
   const role = canonicalRoleId(positionals[0]!);
   const ids = knownRoleIdsCached(root);
   if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (${REVERT_USAGE})`);
@@ -470,36 +470,45 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
   const sha = runMergedSha(detail);
   if (sha === null)
     fail(`${role} run #${run} merged but the event log no longer names its commit; pass the sha from git log instead`);
-  return { sha, line: `run ${role} #${run} merged as ${shortSha(sha)}` };
+  return { sha, line: `run ${role} #${run} merged as ${shortSha(sha)}`, role, run };
 }
 
 /** `tumwater revert <sha>|<role> <n>|<role> --last`: undo one merged change on main,
  * committing the inverse as `tumwater(operator): Revert <short sha>` under the primary-worktree
  * lock. The lock, branch guard, and fail-closed ref/conflict handling live in
  * src/operator/revert.ts; this renderer names the new main head and names the role
- * that made the reverted commit, when one did, as the one that may redo the work. */
+ * that made the reverted commit, when one did, as the one that may redo the work.
+ * `--json` prints the preview or the revert as one JSON object instead (refusals still fail on
+ * stderr). */
 export async function cmdRevert(root: string, args: string[]): Promise<void> {
   // `--dry-run` and `--last` are the only flags; the positionals select a sha (one), a run
   // (`<role> <n>`) or the newest run of a role (`<role>` with --last). A flag or any other
   // shape fails before anything is looked up or written.
   const dryRun = args.includes("--dry-run");
   const last = args.includes("--last");
-  const rest = args.filter((a) => a !== "--dry-run" && a !== "--last");
+  const json = args.includes("--json");
+  const rest = args.filter((a) => a !== "--dry-run" && a !== "--last" && a !== "--json");
   // A flag-shaped token is a dropped flag, not a commit: refuse it before rev-parse turns a
   // lone `--json` into the misleading "no such commit". Mirrors `config set`'s
   // flag-looking-value gate and gui-command.ts's --token gate, and a real sha never starts
   // with `-`.
   const flagged = rest.find((a) => a.startsWith("-"));
   if (flagged !== undefined)
-    fail(`revert takes only --dry-run and --last (got ${flagged}); pass the commit or run to undo as the argument`);
+    fail(`revert takes only --dry-run, --last and --json (got ${flagged}); pass the commit or run to undo as the argument`);
   if (last ? rest.length !== 1 : rest.length < 1 || rest.length > 2)
     fail(`revert needs a commit or a run (${REVERT_USAGE})`);
   const run = last || rest.length === 2 ? revertRunSha(root, rest, last) : null;
   const sha = run?.sha ?? rest[0]!;
   const runLine = run?.line ?? null;
+  const runRef = run === null ? null : { role: run.role, run: run.run };
   if (dryRun) {
     const p = await previewRevert(root, sha);
     if (!p.ok) fail(p.error);
+    if (json) {
+      sayJson({ dryRun: true, run: runRef, sha: p.sha, subject: p.subject, paths: p.paths, head: p.head, primary: p.primary, applies: p.applies, dirty: p.dirty });
+      if (!p.applies || p.dirty) process.exitCode = 1;
+      return;
+    }
     if (runLine !== null) say(runLine);
     say(`would revert ${shortSha(p.sha)} ${p.subject}`);
     for (const path of p.paths) say(`  ${path}`);
@@ -513,6 +522,10 @@ export async function cmdRevert(root: string, args: string[]): Promise<void> {
   }
   const result = await revertMergedCommit(root, sha);
   if (!result.ok) fail(result.error);
+  if (json) {
+    sayJson({ dryRun: false, run: runRef, subject: result.subject, headSha: result.headSha, beforeSha: result.beforeSha, followUp: revertFollowUp(result.subject) });
+    return;
+  }
   if (runLine !== null) say(runLine);
   say(`main is now ${shortSha(result.headSha)}`);
   const followUp = revertFollowUp(result.subject);
