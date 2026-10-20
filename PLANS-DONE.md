@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code cleanup, part 6/7: Fix the second half of src for the vocabulary guard (planned 2026-10-16 by user; requires part 5/7 landed; design in plans/terminology.md "Guards" and "Wording rules"; touches test/vocabulary.test.ts + string literals in the directories still in PENDING_VOCABULARY_DIRS) — done 2026-10-20
+
+**Goal.** `PENDING_VOCABULARY_DIRS` is empty: every src/ module passes the vocabulary guard, with or without a header.
+
+**Approach.**
+- Fix every hit the guard reports in the directories `PENDING_VOCABULARY_DIRS` still holds: the second half of src/ (merge … verdict, including src/ui/ and its gui/ and tui/ subdirectories), plus any first-half directory part 5/7 handed over. Apply the same treatment as part 5/7:
+  - Reword user-visible text per plans/terminology.md "Glossary" and "Wording rules".
+  - Mark machine names that must stay with `// vocabulary-ok: <reason>` (the `tumwater(operator):` prefix, hidden-alias argv, legacy layout names, other tools' env vars).
+  - Rename or mark internal strings.
+  - Legacy readers stay exempt through the shared retired-names exemption.
+- The dashboard's gui-client modules are browser code inside String.raw templates, which the guard reads as template text. A code name inside the browser code that still trips it (a DOM id, a CSS class, a local) is renamed to a plain word, checking uniqueness across the concatenated client modules. An end-of-line `// vocabulary-ok:` there is a browser-side JS comment and is allowed.
+- Remove each directory from `PENDING_VOCABULARY_DIRS` as it passes, then delete the set and its existence test once it is empty, leaving the guard's header rule for part 7/7.
+- Update tests that assert reworded output in the same directories.
+
+**Files touched.** test/vocabulary.test.ts; string literals in src/merge/, src/operator/, src/orchestrator/, src/pi/, src/pi-extension/, src/process/, src/prompt/, src/redeploy/, src/report/, src/review/, src/roles/, src/run/, src/runner/, src/scheduling/, src/status/, src/team/, src/text/, src/ui/ and src/verdict/ (only those with hits); their tests.
+
+**Acceptance criteria.**
+- `PENDING_VOCABULARY_DIRS` no longer exists, and the guard scans every src/ module and passes.
+- Each surviving retired word in src/ string literals sits on a `// vocabulary-ok: <reason>` line or in an exempt legacy reader.
+- No user-visible behavior changes beyond wording: every test passes, and any changed assertion changed only reworded text.
+- `npm run test` passes.
+
+
+**Outcome.** With the set emptied, the scan already passed: part 5/7 or earlier work left no second-half hits. `optedIn` is gone, so the header no longer matters and part 7/7 only deletes the header lines.
+
 ### docs/invariants.md gains a fallback-chain-reason section, and one new test file pins the four chain reasons no test reaches: demoted, step-cap, reserve and overage (planned 2026-10-20 by the plan role; independent of every eligible plan; touches docs/invariants.md + a new test/budget-chain-info.test.ts — done 2026-10-20 by the feature role)
 
 **Goal.** `chainInfo` (src/gates/budget-gates.ts) builds the `chain` block the orchestrator publishes for each tier the budget gate moved off its primary. The block holds the step the tier runs on and the reason the position before it cannot run. The TUI, GUI, status and doctor show that reason. `ChainReason` (src/team/orchestrator-info.ts) has six values. Before this entry, tests reached only two of them through `pollBudgetGate`: "window" and "cap" (the two "chain: …" tests in test/budget-gates.test.ts). Every other test that mentions a chain reason builds the block by hand. No test imported `chainInfo`, and docs/invariants.md did not name it. "demoted", "step-cap", "reserve" and "overage" are therefore unpinned, and so is their order. The plan role ran a scratch probe that called `chainInfo` directly on 2026-10-20 and confirmed every behavior below. The probe was then deleted.
