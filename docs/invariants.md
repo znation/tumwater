@@ -756,3 +756,93 @@ on.
 **Pinned by.** `test/provider-lease.test.ts` — "dropProviderLeaseKey returns the held key without
 giving up the team permit"; `test/orchestrator-permits.e2e.test.ts` — "two runs on one provider and
 a single worktree slot both finish (pool-slot wait rule, part 4/5)".
+
+## Init: a user's repo loses nothing to tumwater init
+
+`initProject` is the one command that writes into a user's existing project. It validates first,
+then creates only what is absent, then commits only what it created. A dry run goes through the
+same steps and writes nothing.
+
+### INV-Q1: every refusal comes before any side effect
+
+**Guarantee.** An unknown template, an over-long brief (a template preamble included), an empty
+prompt with no brief to read, an invalid branch name, `--branch` on an existing repo, and a team
+workspace are each refused before any write, `git init` or commit, in a dry run too.
+
+**Binds.** `src/init/init.ts` (`initProject`), `src/paths.ts` (`owningTeamRoot`).
+
+**Pinned by.** `test/init.test.ts` — "initProject validates before seeding: a bad prompt leaves no
+repo behind", "initProject rejects an over-long initial prompt before seeding", "initProject
+refuses --branch on an existing repo instead of silently ignoring it" and "initProject refuses
+inside a team workspace and writes nothing"; `test/init-templates.test.ts` — "an unknown template
+id and an overflowing preamble fail before any side effect".
+
+### INV-Q2: init creates only what is absent, so a re-run is idempotent
+
+**Guarantee.** Every seeded file and starter directory that already exists is left alone and
+reported in `leftAlone`. An existing .gitignore only gains the missing ignore lines, each on its
+own line. A README.md without the managed markers is adopted (the brief goes to TUMWATER.md) and
+never rewritten.
+
+**Binds.** `src/init/init.ts` (`initProject`'s local `claim`, `ensureGitignore`),
+`src/brief/brief.ts` (`briefFile`).
+
+**Pinned by.** `test/init.test.ts` — "initProject never clobbers existing files and is
+idempotent", "initProject never clobbers an existing PRINCIPLES.md", "initProject appends both
+ignore entries to an existing .gitignore on their own lines" and "initProject adopts a repo whose
+README has no tumwater markers instead of refusing"; `test/init-templates.test.ts` — "initProject
+--template leaves existing starter directories alone and reports them as leftAlone".
+
+### INV-Q3: a prompt is never silently dropped
+
+**Guarantee.** A prompt that differs from the brief an existing file already carries is refused,
+and the refusal names the file that owns the brief. Adopting over a TUMWATER.md without markers is
+refused. A marked TUMWATER.md never gains a duplicate README.md. A bare init re-seeds from the
+existing brief.
+
+**Binds.** `src/init/init.ts` (`initProject`), `src/brief/brief.ts` (`briefFile`).
+
+**Pinned by.** `test/init.test.ts` — "initProject refuses a prompt that differs from the one a
+README-owned brief carries", "a TUMWATER.md-owned brief refuses a different prompt instead of
+writing it into a new README.md", "initProject refuses to adopt over a TUMWATER.md without
+markers", "a TUMWATER.md-owned brief never gains a duplicate README.md on a matching or bare init"
+and "a bare init re-seeds a lost config from the README's prompt (portability 4a/7)".
+
+### INV-Q4: the init commit holds only the files init created, and none is half-written
+
+**Guarantee.** The commit pathspec is the created files minus tumwater.json and the starter
+directories, so a user's unrelated dirty files stay uncommitted and the config stays untracked. A
+repo that only gained a config gets no commit. Seeded files are written atomically.
+
+**Binds.** `src/init/init.ts` (`initProject`), `src/files/files.ts` (`writeTextAtomic`).
+
+**Pinned by.** `test/init.test.ts` — "initProject leaves user's unrelated dirty files
+uncommitted", "initProject seeds the config from a tracked tumwater.example.json and keeps it
+untracked", "a repo that only gains a config reports it and stays uncommitted" and "initProject
+leaves no half-written file when a seeded write dies mid-way".
+
+### INV-Q5: a dry run writes nothing
+
+**Guarantee.** `dryRun` does the same validation and returns the same created and left-alone
+lists, but writes no file, edits no .gitignore, calls no `git init` and makes no commit. Listing
+templates touches nothing either.
+
+**Binds.** `src/init/init.ts` (`initProject`, `ensureGitignore`), `src/cli/cli-start.ts`
+(`cmdInit`).
+
+**Pinned by.** `test/init.test.ts` — "initProject --dry-run writes nothing: no files, no gitignore
+edit, no commit"; `test/init-templates.test.ts` — "cmdInit --list-templates prints the catalog and
+exits 0 without touching the repo".
+
+### INV-Q6: bootstrap is seeded only on a fresh project
+
+**Guarantee.** `bootstrap.untilPlansDone` goes into a newly created config only when
+`isFreshProject` holds: no commits, or history that holds only scaffolding. A repo that already
+carries code gets none.
+
+**Binds.** `src/init/init.ts` (`isFreshProject`, `isScaffoldingPath`).
+
+**Pinned by.** `test/init.test.ts` — "initProject seeds bootstrap on a fresh project",
+"initProject seeds bootstrap in a repo with no commits", "initProject seeds bootstrap when a
+repo's only history is scaffolding" and "initProject seeds no bootstrap when the repo already
+carries code".
