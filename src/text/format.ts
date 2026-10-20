@@ -8,11 +8,6 @@ import { textOr } from "./text.js";
  * (harness or observer) can import it — and each format lives in exactly one place so the
  * abbreviation length, decimal width, and compaction thresholds cannot drift per consumer. */
 
-/** Compact token count for tight table cells and commit trailers — bare integers below
- * 10,000, one-decimal k at and above 10,000, one-decimal M at and above 1,000,000. The single
- * home of the token display format shared by the status table's gen/peak-ctx columns and the
- * commit trailer's ctx field — pinned here so those surfaces cannot drift even though they
- * live in different modules. */
 /** Append a section note to a running prompt, separated from what precedes it by a blank line.
  * The run and authoring-run prompt assemblers (run-prompt.ts, runner-run.ts) build a prompt by
  * stacking nameless sections — assignment, held-entry, rejected-review, conflict-discard,
@@ -23,6 +18,11 @@ export function appendPromptNote(prompt: string, note: string): string {
   return `${prompt}\n\n${note}`;
 }
 
+/** Compact token count for tight table cells and commit trailers — bare integers below
+ * 10,000, one-decimal k at and above 10,000, one-decimal M at and above 1,000,000. The single
+ * home of the token display format shared by the status table's gen/peak-ctx columns and the
+ * commit trailer's ctx field — pinned here so those surfaces cannot drift even though they
+ * live in different modules. */
 export function compactTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);

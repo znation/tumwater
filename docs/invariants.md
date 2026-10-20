@@ -1734,3 +1734,61 @@ any other kind, or none, as `backend failure`.
 **Pinned by.** `test/phrases.test.ts` — "firstReason returns the first string reason and falls back
 when there is none" and "backendKindPhrase names each backend-failure kind and falls back on an
 unreadable kind".
+
+## Display formats: each number, money, size and hash format has one home and one rule
+
+`src/text/format.ts` is presentation only: it imports nothing but `text.ts`, so any layer can
+render through it. The GUI's browser script keeps its own twins of some of these formats
+(`fmtTokens`, the money and cap cells, the file-size label), which this section does not bind.
+
+### INV-AA1: a token count is bare below 10,000, then one-decimal k, then one-decimal M
+
+**Guarantee.** `compactTokens` renders an integer as-is below 10,000, `(n/1000).toFixed(1)` plus
+`k` from 10,000, and `(n/1e6).toFixed(1)` plus `M` from 1,000,000. 999,999 reads `1000.0k`, the
+same as the report's table.
+
+**Binds.** `src/text/format.ts` (`compactTokens`).
+
+**Pinned by.** `test/format.test.ts` — "compactTokens renders bare integers below 10,000",
+"compactTokens renders one-decimal k at and above 10,000" and "compactTokens renders one-decimal M
+at and above 1,000,000".
+
+### INV-AA2: a short hash is its first 8 characters, and a missing hash reads "?"
+
+**Guarantee.** `shortSha` slices `textOr` of its argument to 8 characters. A string or finite
+number abbreviates; `undefined`, `null`, an object, NaN or Infinity reads `?`, never `undefined`.
+
+**Binds.** `src/text/format.ts` (`shortSha`), `src/text/text.ts` (`textOr`).
+
+**Pinned by.** `test/format.test.ts` — "shortSha abbreviates a hash to its first 8 characters".
+
+### INV-AA3: money always shows cents, and a cap drops only a whole-dollar .00
+
+**Guarantee.** `usd` renders `$` and exactly two decimals. `usdCap` renders the same, then strips
+a trailing `.00` only, so `$50` and `$12.34`, never `$12.3`.
+
+**Binds.** `src/text/format.ts` (`usd`, `usdCap`).
+
+**Pinned by.** `test/format.test.ts` — "usd always keeps two decimals; usdCap drops a whole-dollar
+.00".
+
+### INV-AA4: a disk size is always GB, and a byte count takes the largest 1024-based tier
+
+**Guarantee.** `formatGB` renders one decimal and ` GB` at any magnitude. `formatBytes` picks GB,
+MB or KB at 1024-based thresholds with one decimal, and renders a count under 1024 as a bare
+integer with ` B`.
+
+**Binds.** `src/text/format.ts` (`formatGB`, `formatBytes`).
+
+**Pinned by.** `test/format.test.ts` — "formatGB renders one decimal and the unit" and
+"formatBytes picks the largest of the B/KB/MB/GB tiers, one decimal each".
+
+### INV-AA5: a prompt note is joined by exactly one blank line, unconditionally
+
+**Guarantee.** `appendPromptNote` returns the prompt, `\n\n`, then the note, with no trimming and
+no skip for an empty note, so the separator lives in one place.
+
+**Binds.** `src/text/format.ts` (`appendPromptNote`).
+
+**Pinned by.** `test/format.test.ts` — "appendPromptNote joins a note to the prompt with one blank
+line, even an empty note".

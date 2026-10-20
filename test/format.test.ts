@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { compactTokens, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
+import { appendPromptNote, compactTokens, formatBytes, formatGB, shortSha, usd, usdCap } from "../src/text/format.js";
 
 // format.ts is the single home of the number, money, and hash formats every display surface
 // (status table, event feed, usage report, commit trailers) renders through. These tests pin
@@ -69,4 +69,11 @@ test("usd always keeps two decimals; usdCap drops a whole-dollar .00", () => {
   assert.equal(usdCap(50), "$50"); // whole dollars stay bare
   assert.equal(usdCap(12.34), "$12.34"); // fractional keeps its cents
   assert.equal(usdCap(25), "$25"); // the TUI's `budget set to $25` flash
+});
+
+test("appendPromptNote joins a note to the prompt with one blank line, even an empty note", () => {
+  assert.equal(appendPromptNote("a", "b"), "a\n\nb");
+  assert.equal(appendPromptNote("a", ""), "a\n\n"); // appended unconditionally
+  assert.equal(appendPromptNote("", "b"), "\n\nb");
+  assert.equal(appendPromptNote(appendPromptNote("a", "b"), "c"), "a\n\nb\n\nc");
 });
