@@ -5,6 +5,48 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater revert <sha> --dry-run` previews the revert: the commit it would undo, the paths the inverse touches, and whether it applies cleanly on main, without writing anything (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only src/operator/revert.ts, `cmdRevert`, the revert help line and docs/cli.md's revert clause) — done 2026-10-19
+
+**Goal.** `tumwater revert <sha>` acts at once. It commits the inverse on main, and the only way to learn whether a revert conflicts is to try it. An operator weighing a revert of a change merged a few commits back has no way to see first what it would undo, or whether later commits have built on it. `--dry-run` answers both from git's object store. It runs the same refusals as the real revert, then a three-way merge with `git merge-tree`. It never touches the index, the worktree or a ref, and it takes no lock. This is the same preview idea that `reclaim --dry-run` and `retire --dry-run` already offer.
+
+**Approach.**
+- `src/operator/revert.ts`:
+  - Factor the read-only refusals of `revertMergedCommit` into a private `resolveRevertTarget(root, ref): Promise<{ ok: true; full: string; primary: string } | { ok: false; error: string }>`. These are the base-branch check, `rev-parse --verify ref^{commit}` and `isMergedInto`. `revertMergedCommit` calls it inside its lock, keeping its existing error strings and order. The clean-tree check stays in `revertMergedCommit`.
+  - Export `previewRevert(root, ref): Promise<RevertPreview | { ok: false; error: string }>`. `RevertPreview` is `{ ok: true; sha: string; subject: string; paths: string[]; head: string; applies: boolean; dirty: boolean }`. The function never throws; a thrown git failure comes back as `{ ok: false, error: "the revert preview did not complete (git failed); nothing was written" }`. Its steps:
+    - Call `resolveRevertTarget`. It takes no lock, because it writes nothing.
+    - Count parents with `git rev-list --parents -n 1 <full>`. A commit with no parent, or with more than one, returns `{ ok: false, error: "<short> has <n> parents; revert previews a single-parent commit only" }`.
+    - `subject` comes from `git log -1 --format=%s <full>`.
+    - `paths` comes from `git diff --name-only --no-renames <full>^ <full>`, the same path rule `revertCommitIn` commits with.
+    - `head` is `headOf(root, "HEAD")`.
+    - `applies` comes from `runGit(root, ["merge-tree", "--write-tree", "--merge-base=" + full, "HEAD", full + "^"])`. This is the same three-way merge `git revert` performs: base = the commit, ours = HEAD, theirs = its parent. Exit 0 → `true`. A `GitError` with `code === 1` → `false` (conflict). Any other `GitError` returns `{ ok: false, error: "could not preview the revert: <message>" }`. That covers git older than 2.40, which lacks `--merge-base`.
+    - `dirty` is `true` when `git status --porcelain --untracked-files=no` is non-empty. That is the same condition on which `revertMergedCommit` refuses.
+- `src/operator/operator-commands.ts` (`cmdRevert`):
+  - Accept exactly `[<sha>]` or `[<sha>, "--dry-run"]` or `["--dry-run", <sha>]`. Any other flag-shaped token still fails with the existing `revert takes no flags (got …)` message, reworded to `revert takes only --dry-run (got …)`. The arity message is unchanged.
+  - With `--dry-run`, call `previewRevert` and `fail(error)` on `ok: false`. Otherwise print:
+    - `would revert <short sha> <subject>`
+    - each path indented two spaces
+    - then one verdict line:
+      - `applies cleanly on <primary> (HEAD <short head>); nothing was written` when `applies && !dirty`, exiting 0
+      - `would conflict on <primary> (HEAD <short head>); nothing was written` when `!applies`
+      - `the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written` when `dirty`
+    - The conflict and dirty outcomes exit 1 (`process.exitCode = 1` after printing), so a script can gate the real revert on the dry run. When both hold, print both verdict lines.
+- `src/cli/help.ts`: change the usage line to `tumwater revert <sha> [--dry-run]` and add one sentence: `--dry-run names the commit and the paths its inverse touches and says whether it applies cleanly on main, writing nothing (exit 1 when the revert would conflict or refuse)`. Completion derives the flag from this line.
+- `docs/cli.md`: in the "Steer the project" row's `tumwater revert <sha>` clause, add the `--dry-run` sentence.
+
+**Acceptance criteria.**
+- `test/operator-revert.test.ts`, new cases calling `previewRevert`:
+  - On a non-tip commit whose paths no later commit touched, it returns `applies: true, dirty: false`, the commit's subject, and its paths. HEAD, `git status --porcelain` and `git stash list` are unchanged afterwards.
+  - On the "a later commit edited the same region" fixture, it returns `applies: false`, and HEAD and the tree are unchanged.
+  - With an unstaged edit to a tracked file, it returns `dirty: true`, and the edit is still in the worktree byte for byte.
+  - An unknown ref returns `no such commit: <ref>`. The repo's root commit returns the `has 0 parents` error.
+- The existing `revertMergedCommit` cases in test/operator-revert.test.ts pass unchanged.
+- `test/cli-operators.test.ts`, new case "revert --dry-run previews without writing":
+  - On a clean revert it exits 0. Stdout starts `would revert <short>`, lists the path, and contains `applies cleanly`.
+  - On a conflicting one it exits 1 with `would conflict`.
+  - In both, HEAD and `git status --porcelain` are as before.
+- The existing "revert rejects a flag-shaped token…" case is updated to the new `revert takes only --dry-run (got --json)` wording and still asserts that no commit is written.
+- `npm run test:gate` passes.
+
 ### `tumwater history --summary --by model` tallies runs per model instead of per role, so an operator mixing providers can compare what each model merged (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — none of them names src/history, src/cli, src/cli.ts or docs/cli.md; the blocked plain-terms parts run 6/20 and 7/20 rename symbols in src/history and the history tests, a rebase; touches src/history/history-data.ts src/history/history-render.ts src/history/history.ts src/cli/cli-flag-specs.ts src/cli/cli-command-args.ts src/cli.ts src/cli/help.ts docs/cli.md test/cli-history-filtering.test.ts test/history-data.test.ts) — done 2026-10-19 by the feature role
 
 **Goal.** A team can mix models: a pi default tier, a claude strong tier, an OpenCode free tier, plus a fallback (README "Mixing providers"). Every history row already carries the model its run started on (`TickRow.model`, read from `run_start` by `tickStartModel` in src/history/history-data.ts). The report's `Runs by model` line counts starts only. Nothing tallies outcomes per model: `history --summary` groups by role (`summarizeTickRows`), and `history --grep <model>` filters rows but still groups by role. So an operator cannot answer "how many runs on the free tier merged, and what did they cost?" in one command. This plan adds `--by model` to `history --summary`. The outcome columns stay the same, and each line is one model instead of one role. Out of scope: the TUI History pane, the dashboard's History view and `/api/history` keep the per-role summary.

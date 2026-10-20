@@ -2,7 +2,7 @@
 import { loadConfigSafe } from "../config/config.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
-import { commitAuthorArgs, committerIdentArgs, gitTry } from "../git/git-run.js";
+import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { primaryWorktreeLockPath } from "../paths.js";
 import { shortSha } from "../text/format.js";
@@ -43,6 +43,71 @@ export async function revertCommitIn(
   return { ok: true, sha: await headOf(wt, "HEAD") };
 }
 
+/** The read-only refusals shared by a revert and its preview: the primary checkout must be on the
+ * base branch, `ref` must resolve to a commit, and that commit must be merged into the branch. */
+async function resolveRevertTarget(
+  root: string,
+  ref: string,
+): Promise<{ ok: true; full: string; primary: string } | { ok: false; error: string }> {
+  const primary = await currentBranch(root);
+  const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
+  if (primary === null || base !== primary)
+    return { ok: false, error: `the primary checkout is not on ${base} — run from a checkout of it` };
+
+  const full = await gitTry(root, "rev-parse", "--verify", ref + "^{commit}");
+  if (full === null) return { ok: false, error: `no such commit: ${ref}` };
+
+  if (!(await isMergedInto(root, full, primary)))
+    return { ok: false, error: `${shortSha(full)} is not on ${primary}` };
+  return { ok: true, full, primary };
+}
+
+interface RevertPreview {
+  ok: true;
+  sha: string;
+  subject: string;
+  paths: string[];
+  head: string;
+  primary: string;
+  applies: boolean;
+  dirty: boolean;
+}
+
+/** `tumwater revert <sha> --dry-run`: what a revert of `ref` would undo and whether it applies
+ * cleanly, from git's object store alone — a `git merge-tree` three-way merge (base = the commit,
+ * ours = HEAD, theirs = its parent, the merge `git revert` performs). Takes no lock and never
+ * touches the index, the worktree or a ref. Never throws. */
+export async function previewRevert(
+  root: string,
+  ref: string,
+): Promise<RevertPreview | { ok: false; error: string }> {
+  try {
+    const target = await resolveRevertTarget(root, ref);
+    if (!target.ok) return target;
+    const { full, primary } = target;
+    const parents = (await runGit(root, ["rev-list", "--parents", "-n", "1", full])).split(" ").length - 1;
+    if (parents !== 1)
+      return { ok: false, error: `${shortSha(full)} has ${parents} parents; revert previews a single-parent commit only` };
+    const subject = await runGit(root, ["log", "-1", "--format=%s", full]);
+    const paths = (await runGit(root, ["diff", "--name-only", "--no-renames", full + "^", full]))
+      .split("\n")
+      .filter((p) => p.length > 0);
+    const head = await headOf(root, "HEAD");
+    let applies = true;
+    try {
+      await runGit(root, ["merge-tree", "--write-tree", "--merge-base=" + full, "HEAD", full + "^"]);
+    } catch (err) {
+      if (!(err instanceof GitError)) throw err;
+      if (err.code !== 1) return { ok: false, error: `could not preview the revert: ${err.message}` };
+      applies = false;
+    }
+    const dirty = (await runGit(root, ["status", "--porcelain", "--untracked-files=no"])) !== "";
+    return { ok: true, sha: full, subject, paths, head, primary, applies, dirty };
+  } catch {
+    return { ok: false, error: "the revert preview did not complete (git failed); nothing was written" };
+  }
+}
+
 /** Revert one already-merged commit (`ref` resolved to a commit) and commit the inverse on the
  * primary checkout under the primary-worktree lock. Never throws; every refusal and every git
  * failure comes back as `{ ok: false, error }` after restoring the checkout. `head` is captured
@@ -58,18 +123,11 @@ export async function revertMergedCommit(
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));
     return await withStateLockAsync(primaryWorktreeLockPath(root), async () => {
-      const primary = await currentBranch(root);
-      const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
-      if (primary === null || base !== primary)
-        return { ok: false, error: `the primary checkout is not on ${base} — run from a checkout of it` };
-
-      const full = await gitTry(root, "rev-parse", "--verify", ref + "^{commit}");
-      if (full === null) return { ok: false, error: `no such commit: ${ref}` };
-
+      const target = await resolveRevertTarget(root, ref);
+      if (!target.ok) return target;
+      const { full } = target;
       // `head` is captured before the revert so a future caller can compare before/after.
       const head = await headOf(root, "HEAD");
-      if (!(await isMergedInto(root, full, primary)))
-        return { ok: false, error: `${shortSha(full)} is not on ${primary}` };
 
       // Fail-closed on any staged or unstaged change to a tracked path: we refuse to revert a
       // checkout that has one (untracked files are tolerated — the lock dir we just created is

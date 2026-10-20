@@ -5,7 +5,7 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { revertMergedCommit } from "./revert.js";
+import { previewRevert, revertMergedCommit } from "./revert.js";
 import { agree, plural, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { shortSha } from "../text/format.js";
@@ -423,16 +423,31 @@ export async function cmdRetire(root: string, args: string[]): Promise<void> {
  * guard, and fail-closed ref/conflict handling live in src/operator/revert.ts; this renderer
  * names the new main head and reminds the caller the reverted role may redo the work. */
 export async function cmdRevert(root: string, args: string[]): Promise<void> {
-  // No flags; exactly one positional names the commit to undo. A flag or extra positional
-  // fails before anything is looked up or written.
-  if (args.length !== 1) fail("revert needs a commit (e.g. run tumwater revert 1a2b3c4)");
+  // `--dry-run` is the only flag; exactly one positional names the commit to undo. A flag or
+  // extra positional fails before anything is looked up or written.
+  const dryRun = args.includes("--dry-run");
+  const rest = args.filter((a) => a !== "--dry-run");
+  if (rest.length !== 1) fail("revert needs a commit (e.g. run tumwater revert 1a2b3c4)");
   // A flag-shaped token is a dropped flag, not a commit: refuse it before rev-parse turns a
   // lone `--json` into the misleading "no such commit". Mirrors `config set`'s
   // flag-looking-value gate and gui-command.ts's --token gate, and a real sha never starts
   // with `-`.
-  if (args[0]!.startsWith("-"))
-    fail(`revert takes no flags (got ${args[0]}); pass the commit to undo as the only argument`);
-  const result = await revertMergedCommit(root, args[0]!);
+  if (rest[0]!.startsWith("-"))
+    fail(`revert takes only --dry-run (got ${rest[0]}); pass the commit to undo as the only argument`);
+  if (dryRun) {
+    const p = await previewRevert(root, rest[0]!);
+    if (!p.ok) fail(p.error);
+    say(`would revert ${shortSha(p.sha)} ${p.subject}`);
+    for (const path of p.paths) say(`  ${path}`);
+    const on = `on ${p.primary} (HEAD ${shortSha(p.head)}); nothing was written`;
+    if (p.applies && !p.dirty) say(`applies cleanly ${on}`);
+    if (!p.applies) say(`would conflict ${on}`);
+    if (p.dirty)
+      say("the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written");
+    if (!p.applies || p.dirty) process.exitCode = 1;
+    return;
+  }
+  const result = await revertMergedCommit(root, rest[0]!);
   if (!result.ok) fail(result.error);
   say(`main is now ${shortSha(result.headSha)}`);
   say("the reverted role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not");

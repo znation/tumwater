@@ -1183,9 +1183,33 @@ test("revert rejects a flag-shaped token as a flag, before a lookup or a write",
 
   const r = await cli(repo, "revert", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /revert takes no flags \(got --json\)/);
+  assert.match(r.stderr, /revert takes only --dry-run \(got --json\)/);
   assert.equal(headSha(repo), before, "no commit was written");
   assert.equal(sh(repo, "git", "status", "--porcelain"), "", "the tree is clean");
+});
+
+test("revert --dry-run previews without writing", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli revert dry run");
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "one\n");
+  commitIn(repo, "work to undo");
+  const clean = headSha(repo);
+  let r = await cli(repo, "revert", clean, "--dry-run");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, new RegExp(`^would revert ${clean.slice(0, 8)}`));
+  assert.match(r.stdout, /\n {2}to-undo\.txt\n/);
+  assert.match(r.stdout, /applies cleanly/);
+  assert.equal(headSha(repo), clean);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+
+  fs.writeFileSync(path.join(repo, "to-undo.txt"), "two\n");
+  commitIn(repo, "edit it again");
+  const tip = headSha(repo);
+  r = await cli(repo, "revert", "--dry-run", clean);
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /would conflict/);
+  assert.equal(headSha(repo), tip);
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
 });
 
 test("revert with zero or multiple positionals fails with usage and writes no commit", async () => {

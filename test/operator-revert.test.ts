@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
-import { revertMergedCommit } from "../src/operator/revert.js";
+import { previewRevert, revertMergedCommit } from "../src/operator/revert.js";
 
 test("reverting a rename commit commits both halves and leaves the tree clean", async () => {
   const repo = makeRepo();
@@ -123,4 +123,65 @@ test("checked out on a non-base branch, revert refuses even when the ref resolve
   assert.equal(headSha(repo), before, "HEAD did not move");
   // The revert wrote nothing: the only change in the tree is the config file the test wrote.
   assert.equal(statusPorcelain(repo), "?? tumwater.json");
+});
+
+test("previewRevert reports a clean revert and writes nothing", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const aSha = headSha(repo);
+  seedCommit(repo, "b.txt", "b\n", "add b");
+  const before = headSha(repo);
+
+  const r = await previewRevert(repo, aSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.applies, true);
+  assert.equal(r.dirty, false);
+  assert.equal(r.subject, "add a");
+  assert.deepEqual(r.paths, ["a.txt"]);
+  assert.equal(headSha(repo), before);
+  assert.equal(statusPorcelain(repo), "");
+  assert.equal(sh(repo, "git", "stash", "list"), "");
+});
+
+test("previewRevert reports a conflict when a later commit edited the same region", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "x.txt", "one\n", "add x");
+  const xSha = headSha(repo);
+  seedCommit(repo, "x.txt", "two\n", "edit x");
+  const before = headSha(repo);
+
+  const r = await previewRevert(repo, xSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.applies, false);
+  assert.equal(headSha(repo), before);
+  assert.equal(statusPorcelain(repo), "");
+  assert.equal(fs.readFileSync(path.join(repo, "x.txt"), "utf8"), "two\n");
+});
+
+test("previewRevert flags an unstaged edit and leaves it byte for byte", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const aSha = headSha(repo);
+  seedCommit(repo, "b.txt", "b\n", "add b");
+  fs.writeFileSync(path.join(repo, "b.txt"), "edited\n");
+
+  const r = await previewRevert(repo, aSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.dirty, true);
+  assert.equal(fs.readFileSync(path.join(repo, "b.txt"), "utf8"), "edited\n");
+});
+
+test("previewRevert refuses an unknown ref and a root commit", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "a.txt", "a\n", "add a");
+  const unknown = await previewRevert(repo, "deadbeef");
+  assert.deepEqual(unknown, { ok: false, error: "no such commit: deadbeef" });
+  const root = sh(repo, "git", "rev-list", "--max-parents=0", "HEAD").trim();
+  const r = await previewRevert(repo, root);
+  assert.equal(r.ok, false);
+  if (r.ok) return;
+  assert.match(r.error, /has 0 parents/);
 });
