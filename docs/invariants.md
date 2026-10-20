@@ -552,3 +552,65 @@ holds the moved tier's roles, with the same one-probe admission as INV-M1.
 **Pinned by.** `test/gate-polls.test.ts` — "pollTeamGates: a used-up window's demoted fallback
 holds the moved tier's roles below the cap"; `test/orchestrator-budget.e2e.test.ts` — "a window
 move's failing fallback is demoted and its tier held, below the cap".
+
+## Claims: one entry, one holder, in queue order
+
+A claim decides which work-role instance takes which backlog entry. The queue is file order, a
+dependency holds only through the heading's `requires` clause, and what releases a claim depends on
+whether the runner is idle.
+
+### INV-N1: each listed, eligible entry has at most one claim holder, and assignment takes the first free entry in file order
+
+**Guarantee.** `assignNext` returns the first free entry in `## Planned` / `## Open` file order.
+`heldKeys` keeps every same-base claim that is still listed and eligible out of the free set, and a
+busy base runner with no claim holds the group. `eligibleEntries` drops an entry claimed by another
+base role, but keeps the queried base's own claims.
+
+**Binds.** `src/scheduling/claims.ts` (`assignNext`, `heldKeys`), `src/backlog/backlog-eligibility.ts`
+(`eligibleEntries`), `src/orchestrator/orchestrator-scheduling.ts` (the scheduling poll that calls
+`assignNext`).
+
+**Pinned by.** `test/claims.test.ts` — "assignNext takes the first free entry in file order" and
+"heldKeys counts a claim still listed and eligible and drops the rest";
+`test/orchestrator-scheduling.test.ts` — "two feature instances take distinct entry claims in one
+poll" and "a busy unclaimed base holds the group so a new instance cannot take its entry";
+`test/backlog-eligibility.test.ts` — "eligibleEntries holds a plan another role's base has claimed,
+but keeps the owner's own claim".
+
+### INV-N2: a plan is held while a prerequisite named in its heading's requires clause is still planned, and only that clause holds it
+
+**Guarantee.** `entryHoldAgainst` holds an entry whose heading's trailing parenthetical (or a
+parenthetical left open by a wrapped heading) names, through `requiredParts`, a part still listed
+under `## Planned`. Once no named part is planned, the hold lifts. A `requires` mention in the body
+never holds. A note line (Refused, Needs review, Needs replan, Waiting for the next failure) holds
+as well. `planDependencyProblems` reports a still-planned prerequisite named without the clause.
+
+**Binds.** `src/backlog/backlog-eligibility.ts` (`requiredParts`, `entryHoldAgainst`,
+`prerequisitesMerged`, `planDependencyProblems`), `src/run/stage-check.ts` and
+`src/doctor/doctor-backlog.ts` (where the wording problem is reported).
+
+**Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
+parenthetical, expands ranges, and resolves bare refs to the own series", "a body mentioning
+'requires' never blocks — only the heading's clause does", "entryHold blocks a wrapped heading while
+its prerequisite is planned", "prerequisitesMerged returns the refs only when none is still
+planned", "entryHold reports blocked, refused, needs-review and needs-replan, and null when
+eligible", "a waiting-for-the-next-failure note holds a bug, only as a line prefix" and
+"planDependencyProblems flags a still-planned prerequisite named without a requires clause".
+
+### INV-N3: a claim on an entry that left or turned ineligible is released outright; disabled, paused and stale release only an idle runner
+
+**Guarantee.** `claimReleaseReason` returns `left` or `ineligible` whatever the runner is doing. It
+returns `disabled`, `paused` (own instance id paused while the base role is not) or `stale` (idle
+past `CLAIM_IDLE_MAX_MS`) only for an idle runner: one that is not running and has no queued merge
+and no outstanding work. Pausing the whole base role keeps every claim. A released claim is saved
+before the runner runs again.
+
+**Binds.** `src/scheduling/claims.ts` (`claimReleaseReason`, `CLAIM_IDLE_MAX_MS`),
+`src/runner/runner-state.ts` (`hasOutstandingWork`).
+
+**Pinned by.** `test/claims.test.ts` — "claimReleaseReason releases left, ineligible,
+disabled-idle, paused-idle and stale-idle claims" and "an idle extra with a revision, a queued
+merge, a resume or a run in progress keeps its claim"; `test/orchestrator-scheduling.test.ts` — "a
+claimed entry that merges releases the claim on the next poll", "pausing one instance releases its
+claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
+claim" and "a released claim is saved to disk before the runner runs again".
