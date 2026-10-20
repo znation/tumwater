@@ -21,7 +21,7 @@ import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
-import { pathTokens } from "./stage-check.js";
+import { pathTokens } from "./stage-path-checks.js";
 import { readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";

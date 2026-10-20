@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
-import { declaredNames, pathTokens, stageCheckFindings } from "../src/run/stage-check.js";
+import { stageCheckFindings } from "../src/run/stage-check.js";
+import { declaredNames, pathTokens } from "../src/run/stage-path-checks.js";
 import {
   finishedDuplicateFindings,
   heldMovedFinding,

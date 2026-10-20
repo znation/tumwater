@@ -282,12 +282,12 @@ export function describeToolCall(toolName: string, args: unknown): string {
 /** The ` (+N more)` remainder suffix a capped list appends when `count` entries were omitted —
  * empty when none were, so the item fits an already-built line either way. The single home of that
  * parenthesized remainder, shared by the reviewer suite-rerun warning (review/suite-rerun.ts) and
- * the stage self-check's missing-path and lost-final-newline findings (run/stage-check.ts), so the
- * three cannot drift on the spacing or the parenthesized form. The other remainder phrasings keep
- * their own wording: the failure digest's bare `+N more` role list and its `_+N more …_` lines
- * (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts), the TUI alert
- * pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause sits inside the
- * parentheses (events/event-format.ts). */
+ * the stage self-check's missing-path and lost-final-newline findings (run/stage-path-checks.ts),
+ * so the three cannot drift on the spacing or the parenthesized form. The other remainder
+ * phrasings keep their own wording: the failure digest's bare `+N more` role list and its `_+N
+ * more …_` lines (failure/failure-render.ts), doctor's `and N more` (doctor/doctor-orphans.ts),
+ * the TUI alert pointer (ui/tui/tui-frame.ts), and the review-reject reasons, whose extra clause
+ * sits inside the parentheses (events/event-format.ts). */
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }
