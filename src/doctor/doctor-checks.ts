@@ -742,9 +742,7 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
   if (count === 0) return okOutcome("no provider waits");
   // Rank the buckets by wait total, ties breaking on key name so the detail is deterministic.
   // The key-less bucket reads "the run cap" — maxConcurrent, since no seam keys to a provider.
-  const ranked = [...perKey.entries()]
-    .map(([key, total]) => ({ key, total }))
-    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
+  const ranked = rankCountEntries(perKey).map(([key, total]) => ({ key, total }));
   const bucketLabel = (key: string) => (key === "" ? "the run cap" : `the ${key} slot`);
   const cells = ranked.map((b) => `${bucketLabel(b.key)} ${shortSpanPhrase(b.total)}`);
   // A single bucket keeps the pre-existing wording, a bare `(the X slot)` without the total

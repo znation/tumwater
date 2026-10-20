@@ -140,7 +140,7 @@ export function sortByValueDesc<K extends string, Rest extends unknown[]>(
 
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
  * rankedRoleMap, src/team/failure-spread.ts's strongest-kind pick, and
- * src/doctor/doctor-checks.ts's check-wait ranking. */
+ * src/doctor/doctor-checks.ts's check-wait and provider-wait rankings. */
 export function rankCountEntries<K extends string>(
   entries: Iterable<[K, number]>,
 ): [K, number][] {
