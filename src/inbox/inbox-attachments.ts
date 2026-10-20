@@ -37,6 +37,21 @@ export function isPromptImageSibling(stem: string, entry: string): boolean {
   );
 }
 
+/** The image siblings of `stem` already in `dir`, as the collision set for a new image's name.
+ * A directory that is missing or unreadable yields an empty set: nothing there to collide
+ * with, and the write that follows reports the real failure, if any. */
+function takenImageSiblings(dir: string, stem: string): Set<string> {
+  const taken = new Set<string>();
+  try {
+    for (const entry of fs.readdirSync(dir)) {
+      if (isPromptImageSibling(stem, entry)) taken.add(entry);
+    }
+  } catch {
+    // Missing or unreadable: left empty, see above.
+  }
+  return taken;
+}
+
 /** Pick a file name with extension `ext` under `stem` that does not collide with any name
  * already in `taken`, and record it: `<stem><ext>` when free, else the first
  * `<stem>-<n><ext>` (n from 2 up) that is. The one home of the dedup-suffix rule
@@ -197,14 +212,7 @@ export function savePromptImages(
   // that adds a `.png` to a prompt whose image is already `<stem>.png` lands as `<stem>-2.png`
   // instead of overwriting (and orphaning the reference to) the existing file. A directory
   // that does not exist yet leaves the set empty; the write below creates it.
-  const taken = new Set<string>();
-  try {
-    for (const entry of fs.readdirSync(dir)) {
-      if (isPromptImageSibling(stem, entry)) taken.add(entry);
-    }
-  } catch {
-    // No inbox dir yet (or unreadable): the write below reports the real failure, if any.
-  }
+  const taken = takenImageSiblings(dir, stem);
   const paths: string[] = [];
   // The image whose write is in flight: it only joins `paths` once its write returns, so a
   // write that throws after creating the file (ENOSPC, EIO) would otherwise be the one
@@ -277,14 +285,7 @@ export function movePromptImages(
   const fromStem = path.basename(fromFile, ".md");
   const toStem = path.basename(toFile, ".md");
   const toDir = path.resolve(path.dirname(toFile));
-  const taken = new Set<string>();
-  try {
-    for (const entry of fs.readdirSync(toDir)) {
-      if (isPromptImageSibling(toStem, entry)) taken.add(entry);
-    }
-  } catch {
-    // The queue directory is gone; nothing to collide with.
-  }
+  const taken = takenImageSiblings(toDir, toStem);
   const problems: string[] = [];
   const out: string[] = [];
   for (const line of text.split("\n")) {
