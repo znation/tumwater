@@ -626,15 +626,21 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // atomic and applies live. The director cannot be disabled: with it disabled runnerIds omits
   // it and no role dequeues the operator's inbox, so that refusal is explicit (enabling stays
   // allowed). knownRoleIds holds every catalog and custom role whether or not it is enabled, so
-  // a currently-disabled id resolves; an instance id writes its base role's key.
+  // a currently-disabled id resolves; an instance id writes its base role's key. A role already
+  // in the asked-for state is reported as such and the file is left alone.
   if (enable || disable) {
     if (rest.includes("--json")) fail("--json does not apply to an enable/disable write");
     requireKnownRole(root, id);
     if (disable && id === DIRECTOR_ROLE) fail("the director cannot be disabled");
     const base = baseRoleOf(id);
+    const state = enable ? "enabled" : "disabled";
+    if (loadConfigSafe(root).config?.roles[base]?.enabled === enable) {
+      say(`${base}: already ${state}`);
+      return;
+    }
     const result = setConfigKey(root, `roles.${base}.enabled`, enable ? "true" : "false");
     if (!result.ok) fail(result.error);
-    say(`${base}: ${enable ? "enabled" : "disabled"}`);
+    say(`${base}: ${state}`);
     return;
   }
   // The unknown-role answer (exit 1, unknownRoleMessage's wording) lives in the

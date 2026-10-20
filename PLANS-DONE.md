@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater role <id> --enable`/`--disable` says `already enabled`/`already disabled` and leaves tumwater.json alone when the role is already in that state (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — the wake entry edits src/operator/operator-intent.ts, the `start --once --role` entry src/cli/cli-run.ts, the `role <id>` instance-id entry src/roles/role-view.ts and test/role-view.test.ts; this one touches src/cli/cli-query-commands.ts, test/cli-operators.test.ts and docs/cli.md's `tumwater role <id>` row) — done 2026-10-20 by the feature role
+
+**Goal.** On a fresh project, `tumwater role selfcheck --disable` exits 0 and prints `selfcheck: disabled`, and `tumwater role feature --enable` prints `feature: enabled` (checked against main's built CLI on 2026-10-20). Neither role changed state: selfcheck ships disabled and feature enabled. The line reads as if the command did something, so an operator who mistyped which role they meant, or who expected selfcheck to have been running, learns nothing. A write that changes nothing should say so.
+
+**Approach.** In `cmdRole`'s enable/disable branch (src/cli/cli-query-commands.ts, the `if (enable || disable)` block), after `requireKnownRole` and the director refusal, and after computing `base`, read the role's resolved state with `loadConfigSafe(root).config` (already imported there). If the config loaded and `config.roles[base]?.enabled === enable`, print `${base}: already ${enable ? "enabled" : "disabled"}` and return without calling `setConfigKey`. Otherwise keep the existing write and the `${base}: enabled|disabled` line. The resolved state comes from the merged config, which seeds every catalog role and every custom role (a custom absent from `roles` is enabled). That makes the check correct whether or not the file holds the key explicitly. When the config does not load (`config` undefined), skip the check and fall through to the write, which still reports `setConfigKey`'s error through `fail`. Exit code stays 0 for the no-op. Extend the comment above the branch with one sentence on the no-op. Do not touch the GUI's enable/disable handlers (src/gui/gui-config-commands.ts): their responses feed the drawer, not a typed confirmation line.
+
+**Tests (test/cli-operators.test.ts).** In "role --enable and --disable write the role's enabled state":
+- Before the first `--disable`, `role feature --enable` on the fresh project exits 0, stdout matches `/feature: already enabled/`, and tumwater.json's bytes are unchanged.
+- After `role feature --disable`, a second `role feature --disable` exits 0, matches `/feature: already disabled/`, and leaves the file bytes unchanged. The existing `--enable` that follows still prints `feature: enabled`.
+- `role selfcheck --disable` on the fresh project matches `/selfcheck: already disabled/`.
+- Adjust the director block: `role director --enable` after the refused disable now prints `director: already enabled`. Keep its `code 0` and `enabled === true` assertions, and add the stdout match.
+
+**Docs.** In docs/cli.md's `tumwater role <id>` row, after the `--enable`/`--disable` clause, add that a role already in the asked-for state is reported as `already enabled`/`already disabled` and the file is not written.
+
+**Acceptance criteria.**
+- On a fresh project, `tumwater role selfcheck --disable` prints `selfcheck: already disabled`, exits 0, and tumwater.json is byte-identical before and after.
+- `tumwater role selfcheck --enable` then prints `selfcheck: enabled` and writes `roles.selfcheck.enabled: true`. Repeating it prints `selfcheck: already enabled`.
+- `tumwater role director --disable` is still refused with `the director cannot be disabled`. An unknown id is still refused with `unknown role: …`.
+- `npm run test:gate` passes.
+
 ### `tumwater role <id>` refuses an instance id the config does not run, so `tumwater role feature-9` no longer shows a made-up role card (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — part 16/16 edits test/ comments only, the wake entry edits src/operator/operator-intent.ts, the `start --once --role` entry edits src/cli/cli-run.ts; this one touches src/roles/role-view.ts and test/role-view.test.ts) — done 2026-10-20 by the feature role
 
 **Goal.** On a fresh project (feature at its default single instance), `tumwater role feature-9` exits 0 and prints `# tumwater role: feature-9`, `- Role: "feature-9" (feature implementer)`, `- State: disabled, not paused` and the rest of a role card (checked against main's built CLI on 2026-10-20). No such runner exists. Every other surface refuses the id: `tumwater role feature-9 --enable`, `logs --role feature-9`, `report --role feature-9`, `pause --role feature-3` and `wake --role feature-3` all exit 1 with `unknown role: … — did you mean \`feature\`?`. The GUI's `/api/role` validates through `rejectBadRole` before it calls `rolePayload`. The read-only view should give the same answer.

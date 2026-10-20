@@ -806,11 +806,27 @@ test("role --enable and --disable write the role's enabled state", async () => {
   await initProject(repo, "cli role enable disable");
   const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
 
+  // A role already in the asked-for state is reported and the file is not written.
+  const file = path.join(repo, "tumwater.json");
+  const fresh = fs.readFileSync(file, "utf8");
+  let r = await cli(repo, "role", "feature", "--enable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: already enabled/);
+  r = await cli(repo, "role", "selfcheck", "--disable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /selfcheck: already disabled/);
+  assert.equal(fs.readFileSync(file, "utf8"), fresh, "no write for a no-op");
+
   // `--disable` writes roles.feature.enabled === false and the view renders it disabled.
-  let r = await cli(repo, "role", "feature", "--disable");
+  r = await cli(repo, "role", "feature", "--disable");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: disabled/);
   assert.equal(config().roles.feature.enabled, false);
+  const disabled = fs.readFileSync(file, "utf8");
+  r = await cli(repo, "role", "feature", "--disable");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: already disabled/);
+  assert.equal(fs.readFileSync(file, "utf8"), disabled, "no write for a repeated disable");
   r = await cli(repo, "role", "feature");
   assert.match(r.stdout, /- State: disabled, not paused/);
   r = await cli(repo, "role", "feature", "--json");
@@ -839,6 +855,7 @@ test("role --enable and --disable write the role's enabled state", async () => {
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged on director disable");
   r = await cli(repo, "role", "director", "--enable");
   assert.equal(r.code, 0);
+  assert.match(r.stdout, /director: already enabled/);
   assert.equal(config().roles.director.enabled, true);
   const beforeBogus = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
   for (const flag of ["--enable", "--disable"]) {
