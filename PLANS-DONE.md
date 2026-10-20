@@ -5,6 +5,39 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Agent run setup: a session dir, log file or scratch dir that cannot be created fails the run with a message instead of rejecting runAgent, so its "Never throws" holds and no opened log is leaked (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/agent/run-agent.ts + test/pi.test.ts + docs/invariants.md; done 2026-10-20 by the feature role)
+
+**Goal.** `runAgent` (src/agent/run-agent.ts; `runPi` is its alias in src/pi/pi.ts) is documented "Never throws", and every agent run goes through it: the author run and its retries (`RunnerPi` in src/runner/runner-pi.ts), the review gate, and the merge resolver (`ctx.runPi` in src/merge/merge-to-main.ts). Its Promise executor does several synchronous filesystem steps before the spawn with no `try`: `ensureDir(opts.sessionDir)`, the two `openAppendLog` calls (whose `ensureParentDir` can throw), and `fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"))` for `runTmp`. A throw inside a Promise executor rejects the promise. A plan-role scratch test on 2026-10-20 confirmed it with the fake pi (`withPi`, `runPiFixture` from test/helpers/pi-run-harness.ts):
+- `sessionDir` under a regular file: `runPi` rejected with `ENOTDIR: not a directory, mkdir …`.
+- `rawLogFile` under a regular file: `runPi` rejected with `EEXIST: file already exists, mkdir …`.
+
+The code also shows (not reproduced) that when the native log's open or `mkdtempSync` throws, the raw log's write stream is already open and nothing ever ends it. A spawn failure, by contrast, already resolves `ok: false` with a "failed to spawn …" message (`child.on("error")` → `finish`), which callers treat as a failed run.
+
+**Approach.** Change only `runAgent` in src/agent/run-agent.ts:
+1. Add a module-level `setupFailureResult(message: string): PiRunResult`: `ok: false`, `errorMessage: message`, `finalText: ""`, every required number `0`, and every required boolean `false` (the required fields are the non-optional ones of `PiRunResult` in src/pi/pi-run-result.ts; leave the optional ones unset).
+2. In the executor, move `const runTmp = fs.mkdtempSync(...)` up so it runs right after the two `openAppendLog` calls. The order of the other steps stays the same. Declare `rawLog`, `nativeLog` and `runTmp` with `let` before the block, and wrap `ensureDir(opts.sessionDir)`, both `openAppendLog` calls and the `mkdtempSync` in one `try`. In its `catch`:
+   - call `.stream.end()` on each log that was opened (`rawLog?.stream.end()`, `nativeLog?.stream.end()`), so no fd is left open;
+   - ``resolve(setupFailureResult(`could not prepare the agent run: ${errorMessage(err)}`))`` and `return`. Import `errorMessage` from ../text/text.js.
+   Nothing is spawned, so no sweep, watchdog or abort listener is registered on this path.
+3. Leave the steps after the block as they are. `recordSession` and the notes-shim install already have their own guards, and the marker write goes to an already-open stream, whose errors `openAppendLog` already absorbs.
+4. Update the "Never throws." doc comment on `runAgent` to say that a setup failure (session dir, log, scratch dir) resolves as a failed run with that message.
+
+**Files.** src/agent/run-agent.ts, test/pi.test.ts, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/pi.test.ts, next to "a broken raw log degrades to a lost log, never a stuck run", titled `an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting`. Make a `tmpdir()` with a regular file `blocker` in it. Under `withPi` with a script that prints one assistant line, run:
+  - `runPi(runPiFixture(dir, { sessionDir: path.join(dir, "blocker", "sessions") }))`
+  - `runPi(runPiFixture(dir, { rawLogFile: path.join(dir, "blocker", "raw.jsonl") }))`
+  For each, assert that it resolves (does not reject), that `ok === false` and `turns === 0`, and that `errorMessage` matches `/^could not prepare the agent run: .*(ENOTDIR|EEXIST)/`. Before the fix both reject.
+- A second test, `an agent run whose scratch dir cannot be created resolves as a failed run`: use `patchFsMethod("mkdtempSync", () => () => { throw errnoError("ENOSPC"); })` (test/helpers/fs-faults.ts; restore it in a `finally`) and assert `ok === false` and an `errorMessage` matching `/could not prepare the agent run: ENOSPC/`. Before the fix it rejects.
+- The existing tests in test/pi.test.ts and test/pi-process.test.ts pass unchanged, including "a missing pi binary fails the run with an error".
+- docs/invariants.md: at the END of the file, after every section present when the change is made, add `## Agent run setup: a run that cannot be prepared fails, never rejects`. Under it put `### INV-CQ1: a session dir, log file or scratch dir that cannot be created resolves runAgent as a failed run naming the error, and closes any log it opened`, in the Guarantee / Binds / Pinned by layout:
+  - Binds: `src/agent/run-agent.ts` (`runAgent`, `setupFailureResult`).
+  - Pinned by: the two new test names.
+  - The log-closing part has no test of its own, and the invariant must say so.
+  - Before writing, run `grep -n '^### INV-C' docs/invariants.md | tail`. CM, CO and CP are claimed by Planned entries, and CQ was free on 2026-10-20.
+- `npm run test:gate` passes. The cited test names exist verbatim (`grep -rF` them in test/).
+
 ### Red-main healer: a heal prompt that cannot be queued warns and is retried at the next red verification, instead of throwing out of mainRedGate and losing the heal for the rest of the process (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/baseline/main-red.ts + test/main-red-heal.test.ts + docs/invariants.md; done 2026-10-20)
 
 **Goal.** `warnMainRedOnce` (src/baseline/main-red.ts) is reached from `mainRedGate` and `bugfixMainRedNote` (both documented "Never throws") and from `verdictAtMainTipIn` (behind `mainTipVerdict`). It sets `lastHealKey = healKey` and only then calls `enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha))` with no `try`. `enqueueRolePrompt` (src/inbox/inbox.ts) writes through `writeTextAtomic` and can throw (ENOSPC, EACCES). A plan-role scratch test on 2026-10-20 reproduced this. It used the "a failing set queues one heal prompt …" setup from test/main-red-heal.test.ts (`baselineFixture("coverage", …)`, `fakeNpm`, one failing test `heal-alpha`) and faulted `writeFileSync` with `errnoError("ENOSPC")` for paths starting with `roleInboxDir(root, "bugfix")`:

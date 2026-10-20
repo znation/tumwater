@@ -29,7 +29,7 @@ import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { claudeAssistant, claudeToolUse } from "./fixtures/claude-events.js";
-import { patchFsMethod } from "./helpers/fs-faults.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { runPiFixture, runFakePi, runPiVerified } from "./helpers/pi-run-harness.js";
 
 // Open-tool-call tracking feeds the stall warning (BUGS.md 2026-09-13 sibling): a hung
@@ -651,6 +651,38 @@ test("a broken raw log degrades to a lost log, never a stuck run", async () => {
       assert.equal(result.finalText, "done");
     } finally {
       restoreStream();
+    }
+  });
+});
+
+test("an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting", async () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "blocker"), "x");
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
+    for (const override of [
+      { sessionDir: path.join(dir, "blocker", "sessions") },
+      { rawLogFile: path.join(dir, "blocker", "raw.jsonl") },
+    ]) {
+      const result = await runPi(runPiFixture(dir, override));
+      assert.equal(result.ok, false);
+      assert.equal(result.turns, 0);
+      assert.match(String(result.errorMessage), /^could not prepare the agent run: .*(ENOTDIR|EEXIST)/);
+    }
+  });
+});
+
+test("an agent run whose scratch dir cannot be created resolves as a failed run", async () => {
+  const dir = tmpdir();
+  await withPi(`printf '%s\n' '${assistantLine("done", { tokens: 5 })}'`, async () => {
+    const restore = patchFsMethod("mkdtempSync", () => () => {
+      throw errnoError("ENOSPC");
+    });
+    try {
+      const result = await runPi(runPiFixture(dir));
+      assert.equal(result.ok, false);
+      assert.match(String(result.errorMessage), /could not prepare the agent run: ENOSPC/);
+    } finally {
+      restore();
     }
   });
 });

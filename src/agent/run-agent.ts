@@ -22,6 +22,7 @@ import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentRunSpec } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
+import { errorMessage } from "../text/text.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
@@ -163,22 +164,68 @@ export interface PiRunOptions {
   maxBudgetUsd?: number;
 }
 
+/** The failed result of a run that never started: all counters zero, all flags false. */
+function setupFailureResult(message: string): PiRunResult {
+  return {
+    ok: false,
+    finalText: "",
+    nothingToDo: false,
+    refused: false,
+    outputTokens: 0,
+    promptTokens: 0,
+    cacheReadTokens: 0,
+    preEditPromptTokens: 0,
+    peakContextTokens: 0,
+    turns: 0,
+    costUsd: 0,
+    errorMessage: message,
+    timedOut: false,
+    timedOutProgressing: false,
+    aborted: false,
+    quietKilled: false,
+    contextExceeded: false,
+    transientServerTimeout: false,
+    transientPiCrash: false,
+    transientRateLimit: false,
+    transientBackend: false,
+    configError: false,
+    finalMessageContentless: false,
+    producedAssistantContent: false,
+    compacted: false,
+  };
+}
+
 /** Run the configured agent backend non-interactively in a worktree and distill the result.
- * Never throws. */
+ * Never throws: a setup failure (session dir, log file, scratch dir) resolves as a failed run
+ * whose errorMessage names it. */
 export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
   return new Promise((resolve) => {
     // The `agent` selector is optional: default to pi, the historical backend. An unregistered
     // id also falls back to pi rather than rejecting the run.
     const backend = backendById(opts.config.agent ?? DEFAULT_BACKEND) ?? piBackend;
-    ensureDir(opts.sessionDir);
-    // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
-    // nor hang the run: openAppendLog marks it so finish() resolves without waiting for a
-    // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
-    const rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
-    // The backend-native stdout, kept beside the canonical raw log for debugging: every
-    // complete native line is written before it is translated, so the two logs line up. A
-    // broken native log degrades to a lost debug log, never a stuck or failed run.
-    const nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
+    let rawLog: AppendLog | undefined;
+    let nativeLog: AppendLog | undefined;
+    let runTmp: string;
+    try {
+      ensureDir(opts.sessionDir);
+      // A broken raw log (EACCES, ENOSPC) must not crash the process on an unhandled 'error'
+      // nor hang the run: openAppendLog marks it so finish() resolves without waiting for a
+      // 'finish' that will never come — a lost transcript is acceptable, a stuck runner is not.
+      rawLog = openAppendLog(opts.rawLogFile, opts.config.logMaxBytes);
+      // The backend-native stdout, kept beside the canonical raw log for debugging: every
+      // complete native line is written before it is translated, so the two logs line up. A
+      // broken native log degrades to a lost debug log, never a stuck or failed run.
+      nativeLog = openAppendLog(opts.nativeLogFile, opts.config.logMaxBytes);
+      // A private TMPDIR per run: concurrent agents default to literal /tmp names, and a shared
+      // per-user TMPDIR would still collide. Removed when the run settles.
+      runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
+    } catch (err) {
+      // Nothing is spawned yet: close what opened and fail the run instead of rejecting it.
+      rawLog?.stream.end();
+      nativeLog?.stream.end();
+      resolve(setupFailureResult(`could not prepare the agent run: ${errorMessage(err)}`));
+      return;
+    }
     // The marker precedes this run's first event in file order — written to the same stream
     // stdout lines flow through, before spawn, so ordering is exact by construction; on a
     // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
@@ -289,9 +336,6 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     let nativeTail = "";
     let nativeOverflow = false;
 
-    // A private TMPDIR per run: concurrent agents default to literal /tmp names, and a shared
-    // per-user TMPDIR would still collide. Removed when the run settles.
-    const runTmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-run-"));
     const child = spawn(resolved.bin, invocation.args, {
       cwd: opts.cwd,
       // A backend that feeds the prompt on stdin (every registered one) gets a pipe the runner

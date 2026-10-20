@@ -4214,3 +4214,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`).
 
 **Pinned by.** `test/main-red-heal.test.ts` — "a heal prompt that cannot be queued warns, lets the gate resolve, and is queued at the next red commit".
+
+## Agent run setup: a run that cannot be prepared fails, never rejects
+
+### INV-CQ1: a session dir, log file or scratch dir that cannot be created resolves runAgent as a failed run naming the error, and closes any log it opened
+
+**Guarantee.** `runAgent` keeps its never-throws contract when its synchronous setup fails (session dir, raw or native log, scratch dir): it resolves `ok: false` with "could not prepare the agent run: <error>" and spawns nothing. A log opened before the failure is ended so no fd stays open; no test pins that closing.
+
+**Binds.** `src/agent/run-agent.ts` (`runAgent`, `setupFailureResult`).
+
+**Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting" and "an agent run whose scratch dir cannot be created resolves as a failed run".
