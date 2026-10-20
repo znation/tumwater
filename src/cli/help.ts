@@ -447,11 +447,13 @@ Usage:
                                    cooldown (the dashboard's update-alert refresh button; a
                                    passing check on main, a successful compile, and in-flight
                                    runs finishing still apply)
-  tumwater pause [--role <id>] [--for <dur>] [--reason <text>]
-                                   Stop roles (or just the named role) starting new
-                                   runs; --reason states why the whole team is paused (no
+  tumwater pause [--role <id>[,<id>...]] [--for <dur>] [--reason <text>]
+                                   Stop roles (or just the named roles) starting new
+                                   runs; --role takes a comma list, pausing each listed
+                                   role; --reason states why the whole team is paused (no
                                    per-role reason); --for auto-resumes (capped at 90d)
-  tumwater resume [--role <id>]    Lift a team or per-role pause
+  tumwater resume [--role <id>[,<id>...]]
+                                   Lift a team or per-role pause
   tumwater retire --role <id>      Remove a disabled role's workspace, branch, and per-role
                                    state (merge ref, pause marker); --force overrides the
                                    safety rails; --json prints what was removed;

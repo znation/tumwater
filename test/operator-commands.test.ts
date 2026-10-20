@@ -397,6 +397,42 @@ test("cmdPause --role --for writes the role marker with the deadline and overwri
   assert.equal(readUntil(), NOON + 60 * 60_000);
 });
 
+test("cmdPause and cmdResume --role take a comma list", async () => {
+  const root = tmpdir();
+  const first = await expectOk(() => cmdPause(root, ["--role", "clean, dedupe,clean"]));
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
+  assert.match(first.stdout, /role clean paused/);
+  assert.match(first.stdout, /role dedupe paused/);
+  assert.equal(first.stdout.match(/role clean/g)?.length, 1);
+  const again = await expectOk(() => cmdPause(root, ["--role", "clean,organize"]));
+  assert.match(again.stdout, /role clean is already paused/);
+  assert.match(again.stdout, /role organize paused/);
+  const resumed = await expectOk(() => cmdResume(root, ["--role", "clean,dedupe"]));
+  assert.match(resumed.stdout, /clean[^\n]*resumed/);
+  assert.match(resumed.stdout, /dedupe[^\n]*resumed/);
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["organize"]);
+  await expectOk(() => cmdPause(root, ["--role", "feature-1,clean"]));
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["organize", "feature-1", "clean"]);
+});
+
+test("a comma list with an unknown id writes no marker", async () => {
+  const root = tmpdir();
+  const stderr = await expectFailAsync(() => cmdPause(root, ["--role", "clean,ghost"]));
+  assert.match(stderr, /unknown role: ghost/);
+  assert.ok(!fs.existsSync(pausedRolesPath(root)));
+  assert.match(await expectFailAsync(() => cmdPause(root, ["--role", ","])), /--role needs a role id/);
+});
+
+test("cmdPause --role list --for writes one deadline for every listed role", async () => {
+  const root = tmpdir();
+  const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean,dedupe", "--for", "1h"], NOON));
+  assert.match(stdout, /role clean paused for 1h/);
+  assert.match(stdout, /role dedupe paused for 1h/);
+  const marker = readJson<{ roles: string[]; until: number }>(pausedRolesPath(root));
+  assert.deepEqual(marker.roles, ["clean", "dedupe"]);
+  assert.equal(marker.until, NOON + 60 * 60_000);
+});
+
 // --- the operator pause's reason (`pause --reason <text>`) ---
 
 // The reason rides the fresh pause write (or a --for overwrite) as last-write-wins: the

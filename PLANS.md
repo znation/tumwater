@@ -902,37 +902,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### `tumwater pause --role` and `resume --role` take a comma-separated list of role ids, so one command holds or releases every role an operator is steering (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — it touches only `cmdPause`/`cmdResume` in src/operator/operator-commands.ts, the pause/resume help lines and docs/cli.md's "Control the roles" row)
-
-**Goal.** Holding a group of roles today takes one `pause --role` per role (for example, holding `clean`, `dedupe` and `organize` while a large feature merges), and releasing them takes one `resume --role` each. `history --role` already takes a comma list (`parseRoleListScope`, src/cli/cli-args.ts). Give `pause --role` and `resume --role` the same spelling: `tumwater pause --role clean,dedupe,organize [--for 2h]` and `tumwater resume --role clean,dedupe,organize`. Each listed role gets exactly the write and the confirmation line it gets today, and every id is validated before any marker is written.
-
-**Approach.**
-- `src/operator/operator-commands.ts`:
-  - Replace `pauseTargetRole(root, args): string | null` with `pauseTargetRoles(root, args): string[] | null`. It returns null when `flagValue(args, "--role")` is null, so the team branches stay as they are. Otherwise:
-    - Split the value on `,`, trim each piece and drop empty pieces. When none remain (`--role ""` or `--role ,`), `fail(ROLE_VALUE_ERROR)`.
-    - Resolve each piece the way `pauseTargetRole` resolves the whole value today: an instance-1 key (`[...INSTANCE_ROLES].some((base) => piece === \`${base}-1\`)`) is kept verbatim; any other piece goes through `namedRole(root, ["--role", piece])`, so an unknown id fails with the existing `unknown role: <id>` message. Every piece resolves before anything is written, so a bad id anywhere in the list writes no marker.
-    - Deduplicate, keeping first-seen order.
-  - `cmdPause`: replace the `const role = pauseTargetRole(...)` / `if (role)` block with `const roles = pauseTargetRoles(root, args)` / `if (roles)`. The `--reason` refusal stays first and unchanged. Then, for each role in order, `say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now))`, so a `--for` gives each listed role the same deadline and each prints its own line.
-  - `cmdResume`: same shape. Loop `say(roleResumeMessage(root, role, resumeRole(root, role)))` over the list.
-  - The doc comment of each command names the comma list.
-  - `pauseRole`/`resumeRole` (src/team/team-state.ts), `rolePauseMessage`/`roleResumeMessage` (src/operator/operator-intent.ts), the TUI, the GUI and `wake`/`abort`/`reset-counters` are unchanged.
-- `src/cli/help.ts`:
-  - The usage lines read `tumwater pause [--role <id>[,<id>...]] [--for <dur>] [--reason <text>]` and `tumwater resume [--role <id>[,<id>...]]`.
-  - The pause prose adds `--role takes a comma list, pausing each listed role`.
-  - Re-wrap so the description column stays aligned (the `history` stanza is the model).
-- `docs/cli.md`: in the "Control the roles" row, the `tumwater resume [--role <id>]` clause becomes `[--role <id>[,<id>...]]`. Add one parenthetical: `--role clean,dedupe` pauses or resumes each listed role, the same as one command per role.
-
-**Acceptance criteria.**
-- `test/operator-commands.test.ts`, new case "cmdPause and cmdResume --role take a comma list":
-  - `cmdPause(root, ["--role", "clean, dedupe,clean"])` leaves `pausedRolesPath` roles `["clean", "dedupe"]`. Stdout holds a `role clean paused` line and a `role dedupe paused` line, and no second `clean` line.
-  - A re-run with `["--role", "clean,organize"]` prints `role clean is already paused` and `role organize paused`.
-  - `cmdResume(root, ["--role", "clean,dedupe"])` prints both `resumed` lines and leaves roles `["organize"]`.
-  - `["--role", "feature-1,clean"]` pauses both, keeping the instance-1 key verbatim.
-- New case "a comma list with an unknown id writes no marker": `cmdPause(root, ["--role", "clean,ghost"])` fails with `unknown role: ghost`, and `pausedRolesPath` does not exist afterwards. `["--role", ","]` fails with `ROLE_VALUE_ERROR`'s text.
-- New case: `cmdPause(root, ["--role", "clean,dedupe", "--for", "1h"], NOON)` writes the same deadline for both roles, read back the way the existing "cmdPause --role --for writes the role marker…" case reads one.
-- The existing per-role cases ("cmdPause --role pauses one role…", "cmdPause --role --reason fails fast…", "per-role pause and resume reject unknown role ids…") pass unchanged.
-- `tumwater help pause` shows the `[--role <id>[,<id>...]]` usage. `npm run test:gate` passes.
-
 ### The dashboard History view gains a "By model" summary mode, the twin of `tumwater history --summary --by model` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — none of them names src/gui, src/ui/gui, src/history or the history row of docs/cli.md; the blocked plain-terms parts that rename symbols in src/history mean a rebase at most; touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/cli.md test/gui-endpoints.test.ts test/gui-client-history.test.ts)
 
 **Goal.** `tumwater history --summary --by model` (`summarizeTickRowsByModel`, src/history/history-data.ts) tallies runs per model, but its plan scoped the dashboard out. So the History view's Summary toggle can only group by role, and an operator watching a mixed-provider team in the browser cannot see what each model merged or cost. This plan adds a third mode, "By model", next to Table and Summary. It shows one row per model with the same columns, `(unknown)` for the null bucket, then the total. Out of scope: the TUI History pane (`Ctrl+Y` keeps the per-role table).

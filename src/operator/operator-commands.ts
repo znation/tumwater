@@ -70,13 +70,21 @@ function namedRole(root: string, args: string[]): string | null {
   }
 }
 
-/** namedRole for the commands that write or lift the per-role pause marker: `--role feature-1`
- * (`bugfix-1`) is the pause key of instance 1 of a multi-instance role (src/roles/runner-ids.ts's
- * instancePauseKey), returned verbatim; every other value resolves through namedRole. */
-function pauseTargetRole(root: string, args: string[]): string | null {
-  const role = flagValue(args, "--role");
-  if (role && [...INSTANCE_ROLES].some((base) => role === `${base}-1`)) return role;
-  return namedRole(root, args);
+/** namedRole for the commands that write or lift the per-role pause marker, over a comma list
+ * (`--role clean,dedupe`, like `history --role`): `feature-1` (`bugfix-1`) is the pause key of
+ * instance 1 of a multi-instance role (src/roles/runner-ids.ts's instancePauseKey), kept
+ * verbatim; every other piece resolves through namedRole. Every piece resolves before the
+ * caller writes anything, so a bad id writes no marker. Deduplicated in first-seen order;
+ * null when `--role` is absent. */
+function pauseTargetRoles(root: string, args: string[]): string[] | null {
+  const value = flagValue(args, "--role");
+  if (value === null) return null;
+  const pieces = (value ?? "").split(",").map((p) => p.trim()).filter((p) => p !== "");
+  if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
+  const roles = pieces.map((piece) =>
+    [...INSTANCE_ROLES].some((base) => piece === `${base}-1`) ? piece : namedRole(root, ["--role", piece])!,
+  );
+  return [...new Set(roles)];
 }
 
 /** The `--role <id>` value a marker command requires: namedRole's resolution plus the
@@ -199,7 +207,8 @@ export async function cmdRestart(root: string, _args: string[]): Promise<void> {
   say(result.message);
 }
 
-/** `tumwater pause [--role <id>] [--for <duration>]`: with a role, stop THAT loop from
+/** `tumwater pause [--role <id>[,<id>...]] [--for <duration>]`: with roles (a comma list pauses
+ * each), stop THAT loop from
  * starting new ticks — in-flight ones finish, every other role (the director included)
  * keeps running; without one, stop every role loop from starting NEW ticks while in-flight
  * ones finish and the director keeps running (its prompts outrank operator gates, like
@@ -236,8 +245,8 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // discipline timedPauseBits's own `now` parameter follows.
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: now + forMs };
   const untilMs = timed?.untilMs;
-  const role = pauseTargetRole(root, args);
-  if (role) {
+  const roles = pauseTargetRoles(root, args);
+  if (roles) {
     // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
     // for no observed need), so a reason aimed at a role pause fails fast here — accepting
     // the flag and silently dropping the note would tell the operator the reason stands
@@ -251,7 +260,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
     // the CLI, TUI, and GUI cannot drift on format or idempotence; a false return means the
     // role was already in the set, which rolePauseMessage words — unless a `--for` stands,
     // which overwrites the deadline and reports the fresh confirmation.
-    say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
+    for (const role of roles) say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
     return;
   }
   // pauseTeam in src/team/team-state.ts is the single writer of the pause marker — the GUI's
@@ -332,17 +341,18 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
     say("the orchestrator exited before the stop signal arrived — nothing is running");
 }
 
-/** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
- * per-role marker set); without one, lift a team pause by removing its marker. Idempotent
- * like pause: with no marker there is nothing to do. No live harness required — resuming
- * before startup just means the next `tumwater run` starts unpaused. */
+/** `tumwater resume [--role <id>[,<id>...]]`: with roles (a comma list lifts
+ * each), lift that role's pause (removed from the per-role marker set); without one,
+ * lift a team pause by removing its marker. Idempotent like pause: with no marker there
+ * is nothing to do. No live harness required — resuming before startup just means the
+ * next `tumwater run` starts unpaused. */
 export async function cmdResume(root: string, args: string[] = []): Promise<void> {
-  const role = pauseTargetRole(root, args);
-  if (role) {
+  const roles = pauseTargetRoles(root, args);
+  if (roles) {
     // resumeRole (src/team/team-state.ts) is the single remover of the per-role marker; a false
     // return means the role was never paused — the changed-state contract roleResumeMessage
     // words ("is already paused" vs "was not paused").
-    say(roleResumeMessage(root, role, resumeRole(root, role)));
+    for (const role of roles) say(roleResumeMessage(root, role, resumeRole(root, role)));
     return;
   }
   // resumeTeam (src/team/team-state.ts) is the single remover, shared with the GUI toggle;
