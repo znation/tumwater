@@ -17,12 +17,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   let histSinceKey = recall("hist-since") || "";
   let histNote = "";
   let histFilter = "all";
-  let histMode = recall("hist-mode") === "summary" ? "summary" : "table";
+  const m = recall("hist-mode");
+  let histMode = m === "summary" || m === "models" ? m : "table";
   let histRows = null;
   let histSummary = null;
+  let histModelSummary = null;
   let histFetchedAt = 0;
   const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["refused", "Refused"], ["problems", "Problems"]];
-  const HIST_MODES = [["table", "Table"], ["summary", "Summary"]];
+  const HIST_MODES = [["table", "Table"], ["summary", "Summary"], ["models", "By model"]];
   function buildHistoryView() {
     if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed run, newest first.</p></div>" +
       "<div class='toolbar'>" +
@@ -163,6 +165,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       // its additive summary), so toggling to Summary never refetches; a server too old to
       // include it leaves histSummary null and the toggle falls back to the table.
       histSummary = d && d.summary && Array.isArray(d.summary.roles) ? d.summary : null;
+      histModelSummary = d && d.modelSummary && Array.isArray(d.modelSummary.models) ? d.modelSummary : null;
       // The trailing-window shape carries the server's coverage; the count shape has no note.
       histNote = d && typeof d.note === "string" ? d.note : "";
       // A refetch invalidates the drill-down cache: cached trails could disagree with the new
@@ -264,18 +267,28 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // sum of the role's run spans via fmtSpan, a dash when none of its rows carried a span. The
   // last-change cell is the newest changes-class tick's age via fmtAgo, a dash when the role had
   // none. Pure — the view's render paints what this returns.
-  function histSummaryHtml(summary) {
-    const all = summary.roles.concat(summary.total ? [summary.total] : []);
+  function summaryTableHtml(header, entries) {
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
-    const rowsHtml = all.map((r) =>
-      "<tr" + (r.role === "total" ? " class='hist-total'" : "") + ">" +
-      "<td class='mono'>" + esc(r.role === "total" ? r.role : roleLabel(r.role)) + "</td>" +
+    const rowsHtml = entries.map((e) => { const r = e.row; return (
+      "<tr" + (e.total ? " class='hist-total'" : "") + ">" +
+      "<td class='mono'>" + esc(e.label) + "</td>" +
       cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "refused") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td class='num'>" + durCell(r.durationMs) + "</td>" +
-      "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Refused</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
+      "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>"); }).join("");
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>" + esc(header) + "</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Refused</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th class='num'>Time</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";
+  }
+  function histSummaryHtml(summary) {
+    const entries = summary.roles.map((r) => ({ label: roleLabel(r.role), row: r }));
+    if (summary.total) entries.push({ label: "total", row: summary.total, total: true });
+    return summaryTableHtml("Role", entries);
+  }
+  // The By model table: one row per model (the null bucket reads "(unknown)"), then the total.
+  function histModelSummaryHtml(summary) {
+    const entries = summary.models.map((r) => ({ label: r.model === null ? "(unknown)" : r.model, row: r }));
+    if (summary.total) entries.push({ label: "total", row: summary.total, total: true });
+    return summaryTableHtml("Model", entries);
   }
   // history-summary:end
   function renderHistory() {
@@ -288,13 +301,15 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // The outcome filter is meaningless in Summary mode (the summary already folds every class),
     // so it is hidden there; only the body changes, keeping the same fetch path.
     const filterEl = $("histfilter");
-    if (filterEl) filterEl.style.display = histMode === "summary" ? "none" : "";
-    // Summary mode shows the per-role table when the fetch carried a summary over actual rows;
-    // otherwise (no rows, or a too-old server that answered without a summary) it falls back to
-    // the same empty state the table shows.
-    const showSummary = histMode === "summary" && histSummary && histRows && histRows.length > 0;
-    const bodyHtml = showSummary
+    if (filterEl) filterEl.style.display = histMode !== "table" ? "none" : "";
+    // Summary mode shows the per-role table and By model mode the per-model one when the fetch
+    // carried that summary over actual rows; otherwise (no rows, or a too-old server that answered
+    // without it) it falls back to the same empty state the table shows.
+    const hasRows = histRows && histRows.length > 0;
+    const bodyHtml = histMode === "summary" && histSummary && hasRows
       ? histSummaryHtml(histSummary)
+      : histMode === "models" && histModelSummary && hasRows
+      ? histModelSummaryHtml(histModelSummary)
       : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey);
     body.innerHTML = historyNoteHtml(histNote) + bodyHtml;
   }

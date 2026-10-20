@@ -32,7 +32,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
-import { summarizeTickRows } from "../src/history/history-data.js";
+import { summarizeTickRows, summarizeTickRowsByModel } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
@@ -494,6 +494,28 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   assert.equal(wdata.rows.length, 4);
   assert.equal(wdata.summary.total.runs, 4);
   assert.deepEqual(wdata.summary, summarizeTickRows(wdata.rows));
+});
+
+test("handleHistory ?summary also folds the served rows per model", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" },
+    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
+    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" },
+    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
+    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 },
+  ]);
+  type Rows = Parameters<typeof summarizeTickRowsByModel>[0];
+  interface Body { rows: Rows; modelSummary: { models: { model: string | null }[] } }
+  const count = (await serveHistory(root, "?n=50&summary=1")).data as Body;
+  assert.equal(count.rows.length, 3);
+  assert.deepEqual(count.modelSummary, summarizeTickRowsByModel(count.rows));
+  assert.deepEqual(count.modelSummary.models.map((m) => m.model), ["m-a", "m-b", null], "the null bucket is last");
+  const win = (await serveHistory(root, "?sinceMs=3600000&summary=1")).data as Body;
+  assert.deepEqual(win.modelSummary, summarizeTickRowsByModel(win.rows));
+  const bare = await serveHistory(root, "?n=50");
+  assert.ok(!("modelSummary" in (bare.data as object)));
 });
 
 function serveTick(root: string, query: string) {

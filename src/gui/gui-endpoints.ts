@@ -27,7 +27,7 @@ import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep } from "../history/history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
@@ -219,7 +219,9 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * mere presence, a bad value ignored like a missing one) adds an additive `summary` folding the
  * exact served rows through the shared summarizeTickRows collector, the same tally
  * `tumwater history --summary` prints, so the dashboard Summary and the table cannot disagree
- * about what a tick was. Reads files directly, so it works whether or not the team is running. */
+ * about what a tick was. It also adds `modelSummary`, `{ models, total }`, the
+ * `history --summary --by model` tally of the same rows. Reads files directly, so it works whether
+ * or not the team is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
@@ -234,7 +236,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
     if (sinceMs === null) return;
     const { rows, covered } = readTickRowsSince(root, sinceMs, role);
     const matched = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
-    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeTickRows(matched) } : {}) });
+    sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeTickRows(matched), modelSummary: summarizeTickRowsByModel(matched) } : {}) });
     return;
   }
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
@@ -242,7 +244,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   const n = clampCount(parsed, HISTORY_MAX_TICKS);
   let rows = readTickRows(root, n, role);
   if (grep !== null) rows = tickRowsMatchingGrep(rows, grep);
-  sendJson(res, 200, summary ? { rows, summary: summarizeTickRows(rows) } : { rows });
+  sendJson(res, 200, summary ? { rows, summary: summarizeTickRows(rows), modelSummary: summarizeTickRowsByModel(rows) } : { rows });
 }
 
 /** How many of the log's newest events `GET /api/logs` scans by default, and the most it will

@@ -384,6 +384,49 @@ test("histSummaryHtml paints one row per role plus the total, with the report fo
   assert.match(html, /<td>—<\/td>/);
 });
 
+test("histModelSummaryHtml paints one row per model, (unknown) for null, an escaped id, and the total", () => {
+  const { histModelSummaryHtml } = clientScope<{ histModelSummaryHtml(summary: unknown): string }>(
+    ["format", "labels", "history-summary"],
+    ["histModelSummaryHtml"],
+    { icon: iconStub },
+  );
+  const z = { runs: 1, changes: 0, none: 1, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null };
+  const html = histModelSummaryHtml({
+    models: [{ model: "a<b", ...z }, { model: "claude", ...z }, { model: null, ...z }],
+    total: { role: "total", ...z, runs: 3 },
+  });
+  assert.match(html, /<th>Model<\/th>/);
+  assert.match(html, /<td class='mono'>a&lt;b<\/td>/, "the model id is escaped");
+  assert.match(html, /<td class='mono'>claude<\/td>/);
+  assert.match(html, /<td class='mono'>\(unknown\)<\/td>/);
+  assert.equal((html.match(/<tr/g) ?? []).length, 5, "header, three models, total");
+  assert.match(html, /<tr class='hist-total'><td class='mono'>total<\/td>/);
+});
+
+test("fetchHistory keeps the server's modelSummary and a persisted By model mode survives a reload", async () => {
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getModels: () => histModelSummary, histMode };"].join("\n");
+  const run = new Function(...keys, code) as (...args: unknown[]) => {
+    fetchHistory(throttled?: boolean): Promise<void>;
+    getModels(): { models: unknown[] } | null;
+    histMode: string;
+  };
+  const scope = run(
+    (key: string) => (key === "hist-mode" ? "models" : null),
+    () => {},
+    () => false,
+    () => undefined,
+    iconStub,
+    null,
+    () => {},
+    (title: string) => title,
+    async () => ({ rows: [{ role: "clean" }], modelSummary: { models: [{ model: "m" }], total: { role: "total" } } }),
+  );
+  assert.equal(scope.histMode, "models");
+  await scope.fetchHistory(false);
+  assert.deepEqual(scope.getModels()?.models, [{ model: "m" }]);
+});
+
 test("the toolbar carries the Table/Summary toggle, recalled and persisted like the filter", () => {
   const toolbar = GUI_CLIENT_HISTORY_JS.slice(
     GUI_CLIENT_HISTORY_JS.indexOf("class='toolbar'"),
@@ -391,7 +434,7 @@ test("the toolbar carries the Table/Summary toggle, recalled and persisted like 
   );
   assert.match(toolbar, /id='histsum'/);
   assert.match(toolbar, /data-histsum='" \+ m\[0\] \+ "'>" \+ m\[1\]/);
-  assert.match(GUI_CLIENT_HISTORY_JS, /const HIST_MODES = \[\["table", "Table"\], \["summary", "Summary"\]\]/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /const HIST_MODES = \[\["table", "Table"\], \["summary", "Summary"\], \["models", "By model"\]\]/);
   assert.match(GUI_CLIENT_HISTORY_JS, /recall\("hist-mode"\)/);
   assert.match(GUI_CLIENT_HISTORY_JS, /store\("hist-mode", histMode\)/);
 });
