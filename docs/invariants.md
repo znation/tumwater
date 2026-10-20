@@ -4041,3 +4041,17 @@ model instead of throwing", "a failed catalog write warns and still returns the 
 (`runStartupCheck`).
 
 **Pinned by.** `test/claude-account.test.ts` — "seedClaudeAccount: a failed account write returns null instead of throwing"; `test/startup-gate.test.ts` — "an unwritable claude account file does not fail the startup gate".
+
+## Live config reload: a newly routed opencode backend gets its catalog
+
+### INV-CB1: the first reload that routes a seam to opencode seeds the catalog without blocking poll
+
+**Guarantee.** The first successful reload that routes a seam to opencode, when the previous config
+did not, starts one catalog refresh per root per process. That refresh never blocks or throws out of
+`poll()`, and a failed fetch warns through the reload's event log.
+
+**Binds.** `src/config/config-live.ts` (`newLiveConfigReload`); `src/gates/startup-gate.ts`
+(`seedOpencodeCatalog`).
+
+**Pinned by.** `test/config-live.test.ts` — "a live edit routing a seam to opencode seeds the models
+catalog once" and "a failed live catalog seed warns instead of crashing the poll".

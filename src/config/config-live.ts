@@ -7,6 +7,8 @@ import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
 import { RoleRunner } from "../runner/runner.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import { errorMessage } from "../text/text.js";
+import { seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gate.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 
@@ -41,6 +43,8 @@ export function newLiveConfigReload(deps: {
   runners: RoleRunner[];
   /** The shared concurrency cap, live-resized when maxConcurrent changes. */
   semaphore: Semaphore;
+  /** The opencode-catalog seed's injectable fetch and clock — tests only. */
+  opencodeSeed?: OpenCodeSeedOptions;
   /** A scoped once round's role filter (`run --once --role <id>[,<id>...]`): a mid-round
    * config edit that enables another role still logs its `role enabled` warning, but no
    * runner is created for it — the round must not silently widen past the roles it was
@@ -71,6 +75,8 @@ export function newLiveConfigReload(deps: {
   // reload block below), so repeated polls of a config that keeps a claude seam cannot respawn
   // `claude auth status` on every cycle.
   const liveClaudeSeedAttempted = new Set<string>();
+  // Likewise for the opencode models catalog: one models.dev refresh per root per process.
+  const liveOpencodeSeedAttempted = new Set<string>();
 
   // Best-effort event logging: poll() runs inside the orchestrator's poll loop
   // (src/orchestrator/orchestrator.ts), which has no catch, so an unwritable feed (ENOSPC,
@@ -129,10 +135,11 @@ export function newLiveConfigReload(deps: {
             });
         }
         // A live edit that routes a seam to a backend the previous config did not use: the
-        // team keeps running, but that backend must be verified and (for claude) its account
-        // seeded, exactly as startup would — so a claude reviewer added to a pi team does not
-        // start uncheckable. A missing binary is a warning event, never a crash; a present one
-        // logs its verdict as a backend_binary event. The seed is attempted once per root.
+        // team keeps running, but that backend must be verified and its account (claude) or
+        // models catalog (opencode) seeded, exactly as startup would — so a claude reviewer
+        // added to a pi team does not start uncheckable. A missing binary is a warning event,
+        // never a crash; a present one logs its verdict as a backend_binary event. The seed is
+        // attempted once per root.
         const prevBackends = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));
         for (const backend of new Set(seamsInUse(reloaded.config).map((s) => s.agent ?? "pi"))) {
           if (prevBackends.has(backend)) continue;
@@ -145,6 +152,13 @@ export function newLiveConfigReload(deps: {
           if (backend === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
             liveClaudeSeedAttempted.add(deps.root);
             seedClaudeAccount(deps.root, reloaded.config);
+          }
+          if (backend === "opencode" && !liveOpencodeSeedAttempted.has(deps.root)) {
+            liveOpencodeSeedAttempted.add(deps.root);
+            // Not awaited: poll() is synchronous and a models.dev fetch must not stall the loop.
+            void seedOpencodeCatalog(deps.root, reloaded.config, { ...deps.opencodeSeed, warn }).catch(
+              (err: unknown) => warn(`open code model catalog seed failed: ${errorMessage(err)}`),
+            );
           }
         }
         prevLive = reloaded.config;

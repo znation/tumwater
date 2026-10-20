@@ -127,18 +127,30 @@ export async function runStartupCheck(
   // a failed fetch keeps the last good cache (or an empty one) and never blocks startup.
   if (!opencodeSeedAttempted.has(root) && backendsInUse(config).includes("opencode")) {
     opencodeSeedAttempted.add(root);
-    await refreshOpencodeCatalog(root, {
-      providers: opencodeProviders(config),
-      // Probe the configured opencode binary (not a different one on PATH) for the version, so
-      // the freshness check compares against the binary the team actually runs.
-      cliBin: resolveBackendBin(config, "opencode").bin,
-      fetch: opencodeSeed.fetch,
-      now: opencodeSeed.now,
-    });
+    await seedOpencodeCatalog(root, config, opencodeSeed);
   }
   const branch = await resolveMainBranch(root, config, branchArg);
   if ("problem" in branch) return branch;
   return { config, mainBranch: branch.mainBranch };
+}
+
+/** Refresh the opencode models catalog for the config's opencode seams: the one seed both the
+ * startup check and a live edit that first routes a seam to opencode run. `warn` receives the
+ * refresh's own warnings (startup passes none). */
+export function seedOpencodeCatalog(
+  root: string,
+  config: TumwaterConfig,
+  opts: OpenCodeSeedOptions & { warn?: (message: string) => void } = {},
+): Promise<unknown> {
+  return refreshOpencodeCatalog(root, {
+    providers: opencodeProviders(config),
+    // Probe the configured opencode binary (not a different one on PATH) for the version, so
+    // the freshness check compares against the binary the team actually runs.
+    cliBin: resolveBackendBin(config, "opencode").bin,
+    fetch: opts.fetch,
+    now: opts.now,
+    warn: opts.warn,
+  });
 }
 
 /** Roots this process has already attempted a claude-account seed for (see runStartupCheck),

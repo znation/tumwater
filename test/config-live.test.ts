@@ -12,6 +12,7 @@ import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { readOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {
@@ -410,4 +411,60 @@ test("a live edit adding a missing claude binary warns but keeps the team runnin
   assert.match(warnings[0] ?? "", /\/no\/such\/claude/);
   // The team kept running: the poll returned the live config, no throw.
   assert.equal(readEvents(root).some((e) => e.type === "backend_binary"), false);
+});
+
+/** A live reload over a pi team whose review seam a test then edits onto opencode, with the
+ * catalog seed's fetch injected. Returns a poll that routes the seam and lets the
+ * fire-and-forget refresh settle (an async fetch stub plus synchronous cache I/O leaves only
+ * microtasks). */
+function opencodeRouting(fetch: () => Promise<never>) {
+  const start = cloneConfig(defaultConfig());
+  start.review = { ...(start.review ?? {}), enabled: true };
+  const root = makeRepo();
+  writeConfig(root, start);
+  const live = newLiveConfigReload({
+    root,
+    config: start,
+    mainBranch: "main",
+    runnerSignal: new AbortController().signal,
+    runners: [makeRoleRunner(root, "improve", start)],
+    semaphore: new Semaphore(1),
+    opencodeSeed: { fetch, now: () => 1_000 },
+  });
+  live.poll(); // the unchanged pi config: nothing new
+  const binDir = tmpdir("live-opencode-bin-");
+  writeScript(path.join(binDir, "opencode"), "exit 0");
+  const next = cloneConfig(start);
+  next.backends = { opencode: { bin: path.join(binDir, "opencode") } };
+  next.review = { ...next.review, backend: "opencode", model: "deepseek-v4.1-flash-free" };
+  writeConfig(root, next);
+  const pollAndSettle = async () => {
+    live.poll();
+    await new Promise((r) => setImmediate(r));
+  };
+  return { root, pollAndSettle };
+}
+
+test("a live edit routing a seam to opencode seeds the models catalog once", async () => {
+  let calls = 0;
+  const { root, pollAndSettle } = opencodeRouting((async () => {
+    calls++;
+    return { opencode: { models: { "deepseek-v4.1-flash-free": { cost: { input: 0, output: 0 } } } } };
+  }) as never);
+  await pollAndSettle();
+  assert.equal(calls, 1);
+  const cache = readOpencodeCache(root);
+  assert.equal(cache.fetchedAt, 1_000);
+  assert.equal(cache.models["opencode/deepseek-v4.1-flash-free"]?.free, true);
+  await pollAndSettle();
+  assert.equal(calls, 1, "a repeated poll does not refetch");
+});
+
+test("a failed live catalog seed warns instead of crashing the poll", async () => {
+  const { root, pollAndSettle } = opencodeRouting((async () => {
+    throw new Error("offline");
+  }) as never);
+  await pollAndSettle();
+  const warnings = warnMessages(root).filter((m) => m.startsWith("open code model catalog fetch failed"));
+  assert.equal(warnings.length, 1);
 });
