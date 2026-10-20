@@ -1439,9 +1439,9 @@ test("renderReportMarkdown prints Check wait median for the days that carry one,
 test("report --role takes a comma list and sums the listed roles", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: ago(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "changed", tokens: 20, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40, costUsd: 1 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(30 * 60_000), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(20 * 60_000), loop: "dedupe", type: "run_end", run: 1, result: "changed", tokens: 20, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: todayTs(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 40, costUsd: 1 }), // retired-name-ok: legacy event field in a fixture
   ]);
 
   const day = JSON.parse((await runCli(root, "report", "--role", "clean,dedupe", "--json", "--days", "1")).out);
