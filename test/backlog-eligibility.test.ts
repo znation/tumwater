@@ -29,6 +29,7 @@ import {
   type EligibleEntry,
   type EntryHold,
   type PartRef,
+  stillHeldNote,
 } from "../src/backlog/backlog-eligibility.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -589,4 +590,13 @@ test("releasedPartsNote words none, one and several released parts", () => {
     releasedPartsNote([{ position: 4, title: "A" }, { position: 6, title: "B" }]),
     `plans #4, #6 required it and no longer wait on them: A; B${tail}`,
   );
+});
+
+test("stillHeldNote words a hold as holdMark does and is empty for none", () => {
+  assert.equal(stillHeldNote(null), "");
+  assert.equal(
+    stillHeldNote({ blockedBy: ["Export series 1/2"] }),
+    "still held [blocked: requires Export series 1/2]: no role takes it until that clears",
+  );
+  assert.equal(stillHeldNote("needs-review"), "still held [blocked: needs review]: no role takes it until that clears");
 });

@@ -98,6 +98,52 @@ test("plan and bug --release lift the Refused note and commit it on main", async
   assert.equal(subject(repo), "tumwater(operator): Release bug: broken");
 });
 
+const HELD_NOTE = "**Refused 2026-10-12 by feature: nope**";
+function seedHeldSeries(repo: string, extra = "", note = HELD_NOTE): void {
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  const seed =
+    "## Planned\n\n### Export series, part 1/2: a (planned 2026-10-01)\n\nbody\n\n" +
+    `### Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)\n\n${note}\n\nbody\n${extra}`;
+  fs.writeFileSync(path.join(repo, "PLANS.md"), plans.replace("## Planned\n", seed));
+  sh(repo, "git", "commit", "-qam", "seed");
+}
+
+test("plan --release says when the entry stays held and --json carries the hold", async () => {
+  const repo = await initializedRepo();
+  seedHeldSeries(repo, `\n### both\n\n${HELD_NOTE}\n\n**Needs review 2026-10-13 by feature: big**\n`);
+  const out = await cli(repo, "plan", "--release", "2");
+  assert.equal(out.code, 0);
+  assert.equal(subject(repo), "tumwater(operator): Release plan: Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)");
+  assert.equal(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").split("**Refused").length - 1, 1);
+  assert.match(out.stdout, /still held \[blocked: requires Export series 1\/2\]/);
+  const both = await cli(repo, "plan", "--release", "3");
+  assert.equal(both.code, 0);
+  assert.match(both.stdout, /still held \[blocked: needs review\]/);
+});
+
+test("plan --release --json carries hold for a still-held entry", async () => {
+  const repo = await initializedRepo();
+  seedHeldSeries(repo);
+  const json = await cli(repo, "plan", "--release", "2", "--json");
+  assert.equal(json.code, 0);
+  assert.deepEqual(JSON.parse(json.stdout).hold, { blockedBy: ["Export series 1/2"] });
+});
+
+test("plan --top on a held entry names the hold; an unheld move prints none", async () => {
+  const repo = await initializedRepo();
+  seedHeldSeries(repo, "", "plain note");
+  const out = await cli(repo, "plan", "--top", "2");
+  assert.equal(out.code, 0);
+  assert.match(out.stdout, /still held \[blocked: requires Export series 1\/2\]/);
+  const free = await cli(repo, "plan", "--top", "2", "--json");
+  assert.equal(free.code, 0);
+  assert.deepEqual(Object.keys(JSON.parse(free.stdout)), ["file", "title"]);
+  const heldRepo = await initializedRepo();
+  seedHeldSeries(heldRepo, "", "plain note");
+  const json = await cli(heldRepo, "plan", "--top", "2", "--json");
+  assert.deepEqual(JSON.parse(json.stdout).hold, { blockedBy: ["Export series 1/2"] });
+});
+
 test("plan and bug --top move an entry to the head of its section and commit it on main", async () => {
   const repo = await initializedRepo();
   const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");

@@ -22,7 +22,7 @@ import {
   filingDate,
 } from "./backlog.js";
 import { allLiveClaims } from "../runner/runner-state.js";
-import { backlogHolds, backlogInProgress, cancelledClaimNote, entryKey, holdMark, inProgressMark, plansReleasedBy, releasedPartsNote } from "./backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, cancelledClaimNote, entryKey, holdMark, inProgressMark, plansReleasedBy, releasedPartsNote, stillHeldNote } from "./backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -224,8 +224,10 @@ export async function cancelAndAnnounce(
 /** The shell of the `bug --release` and `plan --release` CLI cases, parsed as cancelAndAnnounce
  * parses `--cancel`: `--release <n>`, an optional `--json`, anything else refused. After
  * requireReadyRepo it releases the entry, commits the file on main, and wakes `role` (the
- * released entry is eligible now, and that role may be backed off) with no queued prompt. Prints
- * `released <command> in <file>: <title>` plus the wake line, or only the `--json` payload. */
+ * released entry is eligible now, and that role may be backed off) with no queued prompt. An
+ * entry still held after the release (another note, an unmerged prerequisite) wakes no one and
+ * gets stillHeldNote instead of the wake line. Prints `released <command> in <file>: <title>`
+ * plus that line, or only the `--json` payload (with `hold` when still held). */
 export async function releaseAndAnnounce(
   root: string,
   args: string[],
@@ -257,11 +259,13 @@ export async function releaseAndAnnounce(
   await requireReadyRepo(root);
   const released = release(position);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`)), released.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-  const wake = requestWake(root, [role]);
-  if (json) sayJson({ file: released.file, title: released.title });
+  const holds = backlogHolds(root);
+  const hold = (command === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
+  const wake = hold === null ? requestWake(root, [role]) : "";
+  if (json) sayJson({ file: released.file, title: released.title, ...(hold === null ? {} : { hold }) });
   else {
     say(`released ${command} in ${released.file}: ${released.title}`);
-    say(wake);
+    say(hold === null ? wake : stillHeldNote(hold));
   }
 }
 
@@ -269,7 +273,8 @@ export async function releaseAndAnnounce(
  * `--release`: `--top <n>`, an optional `--json`, anything else refused. After requireReadyRepo
  * it moves the entry to the head of its section and commits the file on main. No wake: a
  * reorder makes no entry newly eligible. Prints `moved <command> to the top of <file>: <title>`
- * or only the `--json` payload. */
+ * (then stillHeldNote when the entry is held) or only the `--json` payload (with `hold` when
+ * held). */
 export async function topAndAnnounce(
   root: string,
   args: string[],
@@ -300,8 +305,13 @@ export async function topAndAnnounce(
   await requireReadyRepo(root);
   const moved = top(position);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, moved.file, stampedSubject("operator", `Prioritize ${command}: ${moved.title}`)), moved.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-  if (json) sayJson({ file: moved.file, title: moved.title });
-  else say(`moved ${command} to the top of ${moved.file}: ${moved.title}`);
+  const holds = backlogHolds(root);
+  const hold = (command === "bug" ? holds.bugs : holds.plans)[0] ?? null;
+  if (json) sayJson({ file: moved.file, title: moved.title, ...(hold === null ? {} : { hold }) });
+  else {
+    say(`moved ${command} to the top of ${moved.file}: ${moved.title}`);
+    if (hold !== null) say(stillHeldNote(hold));
+  }
 }
 
 /** Ascending positions as runs: consecutive ones join with an en dash (`13–17`), runs separate

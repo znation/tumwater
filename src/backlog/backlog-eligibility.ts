@@ -434,6 +434,14 @@ export function holdMark(hold: EntryHold): string {
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 
+/** The line `plan|bug --release` and `--top` print when the entry they touched is still held:
+ * empty for no hold, else the hold in holdMark wording and that no role takes the entry until it
+ * clears. */
+export function stillHeldNote(hold: EntryHold): string {
+  if (hold === null) return "";
+  return `still held ${holdMark(hold).trim()}: no role takes it until that clears`;
+}
+
 /** Why each entry the operator's `tumwater backlog` surfaces list is held, as two arrays
  * parallel to backlogPayload's `plans` and `bugs`: the same entryHold decision the prompt's
  * backlog index carries, so a hold is observable rather than inferred. The planned entries
