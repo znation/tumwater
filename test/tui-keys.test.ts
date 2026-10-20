@@ -27,6 +27,7 @@ import { renderRunDetail, runTranscriptLines } from "../src/run/run-detail.js";
 import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
+import { disableRole } from "./helpers/disable-role.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { waitFor, waitForFile, sleep } from "./helpers/wait.js";
 import { entryKey } from "../src/backlog/backlog-eligibility.js";
@@ -38,16 +39,6 @@ import { setConfigKey } from "../src/config/config-write.js";
 const makeRoot = (): string => tmpdir("tui-keys-");
 
 /** A handler wired to a controllable clock, a quit recorder, and a render-request recorder. */
-/** Disable a role in the fixture's tumwater.json the way the retire tests do, so retire's
- * enabled-role rail does not object. */
-function disableRole(root: string, role: string): void {
-  const file = path.join(root, "tumwater.json");
-  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
-  cfg.roles ??= {};
-  cfg.roles[role] = { ...cfg.roles[role], enabled: false };
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
-}
-
 /** Poll `flash` until it matches `re`, with a hard deadline — retire runs git spawns, so the
  * flash lands after the async core its Enter arm awaits. */
 async function untilFlash(flash: () => string, re: RegExp, timeoutMs = 10000): Promise<void> {

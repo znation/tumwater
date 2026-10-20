@@ -9,7 +9,7 @@ import { handleRetire } from "../src/gui/gui-endpoint-commands.js";
 import { worktreePath } from "../src/paths.js";
 import { initializedWorktree, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { captureJson } from "./fakes/fake-res.js";
-import { readJson } from "./helpers/json-read.js";
+import { disableRole } from "./helpers/disable-role.js";
 
 // The dashboard's retire endpoints: GET /api/retire lists disabled roles' leftovers and POST
 // /api/retire removes them through the same cores `tumwater retire --role <id>` uses.
@@ -21,15 +21,6 @@ function fakeReq(body: string): http.IncomingMessage {
     req.emit("end");
   });
   return req;
-}
-
-/** Disable one role in the repo's tumwater.json in place. */
-function disableRole(root: string, role: string): void {
-  const file = path.join(root, "tumwater.json");
-  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
-  cfg.roles ??= {};
-  cfg.roles[role] = { ...cfg.roles[role], enabled: false };
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
 }
 
 const post = (root: string, body: unknown) => captureJson((res) => handleRetire(fakeReq(JSON.stringify(body)), res, root));

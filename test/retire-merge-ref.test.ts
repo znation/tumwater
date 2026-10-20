@@ -6,13 +6,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { branchName, legacyLandingRefName, mergeRefName, worktreePath } from "../src/paths.js";
 import { collectRetire, retireRole } from "../src/operator/retire.js";
 import { mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { branchHead, refSha, setRef } from "../src/git/git.js";
-import { readJson } from "./helpers/json-read.js";
+import { disableRole } from "./helpers/disable-role.js";
 
 test("retire refuses a merge ref pinning an unmerged commit while the branch sits at main", async () => {
   const { root } = await initializedWorktree();
@@ -40,11 +39,3 @@ test("retire reports and deletes a legacy-named merge ref that is the role's onl
   assert.equal(await refSha(root, legacyLandingRefName("improve")), null);
 });
 
-/** Disable one role in the repo's tumwater.json in place. */
-function disableRole(root: string, role: string): void {
-  const file = path.join(root, "tumwater.json");
-  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
-  cfg.roles ??= {};
-  cfg.roles[role] = { ...cfg.roles[role], enabled: false };
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
-}

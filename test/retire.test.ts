@@ -17,6 +17,7 @@ import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
 import { cli } from "./helpers/cli-harness.js";
 import { readJson } from "./helpers/json-read.js";
+import { disableRole } from "./helpers/disable-role.js";
 import { branchHead, setRef } from "../src/git/git.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeJsonAtomic } from "../src/files/json-files.js";
@@ -333,15 +334,6 @@ test("retire refuses when tumwater.json cannot be read, even with --force", asyn
   );
   assert.ok(fs.existsSync(worktreePath(root, "improve")), "nothing removed when config is unreadable");
 });
-
-/** Disable one role in the repo's tumwater.json in place. */
-function disableRole(root: string, role: string): void {
-  const file = path.join(root, "tumwater.json");
-  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
-  cfg.roles ??= {};
-  cfg.roles[role] = { ...cfg.roles[role], enabled: false };
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
-}
 
 test("retire --dry-run previews the removal and changes nothing", async () => {
   const { root } = await initializedWorktree();
