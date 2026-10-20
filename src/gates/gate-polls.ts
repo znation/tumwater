@@ -91,12 +91,12 @@ export interface TeamGateStates {
   disk: DiskGateState;
   teamHold: ReadonlyMap<string | undefined, TeamHold>;
   /** The subscription usage window's once-per-window warning memory (team/team-polls.ts
-   * pollClaudeWindowWarning): the `type:resetsAt` key whose `claude_window_warning` was
-   * logged, null before any. The hold itself rides `teamHold`. */
-  claudeWindowWarned: string | null;
-  /** The `type:resetsAt` key whose `claude_window_reserved` was logged
+   * pollClaudeWindowWarning): the `type:resetsAt` keys whose `claude_window_warning` was
+   * logged for a still-open window. The hold itself rides `teamHold`. */
+  claudeWindowWarned: ReadonlySet<string>;
+  /** The `type:resetsAt` keys whose `claude_window_reserved` was logged
    * (pollClaudeWindowReserve). */
-  claudeWindowReserved: string | null;
+  claudeWindowReserved: ReadonlySet<string>;
   errorStorm: ErrorStorm;
   failureSpread: FailureSpread;
 }
@@ -115,8 +115,8 @@ export function newTeamGateStates(config: TumwaterConfig): TeamGateStates {
     quiet: newQuietHoursGateState(),
     disk: newDiskGateState(),
     teamHold: new Map(),
-    claudeWindowWarned: null,
-    claudeWindowReserved: null,
+    claudeWindowWarned: new Set(),
+    claudeWindowReserved: new Set(),
     errorStorm: ERROR_STORM_QUIET,
     failureSpread: FAILURE_SPREAD_QUIET,
   };

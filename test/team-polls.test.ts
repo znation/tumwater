@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
-import { pollTeamHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/team/team-polls.js";
+import { pollTeamHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, loggedWindowKeys, type HoldInputs } from "../src/team/team-polls.js";
 import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
+import { logEvent } from "../src/events/events.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 // The orchestrator's team-hold poll (src/team/team-polls.ts): the wiring half of the team-wide
@@ -381,8 +382,8 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
   const acct = account({}, { status: "allowed_warning", resetsAt });
-  const key = pollClaudeWindowWarning(root, null, acct, T0);
-  assert.equal(key, `five_hour:${resetsAt}`);
+  const key = pollClaudeWindowWarning(root, new Set(), acct, T0);
+  assert.ok(key.has(`five_hour:${resetsAt}`));
   const warnings = () => readEvents(root).filter((e) => e.type === "claude_window_warning");
   assert.equal(warnings().length, 1);
   assert.equal(warnings()[0]!.windowType, "five_hour");
@@ -394,16 +395,58 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   // …while the next window's warning is its own crossing.
   const next = account({}, { status: "allowed_warning", resetsAt: resetsAt + 3_600_000 });
   const nextKey = pollClaudeWindowWarning(root, key, next, T0 + 1_000);
-  assert.notEqual(nextKey, key);
+  assert.ok(nextKey.has(`five_hour:${resetsAt + 3_600_000}`));
   assert.equal(warnings().length, 2);
   // A reading with utilization rides on the event.
   const filled = tmpdir("tumwater-team-polls-");
-  pollClaudeWindowWarning(filled, null, account({}, { status: "allowed_warning", resetsAt, utilization: 0.82 } as never), T0);
+  pollClaudeWindowWarning(filled, new Set(), account({}, { status: "allowed_warning", resetsAt, utilization: 0.82 } as never), T0);
   assert.equal(readEvents(filled).find((e) => e.type === "claude_window_warning")!.utilization, 0.82);
   // API billing and no account warn nothing.
   const api = tmpdir("tumwater-team-polls-");
-  assert.equal(pollClaudeWindowWarning(api, null, account({ billing: "api" }), T0), null);
+  assert.equal(pollClaudeWindowWarning(api, new Set(), account({ billing: "api" }), T0).size, 0);
   assert.equal(windowEvents(api).length, 0);
+});
+
+test("a window that warns alongside another is logged once, however the other window comes and goes", () => {
+  const root = tmpdir("tumwater-team-polls-");
+  const fiveReset = T0 + 3_600_000;
+  const sevenReset = T0 + 86_400_000;
+  const win = (status: string, resetsAt: number) => ({ status, resetsAt, observedAt: T0 });
+  const acct = (windows: ClaudeAccount["windows"]): ClaudeAccount => ({ billing: "subscription", observedAt: T0, windows });
+  let set: ReadonlySet<string> = new Set();
+  set = pollClaudeWindowWarning(root, set, acct({ seven_day: win("allowed_warning", sevenReset) }), T0);
+  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed_warning", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 1_000);
+  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 2_000);
+  const warned = readEvents(root).filter((e) => e.type === "claude_window_warning").map((e) => e.windowType);
+  assert.deepEqual(warned.sort(), ["five_hour", "seven_day"]);
+});
+
+test("a window key leaves the returned set once its resetsAt has passed", () => {
+  const root = tmpdir("tumwater-team-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const set = pollClaudeWindowWarning(root, new Set(), account({}, { status: "allowed_warning", resetsAt }), T0);
+  assert.ok(set.has(`five_hour:${resetsAt}`));
+  const later = pollClaudeWindowWarning(root, set, account({}, { status: "allowed" }), resetsAt);
+  assert.equal(later.has(`five_hour:${resetsAt}`), false);
+});
+
+test("loggedWindowKeys reads the still-open warned windows from the log, so a restart does not re-warn", () => {
+  const root = tmpdir("tumwater-team-polls-");
+  const now = Date.now();
+  const source = "tumwater";
+  logEvent(root, { source, type: "claude_window_warning", windowType: "seven_day", resetsAt: now + 3_600_000 });
+  logEvent(root, { source, type: "claude_window_warning", windowType: "five_hour", resetsAt: now - 1_000 });
+  logEvent(root, { source, type: "claude_window_warning", windowType: "five_hour" });
+  logEvent(root, { source, type: "claude_window_reserved", windowType: "seven_day", resetsAt: now + 7_200_000 });
+  const keys = loggedWindowKeys(root, "claude_window_warning", now);
+  assert.deepEqual([...keys], [`seven_day:${now + 3_600_000}`]);
+  const acct: ClaudeAccount = {
+    billing: "subscription",
+    observedAt: now,
+    windows: { seven_day: { status: "allowed_warning", resetsAt: now + 3_600_000, observedAt: now } },
+  };
+  pollClaudeWindowWarning(root, keys, acct, now);
+  assert.equal(readEvents(root).filter((e) => e.type === "claude_window_warning").length, 3, "no new event");
 });
 
 test("pollTeamHold stamps the window move's tiers on claude_window_limited", () => {
@@ -428,8 +471,8 @@ test("a reserve crossing holds claude but not the director, and logs claude_wind
   assert.equal(holds.get("claude")!.until, resetsAt);
   assert.equal(windowHeldProviders(holds).size, 0, "the director is not held on a reserve");
   assert.equal(windowEvents(root).filter((e) => e.type === "claude_window_limited").length, 0);
-  const key = pollClaudeWindowReserve(root, null, acct, T0, reserve);
-  assert.equal(key, `five_hour:${resetsAt}`);
+  const key = pollClaudeWindowReserve(root, new Set(), acct, T0, reserve);
+  assert.ok(key.has(`five_hour:${resetsAt}`));
   assert.equal(pollClaudeWindowReserve(root, key, acct, T0 + 1_000, reserve), key);
   const logged = readEvents(root).filter((e) => e.type === "claude_window_reserved");
   assert.equal(logged.length, 1);

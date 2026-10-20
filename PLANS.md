@@ -478,29 +478,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### A claude usage window warns once per window across restarts and window overlaps, so the notify page stops re-paging the same `claude_window_warning` (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
-
-**Goal.** `claude_window_warning` is on the notify allowlist (`NOTIFY_EVENT_TYPES`, src/events/notify.ts), and docs/backends.md promises that `claude_window_reserved` "is logged once per window". In practice the same window is logged again and again. From 10-17 to 10-20 the live log shows `seven_day` warnings for one window (`resetsAt` 1792450800000) logged 9 times. 8 of them came less than a second after an `orchestrator_start`. The next `seven_day` window (`resetsAt` 1793055600000) was logged 4 times in one day. Each repeat followed a `five_hour` warning. There are two causes, both in `logWindowEventOnce` (src/team/team-polls.ts):
-1. The memory is one `type:resetsAt` string in `TeamGateStates.claudeWindowWarned` / `claudeWindowReserved` (src/gates/gate-polls.ts), and it starts at `null` on each start (`newTeamGateStates`, called by src/orchestrator/orchestrator.ts). So every restart re-announces a window that is still warning.
-2. It logs only the first matching window per poll and then keeps only that window's key. With `five_hour` and `seven_day` both warning, a `five_hour` warning's key replaces the `seven_day` key. When the `five_hour` warning ends, `seven_day` no longer matches the stored key and is logged again.
-
-**Approach.**
-- src/team/team-polls.ts, `logWindowEventOnce`: replace `prevKey: string | null` with `logged: ReadonlySet<string>` and return a `ReadonlySet<string>`. Walk every window in `account.windows`, not only the first match. Each window whose `eventFor` is non-null, whose `resetsAt` is not past, and whose `` `${type}:${w.resetsAt ?? ""}` `` key is not in `logged` is logged and gets its key added. The returned set also drops keys whose numeric suffix is `<= now`, so the set stays bounded. A key with an empty suffix is kept. When nothing was added or dropped, return the input set itself so a quiet poll allocates nothing. A non-subscription account returns `logged` unchanged.
-- `pollClaudeWindowWarning` and `pollClaudeWindowReserve`: take and return `ReadonlySet<string>` in place of the key. Update their doc comments: once per window key across polls, and several windows crossing in one poll each log their own event.
-- New export in team-polls.ts: `loggedWindowKeys(root, type: "claude_window_warning" | "claude_window_reserved", now): ReadonlySet<string>`. It reads `eventsSince(root, CLAUDE_WINDOW_LOOKBACK_MS, now, (e) => e.type === type)` from src/events/event-window.ts, with `CLAUDE_WINDOW_LOOKBACK_MS = 7 * 24 * 3600_000` (the longest window claude reports is `seven_day`, so any window still open was warned within that span). It collects `` `${windowType}:${resetsAt}` `` for events whose `windowType` is a string and whose `resetsAt` is a number `> now`. Events without a numeric `resetsAt` are skipped, because they cannot name their window.
-- src/gates/gate-polls.ts: `TeamGateStates.claudeWindowWarned` / `claudeWindowReserved` become `ReadonlySet<string>`. `newTeamGateStates` seeds both with `new Set()` and stays config-only. Update the field doc comments.
-- src/orchestrator/orchestrator.ts: right after `const gateStates = newTeamGateStates(config)`, set `gateStates.claudeWindowWarned = loggedWindowKeys(root, "claude_window_warning", Date.now())` and the same for `claudeWindowReserved` with `"claude_window_reserved"`. Add a one-line comment saying a restart must not re-announce a window that is still open.
-- docs/config.md, the `claude_window_warning` notify row: add "once per window, also across restarts".
-
-**Files.** src/team/team-polls.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts, docs/config.md, test/team-polls.test.ts.
-
-**Out of scope.** No new state file: the event log is already the record of what was logged. The warning's wording and `claude_window_reserved`'s payload do not change. If a past event was pruned by log retention, its window may be announced once more; that is acceptable.
-
-**Acceptance criteria.**
-- test/team-polls.test.ts "pollClaudeWindowWarning logs the first allowed_warning once per window" and the `pollClaudeWindowReserve` tests pass with sets in place of keys: `new Set()` in place of `null`, and checks like `set.has(\`five_hour:${resetsAt}\`)` in place of key equality.
-- New test: start from an account where only `seven_day` warns, then poll with `five_hour` and `seven_day` both warning, then only `seven_day` again, threading the returned set each time. The log ends up with exactly one `seven_day` and one `five_hour` `claude_window_warning`.
-- New test: after one key is in the set and its `resetsAt` passes, the next poll's returned set no longer contains it.
-- New test: `loggedWindowKeys` on a root whose log holds a `claude_window_warning` with a future `resetsAt`, one with a past `resetsAt`, one with no `resetsAt`, and a `claude_window_reserved` returns only the future warning's key. A `pollClaudeWindowWarning` seeded with that set, for the same window, logs no new event.
-- `npm run test:gate` passes.
-
 ## Done

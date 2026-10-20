@@ -9,6 +9,7 @@ import type { RunnerState } from "../runner/runner-state.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
+import { eventsSince } from "../events/event-window.js";
 
 /** The orchestrator's three team-health polls — the wiring half of the team-wide failure
  * alarms (src/team/team-hold.ts, src/team/error-storm.ts,
@@ -169,47 +170,75 @@ export function claudeWindowObservation(
   };
 }
 
-/** Log at most one subscription-window event per window key. The reserve and the warning polls
- * (below) both walk the account's windows for the first one that crosses its mark this poll and
- * log exactly one event for it, deduplicated by the `type:resetsAt` key so many polls across one
- * window log once (a later window's crossing is its own key). They differ only in WHICH window
- * marks (the reserve fraction vs the `allowed_warning` status) and the event's payload, so the
- * shared traversal, the "reset instant already past" skip, the key build, the key dedup, and the
- * return-key contract live here and each caller supplies the mark-and-payload predicate
- * (`eventFor` returns the event to log, or null to skip that window). */
+/** A claude usage window is open for at most `seven_day`, so any window still open was logged
+ * within this span of the event log. */
+const CLAUDE_WINDOW_LOOKBACK_MS = 7 * 24 * 3600_000;
+
+/** The `windowType:resetsAt` keys of the still-open windows whose `type` event is already in the
+ * event log, so a restart does not re-announce a window that is still open. Events without a
+ * numeric `resetsAt` cannot name their window and are skipped. */
+export function loggedWindowKeys(
+  root: string,
+  type: "claude_window_warning" | "claude_window_reserved",
+  now: number,
+): ReadonlySet<string> {
+  const keys = new Set<string>();
+  for (const e of eventsSince(root, CLAUDE_WINDOW_LOOKBACK_MS, now, (ev) => ev.type === type)) {
+    if (typeof e.windowType === "string" && typeof e.resetsAt === "number" && e.resetsAt > now) {
+      keys.add(`${e.windowType}:${e.resetsAt}`);
+    }
+  }
+  return keys;
+}
+
+/** Log each subscription-window event once per window key. The reserve and the warning polls
+ * (below) both walk every window of the account and log one event for each that crosses its mark
+ * this poll, deduplicated by the `type:resetsAt` key so many polls across one window log once (a
+ * later window's crossing is its own key). They differ only in WHICH window marks (the reserve
+ * fraction vs the `allowed_warning` status) and the event's payload, so the traversal, the "reset
+ * instant already past" skip, the key build, the key dedup, and the returned-set contract live
+ * here and each caller supplies the mark-and-payload predicate (`eventFor` returns the event to
+ * log, or null to skip that window). The returned set drops keys whose reset instant has passed,
+ * and is `logged` itself when nothing was added or dropped. */
 function logWindowEventOnce(
   root: string,
-  prevKey: string | null,
+  logged: ReadonlySet<string>,
   account: ClaudeAccount | null,
   now: number,
   eventFor: (type: string, w: ClaudeWindow) => HarnessEventInput | null,
-): string | null {
-  if (account?.billing !== "subscription") return prevKey;
+): ReadonlySet<string> {
+  if (account?.billing !== "subscription") return logged;
+  let next: Set<string> | null = null;
+  for (const key of logged) {
+    const suffix = key.slice(key.lastIndexOf(":") + 1);
+    if (suffix !== "" && Number(suffix) <= now) (next ??= new Set(logged)).delete(key);
+  }
   for (const [type, w] of Object.entries(account.windows)) {
     const ev = eventFor(type, w);
     if (ev === null) continue;
     // A window whose reset instant is in the past (or unreadable) no longer marks a crossing.
     if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
     const key = `${type}:${w.resetsAt ?? ""}`;
-    if (key === prevKey) return prevKey;
+    if ((next ?? logged).has(key)) continue;
     logEventBestEffort(root, ev);
-    return key;
+    (next ??= new Set(logged)).add(key);
   }
-  return prevKey;
+  return next ?? logged;
 }
 
-/** One poll of the reserve crossing: the first window at or past its `claudeWindowReserve`
- * fraction logs `claude_window_reserved` once; `prevKey` is the `type:resetsAt` it was logged
- * for, the same once-per-window memory as pollClaudeWindowWarning. Returns the key to keep. */
+
+/** One poll of the reserve crossing: each window at or past its `claudeWindowReserve` fraction
+ * logs `claude_window_reserved` once per window key (`type:resetsAt`, kept in `logged`), so
+ * several windows crossing in one poll each log their own event. Returns the keys to keep. */
 export function pollClaudeWindowReserve(
   root: string,
-  prevKey: string | null,
+  logged: ReadonlySet<string>,
   account: ClaudeAccount | null,
   now: number,
   reserve: Record<string, number> | undefined,
-): string | null {
-  if (reserve === undefined) return prevKey;
-  return logWindowEventOnce(root, prevKey, account, now, (type, w) => {
+): ReadonlySet<string> {
+  if (reserve === undefined) return logged;
+  return logWindowEventOnce(root, logged, account, now, (type, w) => {
     const fraction = reserve[type];
     if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number") return null;
     return {
@@ -223,18 +252,17 @@ export function pollClaudeWindowReserve(
   });
 }
 
-/** One poll of the subscription-window warning: the first `allowed_warning` window logs
- * `claude_window_warning` once (carrying the window's utilization when the account reported
- * one), and `prevWarnedKey` is the window key (`type:resetsAt`) it was logged for, so many polls
- * across one window warn once while a later window's warning is its own crossing. Returns the
- * key to keep; null before any warning and until the first. */
+/** One poll of the subscription-window warning: each `allowed_warning` window logs
+ * `claude_window_warning` once per window key (`type:resetsAt`, kept in `logged`; carrying the
+ * window's utilization when the account reported one), so many polls across one window warn once
+ * and several windows warning in one poll each log their own event. Returns the keys to keep. */
 export function pollClaudeWindowWarning(
   root: string,
-  prevWarnedKey: string | null,
+  logged: ReadonlySet<string>,
   account: ClaudeAccount | null,
   now: number,
-): string | null {
-  return logWindowEventOnce(root, prevWarnedKey, account, now, (type, w) => {
+): ReadonlySet<string> {
+  return logWindowEventOnce(root, logged, account, now, (type, w) => {
     if (w.status !== "allowed_warning") return null;
     return {
       source: TUMWATER_SOURCE,
@@ -245,6 +273,7 @@ export function pollClaudeWindowWarning(
     };
   });
 }
+
 
 /** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
  * current error streak (RunnerState.consecutiveErrors/lastError — the same fields the per-role

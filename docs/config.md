@@ -126,7 +126,7 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `budget_warning` | Daily spend crossed 80% of the cap and the gate is still open: time to raise the cap or fix the fallback before the pause. |
 | `role_cap_warning` | One role's own daily spend crossed 80% of its cap and it is still running: time to raise the cap before the pause. |
 | `budget_paused` | The spend cap is hit with no usable free fallback, so the role loops are stopped; the message names the lift paths (raise or remove `maxDailyCostUsd`, or wait for the local day to roll over). |
-| `claude_window_warning` | The claude.ai subscription window first reported a warning, and the message names how full the window is when claude reported it; claude jobs still run. This is the heads-up before the hold. |
+| `claude_window_warning` | The claude.ai subscription window first reported a warning (once per window, also across restarts), and the message names how full the window is when claude reported it; claude jobs still run. This is the heads-up before the hold. |
 | `claude_window_limited` | The subscription window was rejected, so every claude job is held until it resets. |
 | `role_streak_paused` | The repeated-failure breaker paused a role; the message names the streak and its last error. |
 | `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
