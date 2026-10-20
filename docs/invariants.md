@@ -3469,3 +3469,58 @@ is no longer under `## Open`. An unfiled test, or any test while BUGS.md is miss
 entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined test's bug out of
 ## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
 releases nothing, even a filed test".
+
+## Review verdict and revision finality: a reply without a verdict never approves, and a rejected change revises until one objection survives two revisions or the backstop
+
+### INV-BH1: a reply with no verdict line is no verdict, and the last verdict line wins
+
+**Guarantee.** A reply with no VERDICT line at line start is no verdict, and the gate fails closed
+on it, never approving. When a reply carries several verdict lines, the last one wins.
+
+**Binds.** `src/review/review-verdict.ts` (`parseVerdict`).
+
+**Pinned by.** `test/review-verdict.test.ts` — "parseVerdict returns null when no verdict line
+exists", "parseVerdict ignores a VERDICT mention that is not at line start" and "parseVerdict reads
+the verdict from the LAST verdict line"; `test/review.test.ts` — "gate fails closed on a
+verdict-less reply: commit kept for re-review".
+
+### INV-BH2: reasons are capped and clipped, and only a leading resolution is dropped
+
+**Guarantee.** At most `MAX_REASONS` reasons are recorded, each clipped to the shared per-line cap.
+A rejection drops only leading lines that state prior objections resolved and carry no outstanding
+signal.
+
+**Binds.** `src/review/review-verdict.ts` (`parseVerdict`, `MAX_REASONS`).
+
+**Pinned by.** `test/review-verdict.test.ts` — "parseVerdict caps recorded reasons at ten",
+"parseVerdict clips an over-long reason to the shared per-line cap", "a leading prior-objection
+resolution is not recorded as a rejection's first reason" and "a line mixing a resolution with an
+open objection is kept whole".
+
+### INV-BH3: a repeat tag is exactly a leading `(prior N)` with N of at least one
+
+**Guarantee.** A repeat tag is a leading `(prior N)`, case-insensitive, with integer N of at least
+1. Anything else is an untagged reason.
+
+**Binds.** `src/review/review-verdict.ts` (`priorObjectionNumber`).
+
+**Pinned by.** `test/revision-prior-tags.test.ts` — "priorObjectionNumber reads only a leading
+(prior N) tag with N of at least one".
+
+### INV-BH4: a rejection is final when one objection survives two revisions or the round hits the backstop
+
+**Guarantee.** An untagged reason counts 0. A tagged one counts 1 plus the prior round's count for
+objection N, taking that count as 0 when the prior list has no entry N. The rejection is final,
+with the ref deleted and `exhausted` set, when any count reaches `REVISION_FINAL_ON_REPEAT` or the
+round reaches `REVISION_BACKSTOP`. Otherwise the ref points at the judged head and the round
+advances. The director never revises.
+
+**Binds.** `src/merge/merge-core.ts` (`recordRejectedChange`); `src/runner/revision.ts`
+(`REVISION_FINAL_ON_REPEAT`, `REVISION_BACKSTOP`).
+
+**Pinned by.** `test/revision.test.ts` — "a gate rejection points the rejected ref at the judged
+head and records round 1", "a rejection whose objection has survived two revisions is final and
+deletes the rejected ref", "a converging chain whose revisions raise only new objections keeps
+revising", "a chain whose objections never repeat ends at the backstop" and "the director never
+gets a revision: a rejection leaves no revision state"; `test/revision-prior-tags.test.ts` — "a
+(prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".

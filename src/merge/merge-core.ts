@@ -345,10 +345,11 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<RunResult> = new Set([
  * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
  * previous round's per-reason persistence counts, carried from the queued merge's PriorReview;
  * absent for a fresh change's first rejection and on a recovery merge, a `(prior N)` tag then
- * reads as a fresh objection. Shared by a pinned change's rejection (reviewPinnedChange) and the
- * in-lock re-review rejection of a resolved conflict (mergeApprovedChange), so both send the
- * change back for revision the same way. A rejection with no `revisionRound` is a fresh change's
- * first round (1). The director never revises. */
+ * counts as having survived one revision (count 1): not final that round. Shared by a pinned
+ * change's rejection (reviewPinnedChange) and the in-lock re-review rejection of a resolved
+ * conflict (mergeApprovedChange), so both send the change back for revision the same way. A
+ * rejection with no `revisionRound` is a fresh change's first round (1). The director never
+ * revises. */
 async function recordRejectedChange(
   root: string,
   role: string,
@@ -363,7 +364,7 @@ async function recordRejectedChange(
   // Each reason's persistence count: a new (untagged) objection starts at 0; a `(prior N)`
   // restatement has survived one more revision than that objection's own count from the prior
   // round, so an objection standing across two revisions reaches REVISION_FINAL_ON_REPEAT. An
-  // out-of-range or missing tag (a stale prior list, no prior round) reads as a fresh objection.
+  // out-of-range or missing tag (a stale prior list, no prior round) counts 1: not final yet.
   const prior = priorCounts ?? [];
   const counts = reasons.map((r) => {
     const n = priorObjectionNumber(r);
