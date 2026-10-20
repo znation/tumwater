@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `merge_failed carries the reason mergeFailureReason derives, and omits it otherwise` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ merge_failed carries the reason mergeFailureReason derives, and omits it otherwise (53.8105ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+at Test.postRun (node:internal/test_runner/test:1542:19)
+at Test.run (node:internal/test_runner/test:1467:12)
+at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: undefined,
+expected: 'no test covers the new flag',
+operator: 'strictEqual',
+diff: 'simple'
+}
+~~~~
+
+**Cause:** the test passes `durationMs` 10 to `writeMergeOutcome`, which derives the merge start as `Date.now() - 10` after `saveRunnerState`; when the save took over 10ms the start fell after the review stamped just before the call, so `mergeFailureReason` called it stale and returned no reason. Production code is correct. Fixed by passing a 5s window (the stale review stays 60s old). Regression: the test itself, now independent of save latency.
+
+**Validation gap:** no-repro — a timing race in the test that only fires when the state save exceeds 10ms; confirmed by reading the code, not reproduced.
+
 ### An excused known-flaky gate failure ends the merge attempt as `review_error`, so the change pays a full requeue instead of going on to review (found by operator session 2026-10-19 while auditing merge throughput for plans/fast-merge.md) — fixed 2026-10-19 by the bugfix role
 
 - **Symptom:** from 2026-10-17 04:47 to 2026-10-19 12:48, all 17 `known-flaky failure, merge kept: …` warnings were followed by `merge_failed result: review_error` for the same change, 1.1 h of pipeline time in all. Each change then waited for its author's next run to re-queue it, and paid the gate check again (and often the review).

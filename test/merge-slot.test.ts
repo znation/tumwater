@@ -302,7 +302,9 @@ test("merge_failed carries the reason mergeFailureReason derives, and omits it o
     const { entry, file } = queued(root);
     const state = freshRunnerState("improve");
     setup(state);
-    writeMergeOutcome(root, entry, state, result, 10, usage, file);
+    // A merge window wide enough that the save inside writeMergeOutcome cannot outlast it:
+    // a 10ms window put startedAt after a fresh review whenever the save took longer.
+    writeMergeOutcome(root, entry, state, result, 5_000, usage, file);
     return readEvents(root, 10).find((e) => e.type === (result === "changed" ? "merge_done" : "merge_failed"))!;
   };
   const rejected = run("rejected", (s) => {
