@@ -7,7 +7,7 @@ import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
-import { squash, textOr, truncate } from "../text/text.js";
+import { isNonBlankString, squash, textOr, truncate } from "../text/text.js";
 import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -66,7 +66,7 @@ function minutes(ms: unknown): number {
  * the wrong type (the corrupt-field rule windowResetPhrase applies). */
 function pauseSuffix(until: unknown, reason: unknown): string {
   const ms = finiteNumber(until, null);
-  return `${ms === null ? "" : ` until ${formatTime(new Date(ms))}`}${typeof reason === "string" && reason.trim() ? `: ${reason}` : ""}`;
+  return `${ms === null ? "" : ` until ${formatTime(new Date(ms))}`}${isNonBlankString(reason) ? `: ${reason}` : ""}`;
 }
 
 /** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
@@ -82,7 +82,7 @@ function windowResetPhrase(e: HarnessEvent): string {
  * not fabricate a pair). Shared by the started and ended lines so the two cannot drift on the
  * window's presence or format. */
 function windowSuffix(e: HarnessEvent): string {
-  return typeof e.window === "string" && e.window.trim() ? ` (${textOr(e.window)})` : "";
+  return isNonBlankString(e.window) ? ` (${textOr(e.window)})` : "";
 }
 
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
@@ -206,7 +206,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "merge_failed":
       // The event names its reason itself (writeMergeOutcome); the review/check events still
       // carry the full text. An old event without `reason` renders the bare outcome.
-      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))}${typeof e.reason === "string" && e.reason.trim() ? `: ${truncate(e.reason.trim(), 120)}` : ""})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
+      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))}${isNonBlankString(e.reason) ? `: ${truncate(e.reason.trim(), 120)}` : ""})${elapsed(e.durationMs)}${isNonBlankString(e.summary) ? ` — ${truncate(e.summary, 80)}` : ""}`;
     case "question_posted":
       // Routine operation (a role asked the user something), not a warning.
       // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
@@ -368,7 +368,7 @@ export function eventMessage(e: HarnessEvent): string {
       // harness handling the failure. Names the streak depth and the lift command, so the
       // operator knows why the role stopped and what to do about it; names the last error
       // when one is recorded.
-      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row${typeof e.lastError === "string" && e.lastError.trim() ? ` — last error: ${squash(e.lastError, 120)}` : ""}; fix the cause and resume it (tumwater resume --role <id>)`;
+      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row${isNonBlankString(e.lastError) ? ` — last error: ${squash(e.lastError, 120)}` : ""}; fix the cause and resume it (tumwater resume --role <id>)`;
     case "role_cap_warning":
       // The per-role early page beside role_cap_paused: the cap is not reached yet, so say so —
       // the operator still has room to raise it before the role stops.

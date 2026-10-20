@@ -7,7 +7,7 @@
  * sliced here, so the digest's byte bound holds for any event shape; the render adds the timestamp
  * and a roleCell-sliced role, so no unbounded field reaches the page. */
 import { truncateExample } from "./failure-cluster.js";
-import { cutSplitsSurrogatePair } from "../text/text.js";
+import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
@@ -109,7 +109,7 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "team_paused":
       text = teamPausePhrase();
       if (finiteNumber(ev.until, null) !== null) text += ` until ${formatTime(new Date(finiteNumber(ev.until, 0)))}`;
-      if (typeof ev.reason === "string" && ev.reason.trim()) text += `: ${field(ev.reason)}`;
+      if (isNonBlankString(ev.reason)) text += `: ${field(ev.reason)}`;
       break;
     case "team_resumed":
       text = teamResumePhrase();
