@@ -414,13 +414,19 @@ test("gui /api/run carries the run's transcript only on request", async () => {
   writeLogLines(piLogPath(repo, "clean"), [
     { type: "tumwater_run", kind: "author", agent: "pi", ts: 1500 },
     { type: "agent_start" },
+    { type: "message_end", message: { role: "user", content: [{ type: "text", text: "asked-one" }], timestamp: 1500 } },
     { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "said-one" }], timestamp: 1500 } },
   ]);
   const { server, base } = await startLocalGui(repo);
   try {
     const get = async (u: string) => (await (await fetch(base + u)).json()) as { transcript?: string };
     assert.equal("transcript" in (await get("/api/run?role=clean&run=1")), false);
-    assert.match((await get("/api/run?role=clean&run=1&transcript=1")).transcript ?? "", /said-one/);
+    const plain = (await get("/api/run?role=clean&run=1&transcript=1")).transcript ?? "";
+    assert.match(plain, /said-one/);
+    assert.doesNotMatch(plain, /asked-one/);
+    const withPrompt = (await get("/api/run?role=clean&run=1&transcript=1&prompt=1")).transcript ?? "";
+    assert.match(withPrompt, /asked-one[\s\S]*said-one/);
+    assert.equal("transcript" in (await get("/api/run?role=clean&run=1&prompt=1")), false);
     assert.ok((await get("/api/run?role=clean&run=2&transcript=1")).transcript?.startsWith("(no transcript for clean run 2: "));
   } finally {
     server.close();

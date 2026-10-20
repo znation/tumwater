@@ -116,6 +116,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       if (!b) return;
       toggleHistTranscript(b.dataset.histTranscript);
     });
+    // The open transcript's "Show prompts" / "Hide prompts" button.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-transcript-prompts]") : null;
+      if (!b) return;
+      toggleHistTranscriptPrompts(b.dataset.histTranscriptPrompts);
+    });
   }
   // history-detail:start
   // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
@@ -124,7 +130,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // revert? } once /api/run answered — hasCommit is whether the run pinned a commit (the Show
   // patch button's gate), patch the button's sub-state
   // { state: loading | ok | error, text?, message?, open? }, transcript the Show transcript
-  // button's sub-state, shaped like patch's (shown on every ok card, commit or not), revertSha
+  // button's sub-state, shaped like patch's (shown on every ok card, commit or not), with
+  // optional { prompts?, promptText?, promptsLoading?, promptsError? } for the Show prompts
+  // button (the transcript reloaded with each run's prompt), revertSha
   // is the full sha of the change on main (null when none), revert the revert button's
   // sub-state { state: previewing | preview | reverting | done | error, preview?, message? }.
   // Cached until the view refetches (fetchHistory clears the map), so collapsing and
@@ -228,7 +236,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     let out = "<button type='button' class='btn btn-sm' data-hist-transcript='" + esc(key) + "'>" + label + "</button>";
     if (t.state === "loading") out += " <span class='muted'>Loading transcript…</span>";
     else if (t.state === "error") out += "<div class='err'>" + esc(t.message || "the transcript failed to load") + "</div>";
-    else if (t.state === "ok" && t.open) out += "<pre class='mono hist-detail-transcript'>" + esc(t.text) + "</pre>";
+    else if (t.state === "ok" && t.open) {
+      out += " <button type='button' class='btn btn-sm' data-hist-transcript-prompts='" + esc(key) + "'>" + (t.prompts ? "Hide prompts" : "Show prompts") + "</button>";
+      if (t.promptsLoading) out += " <span class='muted'>Loading prompts…</span>";
+      if (t.promptsError) out += "<div class='err'>" + esc(t.promptsError) + "</div>";
+      out += "<pre class='mono hist-detail-transcript'>" + esc(t.prompts ? t.promptText : t.text) + "</pre>";
+    }
     return out;
   }
   // Toggle the transcript for the card at key ("role#run"), the way toggleHistPatch does the patch.
@@ -253,6 +266,34 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     } catch (err) {
       entry.transcript = { state: "error", message: err && err.message ? err.message : "the transcript failed to load" };
     }
+    renderHistory();
+  }
+  // Toggle the open transcript between plain and with-prompts; the prompts text is fetched once.
+  async function toggleHistTranscriptPrompts(key) {
+    const entry = histDetails.get(key);
+    if (!entry || entry.state !== "ok") return;
+    const t = entry.transcript;
+    if (!t || t.state !== "ok" || !t.open || t.promptsLoading) return;
+    if (typeof t.promptText === "string") {
+      t.prompts = !t.prompts;
+      renderHistory();
+      return;
+    }
+    const at = key.lastIndexOf("#");
+    t.promptsLoading = true;
+    delete t.promptsError;
+    renderHistory();
+    try {
+      const d = await getJson(
+        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1&prompt=1",
+      );
+      if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
+      t.promptText = d.transcript;
+      t.prompts = true;
+    } catch (err) {
+      t.promptsError = err && err.message ? err.message : "the prompts failed to load";
+    }
+    delete t.promptsLoading;
     renderHistory();
   }
   function histDetailCardHtml(entry, key) {

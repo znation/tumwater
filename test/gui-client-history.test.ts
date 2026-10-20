@@ -649,3 +649,49 @@ test("the drill-down's Show transcript button loads the transcript on demand and
   assert.doesNotMatch(card(), /hist-detail-transcript/);
   assert.match(card(), />Show transcript</);
 });
+
+test("the drill-down's Show prompts button reloads the transcript with prompts and toggles it", async () => {
+  const urls: string[] = [];
+  let fail = false;
+  const scope = clientScope<{
+    histDetails: Map<string, Record<string, unknown>>;
+    histDetailCardHtml(entry: unknown, key: string): string;
+    toggleHistTranscript(key: string): Promise<void>;
+    toggleHistTranscriptPrompts(key: string): Promise<void>;
+  }>(HISTORY_REGIONS, ["histDetails", "histDetailCardHtml", "toggleHistTranscript", "toggleHistTranscriptPrompts"], {
+    icon: iconStub,
+    renderHistory: () => {},
+    getJson: (url: string) => {
+      urls.push(url);
+      if (fail) return Promise.reject(new Error("boom"));
+      return Promise.resolve({ transcript: url.endsWith("&prompt=1") ? "with < prompt" : "plain" });
+    },
+  });
+  const { histDetails, histDetailCardHtml, toggleHistTranscript, toggleHistTranscriptPrompts } = scope;
+  const card = () => histDetailCardHtml(histDetails.get("clean#9"), "clean#9");
+
+  histDetails.set("clean#9", { state: "ok", text: "h" });
+  assert.doesNotMatch(card(), /data-hist-transcript-prompts/);
+  await toggleHistTranscript("clean#9");
+  assert.match(card(), /data-hist-transcript-prompts='clean#9'>Show prompts</);
+
+  await toggleHistTranscriptPrompts("clean#9");
+  assert.match(urls.at(-1)!, /&transcript=1&prompt=1$/);
+  assert.match(card(), /hist-detail-transcript'>with &lt; prompt</);
+  assert.match(card(), />Hide prompts</);
+
+  const fetched = urls.length;
+  await toggleHistTranscriptPrompts("clean#9");
+  assert.equal(urls.length, fetched, "toggling back does not refetch");
+  assert.match(card(), /hist-detail-transcript'>plain</);
+
+  // A failure on a fresh card renders the error and the next call refetches.
+  histDetails.set("clean#9", { state: "ok", text: "h", transcript: { state: "ok", text: "plain", open: true } });
+  fail = true;
+  await toggleHistTranscriptPrompts("clean#9");
+  assert.match(card(), /<div class='err'>boom<\/div>/);
+  fail = false;
+  const before = urls.length;
+  await toggleHistTranscriptPrompts("clean#9");
+  assert.equal(urls.length, before + 1);
+});

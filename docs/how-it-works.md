@@ -482,6 +482,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   the same `tickDetailPatch` text `tumwater history <role> <n> --patch` prints.
   Its "Show transcript" button loads the run's agent transcript through `GET /api/run?…&transcript=1`,
   the same `tickTranscriptLines` text that `tumwater history <role> <n> --transcript` prints.
+  Once it is open, a "Show prompts" button reloads it through `GET /api/run?…&transcript=1&prompt=1`
+  with each agent run's prompt, the text `tumwater history <role> <n> --transcript --prompt` prints.
   The Pending pane shows the durable merge queue above the pending-change roster, reading and
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed

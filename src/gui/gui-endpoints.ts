@@ -330,8 +330,8 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
 }
 
 /** handleTick's `transcript` text: the run's transcript lines joined, else the miss note. */
-function transcriptText(root: string, role: string, tick: number, detail: TickDetail): string {
-  const { found, note } = tickTranscriptLines(root, role, tick, detail);
+function transcriptText(root: string, role: string, tick: number, detail: TickDetail, includePrompts: boolean): string {
+  const { found, note } = tickTranscriptLines(root, role, tick, detail, { includePrompts });
   return found.length > 0 ? found.join("\n") : note;
 }
 /** Handle GET /api/run?role=<id>&run=N: one tick's full event trail — readTickDetail's
@@ -351,7 +351,8 @@ function transcriptText(root: string, role: string, tick: number, detail: TickDe
  * `history --patch` prints — is added only when the `patch` flag is present, whatever its
  * value, so the default expand costs no extra `git show`. `transcript`, likewise flag-gated, is
  * the text `history --transcript` prints (tickTranscriptLines: the found lines joined, else its
- * note), so the default expand reads no pi log. Reads files directly, so
+ * note), so the default expand reads no pi log; a present `prompt` flag also renders each agent
+ * run's prompt, the text `history --transcript --prompt` prints. Reads files directly, so
  * it works whether or not the team is running. */
 export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
@@ -372,7 +373,7 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
     revertSha: target?.ok ? target.full : null,
     hasCommit: tickCommitSha(detail) !== null,
     ...(q.get("patch") !== null ? { patch: await tickDetailPatch(root, detail) } : {}),
-    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, tick, detail) } : {}),
+    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, tick, detail, q.get("prompt") !== null) } : {}),
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
