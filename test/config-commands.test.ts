@@ -184,7 +184,7 @@ test("get of a dotted key naming an unknown role or role field fails, not null",
 
 test("get rejects a dotted key outside the supported shapes", async () => {
   const root = makeRepo();
-  const out = await attemptAsync(() => cmdConfig(root, ["get", "review.enabled"]));
+  const out = await attemptAsync(() => cmdConfig(root, ["get", "review.enabled.x"]));
   assert.ok(out.exited && out.code === 1);
   assert.match(out.stderr, /dotted keys/);
 });
@@ -330,4 +330,17 @@ test("unset of a key whose file value equals its default says what it now resolv
     two.stdout,
     `unset idleBackoff (was ${JSON.stringify(idle)}; now resolves to ${JSON.stringify(idle)})\n`,
   );
+});
+
+test("get reads one field of a fixed-shape section and refuses a typo'd field", async () => {
+  const root = makeRepo();
+  writeConfig(root, { bootstrap: { untilPlansDone: 5 } });
+  const ok = await attemptAsync(() => cmdConfig(root, ["get", "bootstrap.untilPlansDone"]));
+  assert.equal(ok.stdout.trim(), "5");
+  const idle = await attemptAsync(() => cmdConfig(root, ["get", "idleBackoff.factor"]));
+  assert.equal(idle.stdout.trim(), "2", "the default shows when the file is silent");
+  const bad = await attemptAsync(() => cmdConfig(root, ["get", "review.modle"]));
+  assert.ok(bad.exited && bad.code === 1);
+  assert.match(bad.stderr, /unknown review field "modle"/);
+  assert.match(bad.stderr, /did you mean `model`\?/);
 });

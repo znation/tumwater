@@ -43,8 +43,8 @@ From the terminal, `tumwater config` prints the effective config as JSON, `tumwa
 key, and `tumwater config unset <key>` removes one — the inverse of `set`, so a value reverts
 to its default or disappears from its map or section (the confirmation names what the key now
 resolves to, and says so when the file never held it); dotted keys
-(`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`) merge one entry into the existing
-map or role entry, while bare keys replace the whole value. `roles` always merges the built-in
+(`maxDailyCostUsdPerRole.feature 1.5`, `roles.qa.model x`, `review.model x`, `bootstrap.untilPlansDone 3`) merge one entry into the
+existing map, role entry or section, while bare keys replace the whole value. `roles` always merges the built-in
 catalog per entry at load, so a bare `config set roles` replaces the file's section but cannot
 disable a role by omission — disable one with `tumwater config set roles.<id>.enabled false`.
 

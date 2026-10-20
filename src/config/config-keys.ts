@@ -8,7 +8,7 @@
  * validate → atomic-write idiom, the cross-process lock) live in src/config/config-write.ts;
  * the per-key validators and key-shape parsing here are the one home of the wording both the
  * writers and the read side show. */
-import { AGENT_KEYS, CLAUDE_AGENT_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
+import { AGENT_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
 import { MAX_DURATION_SECONDS, POSITIVE_INTEGER, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -94,11 +94,20 @@ export const PER_KEY_VALIDATORS: Record<string, (value: unknown) => string | nul
  * screening a bare top-level key gets. */
 export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole", "maxConcurrentPerProvider"] as const;
 
+/** The fixed-shape top-level sections `config get/set/unset` reaches one field of with a
+ * two-segment key (`review.model`, `bootstrap.untilPlansDone`), each with its field list. */
+export const DOTTED_SECTION_FIELDS = {
+  review: REVIEW_KEYS,
+  check: CHECK_KEYS,
+  idleBackoff: BACKOFF_KEYS,
+  bootstrap: BOOTSTRAP_KEYS,
+} as const;
+
 /** The valid first segments of a dotted config key — the per-role maps plus the `roles.` and
  * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head
  * (`modle.small`, `maxDailyCostUsdPerRoll.feature`) gets the same did-you-mean the sibling
  * unknown-key errors attach. */
-const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model", "backends"] as const;
+const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model", "backends", ...Object.keys(DOTTED_SECTION_FIELDS)] as const;
 
 /** A parsed config key: a bare top-level key (whole-value semantics, unchanged), a dotted
  * per-role map entry, a dotted role-entry field, or the error a malformed dotted shape
@@ -110,6 +119,7 @@ type ParsedConfigKey =
   | { kind: "tier"; map: "model"; tier: ModelTier }
   | { kind: "role"; id: string; field: string }
   | { kind: "agent"; id: string; field: "bin" | "args" }
+  | { kind: "section"; section: keyof typeof DOTTED_SECTION_FIELDS; field: string }
   | { kind: "error"; error: string };
 
 /** Split a config key into its write/get shape: `foo` is top-level,
@@ -152,6 +162,17 @@ export function parseConfigKey(key: string): ParsedConfigKey {
       error: `unknown model tier "${second ?? ""}" — a dotted \`model.<tier>\` names one of ${TIER_MAP_KEYS.join(", ")} (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`)${typoSuffix(second ?? "", TIER_MAP_KEYS)}`,
     };
   }
+  // `<section>.<field>` names one field of a fixed-shape section (review, check, idleBackoff,
+  // bootstrap); the field must be one the schema lists, or the write would be a dead key.
+  if (parts.length === 2 && Object.hasOwn(DOTTED_SECTION_FIELDS, first)) {
+    const section = first as keyof typeof DOTTED_SECTION_FIELDS;
+    const fields: readonly string[] = DOTTED_SECTION_FIELDS[section];
+    if (fields.includes(second ?? "")) return { kind: "section", section, field: second ?? "" };
+    return {
+      kind: "error",
+      error: `unknown ${first} field "${second ?? ""}" (valid fields: ${fields.join(", ")})${typoSuffix(second ?? "", fields)}`,
+    };
+  }
   // A typo'd first segment is the common miss (`maxDailyCostUsdPerRoll.feature`,
   // `modle.small`); when the head is one of the valid ones the shape itself is wrong, so
   // suggesting that head back would mislead — the generic wording is the whole story there.
@@ -161,7 +182,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
   return {
     kind: "error",
     error:
-      `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`); a bare key names a whole top-level value${headHint}`,
+      `unknown config key "${key}" — dotted keys name one entry of a per-role map or one field of a role entry (e.g. \`maxDailyCostUsdPerRole.feature 1.5\`, \`roles.qa.model x\`, \`review.model x\`); a bare key names a whole top-level value${headHint}`,
   };
 }
 

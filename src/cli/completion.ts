@@ -4,7 +4,7 @@
  * completes the moment it gains a help stanza and can never drift from the listing. */
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
-import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
+import { DOTTED_MAP_KEYS, DOTTED_SECTION_FIELDS } from "../config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
@@ -98,6 +98,7 @@ export function completionConfigKeys(root: string): string[] {
     ...MODEL_TIERS.map((tier) => `model.${tier}`),
     ...AGENT_IDS.flatMap((id) => (id === "claude" ? CLAUDE_AGENT_KEYS : AGENT_KEYS).map((field) => `backends.${id}.${field}`)),
     ...DOTTED_MAP_KEYS.flatMap((map) => roleIds.map((id) => `${map}.${id}`)),
+    ...Object.entries(DOTTED_SECTION_FIELDS).flatMap(([section, fields]) => fields.map((field) => `${section}.${field}`)),
     ...roleIds.flatMap((id) => ROLE_ENTRY_KEYS.map((field) => `roles.${id}.${field}`)),
   ];
   return [...new Set(keys)];

@@ -85,6 +85,8 @@ function resolvedConfigValue(
         ? (record.backends as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
             parsed.field
           ]
+        : parsed.kind === "section"
+          ? (record[parsed.section] as Record<string, unknown> | undefined)?.[parsed.field]
         : parsed.kind === "role"
           ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
               parsed.field

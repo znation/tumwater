@@ -195,6 +195,14 @@ export function setConfigKey(
         const next = { ...cfg, model: { ...existing, [parsed.tier]: value } } as unknown as TumwaterConfig;
         return preservingFileRoles(root, next);
       }
+      if (parsed.kind === "section") {
+        // Merge one field into the loaded section, keeping its other fields; validateConfig in
+        // writeConfigMutation owns the value type, so a bad value fails there and writes nothing.
+        const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
+        oldValue = existing[parsed.field];
+        const next = { ...cfg, [parsed.section]: { ...existing, [parsed.field]: value } };
+        return preservingFileRoles(root, next);
+      }
       if (parsed.kind === "agent") {
         // Merge one field of one backend's entry, preserving the other field and the other
         // backends. validateConfig in writeConfigMutation owns the value type, so a bad
@@ -472,6 +480,15 @@ export function unsetConfigKey(
       const existing = modelTierMap(record.model);
       const next = without(existing, parsed.tier);
       return withSectionOrDropped(root, cfg, "model", next);
+    }
+    if (parsed.kind === "section") {
+      // Presence is judged against the FILE: a field only the default carries is a no-op
+      // success, and an emptied section leaves the file.
+      const rawSection = objectOrEmpty(raw[parsed.section]);
+      if (!Object.hasOwn(rawSection, parsed.field)) return cfg;
+      oldValue = rawSection[parsed.field];
+      const existing = (record[parsed.section] as Record<string, unknown> | undefined) ?? {};
+      return withSectionOrDropped(root, cfg, parsed.section, without(existing, parsed.field));
     }
     if (parsed.kind === "agent") {
       // Presence is judged against the FILE, so unsetting a field only the default (or the

@@ -443,7 +443,7 @@ test("parseConfigKey rejects dotted shapes outside the per-role maps and roles e
   });
   assert.deepEqual(parseConfigKey("quietHoursPerRole.qa"), { kind: "map", map: "quietHoursPerRole", role: "qa" });
   assert.deepEqual(parseConfigKey("roles.qa.model"), { kind: "role", id: "qa", field: "model" });
-  for (const key of ["review.enabled", "roles.qa", "roles.", "maxDailyCostUsdPerRole.", "roles.qa.model.x"]) {
+  for (const key of ["review.enabled.x", "roles.qa", "roles.", "maxDailyCostUsdPerRole.", "roles.qa.model.x"]) {
     const parsed = parseConfigKey(key);
     assert.equal(parsed.kind, "error", key);
     if (parsed.kind === "error") assert.match(parsed.error, /dotted keys/);
@@ -760,4 +760,42 @@ test("a whole-config write round-trips a fallback step with backend and a spend 
   config.fallback = [{ backend: "pi", model: "qwenrunner/qwen3.8-27b", maxDailyCostUsd: 2 }];
   saveConfig(dir, config);
   assert.deepEqual(loadConfig(dir).fallback, config.fallback);
+});
+
+test("section keys set, unset and parse one field of a fixed-shape section", () => {
+  const dir = tmpdir();
+  saveConfig(dir, defaultConfig());
+  const file = path.join(dir, "tumwater.json");
+  const rawFile = () => readJson(file) as Record<string, Record<string, unknown>>;
+
+  assert.ok(setConfigKey(dir, "idleBackoff.factor", "3").ok);
+  assert.equal(rawFile().idleBackoff?.factor, 3);
+  assert.equal(rawFile().idleBackoff?.initialSeconds, 120, "the other fields keep their values");
+
+  const before = fs.readFileSync(file, "utf8");
+  const bad = setConfigKey(dir, "idleBackoff.factor", "abc");
+  assert.ok(!bad.ok && bad.error.includes("idleBackoff.factor"), bad.ok ? "" : bad.error);
+  assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected value leaves the file byte-identical");
+
+  const seeded = defaultConfig();
+  (seeded as unknown as Record<string, unknown>).review = { enabled: true, afterMerge: ["qa"] };
+  saveConfig(dir, seeded);
+  assert.ok(setConfigKey(dir, "review.model", "x").ok);
+  assert.deepEqual(
+    { e: rawFile().review?.enabled, a: rawFile().review?.afterMerge, m: rawFile().review?.model },
+    { e: true, a: ["qa"], m: "x" },
+  );
+
+  const b = defaultConfig();
+  (b as unknown as Record<string, unknown>).bootstrap = { untilPlansDone: 5 };
+  saveConfig(dir, b);
+  assert.ok(setConfigKey(dir, "bootstrap.untilPlansDone", "3").ok);
+  assert.deepEqual(rawFile().bootstrap, { untilPlansDone: 3 });
+  assert.deepEqual(unsetConfigKey(dir, "bootstrap.untilPlansDone"), { ok: true, oldValue: 3 });
+  assert.ok(!("bootstrap" in rawFile()), "the emptied section leaves the file");
+
+  const typo = parseConfigKey("review.modle");
+  assert.ok(typo.kind === "error" && typo.error.startsWith('unknown review field "modle"') && typo.error.endsWith("did you mean `model`?"), JSON.stringify(typo));
+  const head = parseConfigKey("bootstarp.untilPlansDone");
+  assert.ok(head.kind === "error" && head.error.endsWith("did you mean `bootstrap`?"), JSON.stringify(head));
 });
