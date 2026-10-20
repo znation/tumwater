@@ -95,11 +95,13 @@ test("the completion command works outside a repo and rejects other shells", asy
   assert.match(topic.stdout, /tumwater completion <bash\|zsh\|fish>/);
 });
 
-test("the bash script completes loop ids after --role and for role/history", async () => {
+test("the bash script completes loop ids after --role and for role/history/revert", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "fe"], 3), ["feature", "feature-2"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "q"], 2), ["qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "q"], 2), ["qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "revert", "q"], 2), ["qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "revert", "qa", "q"], 3), []);
 });
 
 test("completion --roles prints the repo's loop ids, or the catalog on a broken config", async () => {
@@ -217,6 +219,10 @@ test("the fish script completes values after --role, path flags, --template, and
 });
 
 const fishInstalled = await run("fish", ["--version"]).then(() => true, () => false);
+
+test("the fish script completes role ids as the first argument of role, history and revert", () => {
+  assert.ok(completionScript("fish").includes("__fish_seen_subcommand_from role history revert; and test (__tumwater_argc) -eq 2"));
+});
 
 test("the fish script parses under fish when fish is installed", { skip: !fishInstalled }, async () => {
   await run("fish", ["--no-execute", "-c", completionScript("fish")]);

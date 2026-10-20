@@ -102,6 +102,10 @@ export function completionConfigKeys(root: string): string[] {
   return [...new Set(keys)];
 }
 
+/** Commands whose first positional (word 2) is a role id, so completion offers
+ * `tumwater completion --roles` there. */
+const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
+
 /** Flags whose value is a file path: completion offers file names after them. */
 const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file"];
 
@@ -143,7 +147,7 @@ function bashScript(help: string): string {
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
     `  local prev="\${COMP_WORDS[COMP_CWORD-1]}"`,
     `  COMPREPLY=()`,
-    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == history ]] && [[ "$cur" != -* ]]; }; then`,
+    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ ${ROLE_POSITIONAL_COMMANDS.map((c) => `"\${COMP_WORDS[1]}" == ${c}`).join(" || ")} ]] && [[ "$cur" != -* ]]; }; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
     `  fi`,
@@ -213,7 +217,7 @@ function fishScript(help: string): string {
       lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}" -l ${flag.slice(2)}${fishFlagValue(flag)}`);
   }
   lines.push(
-    `complete -c tumwater -n "__fish_seen_subcommand_from role history; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,
+    `complete -c tumwater -n "__fish_seen_subcommand_from ${ROLE_POSITIONAL_COMMANDS.join(" ")}; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,
     `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from get set unset; and test (__tumwater_argc) -eq 3" -a "(tumwater completion --config-keys 2>/dev/null)"`,
     ``,
   );

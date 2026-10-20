@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater revert <TAB>` completes role ids, like `role` and `history` already do (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Touches src/cli/completion.ts docs/cli.md test/completion.test.ts) — done 2026-10-19
+
+**Goal.** `tumwater revert` takes a run form, `revert <role> <n>` or `revert <role> --last`, and its `--dry-run` and refusal messages point operators at it. Shell completion offers role ids for the first positional of `role` and `history`, but not for `revert`, so `tumwater revert fe<TAB>` completes nothing. Make `revert`'s first positional complete role ids the same way. A sha typed there is unaffected: shas were never completable, and a sha that matches no role id gets no candidates.
+
+**Approach (src/cli/completion.ts).**
+- Add a constant next to `PATH_FLAGS`: `const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];`. Its doc comment says these are the commands whose first positional (word 2) is a role id, so completion offers `tumwater completion --roles` there.
+- In `bashScript`, the first `if` tests `[[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == history ]]`. Build that test from the constant instead: `ROLE_POSITIONAL_COMMANDS.map((c) => \`"\${COMP_WORDS[1]}" == ${c}\`).join(" || ")` inside `[[ … ]]`. Keep the rest of the condition (`$COMP_CWORD -eq 2`, `$cur != -*`) as it is. zsh reuses the bash script through bashcompinit, so it needs no separate change.
+- In `fishScript`, the pushed line `complete -c tumwater -n "__fish_seen_subcommand_from role history; and test (__tumwater_argc) -eq 2" …` becomes `__fish_seen_subcommand_from ${ROLE_POSITIONAL_COMMANDS.join(" ")}`.
+- Nothing else changes: `completionSpec` and `usageWords` already skip `revert`'s `<sha>|<role>` placeholders.
+
+**Docs.** docs/cli.md's completion sentence lists what the script completes (`completing role ids after \`--role\` and keys after \`config get|set|unset\`, …`). Change `role ids after \`--role\`` to `role ids after \`--role\` and as the first argument of \`role\`, \`history\` and \`revert\``.
+
+**Tests (test/completion.test.ts).**
+- Rename "the bash script completes loop ids after --role and for role/history" to "… for role/history/revert". Add `assert.deepEqual(await complete(script, ["tumwater", "revert", "q"], 2), ["qa"]);`. Also add `assert.deepEqual(await complete(script, ["tumwater", "revert", "qa", "q"], 3), []);`, which checks that word 3 (the run number) does not get role ids.
+- New test "the fish script completes role ids as the first argument of role, history and revert". Check that `completionScript("fish")` contains `__fish_seen_subcommand_from role history revert; and test (__tumwater_argc) -eq 2`.
+
+**Acceptance criteria.**
+- In bash, `tumwater revert q<TAB>` offers `qa`, and `tumwater role`/`history` completion behaves as before (the existing asserts pass unchanged).
+- The fish script offers role ids at word 2 after `role`, `history` and `revert`.
+- `revert` flags (`--last`, `--dry-run`, `--help`) still complete after `-`.
+- `npm run test:gate` passes.
+
 ### The dashboard's History drill-down gets a "Show transcript" button that loads that run's agent transcript below its trail, the dashboard twin of `tumwater history <role> <n> --transcript` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. Logs role filter part 1/2 changes only a doc comment in src/gui/gui-endpoints.ts (the `/api/transcript` doc, not `handleTick`'s), so whichever lands second just rebases. The TUI Ctrl+P plan touches src/ui/tui/ only. Touches src/tick/tick-detail.ts src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts, done 2026-10-19)
 
 **Goal.** `tumwater history <role> <n> --transcript` prints what the agent said and ran in one past run (`tickTranscriptLines` in src/tick/tick-detail.ts, over `readRunTranscript` in src/ui/transcript-run.ts). The dashboard cannot show this. Its History drill-down card (`histDetailCardHtml`, src/ui/gui/gui-client-history.ts) shows the harness trail, the stat, the lazy "Show patch" button and the revert button. The role drawer's transcript (`/api/transcript`) shows only the live tail. Add a "Show transcript" button to the card. It follows the Show patch pattern exactly: it fetches `/api/run?…&transcript=1` once, then toggles.
