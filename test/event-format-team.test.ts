@@ -228,6 +228,18 @@ test("formatEvent renders the team pause and resume events plainly", () => {
   const resumed = formatEvent({ ts: 0, source: "tumwater", type: "team_resumed" } as never);
   assert.match(resumed, /tumwater\s+team resumed — roles run again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
+  assert.match(
+    formatEvent({ ts: 0, source: "tumwater", type: "team_resumed", expired: true } as never),
+    /team resumed — roles run again \(its timed pause ran out\)$/,
+  );
+  assert.match(
+    formatEvent({ ts: 0, source: "tumwater", type: "role_resumed", role: "docs", expired: true } as never),
+    /role docs resumed — it runs again \(its timed pause ran out\)$/,
+  );
+  assert.match(
+    formatEvent({ ts: 0, source: "tumwater", type: "team_resumed", expired: "yes" } as never),
+    /team resumed — roles run again$/,
+  );
 });
 
 // Per-role pause (`tumwater pause --role <id>`): the team pause's narrower sibling. Both lines

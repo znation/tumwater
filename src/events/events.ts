@@ -69,9 +69,9 @@ export interface HarnessEvent {
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
     | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
     | "team_paused" // operator pause via `tumwater pause`; roles stop starting new ticks, director exempt; carries `until` (ms epoch, timed pause only) and `reason` (the operator's `--reason`, when given) — events logged before carry neither
-    | "team_resumed" // the pause was lifted (`tumwater resume`); roles tick again
+    | "team_resumed" // the pause was lifted (`tumwater resume`); roles tick again; carries expired: true when the pause's `until` deadline lifted it (absent on older events and on a restarted orchestrator's first crossing)
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
-    | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
+    | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role; expired: true when the shared `until` deadline lifted it, absent as for team_resumed)
     | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
     | "role_cap_warning" // the role's local-day spend crossed 80% of its maxDailyCostUsdPerRole cap while it is still ticking (src/gates/role-cap-gates.ts); carries role, spentUsd, capUsd
     | "role_cap_paused" // the role's local-day spend reached its maxDailyCostUsdPerRole cap (src/gates/role-cap-gates.ts); it starts no new ticks until local midnight or a live edit; carries role, spentUsd, capUsd

@@ -193,6 +193,13 @@ export function pausedRoles(root: string): string[] {
   return readPausedRoles(pausedRolesPath(root)).roles;
 }
 
+/** The paused-roles set and its shared deadline from one read, `until` dropped when the set is
+ * empty — the rule pausedRolesUntil applies, so a poll sees a consistent pair. */
+export function standingRolePause(root: string): { roles: string[]; until?: number } {
+  const { roles, until } = readPausedRoles(pausedRolesPath(root));
+  return roles.length > 0 ? { roles, until } : { roles };
+}
+
 /** The paused-roles marker's future shared deadline (`pause --role <id> --for` wrote it), only
  * while the set is non-empty; undefined for a standing pause, no pause, or after expiry. Shares
  * readPausedRoles with pausedRoles so the set and its deadline cannot disagree. */

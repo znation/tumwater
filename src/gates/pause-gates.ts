@@ -4,15 +4,20 @@
  * beside the other team gates (src/budget/budget.ts's budget gate, src/team/team-hold.ts's team
  * hold) — the orchestrator owns only the wiring. */
 
-import { pausedRoles, standingTeamPause } from "../team/team-state.js";
+import { standingRolePause, standingTeamPause } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** The previous poll's pause state, so each pause/resume crossing logs exactly one event
  * instead of once per ~2s poll. In memory only: a restart mid-pause logs one event on the
- * first poll after it, and the marker keeps gating regardless. */
+ * first poll after it, and the marker keeps gating regardless. The previous poll's deadlines
+ * (`prevTeamUntil`, `prevRolesUntil`) let a resume say its timed pause ran out (`expired`); a
+ * restart mid-pause starts them undefined, so a resume on its first crossing is never marked
+ * expired. */
 export interface PauseGateState {
   prevUserPaused: boolean;
   prevPausedRoles: Set<string>;
+  prevTeamUntil?: number;
+  prevRolesUntil?: number;
 }
 
 /** A fresh poll's pause state: the operator pause (presence of the marker file — pausing
@@ -54,18 +59,25 @@ export function pollPauseGates(root: string, state: PauseGateState): PauseGates 
             ...(marker.until !== undefined ? { until: marker.until } : {}),
             ...(marker.reason ? { reason: marker.reason } : {}),
           }
-        : { source: TUMWATER_SOURCE, type: "team_resumed" },
+        : {
+            source: TUMWATER_SOURCE,
+            type: "team_resumed",
+            ...(state.prevTeamUntil !== undefined && state.prevTeamUntil <= Date.now() ? { expired: true } : {}),
+          },
     );
     state.prevUserPaused = userPaused;
   }
-  const pausedRolesNow = pausedRoles(root);
+  state.prevTeamUntil = marker?.until;
+  const { roles: pausedRolesNow, until: rolesUntil } = standingRolePause(root);
+  const rolesExpired = state.prevRolesUntil !== undefined && state.prevRolesUntil <= Date.now();
   const pausedRolesSet = new Set(pausedRolesNow);
   for (const r of pausedRolesNow)
     if (!state.prevPausedRoles.has(r))
       logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_paused", role: r });
   for (const r of state.prevPausedRoles)
     if (!pausedRolesSet.has(r))
-      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_resumed", role: r });
+      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_resumed", role: r, ...(rolesExpired ? { expired: true } : {}) });
   state.prevPausedRoles = pausedRolesSet;
+  state.prevRolesUntil = rolesUntil;
   return { userPaused, pausedRoles: pausedRolesSet };
 }

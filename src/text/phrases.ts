@@ -125,6 +125,11 @@ export function teamResumePhrase(): string {
   return "team resumed — roles run again";
 }
 
+/** Appended to a resume line whose `expired: true` event says the pause's deadline lifted it
+ * rather than `tumwater resume` — read by the event feed (event-format.ts) and the failure
+ * digest (src/failure/failure-state-change.ts). */
+export const PAUSE_EXPIRED_SUFFIX = " (its timed pause ran out)";
+
 /** The base line for a per-role pause — `role <id> paused — it starts no new runs` —
  * shared by the event feed (event-format.ts, which appends `(the rest of the team keeps running)`)
  * and the failure digest's Team state changes lines (src/failure/failure-state-change.ts, which

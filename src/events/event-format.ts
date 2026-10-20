@@ -4,7 +4,7 @@ import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { isNonBlankString, squash, textOr, truncate } from "../text/text.js";
@@ -357,12 +357,12 @@ export function eventMessage(e: HarnessEvent): string {
     case "state_migrated":
       return `state migrated — ${textOr(e.detail)}`;
     case "team_resumed":
-      return teamResumePhrase();
+      return teamResumePhrase() + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
     case "role_paused":
       // Routine state change, like team_paused — no warning prefix.
       return `${rolePausePhrase(textOr(e.role))} (the rest of the team keeps running)`;
     case "role_resumed":
-      return roleResumePhrase(textOr(e.role));
+      return roleResumePhrase(textOr(e.role)) + (e.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the

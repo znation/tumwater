@@ -634,6 +634,11 @@ test("each harness state transition renders its own bounded line", () => {
     ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
     [{ type: "team_resumed" }, "team resumed — roles run again"],
+    [{ type: "team_resumed", expired: true }, "team resumed — roles run again (its timed pause ran out)"],
+    [
+      { type: "role_resumed", role: "docs", expired: true },
+      "role docs resumed — it runs again (its timed pause ran out)",
+    ],
     [
       { type: "role_paused", role: "docs" },
       "role docs paused — it starts no new runs",
