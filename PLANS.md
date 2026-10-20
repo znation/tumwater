@@ -694,4 +694,31 @@ Both should say nothing changed, as the CLI does after part 1/2.
 - The BUGS.md `logs -f` entry stays open, because its spawner question is not answered by this.
 - `npm run test:gate` passes.
 
+### `tumwater doctor` fails a `tumwater pins` row when a `refs/tumwater/` pin names a commit that is gone, since `git gc` and a detached checkout abort on it (planned 2026-10-20 by the plan role; independent of every Planned entry: touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/doctor/doctor-check-names.ts, test/doctor-checks.test.ts and test/doctor.test.ts. The blocked Plain terms series reword comments in src/doctor/ but rename nothing this entry uses, and the `doctor --kill-orphans` entry edits only src/doctor/doctor-orphans.ts there)
+
+**Goal.** BUGS-FIXED.md's 2026-10-19 "dangling `refs/tumwater/merge/feature-5`" entry and two finished plans made the harness drop a dangling pin when it trips over one: `checkoutDetached` (src/git/worktree.ts) on a slot reset, and leftover recovery for a role's own merge pin. Until one of those runs, the pin stays. Every git command that walks all refs fails on it. In a scratch repo with a loose `refs/tumwater/merge/feature-5` naming a missing sha, `git gc` printed `fatal: bad object refs/tumwater/merge/feature-5` and `fatal: failed to run repack` and exited 128. The `gc --auto` that commits trigger fails the same way, in the background, so the repository stops being packed. `git for-each-ref --format='%(refname) %(objectname)'` still lists such a ref, so it can be found cheaply. No doctor row looks at `refs/tumwater/` today: the doctor's only "dangling" wording is `checkPlanDependencies`, which is about PLANS.md. Add a read-only row that names each broken pin and how to drop it.
+
+**Approach.**
+- src/doctor/doctor-checks.ts: add `export async function checkTumwaterPins(root: string): Promise<CheckOutcome>`, next to `checkLeftoverRoleBranches`.
+  - List `await refsUnder(root, "refs/tumwater/")` (src/git/git.ts). This covers the merge pins (`mergeRefName`), the rejected pins (`rejectedRefName`), and legacy landing pins (`legacyLandingRefName`), all from src/paths.ts. For each ref, test `await commitExists(root, sha)`.
+  - Every pin exists, or there are none: `okOutcome("no tumwater pins")` when the list is empty, else `okOutcome(\`${plural(n, "tumwater pin")}, each naming a commit that exists\`)`.
+  - Any missing: `failOutcome` (src/doctor/outcome.ts, already imported). Its detail is `<ref> names <shortSha(sha)>, which is gone` for each broken ref, joined with `; `, then ` — git gc and a detached checkout abort on ${agree(n, "it", "them")}; \`git update-ref -d <ref>\` drops each (the work ${agree(n, "it", "they")} pinned is already lost)`.
+  - The doc comment says the row is read-only and says why it fails rather than warns: a broken pin stops `git gc`, and a slot reset or leftover recovery only drops one when it reaches it.
+- src/doctor/doctor.ts: import it and add `{ name: "tumwater pins", run: () => checkTumwaterPins(root) }` right after the `leftover role branches` row.
+- src/doctor/doctor-check-names.ts: add `"tumwater pins"` to `DOCTOR_CHECK_NAMES` at the same position, so `tumwater doctor "tumwater pins"` accepts it.
+
+**Tests.**
+- test/doctor-checks.test.ts, beside "checkLeftoverRoleBranches names disabled roles' branches …": add "checkTumwaterPins fails naming a pin whose commit is gone and reads ok for live pins". Use a `readyRepo()`:
+  - With no pins, it returns `{ level: "ok", detail: "no tumwater pins" }`.
+  - After `git update-ref refs/tumwater/rejected/bugfix HEAD`, it returns ok with `1 tumwater pin, each naming a commit that exists`.
+  - Then write a loose ref file `.git/refs/tumwater/merge/feature-5` holding a sha no object has (as the worktree test "ensureDetachedWorktree drops a dangling merge ref …" does). The level is `fail`. The detail matches `/refs\/tumwater\/merge\/feature-5 names \w+, which is gone — git gc and a detached checkout abort on it; `git update-ref -d <ref>` drops each/` and does not name `refs/tumwater/rejected/bugfix`.
+  - The ref file is still there afterwards: the check deleted nothing.
+- test/doctor.test.ts: add `"tumwater pins"` after `"leftover role branches"` in the expected row-name list of the full-report test.
+
+**Acceptance criteria.**
+- `tumwater doctor` prints a `tumwater pins` row. It fails, naming each `refs/tumwater/` ref whose commit is missing and the `git update-ref -d` fix, and it is ok otherwise.
+- The row changes no ref and no file.
+- `tumwater doctor "tumwater pins"` runs just that row.
+- `npm run test:gate` passes.
+
 ## Done
