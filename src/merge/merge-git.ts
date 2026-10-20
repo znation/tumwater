@@ -6,7 +6,7 @@ import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
-import { errorMessage } from "../text/text.js";
+import { errorFirstLine, errorMessage } from "../text/text.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
  * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
@@ -297,7 +297,7 @@ async function ffFailureReason(
   if (blockers.uncommitted.length > 0 || blockers.untracked.length > 0) {
     return `fast-forward failed: ${overwriteBlockedReason(blockers)}`;
   }
-  return `fast-forward failed: ${errorMessage(err).trim().split("\n")[0]}`;
+  return `fast-forward failed: ${errorFirstLine(err)}`;
 }
 
 interface OverwriteBlockers {

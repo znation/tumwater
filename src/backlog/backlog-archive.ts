@@ -30,7 +30,7 @@ import { stampedSubject } from "../git/commit-message.js";
 import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
-import { collapseWhitespace, errorMessage } from "../text/text.js";
+import { collapseWhitespace, errorFirstLine, errorMessage } from "../text/text.js";
 import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, type FinishedArchive } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-structure.js";
 import { appendBugEntryLocked } from "./backlog-write.js";
@@ -378,7 +378,7 @@ export async function archiveFinishedOnMain(
           const tracked = touched.filter((f) => !created.includes(f));
           await gitTry(root, "checkout", "--", ...tracked);
           for (const f of created) fs.rmSync(path.join(root, f), { force: true });
-          return { status: "skipped", reason: `the commit failed: ${errorMessage(err).trim().split("\n")[0]}` };
+          return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
         }
         return {
           status: "archived",
@@ -474,7 +474,7 @@ export async function fileQuarantineBugsOnMain(
           await gitTry(root, "reset", "-q", "--", "BUGS.md");
           if (before === null) fs.rmSync(file, { force: true });
           else writeTextAtomic(file, before);
-          return { status: "skipped", reason: `the commit failed: ${errorMessage(err).trim().split("\n")[0]}` };
+          return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
         }
         return { status: "filed", bugs };
       }),

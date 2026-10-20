@@ -52,6 +52,13 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The first line of `errorMessage(err)`, trimmed: the one-line form a status reason carries
+ * when git's multi-line stderr would swamp it. Used by the fast-forward and archive-commit
+ * failure reasons. */
+export function errorFirstLine(err: unknown): string {
+  return errorMessage(err).trim().split("\n")[0] as string;
+}
+
 /** The error message's " (got …)" value suffix, spelled one way everywhere: JSON.stringify for
  * the value's debug form, wrapped in the established parenthetical. The human-facing
  * validation errors that echo back a rejected value with this suffix — the CLI flag
