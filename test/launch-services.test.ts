@@ -149,3 +149,28 @@ test("a poll that cannot warn â€” a rejecting probe, an unwritable events log â€
   assert.equal(probe.reads, 2, "the failed warning also left the watch sampling on schedule");
   assert.equal(harnessWarnings(root).length, 0, "nothing was logged where the log cannot be written");
 });
+
+test("an unreadable sample mid-episode neither warns nor ends the episode", async () => {
+  const root = tmpdir();
+  const t0 = 1_000_000;
+  const probe = portsProbe(120_000, null, 125_000, 170_000);
+  const watch = new LaunchServicesWatch(root, probe);
+  for (let k = 0; k < 4; k++) await watch.poll(t0 + k * LAUNCH_SERVICES_SAMPLE_MS);
+  assert.equal(probe.reads, 4, "every poll sampled");
+  assert.deepEqual(
+    harnessWarnings(root).map((e) => e.message),
+    [launchServicesWarning(120_000), launchServicesWarning(170_000)],
+  );
+});
+
+test("the watch re-arms once the count drops under the threshold, warning on the next climb past it", async () => {
+  const root = tmpdir();
+  const t0 = 1_000_000;
+  const probe = portsProbe(120_000, 90_000, 110_000);
+  const watch = new LaunchServicesWatch(root, probe);
+  for (let k = 0; k < 3; k++) await watch.poll(t0 + k * LAUNCH_SERVICES_SAMPLE_MS);
+  assert.deepEqual(
+    harnessWarnings(root).map((e) => e.message),
+    [launchServicesWarning(120_000), launchServicesWarning(110_000)],
+  );
+});

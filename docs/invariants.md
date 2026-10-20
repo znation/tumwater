@@ -2269,3 +2269,56 @@ environ, skipping the scanner and vanished pids", "systemProcessProbe.runMarkers
 empty map when the ps table cannot be read", "readLaunchServicesPorts answers null off macOS
 without asking for a sample" and "readLaunchServicesPorts parses an injected top sample on macOS
 and answers null when the sample fails".
+
+## launchservicesd port watch: one warning per step past the threshold, a restart re-arms it, and a poll never waits or rejects
+
+On 2026-09-25 a launchservicesd that ran out of Mach ports wedged the GUI session of the Mac running
+the team (see the header of `src/process/launch-services.ts`). The running team's watch and
+`tumwater doctor` share one set of thresholds and one warning text, both defined in that module.
+
+### INV-AN1: a team warns at the threshold, again only a full step past its last warning, and a count back under the threshold re-arms it
+
+**Guarantee.** The first sample at or past `LAUNCH_SERVICES_WARN_PORTS` warns; after that a sample
+warns only when it is `LAUNCH_SERVICES_REWARN_PORTS` past the last warning. A count back under the
+threshold means launchservicesd restarted: it ends the episode, so the next climb warns afresh,
+through `LaunchServicesWatch.poll` as well as through the pure function. An unreadable sample
+(`null`) changes nothing: it neither warns nor ends the episode.
+
+**Binds.** `src/process/launch-services.ts` (`nextLaunchServicesWarning`, `LaunchServicesWatch.poll`,
+`LAUNCH_SERVICES_WARN_PORTS`, `LAUNCH_SERVICES_REWARN_PORTS`).
+
+**Pinned by.** `test/launch-services.test.ts` — "a team warns at the threshold, again every step
+past its last warning, and re-arms once the daemon restarts", "the team's watch samples on its first
+poll, then at most once per interval, warning through the event feed", "an unreadable sample
+mid-episode neither warns nor ends the episode" and "the watch re-arms once the count drops under
+the threshold, warning on the next climb past it".
+
+### INV-AN2: a poll samples at most once per interval, never overlaps a sample in flight, and never rejects
+
+**Guarantee.** A poll samples when `LAUNCH_SERVICES_SAMPLE_MS` has passed since the last sample and
+none is in flight; the first poll samples at once. A failed sample (a rejecting probe, an unwritable
+events log) still advances the schedule and clears the in-flight flag, and `poll` resolves either
+way. Only a daemon team builds a watch (`src/cli/cli-start.ts`); a `--once` round runs without
+it.
+
+**Binds.** `src/process/launch-services.ts` (`LaunchServicesWatch.poll`, `LAUNCH_SERVICES_SAMPLE_MS`).
+
+**Pinned by.** `test/launch-services.test.ts` — "the watch never overlaps samples and stays quiet on
+an unreadable count" and "a poll that cannot warn — a rejecting probe, an unwritable events log —
+still resolves"; `test/launch-services.e2e.test.ts` — "a daemon team samples launchservicesd on its
+first poll and warns once through the event feed" and "a once round runs without the watch even when
+one is passed".
+
+### INV-AN3: doctor and the team print the same warning from the same threshold, and doctor is ok off macOS
+
+**Guarantee.** `launchServicesWarning` words the count, the kill ceiling, the consequence and the
+only remedy (restart the Mac), and both surfaces print it. Doctor's `checkLaunchServicesPorts` also
+warns on an unreadable count, where the team stays quiet. The count is read by
+`readLaunchServicesPorts` in `src/process/process-table.ts`.
+
+**Binds.** `src/process/launch-services.ts` (`launchServicesWarning`);
+`src/doctor/doctor-launch-services.ts` (`checkLaunchServicesPorts`).
+
+**Pinned by.** `test/launch-services.test.ts` — "the warning names the count, the kill ceiling, the
+consequence and the only remedy" and "doctor's port check: ok with the count, a warning past the
+threshold or when unreadable, and nothing to do off macOS".
