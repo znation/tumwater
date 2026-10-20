@@ -47,7 +47,9 @@
  * Like `planDependencyFinding`, `finishedDuplicateFindings` runs only at staging. The gate does
  * not run it, because the sweep that creates the second copy runs after it.
  * `strayPlaceholderFinding` is staging-only too. It flags a `_None yet._` line the change left in a
- * PLANS.md, BUGS.md or QUESTIONS.md section that still holds entries. */
+ * PLANS.md, BUGS.md or QUESTIONS.md section that still holds entries. `acceptanceGrepFindings`
+ * runs only at staging and runs the strict "matches nothing" greps of the plan entries the change
+ * finished. The gate does not run it. */
 
 import path from "node:path";
 import { changedFiles } from "../git/git-diff.js";
@@ -73,6 +75,7 @@ import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { entryKey, planDependencyProblems, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
+import { acceptanceGrepFindings } from "./acceptance-greps.js";
 import { gitTry } from "../git/git-run.js";
 import { moreSuffix } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -318,6 +321,18 @@ export async function stageCheckFindings(
       );
     })().catch(() => []);
     findings.push(...duplicates);
+    if (spec.file !== "PLANS.md") continue;
+    const greps = await (async () => {
+      const finished = async (f: string, section: string) => {
+        const keyed = (md: string) =>
+          parseEntryDetails(md, section).map((e) => ({ ...e, key: finishedKey(e.title, DONE_DATE_RE) }));
+        const seen = new Set(keyed((await fileContentAt(wt, baseRev, f)) ?? "").map((e) => e.key));
+        return keyed(readTextOrNull(path.join(wt, f)) ?? "").filter((e) => !seen.has(e.key));
+      };
+      const entries = [...(await finished(spec.file, spec.section)), ...(await finished(spec.archive, spec.section))];
+      return acceptanceGrepFindings(wt, entries);
+    })().catch(() => []);
+    findings.push(...greps);
   }
   if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
     const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";

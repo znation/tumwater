@@ -943,3 +943,20 @@ test("the prescribed agent-run wording yields no garbled-wording finding", async
 
   assert.deepEqual(findings.filter((f) => f.includes("garbled rename wording")), []);
 });
+
+test("a finished plan whose matches-nothing grep still matches yields the acceptance-grep finding", async () => {
+  const entry = `### Rename it\n\n\`grep -rn oldName src\` ${"finds" + " nothing"}.`;
+  const planned = "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n";
+  const { wt } = await repoWith({ "PLANS.md": planned + "_None yet._\n", "src/a.ts": "oldName\n" });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), `${planned}${entry}\n`);
+
+  const findings = (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes("src/a.ts:1"));
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /Rename it/);
+
+  const held = await repoWith({ "PLANS.md": `${planned}${entry}\n`, "src/a.ts": "oldName\n" });
+  fs.writeFileSync(path.join(held.wt, "PLANS.md"), `${planned}${entry}\n\nedited\n`);
+  const again = await stageCheckFindings(held.wt, "main", EXEMPT, "feature");
+  assert.deepEqual(again.filter((f) => f.includes("src/a.ts:1")), []);
+});
