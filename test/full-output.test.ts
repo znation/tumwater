@@ -87,3 +87,17 @@ test("writeFullOutput falls back to a timestamped name when the tool call has no
   assert.match(file!, /result-\d+\.log$/, "timestamped name");
   assert.equal(fs.readFileSync(file!, "utf-8"), "full output text");
 });
+
+test("writeFullOutput keeps a toolCallId with path characters inside tool-output", () => {
+  const dir = tmpdir("bound-sanitize-");
+  fs.mkdirSync(path.join(dir, ".tumwater"));
+  const nested = path.join(dir, "worktrees", "feature");
+  fs.mkdirSync(nested, { recursive: true });
+  const file = writeFullOutput("text", "../../evil/x y", nested);
+  assert.equal(file, path.join(dir, ".tumwater", "log", "tool-output", "______evil_x_y.log"));
+  assert.equal(fs.readFileSync(file!, "utf-8"), "text");
+  assert.equal(fs.existsSync(path.join(dir, "evil")), false, "nothing escapes tool-output");
+  // An empty id is falsy, so it takes the timestamped fallback rather than a bare ".log".
+  const empty = writeFullOutput("text", "", nested);
+  assert.match(empty!, /result-\d+\.log$/);
+});

@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const DOC = fileURLToPath(new URL("../../docs/invariants.md", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-const ID_RE = /^INV-[A-Z]\d+$/;
+const ID_RE = /^INV-[A-Z]{1,2}\d+$/;
 /** `### INV-…:` captures looser than ID_RE so a malformed id is reported, not skipped. */
 const HEADING_RE = /^### (INV-\S+):/gm;
 const PATH_RE = /`((?:src|test|docs|plans|scripts)\/[^`]+)`/g;
@@ -101,7 +101,7 @@ function invariantProblems(
     const body = md.slice(start, end);
     const label = `${id} (entry ${i + 1})`;
     if (!ID_RE.test(id)) {
-      problems.push(`${label}: malformed id, expected e.g. INV-A1`);
+      problems.push(`${label}: malformed id, expected e.g. INV-A1 or INV-AA1`);
     }
     const earlier = firstSeen.get(id);
     if (earlier !== undefined) {

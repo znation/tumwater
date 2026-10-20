@@ -1571,3 +1571,53 @@ within each bucket. A count that rounds up to 60 minutes or 24 hours is shown in
 **Binds.** `src/text/datetime.ts` (`humanSeconds`).
 
 **Pinned by.** `test/datetime.test.ts` — "humanSeconds buckets sub-second-to-day spans compactly".
+
+## Full tool output: a pointer names a complete file inside the harness, or there is no pointer
+
+The module is the side-effect half of the two context extensions, kept apart so their rules stay
+pure. It finds the harness root itself because a pi run's working directory may be a worktree.
+
+### INV-AC1: the root walk is bounded and finds the nearest .tumwater/
+
+**Guarantee.** `findTumwaterRoot` checks `startDir` and its ancestors for a `.tumwater/` directory,
+at most 64 directories including `startDir` (`walkUp(startDir, 63, …)`). It returns the first one it
+finds, and null when none is within the bound or the filesystem root comes first.
+
+**Binds.** `src/pi-extension/full-output.ts` (`findTumwaterRoot`), `src/files/files.ts` (`walkUp`).
+
+**Pinned by.** `test/full-output.test.ts` — "findTumwaterRoot walks up to the harness root" and
+"findTumwaterRoot gives up after 64 levels without .tumwater/ instead of looping forever".
+
+### INV-AC2: with no harness root or a failed write, the result is null and nothing throws
+
+**Guarantee.** `writeFullOutput` returns null when there is no root, and turns any mkdir or write
+error into null, so its callers keep the result rather than point at a missing file.
+
+**Binds.** `src/pi-extension/full-output.ts` (`writeFullOutput`).
+
+**Pinned by.** `test/full-output.test.ts` — "writeFullOutput returns null when no ancestor has
+.tumwater/" and "writeFullOutput returns null when the write fails instead of throwing".
+
+### INV-AC3: a returned path holds the whole output, never a truncated one
+
+**Guarantee.** The write goes through `writeTextAtomic`, so a process that dies mid-write leaves no
+file at the target, and a returned path names a file holding the exact text passed in.
+
+**Binds.** `src/pi-extension/full-output.ts` (`writeFullOutput`), `src/files/files.ts`
+(`writeTextAtomic`).
+
+**Pinned by.** `test/full-output.test.ts` — "writeFullOutput leaves no truncated log when the
+process dies mid-write" and "writeFullOutput writes into .tumwater/log/tool-output named by
+toolCallId".
+
+### INV-AC4: the file is named by the tool call id, and the name stays inside tool-output
+
+**Guarantee.** The file is `<id>.log` under `toolOutputDir(root)`, where `<id>` is `toolCallId` with
+each character outside `[\w-]` replaced by `_`. A missing, non-string or empty id gets
+`result-<ms>.log` instead.
+
+**Binds.** `src/pi-extension/full-output.ts` (`writeFullOutput`), `src/paths.ts` (`toolOutputDir`).
+
+**Pinned by.** `test/full-output.test.ts` — "writeFullOutput writes into .tumwater/log/tool-output
+named by toolCallId", "writeFullOutput falls back to a timestamped name when the tool call has no
+id" and "writeFullOutput keeps a toolCallId with path characters inside tool-output".
