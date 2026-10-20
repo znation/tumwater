@@ -13,15 +13,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const SCALE = fileURLToPath(new URL("../../docs/code-metrics/scale.cjs", import.meta.url));
 
 function run(data: string): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [SCALE, data], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(SCALE, [data]);
 }
 
 /** A `cls` string of `n` code lines ("c" is analyze.cjs's code class). */

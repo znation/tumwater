@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -29,8 +29,7 @@ const key = (...parts: string[]): string => parts.join("/");
 type Tok = [number, string, number];
 
 function run(data: string): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [COMPARE, data], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(COMPARE, [data]);
 }
 
 /** Independent reference for compare.cjs's linear-interpolation percentile, so a drift in `q`

@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -34,8 +34,7 @@ const key = (...parts: string[]): string => parts.join("/");
 interface Blame { cls: string[]; t: number[] }
 
 function run(data: string, env: Record<string, string> = {}): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [AUTHORS, data], { encoding: "utf8", env: { ...process.env, ...env } });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(AUTHORS, [data], env);
 }
 
 /** One ts/js record with a cls run and a matching blame entry. The caller overrides markers/tokens

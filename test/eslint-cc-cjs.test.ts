@@ -13,7 +13,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -32,8 +32,7 @@ function complexity(n: number): Message {
 function run(report: string): { status: number | null; stdout: string; stderr: string } {
   const data = tmpdir("eslint-cc-");
   fs.writeFileSync(path.join(data, "report.json"), report);
-  const r = spawnSync(process.execPath, [SCRIPT, path.join(data, "report.json")], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(SCRIPT, [path.join(data, "report.json")]);
 }
 
 test("eslint-cc.cjs summarizes complexity messages and ignores every other message", () => {

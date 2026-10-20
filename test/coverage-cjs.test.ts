@@ -17,7 +17,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -29,8 +29,7 @@ const COVERAGE = fileURLToPath(new URL("../../docs/code-metrics/coverage.cjs", i
 const tsKey = (...parts: string[]): string => parts.join("/");
 
 function runCoverage(checkout: string, v8dir: string, mapdist: string, out: string): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [COVERAGE, checkout, v8dir, mapdist, out], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(COVERAGE, [checkout, v8dir, mapdist, out]);
 }
 
 test("coverage.cjs maps V8 ranges onto TS lines, merging any process and taking the innermost range", () => {

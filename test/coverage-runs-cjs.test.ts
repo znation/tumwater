@@ -15,7 +15,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -27,8 +27,7 @@ const A_TS = "src/cli.ts";
 const B_TS = "src/ui/badges.ts";
 
 function runRuns(data: string): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [RUNS, data], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(RUNS, [data]);
 }
 
 /** Build a data dir with metrics.json, blame.json, one coverage-ts-<k>.json per run, and the run's

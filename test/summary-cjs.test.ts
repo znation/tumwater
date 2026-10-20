@@ -14,7 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -35,8 +35,7 @@ function toks(tag: string): Tok[] {
 }
 
 function run(data: string): { status: number | null; stdout: string; stderr: string } {
-  const r = spawnSync(process.execPath, [SUMMARY, path.join(data, "metrics.json")], { encoding: "utf8" });
-  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+  return runNodeScript(SUMMARY, [path.join(data, "metrics.json")]);
 }
 
 /** One checkout as classify/analyze would emit it: a.ts and b.ts share every token, c.ts and

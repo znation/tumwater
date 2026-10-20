@@ -5,7 +5,7 @@
 // need a process to be *alive* — a stand-in orchestrator — spawn one with `spawnLiveChild`
 // instead. `stopChild` bundles the SIGKILL-and-wait teardown both share.
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { exitWithOwnerEnv } from "../fixtures/victim-fixture.js";
 import { sleep } from "./wait.js";
 
@@ -58,4 +58,19 @@ export function spawnLiveChild(script = "setInterval(() => {}, 1000)"): ChildHan
 export async function stopChild(handle: ChildHandle): Promise<void> {
   handle.child.kill();
   await handle.exited;
+}
+
+/** Runs a node script synchronously with `args` and returns its exit status and output, the
+ * output defaulting to "" when the stream is absent. `env` (when given) is layered over the
+ * test process's environment. */
+export function runNodeScript(
+  script: string,
+  args: string[],
+  env?: Record<string, string>,
+): { status: number | null; stdout: string; stderr: string } {
+  const r = spawnSync(process.execPath, [script, ...args], {
+    encoding: "utf8",
+    ...(env ? { env: { ...process.env, ...env } } : {}),
+  });
+  return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
 }
