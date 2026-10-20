@@ -4160,6 +4160,14 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fails, and files both on the next call".
 
+### INV-CH3: a quarantine filing or archive move whose BUGS.md or archive file cannot be read returns skipped (or rejects, for the commit-time sweep) and never deletes or overwrites that file
+
+**Guarantee.** A file that exists but cannot be read (EMFILE, EIO) is not treated as absent. `fileQuarantineBugsOnMain` and `archiveFinishedOnMain` return `skipped` before writing anything, and `archiveNewFinishedEntries` rejects, so BUGS.md, PLANS-DONE.md and BUGS-FIXED.md are neither removed nor replaced by a fresh template.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`, `archiveFinishedOnMain`, `planArchiveAll`, `archiveNewFinishedEntries`).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain skips and leaves BUGS.md in place when BUGS.md cannot be read"; "archiveFinishedOnMain skips and leaves the archive intact when an archive file cannot be read"; "archiveNewFinishedEntries rejects and writes nothing when the archive file cannot be read".
+
 ## Merge fast-forward: a failed config write-back never undoes a merge
 
 ### INV-CI1: a fast-forward that moved main returns success even when the live tumwater.json write-back fails, and logs one warning

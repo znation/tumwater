@@ -19,7 +19,7 @@ import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
 import { checkLiveFinished } from "../src/doctor/doctor-backlog.js";
 import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
-import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
+import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 
 // The backlog archive (plans/backlog-archive.md): finished entries move from the live files'
 // `## Done` / `## Fixed` to PLANS-DONE.md / BUGS-FIXED.md — a commit-time sweep of the entries a
@@ -394,4 +394,75 @@ test("fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fail
   assert.equal(text.split("failed, then passed on the same tree (quarantined by tumwater").length - 1, 2);
   assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), Number(commits) + 1);
   assert.equal(sh(root, "git", "status", "--porcelain"), "");
+});
+
+/** Make `fs.readFileSync` of exactly `file` throw EMFILE until the returned undo runs. */
+function emfileOnRead(file: string): () => void {
+  return patchFsMethod("readFileSync", (orig) => (p, ...rest) => {
+    if (p === file) throw errnoError("EMFILE");
+    return orig(p, ...rest);
+  });
+}
+
+test("fileQuarantineBugsOnMain skips and leaves BUGS.md in place when BUGS.md cannot be read", async () => {
+  const root = makeRepo();
+  const seeded = "# Bugs\n\n## Open\n\n## Fixed\n";
+  seedCommit(root, "BUGS.md", seeded, "seed");
+  ignoreInRepo(root, ".tumwater/");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const undo = emfileOnRead(path.join(root, "BUGS.md"));
+  let skipped;
+  try {
+    skipped = await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }]);
+  } finally {
+    undo();
+  }
+  assert.equal(skipped.status, "skipped");
+  assert.match(skipped.status === "skipped" ? skipped.reason : "", /BUGS\.md could not be read: EMFILE/);
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), seeded);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
+  assert.equal((await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }])).status, "filed");
+});
+
+test("archiveFinishedOnMain skips and leaves the archive intact when an archive file cannot be read", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
+  const archive = "# Plans done\n\n## Done\n\n### Old (planned 2026-09-01, done 2026-09-02)\n\nOld body.\n";
+  seedCommit(root, "PLANS-DONE.md", archive, "seed archive");
+  ignoreInRepo(root, ".tumwater/");
+  const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const undo = emfileOnRead(path.join(root, "PLANS-DONE.md"));
+  let skipped;
+  try {
+    skipped = await archiveFinishedOnMain(root);
+  } finally {
+    undo();
+  }
+  assert.equal(skipped.status, "skipped");
+  assert.match(skipped.status === "skipped" ? skipped.reason : "", /could not be read: EMFILE/);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), archive);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), plansBefore);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
+});
+
+test("archiveNewFinishedEntries rejects and writes nothing when the archive file cannot be read", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("_None yet._\n").replace("## Done\n\n_None yet._\n", "## Done\n"), "seed plans");
+  const archive = "# Plans done\n\n## Done\n\n### Old (planned 2026-09-01, done 2026-09-02)\n\nOld body.\n";
+  seedCommit(root, "PLANS-DONE.md", archive, "seed archive");
+  sh(root, "git", "checkout", "-q", "-b", "work");
+  const edited =
+    "# Plans\n\nIntro.\n\n## Planned\n\n_None yet._\n\n## Done\n\n### Open plan (planned 2026-10-01, done 2026-10-18)\n\nBody.\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), edited);
+  const undo = emfileOnRead(path.join(root, "PLANS-DONE.md"));
+  try {
+    await assert.rejects(archiveNewFinishedEntries(root, "main"), /EMFILE/);
+  } finally {
+    undo();
+  }
+  assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), edited);
+  assert.equal(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), archive);
 });

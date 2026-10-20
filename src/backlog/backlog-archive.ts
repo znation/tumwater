@@ -24,7 +24,7 @@ import path from "node:path";
 import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { loadConfigSafe } from "../config/config.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { readTextIfExists, readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { changeBaseRev, currentBranch, fileContentAt, headOf, targetBranch } from "../git/git.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
@@ -262,11 +262,11 @@ export async function archiveNewFinishedEntries(wt: string, mainBranch: string):
   const baseRev = await changeBaseRev(wt, mainBranch);
   const out: ArchivedFile[] = [];
   for (const spec of FINISHED_ARCHIVES) {
-    const live = readTextOrNull(path.join(wt, spec.file));
+    const live = readTextIfExists(path.join(wt, spec.file));
     if (live === null) continue;
     const base = await fileContentAt(wt, baseRev, spec.file);
     const baseKeys = new Set(actionableEntryRanges(base, spec.section).map((e) => archiveKey(e.title)));
-    const move = archiveFinishedText(live, readTextOrNull(path.join(wt, spec.archive)), spec, { baseKeys });
+    const move = archiveFinishedText(live, readTextIfExists(path.join(wt, spec.archive)), spec, { baseKeys });
     if (move === null) continue;
     writeMove(wt, spec, move);
     out.push({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped });
@@ -279,9 +279,9 @@ export async function archiveNewFinishedEntries(wt: string, mainBranch: string):
 function planArchiveAll(root: string, keep: number): { spec: FinishedArchive; move: ArchiveMove }[] {
   const plan: { spec: FinishedArchive; move: ArchiveMove }[] = [];
   for (const spec of FINISHED_ARCHIVES) {
-    const live = readTextOrNull(path.join(root, spec.file));
+    const live = readTextIfExists(path.join(root, spec.file));
     if (live === null) continue;
-    const move = archiveFinishedText(live, readTextOrNull(path.join(root, spec.archive)), spec, { keep });
+    const move = archiveFinishedText(live, readTextIfExists(path.join(root, spec.archive)), spec, { keep });
     if (move !== null) plan.push({ spec, move });
   }
   return plan;
@@ -331,19 +331,31 @@ type ArchiveOnMainOutcome =
   | { status: "archived"; commit: string; moved: ArchivedFile[] }
   | { status: "skipped"; reason: string };
 
+/** planArchiveAll, or `skipped` when a live or archive file exists but cannot be read. */
+function planOrSkip(root: string, keep: number): ReturnType<typeof planArchiveAll> | { status: "skipped"; reason: string } {
+  try {
+    return planArchiveAll(root, keep);
+  } catch (err) {
+    return { status: "skipped", reason: `a backlog file could not be read: ${errorFirstLine(err)}` };
+  }
+}
+
 /** The bulk archive, committed: move every live finished section of the primary checkout at
  * `root` (past its newest `keep` entries) to its archive file and commit the touched files on the
  * base branch as one `tumwater(operator):` commit. Holds the team's merge lock, so a merge
  * cannot lose its fast-forward to this commit, and the primary-worktree lock the CLI backlog
  * writers and the fast-forward share. Writes nothing when there is nothing to move, when the
- * primary checkout is not on the base branch, or when any of the files has uncommitted changes;
- * a failed write or commit restores the files. `tumwater archive` and team start call it. */
+ * primary checkout is not on the base branch, when any of the files has uncommitted changes, or
+ * when one exists but cannot be read; a failed write or commit restores the files.
+ * `tumwater archive` and team start call it. */
 export async function archiveFinishedOnMain(
   root: string,
   opts: { keep?: number; lockTimeoutMs?: number } = {},
 ): Promise<ArchiveOnMainOutcome> {
   const keep = opts.keep ?? 0;
-  if (planArchiveAll(root, keep).length === 0) return { status: "nothing" };
+  const pre = planOrSkip(root, keep);
+  if ("status" in pre) return pre;
+  if (pre.length === 0) return { status: "nothing" };
   return withLock(
     mergeLockDir(root),
     () =>
@@ -361,7 +373,8 @@ export async function archiveFinishedOnMain(
           return { status: "skipped", reason: `${dirty.join(", ")} ${dirty.length > 1 ? "have" : "has"} uncommitted changes` };
         }
         // Re-planned under the locks: a merge may have moved main since the pre-check.
-        const plan = planArchiveAll(root, keep);
+        const plan = planOrSkip(root, keep);
+        if ("status" in plan) return plan;
         if (plan.length === 0) return { status: "nothing" };
         const touched: string[] = plan.flatMap(({ spec }) => [spec.file, spec.archive]);
         const created: string[] = plan.map(({ spec }) => spec.archive).filter((f) => !fs.existsSync(path.join(root, f)));
@@ -439,9 +452,10 @@ function fencedTail(tail: string): string {
 /** File one BUGS.md `## Open` entry per newly quarantined test and commit BUGS.md on the base
  * branch as one `tumwater(operator):` commit, under the merge lock and the primary-worktree lock
  * exactly as archiveFinishedOnMain does. Skipped, writing nothing, when the primary checkout is
- * off the base branch or BUGS.md has uncommitted changes; a failed append or commit restores
- * BUGS.md. A test whose quarantine entry is already under `## Open` (a filing whose
- * markQuarantineFiled failed after the commit) gets that heading back and is not filed again. */
+ * off the base branch, BUGS.md has uncommitted changes, or BUGS.md exists but cannot be read; a
+ * failed append or commit restores BUGS.md. A test whose quarantine entry is already under
+ * `## Open` (a filing whose markQuarantineFiled failed after the commit) gets that heading back
+ * and is not filed again. */
 export async function fileQuarantineBugsOnMain(
   root: string,
   tests: readonly { test: string; tail?: string }[],
@@ -462,7 +476,12 @@ export async function fileQuarantineBugsOnMain(
           return { status: "skipped", reason: "BUGS.md has uncommitted changes" };
         }
         const file = path.join(root, "BUGS.md");
-        const before = readTextOrNull(file);
+        let before: string | null;
+        try {
+          before = readTextIfExists(file);
+        } catch (err) {
+          return { status: "skipped", reason: `BUGS.md could not be read: ${errorFirstLine(err)}` };
+        }
         const date = formatDate(new Date());
         const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
         const bugs = new Map<string, string>();
