@@ -546,4 +546,21 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/failure-render.test.ts: a `merge_blocked` event that carries `reason` clusters under that reason even when a different `warning` precedes it, and the existing reason-less fixtures keep their current clusters.
 - `npm run test:gate` passes.
 
+### A `claude_window_warning` event carries the window's utilization, so the notify page and `logs` say how full the window is, not only "near its limit" (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
+
+**Goal.** `pollClaudeWindowWarning` (src/team/team-polls.ts) logs `claude_window_warning` with `windowType` and `resetsAt` only, so `formatEvent` renders "claude subscription window five_hour near its limit, resets …". `claude_window_warning` is in `NOTIFY_EVENT_TYPES` (src/events/notify.ts), so this is also the text an operator gets paged with. It does not say how full the window is. The reading the poll walks already has the number: the live team's `state/claude-account.json` carries `utilization` per window (for example `"five_hour": { "status": "allowed", "utilization": 0.84, … }`), and the sibling `pollClaudeWindowReserve` already copies `w.utilization` into `claude_window_reserved`. The warning should carry it too, and the line should print it.
+
+**Approach.**
+- **src/team/team-polls.ts.** In `pollClaudeWindowWarning`'s `eventFor` callback, add `utilization: w.utilization` when `typeof w.utilization === "number"`, with the same conditional-spread shape the callback already uses for `resetsAt`. Extend the function's doc comment with one clause saying the event carries the window's utilization when the account reported one.
+- **src/events/event-format.ts.** In the `claude_window_warning` case, read `finiteNumber(e.utilization, null)`. When it is a number, render `near its limit (at <N>% used)`, where `<N>` comes from `claudeUtilizationPct` (src/agent/claude/claude-account.ts). That is the same rounding the doctor's holds row and the status badges use. When it is not a number, keep today's text unchanged: older events and readings without utilization still render "near its limit". Leave the reset phrase and the trailing clause as they are.
+- **src/events/events.ts.** Update the `claude_window_warning` comment on the event type union so it says the event carries the window type, plus its utilization and resetsAt when the account reported them.
+- **docs/config.md.** In the notify table, the `claude_window_warning` row says the window "first reported a warning". Add that the message names how full the window is when claude reported it.
+
+**Files touched.** src/team/team-polls.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md, test/team-polls.test.ts, test/event-format-team.test.ts.
+
+**Acceptance criteria.**
+- test/team-polls.test.ts "pollClaudeWindowWarning logs the first allowed_warning once per window" (or a new sibling test) gives the window `utilization: 0.82` and asserts that the logged event's `utilization` is `0.82`. It also polls a window without `utilization` and asserts that the event has no `utilization` key.
+- test/event-format-team.test.ts "formatEvent renders the subscription-window warning, limited, and reset lines" keeps its existing assertion for a warning without utilization. It adds a warning event with `utilization: 0.82` that matches `near its limit \(at 82% used\), resets <clock> — subscription claude model jobs keep running`. A third case, with `utilization: "x"`, renders the plain "near its limit" text and must not contain `NaN`.
+- `npm run test:gate` passes.
+
 ## Done
