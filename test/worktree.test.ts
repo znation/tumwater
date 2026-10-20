@@ -11,6 +11,7 @@ import {
   resetWorktreeToMain,
 } from "../src/git/worktree.js";
 import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
+import { readEvents } from "../src/events/event-read.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { assertClean, headSha, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -416,4 +417,38 @@ test("ensureDetachedWorktree drops a dangling merge ref that makes `checkout --d
   await ensureDetachedWorktree(repo, dir, mainSha(repo));
   assert.equal(headSha(dir), mainSha(repo));
   assert.equal(fs.existsSync(refFile), false);
+  const warnings = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]!.ref, "refs/tumwater/merge/feature-5");
+  assert.equal(warnings[0]!.sha, "1".repeat(40));
+  assert.equal(typeof warnings[0]!.refWrittenAt, "string");
 });
+
+test("ensureDetachedWorktree drops a dangling rejected pin too", async () => {
+  const repo = makeRepo();
+  const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
+  await ensureDetachedWorktree(repo, dir, headSha(repo));
+  const refFile = path.join(repo, ".git", "refs", "tumwater", "rejected", "feature-5");
+  fs.mkdirSync(path.dirname(refFile), { recursive: true });
+  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  await ensureDetachedWorktree(repo, dir, mainSha(repo));
+  assert.equal(headSha(dir), mainSha(repo));
+  assert.equal(fs.existsSync(refFile), false);
+  const warnings = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]!.ref, "refs/tumwater/rejected/feature-5");
+});
+
+test("ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/", async () => {
+  const repo = makeRepo();
+  const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
+  await ensureDetachedWorktree(repo, dir, headSha(repo));
+  const refFile = path.join(repo, ".git", "refs", "heads", "broken");
+  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  sh(dir, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--allow-empty", "-m", "wip");
+  await assert.rejects(ensureDetachedWorktree(repo, dir, mainSha(repo)), /bad object/);
+  assert.equal(fs.existsSync(refFile), true);
+  assert.deepEqual(readEvents(repo).filter((e) => e.type === "warning"), []);
+});
+

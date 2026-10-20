@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
-import { branchExists, hasWorktreeRegistrations, isGitRepo, resolveGitDir } from "./git.js";
+import { branchExists, hasWorktreeRegistrations, isGitRepo, refShaFromFiles, resolveGitDir } from "./git.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
 import { branchName, worktreePath, worktreesDir } from "../paths.js";
@@ -172,7 +173,7 @@ export async function ensureDetachedWorktree(root: string, dir: string, ref: str
     });
     if (created) return dir;
   }
-  await hardResetWorktree(dir, ref, true);
+  await hardResetWorktree(dir, ref, root);
   return dir;
 }
 
@@ -239,35 +240,59 @@ function clearStaleIndexLock(wt: string): void {
   }
 }
 
-/** `git checkout --detach ref`, tolerating a dangling merge pin. Leaving a detached HEAD makes
- * git walk every ref to report orphaned commits, so one `refs/tumwater/merge/<role>` whose
- * object is gone fails the checkout "fatal: bad object <ref>" (128) and errors the role's run.
- * The pin is unusable either way, so the named ref is deleted and the checkout retried; any
- * other failure, or a bad ref outside refs/tumwater/merge/, still throws. */
-async function checkoutDetached(wt: string, ref: string): Promise<void> {
+/** `git checkout --detach ref`, tolerating a dangling tumwater pin. Leaving a detached HEAD makes
+ * git walk every ref to report orphaned commits, so one `refs/tumwater/…` pin (merge, rejected,
+ * legacy landing) whose object is gone fails the checkout "fatal: bad object <ref>" (128) and
+ * errors the role's run. The pin is unusable either way, so the named ref is deleted and the
+ * checkout retried, after a `warning` event records its name, sha and file age as evidence; any
+ * other failure, or a bad ref outside refs/tumwater/, still throws. */
+async function checkoutDetached(root: string, wt: string, ref: string): Promise<void> {
   for (;;) {
     try {
       await git(wt, "checkout", "--detach", ref);
       return;
     } catch (err) {
-      const dangling = /fatal: bad object (refs\/tumwater\/merge\/\S+)/.exec(String(err instanceof Error ? err.message : err));
+      const dangling = /fatal: bad object (refs\/tumwater\/\S+)/.exec(String(err instanceof Error ? err.message : err));
       if (dangling === null) throw err;
-      await git(wt, "update-ref", "-d", dangling[1]!);
+      const bad = dangling[1]!;
+      logDroppedRef(root, bad);
+      await git(wt, "update-ref", "-d", bad);
     }
   }
+}
+
+/** Record a dangling pin about to be deleted: its ref, the sha it named and, for a loose ref
+ * file, when it was last written (omitted when the ref was packed). */
+function logDroppedRef(root: string, ref: string): void {
+  const sha = refShaFromFiles(root, ref);
+  const gitDir = resolveGitDir(root);
+  let refWrittenAt: string | undefined;
+  try {
+    if (gitDir !== undefined) refWrittenAt = new Date(fs.statSync(path.join(gitDir, ref)).mtimeMs).toISOString();
+  } catch {
+    // Packed ref, or the file is already gone: no age to report.
+  }
+  logEventBestEffort(root, {
+    source: TUMWATER_SOURCE,
+    type: "warning",
+    message: `dropped dangling ref ${ref} (${sha?.slice(0, 7) ?? "unknown sha"}, object missing) so a worktree checkout could proceed`,
+    ref,
+    sha,
+    ...(refWrittenAt === undefined ? {} : { refWrittenAt }),
+  });
 }
 
 /** Hard-reset a worktree to `ref`, self-healing the two wedges a killed git leaves behind: a
  * stale index.lock is cleared first (or the reset fails "Unable to create '…/index.lock'"
  * forever), and an interrupted merge or rebase is aborted (or the tick wedges on "you are
- * already rebasing"). With `detach`, the worktree is checked out detached at `ref` first —
- * ensureDetachedWorktree's repair path for a worktree left on a branch; resetWorktreeToMain
- * leaves its branch checked out. Untracked files are dropped (ignored files survive; the stale
- * `dist/` build dir is reaped by age). */
-async function hardResetWorktree(wt: string, ref: string, detach = false): Promise<void> {
+ * already rebasing"). With `detachRoot` (the repository root), the worktree is checked out
+ * detached at `ref` first — ensureDetachedWorktree's repair path for a worktree left on a
+ * branch; resetWorktreeToMain leaves its branch checked out. Untracked files are
+ * dropped (ignored files survive; the stale `dist/` build dir is reaped by age). */
+async function hardResetWorktree(wt: string, ref: string, detachRoot?: string): Promise<void> {
   clearStaleIndexLock(wt);
   await abortSync(wt);
-  if (detach) await checkoutDetached(wt, ref);
+  if (detachRoot !== undefined) await checkoutDetached(detachRoot, wt, ref);
   await git(wt, "reset", "--hard", ref);
   await git(wt, "clean", "-fd");
   pruneStaleBuildDir(wt);
