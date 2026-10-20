@@ -17,7 +17,7 @@ import { baseRoleOf } from "../roles/runner-ids.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
-import { createTranscriptRenderer } from "../ui/transcript.js";
+import { createTranscriptRenderer, isRunSeparatorLine } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
 
@@ -60,10 +60,9 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
  * `--transcript` swaps in a transcript rather than the event log (--prompt requires
  * --transcript, so it is excluded with it), so each such flag fails naming both. One wording
- * for all of them — the --json, --grep, and --since checks cannot drift apart in what they say
- * or why. `active` is the flag's own presence — --json alone composes with nothing here but
- * --transcript, while --grep and --since call from inside their own presence guards. All three
- * filter the --since window, so the only rival left is --transcript. */
+ * for all of them — the --json, --count, --type and --since checks cannot drift apart in what
+ * they say or why. `active` is the flag's own presence. --grep is not one of them: it also
+ * filters the transcript view. */
 function rejectTranscriptViewRival(rest: string[], flag: string, active: boolean): void {
   if (active && (rest.includes("--transcript") || rest.includes("--prompt")))
     failRivalShapes(`logs ${flag}`, "--transcript", "the --transcript view is the role's agent transcript, not the event log; --prompt requires --transcript");
@@ -121,20 +120,19 @@ export function followUntilParentGone(
 }
 
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--until <duration>]
- * [--role <id>[,<id>...]] [--transcript <id>] [--prompt]`: follow or dump the harness event log,
- * with `--since` a bounded
+ * [--role <id>[,<id>...]] [--transcript <id>] [--prompt]
+ * [--grep <text>]`: follow or dump the harness event log, with `--since` a bounded
  * past window of it and `--role` keeping only the listed roles' events (a base role id takes its
  * instances too),
  * or with `--transcript` one role's agent transcript (see cmdLogsTranscript). `-f` follows until
  * Ctrl+C or until its parent process exits. */
 export async function cmdLogs(root: string, args: string[], seams: FollowSeams = {}): Promise<void> {
-  // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
+  // `--grep <text>` filters the event feed (the -n view and its follow) and, with --transcript,
+  // the transcript's entries (see cmdLogsTranscript): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
   // (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
-  // Rival shapes stay exclusive — --transcript swaps in a transcript rather than this event log
-  // (--prompt requires --transcript, so it is excluded with it) — and the failure names both
-  // flags. --grep filters the --since window like --type and --role do. The flag scan itself
+  // --grep filters the --since window like --type and --role do. The flag scan itself
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
   // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
   // the one home shared with history's identical preamble.
@@ -191,9 +189,6 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   if (count && follow)
     failRivalShapes("logs --count", "-f/--follow", "counting implies a bounded window; -f follows from now on");
   if (type !== null) rejectTranscriptViewRival(rest, "--type", true);
-  if (grepPattern !== null) {
-    rejectTranscriptViewRival(rest, "--grep", true);
-  }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
   // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
@@ -258,7 +253,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   const showPrompts = rest.includes("--prompt");
   if (showPrompts && role === null) fail("logs --prompt needs --transcript <id>");
   if (role !== null) {
-    await cmdLogsTranscript(root, role, limit, follow, showPrompts, seams);
+    await cmdLogsTranscript(root, role, limit, follow, showPrompts, grepLower, grepPattern, seams);
     return;
   }
   // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
@@ -320,20 +315,41 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
 /** `tumwater logs --transcript <id>`: print (and optionally follow) one role's agent transcript —
  * run separators, abbreviated thinking, assistant text, and tool calls; with `--prompt` also
  * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
- * complete renderable events are shown. */
+ * complete renderable events are shown. With `--grep`, only entries with a rendered line
+ * containing the text (case-insensitively) print, each under its run's separator; `-n` still
+ * bounds the entries scanned, not printed. */
 async function cmdLogsTranscript(
   root: string,
   role: string,
   limit: number,
   follow: boolean,
   showPrompts: boolean,
+  needle: string | null,
+  pattern: string | null,
   seams: FollowSeams,
 ): Promise<void> {
   const file = piLogPath(root, role);
   const opts = { includePrompts: showPrompts };
 
+  let lastSeparator: string | null = null;
+  let separatorShown = false;
+  let matched = 0;
   const printEntry = (lines: string[]) => {
-    if (lines.length > 0) say(lines.join("\n"));
+    if (lines.length === 0) return;
+    const opens = isRunSeparatorLine(lines[0]!);
+    if (opens) {
+      lastSeparator = lines[0]!;
+      separatorShown = false;
+    }
+    if (needle === null) {
+      say(lines.join("\n"));
+      return;
+    }
+    if (!lines.some((l) => l.toLowerCase().includes(needle))) return;
+    if (!opens && lastSeparator !== null && !separatorShown) say(lastSeparator);
+    separatorShown = true;
+    matched++;
+    say(lines.join("\n"));
   };
 
   // Initial window: the last `limit` entries of what is on disk. readTranscriptTail scans back
@@ -347,6 +363,7 @@ async function cmdLogsTranscript(
   } else {
     for (const entry of tail.entries) printEntry(entry);
     offset = tail.end;
+    if (needle !== null && matched === 0) say(`no transcript entries matching "${pattern ?? ""}" for ${role}`);
   }
   if (!follow) return;
 

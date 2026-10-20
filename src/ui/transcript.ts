@@ -9,6 +9,12 @@ import { formatTimestamp } from "../text/datetime.js";
  * window's entries with it — one definition of "a rendered entry" across both readers. */
 export type TranscriptEntry = string[];
 
+/** Whether `line` is the run separator `separatorLine` (in createTranscriptRenderer) builds, so
+ * a reader can tell which entries open a run. */
+export function isRunSeparatorLine(line: string): boolean {
+  return /^── .+ ──$/.test(line);
+}
+
 const THINKING_MAX_CHARS = 80;
 const TEXT_LINE_MAX_COLS = 120;
 const TEXT_LINES_PER_MESSAGE = 4;

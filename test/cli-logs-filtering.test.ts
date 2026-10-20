@@ -216,18 +216,17 @@ test("logs --grep: -n bounds the scanned window, not the printed rows", async ()
   assert.ok(r.stdout.includes("abc1234") && r.stdout.includes("def4567"), r.stdout);
 });
 
-test("logs --grep refuses the rival shapes, naming both flags", async () => {
+test("logs --grep composes with --transcript and --prompt still needs it", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs grep exclusions");
 
   let r = await cli(repo, "logs", "--grep", "x", "--transcript", "clean");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--grep .*--transcript/);
+  assert.equal(r.code, 0);
 
-  // --prompt requires --transcript, so it is excluded with it.
+  // --prompt requires --transcript.
   r = await cli(repo, "logs", "--grep", "x", "--prompt");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--grep .*--prompt/);
+  assert.match(r.stderr, /logs --prompt needs --transcript/);
 });
 
 test("logs --grep treats a flag-shaped pattern as text, not as the flag it spells", async () => {

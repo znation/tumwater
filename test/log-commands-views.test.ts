@@ -5,7 +5,7 @@ import { cmdLogs } from "../src/cli/log-commands.js";
 import { logEvent } from "../src/events/events.js";
 import { piLogPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { assistantLine, userLine } from "./fixtures/pi-events.js";
+import { agentStart, assistantLine, userLine } from "./fixtures/pi-events.js";
 import { ensureParentDir } from "../src/files/files.js";
 import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 
@@ -98,10 +98,27 @@ test("logs --prompt with --transcript shows the exact prompt text in the transcr
   assert.match(stdout, /fix the leak/);
 });
 
+test("logs --transcript --grep keeps matching entries under their run's separator", async () => {
+  const repo = makeRepo();
+  const file = piLogPath(repo, "clean");
+  ensureParentDir(file);
+  const lines = [agentStart(), userLine("p1"), assistantLine("on it"), assistantLine("found the LEAK"), agentStart(), userLine("p2"), assistantLine("tidy")];
+  fs.writeFileSync(file, lines.join("\n") + "\n");
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--transcript", "clean", "--grep", "leak"]));
+  const out = stdout.split("\n").filter((l) => l !== "");
+  assert.equal(out.length, 2);
+  assert.match(out[0]!, /^── .+ ──$/);
+  assert.match(out[1]!, /found the LEAK/);
+  assert.ok(!stdout.includes("on it") && !stdout.includes("tidy"));
+  const none = await expectOkAsync(() => cmdLogs(repo, ["--transcript", "clean", "--grep", "nomatch"]));
+  assert.equal(none.stdout, 'no transcript entries matching "nomatch" for clean\n');
+});
+
 test("logs rejects rival flag shapes, naming both flags in each failure", async () => {
   const repo = makeRepo();
   // --grep pairs
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--transcript", "clean"])), /--grep cannot be combined with --transcript/);
+  const { stdout: grepped } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "x", "--transcript", "clean"]));
+  assert.equal(grepped, "no transcript yet for clean\n");
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep"])), /--grep needs a pattern/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", ""])), /--grep needs a pattern/);
   // --since pairs

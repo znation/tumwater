@@ -114,9 +114,10 @@ Usage:
                                    JSON object per line (NDJSON) — the raw event objects
                                    as stored in the log, instead of the rendered text
                                    (with --count, one JSON object mapping type \u2192 count)
-  tumwater logs --transcript <id> [-f/--follow] [-n N] [--prompt]
+  tumwater logs --transcript <id> [-f/--follow] [-n N] [--prompt] [--grep <text>]
                                    Show (and follow) that role's pi transcript
                                    (--prompt also shows each run's exact prompt text)
+                                   (--grep keeps only the entries containing the text, under their run's separator)
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>[,<id>...]] [-n N] [-f/--follow] [--since <duration>]
