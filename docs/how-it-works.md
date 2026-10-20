@@ -469,12 +469,12 @@ validation, and atomic write, so you never have to hand-edit the file.
   rows through the same `tickRowGrepHaystack` haystack and case-insensitive substring rule
   `tumwater history --grep` and the dashboard's History search use, the pane's `search:` header
   and the hint line name the active pattern, and Esc cancels.
-  `Ctrl+N` swaps the pane for the newest completed run's full event trail — the role's newest
-  when `Ctrl+G` scopes the pane, else the team's — rendered from the same
+  `Ctrl+N` swaps the pane for the newest completed run's full event trail — the newest among the
+  pane's rows (its `Ctrl+G` scope, window, result and search) — rendered from the same
   `readTickDetail`/`renderTickDetail` pair `tumwater history <role> --last` and the dashboard's
   History drill-down use, then the run commit's per-file stat footer (`tumwater history <role>
   <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
-  `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run in the same scope, wrapping to the newest after the oldest.
+  `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest.
   The dashboard's History drill-down adds a "Revert this change…" button on a run whose change is on
   the base branch: it previews through `previewRevert`, then reverts through `revertMergedCommit`,
   the two cores `tumwater revert` uses (`POST /api/revert`).

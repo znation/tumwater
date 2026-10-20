@@ -11,6 +11,7 @@ import {
   tickRowsMatchingGrep,
   type HistoryResultClass,
   type HistorySummaryGroup,
+  type TickRow,
 } from "../../history/history-data.js";
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
@@ -57,12 +58,34 @@ export function createHistoryPane(
   // the dashboard's History drill-down serve. Session-only like the other pane snapshots:
   // computed once on entry and only re-windowed each frame.
   // Ctrl+P steps the trail back one run: trailIndex is the shown run's 0-based newest-first
-  // position in the pane's scope (0 = newest), reset to 0 whenever the trail opens, closes or
-  // follows a scope change.
+  // position in the pane's selection (scope, window, search, outcome class; 0 = newest), reset
+  // to 0 whenever the trail opens, closes or follows a scope or filter change.
   let trailMode = false;
   let trailIndex = 0;
   let trailCache: string | null = null;
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
+
+  /** The pane's row selection: scope, then window, then search, then outcome class — the order
+   * `tumwater history` applies them. Returns the raw read's coverage flag, the count after the
+   * search (so an empty body can blame the filter that emptied the set: `afterGrep > 0` means
+   * rows matched the pattern and the class then removed them) and the class-filtered rows. The
+   * search applies history-data.ts's shared tick-grep rule (tickRowsMatchingGrep), the same one
+   * the CLI and the dashboard use, so the surfaces cannot disagree. `limit` bounds a windowless
+   * read; a window reads through readTickRowsSince. */
+  const selectPaneRows = (
+    sinceMs: number | null,
+    resultClass: HistoryResultClass | null,
+    role: string | null,
+    grep: string | null,
+    limit: number,
+  ): { covered: boolean; afterGrep: number; filtered: TickRow[] } => {
+    const { rows, covered } = sinceMs === null
+      ? { rows: readTickRows(session.root, limit, role), covered: true }
+      : readTickRowsSince(session.root, sinceMs, role);
+    const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
+    const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
+    return { covered, afterGrep: grepped.length, filtered };
+  };
 
   /** The History pane's body for one trailing window, one outcome class, one exact-role scope,
    * and one free-text search: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G/`/` handlers store.
@@ -88,17 +111,7 @@ export function createHistoryPane(
     grep: string | null,
     summary: HistorySummaryGroup | null,
   ): string => {
-    const { rows, covered } = sinceMs === null
-      ? { rows: readTickRows(session.root, HISTORY_DEFAULT_TICKS, role), covered: true }
-      : readTickRowsSince(session.root, sinceMs, role);
-    // The search runs first, exactly as `tumwater history` orders --grep ahead of --result, and
-    // its admitted count is saved so the empty-body wording blames the filter that actually
-    // emptied the set (`afterGrep > 0` means rows matched the pattern and the class then removed
-    // them). The search applies history-data.ts's shared tick-grep rule (tickRowsMatchingGrep),
-    // the same one the CLI and the dashboard search use, so the three surfaces cannot disagree.
-    const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
-    const afterGrep = grepped.length;
-    const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
+    const { covered, afterGrep, filtered } = selectPaneRows(sinceMs, resultClass, role, grep, HISTORY_DEFAULT_TICKS);
     // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-role tally the CLI's
     // `history --summary` and the dashboard History view print (summarizeTickRows → renderSummary),
     // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
@@ -162,10 +175,11 @@ export function createHistoryPane(
     );
   };
 
-  /** Re-read the pane-scoped newest completed tick (the role Ctrl+G scoped to, else the team's)
-   * into trailCache, appending the tick commit's per-file stat once it resolves — the reader
-   * both the initial Ctrl+N toggle and the scope-change refreshes share, so the trail cannot
-   * keep showing a retired role's tick after Ctrl+G or a roster change drops the History scope.
+  /** Re-read the pane's `index`-th newest completed tick (its scope, window, search and outcome
+   * class, as the rows show them) into trailCache, appending the tick commit's per-file stat
+   * once it resolves — the reader both the initial Ctrl+N toggle and the scope-change refreshes
+   * share, so the trail cannot keep showing a retired role's tick after Ctrl+G or a roster change
+   * drops the History scope.
    * `index` is the 0-based newest-first position to read (Ctrl+P steps it). Returns true when a
    * tick actually rendered (the caller turns the trail on); a scope holding none leaves
    * trailCache null and, when `onEmpty` is given, runs it (the Ctrl+N toggle's
@@ -175,7 +189,9 @@ export function createHistoryPane(
   const loadTrail = (onEmpty: (() => void) | null, index = 0): boolean => {
     trailGen++;
     try {
-      const row = readTickRows(session.root, index + 1, historyRole)[index];
+      const unfiltered = historyWindow === null && historyResult === null && historyGrep === null;
+      const limit = unfiltered ? index + 1 : HISTORY_MAX_TICKS;
+      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, limit).filtered[index];
       if (row === undefined) {
         if (onEmpty !== null) onEmpty();
         return false;
@@ -213,6 +229,7 @@ export function createHistoryPane(
     // (the pane is showing), and re-enter at the body's head — the leaf the search editor's
     // Enter calls through its applyHistorySearch dep.
     historyGrep = pattern;
+    if (trailMode) refreshTrail();
     session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary);
     session.paneScroll = 0;
   };
@@ -242,7 +259,9 @@ export function createHistoryPane(
         // Toggle the trail on: read the pane-scoped newest completed tick. A scope holding
         // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a tick turns
         // the trail on (a log holding none is the only path that does not).
-        if (loadTrail(() => session.flashMessage("no completed runs to inspect"))) trailMode = true;
+        const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null;
+        const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
+        if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
       }
       session.paneScroll = 0; // either way the pane starts at its head
       session.requestRender();
@@ -288,6 +307,7 @@ export function createHistoryPane(
       // Ctrl+T into History computes the cache with it; on the History view this handler
       // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
       historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
+      if (trailMode) refreshTrail();
       recompute();
       session.requestRender();
       return true;
@@ -301,6 +321,7 @@ export function createHistoryPane(
       // this handler re-reads and re-filters the rows now and resets the scroll so the changed
       // body re-enters at its head.
       historyResult = nextInCycle(HISTORY_RESULTS, historyResult);
+      if (trailMode) refreshTrail();
       recompute();
       session.requestRender();
       return true;

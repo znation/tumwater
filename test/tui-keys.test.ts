@@ -1048,6 +1048,73 @@ test("Ctrl+P with the trail off does nothing, and Ctrl+N or Ctrl+G after it star
   assert.match(keys.state().trailCache ?? "", /clean two/);
 });
 
+function filterRoot(): string {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "failed", summary: "clean broke" },
+    { ts: 1_700_000_120_000, loop: "qa", type: "run_start", run: 1 },
+    { ts: 1_700_000_180_000, loop: "qa", type: "run_end", run: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_240_000, loop: "clean", type: "run_start", run: 2 },
+    { ts: 1_700_000_300_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "clean two" },
+  ]);
+  return root;
+}
+
+function pressResultUntil(keys: ReturnType<typeof makeKeys>["keys"], label: string): void {
+  for (let i = 0; i < 6 && keys.state().historyResult !== label; i++) keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, label);
+}
+
+test("Ctrl+N under a result filter opens the newest matching run, and Ctrl+P wraps within them", () => {
+  const root = filterRoot();
+  const { keys } = makeKeys(root, () => 0);
+  openSteppingHistory(keys);
+  pressResultUntil(keys, "problems");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.equal(keys.state().trailIndex, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  assert.match(keys.state().flash!, /oldest run reached/);
+});
+
+test("changing the result filter with the trail on re-reads it, and an empty class clears it", () => {
+  const root = filterRoot();
+  const { keys } = makeKeys(root, () => 0);
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().trailCache ?? "", /clean two/);
+  pressResultUntil(keys, "problems");
+  assert.equal(keys.state().trailCache, renderTickDetail(readTickDetail(root, "clean", 1)!));
+  pressResultUntil(keys, "refused");
+  assert.equal(keys.state().trailMode, true);
+  assert.equal(keys.state().trailCache, null);
+});
+
+test("a History search with the trail on narrows the trail and Ctrl+P stays inside it", () => {
+  const root = filterRoot();
+  const { keys } = makeKeys(root, () => 0);
+  openSteppingHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey("/", { name: "/" });
+  for (const ch of "qa work") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().trailCache ?? "", /qa work/);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.match(keys.state().trailCache ?? "", /qa work/);
+  assert.doesNotMatch(keys.state().trailCache ?? "", /clean/);
+});
+
+test("Ctrl+N on a filter that matches nothing flashes the filter note and leaves the rows", () => {
+  const { keys } = makeKeys(filterRoot(), () => 0);
+  openSteppingHistory(keys);
+  pressResultUntil(keys, "refused");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, false);
+  assert.match(keys.state().flash!, /match the pane's filters/);
+});
+
 test("a late stat from the run Ctrl+P left does not overwrite the stepped-to trail", async () => {
   const root = steppingRoot();
   const resolves: Array<(s: string) => void> = [];
