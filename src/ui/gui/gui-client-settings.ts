@@ -68,7 +68,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health</strong>" +
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<label><input type='checkbox' data-action='doctor-problems'> Problems only</label>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
@@ -174,6 +175,29 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       showFlash("error: " + clientErrorMessage(err));
     }
     await fetchRetirable();
+  }
+  // The Health card's Kill orphans button: a two-click confirm, then POST /api/kill-orphans runs
+  // the same kill as "tumwater doctor --kill-orphans" and the card re-runs its checks.
+  function paintKillButton() {
+    const btn = document.querySelector("button[data-action='doctor-kill-orphans']");
+    if (btn) btn.textContent = killSlot.armed("orphans") ? "Confirm kill" : "Kill orphans";
+  }
+  const killSlot = confirmSlot(paintKillButton);
+  async function killOrphansClick() {
+    if (!killSlot.armed("orphans")) {
+      killSlot.arm("orphans");
+      return;
+    }
+    killSlot.disarm();
+    paintKillButton();
+    showFlash("Killing orphaned processes…");
+    try {
+      const d = await postJson("/api/kill-orphans", {});
+      showFlash((d.ok ? "" : "error: ") + d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
   }
   async function fetchSettings() {
     buildSettingsView();

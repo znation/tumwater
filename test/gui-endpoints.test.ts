@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/run/run-detail.js";
 import { readTickDetail, type TickDetail } from "../src/run/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -226,6 +226,14 @@ test("handleRestart writes the marker and replies ok while the running build is 
   assert.match((data as { message: string }).message, /cooldown is waived/);
   assert.match((data as { message: string }).message, /blocked restart still blocks/);
   assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker a live team consumes is on disk");
+});
+
+test("handleKillOrphans answers the kill's lines and ok", async () => {
+  const root = makeRepo();
+  const killed = await captureJson((res) => handleKillOrphans(fakeReq("{}"), res, root, async () => ({ killed: [{ pid: 4242, command: "node x", descendants: 1 }], failed: [] })));
+  assert.deepEqual(killed.data, { ok: true, message: "killed pid 4242 (+1 descendant) node x" });
+  const broken = await captureJson((res) => handleKillOrphans(fakeReq("{}"), res, root, async () => ({ error: "boom" })));
+  assert.deepEqual(broken.data, { ok: false, message: "could not scan the process table — boom; nothing killed" });
 });
 
 test("handleReclaim with no worktrees answers nothing to reclaim", async () => {

@@ -28,12 +28,14 @@ interface SettingsFns {
   fetchRetirable(): Promise<void>;
   enableRole(role: string): Promise<void>;
   confirmRetire(role: string): Promise<void>;
+  killOrphansClick(): Promise<void>;
+  paintKillButton(): void;
 }
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "paintKillButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -461,4 +463,39 @@ test("confirmRetire arms on the first click and posts /api/retire on the second"
   await confirmRetire("improve");
   await confirmRetire("improve");
   assert.equal(flashes[1], "error: refusing to retire role improve");
+});
+
+test("killOrphansClick arms on the first click and posts /api/kill-orphans on the second", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armed = false;
+  let doctorFetches = 0;
+  const button = { textContent: "" };
+  const { killOrphansClick, paintKillButton } = settingsScope({
+    confirmSlot: () => ({
+      armed: () => armed,
+      arm: () => { armed = true; },
+      disarm: () => { armed = false; },
+    }),
+    document: { querySelector: () => button },
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => {
+      doctorFetches++;
+      return { checks: [] };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "killed pid 4242 node x" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await killOrphansClick();
+  assert.deepEqual(posts, []);
+  paintKillButton();
+  assert.equal(button.textContent, "Confirm kill");
+  await killOrphansClick();
+  assert.deepEqual(posts, [{ path: "/api/kill-orphans", body: {} }]);
+  assert.deepEqual(flashes, ["Killing orphaned processes…", "killed pid 4242 node x"]);
+  assert.equal(button.textContent, "Kill orphans");
+  assert.equal(doctorFetches, 1);
 });

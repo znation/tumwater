@@ -232,7 +232,7 @@ export async function checkOrphans(
   const more = orphans.length - listed.length;
   const count = `${plural(orphans.length, "orphaned process", "orphaned processes")} (PPID 1)`;
   return failOutcome(`${count}: ${listed.join("; ")}${more > 0 ? `; and ${more} more` : ""}` +
-      " — nothing reaps these; `tumwater doctor --kill-orphans` kills each with its descendants" +
+      " — nothing reaps these; `tumwater doctor --kill-orphans` (or the dashboard Health card's Kill orphans) kills each with its descendants" +
       (cwdProblem !== null ? ` (process cwds unreadable — ${cwdProblem}; argv matched only)` : ""));
 }
 
@@ -255,12 +255,25 @@ const systemSignals: OrphanSignals = {
  * each), the pids that could not be signalled, or why the table could not be scanned. */
 interface KilledOrphan { pid: number; command: string; descendants: number; }
 
-type OrphanKillReport =
+export type OrphanKillReport =
   | { error: string }
   | {
       killed: KilledOrphan[];
       failed: { pid: number; reason: string }[];
     };
+
+/** The lines `doctor --kill-orphans` prints for a report, shared with the dashboard's Kill
+ * orphans toast. */
+export function orphanKillLines(report: OrphanKillReport): string[] {
+  if ("error" in report) return [`could not scan the process table — ${report.error}; nothing killed`];
+  const lines = report.killed.map((k) => {
+    const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
+    return `killed pid ${k.pid}${tree} ${k.command}`;
+  });
+  for (const f of report.failed) lines.push(`could not kill pid ${f.pid}: ${f.reason}`);
+  if (lines.length === 0) lines.push("no orphaned processes to kill");
+  return lines;
+}
 
 /** Kill the processes checkOrphans lists, each with its descendants from the same scan:
  * SIGTERM all, wait up to `graceMs` for them to go, SIGKILL what remains. A pid already gone

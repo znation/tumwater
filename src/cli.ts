@@ -17,7 +17,6 @@ import {
   failRivalShapes,
   parseCountFlag,
 } from "./cli/cli-args.js";
-import { plural } from "./text/phrases.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -199,17 +198,8 @@ async function main(): Promise<void> {
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
       if (args.includes("--kill-orphans")) {
-        const { killOrphans } = await import("./doctor/doctor-orphans.js");
-        const killed = await killOrphans(root);
-        if ("error" in killed) say(`could not scan the process table — ${killed.error}; nothing killed`);
-        else {
-          for (const k of killed.killed) {
-            const tree = k.descendants > 0 ? ` (+${plural(k.descendants, "descendant")})` : "";
-            say(`killed pid ${k.pid}${tree} ${k.command}`);
-          }
-          for (const f of killed.failed) say(`could not kill pid ${f.pid}: ${f.reason}`);
-          if (killed.killed.length + killed.failed.length === 0) say("no orphaned processes to kill");
-        }
+        const { killOrphans, orphanKillLines } = await import("./doctor/doctor-orphans.js");
+        for (const line of orphanKillLines(await killOrphans(root))) say(line);
         say("");
       }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(

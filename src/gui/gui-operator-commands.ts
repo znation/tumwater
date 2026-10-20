@@ -8,6 +8,7 @@
  * its own `res`.
  */
 import { cancelScheduledStopMessage, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
+import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -78,6 +79,16 @@ export async function handleReclaim(req: http.IncomingMessage, res: http.ServerR
   const body = await readPostBody(req, res, "{}");
   if (!body) return;
   sendJson(res, 200, { ok: true, message: await runManualReclaim(root) });
+}
+
+/** Handle POST /api/kill-orphans: the dashboard Health card's Kill orphans button — the same
+ * killOrphans `tumwater doctor --kill-orphans` runs, answering its lines joined with "; ". Same
+ * body discipline as /api/reclaim; `ok` is false when the scan failed or a signal was refused. */
+export async function handleKillOrphans(req: http.IncomingMessage, res: http.ServerResponse, root: string, kill: (root: string) => Promise<OrphanKillReport> = killOrphans): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const report = await kill(root);
+  sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") });
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing
