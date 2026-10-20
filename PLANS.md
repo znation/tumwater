@@ -173,6 +173,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code runner, part 6/14: Convert the TUI and the merge and review modules (planned 2026-10-16 by user; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + the other src/ui/*.ts + src/merge/ + src/review/ + src/verdict/ + their tests)
 
+**Needs review 2026-10-19 by feature: too large for one run**
+
 **Goal.** The TUI, the remaining src/ui/ modules, and the merge, review and verdict modules use role and runner names in identifiers, comments and test titles.
 
 **Approach.**
