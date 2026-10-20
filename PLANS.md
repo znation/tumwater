@@ -8,6 +8,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code run, part 10/20: Rename the orchestrator's run launch and timing names (planned 2026-10-16 by user; requires parts 9a/20 and 9b/20 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ + the non-e2e test/orchestrator-*.test.ts + test/fixtures/orchestrator-fixtures.ts)
 
+**Needs replan 2026-10-20 by feature: rejected after 2 review rounds** — objection: mechanical word swaps left nonsensical prose in comments and assertion messages (e.g. "a switch that moves a mid-run switch" in orchestrator-launch.ts, "run … ran" pairs in orchestrator-scheduling.ts and orchestrator-de* tests). Replan should have each renamed comment reread for sense, not blanket-substituted.
+
 **Goal.** The orchestrator launches and times runs by run names: `launchDueRuns`, `ROLE_RUN_DURATION_SAMPLES`, `roleRunDurationsMs` and `runsDone`.
 
 **Approach.**
