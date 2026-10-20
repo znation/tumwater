@@ -1,5 +1,5 @@
 // vocabulary: plain
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
@@ -14,7 +14,7 @@ import type { AbortableMerge } from "../operator/operator-requests.js";
 import type { MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { FoldsUsage } from "../runner/runner-pi.js";
-import type { LoopState } from "../runner/runner-state.js";
+import type { RunnerState } from "../runner/runner-state.js";
 import type { MainCulprit } from "../baseline/main-revert.js";
 
 /** One merge task the pipeline owns (merge queue 3/5, land-queue speed 2c) — a verification or the
@@ -52,7 +52,7 @@ export interface ApprovedMerge extends AbortableMerge, FoldsUsage {
   startedAt: number;
   /** The authoring runner its verification ran with — reused by its merge, so both fold into one
    * state. */
-  author: LoopRunner;
+  author: RoleRunner;
   /** The merge's own spend so far (its reviewer). */
   usage: MergeUsage;
 }
@@ -76,7 +76,7 @@ export interface MergePipelineContext {
    * its change merges. */
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a merge's author. */
-  runners: LoopRunner[];
+  runners: RoleRunner[];
   /** The live config: supplies `mergeBatchMax` and the director's budget-exempt config. */
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
@@ -211,7 +211,7 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
 export async function settleMergeOutcome(
   root: string,
   entry: MergeEntry,
-  state: LoopState,
+  state: RunnerState,
   result: TickResult,
   durationMs: number,
   usage: MergeUsage,

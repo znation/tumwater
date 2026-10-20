@@ -10,7 +10,7 @@ import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../revie
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
-import { saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../runner/revision.js";
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -38,7 +38,7 @@ import type { PriorReview } from "./merge-queue.js";
  * reviewer and merge-to-main.ts's conflict resolver. */
 
 /** One merge request: a pinned commit plus everything its gate and events need. `role` names
- * the owning loop (events, session naming, the verify's pooled slot) — the merger itself is not a
+ * the owning runner (events, session naming, the verify's pooled slot) — the merger itself is not a
  * role. */
 export interface MergeRequest {
   role: string;
@@ -87,15 +87,15 @@ export interface MergeScopeContext {
 }
 
 /** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
- * loop — not merge-to-main.ts's MergeContext, which is the conflict-resolving merge's own. It
+ * runner — not merge-to-main.ts's MergeContext, which is the conflict-resolving merge's own. It
  * carries the repo scope (MergeScopeContext), the live
- * state object (the gate updates it in place exactly as when it ran inside runTick), the loop's
+ * state object (the gate updates it in place exactly as when it ran inside runTick), the runner's
  * shared pi wiring for merge-to-main.ts's conflict resolver — which folds usage internally —
  * and an explicit foldUsage for the reviewer run's FINAL result (runGatePi folds a retried
  * first attempt at retry time and leaves the final run to this fold — folding it in both
  * places would count the reviewer twice). */
 export interface MergerContext extends PiRunWiring, MergeScopeContext {
-  state: LoopState;
+  state: RunnerState;
 }
 
 /** A gate invocation's outcome: `gate` when the change is approved/exempt and may be merged
@@ -188,7 +188,7 @@ export async function reviewPinnedChange(
   ctx: ReviewGateContext,
   req: MergeRequest,
   wt: string,
-  state: LoopState,
+  state: RunnerState,
   foldUsage: (run: PiRunResult) => void,
 ): Promise<GateOutcome> {
   const { root, config } = ctx;
@@ -234,7 +234,7 @@ export async function reviewPinnedChange(
   // authoring run — can outlive a sudden death by hours. A mid-run crash (power loss,
   // kill -9) would otherwise roll the state file back to the last tick-boundary snapshot
   // and re-inject a superseded rejection even though its replacement is already on main.
-  saveLoopState(root, state);
+  saveRunnerState(root, state);
   // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
   // attempt at retry time (stamping the team-wide rate-limit hold promptly, BUGS.md
   // 2026-10-01), and the final run is folded HERE — not also inside the wiring, which would
@@ -327,7 +327,7 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<TickResult> = new Set([
  * count reaches REVISION_FINAL_ON_REPEAT, counted from `priorCounts` — or the chain has reached
  * the REVISION_BACKSTOP cap, when it ends even if the objections never repeat. While it keeps
  * revising, point `refs/tumwater/rejected/<role>` at the head the gate judged and set
- * LoopState.revision (with each reason's persistence count) so the author's next tick re-applies
+ * RunnerState.revision (with each reason's persistence count) so the author's next tick re-applies
  * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
  * previous round's per-reason persistence counts, carried from the queued merge's PriorReview;
  * absent for a fresh change's first rejection and on a recovery merge, a `(prior N)` tag then
@@ -338,7 +338,7 @@ export const RETRIABLE_MERGE_RESULTS: ReadonlySet<TickResult> = new Set([
 async function recordRejectedChange(
   root: string,
   role: string,
-  state: LoopState,
+  state: RunnerState,
   rejectedHead: string,
   revisionRound?: number,
   priorCounts?: number[],
@@ -371,14 +371,14 @@ async function recordRejectedChange(
 
 /** Hand a change that turned main red back to a runner as a revision (plans/fast-merge.md, part
  * 4c): like recordRejectedChange, point `refs/tumwater/rejected/<role>` at the reverted commit and
- * set LoopState.revision one round past the commit's `Revision` trailer, with `reasons` as the
+ * set RunnerState.revision one round past the commit's `Revision` trailer, with `reasons` as the
  * review the author's next tick sees. `role` is the runner that receives it — not necessarily the
  * commit's author. At REVISION_BACKSTOP the chain ends as a rejection's does: the ref and the
  * revision are cleared and `exhausted` is logged. The director never revises. */
 export async function recordRevertedChange(
   root: string,
   role: string,
-  state: LoopState,
+  state: RunnerState,
   commit: string,
   reasons: string[],
 ): Promise<void> {
@@ -461,7 +461,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
         if (gate.followUpRun) ctx.foldUsage(gate.followUpRun);
         if (gate.nudgeRun) ctx.foldUsage(gate.nudgeRun);
         setMergeStage(ctx.root, req.role, "merging");
-        saveLoopState(ctx.root, ctx.state);
+        saveRunnerState(ctx.root, ctx.state);
         if (gate.aborted) return { verdict: "retry" };
         if (gate.decision === "approved" || gate.decision === "exempt") {
           return { verdict: "approved", verifiedHead: gate.verifiedHead };
@@ -479,7 +479,7 @@ async function mergeApprovedChangeIn(ctx: MergerContext, req: MergeRequest): Pro
             req.revisionRound,
             req.priorReview?.counts,
           );
-          saveLoopState(ctx.root, ctx.state);
+          saveRunnerState(ctx.root, ctx.state);
           await deleteRef(ctx.root, mergeRefName(req.role)); // the verdict is final for this pin
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
           return { verdict: "rejected" };

@@ -6,7 +6,7 @@ import { branchHead } from "../git/git.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
-import { saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { applyMergeOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -14,7 +14,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { mergeStatePath } from "../paths.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -103,7 +103,7 @@ export interface MergeChange {
  * liveness, so a stale marker from any crash ordering never displays. `stage` rides the same
  * file rather than a second one — the marker is the one cross-process surface both dashboards
  * already read; the merge path advances it (setMergeStage) and the merge cell renders it
- * (loopPhase). `changes` is the source of truth for every row, one record per change; the
+ * (rolePhase). `changes` is the source of truth for every row, one record per change; the
  * top-level fields mirror the first change in `merging`, so an observer from a generation that
  * reads only them still names a change actually in flight, with that change's own start and
  * stage. A marker from an older generation may carry the top-level fields alone (one change) or
@@ -352,14 +352,14 @@ export function isMergeChange(value: unknown): value is MergeChange {
 export function writeMergeOutcome(
   root: string,
   entry: MergeEntry,
-  state: LoopState,
+  state: RunnerState,
   result: TickResult,
   durationMs: number,
   usage: MergeUsage,
   file: string,
 ): void {
   applyMergeOutcome(state, result, entry);
-  saveLoopState(root, state);
+  saveRunnerState(root, state);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
   // feeds the same streak the tick-side warn reads (src/tick/tick-finalize.ts), but it resolves
   // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
@@ -422,7 +422,7 @@ export interface MergeUsage {
  * folded onto the rate-limit and backend-failure stamps this fold writes: a 429 on a claude
  * reviewer must hold `claude`, not the pi author's provider (PLANS.md "Mixed claude + pi
  * fleets, part 2/4"). The reviewer's final runs are folded HERE (merge-core.ts's
- * reviewPinnedChange), not inside LoopPi — runner-pi.ts stamps the retried first attempt; this
+ * reviewPinnedChange), not inside RunnerPi — runner-pi.ts stamps the retried first attempt; this
  * stamps the final run, which ends on a different seam when the reviewer runs on a
  * non-pi backend. */
 /** Fetch-or-create a provider's accumulator entry in `usage.providerCost` and add `amount`
@@ -436,7 +436,7 @@ function addProviderCost(usage: MergeUsage, provider: string, amount: number, no
   usage.providerCost[provider] = e;
 }
 
-export function mergeUsage(author: LoopRunner, root: string): {
+export function mergeUsage(author: RoleRunner, root: string): {
   usage: MergeUsage;
   foldUsage: (run: PiRunResult) => void;
 } {
@@ -516,7 +516,7 @@ export async function requeueKeptChange(
   root: string,
   mainBranch: string,
   entry: MergeEntry,
-  state: LoopState,
+  state: RunnerState,
   result: TickResult,
 ): Promise<void> {
   const isMainRed = result === "main_red";
@@ -526,7 +526,7 @@ export async function requeueKeptChange(
   if (isMainRed) {
     const { sha: _sha, notBefore: _nb, retry: _r, ...rest } = entry;
     state.mainRedRetry = { head: (await branchHead(root, mainBranch)) ?? "", entry: rest };
-    saveLoopState(root, state);
+    saveRunnerState(root, state);
     return;
   }
   if (queuedMerges(root).some((e) => e.role === entry.role)) return;
@@ -540,13 +540,13 @@ export async function requeueKeptChange(
 export async function requeueMainRedPin(
   root: string,
   mainBranch: string,
-  state: LoopState,
+  state: RunnerState,
   mainHead: string,
 ): Promise<void> {
   const kept = state.mainRedRetry;
   if (!kept || mainHead === "" || mainHead === kept.head) return;
   state.mainRedRetry = undefined;
-  saveLoopState(root, state);
+  saveRunnerState(root, state);
   const sha = await pinnedRetrySha(root, kept.entry.role, mainBranch, state);
   if (!sha || queuedMerges(root).some((e) => e.role === kept.entry.role)) return;
   enqueueRetry(root, retryEntry(kept.entry, sha, "main_red"));

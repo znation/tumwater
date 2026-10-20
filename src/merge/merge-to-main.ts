@@ -48,16 +48,16 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
  * pin would fail whenever main moved between commit and merge). Split out of runner.ts — which
  * keeps the tick lifecycle around it — because this is a self-contained concern with its own flow
  * (lock → rebase → ff-merge → conflict retry) and its own git surface; the only things it
- * borrows from the loop are identity (root/mainBranch), `role` for events and session naming only,
- * the current tick number for session naming, the live config and its review-exemption patterns
- * (the in-lock re-check), and the loop's shared pi wiring so a conflict-resolution run folds into
- * the same tick counters as an authoring run. */
+ * borrows from the runner are identity (root/mainBranch), `role` for events and session naming
+ * only, the current tick number for session naming, the live config and its review-exemption
+ * patterns (the in-lock re-check), and the runner's shared pi wiring so a conflict-resolution run
+ * folds into the same tick counters as an authoring run. */
 
-/** MergeContext: what mergeToMain needs from its owning loop (merge-core.ts's MergerContext is
+/** MergeContext: what mergeToMain needs from its owning runner (merge-core.ts's MergerContext is
  * the merger's, a different shape): identity (root, main branch), the role for events
  * and session naming only — the merge code never re-derives it into a branch — plus the tick
  * number that names the conflict-resolution session, the live config and its review-exemption
- * patterns (the in-lock re-check), and the loop's shared pi runner (role config, session dir,
+ * patterns (the in-lock re-check), and the runner's shared pi runner (role config, session dir,
  * raw log, transient-timeout retry) with usage folded into the tick counters — every pi run of a
  * tick merges there exactly once. */
 export interface MergeContext extends RunsPi {
@@ -432,7 +432,7 @@ async function resolveConflict(ctx: MergeContext, wt: string, preMergeHead: stri
       `tumwater-${ctx.role}-${ctx.tick}-conflict`,
       // The resolver rides the strong tier (plans/model-tiers.md part 4/8): resolution is rare,
       // tolerant of latency, and edits code inside merge. Its spend still folds into the
-      // authoring role's usage — the fold belongs to the loop's wiring, not to the config.
+      // authoring role's usage — the fold belongs to the runner's wiring, not to the config.
       resolverConfig(ctx.config),
     );
   } finally {

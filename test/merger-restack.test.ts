@@ -5,7 +5,7 @@ import path from "node:path";
 import { BATCH_RESTACK_ATTEMPTS } from "../src/merge/merge-stack.js";
 import { refSha } from "../src/git/git.js";
 import { mergeRefName } from "../src/paths.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
@@ -48,7 +48,7 @@ test("a batch whose base main moves mid-check through a tick-path merge re-stack
     await withApprovePi(async () => {
       const batch = runBatch(root, shas, ["alpha", "beta"], wiringFor);
       await waitForFile(started); // the batch's shared check is running on the old tip
-      const { ctx } = makeCtx(root, freshLoopState("gamma"));
+      const { ctx } = makeCtx(root, freshRunnerState("gamma"));
       assert.equal(await verifyAndMerge(ctx, request(shas.gamma!, { role: "gamma" })), "changed", "the racer merged");
       fs.writeFileSync(release, "");
 

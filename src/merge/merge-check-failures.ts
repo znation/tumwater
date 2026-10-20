@@ -2,7 +2,7 @@
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { mergeRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
-import { saveLoopState, type LoopState } from "../runner/runner-state.js";
+import { saveRunnerState, type RunnerState } from "../runner/runner-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons, describeCheck, failureHeadline } from "../build/build-check-report.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
@@ -17,7 +17,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { MergerContext } from "./merge-core.js";
 
-/** Consecutive red in-lock merge checks of one patch (LoopState.mergeCheckFailures) before
+/** Consecutive red in-lock merge checks of one patch (RunnerState.mergeCheckFailures) before
  * the merge is attributed instead of retried: the first red keeps the pin for one more
  * attempt — a load flake gets its retry, as the gate's pre-check gets one (PLANS.md land-queue
  * 1/3) — and the second is judged by main's own verdict at its tip (attributeRedCheck). Without
@@ -37,7 +37,7 @@ function pinKept(patch: string | null, count: number): boolean {
 }
 
 /** Tally one deterministic failure of the same patch toward attribution: read the worktree's
- * head and its patch-id against main, carry LoopState.mergeCheckFailures's count across
+ * head and its patch-id against main, carry RunnerState.mergeCheckFailures's count across
  * re-merges of the identical patch (a clean rebase onto a moved main keeps the patch-id, so the
  * retries of one change add up while a different change starts fresh), and store the strike.
  * An unreadable patch-id cannot be matched, so pinKept never counts it toward the limit.
@@ -89,11 +89,11 @@ async function rejectChange(
   role: string,
   head: string,
   reasons: string[],
-  state: LoopState,
+  state: RunnerState,
 ): Promise<TickResult> {
   recordReview(state, "reject", reasons, head);
   state.unreviewFailures = 0;
-  saveLoopState(ctx.root, state);
+  saveRunnerState(ctx.root, state);
   await deleteRef(ctx.root, mergeRefName(role));
   logEventBestEffort(ctx.root, { source: role, type: "review_rejected", head, reasons });
   return "rejected";
@@ -116,13 +116,13 @@ function keepForKnownFailures(
   role: string,
   label: string,
   red: { outcome: BuildCheckOutcome },
-  state: LoopState,
+  state: RunnerState,
 ): TickResult | null {
   const known = onlyKnownMainFailures(ctx.root, red.outcome.failingTests);
   if (!known) return null;
   state.lastError = `${label} failed only main's known failures, merge kept: ${known.join(", ")}`;
   warnEventBestEffort(ctx.root, role, `${label} fails only main's known failures: ${known.join(", ")}`);
-  saveLoopState(ctx.root, state);
+  saveRunnerState(ctx.root, state);
   return "merge_blocked";
 }
 
@@ -213,17 +213,18 @@ export async function mergeBlocked(
  * ref kept and unreviewFailures untouched, so recovery re-merges it once main-red.ts's repair
  * turns main green. No verdict → reject, the safe default, and the reasons say so. The verdict
  * is persisted before it returns. A red whose headline matches a flake the gate or a merge
- * retry recorded (isKnownFlake) is excused once per headline per pin (LoopState.mergeFlakeExcused):
- * "merge_blocked" with the ref kept, before main's verdict, because that verdict is usually a
- * cached green that would reject a change over a flaky test (PLANS.md 2026-10-16, BUGS.md
- * 2026-10-06). A repeat of the same headline is attributed as above. */
+ * retry recorded (isKnownFlake) is excused once per headline per pin
+ * (RunnerState.mergeFlakeExcused): "merge_blocked" with the ref kept, before main's verdict,
+ * because that verdict is usually a cached green that would reject a change over a flaky test
+ * (PLANS.md 2026-10-16, BUGS.md 2026-10-06). A repeat of the same headline is attributed as
+ * above. */
 export async function attributeRedCheck(
   ctx: { root: string; mainBranch: string; config: TumwaterConfig },
   role: string,
   head: string,
   label: "merge check",
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
-  state: LoopState,
+  state: RunnerState,
 ): Promise<TickResult> {
   // An unverified red — a run that spanned a host sleep, the tree never judged — is not the
   // change's failure and not a strike: keep the ref for recovery's re-merge and name the sleep
@@ -231,7 +232,7 @@ export async function attributeRedCheck(
   // only live when the check produced a verdict.
   if (unverifiedTreeOutcome(red.outcome)) {
     state.lastError = `${label}: ${firstCheckReason(red)}`;
-    saveLoopState(ctx.root, state);
+    saveRunnerState(ctx.root, state);
     return "merge_blocked";
   }
   const kept = keepForKnownFailures(ctx, role, label, red, state);
@@ -242,13 +243,13 @@ export async function attributeRedCheck(
     state.mergeFlakeExcused = key;
     state.lastError = `${label} failed: known-flaky failure, merge kept: ${headline}`;
     warnEventBestEffort(ctx.root, role, `${label}: known-flaky failure, merge kept: ${headline}`);
-    saveLoopState(ctx.root, state);
+    saveRunnerState(ctx.root, state);
     return "merge_blocked";
   }
   const main = await mainTipVerdict(ctx.root, role, ctx.mainBranch, ctx.config);
   if (main.status === "red") {
     state.lastError = `${label} failed: ${mainRedNotMine(main.sha)}`;
-    saveLoopState(ctx.root, state);
+    saveRunnerState(ctx.root, state);
     return "main_red";
   }
   const reasons = checkFailureReasons(red.check, red.outcome);

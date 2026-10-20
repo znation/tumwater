@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Plain terms code runner, part 6b/14: Convert the merge modules (planned 2026-10-16 by user, split 2026-10-19 by the plan role from part 6/14; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/merge/ + the merge tests and fixtures); done 2026-10-19 by the feature role
+
+**Goal.** src/merge/ uses role and runner names in identifiers, comments and test titles. Parts 6a/14, 6b/14 and 6c/14 touch disjoint files and merge in any order; part 7/14 requires all three.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- This part declares nothing new. It migrates uses of `RoleRunner`, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `RunnerPi`, `makeRoleRunner` and `rolePhase` where it still finds the old `LoopState`/`saveLoopState`/`LoopRunner`/`LoopPi`/`loopPhase` names, and converts comments and test titles.
+- Classify every hit by hand; never run a blanket `loop`→`role` substitution over a file. Event fixtures' `loop: "…"` keys are serialized names and stay. When a hit's sense is unclear, read the code it describes: a loop statement, a retry or a re-run keeps "loop".
+- These phrases name a JavaScript loop or another kept loop and stay word for word (two review rounds rejected a renamed re-stack loop):
+  - src/merge/merge-stack.ts file header: "re-stack loop for a main that moves mid-check" (the `BATCH_RESTACK_ATTEMPTS` retry loop in `mergeStack`).
+  - src/merge/merge-drain.ts: "the end-of-batch loop" and "the settle loop".
+  - src/merge/merge-batch.ts: "caller's end-of-batch loop".
+  - src/merge/merge-pipeline.ts: "resolved once by the poll loop".
+  Every other bare "loop" in src/merge/ means the owning role or its runner (for example "the owning loop" in merge-core.ts, merge-queue.ts and merge-to-main.ts becomes "the owning runner").
+- Tests: test/merge-*.test.ts, test/merge-to-main*.test.ts, test/merge-drain-verify.test.ts, test/merger*.test.ts, test/work-merged-cache.test.ts, test/fixtures/merge-fixtures.ts, merger-fixtures.ts and merge-to-main-fixtures.ts. The Fast merge series edits some of these files too; on a conflict keep its behavior change and redo only the word changes.
+
+**Files touched.** src/merge/*.ts and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*` identifiers.
+- `grep -rnwiE 'loops?'` over the same files lists only kept senses and serialized names (event fixtures' `loop:` keys), and each kept phrase above still appears in its file (for example `grep -n 're-stack loop' src/merge/merge-stack.ts` matches).
+- No behavior change: no test is added or removed, and the changed tests assert what they asserted before.
+- `npm run test` passes.
+
 ### Fast merge, part 4c/14: A reverted change goes back to its role as a revision (planned 2026-10-19 by user, split 2026-10-19 by the plan role from part 4/14; requires part 4b/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/merge/merge-core.ts src/merge/merge-drain.ts src/paths.ts src/git/commit-message.ts docs/how-it-works.md and their tests) — done 2026-10-19 by the feature role
 
 **Goal.** After part 4b/14 reverts a culprit, its author should revise the same change with the failing tests in hand rather than start over. This closes the loop the old part 4/14 described.

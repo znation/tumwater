@@ -2,8 +2,8 @@
  * charges a merge's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
  * state and records them on the merge_done/merge_failed event, the write-back, and the 4/5 marker's
  * per-change records. The full merge flow is pinned end-to-end through the pipeline
- * (orchestrator-fixtures.ts's mergeHead) in the loop and orchestrator tests, but those drive a fake
- * pi that reports no usage, so the nonzero-usage branches were never exercised: a merge whose
+ * (orchestrator-fixtures.ts's mergeHead) in the runner and orchestrator tests, but those drive a
+ * fake pi that reports no usage, so the nonzero-usage branches were never exercised: a merge whose
  * reviewer burns tokens and cost is exactly what feeds `tumwater report` and the daily budget cap,
  * and a broken fold there would silently lose that spend. These pin the accounting branches
  * directly. */
@@ -27,17 +27,17 @@ import {
 import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
-import type { LoopRunner } from "../src/runner/runner.js";
+import type { RoleRunner } from "../src/runner/runner.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
-import { makeLoopRunner } from "./fixtures/runner-fixtures.js";
+import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -62,7 +62,7 @@ test("mergeUsage charges each run to both the authoring role and the merge's own
   // mergeUsage keys the reviewer's fold by the review seam (PLANS.md "Mixed claude + pi
   // fleets, part 2/4"), so the stub author must carry a config; these tests don't assert on
   // the stamp, only on the cost/token accounting, so a default config is enough.
-  const author = { foldMergeUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as RoleRunner;
   const { usage, foldUsage } = mergeUsage(author, tmpdir());
 
   foldUsage(piRun(120, 0.5));
@@ -82,7 +82,7 @@ test("mergeUsage charges each run to both the authoring role and the merge's own
 // and its real field stays empty.
 test("a subscription merge run folds as notional, and rides the event's notional field", () => {
   const root = makeRepo();
-  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as RoleRunner;
   const { usage, foldUsage } = mergeUsage(author, tmpdir());
   foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
   foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));
@@ -91,7 +91,7 @@ test("a subscription merge run folds as notional, and rides the event's notional
   assert.equal(usage.notionalCost, 0.3, "the subscription run is notional");
 
   const { entry, file } = queued(root);
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   writeMergeOutcome(root, entry, state, "changed", 7, usage, file);
 
   const mergeDone = readEvents(root, 10).find((e) => e.type === "merge_done");
@@ -107,7 +107,7 @@ test("a subscription merge run folds as notional, and rides the event's notional
 // file untouched.
 test("a merge run's five_hour reading reaches claude-account.json at fold time", () => {
   const root = makeRepo();
-  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as RoleRunner;
   const { foldUsage } = mergeUsage(author, root);
 
   assert.equal(readClaudeAccount(root), null, "no account file before any reading");
@@ -130,7 +130,7 @@ test("a merge run's five_hour reading reaches claude-account.json at fold time",
 test("a merge's nonzero usage rides its merge_done event and the entry is dropped", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   state.phase = "review"; // an in-flight merge marker from the tick lifecycle
   state.runs = entry.run;
 
@@ -150,14 +150,14 @@ test("a merge's nonzero usage rides its merge_done event and the entry is droppe
   assert.equal(state.lastResult, "changed");
   assert.equal(state.commits, 1, "a merged change counts a commit");
   assert.equal(state.phase, undefined, "a non-aborted outcome ends the in-flight phase");
-  assert.equal(loadLoopState(root, "improve").commits, 1, "the folded state is persisted");
+  assert.equal(loadRunnerState(root, "improve").commits, 1, "the folded state is persisted");
   assert.equal(queueDepth(root), 0, "the entry drops after its outcome");
 });
 
 test("a review-exempt merge (zero usage) omits the usage fields instead of logging zeros", () => {
   const root = makeRepo();
   const { entry, file } = queued(root, "organize");
-  const state = freshLoopState("organize");
+  const state = freshRunnerState("organize");
 
   writeMergeOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0, providerCost: {} }, file);
 
@@ -170,7 +170,7 @@ test("a review-exempt merge (zero usage) omits the usage fields instead of loggi
 test("an unwritable events feed still drops the settled entry — the queue never retries", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   // A directory at the feed path makes every append throw EISDIR: the merge_done event cannot be
   // written, but the drop (and the marker removal its caller does next) must still happen —
   // otherwise the settled entry stays queued and the next drain re-verifies and re-merges it.
@@ -179,7 +179,7 @@ test("an unwritable events feed still drops the settled entry — the queue neve
   writeMergeOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1, providerCost: {} }, file);
 
   assert.equal(queueDepth(root), 0, "the outcome drops the entry even when its event cannot be logged");
-  assert.equal(loadLoopState(root, "improve").commits, 1, "the state write still persisted before the event");
+  assert.equal(loadRunnerState(root, "improve").commits, 1, "the state write still persisted before the event");
 });
 
 test("an unexpected throw inside the merge degrades to an error outcome — the queue drains", async () => {
@@ -189,7 +189,7 @@ test("an unexpected throw inside the merge degrades to an error outcome — the 
   // queue file), so the verification's ensureDetachedWorktree throws before any ref work —
   // exactly the "unexpected throw" the verification degrades (the pipeline's contract: a merge
   // never rejects; every outcome drops the entry; the change's marker record always goes).
-  const author = makeLoopRunner(root, "improve");
+  const author = makeRoleRunner(root, "improve");
   const { state } = author;
   state.phase = "review"; // the tick lifecycle's in-flight merge marker on the author's state
   assert.ok(await refSha(root, mergeRefName("improve")) === null, "fixture sanity: no pin exists");
@@ -205,7 +205,7 @@ test("an unexpected throw inside the merge degrades to an error outcome — the 
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
   assert.equal(await refSha(root, mergeRefName("improve")), null, "no pin existed and the error path fabricates none");
   assert.equal(readMergeMarker(root), null, "the in-flight marker is removed even on the error path");
-  assert.equal(loadLoopState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
+  assert.equal(loadRunnerState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
 });
 
 test("the write-back pairs the merge's result with the queued tick's summary, across a reload", () => {
@@ -214,20 +214,20 @@ test("the write-back pairs the merge's result with the queued tick's summary, ac
   // as a durable queue entry can — records its result beside THAT summary and consumes it.
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const tick = freshLoopState("improve");
+  const tick = freshRunnerState("improve");
   applyTickOutcome(tick, defaultConfig(), "improve", { result: "no_change", summary: "found nothing" });
   applyTickOutcome(tick, defaultConfig(), "improve", {
     result: "queued",
     summary: `${entry.summary} (high friction: 90 turns / 45m)`,
     commit: entry.sha,
   });
-  saveLoopState(root, tick);
-  const pending = loadLoopState(root, "improve");
+  saveRunnerState(root, tick);
+  const pending = loadRunnerState(root, "improve");
   assert.equal(pending.lastResult, "no_change", "fixture sanity: the prior pair is what persisted");
 
   writeMergeOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
 
-  const saved = loadLoopState(root, "improve");
+  const saved = loadRunnerState(root, "improve");
   assert.equal(saved.lastResult, "rejected");
   assert.equal(saved.lastSummary, "add a thing (high friction: 90 turns / 45m)");
   assert.equal(saved.queuedSummary, undefined, "the persisted stash is consumed");
@@ -245,7 +245,7 @@ test("a rejection crossing the error-streak bar warns from the merge side, once 
   const warnings = () => warningEvents(readEvents(root, 50));
 
   // Below the bar: the fast first retries stay silent.
-  const low = freshLoopState("improve");
+  const low = freshRunnerState("improve");
   const first = queued(root);
   writeMergeOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, first.file);
   assert.equal(low.consecutiveErrors, 1, "the rejection counts even below the bar");
@@ -253,7 +253,7 @@ test("a rejection crossing the error-streak bar warns from the merge side, once 
 
   // The crossing the tick side never saw: two failed ticks, a queued tick preserving the
   // streak, then the merge's rejection does 2 → 3.
-  const crossing = freshLoopState("improve");
+  const crossing = freshRunnerState("improve");
   applyTickOutcome(crossing, cfg, "improve", { result: "error" });
   applyTickOutcome(crossing, cfg, "improve", { result: "error" });
   applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
@@ -277,7 +277,7 @@ test("a rejection crossing the error-streak bar warns from the merge side, once 
 test("a failed merge logs merge_failed with its usage and counts no commit", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
 
   writeMergeOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01, providerCost: {} }, file);
 
@@ -510,7 +510,7 @@ test("a queued merge's record names each phase while it runs: the gate's check, 
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
     ].join("\n"),
     async () => {
-      const author = makeLoopRunner(root, "improve", config);
+      const author = makeRoleRunner(root, "improve", config);
 
       const result = await mergeHead(root, author, config, "improve");
 
@@ -609,7 +609,7 @@ test("a failing marker write never throws — the merge proceeds and the old fra
 test("a merge_failed outcome carries queuedMs too", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
 
   writeMergeOutcome(root, entry, state, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
 

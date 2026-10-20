@@ -1,6 +1,6 @@
 /** Durable merge queue (plans/merge-queue.md 3/5): the file discipline — enqueue ordering,
  * head selection, per-role filter, drop, and the stat-keyed content cache. The pipeline's full
- * path (merge-drain.ts) is pinned through mergeHead in the loop tests and the orchestrator's
+ * path (merge-drain.ts) is pinned through mergeHead in the runner tests and the orchestrator's
  * e2e; the interlock (a role with a queued or in-flight merge never ticks) is pinned in the
  * orchestrator tests too. */
 import test from "node:test";

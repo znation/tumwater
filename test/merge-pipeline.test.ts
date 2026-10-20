@@ -17,7 +17,7 @@ import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { mergeChanges, readMergeMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig } from "../src/config/config.js";
-import { freshLoopState, loadLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, loadRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import {
   APPROVE,
@@ -114,7 +114,7 @@ test("a single queued pinned entry merges through the pipeline: main advances, r
     assert.equal(mergeDone.length, 1, "one merge_done event for the queue's bookkeeping");
     assert.equal(mergeDone[0]!.source, "improve");
     assert.equal(mergeDone[0]!.result, "changed");
-    assert.equal(loadLoopState(root, "improve").lastResult, "changed", "the outcome folded into the author's state");
+    assert.equal(loadRunnerState(root, "improve").lastResult, "changed", "the outcome folded into the author's state");
   });
 });
 
@@ -289,10 +289,10 @@ test("a change settled early in a batch writes back before a slower batch-mate's
   sh(root, "git", "add", "beta.txt");
   sh(root, "git", "commit", "-m", "main edits beta.txt");
   // alpha enters its merge with the stale streak the bug report saw.
-  const alphaState = freshLoopState("alpha");
+  const alphaState = freshRunnerState("alpha");
   alphaState.consecutiveErrors = 6;
   alphaState.lastResult = "review_error";
-  saveLoopState(root, alphaState);
+  saveRunnerState(root, alphaState);
 
   const flags = tmpdir("batch-settle-");
   const started = path.join(flags, "resolver-started");
@@ -322,7 +322,7 @@ test("a change settled early in a batch writes back before a slower batch-mate's
     );
 
     assert.equal(
-      loadLoopState(root, "alpha").consecutiveErrors,
+      loadRunnerState(root, "alpha").consecutiveErrors,
       0,
       "alpha's merged change reset its streak before beta's resolver returned",
     );
@@ -383,7 +383,7 @@ test("a red stack merges its passing prefix, rejects the change red alone, and m
       ],
       "the whole stack, alpha's prefix, beta alone on top of it, then gamma's in-lock re-check",
     );
-    const beta = loadLoopState(root, "beta");
+    const beta = loadRunnerState(root, "beta");
     assert.equal(beta.lastResult, "rejected");
     assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
     assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.source), ["beta"]);
@@ -452,7 +452,7 @@ test("a verification rejection drops its entry at once — its role may tick nex
       ["beta"],
       "alpha's entry is gone: the scheduler's interlock no longer holds alpha",
     );
-    assert.equal(loadLoopState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
+    assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
     assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
     assert.deepEqual([...pipeline.verifying.keys()], ["beta"], "beta's verify is still running");
@@ -494,7 +494,7 @@ test("a merge whose role has no live runner verifies and merges through a throwa
       ["changed"],
       "the outcome was written and reported for the runner-less role",
     );
-    const state = loadLoopState(root, "alpha");
+    const state = loadRunnerState(root, "alpha");
     assert.equal(state.lastError, undefined, "the throwaway author ran clean");
     assert.equal(state.lastResult, "changed", "the disk-loaded state was folded and saved back");
     assert.equal(state.commits, 1, "the merged change counted on the throwaway author's counters");
@@ -766,16 +766,16 @@ for (const headVerdict of ["reject", "approve"] as const) {
       ];
       if (headVerdict === "reject") {
         assert.deepEqual(seen, verifies, "a one-change merge goes through on its own: no stack check, no re-check on an unmoved main");
-        assert.equal(loadLoopState(root, "alpha").lastResult, "rejected");
+        assert.equal(loadRunnerState(root, "alpha").lastResult, "rejected");
       } else {
         assert.deepEqual(
           seen,
           [...verifies, "check:alpha=merging/build-check,beta=merging/build-check"],
           "the shared stack check runs under build-check on every stacked change",
         );
-        assert.equal(loadLoopState(root, "alpha").lastResult, "changed");
+        assert.equal(loadRunnerState(root, "alpha").lastResult, "changed");
       }
-      assert.equal(loadLoopState(root, "beta").lastResult, "changed");
+      assert.equal(loadRunnerState(root, "beta").lastResult, "changed");
       assert.equal(readMergeMarker(root), null, "the marker is gone once the merge is done");
     } finally {
       await Promise.allSettled(allTasks(pipeline));
@@ -811,7 +811,7 @@ test("a plumbing throw in the merge keeps every entry queued and unapproved, rec
     assert.equal(pipeline.merge, null, "the merge slot freed for the next attempt");
     assert.equal(queueDepth(root), 2, "every entry stays queued");
     assert.equal(pipeline.approved.size, 0, "nothing stays approved: each change is verified afresh from its pin");
-    assert.ok(loadLoopState(root, "alpha").lastError, "the head author's persisted state names the failure");
+    assert.ok(loadRunnerState(root, "alpha").lastError, "the head author's persisted state names the failure");
     assert.equal(readMergeMarker(root), null, "the merge's marker records were removed with its task");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing was reported merged");
     assert.equal(mainSha(root), mainBefore, "nothing merged");
@@ -840,7 +840,7 @@ test("a failing state write in the merge's error path still frees the merge slot
     await pumpUntil(ctx, pipeline, () => pipeline.approved.size === 2, "both changes to be approved");
 
     // Break the merge's plumbing so mergeApproved throws, then break the head author's state
-    // file so the catch's saveLoopState throws too — the exact unwritable-state failure the
+    // file so the catch's saveRunnerState throws too — the exact unwritable-state failure the
     // guard exists for. The catch must not let that second throw skip the settle loop and the
     // finally, or p.merge stays set forever and every later merge is wedged.
     fs.rmSync(worktreesHome, { recursive: true, force: true });
@@ -894,7 +894,7 @@ test("a git failure inside the gate's reject path settles the verification as an
   });
   await Promise.allSettled(allTasks(pipeline));
 
-  const state = loadLoopState(root, role);
+  const state = loadRunnerState(root, role);
   assert.equal(state.lastResult, "error", "the outcome folded into the author's state as an error");
   assert.match(state.lastError ?? "", /index\.lock/, "the persisted state names the git failure that threw");
   const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);

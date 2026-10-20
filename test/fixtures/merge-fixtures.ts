@@ -9,19 +9,19 @@ import {
   type MergePipeline,
   type MergePipelineContext,
 } from "../../src/merge/merge-pipeline.js";
-import type { LoopRunner } from "../../src/runner/runner.js";
+import type { RoleRunner } from "../../src/runner/runner.js";
 import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
 import { mergeRefName } from "../../src/paths.js";
 import { setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshLoopState } from "../../src/runner/runner-state.js";
+import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { snapshot } from "../../src/status/status-data.js";
-import { mergeForRole, loopPhase } from "../../src/ui/status-model.js";
+import { mergeForRole, rolePhase } from "../../src/ui/status-model.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
-import { makeLoopRunner } from "./runner-fixtures.js";
+import { makeRoleRunner } from "./runner-fixtures.js";
 import { pinOffMain, tmpdir } from "./repo-fixtures.js";
 import { assistantLine, leasedRoleShell, reviewerPi } from "./pi-events.js";
 
@@ -50,10 +50,10 @@ export function entry(role: string, sha: string, enqueuedAt = Date.now()): Merge
   return { role, sha, run: 7, summary: "the work", enqueuedAt };
 }
 
-/** A runner per role — a real LoopRunner (cheap constructor: state loaded from disk, no
+/** A runner per role — a real RoleRunner (cheap constructor: state loaded from disk, no
  * subprocess) so the drain resolves its author wiring the way orchestrator.ts supplies it. */
-export function runnersFor(root: string, roles: string[], signal?: AbortSignal, config = defaultConfig()): LoopRunner[] {
-  return roles.map((role) => makeLoopRunner(root, role, config, "main", signal));
+export function runnersFor(root: string, roles: string[], signal?: AbortSignal, config = defaultConfig()): RoleRunner[] {
+  return roles.map((role) => makeRoleRunner(root, role, config, "main", signal));
 }
 
 /** A pipeline context over a fresh repo — `cap` shared permits (the maxConcurrent semaphore
@@ -61,7 +61,7 @@ export function runnersFor(root: string, roles: string[], signal?: AbortSignal, 
  * scheduler's pair, driven here by pump/pumpUntil like its poll loop. */
 export function makePipeline(
   root: string,
-  runners: LoopRunner[],
+  runners: RoleRunner[],
   opts: { cap?: number; signal?: AbortSignal; config?: TumwaterConfig; held?: () => boolean } = {},
 ): { ctx: MergePipelineContext; pipeline: MergePipeline } {
   const config = opts.config ?? defaultConfig();
@@ -166,7 +166,7 @@ export function busySlot(): InFlightMerge {
   return slot;
 }
 
-/** A role's row as the observers render it (snapshot → mergeForRole → loopPhase). The
+/** A role's row as the observers render it (snapshot → mergeForRole → rolePhase). The
  * observers show a merge only for a live orchestrator, so this stands the test process in
  * for one. */
 export function rowReader(root: string, roles: string[]): (role: string) => string {
@@ -174,7 +174,7 @@ export function rowReader(root: string, roles: string[]): (role: string) => stri
   const noModels = path.join(tmpdir(), "no-models.json");
   return (role) => {
     const snap = snapshot(root, noModels);
-    return loopPhase(freshLoopState(role), snap.running, undefined, false, undefined, false, mergeForRole(snap.mergeQueue, role));
+    return rolePhase(freshRunnerState(role), snap.running, undefined, false, undefined, false, mergeForRole(snap.mergeQueue, role));
   };
 }
 

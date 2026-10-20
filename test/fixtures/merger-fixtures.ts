@@ -6,12 +6,12 @@ import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
 import { eventsLogPath, mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
-import { freshLoopState } from "../../src/runner/runner-state.js";
+import { freshRunnerState } from "../../src/runner/runner-state.js";
 import { readEvents } from "../../src/events/event-read.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { TickResult } from "../../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../../src/pi/pi-run-result.js";
-import type { LoopState } from "../../src/runner/runner-state.js";
+import type { RunnerState } from "../../src/runner/runner-state.js";
 import { projManifest, writeScript } from "../fakes/fake-commands.js";
 import { mainSha, makeRepo, pinOffMain, sh } from "./repo-fixtures.js";
 import { piRunResult } from "../fakes/fake-pi.js";
@@ -45,7 +45,7 @@ export interface PiCall {
  * signal. */
 export function makeCtx(
   root: string,
-  state: LoopState,
+  state: RunnerState,
   resolve?: (wt: string) => void,
 ): { ctx: MergerContext; calls: PiCall[]; folded: PiRunResult[]; controller: AbortController } {
   const calls: PiCall[] = [];
@@ -187,7 +187,7 @@ export function makeBatchCtx(root: string, config?: TumwaterConfig, controller?:
  * role, usage recorded per role, and the shared runPi stub (with an optional resolver) for
  * the one-at-a-time fallback merges. File-internal: only this module's batch fixture uses it. */
 function makeWiring(
-  states: Record<string, LoopState>,
+  states: Record<string, RunnerState>,
   resolve?: (wt: string) => void,
 ): { wiringFor: (role: string) => BatchRoleWiring; folded: Map<string, PiRunResult[]>; calls: PiCall[] } {
   const folded = new Map<string, PiRunResult[]>();
@@ -219,13 +219,13 @@ export async function batchFixture<R extends string>(
 ): Promise<{
   root: string;
   shas: Record<string, string>;
-  states: Record<R, LoopState>;
+  states: Record<R, RunnerState>;
   wiringFor: (role: string) => BatchRoleWiring;
   folded: Map<string, PiRunResult[]>;
   calls: PiCall[];
 }> {
   const { root, shas } = await batchPinnedFixture(roles, opts.edit, opts.seed);
-  const states = Object.fromEntries(roles.map((role) => [role, freshLoopState(role)])) as Record<R, LoopState>;
+  const states = Object.fromEntries(roles.map((role) => [role, freshRunnerState(role)])) as Record<R, RunnerState>;
   return { root, shas, states, ...makeWiring(states, opts.resolve) };
 }
 
@@ -291,10 +291,10 @@ export function reviewerByRole(byRole: Record<string, string>, otherwise = reply
   ].join("\n");
 }
 
-/** Shell that holds a review run until the events log records `loop`'s `type` event — bounded
+/** Shell that holds a review run until the events log records `role`'s `type` event — bounded
  * at ~30 s, so a regression fails the assertions instead of hanging the suite. */
-export const awaitEvent = (root: string, loop: string, type: string): string =>
-  `i=0; until grep -q '"loop":"${loop}","type":"${type}"' '${eventsLogPath(root)}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; `;
+export const awaitEvent = (root: string, role: string, type: string): string =>
+  `i=0; until grep -q '"loop":"${role}","type":"${type}"' '${eventsLogPath(root)}' 2>/dev/null || [ $i -ge 300 ]; do sleep 0.1; i=$((i+1)); done; `;
 
 /** A counting build check: `$n` is the invocation's 1-based number (checkRunNumber) — runs 1
  * and 2 are the two verifies' gate pre-checks, run 3 is the stack's first shared check — and `body`

@@ -12,7 +12,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { requeueMainRedPin } from "../src/merge/merge-slot.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
-import { freshLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { mergeRefName } from "../src/paths.js";
 import { deleteRef, refSha, setRef } from "../src/git/git.js";
 import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
@@ -44,7 +44,7 @@ async function pinnedEntry(): Promise<{ root: string; entry: MergeEntry; file: s
 
 test("a merge_blocked change is re-queued at once with its original summary and a retry field", async () => {
   const { root, entry, file } = await pinnedEntry();
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   await settleMergeOutcome(root, entry, state, "merge_blocked", 5, NO_USAGE, file, "main");
   const queued = queuedMerges(root);
   assert.equal(queued.length, 1);
@@ -63,7 +63,7 @@ test("a merge_blocked change is re-queued at once with its original summary and 
 
 test("a review_error re-queue waits 60 s; a held reviewer config error does not re-queue", async () => {
   const { root, entry, file } = await pinnedEntry();
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   const before = Date.now();
   await settleMergeOutcome(root, entry, state, "review_error", 5, NO_USAGE, file, "main");
   const [queued] = queuedMerges(root);
@@ -71,7 +71,7 @@ test("a review_error re-queue waits 60 s; a held reviewer config error does not 
   assert.ok(queued.notBefore >= before + 60_000 && queued.notBefore <= Date.now() + 60_000);
 
   const held = await pinnedEntry();
-  const heldState = freshLoopState("improve");
+  const heldState = freshRunnerState("improve");
   heldState.mergeReviewError = { sha: held.entry.sha, message: "401" };
   await settleMergeOutcome(held.root, held.entry, heldState, "review_error", 5, NO_USAGE, held.file, "main");
   assert.equal(queuedMerges(held.root).length, 0);
@@ -79,7 +79,7 @@ test("a review_error re-queue waits 60 s; a held reviewer config error does not 
 
 test("a change at MERGE_CONFLICT_LIMIT is not re-queued; a gone pin is not either", async () => {
   const { root, entry, file } = await pinnedEntry();
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   state.mergeConflicts = { sha: entry.sha, count: MERGE_CONFLICT_LIMIT - 1 };
   // This conflict makes the streak reach the limit.
   await settleMergeOutcome(root, entry, state, "merge_conflict", 5, NO_USAGE, file, "main");
@@ -87,20 +87,20 @@ test("a change at MERGE_CONFLICT_LIMIT is not re-queued; a gone pin is not eithe
   assert.equal(queuedMerges(root).length, 0);
 
   const under = await pinnedEntry();
-  const underState = freshLoopState("improve");
+  const underState = freshRunnerState("improve");
   await settleMergeOutcome(under.root, under.entry, underState, "merge_conflict", 5, NO_USAGE, under.file, "main");
   assert.equal(queuedMerges(under.root).length, 1, "under the limit it re-queues");
 
   const gone = await pinnedEntry();
   await deleteRef(gone.root, mergeRefName("improve"));
-  await settleMergeOutcome(gone.root, gone.entry, freshLoopState("improve"), "merge_blocked", 5, NO_USAGE, gone.file, "main");
+  await settleMergeOutcome(gone.root, gone.entry, freshRunnerState("improve"), "merge_blocked", 5, NO_USAGE, gone.file, "main");
   assert.equal(queuedMerges(gone.root).length, 0);
   assert.equal(await refSha(gone.root, mergeRefName("improve")).catch(() => null), null);
 });
 
 test("a main_red pin is re-queued once main's head moves, and not before", async () => {
   const { root, entry, file } = await pinnedEntry();
-  const state = freshLoopState("improve");
+  const state = freshRunnerState("improve");
   await settleMergeOutcome(root, entry, state, "main_red", 5, NO_USAGE, file, "main");
   assert.equal(queuedMerges(root).length, 0, "nothing is queued while main is red");
   const recorded = state.mainRedRetry;

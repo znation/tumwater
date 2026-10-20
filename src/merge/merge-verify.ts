@@ -5,7 +5,7 @@ import { gateRoleConfig } from "../gates/budget-gates.js";
 import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { providerWaitStage } from "./merge-slot.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { LoopRunner } from "../runner/runner.js";
+import { RoleRunner } from "../runner/runner.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
@@ -46,11 +46,11 @@ export function verifyLimit(maxConcurrent: number): number {
  * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
  * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
  * by it every poll). */
-function resolveAuthor(ctx: MergePipelineContext, role: string): LoopRunner {
+function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunner {
   const { root, mainBranch, signal, runners, liveConfig, roleConfig, directorConfig } = ctx;
   return (
     runners.find((r) => r.role === role) ??
-    new LoopRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig, directorConfig), mainBranch, signal)
+    new RoleRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig, directorConfig), mainBranch, signal)
   );
 }
 

@@ -7,12 +7,12 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
-import { hasOutstandingWork, saveLoopState } from "../runner/runner-state.js";
+import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { recordRevertedChange } from "./merge-core.js";
 import { revertedPendingPath } from "../paths.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
-import type { LoopRunner } from "../runner/runner.js";
+import type { RoleRunner } from "../runner/runner.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,
@@ -60,7 +60,7 @@ function revertReasons(c: MainCulprit): string[] {
 
 /** A runner that can take a revision now: idle, with no pending revision and no change queued for
  * merging (a verifying or approved change is still a queue entry). */
-function runnerIsFree(queued: Set<string>, r: LoopRunner): boolean {
+function runnerIsFree(queued: Set<string>, r: RoleRunner): boolean {
   return !r.state.running && !hasOutstandingWork(r.state) && !queued.has(r.role);
 }
 
@@ -75,7 +75,7 @@ async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert)
   const taker = own && runnerIsFree(queued, own) ? own : candidates.find((r) => runnerIsFree(queued, r));
   if (taker === undefined) return false;
   await recordRevertedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
-  saveLoopState(ctx.root, taker.state);
+  saveRunnerState(ctx.root, taker.state);
   return true;
 }
 
@@ -283,7 +283,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
       // and the finally that frees the merge slot, or the pipeline wedges with p.merge set
       // forever; the write is bookkeeping a later save retries, so warn and keep going.
       try {
-        saveLoopState(root, head.state);
+        saveRunnerState(root, head.state);
       } catch (writeErr) {
         warnEventBestEffort(
           root,

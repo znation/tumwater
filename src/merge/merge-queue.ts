@@ -38,10 +38,10 @@ export interface PriorReview {
  * the tick pinned by `refs/tumwater/landing/<role>` and enqueued at tick end. One file per
  * entry, filename-ordered (`<ts>-<seq>-<pid>.json`); the entry is dropped after EVERY merge
  * outcome, so the queue holds only unattempted merges. No attempt counter lives in the file —
- * retry bookkeeping is the persisted `LoopState.unreviewFailures`, which governs the strike cap.
+ * retry bookkeeping is the persisted `RunnerState.unreviewFailures`, which governs the strike cap.
  */
 export interface MergeEntry {
-  /** The owning loop — events, session naming, and the verify's leased slot all key off it. */
+  /** The owning runner — events, session naming, and the verify's leased slot all key off it. */
   role: string;
   /** The pinned commit to merge — checked out detached in the verify's leased pool slot. */
   sha: string;
@@ -62,7 +62,7 @@ export interface MergeEntry {
    * repeated objection or the backstop (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this merge is revising, absent for a fresh change
-   * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from LoopState.lastReview only
+   * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from RunnerState.lastReview only
    * on a tick that held the rejected diff; a recovery merge never carries one. */
   priorReview?: PriorReview;
   /** Earliest time (epoch ms) the verification may start, absent for an entry that is ready at

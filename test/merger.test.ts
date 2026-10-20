@@ -10,10 +10,10 @@ import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { mergeRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
+import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
-import type { LoopState } from "../src/runner/runner-state.js";
+import type { RunnerState } from "../src/runner/runner-state.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
@@ -56,7 +56,7 @@ test("an approved merge merges on main and deletes the ref", async () => {
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha, wt } = await pinnedFixture();
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx, folded } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
@@ -79,7 +79,7 @@ test("a reviewer killed once (exit 143) is retried in the verify: the change mer
       `printf '%s\\n' '${assistantLine("VERDICT: approve\nfine")}'`,
     async () => {
       const { root, sha } = await pinnedFixture();
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge({ ...ctx, reviewRetries: 2 }, request(sha)), "changed");
@@ -102,7 +102,7 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
     reviewerPi("VERDICT: approve"),
     async () => {
       const { root, sha } = await pinnedFixture();
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       // What disk holds at tick start: the superseded rejection's verdict.
       state.lastReview = {
         verdict: "reject",
@@ -110,14 +110,14 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
         head: "0".repeat(40),
         at: Date.now() - 3_600_000,
       };
-      saveLoopState(root, state);
+      saveRunnerState(root, state);
       const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
 
       // Read back from disk, not the in-memory object: without an immediate persist the
       // file still holds the seeded reject and the stale note would survive the crash.
-      const onDisk = readJson(statePath(root, ROLE)) as LoopState;
+      const onDisk = readJson(statePath(root, ROLE)) as RunnerState;
       assert.equal(onDisk.lastReview?.verdict, "approve", "the approve is durable on disk, not just in memory");
       assert.equal(onDisk.lastApprovedHead, sha, "the approved head is durable");
     },
@@ -129,7 +129,7 @@ test("a rejected merge merges nothing: role worktree clean at main, ref deleted,
     reviewerPi("VERDICT: reject\n1. breaks the zero-dep rule"),
     async () => {
       const { root, sha, wt } = await pinnedFixture();
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const mainBefore = mainSha(root);
       const { ctx } = makeCtx(root, state);
 
@@ -149,7 +149,7 @@ test("a verdict-less failure under the strike cap returns review_error and keeps
     reviewerPi("I think this is fine overall."),
     async () => {
       const { root, sha } = await pinnedFixture();
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const mainBefore = mainSha(root);
       const { ctx } = makeCtx(root, state);
 
@@ -167,7 +167,7 @@ test("three verdict-less failures discard the merge and delete the ref", async (
     reviewerPi("I think this is fine overall."),
     async () => {
       const { root, sha } = await pinnedFixture();
-      const state = freshLoopState(ROLE); // one state object across all three attempts
+      const state = freshRunnerState(ROLE); // one state object across all three attempts
       const mainBefore = mainSha(root);
 
       for (let attempt = 1; attempt <= 2; attempt++) {
@@ -187,7 +187,7 @@ test("three verdict-less failures discard the merge and delete the ref", async (
 test("an abort mid-review returns aborted and keeps the ref", async () => {
   await withPi(`exec sleep 30`, async () => { // never reached: the signal is already aborted
     const { root, sha } = await pinnedFixture();
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const mainBefore = mainSha(root);
     const { ctx, controller } = makeCtx(root, state);
     controller.abort(); // a shutdown that arrives before the reviewer starts
@@ -207,7 +207,7 @@ test("a conflicting merge gets one resolution run and then merges", async () => 
       // Advance main with a conflicting edit after the pin — the common concurrent case.
       advanceMain(root, "seed.txt", "main\n");
 
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx, calls } = makeCtx(root, state, (wt) => {
         fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // resolve the markers
       });
@@ -247,7 +247,7 @@ test("a resolution the re-review rejects deletes the pin and merges nothing", as
       const { root, sha } = await pinnedFixture();
       advanceMain(root, "seed.txt", "main\n");
 
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx, calls } = makeCtx(root, state, (wt) => {
         fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // diverges from the reviewed diff
       });
@@ -295,7 +295,7 @@ test("a re-review with no parseable verdict keeps the pin for a retry", async ()
       const { root, sha } = await pinnedFixture();
       advanceMain(root, "seed.txt", "main\n");
 
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state, (wt) => {
         fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
       });
@@ -329,7 +329,7 @@ test("a merge pinned behind main's advance is rebased onto main BEFORE the gate 
       fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
       sh(root, "git", "add", "-A");
       sh(root, "git", "commit", "-m", "fix main");
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "changed");
@@ -360,7 +360,7 @@ test("a synced rebase moves the merge ref so a failed gate keeps the tree that c
       fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
       sh(root, "git", "add", "-A");
       sh(root, "git", "commit", "-m", "fix main");
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
       assert.equal(await verifyAndMerge(ctx, request(sha)), "review_error");
@@ -390,7 +390,7 @@ test("the merge checkout is shared, kept detached, and persists at a terminal ou
       // attributed against main's own (green) verdict, so it rejects terminally.
       const tip = advanceMain(root, `main-per-role-${process.pid}-${Date.now()}.txt`, "main moves on\n");
       noteGreenBaseline(tip);
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
       ctx.config = { ...ctx.config, check: { command: "echo 'error: planted merge failure'; exit 1" } };
       const mergeWt = mergeWorktreePath(root);
@@ -435,7 +435,7 @@ test("a failing pre-check on a green main rejects the merge and spends no pi run
   // main is green, so the change's failure is its own.
   const marker = piRanMarker();
   await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx, folded } = makeCtx(root, state);
     ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "echo 'error TS2345: boom' >&2; exit 1" } };
     assert.equal(await verifyAndMerge(ctx, request(sha)), "rejected");
@@ -457,7 +457,7 @@ for (const main of ["green", "red"] as const) {
     // Main moves after the pin, so the in-lock rebase rewrites it and the merge check runs.
     const tip = advanceMain(root, `main-${main}-${process.pid}-${Date.now()}.txt`, "main moves on\n");
     if (main === "green") noteGreenBaseline(tip); // what main's own last merge left behind
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx, calls } = makeCtx(root, state);
     ctx.config = { ...ctx.config, check: { command: "echo 'error: planted merge failure'; exit 1" } };
 
@@ -496,7 +496,7 @@ test("a kept-for-re-merge red merge check logs a warning naming the failing test
   // Main moves after the pin so the in-lock rebase rewrites the tree and the merge check runs.
   const tip = advanceMain(root, `main-red-warn-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   noteGreenBaseline(tip);
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
   ctx.config = { ...ctx.config, check: { command: "echo '✖ the flaky test (1.2ms)'; exit 1" } };
 
@@ -513,7 +513,7 @@ test("a red merge check that passes on its kept-pin retry logs a merge-check fla
   const { root, sha } = await pinnedFixture();
   const tip = advanceMain(root, `main-flake-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   noteGreenBaseline(tip);
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
   ctx.config = { ...ctx.config, check: { command: "echo '✖ the flaky test (1.2ms)'; exit 1" } };
 
@@ -533,7 +533,7 @@ test("a red in-lock merge check whose immediate re-run passes merges and quarant
   const { root, sha } = await pinnedFixture();
   const tip = advanceMain(root, `main-requarantine-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   noteGreenBaseline(tip);
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
   const flag = path.join(tmpdir(), "merge-flaky-once");
   ctx.config = {
@@ -548,7 +548,7 @@ test("a red in-lock merge check whose immediate re-run passes merges and quarant
 
 test("a stale red strike of another pin is not recorded as a flake when a different pin merges", async () => {
   const { root, sha } = await pinnedFixture();
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   state.mergeCheckFailures = { patchId: "not-this-pin", count: 1, headline: "✖ stale test" };
   const { ctx } = makeCtx(root, state);
 
@@ -595,7 +595,7 @@ async function fixClaimFixture(): Promise<{ root: string; sha: string }> {
 test("a fix-claim-blocked merge retries once, then rejects with the block reason", async () => {
   assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
   const { root, sha } = await fixClaimFixture();
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx, calls } = makeCtx(root, state);
 
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked", "the first block keeps the pin for one retry");
@@ -616,7 +616,7 @@ test("a fix-claim-blocked merge retries once, then rejects with the block reason
 
 test("a fix-claim-blocked first attempt followed by a green merge logs no merge-check flake", async () => {
   const { root, sha } = await fixClaimFixture();
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx } = makeCtx(root, state);
   assert.equal(await mergeApprovedChange(ctx, request(sha)), "merge_blocked");
   // The claimed symbol now exists on main, so the retry's cross-checks pass.
@@ -634,7 +634,7 @@ test("an unverified red in-lock check — the run timed out — keeps the pin wi
   // unverified before mergeCheckRed ever sees it).
   const { root, sha } = await pinnedFixture();
   const tip = advanceMain(root, `main-unverified-${process.pid}-${Date.now()}.txt`, "main moves on\n");
-  const state = freshLoopState(ROLE);
+  const state = freshRunnerState(ROLE);
   const { ctx, calls } = makeCtx(root, state);
   ctx.config = { ...ctx.config, check: { command: "sleep 5", timeoutSeconds: 1 } };
 
@@ -662,7 +662,7 @@ test("a failing pre-check on a red main keeps the pin, records no rejection, and
   const newMainSha = mainSha(root);
   const marker = piRanMarker();
   await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
-    const state = freshLoopState(ROLE);
+    const state = freshRunnerState(ROLE);
     const { ctx, folded } = makeCtx(root, state);
     assert.equal(await verifyAndMerge(ctx, request(sha)), "main_red", "not a reviewer failure");
     const pinned = await refSha(root, REF);
@@ -937,7 +937,7 @@ test("the gate re-pins the merge ref to the head its verdict judged", async () =
       sh(wt, "git", "add", "-A");
       sh(wt, "git", "commit", "-m", "later work");
       const judged = headSha(wt);
-      const state = freshLoopState(ROLE);
+      const state = freshRunnerState(ROLE);
       const { ctx } = makeCtx(root, state);
 
       const outcome = await reviewPinnedChange(ctx, request(sha), wt, state, ctx.foldUsage);
