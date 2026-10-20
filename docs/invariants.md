@@ -2773,3 +2773,59 @@ patch field rides the team view.
 instances after the catalog, each with its own change"; `test/change-data.test.ts` — "the team
 view keeps the counts and drops the patch fields"; `test/cli-diff.test.ts` — "team diff --json
 prints the roster: one entry per known role, no patch fields".
+
+## Pause markers: a pause stands until resumed or expired, a wrong-shaped marker never throws, and the role set reads in canonical ids
+
+### INV-AV1: the team marker's presence is the pause, and a missing or expired one never throws
+
+**Guarantee.** A missing or expired team marker reads as unpaused and never throws; a
+non-finite `until` reads as an indefinite pause, never a countdown.
+
+**Binds.** `src/team/team-state.ts` (`standingMarker`, `isTeamPaused`, `pausedUntil`).
+
+**Pinned by.** `test/team-state.test.ts` — "isTeamPaused reads false with no .tumwater dir and no
+marker", "an expired team deadline reads as unpaused everywhere and a re-pause starts fresh", "a
+non-finite team deadline reads as an indefinite pause, never a bogus countdown".
+
+### INV-AV2: pauseTeam reports whether it changed state and keeps one folded reason
+
+**Guarantee.** A plain pause on a standing one is a no-op that keeps the reason; a `--for`
+overwrites the deadline. The reason is folded to one line, capped at `PAUSE_REASON_MAX`, and
+cleared by a reasonless write.
+
+**Binds.** `src/team/team-state.ts` (`pauseTeam`, `pausedReason`).
+
+**Pinned by.** `test/team-state.test.ts` — "pauseTeam writes the marker once and is idempotent",
+"a fresh --for over a standing team pause overwrites the deadline; a plain pause no-ops",
+"pauseTeam carries the operator reason: trimmed, capped, last-write-wins, cleared by a reasonless
+write", "a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote
+it".
+
+### INV-AV3: the per-role set is idempotent and its writers serialize
+
+**Guarantee.** `pauseRole` and `resumeRole` are idempotent, the last removal deletes the file, a
+sibling write keeps the shared deadline, and concurrent writers serialize through the state lock,
+which a crashed writer's stale lock does not hold forever.
+
+**Binds.** `src/team/team-state.ts` (`pauseRole`, `resumeRole`, `standingRolesUntil`,
+`withPausedRolesLock`).
+
+**Pinned by.** `test/team-state.test.ts` — "pauseRole and resumeRole maintain the marker set
+idempotently", "a sibling pause or resume keeps the paused-roles marker's standing shared
+deadline", "simultaneous cross-process pauseRole calls all survive in the marker", "a crashed
+pause writer's lock is stolen, not waited on forever".
+
+### INV-AV4: the role set reads in canonical ids, and its deadline shows only while it is non-empty
+
+**Guarantee.** `readPausedRoles` maps each stored id through `canonicalRoleId`, so a marker
+written before a rename still pauses and resumes the renamed role. An expired deadline releases
+the whole set, and the deadline is reported only while the set is non-empty.
+
+**Binds.** `src/team/team-state.ts` (`readPausedRoles`, `standingRolePause`,
+`pausedRolesUntil`).
+
+**Pinned by.** `test/team-state-pause-read.test.ts` — "a paused-roles marker naming a legacy id
+pauses and resumes the canonical role", "an empty paused-roles set carries no deadline, and a
+non-empty one carries its future deadline"; `test/team-state.test.ts` — "pauseRole with a
+deadline writes { roles, at, until } and expiry releases the set", "a non-finite per-role
+deadline is dropped on a rewrite instead of becoming an expired marker".
