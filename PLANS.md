@@ -647,4 +647,51 @@ Both should say nothing changed, as the CLI does after part 1/2.
 - The TUI's and dashboard's release and top actions are not changed by this entry.
 - `npm run test:gate` passes.
 
+### `tumwater doctor --kill-orphans` kills the orphaned processes the orphans check lists, each with its descendants, instead of leaving the operator to find and kill them by hand (planned 2026-10-20 by the plan role; the operator-side half of BUGS.md "Two `logs -f` processes leaked out of a slot's run…", whose doctor line ends "nothing reaps these". Independent of every Planned entry: touches src/doctor/doctor-orphans.ts, the `doctor` case in src/cli.ts, src/cli/cli-flag-specs.ts, src/cli/help.ts, docs/cli.md and test/doctor-orphans.test.ts and test/doctor.test.ts. The blocked Plain terms series reword comments in src/doctor/ and src/cli.ts but rename nothing this entry uses)
+
+**Goal.** `checkOrphans` (src/doctor/doctor-orphans.ts) finds the processes this team leaked: reparented to PID 1 and either running from `.tumwater/worktrees/` or carrying only dead runs' `TUMWATER_RUN` marks. It fails with `… — nothing reaps these; kill each with its descendants`. The operator then has to rebuild each process tree from `ps` and kill it by hand, and the 2026-10-19 `logs -f` pair stood for 3½ days. The check already knows the exact set and its descendants. One operator command should kill that set and nothing else. This is not an automatic reaper: the bug's open spawner question stays open. The operator runs it, and it kills only what the check would print.
+
+**Approach.**
+- src/doctor/doctor-orphans.ts:
+  - Split the detection half of `checkOrphans` (the `probe.list()` scan through the `orphans` filter) into `async function findOrphans(root, probe)`. It returns `{ rows, orphans, marks, cwdProblem }`, or `{ error: string }` when `probe.list()` rejects. `checkOrphans` calls it and renders exactly as now, so the two cannot disagree about the set.
+  - Turn `descendantCount` into `descendantPids(children, pid): number[]`, with the same walk. The check uses `.length`.
+  - Change the fail detail's tail from ` — nothing reaps these; kill each with its descendants` to ` — nothing reaps these; \`tumwater doctor --kill-orphans\` kills each with its descendants`.
+  - Add `export async function killOrphans(root, probe = systemProcessProbe, signals: OrphanSignals = systemSignals): Promise<OrphanKillReport>`.
+    - `OrphanSignals` is `{ kill(pid: number, signal: NodeJS.Signals): void; alive(pid: number): boolean; graceMs: number; pollMs: number }`. `systemSignals` uses `process.kill`, `pidAlive` (src/process/process.ts), `KILL_GRACE_MS` and `GROUP_POLL_MS` (src/process/process-group.ts).
+    - For each orphan `findOrphans` returns, SIGTERM the orphan and every pid in `descendantPids`, taken from the same `rows` snapshot.
+    - Then poll `alive` every `pollMs` until every signalled pid is gone or `graceMs` has passed. SIGKILL whatever is still alive.
+    - A `kill` that throws `ESRCH` counts as already gone. Any other error (such as `EPERM`) records the pid as not killed, with `errorMessage(err)`, and the remaining pids are still signalled.
+    - `OrphanKillReport` is `{ error: string } | { killed: { pid: number; command: string; descendants: number }[]; failed: { pid: number; reason: string }[] }`. `command` is root-cut and truncated the way the check line cuts it, so factor that cut into a small helper both use.
+- src/cli/cli-flag-specs.ts: add `KILL_ORPHANS_FLAG: FlagSpec = { names: ["--kill-orphans"] }` beside `PROBLEMS_FLAG`, with a doc comment.
+- src/cli.ts `doctor` case:
+  - Accept `KILL_ORPHANS_FLAG`. With `--json` it fails through `failRivalShapes("doctor --kill-orphans", "--json", "it prints what it killed before the report")`.
+  - When the flag is given, `await killOrphans(root)` before `runDoctor` and print one line per entry:
+    - `killed pid <pid> (+<n> descendants) <command>` for each killed orphan, omitting `(+…)` when `descendants` is 0 and using `plural`.
+    - `could not kill pid <pid>: <reason>` for each failed one.
+    - `no orphaned processes to kill` when both lists are empty.
+    - `could not scan the process table — <error>; nothing killed` for the error form.
+  - Then print a blank line and run the report as now, so its `orphans` row shows what is left. The exit code rule is unchanged: 1 when any check fails.
+- src/cli/help.ts: add `[--kill-orphans]` to the `tumwater doctor` usage line. In the description, replace "(read-only; …" with "(read-only unless --kill-orphans, which first kills the orphaned processes the orphans check lists, each with its descendants; …".
+- docs/cli.md: add the same clause to the `tumwater doctor` text in the Audit row.
+
+**Tests.**
+- test/doctor-orphans.test.ts:
+  - Update every expected fail detail to the new tail.
+  - Add "killOrphans terms each orphan's tree, kills what outlives the grace, and touches nothing else". Use the first test's table (8198, 88052 with workers 88160 and 95649, 73241) plus a parented process and another checkout's orphan, through `fakeProbe`. The fake `OrphanSignals` records `(pid, signal)` calls, with `graceMs: 20, pollMs: 5`. `alive` reports 95649 alive throughout and every other pid gone once it has been sent SIGTERM.
+    - Assert SIGTERM went to exactly 8198, 88052, 88160, 95649 and 73241, and SIGKILL only to 95649.
+    - Assert `killed` lists the three orphans with `descendants` 0, 2 and 0, and `failed` is empty.
+  - Add "killOrphans reports a refused signal and an unreadable table". A `kill` throwing `Object.assign(new Error("not permitted"), { code: "EPERM" })` for one pid lands that pid in `failed` and still signals the rest. A throwing `ESRCH` counts as gone, not failed. A probe whose `list()` rejects returns `{ error }` and sends no signal.
+- test/doctor.test.ts:
+  - Run the CLI with the no-`ps` PATH the "full report" test uses (`gitOnlyBinDir()`). `doctor --kill-orphans` prints `could not scan the process table — …; nothing killed`, then the report, and exits by the report's verdict.
+  - `doctor --kill-orphans --json` exits non-zero with `cannot be combined with --json`.
+  - Never run `--kill-orphans` from a test against the real `ps`. The check's dead-mark evidence is not limited to the test's temp root, so a real scan could kill another agent's leaked process.
+
+**Acceptance criteria.**
+- `tumwater doctor --kill-orphans` signals exactly the processes the `orphans` check would list, plus their descendants from the same scan. It prints one line per orphan killed or not killed, then the normal report.
+- A process tree still alive after the grace period is SIGKILLed. A pid the user may not signal is reported, not thrown.
+- Without the flag, `tumwater doctor` signals nothing. Its orphans line differs only in the tail, which now names the command.
+- `--kill-orphans --json` is rejected with the rival-shape message.
+- The BUGS.md `logs -f` entry stays open, because its spawner question is not answered by this.
+- `npm run test:gate` passes.
+
 ## Done
