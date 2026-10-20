@@ -3693,3 +3693,40 @@ calls, not one per file.
 **Pinned by.** `test/git-diff.test.ts` — "aheadOfMainDiff over the cap keeps --stat plus the
 largest files within budget" and "aheadOfMainDiff over the cap spawns only two git calls, not one
 per file".
+
+## Fallback chain reasons: a moved tier names why the step before it cannot run, in a fixed order
+
+### INV-BN1: only a moved tier with a pair gets a chain entry, and its reason is read in a fixed order
+
+**Guarantee.** Only a tier the poll moved, with a non-null pair, gets an entry in the `chain`
+block. Its reason comes from the position just before the active step (the previous step, or the
+primary at step 0), checked in this order: demoted, step-cap, window or reserve, overage, cap. A
+prior step the breaker has demoted reads "demoted" even when its step cap is also spent. A prior
+step whose own daily cap is spent (spend at or over the cap) reads "step-cap". "overage" needs a
+prior Claude step that has extra usage, which is a Claude step after a Claude primary, on an
+account that refuses overage; a pi primary's first Claude step reads "cap".
+
+**Binds.** `src/gates/budget-gates.ts` (`chainInfo`, `fallbackServingPair`, `pairDailyCost`).
+
+**Pinned by.** `test/budget-chain-info.test.ts` — "chainInfo names a demoted prior step, ahead of
+its spent step cap", "chainInfo names a prior step whose own cap is spent as step-cap, back at
+local midnight; under it the reason is cap", "chainInfo names overage only for an extra-usage
+Claude step on an account that refuses it" and "chainInfo lists only moved tiers, and prices a step
+only when it is priced".
+
+### INV-BN2: a reason carries the time the position before it comes back, and a cap only for a priced capped step
+
+**Guarantee.** `returnsAt` is the window's reset for "window" and "reserve", and the next local
+midnight for "step-cap" and "cap". "demoted" and "overage" carry none. `spentUsd` and `capUsd`
+appear only when the active step has its own cap and is priced.
+
+**Binds.** `src/gates/budget-gates.ts` (`chainInfo`).
+
+**Pinned by.** `test/budget-chain-info.test.ts` — "chainInfo names a prior step whose own cap is
+spent as step-cap, back at local midnight; under it the reason is cap", "chainInfo tells a reserve
+hold from a used-up window, both back at the window's reset" and "chainInfo lists only moved tiers,
+and prices a step only when it is priced"; `test/budget-gates.test.ts` — "chain: a rejected window
+puts the claude tier on its fallback step; under the cap with no window it is empty" and "chain: at
+the cap a priced tier lists its fallback step, a free primary stays unlisted";
+`test/gate-polls.test.ts` — "pollTeamGates: fallback_switched is logged once per chain change and
+orchestrator info carries chain".
