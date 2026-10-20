@@ -14,7 +14,7 @@ import { exitCode, spawnCli } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
 import { onlyCleanRole } from "./helpers/start-live-harness.js";
 
-// `tumwater run`'s two live run modes: the `--for` bounded window that stops itself at its
+// `tumwater start`'s two live run modes: the `--for` bounded window that stops itself at its
 // deadline, and `--gui`, which serves the browser dashboard from the supervisor so it outlives
 // orchestrator generations. Both boot a real team; the pre-boot guards live in
 // cli-start-guards.test.ts, the lifecycle and shutdown tests in cli-start-shutdown.test.ts, the
@@ -83,7 +83,7 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
   await initProject(repo, "cli run for window");
 
   onlyCleanRole(repo);
-  // A tick that ended before the window opened must not be counted in the window's summary.
+  // A run that ended before the window opened must not be counted in the window's summary.
   logEvent(repo, { ts: Date.now() - 3_600_000, source: "ghost", type: "run_end", run: 1, result: "changed" } as never);
   const restore = fakePi("exit 0");
   const spawnedAt = Date.now();
@@ -108,7 +108,7 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     assert.match(s.out(), /deadline reached — stopping/);
     assert.match(s.out(), /stopping — finishing current runs/);
     assert.match(s.out(), /for 3s: \d+ runs?/);
-    assert.ok(!s.out().includes("ghost"), `a pre-window tick leaked into the summary:\n${s.out()}`);
+    assert.ok(!s.out().includes("ghost"), `a pre-window run leaked into the summary:\n${s.out()}`);
     assert.ok(!s.out().split("\n").some((l) => l.startsWith("once:")), "no once: line under --for");
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
     // A deadline stop the run asked for is not the team dying: no supervisor_exit trace.

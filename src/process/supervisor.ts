@@ -5,8 +5,8 @@ import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
 
-/** The respawn loop behind `tumwater run`. The command runs as two processes: this supervisor (the
- * one the operator started, holding the terminal) and a child that actually runs the orchestrator.
+/** The respawn loop behind `tumwater start`. The command runs as two processes: this supervisor
+ * (the one the operator started, holding the terminal) and a child that runs the orchestrator.
  * When the child rebuilt dist/ onto a newer main (src/redeploy/redeployer.ts) it exits
  * RESTART_EXIT_CODE and the supervisor respawns it — the same script path, now holding the new
  * code — so a self-hosting team picks up its own changes without anyone at the keyboard. Any
@@ -15,7 +15,7 @@ import { childEnv, runOnAbort } from "./process.js";
  * reaches both processes from the terminal (same foreground group), so the supervisor forwards only
  * SIGTERM, which a plain `kill` delivers to it alone. */
 
-/** Marks the child: `tumwater run` with this set runs the orchestrator instead of supervising. */
+/** Marks the child: `tumwater start` with this set runs the orchestrator instead of supervising. */
 export const SUPERVISED_ENV = "TUMWATER_SUPERVISED";
 
 /** Names the supervisor's pid in a supervised child's environment, so the child's parent-death
@@ -173,7 +173,7 @@ function exitCodeOf(exit: ChildExit): number {
 
 /** Run child generations until one exits with something other than a restart request, and
  * return the code the supervisor should exit with. Pure apart from the injected effects. */
-export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal): Promise<number> {
+export async function superviseStart(opts: SuperviseOptions, signal: AbortSignal): Promise<number> {
   const now = opts.now ?? Date.now;
   let generation = 1;
   const recentRespawns: number[] = [];
@@ -237,7 +237,7 @@ export function teamDownEvent(down: TeamDown, diagnosis: string | null): Harness
 
 /** The production child spawner: the same node binary and cli.js script as this process with
  * `run` as the command — plus any flags the operator's original invocation carried (e.g.
- * `tumwater run --branch x`: the child IS the orchestrator generation, so it must target the
+ * `tumwater start --branch x`: the child IS the orchestrator generation, so it must target the
  * same branch) — stdio shared (the child's event stream is what the operator sees), and
  * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again, plus
  * SUPERVISOR_PID_ENV naming this supervisor so the child's own parent-death watch fires even if
@@ -245,7 +245,7 @@ export function teamDownEvent(down: TeamDown, diagnosis: string | null): Harness
  * RUN_WINDOW_START_ENV for a `--for` window. `stdio` defaults to `"inherit"` (the child's
  * event stream is what a plain `run` operator sees); `run --tui` passes silent stdio instead,
  * because the observer TUI owns the terminal and the child must not paint over its render. */
-export function spawnRunChild(
+export function spawnStartChild(
   signal: AbortSignal,
   extraArgs: string[] = [],
   env: NodeJS.ProcessEnv = {},
@@ -276,14 +276,14 @@ export function spawnRunChild(
  * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
  * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor
  * dies outright (SIGKILL, a crash), freeing the dashboard port. Deliberately not SUPERVISED_ENV:
- * the child must run `gui`, not supervise a team. Resolves like spawnRunChild — a failed spawn
+ * the child must run `gui`, not supervise a team. Resolves like spawnStartChild — a failed spawn
  * is `{ code: 1, signal: null }` — so an EMFILE/ENOMEM here cannot throw an unhandled 'error'. */
 export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}, stdio: StdioOptions = "inherit"): Promise<ChildExit> {
   return spawnSupervised(["gui"], signal, env, stdio);
 }
 
 /** Spawn one supervised child (`commandArgs` after the cli.js script path) and resolve on its
- * exit, with the abort signal wiring and spawn-failure handling shared by spawnRunChild and
+ * exit, with the abort signal wiring and spawn-failure handling shared by spawnStartChild and
  * spawnGuiChild: the signal's abort sends SIGTERM, and a spawn that never starts resolves as a
  * failed exit instead of emitting an unhandled 'error'. */
 function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS.ProcessEnv, stdio: StdioOptions = "inherit"): Promise<ChildExit> {

@@ -49,7 +49,7 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDepen
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
  * cli.ts walks git-binary → repo → tumwater.json → commits and stops at the first failure;
- * cmdRun adds pi-on-PATH and orchestrator-alive), so a user facing a partially initialized or
+ * cmdStart adds pi-on-PATH and orchestrator-alive), so a user facing a partially initialized or
  * drifted environment gets one error at a time. doctor runs every check, reports each result
  * individually instead of stopping at the first failure, and exits 0/1 so it can be scripted —
  * the pre-flight sibling of `status --json`, which queries live team state while doctor

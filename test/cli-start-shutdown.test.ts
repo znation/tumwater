@@ -77,7 +77,7 @@ test("run starts the team, prints its banner, and stops cleanly on SIGTERM", asy
     assert.notEqual(Number(m[1]), s.child.pid, "the orchestrator must run as the supervisor's child");
 
     // SIGTERM reaches only the supervisor from a plain kill; it forwards it to the child,
-    // which takes the graceful stop path (announce, abort in-flight ticks), and the
+    // which takes the graceful stop path (announce, abort in-flight runs), and the
     // supervisor exits with the child's code.
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
@@ -85,7 +85,7 @@ test("run starts the team, prints its banner, and stops cleanly on SIGTERM", asy
     assert.match(s.out(), /stopping — finishing current runs/);
 
     // Graceful shutdown removed the info file: a stale marker would make every later
-    // `tumwater run` refuse to start.
+    // `tumwater start` refuse to start.
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
   });
 });
@@ -106,7 +106,7 @@ test("run's banner lists one role per instance, so the CLI roster matches the ru
 // BUGS.md 2026-09-30: kill() is the cleanup every spawnCli test's finally relies on, including
 // after a failed assertion that never reached the test's own SIGTERM step. It used to SIGKILL
 // the supervisor alone, leaving the stdio-inherited orchestrator generation alive with the
-// test's pipes — the file never exited and a `node … | tail` tool call hung the tick. The
+// test's pipes — the file never exited and a `node … | tail` tool call hung the run. The
 // generation's death is what closes the pipes, so stdout reaching EOF after kill() alone is
 // the observable that the whole tree is gone.
 test("kill() alone tears down the whole run tree: the pipes close, nothing is orphaned", async () => {
@@ -137,9 +137,9 @@ test("kill() alone tears down the whole run tree: the pipes close, nothing is or
 });
 
 // Criterion 1 of plans/portability.md §5/7: with pi absent from PATH but agentBin set to an
-// absolute path, the team starts and ticks normally. The lifecycle mirrors the SIGTERM test
+// absolute path, the team starts and runs normally. The lifecycle mirrors the SIGTERM test
 // above, but PATH holds only git — the agent binary comes from tumwater.json alone.
-test("run starts and ticks with agentBin when pi is absent from PATH", async () => {
+test("run starts and runs with agentBin when pi is absent from PATH", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run agentBin lifecycle");
 

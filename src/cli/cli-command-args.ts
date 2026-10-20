@@ -3,7 +3,7 @@
  * `tumwater prompt`, whose positionals are prompt TEXT rather than a token list. Every
  * shared helper in cli/cli-args.ts assumes flags claim their tokens and rejects whatever is
  * left over — exactly wrong here, where a misspelled flag must fail instead of being
- * silently baked into the prompt that every role then ticks from. Both parsers therefore
+ * silently baked into the prompt that every role then runs from. Both parsers therefore
  * hand-roll the same discipline (a double-dash token must be a known flag, given at most
  * once; single-dash tokens are content) and share failStrayArg, so they live together
  * apart from cli/cli-args.ts's generic machinery — which also keeps that module, minus these
@@ -27,10 +27,10 @@ import { errorMessage } from "../text/text.js";
 
 /** Peel a positional-first command's bare tokens off the argument list: every flag-shaped
  * token rides in rest for rejectUnknownArgs, every bare token is a positional. For commands
- * with no valued flags (tick: `--json` alone; bug/plan via fileAndAnnounce) the split is a
- * prefix test — a negative tick number (`tick bugfix -3`) arrives flag-shaped and fails the
+ * with no valued flags (history: `--json` alone; bug/plan via fileAndAnnounce) the split is a
+ * prefix test — a negative run number (`history bugfix -3`) arrives flag-shaped and fails the
  * unknown-arg gate, which is the right answer for a non-positive n anyway. Lives here with
- * the CLI's other argument helpers, shared by cli.ts's tick case and
+ * the CLI's other argument helpers, shared by cli.ts's history case and
  * backlog-cli.ts's fileAndAnnounce. */
 export function peelPositionals(args: string[]): {
   positionals: string[];
@@ -165,7 +165,7 @@ function rejectDuplicateFlags(args: readonly string[], flags: readonly string[])
  * once; with `--file` present nothing but the other flags may accompany it; a `--branch
  * <name>` pair and the valueless flags are never prompt content; single-dash positionals are
  * prompt content, not flags. Without these checks a misspelled --file would be baked into the
- * initial prompt — injected into every tick of every role until someone edits the project
+ * initial prompt — injected into every run of every role until someone edits the project
  * brief. */
 export function parseInitArgs(args: string[]): {
   prompt: string;

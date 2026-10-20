@@ -367,7 +367,7 @@ test("pollTeamHold holds provider claude until resetsAt and logs claude_window_l
   // Over the API no hold is placed at all.
   const api = tmpdir("tumwater-team-polls-");
   const apiHolds = pollTeamHold(api, new Map(), [], T0, account({ billing: "api" }));
-  assert.equal(apiHolds.get("claude")?.until ?? null, null, "API-billed claude seams tick");
+  assert.equal(apiHolds.get("claude")?.until ?? null, null, "API-billed claude seams run");
   assert.equal(windowEvents(api).length, 0);
 
   // At resetsAt the hold lifts by itself and the reset is logged once.

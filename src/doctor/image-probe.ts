@@ -225,7 +225,7 @@ function isFourDigitNumber(text: string): boolean {
 /** Probe one claimed pi seam with a real image (plans/image-input.md "Doctor"). Runs the
  * resolved pi binary in a run's environment (the caller passes `env`, typically
  * `childEnv({ PATH: pathEnv })` which inherits `PI_CODING_AGENT_DIR`, so the probe reads the
- * same models.json a real tick would):
+ * same models.json a real run would):
  *
  *   `pi --print --mode json --no-session --no-tools --no-mcp --provider P --model M
  *        --thinking <level> @<png> "Reply with only the 4-digit number shown in the image."`
@@ -247,7 +247,7 @@ export async function runImageProbe(
   code?: string,
 ): Promise<ImageProbeResult> {
   const envBin = env.TUMWATER_PI_BIN?.trim();
-  // Resolve from the run's own environment (env override → config), exactly as a real tick's
+  // Resolve from the run's own environment (env override → config), exactly as a real run's
   // spawn would rather than only the harness process env — so tests can point a fake pi there.
   const bin = envBin
     ? envBin.includes("/")

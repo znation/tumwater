@@ -73,7 +73,7 @@ test("reset-counters zeroes counters in every role's state file and writes the t
 
   for (const role of ["feature", "clean"]) {
     const s = loadRunnerState(repo, role);
-    assert.equal(s.runs, 0, `${role} ticks`);
+    assert.equal(s.runs, 0, `${role} runs`);
     assert.equal(s.commits, 0, `${role} commits`);
     assert.equal(s.generatedTokens, 0, `${role} tokens`);
     assert.equal(s.totalCostUsd, 0, `${role} cost`);
@@ -81,9 +81,9 @@ test("reset-counters zeroes counters in every role's state file and writes the t
     assert.ok(s.nextRunAt > Date.now(), `${role} keeps its sleep window`);
     assert.equal(s.backoffSeconds, 15, `${role} backoff preserved`);
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
-    // Per-tick semantics: a fresh observation window clears the last tick's peak too,
-    // or sleeping roles would keep showing their old value until they next tick.
-    assert.equal(s.peakContextTokens, 0, `${role} per-tick peak ctx cleared`);
+    // Per-run semantics: a fresh observation window clears the last run's peak too,
+    // or sleeping roles would keep showing their old value until they next run.
+    assert.equal(s.peakContextTokens, 0, `${role} per-run peak ctx cleared`);
   }
 
   // The marker a running team consumes lists every role in the config.
@@ -238,7 +238,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
   // letting the test assert the actual signal it dies from. Reaped in the finally: a failed
   // assertion that left it alive kept this file's process up forever (its event loop held by
   // the child), hanging the whole suite until the runner's ceiling (2026-10-01, a feature
-  // tick's broken dist failed `stop` here and wedged `npm run test` for 15 min).
+  // run's broken dist failed `stop` here and wedged `npm run test` for 15 min).
   const live = spawnLiveChild();
   try {
     writeOrchestratorMarker(repo, [], { pid: live.child.pid });

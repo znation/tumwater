@@ -91,7 +91,7 @@ export function collectRoleRows(
     // page, and the submit gate cannot disagree about who reads images or where a blind
     // prompt would run.
     const image = roleImageInfo(cfg, r, modelsPath, probes, listed);
-    // Model failure fallback, part 2/2: while the role's episode is active its ticks run on
+    // Model failure fallback, part 2/2: while the role's episode is active its agent runs use
     // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
     // every row agrees on what "active" means.

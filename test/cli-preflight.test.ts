@@ -14,7 +14,7 @@ test("run fails fast with a clear message when pi is missing from PATH", async (
   await initProject(repo, "cli run validation");
 
   // A PATH that has git (so the repo checks pass) but no pi: without the startup check,
-  // the orchestrator would start and every tick of every role would die with
+  // the orchestrator would start and every run of every role would die with
   // "failed to spawn pi: spawn pi ENOENT".
   const binDir = gitOnlyBinDir();
 

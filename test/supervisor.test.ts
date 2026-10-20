@@ -19,17 +19,16 @@ import {
   expectedSupervisorPid,
   SUPERVISED_ENV,
   SUPERVISOR_PID_ENV,
-  spawnRunChild,
+  spawnStartChild,
   spawnGuiChild,
-  superviseRun,
+  superviseStart,
   ONCE_FAILED_EXIT_CODE,
 } from "../src/process/supervisor.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The respawn loop behind `tumwater run` (src/process/supervisor.ts), driven with a scripted child
-// so
-// the policy is pinned without spawning processes: respawn on the restart code, exit with any
-// other code, honor a stop request, and refuse to spin on a crash-looping build.
+// The respawn loop behind `tumwater start` (src/process/supervisor.ts), driven with a scripted
+// child so the policy is pinned without spawning processes: respawn on the restart code, exit with
+// any other code, honor a stop request, and refuse to spin on a crash-looping build.
 
 function scripted(codes: Array<number | null>): { spawnChild: (signal: AbortSignal) => Promise<ChildExit>; spawns: number } {
   const state = { spawns: 0 };
@@ -45,10 +44,10 @@ function scripted(codes: Array<number | null>): { spawnChild: (signal: AbortSign
   };
 }
 
-test("superviseRun respawns on the restart code and exits with the final generation's code", async () => {
+test("superviseStart respawns on the restart code and exits with the final generation's code", async () => {
   const child = scripted([RESTART_EXIT_CODE, RESTART_EXIT_CODE, 0]);
   const generations: number[] = [];
-  const code = await superviseRun(
+  const code = await superviseStart(
     { spawnChild: child.spawnChild, stopping: () => false, onRespawn: (g) => generations.push(g) },
     new AbortController().signal,
   );
@@ -60,7 +59,7 @@ test("superviseRun respawns on the restart code and exits with the final generat
 test("a once round's failed exit code passes through without paging", async () => {
   const child = scripted([ONCE_FAILED_EXIT_CODE]);
   let paged = 0;
-  const code = await superviseRun(
+  const code = await superviseStart(
     { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: () => { paged += 1; } },
     new AbortController().signal,
   );
@@ -68,24 +67,24 @@ test("a once round's failed exit code passes through without paging", async () =
   assert.equal(paged, 0);
 });
 
-test("superviseRun passes a failing child's exit straight through (no respawn)", async () => {
+test("superviseStart passes a failing child's exit straight through (no respawn)", async () => {
   const child = scripted([1]);
-  assert.equal(await superviseRun({ spawnChild: child.spawnChild, stopping: () => false }, new AbortController().signal), 1);
+  assert.equal(await superviseStart({ spawnChild: child.spawnChild, stopping: () => false }, new AbortController().signal), 1);
   assert.equal(child.spawns, 1);
   // A child killed by a signal has no code: the supervisor reports failure, never respawns.
   const killed = scripted([null]);
-  assert.equal(await superviseRun({ spawnChild: killed.spawnChild, stopping: () => false }, new AbortController().signal), 1);
+  assert.equal(await superviseStart({ spawnChild: killed.spawnChild, stopping: () => false }, new AbortController().signal), 1);
   assert.equal(killed.spawns, 1);
 });
 
-test("superviseRun runs onDone once on every ending, and its failure never changes the exit", async () => {
+test("superviseStart runs onDone once on every ending, and its failure never changes the exit", async () => {
   // The end-of-supervision repair hook: the production wiring restores an interrupted build
   // swap to dist/ (build-stage.recoverInterruptedSwap). It must run for a failure ending too —
   // that is exactly the mid-swap SIGKILL shape — and a hook that throws must leave the child's
   // exit code intact, since the repair is best-effort and the caller reports its own failure.
   const failed = scripted([1]);
   let done = 0;
-  const code = await superviseRun(
+  const code = await superviseStart(
     {
       spawnChild: failed.spawnChild,
       stopping: () => false,
@@ -102,7 +101,7 @@ test("superviseRun runs onDone once on every ending, and its failure never chang
   // Also on a clean exit, and exactly once after respawns.
   const clean = scripted([RESTART_EXIT_CODE, 0]);
   let cleanDone = 0;
-  const cleanCode = await superviseRun(
+  const cleanCode = await superviseStart(
     { spawnChild: clean.spawnChild, stopping: () => false, onDone: () => { cleanDone += 1; } },
     new AbortController().signal,
   );
@@ -112,7 +111,7 @@ test("superviseRun runs onDone once on every ending, and its failure never chang
 
 test("a restart request after the operator asked to stop ends the supervisor instead of respawning", async () => {
   const child = scripted([RESTART_EXIT_CODE]);
-  const code = await superviseRun({ spawnChild: child.spawnChild, stopping: () => true }, new AbortController().signal);
+  const code = await superviseStart({ spawnChild: child.spawnChild, stopping: () => true }, new AbortController().signal);
   assert.equal(code, RESTART_EXIT_CODE, "the child's own code is what the operator sees");
   assert.equal(child.spawns, 1);
 });
@@ -121,7 +120,7 @@ test("the crash-loop guard gives up after too many rapid respawns", async () => 
   const child = scripted(Array(MAX_RAPID_RESPAWNS + 5).fill(RESTART_EXIT_CODE));
   let tripped = 0;
   let now = 1_000_000;
-  const code = await superviseRun(
+  const code = await superviseStart(
     {
       spawnChild: child.spawnChild,
       stopping: () => false,
@@ -138,7 +137,7 @@ test("the crash-loop guard gives up after too many rapid respawns", async () => 
 test("respawns spaced wider than the window never trip the guard", async () => {
   const child = scripted([...Array(MAX_RAPID_RESPAWNS + 3).fill(RESTART_EXIT_CODE), 0]);
   let now = 1_000_000;
-  const code = await superviseRun(
+  const code = await superviseStart(
     { spawnChild: child.spawnChild, stopping: () => false, now: () => (now += RESPAWN_WINDOW_MS + 1) },
     new AbortController().signal,
   );
@@ -153,7 +152,7 @@ test("respawns spaced wider than the window never trip the guard", async () => {
 test("a generation that dies unasked is reported through onTeamDown before the supervisor exits", async () => {
   const child = scripted([RESTART_EXIT_CODE, 1]);
   const downs: TeamDown[] = [];
-  const code = await superviseRun(
+  const code = await superviseStart(
     { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: (d) => void downs.push(d) },
     new AbortController().signal,
   );
@@ -163,7 +162,7 @@ test("a generation that dies unasked is reported through onTeamDown before the s
   // A signal death is a failure too — including the operator's own first generation.
   const killed = scripted([null]);
   const killedDowns: TeamDown[] = [];
-  await superviseRun(
+  await superviseStart(
     { spawnChild: killed.spawnChild, stopping: () => false, onTeamDown: (d) => void killedDowns.push(d) },
     new AbortController().signal,
   );
@@ -179,7 +178,7 @@ test("asked-for endings leave no team-down trace: a clean exit, or anything whil
   ] as Array<[Array<number | null>, boolean]>) {
     const child = scripted(codes);
     let downs = 0;
-    await superviseRun(
+    await superviseStart(
       { spawnChild: child.spawnChild, stopping: () => stopping, onTeamDown: () => void (downs += 1) },
       new AbortController().signal,
     );
@@ -191,7 +190,7 @@ test("a tripped crash-loop guard is reported as a team down too", async () => {
   const child = scripted(Array(MAX_RAPID_RESPAWNS + 5).fill(RESTART_EXIT_CODE));
   const downs: TeamDown[] = [];
   let now = 1_000_000;
-  const code = await superviseRun(
+  const code = await superviseStart(
     { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: (d) => void downs.push(d), now: () => (now += 1000) },
     new AbortController().signal,
   );
@@ -203,7 +202,7 @@ test("a tripped crash-loop guard is reported as a team down too", async () => {
 
 test("an onTeamDown that throws leaves the exit code the child's", async () => {
   const child = scripted([3]);
-  const code = await superviseRun(
+  const code = await superviseStart(
     {
       spawnChild: child.spawnChild,
       stopping: () => false,
@@ -269,13 +268,13 @@ async function within<T>(p: Promise<T>, ms: number): Promise<T> {
   }
 }
 
-test("spawnRunChild runs the same script with `run`, SUPERVISED_ENV set, and reports its exit", async () => {
+test("spawnStartChild runs the same script with `run`, SUPERVISED_ENV set, and reports its exit", async () => {
   const dir = tmpdir();
   try {
     for (const code of [0, 3]) {
       const outFile = path.join(dir, `evidence-${code}.json`);
       await withArgv1(probeScript(dir, outFile, `process.exit(${code});\n`), async () => {
-        const exit = await within(spawnRunChild(new AbortController().signal), 15_000);
+        const exit = await within(spawnStartChild(new AbortController().signal), 15_000);
         assert.deepEqual(exit, { code, signal: null });
       });
       const seen = readJson<Record<string, unknown>>(path.join(dir, `evidence-${code}.json`));
@@ -319,12 +318,12 @@ test("spawnGuiChild runs the same script with `gui`, and a silent stdio (run --t
   }
 });
 
-test("spawnRunChild hands the child the extra env marks beside SUPERVISED_ENV", async () => {
+test("spawnStartChild hands the child the extra env marks beside SUPERVISED_ENV", async () => {
   const dir = tmpdir();
   try {
     const outFile = path.join(dir, "evidence.json");
     await withArgv1(probeScript(dir, outFile, "process.exit(0);\n"), async () => {
-      await within(spawnRunChild(new AbortController().signal, [], { [RUN_WINDOW_START_ENV]: "123" }), 15_000);
+      await within(spawnStartChild(new AbortController().signal, [], { [RUN_WINDOW_START_ENV]: "123" }), 15_000);
     });
     const seen = readJson<Record<string, unknown>>(outFile);
     assert.equal(seen[RUN_WINDOW_START_ENV], "123");
@@ -334,11 +333,11 @@ test("spawnRunChild hands the child the extra env marks beside SUPERVISED_ENV", 
   }
 });
 
-test("spawnRunChild without a script path fails fast with code 1 and spawns nothing", async () => {
+test("spawnStartChild without a script path fails fast with code 1 and spawns nothing", async () => {
   const dir = tmpdir();
   try {
     await withArgv1(undefined, async () => {
-      const exit = await spawnRunChild(new AbortController().signal);
+      const exit = await spawnStartChild(new AbortController().signal);
       assert.deepEqual(exit, { code: 1, signal: null });
     });
     assert.equal(fs.readdirSync(dir).length, 0, "no child was spawned");
@@ -347,15 +346,15 @@ test("spawnRunChild without a script path fails fast with code 1 and spawns noth
   }
 });
 
-test("spawnRunChild resolves with code 1 when the child cannot be spawned", async () => {
+test("spawnStartChild resolves with code 1 when the child cannot be spawned", async () => {
   const dir = tmpdir();
   const originalExecPath = process.execPath;
   try {
     // A spawn that never reaches a live process (here: an execPath that does not exist) emits
     // 'error' instead of 'exit'. The promise must settle — one left pending would freeze
-    // `tumwater run` before its first run, with nothing on screen to explain it.
+    // `tumwater start` before its first run, with nothing on screen to explain it.
     process.execPath = path.join(dir, "missing-node-binary");
-    const exit = await within(spawnRunChild(new AbortController().signal), 15_000);
+    const exit = await within(spawnStartChild(new AbortController().signal), 15_000);
     assert.deepEqual(exit, { code: 1, signal: null }, "a failed spawn reads as failure, not success");
   } finally {
     process.execPath = originalExecPath;
@@ -368,7 +367,7 @@ test("aborting the signal terminates a live child with SIGTERM", async () => {
   try {
     await withArgv1(probeScript(dir, null, "setTimeout(() => {}, 10_000);\n"), async () => {
       const controller = new AbortController();
-      const pending = spawnRunChild(controller.signal);
+      const pending = spawnStartChild(controller.signal);
       setTimeout(() => controller.abort(), 50);
       const exit = await within(pending, 15_000);
       assert.deepEqual(exit, { code: null, signal: "SIGTERM" });

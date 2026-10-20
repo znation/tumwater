@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-start.js";
-import { summarizeTickRows, type TickRow } from "../src/history/history-data.js";
+import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -11,10 +11,10 @@ import type { RunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 
-// Unit seam for cli/cli-start.ts's onceSummary — the one-line `tumwater run --once` summary a cron
-// log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
+// Unit seam for cli/cli-start.ts's onceSummary — the one-line `tumwater start --once` summary a
+// cron log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
 // deferred included) is pinned end to end by test/orchestrator-once.e2e.test.ts; these tests
-// pin the summary's own accounting at unit level: tick counting against the pre-round
+// pin the summary's own accounting at unit level: run counting against the pre-round
 // snapshot, bucketing by last result, and skip reasons reported verbatim from the
 // orchestrator's settle map — the 2026-09-25 BUGS.md fix that stopped a deferred role from
 // being re-derived from state as "idle". The state-derived classification appears only as the
@@ -28,7 +28,7 @@ function state(role: string, over: Partial<RunnerState>): RunnerState {
 // --- parseRunWindow: the run --for body rules (the dispatcher's durationFlagSpec("run --for") gate
 // has
 // already named a malformed value with parseDurationFlag's wording by the time these run;
-// here the same parse is pinned through the helper cmdRun itself calls) ---
+// here the same parse is pinned through the helper cmdStart itself calls) ---
 
 test("parseRunWindow parses --for's duration and returns null without the flag", () => {
   assert.equal(expectOk(() => parseRunWindow(["--for", "2h"], false)), 2 * 60 * 60 * 1000);
@@ -56,7 +56,7 @@ test("parseRunWindow enforces pause --for's 90-day cap", () => {
 // --- guiChildPlan: the run --gui arg split the supervisor spawns from ---
 
 // `run --gui` strips --gui before handing the args to the supervised orchestrator generation
-// (whose cmdRun would otherwise supervise a second dashboard), and reports whether the
+// (whose cmdStart would otherwise supervise a second dashboard), and reports whether the
 // supervisor should start one. Pinned here so the stripping cannot silently drop.
 test("guiChildPlan strips --gui and reports it, leaving other args untouched", () => {
   assert.deepEqual(guiChildPlan(["--gui"]), {
@@ -104,7 +104,7 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
   });
 });
 
-// --- armDeadlineTimer: the deadline timer cmdRun arms for `run --for` ---
+// --- armDeadlineTimer: the deadline timer cmdStart arms for `run --for` ---
 
 // A duration over setTimeout's 32-bit signed limit (2_147_483_647 ms ≈ 24.8 days) is clamped
 // by Node to 1ms with a TimeoutOverflowWarning, so the deadline would fire immediately and a
@@ -131,7 +131,7 @@ test("armDeadlineTimer fires a short duration on schedule and clear() retracts i
   firedTimer.clear(); // Already fired; clear() is still safe.
 });
 
-test("counts the round's ticks and buckets them by last result, sorted by key", () => {
+test("counts the round's runs and buckets them by last result, sorted by key", () => {
   const root = makeRepo();
   saveRunnerState(root, state("clean", { runs: 2, lastResult: "changed" }));
   saveRunnerState(root, state("docs", { runs: 1, lastResult: "no_change" }));
@@ -148,11 +148,11 @@ test("counts the round's ticks and buckets them by last result, sorted by key", 
     undefined,
   );
 
-  // Only the ticks this round advanced count: qa had 1 tick before, so 2 of its 3 are new.
+  // Only the runs this round advanced count: qa had 1 run before, so 2 of its 3 are new.
   assert.equal(line, "once: 5 runs — 1 changed, 1 error, 1 no_change");
 });
 
-test("one advanced tick reads singular; zero ticks read `nothing ran`", () => {
+test("one advanced run reads singular; zero runs read `nothing ran`", () => {
   const root = makeRepo();
   saveRunnerState(root, state("clean", { runs: 1, lastResult: "no_change" }));
   assert.equal(
@@ -216,11 +216,11 @@ test("a role the settle map lacks falls back to state, via the pause marker", ()
   assert.equal(line, "once: 0 runs — nothing ran, 1 skipped (paused)");
 });
 
-test("a role enabled mid-round counts by the round's ticks-run map, not its whole history", () => {
+test("a role enabled mid-round counts by the round's runs-done map, not its whole history", () => {
   const root = makeRepo();
   // The role joined the runners array after the round's start (live config reload), so it is
-  // in neither `roles` nor runsBefore: its persisted ticks (5) are not this round's, and
-  // only the orchestrator's ticks-run map knows it ran exactly one (BUGS.md 2026-09-25).
+  // in neither `roles` nor runsBefore: its persisted runs (5) are not this round's, and
+  // only the orchestrator's runs-done map knows it ran exactly one (BUGS.md 2026-09-25).
   saveRunnerState(root, state("improve", { runs: 6, lastResult: "changed" }));
 
   const line = onceSummary(
@@ -239,9 +239,9 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
 
 test("a ran role with no recorded last result buckets as no_change", () => {
   const root = makeRepo();
-  // A tick that advanced the counter without writing lastResult — the field is optional on
+  // A run that advanced the counter without writing lastResult — the field is optional on
   // RunnerState — still counts, bucketed under the same `no_change` key a recorded no-change
-  // tick uses, rather than dropping out of the counts line.
+  // run uses, rather than dropping out of the counts line.
   saveRunnerState(root, state("clean", { runs: 1 }));
 
   assert.equal(
@@ -250,10 +250,10 @@ test("a ran role with no recorded last result buckets as no_change", () => {
   );
 });
 
-test("a role the round's ticks-run map lacks counts zero and settles, not its history", () => {
+test("a role the round's runs-done map lacks counts zero and settles, not its history", () => {
   const root = makeRepo();
   // The mid-round map is the source of truth for who ran: a role listed in `roles` but
-  // absent from it ran zero ticks this round — its persisted history (ticks 4) must not
+  // absent from it ran zero runs this round — its persisted history (runs 4) must not
   // leak into the summary, and it reports the settle reason like any skipped role.
   saveRunnerState(root, state("clean", { runs: 4 }));
   saveRunnerState(root, state("improve", { runs: 1, lastResult: "changed" }));
@@ -271,7 +271,7 @@ test("a role the round's ticks-run map lacks counts zero and settles, not its hi
 
 test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
   const root = makeRepo();
-  // The shape a productive tick leaves behind: backoffSeconds 0 with a future nextRunAt —
+  // The shape a productive run leaves behind: backoffSeconds 0 with a future nextRunAt —
   // the scheduled clock, not a backoff deadline. The old fallback keyed backoff on
   // nextRunAt alone (the same clock-vs-backoff conflation the 2026-09-25 settleSkipped
   // fix removed), so a merely not-due role in a settle-map-missing round's summary read
@@ -302,7 +302,7 @@ test("the fallback reads a raised backoffSeconds as backoff", () => {
 
 test("the fallback reads a pending resume as pending work, not backoff or idle", () => {
   const root = makeRepo();
-  // A cut-off tick waits one interval with backoffSeconds 0 and a future nextRunAt: the
+  // A cut-off run waits one interval with backoffSeconds 0 and a future nextRunAt: the
   // resume check must outrank the clock, or the wait reads as backoff (or, post-fix, as
   // idle — both hide that half-finished work is pending).
   saveRunnerState(
@@ -316,14 +316,14 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
   );
 });
 
-test("onceFailures reports roles that ticked this round and ended in a failure result", () => {
+test("onceFailures reports roles that ran this round and ended in a failure result", () => {
   const root = makeRepo();
   saveRunnerState(root, state("clean", { runs: 1, lastResult: "error" }));
   assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }]);
-  assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 0]])), [], "did not tick this round");
+  assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 0]])), [], "did not run this round");
   assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 0]])), [{ role: "clean", result: "error" }]);
-  assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 1]])), [], "no new tick");
-  assert.deepEqual(onceFailures(root, [], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }], "ticks-run-only role");
+  assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 1]])), [], "no new run");
+  assert.deepEqual(onceFailures(root, [], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }], "runs-done-only role");
 });
 
 test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the rest", () => {
@@ -338,11 +338,11 @@ test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the res
   }
 });
 
-const tickRow = (role: string, result: string, tick: number): TickRow =>
-  ({ ts: 1_700_000_000_000 + tick, time: "", role, run: tick, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
+const runRow = (role: string, result: string, run: number): RunRow =>
+  ({ ts: 1_700_000_000_000 + run, time: "", role, run: run, result, model: null, durationMs: 1, tokens: 0, costUsd: 0, usage: "", detail: "" });
 
-test("windowSummary counts every tick once by outcome class, with the history table", () => {
-  const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("clean", "refused", 3), tickRow("qa", "error", 1)]), true);
+test("windowSummary counts every run once by outcome class, with the history table", () => {
+  const out = windowSummary("2h", summarizeRunRows([runRow("clean", "changed", 1), runRow("clean", "no_change", 2), runRow("clean", "refused", 3), runRow("qa", "error", 1)]), true);
   const lines = out.split("\n");
   assert.equal(lines[0], "for 2h: 4 runs — 1 changes, 1 none, 1 refused, 1 problems");
   assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+refused\s+problems\s+tokens\s+cost\s+time\s+last change$/);
@@ -350,9 +350,9 @@ test("windowSummary counts every tick once by outcome class, with the history ta
 });
 
 test("windowSummary says nothing ran for an empty window and notes a sparse one", () => {
-  assert.equal(windowSummary("2h", summarizeTickRows([]), true), "for 2h: 0 runs — nothing ran");
-  assert.equal(windowSummary("2h", summarizeTickRows([]), false), `for 2h: 0 runs — nothing ran\n${SPARSE_WINDOW_NOTE}`);
-  assert.ok(windowSummary("2h", summarizeTickRows([tickRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
+  assert.equal(windowSummary("2h", summarizeRunRows([]), true), "for 2h: 0 runs — nothing ran");
+  assert.equal(windowSummary("2h", summarizeRunRows([]), false), `for 2h: 0 runs — nothing ran\n${SPARSE_WINDOW_NOTE}`);
+  assert.ok(windowSummary("2h", summarizeRunRows([runRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
 });
 
 test("inheritedWindowStart adopts only a positive past integer, else now", () => {

@@ -129,7 +129,7 @@ export function piListedModelsPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "pi-listed-models.json");
 }
 
-/** The `qa` flow-coverage ledger (run/qa-coverage.ts): which flow each observer tick exercised
+/** The `qa` flow-coverage ledger (run/qa-coverage.ts): which flow each observer run exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
  * must leave the repo untouched, or every cheap pass would move main and wake the team. */
 export function qaCoveragePath(root: string): string {
@@ -137,8 +137,8 @@ export function qaCoveragePath(root: string): string {
 }
 
 /** A role's notebook (.tumwater/state/notes/<role>.md): the bounded note the role's own earlier
- * ticks wrote, carried into the next fresh session. Runtime state under .tumwater/state/, never
- * committed — the worktree resets to main each tick, so a committed note would move main. The
+ * runs wrote, carried into the next fresh session. Runtime state under .tumwater/state/, never
+ * committed — the worktree resets to main each run, so a committed note would move main. The
  * director has none: its work is the operator's prompt, not a recurring search. */
 export function roleNotesPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", "notes", `${role}.md`);
@@ -234,7 +234,7 @@ export function reclaimRequestPath(root: string): string {
 }
 
 /** Per-role marker file `tumwater abort --role <id>` drops for a running team to consume:
- * kill that role's in-flight tick. One file per role (presence = pending request; content is
+ * kill that role's in-flight run. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared
  * reset-counters marker, which must name its targets because it affects many roles. */
 export function abortRequestPath(root: string, role: string): string {
@@ -250,7 +250,7 @@ export function pausedPath(root: string): string {
 }
 
 /** Operator-intent marker for `tumwater stop --in <duration>`: `{ at, until }` in epoch ms. The
- * running team's watch consumes it when `until` passes; a fresh `tumwater run` clears a
+ * running team's watch consumes it when `until` passes; a fresh `tumwater start` clears a
  * stale one. */
 export function scheduledStopPath(root: string): string {
   return path.join(tumwaterDir(root), "stop-at.json");
@@ -310,7 +310,7 @@ export function nativeLogPath(root: string, role: string, agent: string): string
 /** Root of the full-output files the bundled pi extension writes for oversized tool
  * results (.tumwater/log/tool-output/<toolCallId>.log). Pruned by the same sessionRetentionDays
  * window as sessions (orchestrator.ts's two retention passes): a pointer to a tool result is
- * only useful while its tick is recent, and the files otherwise accumulate without bound. */
+ * only useful while its run is recent, and the files otherwise accumulate without bound. */
 export function toolOutputDir(root: string): string {
   return path.join(tumwaterDir(root), "log", "tool-output");
 }
@@ -320,7 +320,7 @@ export function sessionsRootDir(root: string): string {
   return path.join(tumwaterDir(root), "sessions");
 }
 
-/** A role's own pi session dir; hasResumableSession looks here for an interrupted tick to
+/** A role's own pi session dir; hasResumableSession looks here for an interrupted run to
  * resume. */
 export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
@@ -401,7 +401,7 @@ export function opencodeModelsPath(root: string): string {
 
 /** Session dir for a role's review-gate runs. Kept OUTSIDE the role's own session dir on
  * purpose: hasResumableSession (the resume-after-shutdown guard) must only ever see the
- * AUTHOR's sessions — a leftover reviewer session would make an interrupted tick "resume"
+ * AUTHOR's sessions — a leftover reviewer session would make an interrupted run "resume"
  * into a review context it never had. Old files are cleaned by the same age-based prune.
  */
 export function reviewSessionDir(root: string, role: string): string {
@@ -409,7 +409,7 @@ export function reviewSessionDir(root: string, role: string): string {
 }
 
 /** The per-run child of a role's review session dir: one directory per review of one change,
- * keyed by the run's tick and pinned sha, so a follow-up turn — or a later attempt that
+ * keyed by the review run's number and pinned sha, so a follow-up turn — or a later attempt that
  * resumes this review — continues exactly that run's session rather than whichever review
  * wrote last into the shared parent. */
 export function reviewRunSessionDir(root: string, role: string, runKey: string): string {
@@ -428,7 +428,7 @@ export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
-/** The durable merge queue (src/merge/merge-queue.ts): a changed tick's pinned commit waits here
+/** The durable merge queue (src/merge/merge-queue.ts): a changed run's pinned commit waits here
  * as one JSON file for the orchestrator's merge pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
@@ -474,7 +474,7 @@ export function witnessWorktreePath(root: string): string {
 }
 
 /** One slot of the worktree pool (plans/worktree-pool.md): a fixed `.tumwater/worktrees/_slot-<n>`
- * checkout that ticks and verifies lease and switch commits in place, instead of one `_land-<role>`
+ * checkout that runs and verifies lease and switch commits in place, instead of one `_land-<role>`
  * per role. The leading underscore keeps it from colliding with a role worktree. */
 export function slotWorktreePath(root: string, n: number): string {
   return path.join(worktreesDir(root), `_slot-${n}`);
@@ -504,7 +504,7 @@ export function slotsLockPath(root: string): string {
 }
 
 /** The ref pinning a role's committed-but-not yet merged sha (plans/merge-queue.md invariant 4):
- * written right after the tick's commit, before its branch resets to main, so the reset cannot
+ * written right after the run's commit, before its branch resets to main, so the reset cannot
  * orphan the work. Deleted on every terminal merge outcome; kept until re-merged otherwise. */
 export function mergeRefName(role: string): string {
   return `refs/tumwater/merge/${role}`;
@@ -518,7 +518,7 @@ export function legacyLandingRefName(role: string): string {
 }
 
 /** The ref naming a role's rejected change while a revision is due (plans/revise-rejected.md):
- * written at the gate's rejection, read by the author's next tick to re-apply the rejected diff,
+ * written at the gate's rejection, read by the author's next run to re-apply the rejected diff,
  * and deleted once the revision merges, is dropped, conflicts, or exhausts its rounds. Keeping
  * the head reachable here stops git gc from collecting the one commit the revision re-applies. */
 export function rejectedRefName(role: string): string {

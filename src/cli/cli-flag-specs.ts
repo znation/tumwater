@@ -1,6 +1,6 @@
 /** The declarative flag-vocabulary layer shared by every command's argument gate: the
  * FlagSpec shape, the per-flag specs (ROLE_FLAG, durationFlagSpec, REASON_FLAG, sinceFlagSpec,
- * N_FLAG, JSON_FLAG, grepFlagSpec, RUN_FLAG_SPECS), and the unknown-argument gate
+ * N_FLAG, JSON_FLAG, grepFlagSpec, START_FLAG_SPECS), and the unknown-argument gate
  * (rejectUnknownArgs, with rejectEqualsForm). Split from cli/cli-args.ts, whose imperative
  * single-flag parsers (flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag, ...)
  * stay there — one module per layer, so the vocabulary a command accepts and the parsers
@@ -120,7 +120,7 @@ export function rejectEqualsForm(
  * gate below, so the three wordings cannot drift (the drift-guard test imports it). */
 export const ROLE_VALUE_ERROR = "--role needs a role id (e.g. `--role feature`)";
 /** The missing-or-flag-shaped-value error parseBranchFlag (cli/cli-args.ts) shares with
- * RUN_FLAG_SPECS' --branch entry, for the same no-drift reason. */
+ * START_FLAG_SPECS' --branch entry, for the same no-drift reason. */
 export const BRANCH_VALUE_ERROR = "--branch needs a branch name (e.g. `--branch release/2.0`)";
 
 /** The `--role <id>` flag spec, shared by every role-targeting command (logs, reset-counters,
@@ -266,7 +266,7 @@ export const N_FLAG: FlagSpec = {
 };
 
 /** The `--json` flag spec, shared by every command with a machine-readable form (status,
- * doctor, logs, history, tick, diff, backlog, role, report, prompt --list): one definition of
+ * doctor, logs, history, diff, backlog, role, report, prompt --list): one definition of
  * the flag's spelling, beside ROLE_FLAG and sinceFlagSpec, so the gate's accepted vocabulary
  * cannot drift apart. It takes no value and carries no per-command wording — unlike its
  * siblings it needs neither a factory nor a missing-value error — so the constant is the
@@ -305,7 +305,7 @@ export const TRANSCRIPT_FLAG: FlagSpec = { names: ["--transcript"] };
  * `history <role>` trail (with `--transcript`). */
 export const PROMPT_FLAG: FlagSpec = { names: ["--prompt"] };
 
-/** The `--summary` flag spec, accepted by `history`: tally each role's tick outcomes instead of
+/** The `--summary` flag spec, accepted by `history`: tally each role's run outcomes instead of
  * printing the rows. Value-less, like STAT_FLAG. */
 export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
 
@@ -322,10 +322,10 @@ export const FORCE_FLAG: FlagSpec = { names: ["--force"] };
  * FORCE_FLAG so its spelling lives with the other boolean flags the gate admits. */
 export const DRY_RUN_FLAG: FlagSpec = { names: ["--dry-run"] };
 
-/** The `--last` flag spec for `tumwater tick <role> --last`: one definition of the flag's
- * spelling, beside JSON_FLAG, so tick's gate and cmdRunDetail's arity guards cannot disagree on
+/** The `--last` flag spec for `tumwater history <role> --last`: one definition of the flag's
+ * spelling, beside JSON_FLAG, so history's gate and cmdRunDetail's arity guards cannot disagree on
  * what the command admits. Like --json it takes no value and needs no wording — the
- * command body owns the meaning (resolve the newest completed tick instead of numbering
+ * command body owns the meaning (resolve the newest completed run instead of numbering
  * one) and the arity rules it implies. */
 export const LAST_FLAG: FlagSpec = { names: ["--last"] };
 
@@ -367,32 +367,32 @@ export function byFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--by"], value: true, valueName: "<role|model>", missingValue };
 }
 
-/** `tumwater run`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
- * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
+/** `tumwater start`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
+ * parseBranchFlag), `--once` (one full round of runs, then exit), `--role <id>`
  * (scope a --once round to one role, parsed by parseRoleFlag), and `--gui` (also serve the
  * browser dashboard on its defaults; port/token selection stays on `tumwater gui`). Exported
  * so the caller's rejectUnknownArgs check and its tests share one definition of what `start`
  * (and its hidden alias `run`) accepts — before this vocabulary existed, run parsed --branch
  * and silently ignored every other flag, so a typo'd option ran the daemon with default
  * behavior. */
-export const RUN_FLAG_SPECS: FlagSpec[] = [
+export const START_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
   // `run --gui` is the one-command form of the dashboard: it boots the team and serves the
   // browser dashboard at its defaults, loopback on port 7180. The dashboard's own --port,
   // --all-interfaces, and --token stay on `tumwater gui`; widening them here would mean two
-  // flag vocabularies to keep in step. `run --gui --once` is refused in cmdRun beside the
+  // flag vocabularies to keep in step. `run --gui --once` is refused in cmdStart beside the
   // timer it arms.
   { names: ["--gui"] },
   // `run --tui` is the one-command form of the observer TUI: it boots the team and hosts the
   // same in-terminal TUI `tumwater tui` attaches from another terminal. Its flag vocabulary
-  // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdRun
+  // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdStart
   // beside the `--gui` rival.
   { names: ["--tui"] },
   // `run --for <duration>` (the windowed run): the same spec `pause --for` passes, so the
   // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
   // 90-day cap is the spec's own validate (shared with pause), and the --once rival rule
-  // stays in cmdRun beside the timer it arms.
+  // stays in cmdStart beside the timer it arms.
   durationFlagSpec("start --for"),
   ROLE_FLAG,
 ];

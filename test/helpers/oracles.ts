@@ -5,7 +5,7 @@
  * functions — no fs, no fixtures; the file-writing fixtures live in log-fixtures.ts. */
 
 /** Collapse all whitespace runs to single spaces: prompts are hard-wrapped and formatting
- * ticks reflow them, so assertions match content with whitespace collapsed — a phrase wrapped
+ * runs reflow them, so assertions match content with whitespace collapsed — a phrase wrapped
  * across lines must not break a contract check (the first merge of these tests did exactly
  * that: four red unit tests on main). */
 export function oneLine(s: string): string {
@@ -43,7 +43,7 @@ export function dateOf(d: Date): string {
 
 /** Local wall clock `HH:MM:SS` from a Date's own local parts — the raw-parts clock half of
  * expectedTimestamp (never datetime.ts's formatTime). Its other users are datetime.test.ts's
- * formatTime pin, the status fixtures' stampOf and gui.test.ts's fmtLastTick oracle, so those
+ * formatTime pin, the status fixtures' stampOf and gui.test.ts's fmtLastRun oracle, so those
  * repeated HH:MM:SS stamps pad the same. */
 export function clockOf(d: Date): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;

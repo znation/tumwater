@@ -57,7 +57,7 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * provider's own hold steps with ONLY its own providers' observations — the reducer's
  * provider+kind grouping made per-provider stepping equivalent to grouping there — so a
  * 429 storm at the reviewer's provider holds the roles on that provider while roles on a
- * healthy one keep ticking (PLANS.md 2026-10-05). A provider whose hold re-opened STAYS in
+ * healthy one keep running (PLANS.md 2026-10-05). A provider whose hold re-opened STAYS in
  * the map — its kind, provider, relapse count, and re-open time are the memory the next
  * storm's relapse test needs — so "held" is always read through team/team-hold.ts's
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
@@ -149,7 +149,7 @@ export function pollTeamHold(
  * reading `rejected` with no overage and a future `resetsAt` holds every seam on provider
  * `claude` until the last such deadline — the account-level throttle of plans/agent-backends.md
  * §8. Only subscription billing produces one: an API-billed run's windows never hold (the plan's
- * "API claude seams tick"), and a missing account file reads exactly as today's behavior. The
+ * "API claude seams run"), and a missing account file reads exactly as today's behavior. The
  * reader has already flipped a past-`resetsAt` window to `reset`, and the `resetsAt > now` guard
  * here lets the hold lift on its own even from a stale file. */
 export function claudeWindowObservation(
@@ -277,7 +277,7 @@ export function pollClaudeWindowWarning(
 
 /** One poll of the team-wide error-storm warning (src/team/error-storm.ts): gather each runner's
  * current error streak (RunnerState.consecutiveErrors/lastError — the same fields the per-role
- * "consecutive tick failures" warning reads, the director's included, since its failures are
+ * "consecutive run failures" warning reads, the director's included, since its failures are
  * the team's evidence too), step the pure reducer, and log exactly one warning per episode,
  * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
  * naming the roles, the shared normalized cause, and the config knob when the cause has one

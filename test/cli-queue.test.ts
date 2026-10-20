@@ -33,7 +33,7 @@ test("queue lists each waiting merge in execution order with its fields", async 
   assert.equal(r.code, 0);
   const lines = r.stdout.trimEnd().split("\n");
   assert.equal(lines[0], "merge queue (2):");
-  // Oldest first, one 1-based line each: role, tick, short sha, age, and summary.
+  // Oldest first, one 1-based line each: role, run, short sha, age, and summary.
   assert.match(lines[1]!, /^  1\. improve run #3 · aaaaaaaa · \d+s ago · tidy the parser$/);
   assert.match(lines[2]!, /^  2\. organize run #4 · bbbbbbbb · \d+s ago · split the module$/);
 });

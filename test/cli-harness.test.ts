@@ -10,7 +10,7 @@ import { initProject } from "../src/init/init.js";
 // lives here rather than being re-derived per test. test/helpers/wait.ts's waitFor reads its
 // deadline
 // off performance.now() (monotonic); spawnCli.waitFor must do the same: a deadline read off
-// Date.now() is spent by any wall-clock jump — a host sleep mid-tick is the one the gate sees —
+// Date.now() is spent by any wall-clock jump — a host sleep mid-run is the one the gate sees —
 // and a cold-start wait with budget left then times out against a child that printed nothing.
 // That is the shape of the 2026-10-07 gate timeout on "gui --all-interfaces prints the reachable
 // LAN URLs and serves until killed" (BUGS.md).

@@ -24,9 +24,9 @@ import { opencodeModelsPath } from "../src/paths.js";
 import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
 
-// `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
-// fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with
-// (BUGS.md 2026-09-23). test/cli.test.ts pins the same failures through the CLI.
+// `tumwater start`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdStart
+// fails fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation
+// with (BUGS.md 2026-09-23). test/cli.test.ts pins the same failures through the CLI.
 
 test("a ready repo passes the gate with the config and branch the generation starts on", async () => {
   const repo = makeRepo();
@@ -41,7 +41,7 @@ test("a ready repo passes the gate with the config and branch the generation sta
   });
 });
 
-test("each unmet precondition is the gate's verdict, in cmdRun's order", async () => {
+test("each unmet precondition is the gate's verdict, in cmdStart's order", async () => {
   const repo = makeRepo();
   await initProject(repo, "startup gate problems");
   const config = path.join(repo, "tumwater.json");
@@ -73,8 +73,8 @@ test("each unmet precondition is the gate's verdict, in cmdRun's order", async (
 });
 
 test("each unmet repo precondition names its own fix: not a repo, no commits, no git", async () => {
-  // A plain directory is the first thing a fresh `tumwater run` ends up in: the verdict is the repo
-  // one, and the git probe behind it must not be what the operator reads.
+  // A plain directory is the first thing a fresh `tumwater start` ends up in: the verdict is the
+  // repo one, and the git probe behind it must not be what the operator reads.
   assert.equal(await repoNotReady(tmpdir()), NOT_A_REPO_MESSAGE);
 
   // An unborn HEAD fails on the missing config first and on the missing commits only once

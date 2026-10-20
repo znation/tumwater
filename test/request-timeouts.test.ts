@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { cappedRequestTimeouts } from "../src/request-timeouts.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 
-const cfg = (tick: number, quiet: number) =>
-  ({ runTimeoutSeconds: tick, quietTimeoutSeconds: quiet }) as TumwaterConfig;
+const cfg = (run: number, quiet: number) =>
+  ({ runTimeoutSeconds: run, quietTimeoutSeconds: quiet }) as TumwaterConfig;
 
 test("cappedRequestTimeouts clamps budgets above the follow-up caps", () => {
   assert.deepEqual(cappedRequestTimeouts(cfg(3600, 600), 120, 60), {

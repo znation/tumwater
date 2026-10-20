@@ -23,9 +23,10 @@ import { agentBackend } from "../agent/agent-backend.js";
 // unregisteredBackendInUse) — importing run-agent.ts is the one place they register.
 import "../agent/run-agent.js";
 
-/** The startup gate of `tumwater run` as one function: every precondition an orchestrator
+/** The startup gate of `tumwater start` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
- * three askers and they must get one answer: cmdRun (cli/cli-start.ts) fails fast on it at startup,
+ * three askers and they must get one answer: cmdStart (cli/cli-start.ts) fails fast on it at
+ * startup,
  * the self-redeploy (src/redeploy/redeployer.ts) asks it before it holds the team and again right
  * before its swap, and the supervisor (src/process/supervisor.ts) asks it to name why a generation
  * died. On 2026-09-22 only the first existed: a redeploy swapped onto a build whose child found
@@ -33,7 +34,7 @@ import "../agent/run-agent.js";
  * of a dead team and no event (BUGS.md 2026-09-23). The operator-facing wording lives in
  * readiness.ts, shared with doctor's per-check report.
  *
- * The one startup check deliberately outside the gate is cmdRun's "an orchestrator is already
+ * The one startup check deliberately outside the gate is cmdStart's "an orchestrator is already
  * running": to a redeploy asking on behalf of its successor, the live orchestrator is itself —
  * gone by the time the successor boots. The gate is the ASKER's build's rule, so a redeploy checks
  * what the running build knows of startup; a precondition the new build adds is invisible to it
@@ -73,7 +74,7 @@ interface RunStartupReady {
   mainBranch: string;
 }
 
-/** Every precondition a `tumwater run` generation checks before its orchestrator starts, in the
+/** Every precondition a `tumwater start` generation checks before its orchestrator starts, in the
  * order it checks them: the repo gate, a tumwater.json that loads and validates, a resolvable
  * agent binary, and a main branch it can target. Either the values the generation starts with,
  * or the first unmet precondition's message — never a throw, so a poll can ask it safely. */

@@ -109,7 +109,7 @@ test("a storm that switches cause is a new episode", () => {
 });
 
 test("the progressing timeout shape pools with the plain one into one storm", () => {
-  // src/agent/run-agent.ts emits two tick-timeout messages: the plain one and the
+  // src/agent/run-agent.ts emits two run-timeout messages: the plain one and the
   // still-making-progress variant (session and worktree preserved for resume). Both point at the
   // same knob, so the reducer pools them under one cause — a mixed team must not split 2/2 into
   // two sub-threshold clusters and stay quiet while the team is melting down.
@@ -131,7 +131,7 @@ test("the progressing timeout shape pools with the plain one into one storm", ()
 
 test("a streak at the bar with no error message counts toward no storm", () => {
   // lastError is optional at the observation seam and can be absent in real state (a failed
-  // tick whose run recorded no message); the `!lastError` half of the bar-guard skips those.
+  // run whose agent run recorded no message); the `!lastError` half of the bar-guard skips those.
   // A whitespace-only message is the other half: it is truthy so it passes `!lastError`, but
   // normalizeClusterKey trims it to an empty key, and without the `!key` guard three such
   // roles would storm on a cause that names nothing — the warning stays silent until a

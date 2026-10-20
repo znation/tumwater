@@ -16,7 +16,7 @@ import { onlyCleanRole, withRunningTeam } from "./helpers/start-live-harness.js"
 // handling: the supervisor's SIGINT handler only marks stopping (it must not forward or abort,
 // or a plain `kill -INT` of the supervisor would tear down a team whose orchestrator never
 // saw the signal), while the orchestrator generation's own handler runs the graceful stop
-// (announce, abort in-flight ticks) and exits cleanly. These two tests pin that split end to
+// (announce, abort in-flight runs) and exits cleanly. These two tests pin that split end to
 // end. The forced second Ctrl+C, which must outwait terminateChild's 10 s SIGKILL grace, has
 // its own file (cli-start-force-exit.test.ts); the rest of the running-team lifecycle and
 // SIGTERM shutdown live in cli-start-shutdown.test.ts.

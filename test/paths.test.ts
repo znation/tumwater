@@ -86,9 +86,9 @@ test("branch names are tumwater/<role> for every role, director included", () =>
 });
 
 // The resume-after-shutdown guard (hasResumableSession in src/agent/session-ledger.ts) reads
-// ONLY the role's own session dir to decide whether an interrupted tick may --continue.
+// ONLY the role's own session dir to decide whether an interrupted run may --continue.
 // Reviewer sessions must be invisible to it — a leftover reviewer file would make an interrupted
-// authoring tick "resume" into a review context it never had. So the review dir sits OUTSIDE the
+// authoring run "resume" into a review context it never had. So the review dir sits OUTSIDE the
 // role's session dir, yet still UNDER the shared sessions root so the same age-based prune
 // collects its files.
 test("review sessions live outside the role's own session dir but inside the pruned sessions root", () => {

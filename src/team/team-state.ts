@@ -184,7 +184,7 @@ export function cancelScheduledStop(root: string): boolean {
 }
 
 /** The roles the operator has individually paused (`tumwater pause --role <id>`): a role in
- * this set starts no new ticks — in-flight ones finish, every other role keeps ticking, the
+ * this set starts no new runs — in-flight ones finish, every other role keeps running, the
  * director included (the operator named it deliberately). Never throws, like isTeamPaused:
  * a missing or unreadable file reads as no paused roles, so observers (scheduler, dashboards)
  * can poll it every cycle without a guard. Lives here beside pauseTeam for the same

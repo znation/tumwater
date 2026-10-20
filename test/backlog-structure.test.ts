@@ -177,7 +177,7 @@ test("this repo's current PLANS.md and PLANS-DONE.md yield nothing", () => {
   }
 });
 
-test("the clean tick's block lists each stranded heading with its section; a clean file gives none", () => {
+test("the clean run's block lists each stranded heading with its section; a clean file gives none", () => {
   const dir = tmpdir("backlog-structure-block-");
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),

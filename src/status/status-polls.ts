@@ -51,9 +51,9 @@ function isMainCheckStatus(status: unknown): status is "passed" | "failed" | "sk
 
 /** How far mainCheckForPoll may grow its event tail. The per-poll default
  * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy team — a merge-scope check rides
- * every merge and every redeploy — but a burst of quiet or failing ticks logs hundreds
+ * every merge and every redeploy — but a burst of quiet or failing runs logs hundreds
  * of events without moving main, and a tail
- * that ends before the last check makes the header badge vanish and reappear as ticks tick
+ * that ends before the last check makes the header badge vanish and reappear as agent runs go
  * by. Growing until the check is found keeps "absent" meaning what the field's contract says
  * (no merge-scope check has run) rather than "the window ended"; the cap keeps the worst
  * per-poll scan bounded — readTailText reads bytes proportional to the line count, and the scan
@@ -64,7 +64,7 @@ const MAIN_CHECK_SCAN_MAX_EVENTS = 5_000;
 
 /** Per-root note that the previous scan had to grow past the default event tail
  * (DEFAULT_EVENT_TAIL) without finding a merge-scope check. A check rides every merge, so a poll
- * that grew all the way to the cap is a burst of quiet or failing ticks — hundreds of events
+ * that grew all the way to the cap is a burst of quiet or failing runs — hundreds of events
  * between merges — and the next poll's growth starts straight at the cap instead of re-scanning
  * the ×4 ladder's intermediate windows (200→800→3200→5000 ≈ 9.2k re-parsed events per
  * fresh tail, vs 5.2k for 200→cap; measured on a 6k-event check-free log, ~2.3 ms → ~1.2 ms per
@@ -93,7 +93,7 @@ interface MainCheckScan {
 }
 
 /** Per-root scan cache (stat-cache.cachedByStat): both dashboards poll snapshot every second,
- * but events.jsonl is written only at tick boundaries and merges, so an unchanged log serves
+ * but events.jsonl is written only at run boundaries and merges, so an unchanged log serves
  * the whole scan from one stat instead of re-listing the ladder, re-parsing its windows, and
  * re-collecting the merged events. Rotation swaps the inode and every append changes the size,
  * so both invalidate through the same freshness check; keyed by root so distinct repos never
@@ -173,9 +173,9 @@ function mainCheckScanFor(root: string): MainCheckScan {
 }
 
 /** Has main's newest merge-scope check retired a role's stale `main_red` verdict? Only a
- * PASSED check stamped strictly after the role's red tick ended counts — the team-level
+ * PASSED check stamped strictly after the role's red run ended counts — the team-level
  * green is newer evidence than the role's own red (BUGS.md 2026-09-30). A failed or skipped
- * newest check, a check from before the red tick, or a role with no known tick end all leave
+ * newest check, a check from before the red run, or a role with no known run end all leave
  * the verdict standing. Single-homed here beside heldByMainRed. */
 function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: RunnerState): boolean {
   return mainCheck?.status === "passed"
@@ -183,7 +183,7 @@ function mainCheckRecovered(mainCheck: MainCheckStatus | undefined, s: RunnerSta
     && mainCheck.at > s.lastRunEndedAt;
 }
 
-/** Is a role's tick verdict still the red-main hold? The one predicate behind the status
+/** Is a role's run verdict still the red-main hold? The one predicate behind the status
  * phase's `main red` label and doctor's `main red` check, so the two cannot disagree. */
 export function heldByMainRed(s: RunnerState, mainCheck: MainCheckStatus | undefined): boolean {
   return s.lastResult === "main_red" && s.queuedSummary === undefined && !mainCheckRecovered(mainCheck, s);
@@ -252,7 +252,7 @@ export function configForStatus(root: string): TumwaterConfig {
 }
 
 // Per-poll runner-state cache (stat-cache.cachedByStat): the TUI and GUI poll snapshot every
-// second, but a role's state file changes only at its tick boundaries (start/end) — between ticks
+// second, but a role's state file changes only at its run boundaries (start/end) — between runs
 // it sits unchanged for minutes. Serve an unchanged file from the stat-keyed cache: one stat
 // syscall per file per poll instead of re-reading and re-parsing JSON that hasn't moved.
 // Keyed by state-file path so distinct roots never collide; capped inside cachedByStat so many
@@ -285,7 +285,7 @@ const maintenanceCounters = new Map<string, ReturnType<typeof newMaintenanceWind
 
 /** The maintenance allowance verdict as an observer sees it for this poll (status-data's
  * `maintenanceQuota` field): the rolling-window counts over the same event log the gate reads,
- * plus the enabled maintenance roles currently in flight (running a tick or holding a queued
+ * plus the enabled maintenance roles currently in flight (running a role run or holding a queued
  * merge, so the `used` figure matches the gate's). `held` names the enabled maintenance role
  * ids the scheduler holds while `used >= allowance`. Pure read — unlike the gate it logs nothing
  * and keeps no hold edge, so it can run in the TUI/GUI process every second. */

@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The team-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
+/** The team-booting commands' implementations: `tumwater init` and `tumwater start` — the latter
  * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were
@@ -86,9 +86,9 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
   say("next: `tumwater start` in one terminal, `tumwater tui` in another");
 }
 
-/** `tumwater run`: boot the team and stream its event feed to this terminal until it stops.
+/** `tumwater start`: boot the team and stream its event feed to this terminal until it stops.
  * Three layers cooperate here: without SUPERVISED_ENV this process becomes the supervisor
- * (superviseRunCommand below), spawning the real orchestrator as a child generation; the child
+ * (superviseStartCommand below), spawning the real orchestrator as a child generation; the child
  * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
  * self-redeploy so the supervisor respawns on the new build; --once collapses the whole thing
  * into one round of runs and a summary line (onceSummary below), for cron-style invocations.
@@ -98,11 +98,11 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
  * (including `--for`) to the supervisor's next child, and the supervisor hands every generation
  * the same window start (RUN_WINDOW_START_ENV), so the deadline and the summary span the whole
  * window; only the final exit prints the summary. */
-export async function cmdRun(root: string, args: string[]): Promise<void> {
+export async function cmdStart(root: string, args: string[]): Promise<void> {
   // The one function the self-redeploy asks before swapping onto a successor and the supervisor
   // asks when a generation dies, so the three cannot disagree about what boots. The supervisor
   // half runs it too, so a start that cannot boot fails before any child spawns. The flag
-  // vocabulary is validated by the dispatcher (cli.ts, from the same RUN_FLAG_SPECS).
+  // vocabulary is validated by the dispatcher (cli.ts, from the same START_FLAG_SPECS).
   const once = args.includes("--once");
   // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
   // drains and exits within the same invocation, so the two shapes are refused together before
@@ -157,7 +157,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     // targets the same branch (or whatever else the invocation named).
     // A stop marker left by a team that died before its deadline must not stop this run.
     cancelScheduledStop(root);
-    await superviseRunCommand(root, args, branchArg, forMs);
+    await superviseStartCommand(root, args, branchArg, forMs);
     return;
   }
   const controller = new AbortController();
@@ -280,7 +280,7 @@ export function windowSummary(label: string, summary: { roles: HistorySummaryRow
   return lines.join("\n");
 }
 
-/** Arm the windowed run's deadline timer: the one home of the arming `cmdRun` does for
+/** Arm the windowed run's deadline timer: the one home of the arming `cmdStart` does for
  * `run --for <duration>`. A duration over setTimeout's own 32-bit signed ceiling
  * (2_147_483_647 ms ≈ 24.8 days) is clamped by Node to 1ms with a TimeoutOverflowWarning, so
  * a raw setTimeout would fire the deadline the instant the run booted — and `run --for`
@@ -288,7 +288,7 @@ export function windowSummary(label: string, summary: { roles: HistorySummaryRow
  * input, not an error. The timer is therefore armed in ≤32-bit chunks: each setTimeout covers
  * at most the ceiling, and a chunk that expires with time still left re-arms for the
  * remainder, so the callback runs exactly once, after the full duration, whatever its size.
- * Returns a clear() handle (the finally in cmdRun retracts the timer when the run ends first —
+ * Returns a clear() handle (the finally in cmdStart retracts the timer when the run ends first —
  * an early Ctrl+C — so no stray timer outlives the run); clear() is safe after the callback
  * has run. Exported for tests. */
 export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): void } {
@@ -308,7 +308,7 @@ export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): vo
 const SCHEDULED_STOP_POLL_MS = 5000;
 
 /** Poll for a `tumwater stop --in` marker: once its `until` has passed, consume the marker,
- * stop polling, and call `onStop` (cmdRun's Ctrl+C closure) exactly once. The interval is
+ * stop polling, and call `onStop` (cmdStart's Ctrl+C closure) exactly once. The interval is
  * unref'd; clear() retracts it. Exported for tests. */
 export function armScheduledStopWatch(root: string, onStop: () => void): { clear(): void } {
   const timer = setInterval(() => {
@@ -451,7 +451,7 @@ export function onceSummary(
 
 /** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
  * the dashboard and/or host the observer TUI, and the args the supervised orchestrator
- * generation gets with both stripped so the generation's own cmdRun never tries to supervise a
+ * generation gets with both stripped so the generation's own cmdStart never tries to supervise a
  * second dashboard or re-attach a TUI in a terminal the parent owns (a self-redeploy spawns a
  * fresh generation each time). Exported so the unit tests pin the stripping that removing the
  * spawn wiring would otherwise silently drop. */
@@ -491,21 +491,21 @@ async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "in
   }
 }
 
-/** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a
+/** The supervisor half of `tumwater start` (src/process/supervisor.ts): spawn the orchestrator as a
  * child generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself.
  * Ctrl+C reaches the child directly from the terminal, so only SIGTERM is forwarded; the
  * supervisor's own exit code is whatever the last generation's was. A team that goes down without
  * the operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
  * generation's stderr reached only this terminal, which nobody may be watching. */
-async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null, forMs: number | null): Promise<void> {
-  // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
+async function superviseStartCommand(root: string, runArgs: string[], branchArg: string | null, forMs: number | null): Promise<void> {
+  // The supervisor machinery loads lazily, like cmdStart's orchestrator import above: a command
   // that never boots the team never compiles it.
-  const { RUN_WINDOW_START_ENV, teamDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
+  const { RUN_WINDOW_START_ENV, teamDownEvent, spawnStartChild, superviseStart } = await import("../process/supervisor.js");
   const plan = guiChildPlan(runArgs);
   // A TUI owns the terminal, so it can only be hosted when this supervisor's own stdin and
   // stdout are a TTY — the same guard runTui enforces. Check before booting a team a TUI
   // could never drive, surfacing the actionable tuiTerminalError instead of letting runTui's
-  // rejection sit unhandled until superviseRun settles and then crash the supervisor after
+  // rejection sit unhandled until superviseStart settles and then crash the supervisor after
   // the team has (pointlessly) started.
   if (plan.spawnTui && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     const { tuiTerminalError } = await import("../ui/tui/tui-input.js");
@@ -528,7 +528,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   });
   // The TUI is hosted in the supervisor process, beside the orchestrator generations it must
   // outlive. Quitting it (q or Ctrl+C handled by ink's key handler) is the run's Ctrl+C:
-  // runTui resolves and the .then sets `stopping` and aborts the controller, so superviseRun
+  // runTui resolves and the .then sets `stopping` and aborts the controller, so superviseStart
   // drains in-flight runs and the team shuts down exactly as Ctrl+C on a plain `run` does;
   // the team-down teardown (dashboard abort, onDone, terminal restore) is unchanged.
   // reloadDisabled keeps the hosted TUI off its self-reload watch: the team's own first
@@ -548,10 +548,10 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
       })
     : Promise.resolve();
   const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.childStdio) : Promise.resolve();
-  const code = await superviseRun(
+  const code = await superviseStart(
     {
       spawnChild: (signal) =>
-        spawnRunChild(signal, plan.orchestratorArgs, windowEnv, plan.childStdio),
+        spawnStartChild(signal, plan.orchestratorArgs, windowEnv, plan.childStdio),
       stopping: () => stopping,
       onRespawn: (generation) => {
         // With a hosted TUI the supervisor owns no free stdout: its own say() would paint the

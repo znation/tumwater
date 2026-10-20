@@ -230,9 +230,9 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
  * build aside to `dist.prev` and then moves the staged build into `dist`, and a process killed
  * (SIGKILL — the OOM killer) in that microsecond window leaves `dist` missing. Nothing in the
  * swap can close the window, because the survivor is the supervisor and it exits on the dead
- * generation; the next `tumwater run` then cannot even load `dist/src/cli.js` and fails with
+ * generation; the next `tumwater start` then cannot even load `dist/src/cli.js` and fails with
  * MODULE_NOT_FOUND, so the repo is wedged until someone renames `dist.prev` back by hand. The
- * supervisor calls this before it exits (src/cli/cli-start.ts, via superviseRun's onDone): while
+ * supervisor calls this before it exits (src/cli/cli-start.ts, via superviseStart's onDone): while
  * it is still up, it renames the preserved old build back into place so the next boot works.
  *
  * Only acts when `dist` is missing and a `dist.prev` exists — both conditions together are the
@@ -248,7 +248,7 @@ export function recoverInterruptedSwap(root: string, dist: string): boolean {
 }
 
 /** The supervisor's end-of-supervision repair (src/cli/cli-start.ts wires this into
- * superviseRun's onDone): recover dist/ after an interrupted swap and, either way, put the
+ * superviseStart's onDone): recover dist/ after an interrupted swap and, either way, put the
  * outcome on the event feed. Kept beside recoverInterruptedSwap so the CLI wiring is one call.
  * cli-start.ts imports this module statically, so the code is in memory before a swap can move
  * dist/ away — recovering via an import at call time would fail ERR_MODULE_NOT_FOUND exactly

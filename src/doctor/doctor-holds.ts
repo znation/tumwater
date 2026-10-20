@@ -28,7 +28,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
  * (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all read-only reports of
- * holds on ticking. */
+ * holds on running. */
 export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerState[] {
   return runnerIds(config)
     .map((id) => loadRunnerState(root, id))
@@ -36,11 +36,11 @@ export function loadRunnerStates(root: string, config: TumwaterConfig): RunnerSt
 }
 
 /** The `pause` check: names a standing operator pause so doctor does not print "ready to run"
- * over a team that starts no tick. Read-only: it reads the same team and per-role pause
+ * over a team that starts no run. Read-only: it reads the same team and per-role pause
  * markers the scheduler reads (standingTeamPause, pausedRoles, pausedRolesUntil — all treat
  * an expired marker as absent), so its verdict cannot disagree with what the team does. A
  * team pause is a warn because it stops every role; paused roles are ok because the operator
- * chose them by name and every other role keeps ticking. `now` only drives the countdowns. */
+ * chose them by name and every other role keeps running. `now` only drives the countdowns. */
 export function checkPause(root: string, now: number = Date.now()): CheckOutcome {
   const team = standingTeamPause(root);
   const roles = pausedRoles(root);
@@ -58,7 +58,7 @@ export function checkPause(root: string, now: number = Date.now()): CheckOutcome
 }
 
 /** The `quiet hours` check: names the team quiet window and any per-role windows holding now,
- * so doctor does not print "ready to run" over a team that starts no tick until the window
+ * so doctor does not print "ready to run" over a team that starts no run until the window
  * ends. Read-only: membership comes from the scheduler's own parser and predicate
  * (quietHoursStatus, roleQuietHold), so the verdict cannot disagree with the gate. A team
  * window holding is a warn because it stops every role (the director is exempt); held per-role
@@ -201,7 +201,7 @@ const HOLD_CHECK_WINDOW_MS = 2 * 3600_000;
 
 /** The `provider hold` check: names each provider whose team-wide failure hold
  * (src/team/team-hold.ts, polled by pollTeamHold) stands now — a 429/backend-failure storm
- * that stops the roles on that provider from starting new ticks until it re-opens. Read-only:
+ * that stops the roles on that provider from starting new runs until it re-opens. Read-only:
  * it infers the standing set from the event log's own `rate_limit_hold`/`rate_limit_resumed`
  * crossings, the events pollTeamHold writes, so it cannot disagree with the hold. A standing
  * hold is a warn (as with the `claude window` row) because it stops every role on that
@@ -266,7 +266,7 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
 }
 
 /** The `main red` check: names the code roles the red-main gate (mainRedGate) holds, ending
- * each blocked tick `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
+ * each blocked run `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
  * the predicate the status phase's `main red` label reads, so the two cannot disagree. A warn,
  * not a fail: a red main does not stop the team from running. */
 export function checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome {

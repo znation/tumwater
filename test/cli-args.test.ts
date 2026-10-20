@@ -14,7 +14,7 @@ import {
   durationFlagSpec,
   ROLE_FLAG,
   LOGS_TRANSCRIPT_VALUE_ERROR,
-  RUN_FLAG_SPECS,
+  START_FLAG_SPECS,
   WAKE_IN_FLAG,
 } from "../src/cli/cli-flag-specs.js";
 import { allRoleIds } from "../src/roles/roles.js";
@@ -159,21 +159,21 @@ test("rejectUnknownArgs accepts empty args and every known flag spelling", () =>
 });
 
 test("run's flag vocabulary accepts --branch, --once, --role, --gui, and --tui and rejects everything else", () => {
-  // The specs cmdRun itself passes: all spellings, combined and alone.
-  expectOk(() => rejectUnknownArgs("run", ["--branch", "trunk", "--once"], RUN_FLAG_SPECS));
-  expectOk(() => rejectUnknownArgs("run", ["--once"], RUN_FLAG_SPECS));
-  expectOk(() => rejectUnknownArgs("run", ["--once", "--role", "feature"], RUN_FLAG_SPECS));
-  expectOk(() => rejectUnknownArgs("run", ["--gui"], RUN_FLAG_SPECS));
-  expectOk(() => rejectUnknownArgs("run", ["--tui"], RUN_FLAG_SPECS));
+  // The specs cmdStart itself passes: all spellings, combined and alone.
+  expectOk(() => rejectUnknownArgs("run", ["--branch", "trunk", "--once"], START_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--once"], START_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--once", "--role", "feature"], START_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--gui"], START_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--tui"], START_FLAG_SPECS));
   // A typo'd --once must fail with the standard wording, not silently run a daemon round.
-  const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], RUN_FLAG_SPECS));
+  const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], START_FLAG_SPECS));
   assert.match(r.stderr, /unknown argument: --onc/);
   assert.match(
     r.stderr,
     /valid flags for tumwater run: --branch <name>, --once, --gui, --tui, --for <duration>, --role <id>/,
   );
   // --once takes no value: a following token is a stray, not its argument.
-  const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], RUN_FLAG_SPECS));
+  const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], START_FLAG_SPECS));
   assert.match(valued.stderr, /unknown argument: yes/);
 });
 
@@ -229,7 +229,7 @@ test("rejectUnknownArgs: valued flags claim their value token; duplicates and mi
     expectFail(() => parseRoleFlag(["--transcript"], undefined, "--transcript", LOGS_TRANSCRIPT_VALUE_ERROR)).stderr,
     "the gate's missing-value report must be the parser's own wording",
   );
-  const branchBare = expectFail(() => rejectUnknownArgs("run", ["--branch"], RUN_FLAG_SPECS));
+  const branchBare = expectFail(() => rejectUnknownArgs("run", ["--branch"], START_FLAG_SPECS));
   assert.equal(
     branchBare.stderr,
     expectFail(() => parseBranchFlag(["--branch"])).stderr,
@@ -324,7 +324,7 @@ test("the gate fails an over-cap --for/--in before the ready-repo gate can mask 
     rejectUnknownArgs("wake", ["--in", "91d"], [ROLE_FLAG, WAKE_IN_FLAG]),
   );
   assert.match(wake.stderr, /wake --in is capped at 90d \(got 91d\)/);
-  const run = expectFail(() => rejectUnknownArgs("run", ["--for", "100d"], RUN_FLAG_SPECS));
+  const run = expectFail(() => rejectUnknownArgs("run", ["--for", "100d"], START_FLAG_SPECS));
   assert.match(run.stderr, /start --for is capped at 90d \(got 100d\)/);
   // At or under the cap the gate accepts the value; the bodies' own checks never fire.
   expectOk(() =>

@@ -119,7 +119,7 @@ test("swapDist puts the old dist back when the staged rename fails after steppin
 
 test("recoverInterruptedSwap restores dist from dist.prev after a swap died between its renames", () => {
   // The fault: swapDist renamed dist -> dist.prev and the process died before staged -> dist.
-  // dist/ is now missing; the next `tumwater run` cannot load dist/src/cli.js (MODULE_NOT_FOUND)
+  // dist/ is now missing; the next `tumwater start` cannot load dist/src/cli.js (MODULE_NOT_FOUND)
   // and the repo is wedged until a hand rename. The fix renames the preserved build back.
   const { root, dist } = rootWithDist();
   const prev = path.join(stagingRootDir(root), "dist.prev");
@@ -163,7 +163,7 @@ test("recoverInterruptedSwap throws when the restore rename fails and leaves dis
 });
 
 test("repairInterruptedSwap restores dist and logs it when the swap died between its renames", () => {
-  // The production hook cli-run wires into superviseRun's onDone. The fault: swapDist renamed
+  // The production hook cli-run wires into superviseStart's onDone. The fault: swapDist renamed
   // dist -> dist.prev and the process died before staged -> dist. Calling the hook now must
   // restore dist/ from the preserved backup and report it.
   const { root, dist } = rootWithDist();

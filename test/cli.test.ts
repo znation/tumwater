@@ -236,7 +236,7 @@ test("init rejects unknown flags and stray positionals instead of baking them in
   const repo = makeRepo();
 
   // A misspelled --file used to succeed with "--fil prompt.md" as the project's initial
-  // prompt — injected into every tick forever. Now it fails like any other unknown flag,
+  // prompt — injected into every run forever. Now it fails like any other unknown flag,
   // and nothing is created.
   let r = await cli(repo, "init", "--fil", "prompt.md");
   assert.equal(r.code, 1);

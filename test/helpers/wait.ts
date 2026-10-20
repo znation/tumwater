@@ -47,7 +47,7 @@ export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the
  * proximate cause of merge rejections: the team runs this suite concurrently with its own
- * ticks, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
+ * runs, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
 export async function waitFor(
   fn: () => boolean,
   what: string,
@@ -100,8 +100,8 @@ export function within(p: Promise<unknown>, ms = 1_000): Promise<boolean> {
  * logical time for the rest of test `t`. The watchdog is a setInterval that reads Date.now(),
  * and open tool calls are stamped with Date.now() (pi-event-line.ts); both become node:test
  * mock timers, started at the real current time. setTimeout stays real, so everything else a
- * run or tick does — spawns, git, locks, the tick timeout — keeps the wall clock.
- * `timeouts: true` puts setTimeout on the same clock, for a test of the tick timeout itself;
+ * start or a role run does — spawns, git, locks, the run timeout — keeps the wall clock.
+ * `timeouts: true` puts setTimeout on the same clock, for a test of the run timeout itself;
  * it is safe only on a path with no other timer to wait out (no contended lock, no
  * rate-limit wait, no build check). The wait helpers here poll on a real timer captured at
  * load, so they work either way.

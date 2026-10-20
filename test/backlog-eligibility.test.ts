@@ -253,7 +253,7 @@ test("eligibleEntries holds a plan another role's base has claimed, but keeps th
     path.join(dir, "PLANS.md"),
     "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nDrive it through the backend.\n## Done\n_None._\n",
   );
-  // `feature` takes the plan the way a real tick does (a queued merge keeps its claim until the
+  // `feature` takes the plan the way a real run does (a queued merge keeps its claim until the
   // move tunes into main); a second plan-consuming role must not be handed the same entry.
   const owner = {
     ...loadRunnerState(dir, "feature"),

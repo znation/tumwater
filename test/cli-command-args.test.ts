@@ -50,7 +50,7 @@ test("parseInitArgs --file reads the exact file contents", () => {
 });
 
 test("parseInitArgs rejects unknown double-dash tokens — including the bare `--`", () => {
-  // A misspelled --file used to be baked into the initial prompt — injected into every tick
+  // A misspelled --file used to be baked into the initial prompt — injected into every run
   // of every role until someone edits README.md. Now it fails like any other unknown flag.
   const r = expectFail(() => parseInitArgs(["--fil", "prompt.md"]));
   assert.equal(r.code, 1);
@@ -134,7 +134,7 @@ test("parseInitArgs --branch: never prompt content, combined with --file, duplic
 
 test("parseInitArgs --adopt/--dry-run: valueless, never prompt content, combine with --file, duplicates rejected", () => {
   // Both booleans are stripped before the join, wherever they sit — `init --adopt "brief"`
-  // must not bake "--adopt" into the brief every tick reads.
+  // must not bake "--adopt" into the brief every run reads.
   assert.deepEqual(expectOk(() => parseInitArgs(["--adopt", "Build", "--dry-run", "a thing."])), {
     prompt: "Build a thing.",
     branch: null,

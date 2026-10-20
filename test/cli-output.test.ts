@@ -20,9 +20,9 @@ test("sayJsonOrRender prints the payload as --json and hands it to the render ot
 });
 
 test("say strips terminal control characters from the CLI's operator-facing line", () => {
-  // A hostile tick summary/error can reach say() through formatEvent; the boundary removes it.
-  const out = attempt(() => say("tick #1 changed \u001b]52;c;AAAA\u0007 done"));
-  assert.equal(out.stdout, "tick #1 changed ]52;c;AAAA done\n");
+  // A hostile run summary/error can reach say() through formatEvent; the boundary removes it.
+  const out = attempt(() => say("run #1 changed \u001b]52;c;AAAA\u0007 done"));
+  assert.equal(out.stdout, "run #1 changed ]52;c;AAAA done\n");
 });
 
 test("sayJson and sayJsonLine write raw JSON, bypassing say's sanitization", () => {

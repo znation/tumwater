@@ -12,8 +12,8 @@ export const PROMPT_START = "<!-- tumwater:prompt:start -->";
 export const PROMPT_END = "<!-- tumwater:prompt:end -->";
 
 /** Cap on the initial prompt (see readInitialPrompt). The prompt is the project's reason to
- * exist and rides into EVERY tick and director prompt, so unbounded text would be a standing
- * per-tick prefill cost — the same budget customRoles.task and roles.<id>.instructions are
+ * exist and rides into EVERY run and director prompt, so unbounded text would be a standing
+ * per-run prefill cost — the same budget customRoles.task and roles.<id>.instructions are
  * held to. `tumwater init` rejects an over-long prompt before it is committed (init.ts); this
  * constant is the shared bound so the read path and the init check cannot drift. */
 export const INITIAL_PROMPT_MAX_CHARS = 4096;
@@ -80,8 +80,8 @@ function ownsBrief(text: string): boolean {
  *
  * A candidate that exists but cannot be read (README.md created as a directory, a
  * permission-lost file) is an operator-visible break, not a silent skip: the brief is
- * every role's reason to exist, read each tick, so falling through to the next candidate
- * could run the team on the wrong brief and throwing raw would crash every tick with an
+ * every role's reason to exist, read each run, so falling through to the next candidate
+ * could run the team on the wrong brief and throwing raw would crash every run with an
  * errno that names neither the file nor the fix — the message below names both. */
 function firstBriefText(
   root: string,
@@ -153,16 +153,16 @@ function extractPrompt(text: string): string | null {
   const prompt = promptBlockOf(text);
   if (prompt === null) return null;
   // A hand-edited brief can carry an over-long prompt past init's length check. Truncate it
-  // for every tick instead of injecting the whole thing (the same defensive cap readPrinciples
+  // for every run instead of injecting the whole thing (the same defensive cap readPrinciples
   // applies, through text.ts's truncateWithNote), with a visible note so the loss is not
   // silent. init rejects the normal path before it is committed, so this is the backstop.
   return truncateWithNote(prompt, INITIAL_PROMPT_MAX_CHARS, "brief");
 }
 
 /** The resolved brief as one value: the owning file's basename (briefFile) and its extracted
- * initial prompt (readInitialPrompt) from a SINGLE firstBriefText scan. Tick prompt assembly
- * asks for both on every tick, and briefFile + readInitialPrompt each re-ran the candidate
- * scan and re-read the file — two whole-file reads per tick for one file's worth of content.
+ * initial prompt (readInitialPrompt) from a SINGLE firstBriefText scan. Run prompt assembly
+ * asks for both on every run, and briefFile + readInitialPrompt each re-ran the candidate
+ * scan and re-read the file — two whole-file reads per run for one file's worth of content.
  * readInitialPrompt and briefFile now derive from this, so there is one read path; null when
  * no candidate carries a well-formed prompt block (both derived values are then empty/null). */
 export function readBrief(root: string): { file: string; prompt: string } | null {

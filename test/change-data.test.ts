@@ -75,11 +75,11 @@ test("a commit with an empty message parses to a sha with an empty subject", asy
   assert.match(view.commits[1]?.sha ?? "", /^[0-9a-f]+$/);
 });
 
-test("a slot leased for a role's tick serves its change to the diff reader", async () => {
+test("a slot leased for a role's run serves its change to the diff reader", async () => {
   const repo = makeRepo();
   await initProject(repo, "change-data slot lease");
   // The role's legacy worktree stays at main; its only work lives in the detached pool slot,
-  // the way a role tick holds it. The reader must read the slot, not the stale legacy worktree.
+  // the way a role run holds it. The reader must read the slot, not the stale legacy worktree.
   const legacy = await ensureWorktree(repo, "feature", "main");
   const slot = slotWorktreePath(repo, 1);
   await ensureDetachedWorktree(repo, slot, "main");

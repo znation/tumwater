@@ -2,7 +2,7 @@
 /** Renders the `<backlog-index>` prompt block every role prompt carries — each actionable
  * entry (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) plus the newest closed
  * ones, each with the 1-based line range it occupies in its file — the bounded replacement for
- * the per-tick `grep -n '^##'` heading map. The entry-range parsing (actionableEntryRanges) and
+ * the per-run `grep -n '^##'` heading map. The entry-range parsing (actionableEntryRanges) and
  * series collapsing (groupBlockedSeries, partsLabel) it builds on live in backlog-structure.ts
  * alongside the stranded-plan checks; this module holds only the block's rendering and its
  * per-file stat caches. Extracted from backlog-structure.ts (organized 2026-10-19) so that
@@ -56,9 +56,9 @@ const CLOSED_SECTIONS: readonly { files: readonly string[]; section: string }[] 
 
 /** One actionable entry as the index renders it: the 1-based range the role reads, the verbatim
  * heading, and the body a hold note is read from. Cached per file stat
- * (stat-cache.cachedTextByStat): both branches of every tick prompt render this block, and the
+ * (stat-cache.cachedTextByStat): both branches of every run prompt render this block, and the
  * backlog files — BUGS.md above all, since its closed history grows without bound — change only at
- * a merge. An unchanged file then costs one stat per tick instead of a full read, a split into
+ * a merge. An unchanged file then costs one stat per run instead of a full read, a split into
  * lines, and a section walk proportional to the whole file. The eligibility mark is applied after
  * the cache, against the section-independent prerequisite set; the cache is keyed by the file path
  * so distinct roots never collide, and bounded inside cachedTextByStat. */
@@ -109,7 +109,7 @@ function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
 
 /** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
  * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
- * checkout `root`. Replaces the per-tick `grep -n '^##'` heading map, whose pattern also matched
+ * checkout `root`. Replaces the per-run `grep -n '^##'` heading map, whose pattern also matched
  * every `###` title in BUGS.md's closed history and so re-sent ~108 KB on every turn (BUGS.md
  * 2026-10-06). A missing or unreadable file contributes no sections; undefined when no section
  * has entries, so an empty backlog leaves the prompt unchanged. The per-file actionable entries

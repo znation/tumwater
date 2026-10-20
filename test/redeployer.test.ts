@@ -72,7 +72,7 @@ test("the happy path: hold through the green check and compile, then restart whe
   assert.deepEqual(types(), ["build_stale", "restart_pending"]);
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "compiled but ticks still in flight");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 2, directorInFlight: 0 }, true), "hold", "compiled but runs still in flight");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "restart", "idle: swap and go");
   assert.deepEqual(f.calls.swap, [HEAD_B]);
@@ -83,7 +83,7 @@ test("the happy path: hold through the green check and compile, then restart whe
   assert.equal(restart.abortedRuns, 0);
 });
 
-test("the drain cap aborts in-flight ticks: restart anyway, counting them", async () => {
+test("the drain cap aborts in-flight runs: restart anyway, counting them", async () => {
   const f = fakeDeps();
   const { r, events } = harness(f.deps, true, 1000);
   let now = 100_000;
@@ -100,7 +100,7 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
   assert.equal(events.at(-1)!.finishWindowMs, 1000, "no observed samples: the cold-start constant bounds the drain");
 });
 
-test("the drain window tracks the observed p75 tick duration, not the cold-start constant", async () => {
+test("the drain window tracks the observed p75 run duration, not the cold-start constant", async () => {
   const f = fakeDeps();
   // Cold-start fallback 1000 ms; the team's observed p75 is 5000 ms.
   const { r, events } = harness(f.deps, true, 1000);
@@ -118,8 +118,8 @@ test("the drain window tracks the observed p75 tick duration, not the cold-start
   assert.equal(events.at(-1)!.abortedRuns, 3);
 });
 
-test("a director tick in flight holds past the drain window without a cap; the swap lands once it clears", async () => {
-  // The 2026-09-08 incident: median ticks run ~35 min, so a long director prompt routinely
+test("a director run in flight holds past the drain window without a cap; the swap lands once it clears", async () => {
+  // The 2026-09-08 incident: median agent runs take ~35 min, so a long director prompt routinely
   // outlived the 30-minute drain and was aborted mid-task. A human prompt outranks the redeploy:
   // no swap and no abort until it finishes (BUGS.md).
   const f = fakeDeps();
@@ -131,13 +131,13 @@ test("a director tick in flight holds past the drain window without a cap; the s
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 1 }, true, (now += 50)), "hold");
   f.compiled(true);
   await settle();
-  // Far past the window with the prompt still running — a role tick would have been aborted here.
+  // Far past the window with the prompt still running — a role run would have been aborted here.
   assert.equal(
     await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 1 }, true, (now += 5000)),
     "hold",
     "the director extends the hold without a cap",
   );
-  // The prompt finishes; one role tick is still running but its window is long gone — it lands
+  // The prompt finishes; one role run is still running but its window is long gone — it lands
   // now.
   assert.equal(
     await r.poll(HEAD_B, { roleInFlight: 1, directorInFlight: 0 }, true, (now += 10)),
@@ -145,14 +145,14 @@ test("a director tick in flight holds past the drain window without a cap; the s
     "only then does the restart land",
   );
   const ev = events.at(-1)!;
-  assert.equal(ev.abortedRuns, 1, "the remaining role tick is counted; the finished director is not");
+  assert.equal(ev.abortedRuns, 1, "the remaining role run is counted; the finished director is not");
   assert.ok(Number(ev.finishedMs) > 5000, `a director-extended hold reports its true length (${String(ev.finishedMs)}ms)`);
 });
 
-test("a main move during the drain does not restart the clock: the same ticks get one window", async () => {
+test("a main move during the drain does not restart the clock: the same runs get one window", async () => {
   // A busy self-hosting team merges while it drains — the 2026-09-08 restart superseded its
   // pending head once and then held for 38 minutes under a 30-minute cap (BUGS.md). Nothing new
-  // starts during a hold, so the ticks the drain waits on are the ones it began with; a new head
+  // starts during a hold, so the runs the drain waits on are the ones it began with; a new head
   // inherits the window rather than opening its own.
   const f = fakeDeps();
   const { r, events } = harness(f.deps, true, 1000);

@@ -1058,7 +1058,7 @@ doctor's `checkMainRed`.
 run was blocked by a red main", "rolePhase retires a stale main red when main's newest check passed
 after it" and "roleRowCells retires the stale main red and teamAlerts raises no banner for it";
 `test/doctor-holds.test.ts` — "checkMainRed: a role with a queued summary is ok" and "checkMainRed:
-a passed merge check newer than the red tick retires the hold".
+a passed merge check newer than the red run retires the hold".
 
 ### INV-T3: the merge marker displays only while the orchestrator lives and a queued change it names is unfinished
 

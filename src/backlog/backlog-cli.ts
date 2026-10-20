@@ -108,7 +108,7 @@ function scanProseFlags(
  * wordings (fileBug/filePlan's empty-arg usage lines); `wakeText` builds the role prompt
  * from the filed entry's title and `titleOf` derives that title from the positionals (the
  * exported bugTitleOf/planTitleOf, so the preflight and the write see one derivation).
- * The wake prompt rides into the target tick's prefill under the same submission cap every
+ * The wake prompt rides into the target run's prefill under the same submission cap every
  * prompt answers to, so fileAndAnnounce checks it (promptLengthProblem) BEFORE calling
  * `file` — otherwise an over-long operator text would write its entry and only then throw
  * inside submitRolePromptAndWake, half-applying the command with the backlog file already

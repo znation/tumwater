@@ -68,7 +68,7 @@ function loadConfigForCheck(root: string): TumwaterConfig | CheckOutcome {
  * behavior (spend must never climb past the cap), but a typo'd id would otherwise surface only
  * after the day's budget is already spent — so doctor checks it up front, before the operator
  * needs it. Read-only: it inspects pi's definitions file, never pi or the network. A price is not
- * readiness, though: whether the backend can SERVE is known only from the fallback's own ticks
+ * readiness, though: whether the backend can SERVE is known only from the fallback's own runs
  * (src/budget/fallback-breaker.ts's breaker, BUGS.md 2026-09-20), so a free pair reads "serving not
  * verified" — unless the running orchestrator has published that its breaker demoted the pair
  * (`demoted`, from orchestrator.json; runDoctor passes it only while that orchestrator is alive),
@@ -237,7 +237,7 @@ export function piSeamsInUse(config: TumwaterConfig): boolean {
 
 /** The default credential probe: run the resolved agent binary's own auth check for one provider
  * and read `ready` out of its JSON. The binary resolves exactly as the spawn does (resolveAgentBin
- * — the same source a real tick would launch), so doctor tests the auth of the pi it would actually
+ * — the same source a real run would launch), so doctor tests the auth of the pi it would actually
  * run. Never throws; every failure mode ends on "unknown". The bounded subprocess is the shared
  * boundedProbe (probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
@@ -304,7 +304,7 @@ export async function piListedModels(
 }
 
 /** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
- * tick gets: resolve the binary through the claude adapter that would spawn it and run `args`
+ * run gets: resolve the binary through the claude adapter that would spawn it and run `args`
  * with a short deadline. Null when the probe could not run, the child errored, or the deadline
  * passed. The one home of the resolveBin + claudeEnv pairing the auth and version checks share,
  * so neither probes a different binary or environment than the other. */
@@ -343,7 +343,7 @@ async function claudeAuthProbe(
 }
 
 /** claude credential readiness (plans/agent-backends.md "Every seam, checked"): a claude seam
- * whose login is gone fails every tick before it can work, so doctor runs `claude auth status`
+ * whose login is gone fails every run before it can work, so doctor runs `claude auth status`
  * under the scrubbed run environment and fails when it reports `loggedIn: false`. An ok detail
  * names the billing the reply implies — the subscription type, or an API key — so an operator
  * telling subscription spend from API spend does not have to run the command themselves. A
@@ -405,7 +405,7 @@ function parseClaudeCliVersion(output: string): string | undefined {
 
 /** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
  * configured model's minimum fails or misprices that model, and team runs disable the
- * auto-updater, so the version an operator has is the version ticks run. Fails below the
+ * auto-updater, so the version an operator has is the version agent runs use. Fails below the
  * highest floor among the claude-routed models, naming which model needs it; an ok detail
  * prints the installed version and the floor it satisfied (or no floor when none applies).
  * The `off`/`minimal` thinking clamp is noted here too, since this check already has the

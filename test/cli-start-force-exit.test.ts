@@ -29,7 +29,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
   // nothing is in flight, the first stop finishes before the second, and the second kill hits
   // a gone pid (ESRCH, CI 2026-10-01). This pi ignores the abort's SIGTERM, and the detached
   // `sleep` it leaves behind holds pi's stdout pipe open, so terminateChild's 10 s SIGKILL can
-  // reap pi without ending the in-flight tick — the graceful stop stays pending until the
+  // reap pi without ending the in-flight run — the graceful stop stays pending until the
   // second Ctrl+C forces the exit (BUGS.md 2026-10-07). Waiting for the first stop's
   // announcement alone still raced that 10 s grace against a loaded host's scheduling; the
   // pipe holder removes the race. The forced exit skips the teardown, so the test reaps pi's
@@ -75,7 +75,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
         await s.waitFor((out) => out.includes("stopping — finishing current runs"), "the first Ctrl+C's stop");
         // Wait out terminateChild's SIGTERM → SIGKILL grace: the moment a loaded host's
         // scheduling used to let the old test's graceful stop finish under it. The holder
-        // keeps the tick pending past pi's death, so the second Ctrl+C still finds the stop in
+        // keeps the run pending past pi's death, so the second Ctrl+C still finds the stop in
         // flight. A bounded wait keeps a wedged harness from hanging the test.
         const piPid = Number(fs.readFileSync(started, "utf8"));
         const deadline = Date.now() + 20_000;

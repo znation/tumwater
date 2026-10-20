@@ -33,7 +33,7 @@ const BUGS_ARCHIVE = FINISHED_ARCHIVES[1].archive;
  * entered a reader's section, and a `done`-dated heading still sitting under `## Planned` invites
  * re-implementation. It also holds the gate-side companion (part 4/4): a change that ADDS a new
  * plan directly under `## Done` is rejected before it can merge. Detection is pure markdown reading
- * — no pi, no git — so the clean role's tick prompt, `tumwater doctor`, and every merge check can
+ * — no pi, no git — so the clean role's run prompt, `tumwater doctor`, and every merge check can
  * all afford it every time. This module also parses actionable entry ranges
  * (actionableEntryRanges/actionableEntryRangesFor) and collapses a series' blocked parts
  * (groupBlockedSeries/partsLabel) for the backlog-index block, which the text of the index block
@@ -346,7 +346,7 @@ const strandedPlanCache = new Map<string, StatKeyedValue<StrandedPlanEntry[]>>()
 
 /** `strandedPlanEntries` for the primary checkout's PLANS.md and PLANS-DONE.md (where finished
  * plans are archived, plans/backlog-archive.md), each entry tagged with its file, stat-cached per
- * file path (stat-cache.cachedTextByStat): the clean role asks for it every tick, `tumwater role`
+ * file path (stat-cache.cachedTextByStat): the clean role asks for it every run, `tumwater role`
  * previews the same block and doctor reports it, and the archive grows without bound, so an
  * unchanged file costs one stat instead of a full read and section walk. A missing or
  * unreadable file reads as no entries. The result is copied out, so each caller owns its
@@ -436,7 +436,7 @@ export function actionableEntryRanges(md: string, sectionTitle: string): Actiona
 const actionableRangesCache = new Map<string, StatKeyedValue<ActionableEntryRange[]>>();
 
 /** `actionableEntryRanges` for one backlog file, stat-cached per (file path, section title):
- * the per-poll and per-tick readers (eligibility's eligibleEntries, claims' listedKeys) ask for
+ * the per-poll and per-run readers (eligibility's eligibleEntries, claims' listedKeys) ask for
  * the same section of the same file every couple of seconds, and BUGS.md's closed history —
  * which the whole-file walk reads — grows without bound, so an unchanged file costs one stat
  * instead of a full read, split, and section walk. Keyed by file path so distinct roots never

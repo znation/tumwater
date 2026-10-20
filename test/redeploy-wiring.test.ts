@@ -80,7 +80,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
 
   // Cold-cache recovery: a third commit no check has ever seen in this process. buildRed must
   // establish the verdict from the tree itself — a witness check plus its confirmation re-run
-  // (the gate's flake rule, BUGS.md 2026-09-30) — instead of waiting for role ticks that will
+  // (the gate's flake rule, BUGS.md 2026-09-30) — instead of waiting for role runs that will
   // never baseline a SHA that is no longer main's tip.
   sh(root, "git", "commit", "-q", "--allow-empty", "-m", "another red tree, never baselined");
   const coldRedHead = headSha(root);
@@ -185,7 +185,7 @@ test("an unwritable event feed cannot reject the green check it reports on", asy
 test("createRedeployer composes the production Redeployer from the running build's own stamp", async () => {
   // The composition itself (redeploy.ts's createRedeployer) had never run under test: the unit
   // tier drove Redeployer with scripted deps while the real boot executed only inside a live
-  // `tumwater run`. The stamp exists in the test process's dist (stamp-build ran before the
+  // `tumwater start`. The stamp exists in the test process's dist (stamp-build ran before the
   // suite), so the composition is exercised here against a fixture repo — which never reads as
   // self-hosted, so the wired Redeployer proves inert while still being the production object.
   const root = makeRepo();

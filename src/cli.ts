@@ -29,7 +29,7 @@ import {
   byFlagSpec,
   LOGS_TRANSCRIPT_FLAG,
   ROLE_FLAG,
-  RUN_FLAG_SPECS,
+  START_FLAG_SPECS,
   sinceFlagSpec,
   STAT_FLAG,
   PATCH_FLAG,
@@ -120,8 +120,8 @@ async function main(): Promise<void> {
       break;
     case "start":
     case "run":
-      rejectUnknownArgs("start", args, RUN_FLAG_SPECS);
-      await (await import("./cli/cli-start.js")).cmdRun(root, args);
+      rejectUnknownArgs("start", args, START_FLAG_SPECS);
+      await (await import("./cli/cli-start.js")).cmdStart(root, args);
       break;
     case "tui":
       rejectUnknownArgs("tui", args, []);

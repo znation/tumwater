@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The repo preconditions' shared wording behind the readiness gate. startup-gate.ts answers
- * with the first unmet precondition (cmdRun and requireReadyRepo fail on it, the self-redeploy
+ * with the first unmet precondition (cmdStart and requireReadyRepo fail on it, the self-redeploy
  * refuses a swap on it) and doctor.ts reports each one individually, but every surface
  * describes the same problems — so the wording lives here once and cannot drift.
  * `GIT_MISSING_MESSAGE` (git/git-run.ts) is the sibling for a machine with no git binary; the

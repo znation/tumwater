@@ -19,7 +19,7 @@ import { runNotFoundMessage } from "../src/run/run-detail.js";
 import { spawnSync } from "node:child_process";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
-// --- abort --role <id>: request to kill one role's in-flight tick via a marker file ---
+// --- abort --role <id>: request to kill one role's in-flight run via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
 // per-role marker (.tumwater/abort-<role>.json) a running team consumes within one poll
 // cycle. The team-side consumption is covered by test/orchestrator.e2e.test.ts; here we pin
@@ -73,7 +73,7 @@ test("abort refuses when tumwater is not running — missing or stale info file 
 
   // A stale info file (dead pid) must read the same way: a crash leaves the file behind,
   // and a marker dropped now would sit in .tumwater until the NEXT team start — where its
-  // first poll would abort a tick that was never running when the user asked. Refuse.
+  // first poll would abort a run that was never running when the user asked. Refuse.
   writeOrchestratorMarker(repo, [], { pid: 2_000_000_000 }); // beyond any pid space
   r = await cli(repo, "abort", "--role", "feature");
   assert.equal(r.code, 1);
@@ -123,7 +123,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
   // Record this test process as the running orchestrator (it is alive).
   writeOrchestratorMarker(repo, ["director"]);
 
-  // The director's in-flight prompt was dequeued from the inbox file at tick start and an
+  // The director's in-flight prompt was dequeued from the inbox file at run start and an
   // abort discards it without re-queueing — the confirmation must say so (item (b)).
   const d = await cli(repo, "abort", "--role", "director");
   assert.equal(d.code, 0);
@@ -132,7 +132,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
   assert.match(d.stdout, /in-flight prompt will be discarded/);
   assert.match(d.stdout, /re-submit with `tumwater prompt`/);
 
-  // Non-director roles carry no such clause: their ticks have no dequeued prompt to lose,
+  // Non-director roles carry no such clause: their runs have no dequeued prompt to lose,
   // and the base confirmation stays byte-identical.
   const f = await cli(repo, "abort", "--role", "feature");
   assert.equal(f.code, 0);

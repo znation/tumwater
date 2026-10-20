@@ -84,12 +84,12 @@ export interface StatusSnapshot {
      * either the flag or its default, since a tier map always resolves a model. */
     modelFromPi?: true;
     /** While a model-fallback episode is active (PLANS.md "Model failure fallback"): the
-     * tier-resolved fallback pair this role's ticks run on, when the episode began, and the
+     * tier-resolved fallback pair this role's agent runs use, when the episode began, and the
      * provider-class failure that tripped it. Absent while the episode is not running the
      * fallback (no episode, or a due probe on the primary), so the common row shape is
      * unchanged. */
     fallback?: ModelFallbackView;
-    /** The pooled worktree slot this role holds (a live tick or verification lease) or is
+    /** The pooled worktree slot this role holds (a live run or verification lease) or is
      * pinned to, named by basename; absent when the role has no slot. `slotPinned` marks a pin
      * (a pending resume waiting on the same checkout) rather than the slot's live lease. */
     slot?: string;
@@ -115,7 +115,7 @@ export interface StatusSnapshot {
    * scheduler's OWN published figure (the gate's poll, over the runners' live in-memory
    * states — BUGS.md 2026-09-30): what an operator sees is what the scheduler enforces. Not
    * running, it is the persisted runner states' sum — a stopped team's files are final. The
-   * per-role rows always read their persisted copies, so while ticks are in flight the
+   * per-role rows always read their persisted copies, so while runs are in flight the
    * per-role cells can sit under the header/total figure: that difference is exactly the
    * charge the scheduler has already counted. `free` is true when every model the team could
    * use resolves to an unpriced or zero-cost entry in pi's models.json (src/pi/pi-models.ts):
@@ -271,7 +271,7 @@ export interface StatusSnapshot {
    * fresh-read rule the gate itself follows. */
   quietHours?: string;
   /** True while the LOCAL wall clock sits inside that window: idle roles start no new
-   * ticks (the director keeps steering). Decided by quiet-hours.ts's inQuietHours — the
+   * runs (the director keeps steering). Decided by quiet-hours.ts's inQuietHours — the
    * scheduler's own predicate — so the dashboards and the hold cannot disagree. Fresh per
    * poll, like `quietHours`. */
   inQuietHours: boolean;
@@ -397,7 +397,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
-  // tick or verification) or is pinned to — threaded into the roles collector so `running`,
+  // run or verification) or is pinned to — threaded into the roles collector so `running`,
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
   const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath);

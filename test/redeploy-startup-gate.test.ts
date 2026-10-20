@@ -11,7 +11,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 
 // The startup gate (BUGS.md 2026-09-23): a green, compiled build that cannot START here — the
-// environment fails `tumwater run`'s preconditions, not the code — must never be swapped in.
+// environment fails `tumwater start`'s preconditions, not the code — must never be swapped in.
 // On 2026-09-22 one was: its child exited "not initialized" and the supervisor took the whole
 // team down with it. The gate is asked before the hold and again right before the swap.
 
@@ -68,7 +68,7 @@ test("the gate is asked again right before the swap: a successor that stops boot
   assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "hold", "green: the compile starts");
   f.compiled(true);
   await settle();
-  assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "hold", "compiled; draining the in-flight tick");
+  assert.equal(await r.poll(HEAD_B, busy, true, (t += 10)), "hold", "compiled; draining the in-flight run");
   assert.equal(asked.length, 1, "asked once at the episode start, not on every hold poll");
 
   // During the drain a merge that was already in flight deletes tumwater.json.
@@ -110,7 +110,7 @@ test("a startup gate that throws refuses fail-closed, naming its error", async (
 });
 
 test("the incident repro through the production gate: a ready repo whose tumwater.json vanishes refuses the restart until it returns", async () => {
-  // BUGS.md 2026-09-23's repro, minus the team: the same runStartupProblem cmdRun runs, asked
+  // BUGS.md 2026-09-23's repro, minus the team: the same runStartupProblem cmdStart runs, asked
   // on behalf of the successor. Pre-fix nothing asked it and the swap went ahead.
   const repo = makeRepo();
   await initProject(repo, "startup gate repro");

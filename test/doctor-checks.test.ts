@@ -266,7 +266,7 @@ test("checkRepo reports the toplevel and honors a configured baseBranch", async 
   assert.match(targeting.detail, /repo at \S+ — targeting branch main$/);
 
   // A configured branch that does not exist fails, listing what does — at doctor time, not
-  // at the first tick.
+  // at the first run.
   const missing = await checkRepo(repo, { baseBranch: "ghost" } as TumwaterConfig);
   assert.equal(missing.level, "fail");
   assert.match(missing.detail, /configured baseBranch ghost does not exist/);

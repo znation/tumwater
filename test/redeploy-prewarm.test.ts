@@ -22,7 +22,7 @@ import {
 
 test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
   // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed
-  // swap — inside the cooldown window the team keeps ticking on the stale build instead of holding
+  // swap — inside the cooldown window the team keeps running on the stale build instead of holding
   // for another drain (BUGS.md).
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);
@@ -30,7 +30,7 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
   assert.equal(
     await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, swappedAt + 60 * 60_000),
     "none",
-    "no hold: ticks continue on the stale build",
+    "no hold: runs continue on the stale build",
   );
   assert.deepEqual(f.calls.green, [HEAD_B, HEAD_C], "the deferred head's green check prewarms during the cooldown (BUGS.md 2026-09-30)");
   assert.deepEqual(f.calls.compile, [HEAD_B], "no compile prewarm while the check is unresolved");

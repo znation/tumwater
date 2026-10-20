@@ -120,7 +120,7 @@ export async function collectRoleChange(
   };
   if (!(await branchExists(root, mainBranch))) return { ...empty, state: "no-base" };
   // The role's checkout comes from the pool resolver (slots-state.ts): a slot leased for its
-  // tick or pinned for it, else the legacy worktree. A null or unusable directory is the same
+  // run or pinned for it, else the legacy worktree. A null or unusable directory is the same
   // operator situation — this role holds nothing inspectable yet — so worktree.ts's shared
   // usability probe still answers the final question.
   const wt = await roleWorktreeDir(root, role);

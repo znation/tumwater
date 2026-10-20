@@ -46,7 +46,7 @@ export interface PartRef {
   of: number;
 }
 
-/** The `**Refused …` note prefix a refusing tick writes. Every hold note — this one and the
+/** The `**Refused …` note prefix a refusing run writes. Every hold note — this one and the
  * imported Needs-review and Needs-replan prefixes — is matched as a line prefix (hasNoteLine)
  * so a mention in prose never holds an entry. */
 const REFUSED_PREFIX = "**Refused ";

@@ -8,11 +8,11 @@ import type { TumwaterConfig } from "./config/config-schema.js";
 
 export function cappedRequestTimeouts(
   cfg: TumwaterConfig,
-  tickCapS: number,
+  runCapS: number,
   quietCapS: number,
 ): Pick<TumwaterConfig, "runTimeoutSeconds" | "quietTimeoutSeconds"> {
   return {
-    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, tickCapS),
+    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, runCapS),
     quietTimeoutSeconds:
       cfg.quietTimeoutSeconds > 0 ? Math.min(cfg.quietTimeoutSeconds, quietCapS) : quietCapS,
   };

@@ -184,8 +184,8 @@ export function checkValidationGaps(root: string): CheckOutcome {
 /** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
  * detector, src/backlog/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
  * invisible to every Planned reader, and a done-dated heading still under `## Planned` invites
- * a second implementation. The clean role repairs these when it happens to tick; this makes
- * the state visible to an operator without waiting for that tick. Reads the tree at `root` —
+ * a second implementation. The clean role repairs these when it happens to run; this makes
+ * the state visible to an operator without waiting for that run. Reads the tree at `root` —
  * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
  * heading is operator signal, not a broken environment. */
 export function checkStrandedPlans(root: string): CheckOutcome {

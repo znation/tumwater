@@ -507,7 +507,7 @@ sleep while there is nothing to do and wake when main moves. Everything is local
  * suggest. Case-insensitive closest-match over the commands helpStanzas(HELP) names, capped
  * at two edits — a typo's distance, not a different word's — so only a near miss gets a hint
  * and the suggestion can never fire as an auto-correction. Deriving the candidates from the
- * help text (not a hand-kept list) means a new command is suggestible the tick it gains a
+ * help text (not a hand-kept list) means a new command is suggestible the run it gains a
  * stanza; the distance mechanics are text/suggest.ts's suggestClosest, shared with the config-key
  * suggestion. */
 export function suggestCommand(input: string, help: string = HELP): string | null {

@@ -586,8 +586,3 @@ export function readRunRowsSince(root: string, sinceMs: number, role: RoleScope)
     covered,
   };
 }
-
-/** @deprecated Use summarizeRunRows. */
-export const summarizeTickRows = summarizeRunRows;
-/** @deprecated Use RunRow. */
-export type TickRow = RunRow;

@@ -4,7 +4,7 @@ import { writeConfig } from "../fixtures/repo-fixtures.js";
 import { spawnCli } from "./cli-harness.js";
 
 /** Write the config every full-run lifecycle test shares: only the clean role enabled. One
- * enabled role keeps the startup burst small; a no-op pi ends every tick as no_change so
+ * enabled role keeps the startup burst small; a no-op pi ends every run as no_change so
  * nothing is committed while the test observes the harness. `mutate` adjusts the config
  * before it is written (the agentBin test sets the agent binary there). */
 export function onlyCleanRole(repo: string, mutate?: (cfg: TumwaterConfig) => void): void {

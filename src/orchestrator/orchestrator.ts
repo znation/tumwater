@@ -83,7 +83,7 @@ interface RunOptions {
    * HANDOFF_MERGE_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
    * deadline path resolves quickly. */
   handoffMergeWindowMs?: number;
-  /** Once mode (`tumwater run --once`): give every enabled role at most one run, wait for
+  /** Once mode (`tumwater start --once`): give every enabled role at most one run, wait for
    * every merge that round produced to finish, then fire the internal stop — the same
    * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
@@ -91,11 +91,11 @@ interface RunOptions {
   /** Scope the whole round to these roles (`run --once --role <id>[,<id>...]`): the runners map
    * starts with just them, the director never runs, and a mid-round config edit that enables
    * another role does not widen the round (config-live skips runners past the filter). The
-   * merge queue still drains fully before exit. cmdRun validates the id against the enabled
+   * merge queue still drains fully before exit. cmdStart validates the id against the enabled
    * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
   roleFilter?: readonly string[];
   /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
-   * show when the team stops. The deadline timer itself lives in cmdRun. */
+   * show when the team stops. The deadline timer itself lives in cmdStart. */
   stopsAt?: number;
 }
 
@@ -130,8 +130,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // targets exactly that runner id.
   const enabled = opts.roleFilter !== undefined ? [...opts.roleFilter] : runnerIds(config);
   // Name the fix, not just the failure: an operator who disabled the last role (or hand-edited
-  // a roles map to all-false) gets the exact edit that unblocks `tumwater run`, and the
-  // defaults they can fall back to. With a role filter this is unreachable — cmdRun validated
+  // a roles map to all-false) gets the exact edit that unblocks `tumwater start`, and the
+  // defaults they can fall back to. With a role filter this is unreachable — cmdStart validated
   // the id against the enabled set before booting — but the guard stays for in-process callers.
   if (enabled.length === 0)
     throw new Error(
@@ -195,7 +195,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // The first per-runner state read is each RoleRunner constructor's loadRunnerState, so the
   // persisted-name migrations run before it. (After the info write and start event above, which
-  // an in-process test or a second `tumwater run` probe reads synchronously.)
+  // an in-process test or a second `tumwater start` probe reads synchronously.)
   await runStartupMigrations(root);
   // The mergeRefs migration moved legacy landing pins but keeps a dangling one (setRef refuses a
   // missing object); this drops what is left before any run.
@@ -211,7 +211,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
   // and merges lease pooled slots: remove them once, before any run, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published
-  // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
+  // state is on disk synchronously for an in-process test or a second `tumwater start` probe.)
   await removeLegacyLandWorktrees(root);
   // Legacy role checkouts (`<role>` from a pre-pool build) are retired in the same startup
   // window, right after the RoleRunners above: a role with a pending resume keeps its dir as a
@@ -251,7 +251,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // changes they approved, and the merge slot.
   const merges = newMergePipeline();
 
-  // Once-mode bookkeeping (`tumwater run --once`) — the run-count snapshot, the per-role
+  // Once-mode bookkeeping (`tumwater start --once`) — the run-count snapshot, the per-role
   // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
   const once = new OnceRound(runners, opts.once === true);
 

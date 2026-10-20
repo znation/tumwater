@@ -174,7 +174,7 @@ async function findOrphans(root: string, probe: ProcessProbe): Promise<OrphanSca
 
 /** Orphaned worktree processes — the detector half of the grandchild-leak fix (BUGS.md
  * 2026-09-21): a process reparented to PID 1 that belongs to one of this repo's worktrees.
- * Leaks of this kind (a killed tick's tool-call grandchildren, a timed-out build check's test
+ * Leaks of this kind (a killed run's tool-call grandchildren, a timed-out build check's test
  * tree, a pi run's backgrounded server, a stray orchestrator an orphaned suite started) hold
  * no lock, write no event and touch no state file, so nothing else in the harness can see
  * them. A process is this repo's when its argv names a path under `.tumwater/worktrees/`
@@ -326,7 +326,7 @@ async function killTrees(
 
 /** Team start's reap of a crashed predecessor's leaks: kill the parentless processes whose run
  * marks all name dead harnesses and at least one names `previousPid`, the orchestrator the
- * info file recorded. Safe without an operator's judgment: a mark proves a tumwater run
+ * info file recorded. Safe without an operator's judgment: a mark proves a tumwater start
  * started the process, the previous-pid match scopes it to this repo, and the dead-harness
  * test excludes any run whose own sweep is still coming. A live `previousPid` (a hand-off
  * whose old orchestrator is draining) scans nothing. Orphans caught only by argv or cwd carry

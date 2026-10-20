@@ -10,7 +10,7 @@ import { makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { cli } from "./helpers/cli-harness.js";
 
-// `tumwater run`'s pre-boot guards, every one failing inside the CLI before any generation
+// `tumwater start`'s pre-boot guards, every one failing inside the CLI before any generation
 // spawns: the detached-primary-checkout and already-running refusals, the --gui/--once and
 // --role flag guards, the role-id validation, and the startup gate that is asked first. Each
 // is a fast, deterministic child exit with nothing to reap. The running-team lifecycle and
@@ -38,7 +38,7 @@ test("run refuses to start while another orchestrator is alive", async () => {
   await initProject(repo, "cli run guard");
 
   // Record a live pid (this test process) as the running orchestrator; two teams in one
-  // repo would double-tick every role and race on the merge lock.
+  // repo would double-run every role and race on the merge lock.
   writeOrchestratorMarker(repo, []);
 
   const restore = fakePi("exit 0");
@@ -91,7 +91,7 @@ test("run --tui fails before boot when the terminal is not interactive", async (
   });
 });
 
-// The `--role` guards of `run` (cmdRun): scoping is a once-round concept, the filter is
+// The `--role` guards of `run` (cmdStart): scoping is a once-round concept, the filter is
 // validated against the ENABLED role ids, and the startup gate is asked before any of it.
 // These were pinned only in the e2e tier (orchestrator-once.e2e.test.ts), which `npm test`
 // does not run — so a regression here sailed through the gate the suite actually enforces.

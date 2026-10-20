@@ -4,7 +4,7 @@
  * (`git clean -fdX`) in idle harness worktrees, least recently used first, before part 1/4's
  * hold engages. Build outputs of every ecosystem go this way (`target/`, `node_modules/`,
  * `dist/`, `.venv/`) without this file naming any of them; `-X` removes only ignored files, so
- * an interrupted tick's uncommitted edits survive.
+ * an interrupted run's uncommitted edits survive.
  *
  * The candidate list and the guard that keeps a clean off the primary checkout live here; the
  * in-use half lives in src/git/worktree-use.ts and the hold half in src/gates/disk-gate.ts. */
@@ -28,7 +28,7 @@ import {
 /** Worktree basenames that pressure reclaim never touches: the self-hosting mirrors the
  * redeployer uses (`_main` for the green check and compile, `_build` for its running-build
  * witness). `_gate-main` and the pooled `_slot-<n>` checkouts are ordinary candidates — their
- * wrapped runs mark them in use exactly like a role tick. */
+ * wrapped runs mark them in use exactly like a role run. */
 const RESERVED_WORKTREES = new Set(["_main", "_build"]);
 
 const HOUR_MS = 60 * 60 * 1000;

@@ -109,9 +109,9 @@ test("readInitialPrompt returns empty string when the opening marker is absent",
   assert.equal(readInitialPrompt(root), "");
 });
 
-// The README is edited live (readme role, users) and read on every tick: a torn or
+// The README is edited live (readme role, users) and read on every run: a torn or
 // hand-edited file that keeps only one marker must degrade to no prompt, not leak the
-// rest of the file into every tick's prompt.
+// rest of the file into every run's prompt.
 
 test("readInitialPrompt returns empty string when only the closing marker exists", () => {
   const root = tmpdir();

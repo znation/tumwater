@@ -96,7 +96,7 @@ export interface OrchestratorInfo {
   build?: BuildStatus;
   /** Present while the budget gate's fallback breaker (src/budget/fallback-breaker.ts) holds the
    * configured free fallback demoted: the cap is reached and the pair is priced at zero, but its
-   * backend failed the breaker's failureLimit consecutive role ticks, so the scheduler reads the
+   * backend failed the breaker's failureLimit consecutive role runs, so the scheduler reads the
    * gate as
    * `paused`. Observers must show that instead of the `fallback` the price alone implies.
    * Written by the orchestrator whenever the demotion changes; absent otherwise. */
@@ -108,7 +108,7 @@ export interface OrchestratorInfo {
   fallbackDemotions?: Record<string, FallbackDemotion>;
   /** The daily cost budget gate's own figures from the most recent poll
    * (src/gates/budget-gates.ts): today's spend summed over the runners' LIVE in-memory states —
-   * charged run-by-run as each pi run folds, not only at the tick-end save — against the
+   * charged run-by-run as each pi run folds, not only at the run-end save — against the
    * cap it was
    * evaluated under. Published whenever it changes so observers (src/status/status-data.ts) can
    * show what the scheduler
@@ -124,7 +124,7 @@ export interface OrchestratorInfo {
    * pass. Written by the orchestrator's poll whenever it changes; absent when statfs cannot
    * measure the volume or on an older orchestrator, which renders exactly as before. */
   disk?: DiskStatus;
-  /** The `tumwater run --for` window's deadline (epoch ms): when the team stops itself. Absent
+  /** The `tumwater start --for` window's deadline (epoch ms): when the team stops itself. Absent
    * for an unbounded run or a `--once` round. Written once at startup, so every self-redeploy
    * generation publishes the same inherited deadline. */
   stopsAt?: number;
@@ -341,7 +341,7 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
 
 /** Publish the running orchestrator's info file atomically (writeJsonAtomic's tmp + rename).
  * The only writer of that path, so a process killed mid-write — the orchestrator's own poll
- * publishes budget/disk/build changes while `tumwater run` in another terminal reads it to
+ * publishes budget/disk/build changes while `tumwater start` in another terminal reads it to
  * refuse a second team — leaves either the previous complete file or the new one, never a
  * torn body that readOrchestratorInfo reports as no running orchestrator. */
 export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): void {

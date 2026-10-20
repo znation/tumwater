@@ -27,13 +27,13 @@ import type { CompileResult } from "../build/build-stage.js";
  * BuildStatus.restartBlocked, which the dashboards and doctor render — because a stale build that
  * is about to be replaced and one that never will be look identical otherwise (BUGS.md
  * 2026-09-08). A green, compiled build can still be unable to START here — the environment, not
- * the code, fails `tumwater run`'s startup gate — so that gate is asked before the team is held
+ * the code, fails `tumwater start`'s startup gate — so that gate is asked before the team is held
  * and again right before the swap, and a failure refuses the restart with a `restart_refused`
  * event instead of trading a running team for a child that exits on its first line (BUGS.md
  * 2026-09-23). Every run a restart interrupts resumes on the new build through the same resume
  * machinery a Ctrl+C uses, so a restart loses no work. */
 
-/** The exit code a supervised `tumwater run` child uses to say "rebuilt; respawn me" —
+/** The exit code a supervised `tumwater start` child uses to say "rebuilt; respawn me" —
  * EX_TEMPFAIL, distinct from success (0), fail() (1) and a forced Ctrl+C (130). */
 export const RESTART_EXIT_CODE = 75;
 
@@ -93,7 +93,7 @@ export type RedeployAction = "none" | "hold" | "restart";
  * a director run (an explicit human prompt) holds the restart open without any cap. */
 export interface InFlightCounts {
   /** Role runs holding a maxConcurrent permit — the ones with an agent run to wait for or abort,
-   * and what `abortedTicks` reports. A run reserved but still parked in the semaphore queue is
+   * and what `abortedRuns` reports. A run reserved but still parked in the semaphore queue is
    * not counted: the orchestrator's start gate keeps it from starting while a restart is
    * pending, so there is nothing of it to drain (BUGS.md 2026-09-23). */
   roleInFlight: number;
@@ -121,9 +121,9 @@ export interface RedeployDeps {
   compile(mainHead: string): Promise<CompileResult>;
   /** Move `mainHead`'s staged build into place as the live dist/. Throws on failure. */
   swap(mainHead: string): void;
-  /** Would a new generation pass `tumwater run`'s startup gate in this repo right now? The
+  /** Would a new generation pass `tumwater start`'s startup gate in this repo right now? The
    * problem it would exit on, or null when it would boot — production asks startup-gate.ts's
-   * runStartupProblem, the same function the child's own cmdRun runs (BUGS.md 2026-09-23). */
+   * runStartupProblem, the same function the child's own cmdStart runs (BUGS.md 2026-09-23). */
   bootProblem(): Promise<string | null>;
   /** Does `buildSha` — the RUNNING build's own commit — carry a red baseline verdict? The
    * cooldown's urgency carve-out asks this (BUGS.md 2026-09-30): a red running build cuts the

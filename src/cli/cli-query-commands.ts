@@ -256,7 +256,7 @@ function writeRoleConfigKey(
   }
 }
 
-/** `tumwater role <id>`: one role's standing prompt and next tick's assembled prompt. */
+/** `tumwater role <id>`: one role's standing prompt and next run's assembled prompt. */
 export async function cmdRole(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
@@ -384,7 +384,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig's
   // roles.<id>.minRunIntervalSeconds DURATION_NON_NEGATIVE check owns validation and the
   // write is atomic. Unlike the notes/quiet-hours/cap branches there is no director refusal:
-  // the director ticks on the same clock.
+  // the director runs on the same clock.
   if (intervalWrite) {
     if (clearInterval && rest.includes("--min-run-interval")) fail("give --clear-min-run-interval or --min-run-interval, not both");
     if (rest.includes("--json")) fail("--json does not apply to a min-run-interval write");

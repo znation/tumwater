@@ -2,7 +2,7 @@
  * 2026-09-21, spun out of the fixed 429-retry entry 2026-09-22; generalized 2026-09-29,
  * PLANS.md): when several roles see the provider fail them the same way within a short window
  * — a 429 storm, or the connection down, a 5xx spell, or the model failing to load —
- * roles start no new ticks until the hold re-opens. The per-run transient retry
+ * roles start no new runs until the hold re-opens. The per-run transient retry
  * (src/runner/runner-pi.ts) already gives each transient failure one wait-and-retry, but it has no
  * cross-role view — with maxConcurrent roles issuing requests against one backend, each burns
  * its retry straight into a storm the team is collectively sustaining. POLICY only, on the
@@ -53,7 +53,7 @@ export const HOLD_CAP_MS = 15 * 60_000;
 
 /** A storm that trips again within this long of the previous hold re-opening is the same
  * storm — the hold was too short — so the next one doubles instead of restarting at the base.
- * Five minutes: longer than the storm window, because the re-opened team's first ticks take a
+ * Five minutes: longer than the storm window, because the re-opened team's first runs take a
  * few turns to reach the provider again; a team that stays clear that long has recovered, and
  * its next storm starts fresh at the base. A RELAPSE IS PER KIND: the same kind re-tripping
  * inside the window escalates, while a different kind after a re-open is a new incident at the
@@ -122,7 +122,7 @@ export interface TeamHold {
   escalation: number;
   /** Epoch ms the last hold re-opened; null before the first. A failure observed at or before
    * it never counts toward the next storm: it is the storm that hold already answered (the
-   * observations that tripped it, and any an in-flight tick hit while it held — that tick's
+   * observations that tripped it, and any an in-flight run hit while it held — that run's
    * own retry is already waiting it out). Also the reference point for a relapse. */
   reopenedAt: number | null;
   /** True while the standing subscription-window hold is a reserve crossing

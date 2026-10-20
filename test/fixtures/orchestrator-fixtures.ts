@@ -320,7 +320,7 @@ export function scriptedRedeployer(
     bootProblem: async () => null,
     buildRed: async () => false,
   };
-  // Events go to the repo's log exactly as cmdRun wires them, so the assertions below read the
+  // Events go to the repo's log exactly as cmdStart wires them, so the assertions below read the
   // same events.jsonl an operator would.
   const redeployer = new Redeployer(
     { sha: "0".repeat(40), builtAt: 1, root: "/proj" },

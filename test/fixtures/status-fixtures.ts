@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import type { StatusSnapshot } from "../../src/status/status-data.js";
 import { freshRunnerState } from "../../src/runner/runner-state.js";
-import { applyTickOutcome } from "../../src/run/run-apply.js";
+import { applyRunOutcome } from "../../src/run/run-apply.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { piLogPath, worktreesDir } from "../../src/paths.js";
 import { writeLogLines } from "./log-fixtures.js";
@@ -154,7 +154,7 @@ export function tableCells(out: string): {
 }
 
 /** Local wall clock `HH:MM:SS` of an epoch-ms instant — the stamp the per-cell suites compare
- * lastTickCell's absolute half against. Built by oracles.ts's raw-parts clockOf, so it stays
+ * lastRunCell's absolute half against. Built by oracles.ts's raw-parts clockOf, so it stays
  * independent of datetime.ts's formatTime. */
 export function stampOf(ts: number): string {
   return clockOf(new Date(ts));
@@ -175,7 +175,7 @@ export function rowOf(out: string, role: string): string {
 
 export function pendingFeature(): ReturnType<typeof freshRunnerState> {
   const s = freshRunnerState("feature");
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "refused", summary: "objected to the plan" });
-  applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
+  applyRunOutcome(s, defaultConfig(), "feature", { result: "refused", summary: "objected to the plan" });
+  applyRunOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   return s;
 }

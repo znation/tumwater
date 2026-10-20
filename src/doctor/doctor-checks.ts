@@ -141,7 +141,7 @@ export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
  * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the
  * team would target: a configured `baseBranch` wins (`run --branch` is per-invocation), and
- * one that does not exist fails here instead of at the first tick. `config` is optional so
+ * one that does not exist fails here instead of at the first run. `config` is optional so
  * the check stands alone; runDoctor passes the loaded config behind a guard. */
 export async function checkRepo(root: string, config?: TumwaterConfig): Promise<CheckOutcome> {
   if (!(await isGitRepo(root))) return failOutcome(NOT_A_REPO_MESSAGE);
@@ -215,7 +215,7 @@ export function checkConfigKeyNames(root: string): CheckOutcome {
 export function checkBrief(root: string): CheckOutcome {
   // briefFile throws on a brief candidate that exists but cannot be read (a directory at
   // the README.md path, a permission-lost file) — report it as the check's failure instead
-  // of crashing doctor: the team would run without its brief every tick.
+  // of crashing doctor: the team would run without its brief every run.
   let owner: string | null;
   try {
     owner = briefFile(root);
@@ -555,7 +555,7 @@ function sweepStaleProbes(dir: string): void {
 /** Event log readable — open and parse events.jsonl (and its rotated archive) so the one
  * failure the telemetry role is chartered to catch — a feed that hid itself — is named by the
  * pre-flight too. An absent or empty log is fine: a young project writes its first event on the
- * first tick. A present-but-unparseable log (a directory at the path, a permission failure, or
+ * first run. A present-but-unparseable log (a directory at the path, a permission failure, or
  * every complete line corrupt) fails, because every observer — telemetry, the TUI/GUI feeds,
  * `logs`, `report` — reads that one feed. Read-only. */
 export function checkEventLog(root: string): CheckOutcome {
@@ -711,7 +711,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
 }
 
-/** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role tick
+/** Provider-slot contention: sums the last 24 h of `provider_wait` events (each a role run
  * whose semaphore admission waited PROVIDER_WAIT_EVENT_MS or more, recorded in
  * orchestrator-launch.ts) and warns when the total reaches PROVIDER_WAIT_WARN_TOTAL_MS — the
  * provider cap is too small. Names every key that waited, busiest first (the key-less
