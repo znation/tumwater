@@ -6,6 +6,7 @@ import { configBytesToPreserve, ffMainTo, restoreConfigBytes } from "../src/merg
 import { loadConfig } from "../src/config/config.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { assertClean, commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
 /** merge-git.ts's config write-back across a merge that untracks tumwater.json, split out
@@ -56,6 +57,26 @@ test("a merge that untracks the config preserves the live file byte-identical", 
   );
   assert.deepEqual(loadConfig(root), parsedBefore, "the parsed config survives the merge");
   assertClean(root, "restored file is ignored, tree clean");
+});
+
+test("a failed config write-back after the fast-forward warns and still reports the merge", async () => {
+  const root = trackedConfigRoot('{"provider":"o"}\n');
+  const sha = await untrackingBranch(root);
+  const cfg = path.join(root, "tumwater.json");
+  const undo = patchFsMethod("writeFileSync", (orig) => (file, data, ...rest) => {
+    if (typeof file === "string" && file.startsWith(cfg)) throw new Error("disk full");
+    return orig(file, data, ...rest);
+  });
+  try {
+    assert.equal(await ffMainTo(root, sha, "main"), true);
+  } finally {
+    undo();
+  }
+  assert.equal(headSha(root), sha);
+  assert.ok(!fs.existsSync(cfg), "the config was not written back");
+  const warnings = warningMessages(root);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /tumwater\.json back failed: disk full/);
 });
 
 test("a merge whose tree keeps the config leaves the live file untouched", async () => {

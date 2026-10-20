@@ -4134,3 +4134,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
 
 **Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fails, and files both on the next call".
+
+## Merge fast-forward: a failed config write-back never undoes a merge
+
+### INV-CI1: a fast-forward that moved main returns success even when the live tumwater.json write-back fails, and logs one warning
+
+**Guarantee.** `ffMainToOrWhy` wraps the working-tree arm's `restoreConfigBytes` in a `try`; a failed write-back (full disk, EACCES) logs one warning event naming the config and returns `null`, so the callers still run their post-merge steps for a merge that already moved main. `restoreConfigBytes` itself still rethrows.
+
+**Binds.** `src/merge/merge-git.ts` (`ffMainToOrWhy`, `restoreConfigBytes`).
+
+**Pinned by.** `test/merge-config.test.ts` — "a failed config write-back after the fast-forward warns and still reports the merge".

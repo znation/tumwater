@@ -6,6 +6,7 @@ import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
+import { TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
 import { errorFirstLine, errorMessage, joinWithMore } from "../text/text.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
@@ -248,7 +249,9 @@ export function restoreConfigBytes(root: string, saved: Buffer | null): void {
  * files update), otherwise a local ref push. Returns true on success. The working-tree arm
  * preserves the live config across a merge that untracks it (plans/portability.md §4b/7):
  * without the write-back, the commit that removes the tracked config would delete the team's
- * running config out from under it and the next config poll would fall back to defaults. */
+ * running config out from under it and the next config poll would fall back to defaults. The
+ * merge has already happened by the time of the write-back, so a failed write-back is a warning
+ * event and the function still returns null. */
 export async function ffMainToOrWhy(
   root: string,
   ref: string,
@@ -268,7 +271,16 @@ export async function ffMainToOrWhy(
       } catch (err) {
         return ffFailureReason(root, ref, mainBranch, err);
       }
-      restoreConfigBytes(root, saved);
+      try {
+        restoreConfigBytes(root, saved);
+      } catch (err) {
+        warnEventBestEffort(
+          root,
+          TUMWATER_SOURCE,
+          `main fast-forwarded, but writing the live ${CONFIG_BASENAME} back failed: ` +
+            `${errorMessage(err)}; restore it by hand (it is no longer tracked on main)`,
+        );
+      }
       return null;
     });
   }
