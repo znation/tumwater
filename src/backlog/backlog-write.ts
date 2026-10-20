@@ -252,7 +252,7 @@ function editEntry(
   n: number,
   title: string,
   body: string,
-): { file: string; title: string } {
+): { file: string; title: string; unchanged?: true } {
   return withStateLock(primaryWorktreeLockPath(root), () =>
     editEntryLocked(root, fileName, sectionTitle, n, title, body),
   );
@@ -276,22 +276,24 @@ function editEntryLocked(
   n: number,
   title: string,
   body: string,
-): { file: string; title: string } {
+): { file: string; title: string; unchanged?: true } {
   const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-  spliceInEditedEntry(file, lines, entry, title, body);
-  return { file: fileName, title };
+  const wrote = spliceInEditedEntry(file, lines, entry, title, body);
+  return wrote ? { file: fileName, title } : { file: fileName, title, unchanged: true };
 }
 
 /** Write `lines` back to `file` with `entry`'s range replaced by `### <title><stamp>` plus
  * `body`: the stamp is the trailing suffix of the entry's joined heading metadata (empty with no
- * parenthetical). Shared by the CLI edit and tryEditEntry so the two cannot drift. */
+ * parenthetical). Shared by the CLI edit and tryEditEntry so the two cannot drift. Writes only
+ * when the rebuilt file differs from what was read, and returns whether it wrote. */
 function spliceInEditedEntry(
   file: string,
   lines: string[],
   entry: ActionableEntryRange,
   title: string,
   body: string,
-): void {
+): boolean {
+  const before = lines.join("\n");
   const metaText = headingMetadata(lines, entry.start - 1).text;
   const stamp = metaText.slice(stripEntryStamp(metaText).length);
   // rest starts at the line after the range's last line: for a well-formed section that is the
@@ -303,7 +305,10 @@ function spliceInEditedEntry(
   // its existing trailing-newline shape).
   if (rest.some((line) => line.trim() !== "")) rebuilt.push("");
   lines.splice(entry.start - 1, entry.end - entry.start + 1, ...rebuilt);
-  writeTextAtomic(file, lines.join("\n"));
+  const after = lines.join("\n");
+  if (after === before) return false;
+  writeTextAtomic(file, after);
+  return true;
 }
 
 /** Why `body` cannot be written as an entry body, or null: a `## `/`### ` heading line outside a
@@ -511,7 +516,7 @@ export function cancelPlan(root: string, n: number): { file: string; title: stri
  * heading's own stamp, and require a title and structurally-sound body before splicing into the
  * kind's section (editEntry). editPlanFromText and editBugFromText are the public plan/bug twins
  * routing through it, so the two cannot drift. */
-function editFromText(root: string, kind: "bug" | "plan", n: number, text: string, usage: string): { file: string; title: string } {
+function editFromText(root: string, kind: "bug" | "plan", n: number, text: string, usage: string): { file: string; title: string; unchanged?: true } {
   const { title: rawTitle, body } = splitEntryFile(text);
   // A first line pasted back as the full heading carries the entry's stamp; the splice re-adds it.
   const title = stripEntryStamp(rawTitle);
@@ -524,13 +529,13 @@ function editFromText(root: string, kind: "bug" | "plan", n: number, text: strin
 /** `tumwater plan --edit <n> --file`: rewrite the nth `## Planned` entry from a markdown file,
  * title and body kept line for line (splitEntryFile), position and original stamp kept. A body
  * that would grow a phantom section writes nothing. */
-export function editPlanFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
+export function editPlanFromText(root: string, n: number, text: string, usage: string): { file: string; title: string; unchanged?: true } {
   return editFromText(root, "plan", n, text, usage);
 }
 
 /** `tumwater bug --edit <n> --file`: the bug twin of editPlanFromText over `## Open`. The body is
  * written as the file gives it, so a bug filed with `--file` can be revised with its body. */
-export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
+export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string; unchanged?: true } {
   return editFromText(root, "bug", n, text, usage);
 }
 
@@ -539,7 +544,7 @@ export function editBugFromText(root: string, n: number, text: string, usage: st
  * The symptom folds to one line (collapseWhitespace, the fileBug rule), so it can never grow
  * a phantom section; an empty one fails with the usage line and writes nothing. A bug has no
  * body, so the rebuilt entry is its heading alone. */
-export function editBug(root: string, n: number, rawText: string, usage: string): { file: string; title: string } {
+export function editBug(root: string, n: number, rawText: string, usage: string): { file: string; title: string; unchanged?: true } {
   const symptom = collapseWhitespace(rawText);
   requireEntryTitle("bug", symptom, usage);
   return editEntry(root, "BUGS.md", "Open", n, symptom, "");
@@ -555,7 +560,7 @@ export function editPlan(
   rawTitle: string,
   rawBody: string,
   usage: string,
-): { file: string; title: string } {
+): { file: string; title: string; unchanged?: true } {
   const title = collapseWhitespace(rawTitle);
   requireEntryTitle("plan", title, usage);
   const body = collapseWhitespace(rawBody);

@@ -557,15 +557,16 @@ function renderShownEntry(shown: { title: string; body: string }): string {
  * `--file <path>` (`-` reads stdin) the new entry comes from a markdown file instead of
  * positionals: `editText` receives its text, and any positional alongside --file is refused.
  * With neither positionals nor --file the entry, rendered as `--show` prints it, opens in
- * $VISUAL/$EDITOR and the saved buffer goes through `editText`; an unchanged buffer writes and
- * commits nothing (`unchanged <command> <n>: <title>`), and an out-of-range position fails
+ * $VISUAL/$EDITOR and the saved buffer goes through `editText`. A saved buffer, positional or
+ * `--file` text that rebuilds the entry byte-for-byte writes and commits nothing (`unchanged
+ * <command> <n>: <title>`), and an out-of-range position fails
  * before the editor launches. */
 export async function editAndAnnounce(
   root: string,
   args: string[],
   command: "bug" | "plan",
-  edit: (n: number, positionals: string[]) => { file: string; title: string },
-  editText: (n: number, text: string) => { file: string; title: string },
+  edit: (n: number, positionals: string[]) => { file: string; title: string; unchanged?: true },
+  editText: (n: number, text: string) => { file: string; title: string; unchanged?: true },
 ): Promise<void> {
   const fileFlag = args.indexOf("--file");
   const path = fileFlag >= 0 ? promptFileValue(args[fileFlag + 1]) : null;
@@ -578,6 +579,10 @@ export async function editAndAnnounce(
   if (path !== null) rejectStrayWithFile(positionals[0]);
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
+  const sayUnchanged = (file: string, title: string): void => {
+    if (json) sayJson({ file, title, changed: false });
+    else say(`unchanged ${command} ${position}: ${title}`);
+  };
   let text: string | null = null;
   if (path === null && positionals.length === 0) {
     const shown = showEntry(root, command, position);
@@ -585,13 +590,16 @@ export async function editAndAnnounce(
     const after = editInEditor(before, `${command}-${position}.md`);
     if (after.trim() === before.trim()) {
       const file = command === "bug" ? "BUGS.md" : "PLANS.md";
-      if (json) sayJson({ file, title: shown.title, changed: false });
-      else say(`unchanged ${command} ${position}: ${shown.title}`);
+      sayUnchanged(file, shown.title);
       return;
     }
     text = after;
   } else if (path !== null) text = readPromptFileArg(path);
   const edited = text === null ? edit(position, positionals) : editText(position, text);
+  if (edited.unchanged) {
+    sayUnchanged(edited.file, edited.title);
+    return;
+  }
   warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);

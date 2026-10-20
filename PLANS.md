@@ -626,27 +626,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Backlog edits, part 1/2: `tumwater plan|bug --edit <n>` with the entry's own text says `unchanged` and commits nothing, instead of a false "written but not committed" warning (planned 2026-10-20 by the plan role; touches `spliceInEditedEntry`/`editEntryLocked`/`editEntry` in src/backlog/backlog-write.ts, `editAndAnnounce` in src/backlog/backlog-cli.ts and test/backlog-write-edit.test.ts. Part 2/2 gives the TUI and dashboard edits the same answer. No other Planned entry touches these files)
-
-**Goal.** `tumwater plan --show 2 > e.md; tumwater plan --edit 2 --file e.md` is the documented round trip, and `plan|bug --edit <n> "<same title>"` is an easy slip. Either way `editEntry` rewrites PLANS.md/BUGS.md with the same bytes. `editAndAnnounce` then calls `commitOperatorBacklogEdit`, whose `git commit --only` has nothing to commit and exits 1 (checked in a scratch repo: "nothing to commit, working tree clean"). So the command prints `edited plan in PLANS.md: <title>` and, on stderr, `warning: PLANS.md was written but not committed to main — commit it before the next fast-forward`, although nothing changed and there is nothing to commit. The bare `--edit <n>` editor path already handles this case: it prints `unchanged <command> <n>: <title>` (JSON `{file, title, changed: false}`) and writes nothing. The positional and `--file` forms should give the same answer.
-
-**Approach.**
-- src/backlog/backlog-write.ts `spliceInEditedEntry`: take `before = lines.join("\n")` before the splice. After rebuilding, write only when `lines.join("\n") !== before`, and return a boolean that is true when it wrote. Comparing the whole file is exact. A wrapped heading that `--edit` re-collapses onto one line still counts as a change and is written, which keeps "editPlan re-collapses a wrapped heading onto one line with its stamp intact" passing. Update its doc comment.
-- `editEntryLocked` / `editEntry` (and so `editPlan`, `editBug`, `editPlanFromText`, `editBugFromText`): return `{ file: string; title: string; unchanged?: true }`, with `unchanged: true` when the splice wrote nothing.
-- `tryEditEntry` ignores the boolean in this part, so its behaviour stays as it is: it reports `edited`. Part 2/2 changes that.
-- src/backlog/backlog-cli.ts `editAndAnnounce`: widen the `edit`/`editText` callback types to the new return type. When `edited.unchanged` is set, skip `commitOperatorBacklogEdit` and `warnIfUncommitted`, and print the editor path's wording: `unchanged ${command} ${position}: ${edited.title}`, or with `--json` `{ file, title, changed: false }`. Factor the two sites into one local helper so the wording cannot drift. A real edit prints exactly what it prints today. Update the doc comment ("an unchanged buffer writes…" now covers every form).
-- src/cli.ts's callbacks pass the return values through unchanged, so the file needs no edit unless its inline types demand one.
-
-**Tests (test/backlog-write-edit.test.ts).**
-- Add "plan --edit --file with the entry's own --show text prints unchanged and leaves PLANS.md byte-identical". Use `planSeed` via `fs.writeFileSync`, run `cli(repo, "plan", "--show", "2")`, write its stdout to a file, and run `plan --edit 2 --file <that file>`. Expect exit 0, stdout matching `/unchanged plan 2: two/`, stderr not matching `/not committed/`, and identical PLANS.md bytes. With `--json`, expect `{ file: "PLANS.md", title: "two", changed: false }`.
-- Add "bug --edit with the bug's current symptom prints unchanged". File a bug with `cli(repo, "bug", "first symptom")`, then run `bug --edit 1 "first symptom"`. Expect `unchanged bug 1: first symptom`, identical BUGS.md bytes, and an unchanged `git rev-list --count HEAD` (the fixture is a git repo; compare before and after).
-- The existing edit tests use changed text and pass unmodified.
-
-**Acceptance criteria.**
-- `plan|bug --edit <n>` with positionals or `--file` that rebuild the entry byte-for-byte writes nothing, makes no commit, prints `unchanged <command> <n>: <title>` (`--json`: `changed: false`), and prints no "not committed" warning.
-- Any edit that changes a byte (title, body, a re-collapsed heading) writes, commits and prints `edited …` exactly as before.
-- `npm run test:gate` passes.
-
 ### Backlog edits, part 2/2: the TUI and dashboard entry edits say when a save changed nothing, instead of "edited" with an empty commit attempt (planned 2026-10-20 by the plan role; "requires part 1/2 landed": it uses the boolean part 1/2 adds to `spliceInEditedEntry`. Touches `tryEditEntry`/`EditEntryOutcome` in src/backlog/backlog-write.ts, `handleBacklogEdit` in src/gui/gui-backlog-commands.ts, the `entry-edit-save` action in src/ui/gui/gui-client-boot.ts, `applyEntryEdit` in src/ui/tui/tui-editor-entry.ts, test/gui-endpoints.test.ts and test/tui-keys.test.ts)
 
 **Goal.** The TUI's Ctrl+E title editor opens pre-filled with the entry's title, and the dashboard drawer's edit form opens pre-filled with title and body. Saving either without a change runs `tryEditEntry`, which re-splices the same bytes and answers `edited`. Then:

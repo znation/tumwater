@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { editBug, editPlan } from "../src/backlog/backlog-write.js";
@@ -364,3 +365,38 @@ test("plan --edit --file refusals leave PLANS.md untouched", async () => {
   }
 });
 
+
+test("plan --edit --file with the entry's own --show text prints unchanged and leaves PLANS.md byte-identical", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli plan edit unchanged");
+  const plans = path.join(repo, "PLANS.md");
+  fs.writeFileSync(plans, planSeed);
+  const shown = await cli(repo, "plan", "--show", "2");
+  const md = path.join(repo, "e.md");
+  fs.writeFileSync(md, shown.stdout);
+  const r = await cli(repo, "plan", "--edit", "2", "--file", md);
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /unchanged plan 2: two/);
+  assert.doesNotMatch(r.stderr, /not committed/);
+  assert.equal(fs.readFileSync(plans, "utf8"), planSeed);
+  const j = await cli(repo, "plan", "--edit", "2", "--file", md, "--json");
+  assert.equal(j.code, 0, j.stderr);
+  assert.deepEqual(JSON.parse(j.stdout), { file: "PLANS.md", title: "two", changed: false });
+  assert.equal(fs.readFileSync(plans, "utf8"), planSeed);
+});
+
+test("bug --edit with the bug's current symptom prints unchanged", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli bug edit unchanged");
+  assert.equal((await cli(repo, "bug", "first symptom")).code, 0);
+  const bugs = path.join(repo, "BUGS.md");
+  const before = fs.readFileSync(bugs, "utf8");
+  const count = (): string => execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: repo, encoding: "utf8" });
+  const commits = count();
+  const r = await cli(repo, "bug", "--edit", "1", "first symptom");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /unchanged bug 1: first symptom/);
+  assert.doesNotMatch(r.stderr, /not committed/);
+  assert.equal(fs.readFileSync(bugs, "utf8"), before);
+  assert.equal(count(), commits);
+});
