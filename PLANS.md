@@ -156,4 +156,35 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
+### docs/invariants.md gains a disk-hold section, and one test pins that the floor itself does not hold, that a null sample lifts an active hold, and that the unmeasurable warning fires once even across measurable samples (planned 2026-10-20 by the plan role; independent of every eligible plan; touches docs/invariants.md + a new test/disk-gate-edges.test.ts)
+
+**Goal.** `src/gates/disk-gate.ts` owns the disk floor's hold: `diskVolumePath`, `sampleFreeBytes`, `newDiskGateState` and `pollDiskGate` (called once per cycle from `pollTeamGates` in src/gates/gate-polls.ts). Before this entry, docs/invariants.md did not name the module (`grep -c disk-gate docs/invariants.md` printed 0). Its "Worktree reclaim" section covers src/team/reclaim.ts only. test/disk-gate.test.ts covers the hold and its hysteresis exit at exactly floor + 5, `diskHoldGB` 0, the live edit to 0, a null sample from a fresh state, `waitForReclaim` and the sampler. Three branches of `pollDiskGate` fail no test when broken:
+- The entry is strict: `freeGB < holdGB`. Every entering sample in test/disk-gate.test.ts sits below the floor (9 or 9.5 against 10), so `freeGB <= holdGB` passes every test, and a team sitting exactly at its floor would hold.
+- A null sample lifts an active hold: the null branch sets `state.prevHeld = false` and returns `false`. Every null sample in "pollDiskGate: a null sample never holds and warns once per process" arrives on a fresh state, so `return state.prevHeld` in the null branch (with the reset dropped) passes every test, and a team whose statfs starts failing while held would stay held with no way out.
+- The warning fires once per process, not once per run of null samples. That test never sends a null after a measurable sample, so adding `state.warnedUnmeasurable = false;` after the null branch (re-arming it on each measurable sample) passes every test, and a flaky statfs would warn on every flip.
+
+This plan adds the test in a new file, then the section that cites it. No change to src/.
+
+Out of scope, deliberately left unpinned: when a null sample lifts an active hold, no `disk_ok` is logged, so the event feed shows a `disk_low` with no closing event. The new test asserts return values and the warning count only, never the absence of `disk_ok`, so a later fix to that pairing does not have to rewrite it.
+
+**Approach.**
+1. New test/disk-gate-edges.test.ts (node:test + `node:assert/strict`, as test/disk-gate.test.ts does; `BYTES_PER_GB`, `newDiskGateState`, `pollDiskGate` from ../src/gates/disk-gate.js, `readEvents` from ../src/events/event-read.js, `tmpdir` from ./fixtures/repo-fixtures.js, `eventTypes` and `warningEvents` from ./fixtures/log-fixtures.js). Do not edit test/disk-gate.test.ts. Let B = `BYTES_PER_GB`.
+2. Test "pollDiskGate: the floor itself does not hold, a null sample lifts an active hold, and the unmeasurable warning fires once per process":
+   - Fresh root and state: `pollDiskGate(root, 10 * B, 10, state)` is `false` and `eventTypes(root)` deep-equals `[]`. Mutation: `freeGB <= holdGB` and it holds, logging `disk_low`.
+   - Same state: `pollDiskGate(root, 9 * B, 10, state)` is `true`. Then `pollDiskGate(root, null, 10, state)` is `false`. Mutation: in the null branch, `return state.prevHeld` with the `state.prevHeld = false` line removed. It returns `true`. The mutation must type-check, since tests compile through tsc first.
+   - Same state: `pollDiskGate(root, 40 * B, 10, state)` is `false`, then `pollDiskGate(root, null, 10, state)` is `false`, and `warningEvents(readEvents(root, 100)).length` is `1`. Mutation: add `state.warnedUnmeasurable = false;` right after the null branch's closing brace, and the count is `2`.
+   Run the file once, and check by hand that each named mutation fails the new test and that the test passes again once it is reverted, before you write VERIFIED. Also confirm that each mutation passes test/disk-gate.test.ts, or drop the claim that it is caught only here.
+3. docs/invariants.md: append "## Disk hold: below the floor the team starts no new work, the hold lifts only clear of a 5 GB band, and an unmeasurable disk never holds" at the end, after the last section. For the INV prefix, check `grep -n '^### INV-' docs/invariants.md | tail` and the "was free" notes in PLANS.md's Planned entries. On 2026-10-20, BB (commit messages) had merged and BC (quiet hours) was planned, so BD was free. Take the letter pair after the highest one taken or planned. Reread each test before you cite it. Guarantees:
+   - 1: free space is `bavail * bsize` on the worktrees dir once it exists, else on the root, and null when statfs throws. Binds `diskVolumePath`, `sampleFreeBytes`. Pinned by "sampleFreeBytes measures the worktrees volume once it exists, else the root", "sampleFreeBytes returns null when statfs throws" and "pollDiskGate: measured path detail is the worktrees dir when it exists".
+   - 2: the hold enters strictly below `diskHoldGB` (GB = 10^9 bytes), only once no reclaim pass is running. It lifts at `diskHoldGB + DISK_HOLD_HYSTERESIS_GB` or when the floor is edited to 0. Each crossing logs exactly one `disk_low` (with `freeGB`, `holdGB`) or `disk_ok` (with `freeGB`). Binds `pollDiskGate`, `newDiskGateState`, `BYTES_PER_GB`, `DISK_HOLD_HYSTERESIS_GB`. Pinned by "pollDiskGate holds below the floor and one disk_low logs per crossing", "pollDiskGate hysteresis: stays held until floor + 5, lifts with one disk_ok", "pollDiskGate: diskHoldGB 0 disables the hold at any free space", "pollDiskGate: a live edit to diskHoldGB 0 lifts an active hold on the next poll", "pollDiskGate: waitForReclaim defers entering the hold until the pass settles", "pollDiskGate: an unwritable events feed does not throw out of the poll" and the step-2 test.
+   - 3: an unmeasurable sample never holds and lifts an active hold. It logs one `warning` per process, however the samples alternate. Binds `pollDiskGate`. Pinned by "pollDiskGate: a null sample never holds and warns once per process" and the step-2 test.
+   - Also cite the wiring tests in test/gate-polls.test.ts, "pollTeamGates: a low disk holds new work; recovery and a live floor edit lift it" and "pollTeamGates publishes the measured disk state for observers", under guarantee 2's Pinned by, only if rereading them confirms they drive `pollDiskGate`.
+
+**Files touched.** test/disk-gate-edges.test.ts (new), docs/invariants.md. No change to src/.
+
+**Acceptance criteria.**
+- `npm run test:gate` passes, and the new test passes.
+- Each of the three mutations named in step 2 fails the new test when applied by hand, and passes again once reverted. Report this in VERIFIED.
+- Every test name cited in the new section exists verbatim (`grep -F` each one in test/).
+
 ## Done
