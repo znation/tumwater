@@ -67,7 +67,14 @@ and one serial merge step merges them, so other roles keep running while a chang
   failure goes to bugfix. Optionally, `check.gateCommand` names a cheaper check (say, only the
   tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
   own team sets it to `npm run test:gate`. The full check then still runs once per merge, over
-  the batch or the single change, and a failing result there blocks the merge.
+  the batch or the single change, and a failing result there blocks the merge. Optionally,
+`check.mergeCommand` names a cheaper check for that in-lock step (lint, compile and the change's
+affected tests). A merge whose rebased head the gate verified then runs nothing in the lock, and
+a green of the cheaper command never seeds main's verdict. The main watch runs the full check on
+main's tip after the merge: a break it finds is reverted, and the red-main gate, the bugfix note
+read the watch's verdict instead of starting a full check (no verdict yet reads as green); the
+gate's re-attribution of a repeated failure still runs main's check fresh, as it does unset. Its in-lock `build_check` events carry `full: false`, so reports and
+doctor's merge-check median leave them out. Unset, every merge runs the full check.
   `check.timeoutSeconds` (default 300) bounds every check, the detected `npm test` included.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review, but the pipeline first rejects,

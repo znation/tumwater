@@ -6,40 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests)
-
-**Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).
-
-**Approach.**
-- Config: `check.mergeCommand?: string`.
-  - Add it to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts).
-  - Validate it like `gateCommand` (src/config/config-validation.ts ~315-323); blank means off.
-  - Add an accessor `mergeCommandOf` beside `gateCommandOf` (src/build/build-check-detect.ts).
-  - Update the valid-keys string in test/config-validation-check.test.ts.
-- With `mergeCommand` set:
-  - `verifyMerge` and the batch path (src/merge/merge-batch.ts, src/merge/merge-stack.ts) run it instead of the full check. Swap the command per scope in src/build/build-check-scoped.ts (~74).
-  - The in-lock run is skipped when the rebased head is the head the gate verified (`rebasedHead === verifiedHead`).
-  - Its green never calls `noteGreenBaseline`: main's verdicts come from the watch.
-  - Its `build_check` events carry `full: false`. Code that reads `isFullCheckScope`/`MERGE_SCOPES` (src/build/build-check-events.ts) as "this was the full check" treats them as not full: attribution, reports, doctor's merge-check median.
-  - `mainRedGate` and `bugfixMainRedNote` (src/baseline/main-red.ts) read the watch's newest verdict for main's tip or its nearest checked ancestor and never start a full check themselves. No verdict yet reads as green.
-  - The gate's re-attribution (src/review/review-precheck.ts ~135) uses the watch's verdict for the tip when it has one, and attributes as today when it has none.
-- Unset, nothing changes.
-- tumwater.json: `"check": { …, "mergeCommand": "npm run test:gate" }`.
-- Docs that promise a full check per merge or "never a red main" now say what happens instead: docs/config.md (the `check` row), docs/how-it-works.md (~65-69), DEVELOPMENT.md (~37-42), the comment in test/affected-tests.ts (~7-8), and the comments in src/merge/merge-batch.ts (~159, ~296).
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/build/build-check-detect.ts, src/build/build-check-scoped.ts, src/build/build-check-events.ts, src/merge/merge-to-main.ts, src/merge/merge-batch.ts, src/merge/merge-stack.ts, src/baseline/main-red.ts, src/review/review-precheck.ts.
-- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md, DEVELOPMENT.md, test/affected-tests.ts (comment only).
-- Tests: test/config-validation-check.test.ts, test/build-check-detect.test.ts, test/build-check.test.ts, test/merge-to-main.test.ts, test/main-red.test.ts.
-
-**Acceptance criteria.**
-- With `mergeCommand` set to a passing fake command and a full check that would fail, a change merges. The watch then reports the tip red and part 4b/14 reverts the change.
-- When the rebased head equals the verified head, no in-lock `build_check` runs.
-- A `mergeCommand` green never appears among the persisted greens.
-- A fresh run on main with a watch verdict starts without running a full check.
-- With `mergeCommand` unset, the existing merge tests pass unchanged.
-- `npm test` passes.
-
 ### Fast merge, part 14/14: Roles listed in `review.afterMerge` merge once the gate passes and are reviewed after merging (planned 2026-10-19 by user; requires parts 4c/14 and 6/14 landed; design in plans/fast-merge.md "Lever 7: maintenance roles reviewed after merging"; touches src/config/config-schema.ts src/config/config-validation.ts src/review/review.ts src/merge/merge-verify.ts src/merge/merge-drain.ts src/merge/merge-core.ts tumwater.json docs/config.md docs/how-it-works.md and their tests)
 
 **Goal.** clean, dedupe and coverage merge many small code changes, and each one waits for a review before it can merge. For those roles a review after the merge, with the power to revert, keeps the quality bar at a fraction of the wait.

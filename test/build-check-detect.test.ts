@@ -11,6 +11,7 @@ import {
   BUILD_CHECK_TIMEOUT_MS,
   detectBuildCheck,
   gateCommandOf,
+  mergeCommandOf,
   resolveFromNodeModules,
 } from "../src/build/build-check-detect.js";
 
@@ -324,4 +325,12 @@ test("resolveFromNodeModules climbs to an ancestor's install and gives up past t
   assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc")), tsc, "and three levels down");
   assert.equal(resolveFromNodeModules(nested, path.join("typescript", "bin", "tsc"), 2), null, "cap reached first");
   assert.equal(resolveFromNodeModules(nested, "nonesuch"), null, "nothing to find");
+});
+
+test("mergeCommandOf: on for a real string, off for blank or missing", () => {
+  assert.equal(mergeCommandOf({ check: { command: "npm test", mergeCommand: "npm run test:gate" } }), "npm run test:gate");
+  assert.equal(mergeCommandOf({ check: { command: "npm test", mergeCommand: "  " } }), undefined);
+  assert.equal(mergeCommandOf({ check: { command: "npm test" } }), undefined);
+  assert.equal(mergeCommandOf({}), undefined);
+  assert.equal(mergeCommandOf(), undefined);
 });

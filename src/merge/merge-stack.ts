@@ -21,7 +21,7 @@ import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import type { BuildCheck } from "../build/build-check-detect.js";
+import { type BuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { noteGreenBaseline } from "../baseline/main-baseline.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
@@ -203,7 +203,8 @@ async function mergeStackIn(ctx: MergeScopeContext, wtPath: string, entries: rea
           onlyKnownMainFailures(ctx.root, check.outcome.failingTests) !== null;
         if (check !== null && check.outcome.status === "failed" && !knownOnly) return { kind: "red", ...check };
         checkedTip = tip;
-        if (check !== null && check.outcome.status === "passed") seed = tip;
+        // A mergeCommand green seeds nothing: main's verdict comes from the main watch.
+        if (check !== null && check.outcome.status === "passed" && mergeCommandOf(ctx.config) === undefined) seed = tip;
       }
     }
     if ((await ffStackToMain(ctx.root, ctx.mainBranch, mergeDone)) === "changed") {

@@ -3,10 +3,10 @@ import { baselineBlocked, BUGFIX_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
-import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
+import { BUILD_CHECK_TIMEOUT_MS, mergeCommandOf } from "../build/build-check-detect.js";
 import { failureHeadline, FAILING_TESTS_MAX } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
-import { checkMainBaseline } from "./main-baseline.js";
+import { checkMainBaseline, watchedBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-prompts.js";
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
@@ -155,7 +155,9 @@ export async function bugfixMainRedNote(root: string, role: string, wt: string):
   // The declared check is detected through the live config (plans/portability.md §6/7); a
   // broken file degrades to defaults, which declare none — the tick then proceeds as before.
   const config = liveConfig(root);
-  const baseline = await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
+  const baseline = mergeCommandOf(config)
+    ? { baseline: await watchedBaseline(wt) }
+    : await checkMainBaseline(wt, config, baselineCheckLogger(root, role));
   const red = baseline.baseline;
   if (red?.status === "green") lastHealKey = null;
   if (red?.status !== "red") return undefined;
@@ -186,7 +188,12 @@ export async function mainRedGate(
   // degrades to defaults, which know no customs).
   const cfg = liveConfig(root);
   if (!baselineBlocked(role) && !isCustomRole(cfg, role)) return null;
-  const baseline = await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
+  // With check.mergeCommand set the lock no longer runs the full check, and neither does this
+  // gate: it reads the main watch's newest verdict for main's tip (or its nearest checked
+  // ancestor). No verdict yet reads as green.
+  const baseline: Awaited<ReturnType<typeof checkMainBaseline>> = mergeCommandOf(cfg)
+    ? { baseline: await watchedBaseline(wt) }
+    : await checkMainBaseline(wt, cfg, baselineCheckLogger(root, role), false, false, sampleSleep);
   if (baseline.unverified) {
     // The baseline run spanned a host sleep: no verdict about main, nothing cached (BUGS.md
     // 2026-09-30). Warn-and-proceed, like a skip — the sleep is named, not a test failure.

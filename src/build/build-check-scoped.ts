@@ -3,6 +3,7 @@ import {
   type BuildCheck,
   detectBuildCheck,
   gateCommandOf,
+  mergeCommandOf,
 } from "./build-check-detect.js";
 import {
   runBuildCheck,
@@ -56,9 +57,10 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * own host-sleep evidence) earns that same one retry at any scope, and a failed run the host slept
  * through does too; each attempt is priced as its own build_check event, carrying when the check
  * itself ran (buildCheckRunFields). A configured `check.gateCommand` replaces the command at scope
- * "gate" only (same cwd and timeout); the merge and batch scopes — and the red-main baseline, which
- * detects on its own — keep running check.command. `permitWait` hears about a wait for the check
- * permit (the merge cell's "waiting for a check slot"). Never throws. */
+ * "gate" only (same cwd and timeout); a configured `check.mergeCommand` replaces it at the merge
+ * and batch scopes, and those events then carry `full: false`. Otherwise those scopes — and the
+ * red-main baseline, which detects on its own — keep running check.command. `permitWait` hears
+ * about a wait for the check permit (the merge cell's "waiting for a check slot"). Never throws. */
 export async function runScopedBuildCheck(
   root: string,
   role: string,
@@ -71,12 +73,13 @@ export async function runScopedBuildCheck(
   permitWait?: PermitWaitHooks,
   sampleLoad: LoadSampler = sampleHostLoad,
 ): Promise<{ check: BuildCheck; outcome: BuildCheckOutcome } | null> {
-  const gateCommand = scope === "gate" ? gateCommandOf(config) : undefined;
+  const swapped = scope === "gate" ? gateCommandOf(config) : MERGE_SCOPES.has(scope) ? mergeCommandOf(config) : undefined;
   const check = detectBuildCheck(
     wt,
-    gateCommand === undefined ? config : { check: { ...config?.check, command: gateCommand } },
+    swapped === undefined ? config : { check: { ...config?.check, command: swapped } },
   );
   if (!check) return null;
+  const cheaper = scope !== "gate" && swapped !== undefined;
   // A configured check.timeoutSeconds bounds either kind; otherwise an npm check runs under the
   // caller's bound. Effective here so the reason text and the skip warning agree with what
   // runBuildCheck enforced.
@@ -106,7 +109,7 @@ export async function runScopedBuildCheck(
       // the retry's classified outcome.
       const { outcome, durationMs: d } = await runWithCleanRetry(
         () => runBuildCheck(wt, runCheck, timeoutMs, undefined, sampleSleep, install),
-        (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur)),
+        (first, dur) => logEventBestEffort(root, buildCheckEvent(role, scope, first, dur, cheaper)),
       );
       durationMs = d;
       return outcome;
@@ -163,7 +166,7 @@ export async function runScopedBuildCheck(
         ...(raw.install ? { install: raw.install } : {}),
       }
     : raw;
-  logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs));
+  logEventBestEffort(root, buildCheckEvent(role, scope, outcome, durationMs, cheaper));
   if (outcome.status === "skipped") {
     // Environmental — deliberately NOT fail-closed, so a hung build script cannot wedge every
     // code tick into the 3-strike discard (gate) or a merge behind the merge lock.

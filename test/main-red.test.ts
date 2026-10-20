@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { watchedBaseline, noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { bugfixMainRedNote, mainRedGate, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { isEligible } from "../src/scheduling/scheduling.js";
-import { defaultConfig } from "../src/config/config.js";
+import { defaultConfig, liveConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
 import { eventsOfType, mainRedHolds, warningEvents } from "./fixtures/log-fixtures.js";
@@ -541,4 +542,51 @@ test("mainRedGate lets a role run on a red main that names its failing tests, on
   } finally {
     restore();
   }
+});
+
+// ── check.mergeCommand: the red-main reads answer from the watch's verdict, no full check ──
+
+test("with check.mergeCommand set, mainRedGate and mainTipVerdict read a cached verdict and start no check", async () => {
+  const counter = path.join(tmpdir(), "runs");
+  const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ check: { mergeCommand: "echo cheap" } }));
+  const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
+  try {
+    // No verdict yet reads as green: authoring proceeds, nothing runs.
+    assert.equal(await mainRedGate(root, ROLE, wt), null);
+    assert.equal(await bugfixMainRedNote(root, ROLE, wt), undefined);
+    const config = liveConfig(root);
+    const unknown = await mainTipVerdict(root, ROLE, "main", config);
+    assert.equal(runsOf(counter), 1, "only the attribution without a verdict runs the check, as without the setting");
+    // That run cached a red for the tip: the gate now reads it without running anything again.
+    assert.equal(unknown.status, "red");
+    const before = runsOf(counter);
+    assert.equal((await mainRedGate(root, ROLE, wt))?.result, "main_red");
+    assert.deepEqual(await mainTipVerdict(root, ROLE, "main", config), { status: "red", sha: mainSha(root) });
+    assert.equal(runsOf(counter), before, "a cached verdict starts no further full check");
+    // The attribution is the one it is without the setting: forceFresh still bypasses the cache.
+    await mainTipVerdict(root, ROLE, "main", config, true);
+    assert.equal(runsOf(counter), before + 1, "forceFresh runs main's check over a cached verdict");
+  } finally {
+    restore();
+  }
+});
+
+test("watchedBaseline answers from the nearest first-parent ancestor holding a verdict, and null when none does", async () => {
+  const { wt } = baselineFixture(ROLE, "exit 0");
+  const commit = (name: string): string => {
+    fs.writeFileSync(path.join(wt, `${name}.txt`), `${name} ${wt}\n`);
+    sh(wt, "git", "add", "-A");
+    sh(wt, "git", "commit", "-m", name);
+    return sh(wt, "git", "rev-parse", "HEAD");
+  };
+  const checked = commit("watched-a");
+  const middle = commit("watched-b");
+  const tip = commit("watched-c");
+  assert.equal(await watchedBaseline(wt), null, "no verdict anywhere below the tip reads as none");
+  noteGreenBaseline(checked);
+  assert.deepEqual(await watchedBaseline(wt), { status: "green", sha: checked }, "the walk skips unchecked commits");
+  assert.deepEqual(await watchedBaseline(wt, middle), { status: "green", sha: checked });
+  noteGreenBaseline(tip);
+  assert.deepEqual(await watchedBaseline(wt), { status: "green", sha: tip }, "the tip's own verdict wins over an ancestor's");
 });

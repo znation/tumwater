@@ -18,7 +18,7 @@ import { resolveBacklogInsertConflicts } from "./backlog-conflicts.js";
 import { abortSync } from "../git/worktree.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import { runScopedBuildCheck } from "../build/build-check-scoped.js";
-import { type BuildCheck, detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
+import { type BuildCheck, detectBuildCheck, gateCommandOf, mergeCommandOf } from "../build/build-check-detect.js";
 import { onlyKnownMainFailures } from "../baseline/main-watch.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { describeCheck, failureHeadline } from "../build/build-check-report.js";
@@ -244,8 +244,9 @@ export async function exemptSkipBlockReason(
  *   already-verified tree. A no-op rebase the gate did NOT verify — its pre-check was skipped
  *   (a timeout, a killed run) — falls through and runs the merge-scope check, which fails
  *   closed on the same timeout; an exempt diff or a project with no declared check falls
- *   through to its own arm below. Not taken when a `check.gateCommand` is configured: the gate
- *   then ran only that, not the full check.
+ *   through to its own arm below. Not taken when a `check.gateCommand` is configured: the
+ *   gate then ran only that, not the full check. With a `check.mergeCommand` it is taken and
+ *   seeds nothing (the main watch decides main's verdict).
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - a code change whose rebased tree differs from the gate-verified one only in exempt paths
  *   (onlyExemptDriftFromVerified): main moved under the review by doc commits alone, so the
@@ -271,6 +272,10 @@ async function verifyMerge(
   // that cheaper check, so even a verified no-op rebase must run the full check here: the
   // merge scope is what verifies a single change (and each change of an abandoned stack),
   // and a gateCommand green must never seed the baseline.
+  // With a check.mergeCommand the lock runs only that cheaper check, so the gate's verified
+  // head satisfies it whatever the gate ran — and nothing seeds the baseline: main's verdicts
+  // come from the main watch's full check on the tip.
+  if (rebasedHead === verifiedHead && mergeCommandOf(ctx.config) !== undefined) return true;
   if (rebasedHead === verifiedHead && gateCommandOf(ctx.config) === undefined) {
     noteGreenBaseline(rebasedHead);
     return true;
@@ -342,7 +347,8 @@ async function verifyMerge(
   if (check.outcome.status === "skipped") return true; // No npm / broken toolchain — the helper already warned.
   // Green on exactly the tree that becomes main: seed it so the next tick's red-main baseline
   // check is a cache hit instead of one redundant full-suite run.
-  noteGreenBaseline(rebasedHead);
+  // A mergeCommand green is not the full check's: main's verdict comes from the main watch.
+  if (mergeCommandOf(ctx.config) === undefined) noteGreenBaseline(rebasedHead);
   return true;
 }
 
@@ -356,7 +362,9 @@ async function verifyMerge(
  * that only rewrote SHAs) is the verified bytes themselves and seeds an observed green. Any
  * other drift seeds an inherited one, which attribution re-checks before trusting
  * (main-baseline.ts's observedOnly). Not taken without a verified head (the pre-check was skipped
- * or never ran) or with a `check.gateCommand`, for the same reasons the no-op skip above is not.
+ * or never ran) or with a `check.gateCommand` and no `check.mergeCommand`, for the same reasons
+ * the no-op skip above is not.
+ * With a mergeCommand the drift merges without a seed: the main watch decides main's verdict.
  * A git failure means "not proven" and the check runs. */
 async function onlyExemptDriftFromVerified(
   ctx: MergeContext,
@@ -364,9 +372,11 @@ async function onlyExemptDriftFromVerified(
   rebasedHead: string,
   verifiedHead: string | undefined,
 ): Promise<boolean> {
-  if (verifiedHead === undefined || gateCommandOf(ctx.config) !== undefined) return false;
+  if (verifiedHead === undefined) return false;
+  if (gateCommandOf(ctx.config) !== undefined && mergeCommandOf(ctx.config) === undefined) return false;
   const drift = await treeDiffFiles(wt, verifiedHead, rebasedHead);
   if (drift === null || !isExemptDiff(drift, ctx.exemptPaths)) return false;
+  if (mergeCommandOf(ctx.config) !== undefined) return true; // no seed: the watch decides main's verdict
   if (drift.length === 0) noteGreenBaseline(rebasedHead);
   else noteInheritedGreen(rebasedHead, verifiedHead);
   return true;

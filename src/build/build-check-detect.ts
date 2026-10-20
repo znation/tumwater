@@ -146,6 +146,16 @@ export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   return isNonBlankString(g) ? g : undefined;
 }
 
+/** The configured in-lock merge command (`check.mergeCommand`, PLANS.md "Fast merge" part 6/14)
+ * when it is a non-blank string, else undefined — off. With it set, the merge and batch scopes
+ * run it instead of the full check, and main's full-check verdict comes from the main watch.
+ * One reading shared by runScopedBuildCheck, the merge paths and the main-red verdict reads, so
+ * they cannot disagree about whether it is on. */
+export function mergeCommandOf(config?: CheckConfigSlice): string | undefined {
+  const m = config?.check?.mergeCommand;
+  return isNonBlankString(m) ? m : undefined;
+}
+
 /** Resolve `node_modules/<rel>` by walking UP from `startDir` — the same climb detectBuildCheck
  * makes, and the same one npm's run-script PATH walk makes: a tumwater worktree has no install
  * of its own (node_modules is gitignored, so it exists only where someone ran npm install), and

@@ -126,7 +126,7 @@ function scanMainCheck(root: string): MainCheckScan {
     // every merged event. The merges are re-read against the check's ts below — a pass
     // over the merges alone, not a second pass over every event in the window.
     for (const e of events) {
-      if (e.type === "build_check" && isFullCheckScope(e.scope)) {
+      if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") { 
         mergeDone.push(e);

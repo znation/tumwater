@@ -5,6 +5,42 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge, part 6/14: `check.mergeCommand` runs a cheaper check inside the merge lock and moves the full check after the merge (planned 2026-10-19 by user; requires parts 3/14, 4c/14 and 5/14 landed; design in plans/fast-merge.md "Lever 2: merge on the gate, full check after the merge"; touches src/config/config-schema.ts src/config/config-validation.ts src/build/build-check-detect.ts src/build/build-check-scoped.ts src/build/build-check-events.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/merge/merge-stack.ts src/baseline/main-red.ts src/review/review-precheck.ts tumwater.json docs/config.md docs/how-it-works.md DEVELOPMENT.md test/affected-tests.ts and their tests) — done 2026-10-19 by the feature role
+
+**Goal.** Every code merge runs the full `npm test` inside the merge lock: `verifyMerge`'s no-op-rebase and inherited-green skips are both off while `check.gateCommand` is set (src/merge/merge-to-main.ts ~266-349). That is 96 s at p50 per merge on the serial slot. A first red there sends the change back through the whole pipeline. With parts 3–5 catching and reverting a break after the merge, the lock only needs what must never reach main: lint, compile and the change's affected tests. Those stay before every merge (decided 2026-10-19 by you).
+
+**Approach.**
+- Config: `check.mergeCommand?: string`.
+  - Add it to `CheckConfig` and `CHECK_KEYS` (src/config/config-schema.ts).
+  - Validate it like `gateCommand` (src/config/config-validation.ts ~315-323); blank means off.
+  - Add an accessor `mergeCommandOf` beside `gateCommandOf` (src/build/build-check-detect.ts).
+  - Update the valid-keys string in test/config-validation-check.test.ts.
+- With `mergeCommand` set:
+  - `verifyMerge` and the batch path (src/merge/merge-batch.ts, src/merge/merge-stack.ts) run it instead of the full check. Swap the command per scope in src/build/build-check-scoped.ts (~74).
+  - The in-lock run is skipped when the rebased head is the head the gate verified (`rebasedHead === verifiedHead`).
+  - Its green never calls `noteGreenBaseline`: main's verdicts come from the watch.
+  - Its `build_check` events carry `full: false`. Code that reads `isFullCheckScope`/`MERGE_SCOPES` (src/build/build-check-events.ts) as "this was the full check" treats them as not full: attribution, reports, doctor's merge-check median.
+  - `mainRedGate` and `bugfixMainRedNote` (src/baseline/main-red.ts) read the watch's newest verdict for main's tip or its nearest checked ancestor and never start a full check themselves. No verdict yet reads as green.
+  - The gate's re-attribution (src/review/review-precheck.ts ~135) uses the watch's verdict for the tip when it has one, and attributes as today when it has none.
+- Unset, nothing changes.
+- tumwater.json: `"check": { …, "mergeCommand": "npm run test:gate" }`.
+- Docs that promise a full check per merge or "never a red main" now say what happens instead: docs/config.md (the `check` row), docs/how-it-works.md (~65-69), DEVELOPMENT.md (~37-42), the comment in test/affected-tests.ts (~7-8), and the comments in src/merge/merge-batch.ts (~159, ~296).
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/build/build-check-detect.ts, src/build/build-check-scoped.ts, src/build/build-check-events.ts, src/merge/merge-to-main.ts, src/merge/merge-batch.ts, src/merge/merge-stack.ts, src/baseline/main-red.ts, src/review/review-precheck.ts.
+- Config and docs: tumwater.json, docs/config.md, docs/how-it-works.md, DEVELOPMENT.md, test/affected-tests.ts (comment only).
+- Tests: test/config-validation-check.test.ts, test/build-check-detect.test.ts, test/build-check.test.ts, test/merge-to-main.test.ts, test/main-red.test.ts.
+
+**Acceptance criteria.**
+- With `mergeCommand` set to a passing fake command and a full check that would fail, a change merges. The watch then reports the tip red and part 4b/14 reverts the change.
+- When the rebased head equals the verified head, no in-lock `build_check` runs.
+- A `mergeCommand` green never appears among the persisted greens.
+- A fresh run on main with a watch verdict starts without running a full check.
+- With `mergeCommand` unset, the existing merge tests pass unchanged.
+- `npm test` passes.
+
+**Implementation note (2026-10-19).** tumwater.json was not edited: that file is off limits to the feature role, so enabling `"mergeCommand": "npm run test:gate"` there is left to the operator. The watch-verdict read is `watchedBaseline` (src/baseline/main-baseline.ts), used by `mainRedGate` and `bugfixMainRedNote` only. `mainTipVerdict` (which serves the gate's re-attribution and the merge attribution) does not read the watch: it goes through `checkMainBaseline`, whose per-SHA cache no merge seeds with a `mergeCommand` set, so it runs the check there. `isFullCheckScope` now takes the event's `full` field. The exempt-drift skip also applies with a `mergeCommand` set, seeding nothing. Tests: test/build-check.test.ts, test/build-check-detect.test.ts, test/main-red.test.ts, test/merge-to-main-recheck.test.ts, test/config-validation-check.test.ts.
+
 ### `tumwater status`, the TUI header and the dashboard's team panel show the workspace pool once it is full (`workspaces 8/8`, plus `, 2 waiting` when runs queue for a slot) (planned 2026-10-19 by the plan role; touches nothing the other eligible entries name except the in-flight check-permit entry above, which edits the same seven observer files — src/team/orchestrator-info.ts, src/orchestrator/orchestrator-poll.ts, src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui/gui-client-team.ts and their tests. This entry adds a sibling field and badge right after that entry's `checkPermits`/`checksBadge`, so whichever lands second rebases over the lines next to it. When that entry has landed, put each addition after its `checkPermits` counterpart; until then, put it after the `permits` counterpart. The blocked plain-terms parts reach src/ui/badges.ts and src/orchestrator/orchestrator-poll.ts only in far-behind parts; touches src/git/worktree-pool.ts + src/team/orchestrator-info.ts + src/orchestrator/orchestrator-poll.ts + src/status/status-data.ts + src/ui/badges.ts + src/ui/status-payload.ts + src/ui/status-render.ts + src/ui/gui/gui-client-team.ts + docs/how-it-works.md + test/worktree-pool.test.ts + test/orchestrator-info.test.ts + test/badges.test.ts) — done 2026-10-19 by the feature role
 
 **Goal.** Runs and approvals share `worktreeSlots` pooled workspaces (src/git/worktree-pool.ts). A run that finds every slot leased waits on the in-process `waiters` set. The wait is visible only afterwards: as a `slot_wait` event once it passes `SLOT_WAIT_EVENT_MS`, in the doctor's contention row, or in the report's workspace wait median. While the pool is saturated, an operator cannot see that all eight workspaces are leased and two runs are queued, which is the moment raising `worktreeSlots` would help. This plan publishes the pool's live state through the orchestrator info file, the same way `permits` is published, and shows it only while the pool is full or something waits. A team with spare workspaces keeps its header unchanged.

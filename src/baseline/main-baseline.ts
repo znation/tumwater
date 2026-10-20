@@ -295,6 +295,25 @@ export function cachedBaselineVerdict(sha: string): "green" | "red" | undefined 
   return baselineCache.get(sha)?.status;
 }
 
+/** The main watch's newest verdict for `sha` (default: `wt`'s HEAD) or its nearest first-parent
+ * ancestor the cache holds one for — looking at most INHERIT_WALK_MAX commits down — WITHOUT
+ * running anything; null when there is none. With `check.mergeCommand` set no merge seeds the
+ * cache, so every verdict in it is a full check the watch (main-watch.ts) or another consumer
+ * ran, or a doc-only inheritance of one, and the red-main reads (main-red.ts) answer from here
+ * rather than start a full check. Never throws: a git failure reads as no verdict. */
+export async function watchedBaseline(wt: string, sha?: string): Promise<MainBaseline | null> {
+  const tip = sha ?? (await refSha(wt, "HEAD"));
+  if (!tip) return null;
+  const own = baselineCache.get(tip);
+  if (own) return own;
+  const ancestors = gitLines(await gitTry(wt, "rev-list", "--first-parent", `--max-count=${INHERIT_WALK_MAX}`, `${tip}^`));
+  for (const ancestor of ancestors) {
+    const verdict = baselineCache.get(ancestor);
+    if (verdict) return verdict;
+  }
+  return null;
+}
+
 /** How many first-parent commits below main's tip redeployTarget looks at. */
 const REDEPLOY_WALK_MAX = 64;
 

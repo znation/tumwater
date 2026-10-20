@@ -5,8 +5,9 @@ import path from "node:path";
  * (`check.gateCommand`, DEVELOPMENT.md "The gate runs the affected tests"). The team ran the
  * whole suite before every model review, ~200 times a day, while most changes touch a handful of
  * modules. This picks the compiled test files a change can reach. The full suite still runs
- * once per landing (the in-lock and batch checks run `npm test`), so a dependency this misses
- * costs a later rejection, never a red main.
+ * once per landing (the in-lock and batch checks run `npm test`) unless `check.mergeCommand`
+ * is set, so a dependency this misses costs a later rejection — or, with `mergeCommand`, a red
+ * main the main watch finds after the merge.
  *
  * The graph is read from the compiled tree (plus scripts/ and the docs' .cjs tools), not from
  * TypeScript, so it is always the graph of the code about to run. A module depends on what it

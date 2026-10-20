@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkMainBaseline } from "../src/baseline/main-baseline.js";
+import { cachedBaselineVerdict, checkMainBaseline } from "../src/baseline/main-baseline.js";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { defaultConfig } from "../src/config/config.js";
 import { mergeToMain } from "../src/merge/merge-to-main.js";
@@ -445,4 +445,41 @@ test("a post-rebase check that fails a test beyond main's known failures still b
 
   assert.equal(await mergeToMain(ctx, wt, "branch work"), "merge_blocked");
   assert.ok(!warningMessages(root).some((m) => m.includes("known failures")));
+});
+
+// ── check.mergeCommand: a cheaper in-lock check, the full check moves to the main watch ────
+
+test("check.mergeCommand merges a tree the full check would fail, runs it as a non-full check, and seeds nothing", async () => {
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "exit 1"); // the full check is red
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  advanceMain(root, "mainfile.txt", "from main\n");
+  const { ctx } = makeCtx(root);
+  ctx.config = { ...defaultConfig(), check: { command: "", mergeCommand: "echo cheap" } };
+
+  assert.equal(await mergeToMain(ctx, wt, "branch work"), "changed");
+
+  const checks = eventsOfType(root, "build_check");
+  assert.equal(checks.length, 1);
+  assert.equal(checks[0]?.scope, "merge");
+  assert.equal(checks[0]?.script, "echo cheap");
+  assert.equal(checks[0]?.full, false);
+  assert.equal(cachedBaselineVerdict(mainSha(root)), undefined, "a mergeCommand green never seeds the baseline");
+});
+
+test("check.mergeCommand: a rebased head the gate verified runs no in-lock check and seeds nothing", async () => {
+  const { root, wt } = await initializedWorktree();
+  declareBuildCheck(root, wt, "exit 1");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
+  commitIn(wt, "branch work");
+  const head = headSha(wt);
+  const { ctx } = makeCtx(root);
+  ctx.config = { ...defaultConfig(), check: { command: "", gateCommand: "echo gate", mergeCommand: "echo cheap" } };
+
+  assert.equal(await mergeToMain(ctx, wt, "branch work", head), "changed");
+
+  assert.equal(eventsOfType(root, "build_check").length, 0, "no in-lock build_check");
+  assert.equal(cachedBaselineVerdict(mainSha(root)), undefined);
 });

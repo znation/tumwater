@@ -44,7 +44,7 @@ test("validateConfig rejects a non-object check section", () => {
 test("validateConfig rejects a typo'd key inside check", () => {
   assert.match(
     validationError({ provider: "p", model: "m", check: { command: "cargo test", timeOut: 5 } }),
-    /unknown key "timeOut" in check \(valid keys: command, gateCommand, cwd, timeoutSeconds\)/,
+    /unknown key "timeOut" in check \(valid keys: command, gateCommand, mergeCommand, cwd, timeoutSeconds\)/,
   );
 });
 

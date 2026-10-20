@@ -24,8 +24,12 @@ export type BuildCheckScope = "gate" | "merge" | "batch";
  * select on — isPassingFullCheck, isRedFullCheck, and the status polls' newest-merge-check
  * scan (status-polls.ts) — so they cannot drift on which scopes count. The deadline-killed
  * failure costing in time-spend.ts is a narrower pair (merge/batch only, with a status and a
- * timeout required), so it keeps its own check. */
-export function isFullCheckScope(scope: unknown): boolean {
+ * timeout required), so it keeps its own check. `full` is the event's `full` field: false
+ * (a check.mergeCommand run) is never a full-suite check. */
+export function isFullCheckScope(scope: unknown, full?: unknown): boolean {
+  // A merge or batch run of check.mergeCommand carries `full: false` (buildCheckEvent): it ran
+  // the cheaper command, so it is no full-suite verdict whatever its scope.
+  if (full === false) return false;
   return scope === "merge" || scope === "batch" || scope === "baseline";
 }
 
@@ -33,7 +37,7 @@ export function isFullCheckScope(scope: unknown): boolean {
  * merge, batch and the red-main baseline — are isFullCheckScope's set; a gate check can run a
  * subset, so it is left out. */
 export function isPassingFullCheck(ev: HarnessEvent): boolean {
-  return ev.type === "build_check" && ev.status === "passed" && isFullCheckScope(ev.scope);
+  return ev.type === "build_check" && ev.status === "passed" && isFullCheckScope(ev.scope, ev.full);
 }
 
 /** The red sibling of isPassingFullCheck: a failed build_check over the same three scopes
@@ -42,7 +46,7 @@ export function isPassingFullCheck(ev: HarnessEvent): boolean {
  * alone is the rule. The two predicates are mutually exclusive on `status`, so a fold branch on
  * them never sees the other's events. */
 export function isRedFullCheck(ev: HarnessEvent): boolean {
-  return ev.type === "build_check" && ev.status === "failed" && isFullCheckScope(ev.scope);
+  return ev.type === "build_check" && ev.status === "failed" && isFullCheckScope(ev.scope, ev.full);
 }
 
 /** How late a check's deadline timer may fire before the timeout's wording stops naming the
@@ -285,11 +289,14 @@ export function buildCheckEvent(
   scope: BuildCheckScope | "baseline",
   outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
   durationMs: number,
+  /** True for a merge/batch run of check.mergeCommand: the event then carries `full: false`. */
+  cheaper = false,
 ): HarnessEventInput {
   return {
     source,
     type: "build_check",
     scope,
+    ...(cheaper ? { full: false } : {}),
     status: outcome.status,
     script: outcome.script,
     durationMs,

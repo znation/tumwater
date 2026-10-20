@@ -189,6 +189,13 @@ export interface CheckConfig {
    * still run the full check (`command`, else the npm walk-up), so every merge is verified
    * by it once per stack; shares `cwd` and `timeoutSeconds`. */
   gateCommand?: string;
+  /** Optional cheaper command for the check inside the merge lock (PLANS.md "Fast merge" part
+   * 6/14) — e.g. lint, compile and the change's affected tests. Unset or blank = off: every
+   * merge runs the full check. When set, the batch and merge scopes run it instead, a merge
+   * whose rebased head the gate verified runs nothing in the lock, and its green never seeds
+   * the baseline: the main watch's full check on the tip is main's verdict. Shares `cwd` and
+   * `timeoutSeconds`. */
+  mergeCommand?: string;
   /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
   cwd?: string;
   /** Hard cap on one run, in seconds; defaults to the built-in 300 s. It bounds whichever check
@@ -521,7 +528,7 @@ export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "back
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
  * command, the optional cheaper gate-only command, their
  * working directory (relative to the worktree), and their timeout. */
-export const CHECK_KEYS = ["command", "gateCommand", "cwd", "timeoutSeconds"];
+export const CHECK_KEYS = ["command", "gateCommand", "mergeCommand", "cwd", "timeoutSeconds"];
 
 /** The provider/model/thinking triple every model-override section shares — top level,
  * `review`, `fallbackModel` (plans/fallback-model.md), and each `roles.<id>` entry — so one

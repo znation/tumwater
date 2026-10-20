@@ -156,8 +156,10 @@ async function verifyRequestIn(ctx: BatchContext, req: MergeRequest, w: BatchRol
  * Un-assemblable (a cherry-pick conflict, on the first stack or any prefix) → ABANDON the changes
  * not yet merged to one-at-a-time, in queue order, stopping at the first non-terminal outcome, each
  * through mergeApprovedChange — no second gate and no model run but mergeToMain's conflict
- * resolver. main is never left red: the only bytes this path ff's are a checked tip or per-change
- * merges re-verified in-lock whenever they differ from what their verify judged.
+ * resolver. main is not left red unchecked: the only bytes this path ff's are a checked tip or
+ * per-change merges re-verified in-lock whenever they differ from what their verify judged (the
+ * in-lock check is `check.mergeCommand` when set, and the main watch then runs the full check
+ * after the merge).
  *
  * An abort is observed between steps, not only by the pi runs it kills: before each
  * assembly-and-check attempt and before each one-change or fallback merge, so a stopping merge
@@ -296,10 +298,11 @@ export async function mergeApproved(
     // outcome (the rest keep entry + ref for the next merge). Each request merges its approved
     // head (the synced pin its verify judged, not the bare pin) — no second gate, so no model run:
     // re-gating would rebase onto the main the earlier entries just moved, and the rewritten
-    // sha misses the approved short-circuit. main is never left red — mergeToMain's in-lock
+    // sha misses the approved short-circuit. main is not left red unchecked — mergeToMain's in-lock
     // rebase + verifyMerge re-check every change whose tree differs from the one its verify
-    // judged. Only the change being merged reads `merging`; the rest are back to awaiting
-    // their turn, and each one merged is done.
+    // judged (with check.mergeCommand set, by that cheaper command; the main watch runs the full
+    // check after the merge). Only the change being merged reads `merging`; the rest are back to
+    // awaiting their turn, and each one merged is done.
     for (let s = mergeDoneCount; s < approved.length; s++) report(s, "approved");
     for (let s = mergeDoneCount; s < approved.length; s++) {
       const req = approved[s]!;

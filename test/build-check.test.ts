@@ -7,7 +7,7 @@ import { runScopedBuildCheck } from "../src/build/build-check-scoped.js";
 import { asTestCounts, parseTestCounts } from "../src/build/build-check-counts.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
 import { checkFailureReasons } from "../src/build/build-check-report.js";
-import { buildCheckEvent, buildCheckSkipWarning, starvedDeadlineMs } from "../src/build/build-check-events.js";
+import { buildCheckEvent, buildCheckSkipWarning, isPassingFullCheck, starvedDeadlineMs } from "../src/build/build-check-events.js";
 import { detectBuildCheck } from "../src/build/build-check-detect.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -587,6 +587,27 @@ test("runScopedBuildCheck runs check.gateCommand at the gate scope only; merge a
     ["merge", "echo full; exit 1"],
     ["batch", "echo full; exit 1"],
   ]);
+});
+
+test("runScopedBuildCheck runs check.mergeCommand at the merge and batch scopes, marks them full: false, and leaves the gate alone", async () => {
+  const { root, wt } = buildCheckFixture();
+  const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only", mergeCommand: "echo cheap" } };
+  for (const scope of ["gate", "merge", "batch"] as const) {
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000);
+    assert.equal(result!.outcome.status, "passed", scope);
+  }
+  const events = readEvents(root).filter((e) => e.type === "build_check");
+  assert.deepEqual(
+    events.map((e) => [e.scope, (e as { script?: string }).script, (e as { full?: boolean }).full]),
+    [
+      ["gate", "echo gate-only", undefined],
+      ["merge", "echo cheap", false],
+      ["batch", "echo cheap", false],
+    ],
+  );
+  assert.equal(isPassingFullCheck(events[0]!), false, "a gate check is never full");
+  assert.equal(isPassingFullCheck(events[1]!), false, "a mergeCommand run is not a full check");
+  assert.equal(isPassingFullCheck({ ...events[1]!, full: undefined }), true, "the same scope without the marker is");
 });
 
 test("check.gateCommand shares the check's cwd and timeout, and overrides the npm walk-up at the gate too", async () => {
