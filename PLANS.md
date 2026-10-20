@@ -744,4 +744,44 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `POST /api/revert` answers with the same follow-up in `message` (or none), plus `subject`.
 - `npm run test:gate` passes.
 
+### The dashboard's role and Settings writes say when nothing changed, the browser twin of the in-flight `tumwater role <id>` "already"/"not set" entry (planned 2026-10-20 by the plan role; independent of every eligible Planned entry. The role-config entry edits src/cli/cli-query-commands.ts, test/cli-operators.test.ts and docs/cli.md and leaves the GUI alone. The revert entry edits `handleRevert` in src/gui/gui-operator-commands.ts, not this file. Part 2/20 edits the runner. The cancel entry also edits src/ui/gui/gui-client-boot.ts, but in its backlog-drawer Cancel callback, not the cap callback this entry changes, so whichever lands second rebases. Touches src/gui/gui-config-commands.ts, `setRoleModelFields` in src/config/config-write.ts, src/ui/gui/gui-client-boot.ts (cap callback), src/ui/gui/gui-client-settings.ts (`saveSetting`), test/gui-endpoints.test.ts, test/gui-client-boot.test.ts and test/gui-client-settings.test.ts)
+
+**Goal.** The dashboard's per-role writes in src/gui/gui-config-commands.ts always answer as if they wrote something. `handleRoleInterval` and `handleRoleInstances` answer `<base>: … set to …` or `… cleared`. `writeRoleJsonKey`, the shared write for `handleRoleInstructions` and `handleRoleQuietHours`, does the same. `setRoleEnabled` answers `<base>: enabled`/`disabled`, and `handleRoleModel` answers `<base>: model updated`. Each answer is the same when the value was already in place or the key was never set. The existing tests ("handleRoleQuietHours clearing a key the file never set writes nothing", "handleRoleInterval clears a key the file never set without writing …", "handleRoleInstances clears a key the file never set …") prove that such a request leaves tumwater.json byte-identical, yet the flash says `cleared`. `handleRoleCap` and `handleConfigSet` drop `setConfigKey`'s `unchanged` flag, so the drawer flashes `Daily cap set to $2` and Settings flashes `Saved model` for a value that was already there. The CLI already reports these no-ops for `config set`/`config unset` and `role --enable`/`--disable`; the in-flight `role <id>` entry adds the per-role flags. The dashboard should say the same.
+
+**Approach.**
+- src/config/config-write.ts `setRoleModelFields`: when no field changed, return `{ ok: true, unchanged: true }`. Capture the flag in a closure variable, as `setConfigKey` does. Widen the return type to `{ ok: true; unchanged?: true } | { ok: false; error: string }`. The TUI caller (src/ui/tui/tui-editor-role-model.ts) only reads `ok`, so leave it as is.
+- src/gui/gui-config-commands.ts uses the CLI's wording for a no-op. Every no-op still answers 200 and writes nothing:
+  - Clear arms (`handleRoleInterval`, `handleRoleInstances`, `writeRoleJsonKey`): when `unsetConfigKey`'s `oldValue === undefined`, the message is `${base}: ${noun} is not set in tumwater.json, so nothing was cleared`. The nouns are `min run interval`, `instances`, and `writeRoleJsonKey`'s existing `noun`. Otherwise keep the `cleared` message.
+  - Set arms: when `setConfigKey` returns `unchanged`:
+    - `handleRoleInterval`: `${base}: min run interval is already ${value}s, so tumwater.json was not written`.
+    - `handleRoleInstances`: `${base}: instances is already ${value}, so tumwater.json was not written`.
+    - `writeRoleJsonKey`: `${base}: ${noun} unchanged, so tumwater.json was not written`. This one form fits both the instructions text and a quiet-hours window, so the function gains no parameter.
+  - `setRoleEnabled`: on `unchanged`, `${base}: already enabled`/`${base}: already disabled`, matching `cmdRole`'s `${base}: already ${state}`.
+  - `handleRoleModel`: on `unchanged`, `${base}: model overrides unchanged, so tumwater.json was not written`.
+  - `handleRoleCap` and `handleConfigSet`: add `unchanged: true` to the JSON when `setConfigKey` returned it, and leave the other fields as they are.
+  - Each handler's doc comment gains one clause saying a no-op reports itself.
+- src/ui/gui/gui-client-boot.ts: the `/api/role-cap` callback returns `Daily cap unchanged` when `d && d.unchanged`; otherwise its current wording stands. The other drawer callbacks already show `d.message`.
+- src/ui/gui/gui-client-settings.ts `saveSetting`: when `d && d.unchanged`, flash `key + " is already that value — nothing saved"`; otherwise keep its current flashes. `clearSetting` already handles a no-op.
+- Leave `handleConfigUnset`, `handleBudget`, the TUI, and the CLI alone.
+
+**Tests.**
+- test/gui-endpoints.test.ts: in each never-set-clear test named above, also assert the response's `message` matches `/is not set in tumwater\.json, so nothing was cleared/`. Add assertions that writing the same value twice leaves the bytes identical and the second response says so:
+  - interval: `/min run interval is already 300s/`
+  - instances: `/instances is already 2/`
+  - quiet hours: `/quiet hours unchanged/`
+  - `handleRoleModel`, the same triple twice: `/model overrides unchanged/`
+  - `handleRoleEnable` on an already-enabled role: `/already enabled/`
+  - `handleRoleCap` and `handleConfigSet`, the same value twice: `unchanged === true` on the second response
+  - Each first write still answers its current message.
+- test/gui-client-boot.test.ts: next to the cap-save case, a `postAction` stub whose `done` gets `{ unchanged: true }` flashes `Daily cap unchanged`.
+- test/gui-client-settings.test.ts: next to "saveSetting posts the row's key and value and flashes the outcome", a reply carrying `unchanged: true` flashes `model is already that value — nothing saved`.
+
+**Acceptance criteria.**
+- POST /api/role-interval `{role:"feature", minRunIntervalSeconds:null}` on a file without that key answers 200 with `feature: min run interval is not set in tumwater.json, so nothing was cleared`, and the file bytes do not change.
+- Posting the same quiet-hours window twice answers `feature: quiet hours unchanged, so tumwater.json was not written` the second time, and the bytes do not change.
+- POST /api/role-enable for an enabled role answers `<base>: already enabled`.
+- A second identical /api/role-cap or /api/config-set answers `unchanged: true`, and the drawer or Settings flash says so.
+- Changed values, refusals (400s), and their messages are as before.
+- `npm run test:gate` passes.
+
 ## Done
