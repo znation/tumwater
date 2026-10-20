@@ -295,6 +295,35 @@ test("a failed merge logs merge_failed with its usage and counts no commit", () 
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — retry rides the pin, not the queue");
 });
 
+test("merge_failed carries the reason mergeFailureReason derives, and omits it otherwise", () => {
+  const usage = { tokens: 0, cost: 0, providerCost: {} };
+  const run = (result: "rejected" | "merge_blocked" | "merge_conflict" | "changed", setup: (s: ReturnType<typeof freshRunnerState>) => void) => {
+    const root = makeRepo();
+    const { entry, file } = queued(root);
+    const state = freshRunnerState("improve");
+    setup(state);
+    writeMergeOutcome(root, entry, state, result, 10, usage, file);
+    return readEvents(root, 10).find((e) => e.type === (result === "changed" ? "merge_done" : "merge_failed"))!;
+  };
+  const rejected = run("rejected", (s) => {
+    s.lastReview = { verdict: "reject", reasons: ["no test covers the new flag", "other"], at: Date.now() };
+  });
+  assert.equal(rejected.reason, "no test covers the new flag");
+  const stale = run("rejected", (s) => {
+    s.lastReview = { verdict: "reject", reasons: ["old"], at: Date.now() - 60_000 };
+  });
+  assert.ok(!("reason" in stale), "a review older than the merge is stale");
+  const blocked = run("merge_blocked", (s) => {
+    s.lastError = "merge failed: merge_blocked — check failed (`npm run test`): ✖ x";
+  });
+  assert.equal(blocked.reason, "check failed (`npm run test`): ✖ x");
+  const conflict = run("merge_conflict", (s) => {
+    s.lastError = "merge failed: merge_conflict";
+  });
+  assert.ok(!("reason" in conflict), "a bare result names no reason");
+  assert.ok(!("reason" in run("changed", () => {})));
+});
+
 // The merge cell's stage (BUGS.md 2026-09-22, re-opened 2026-09-23): the merge path
 // advances the marker's stage and the dashboards render it.
 test("setMergeStage advances only its own role's record, and only its stage", () => {

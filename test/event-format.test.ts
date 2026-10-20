@@ -669,6 +669,11 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   assert.match(named, /merge of abcdef12 failed \(merge conflict\) \(in 1s\) — tidy up$/);
   const long = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500, summary: "x".repeat(200) } as never);
   assert.ok(long.endsWith(` — ${truncate("x".repeat(200), 80)}`), `long summary clipped: ${long}`);
+  const reasoned = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "rejected", reason: "no test covers the new flag" } as never);
+  assert.match(reasoned, /failed \(rejected in review: no test covers the new flag\)/);
+  const longReason = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "rejected", reason: "y".repeat(300) } as never);
+  assert.ok(longReason.includes(`(rejected in review: ${truncate("y".repeat(300), 120)})`), `long reason cut to 120: ${longReason}`);
+  assert.ok(longReason.includes("…"), "the cut ends in an ellipsis");
 });
 
 // Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or

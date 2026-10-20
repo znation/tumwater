@@ -17,6 +17,7 @@ import { mergeStatePath } from "../paths.js";
 import type { RoleRunner } from "../runner/runner.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
+import { truncate } from "../text/text.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The merge pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
@@ -341,10 +342,30 @@ export function isMergeChange(value: unknown): value is MergeChange {
   );
 }
 
+/** Why a merge ended without landing, for the `merge_failed` event, or undefined when the
+ * state names none. `rejected` reads the review's first reason, only when that review was
+ * recorded during this merge (`at >= startedAt`; an older one is stale). Every other failure
+ * reads `lastError`, minus its `merge failed: ` and `<result> — ` prefixes; a bare result
+ * (the catch-all `merge failed: merge_conflict`) names no reason. */
+export function mergeFailureReason(state: RunnerState, result: TickResult, startedAt: number): string | undefined {
+  if (result === "changed" || result === "aborted") return undefined;
+  if (result === "rejected") {
+    const review = state.lastReview;
+    if (!review || review.at < startedAt) return undefined;
+    return review.reasons[0]?.trim() || undefined;
+  }
+  let reason = (state.lastError ?? "").trim();
+  if (reason.startsWith("merge failed: ")) reason = reason.slice("merge failed: ".length);
+  if (reason.startsWith(`${result} — `)) reason = reason.slice(`${result} — `.length);
+  reason = reason.trim();
+  return reason === "" || reason === result ? undefined : reason;
+}
+
 /** Fold one merge's outcome into its role's state and drop its queue entry — the 3/5
  * write-back every pipeline outcome goes through (a verification's final verdict, a merged change,
  * an aborted approved change): apply the result to the live state object (paired with the entry's
  * change for the last-result cell — applyMergeOutcome), persist it, log merge_done/merge_failed
+ * (the failed event carries the reason mergeFailureReason derives)
  * with the merge's own duration (from its verification's start) and usage (omitted when zero — the
  * 4/5 idiom, so review-exempt merges render bare), and drop the entry: EVERY defined result
  * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
@@ -362,6 +383,7 @@ export function writeMergeOutcome(
 ): void {
   applyMergeOutcome(state, result, entry);
   saveRunnerState(root, state);
+  const reason = result === "changed" ? undefined : mergeFailureReason(state, result, Date.now() - durationMs);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
   // feeds the same streak the tick-side warn reads (src/run/run-finalize.ts), but it resolves
   // AFTER the tick's end-save, so the crossing warn belongs here — same shape, same bar.
@@ -384,6 +406,7 @@ export function writeMergeOutcome(
     commit: entry.sha,
     result,
     summary: entry.summary,
+    ...(reason !== undefined ? { reason: truncate(reason, 300) } : {}),
     durationMs,
     // Enqueue-to-outcome span, including the slot's own durationMs. A leftover-recovery
     // re-enqueue writes a new entry with its own enqueuedAt, so a retried change counts from

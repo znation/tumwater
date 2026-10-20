@@ -196,10 +196,10 @@ function messageSection(
 
 /** The merge-failure section: each blocked or conflicted `merge_failed` clusters on
  * (role, result, reason).
- * `merge_failed` carries no message, so the reason is the same role's nearest preceding
- * `warning` (a red merge check, a structure or fix-claim block) logged after that role's
- * previous merge outcome; with none, the placeholder. The total counts every blocked or
- * conflicted `merge_failed` in the window. */
+ * A `merge_failed` with a `reason` field uses it; an older one carries none, so the reason is
+ * the same role's nearest preceding `warning` (a red merge check, a structure or fix-claim
+ * block) logged after that role's previous merge outcome; with none, the placeholder. The
+ * total counts every blocked or conflicted `merge_failed` in the window. */
 function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
   const ordered = [...events].sort((a, b) => a.ts - b.ts);
   const lastWarning = new Map<string, string>();
@@ -220,7 +220,8 @@ function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
         continue;
       }
       total++;
-      const reason = lastWarning.get(role) ?? NO_MERGE_REASON;
+      const own = typeof ev.reason === "string" ? ev.reason.trim() : "";
+      const reason = own !== "" ? own : (lastWarning.get(role) ?? NO_MERGE_REASON);
       lastWarning.delete(role);
       messages.push({ message: `${result} — ${reason}`, role, ts: ev.ts, keyPrefix: `${role}\u0000` });
     }

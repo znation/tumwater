@@ -132,7 +132,7 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `role_cap_paused` | A role reached its own daily cost cap and stops starting runs. |
 | `disk_low` | Free space on the worktrees volume dropped below `diskHoldGB`, so new work is held. |
 | `main_red_hold` | Main's own check is failing, so every code role is held until a fix merges. |
-| `merge_failed` | A merge finished without landing its change; the message names the change's summary. |
+| `merge_failed` | A merge finished without landing its change; the message names the change's summary and why the merge failed: the review's first reason, or the check, block or error that stopped it. |
 | `restart_blocked` | The restart onto the new main is blocked, and the team is stuck behind it. |
 | `question_posted` | A merge added a new entry under `## Open` in QUESTIONS.md; only a human can answer it; the message names the question's number and the `tumwater questions answer` command. |
 | `entry_refused` | A refusal note landed, so the entry is held until a human or the director releases it; the message names the held entry. |

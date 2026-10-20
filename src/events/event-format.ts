@@ -196,9 +196,9 @@ export function eventMessage(e: HarnessEvent): string {
       // render bare — the same phrase run_end carries for its run.
       return `merge of ${shortSha(e.commit)} done${elapsed(e.durationMs)}${usagePhrase(e)}`;
     case "merge_failed":
-      // Routine failure detail: the review events themselves (review_rejected/review_failed)
-      // or the merged/build_check lines carry the reason in the feed.
-      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
+      // The event names its reason itself (writeMergeOutcome); the review/check events still
+      // carry the full text. An old event without `reason` renders the bare outcome.
+      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))}${typeof e.reason === "string" && e.reason.trim() ? `: ${truncate(e.reason.trim(), 120)}` : ""})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
     case "question_posted":
       // Routine operation (a role asked the user something), not a warning.
       // The position is the `<n>` `questions answer` takes, so the notify page is actionable.

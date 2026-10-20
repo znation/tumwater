@@ -1084,6 +1084,17 @@ test("the digest lists merge failures by result and role, with the role's preced
   assert.match(md, /plan · .* — merge_conflict — no reason recorded/);
 });
 
+test("a merge_failed reason beats the role's preceding warning", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 1), loop: "dedupe", type: "warning", message: "something unrelated" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 2), loop: "dedupe", type: "merge_failed", result: "merge_blocked", reason: "check failed (`npm test`)" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  assert.match(md, /merge_blocked — check failed \(`npm test`\)/);
+  assert.ok(!md.includes("merge_blocked — something unrelated"));
+});
+
 test("the merge-failure section caps at 10 clusters and counts the rest as hidden", () => {
   const root = tmpdir();
   writeEvents(root, [
