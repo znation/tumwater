@@ -16,19 +16,19 @@ import { shortSha, usd } from "./format.js";
 
 const NO_REASONS_GIVEN = "no reasons given";
 
-/** The reason an over-long prompt or config field carries: the text rides into a tick's
- * prefill, so a longer value bloats every tick's context. The single home of that tail,
+/** The reason an over-long prompt or config field carries: the text rides into a run's
+ * prefill, so a longer value bloats every run's context. The single home of that tail,
  * shared by init's seed check (init/init.ts) and config-validation's customRoles task and
  * roles-instructions caps (config/config-validation.ts), so the three cannot drift on the
  * wording. inbox-submit's promptLengthProblem renders a role-scoped variant ("it rides into
- * the <role> tick's prefill") and keeps its own wording. */
+ * the <role> run's prefill") and keeps its own wording. */
 export const PREFILL_REASON = "it rides into every run's prefill";
 
 /** The reason a review rejection leads with — its first listed reason, or `no reasons given`
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
  * drift across the four surfaces that show just that first reason: the review gate's returned
  * detail (review.ts), the event feed's one-line reject (event-format.ts), the failure digest's
- * rejection clusters (failure-data.ts), and the error a role's next tick records (run-apply.ts).
+ * rejection clusters (failure-data.ts), and the error a role's next run records (run-apply.ts).
  * Sites that render the whole reason list, or intentionally omit the fallback (time-spend.ts's
  * first-reason example, review.ts's rejection event `reason`), keep their own handling. */
 export function firstReason(reasons: readonly unknown[] | undefined): string {
@@ -36,7 +36,7 @@ export function firstReason(reasons: readonly unknown[] | undefined): string {
   return typeof first === "string" ? first : NO_REASONS_GIVEN;
 }
 
-/** A count and its noun as one phrase (`plural(3, "tick")` → `3 ticks`) — the single home of the
+/** A count and its noun as one phrase (`plural(3, "run")` → `3 runs`) — the single home of the
  * singular/plural selection the CLI's once summary (cli/cli-start.ts), the day window's day label
  * (datetime.ts), the failure digest's loss-cause lines (src/failure/failure-render.ts), and the
  * team alerts' banner titles (ui/team-alerts.ts, whose local copy this replaces), and the
@@ -97,7 +97,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
 }
 
 /** The harness warning a role crossing the error-streak threshold raises — `3 consecutive
- * tick failures: <reason>` — shared by the tick-side crossing (run-finalize.ts, an error or
+ * run failures: <reason>` — shared by the run-side crossing (run-finalize.ts, an error or
  * recovery failure) and the merge-side crossing a review rejection resolves
  * (merge-slot.ts), the two sites that build the message, so the operator-facing wording
  * their tests pin cannot drift between them. */
@@ -106,7 +106,7 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
 }
 
 /** The base line for an operator team pause — `team paused — roles stop starting new
- * ticks` — built here so the event feed (event-format.ts, which appends its own `(director
+ * runs` — built here so the event feed (event-format.ts, which appends its own `(director
  * keeps running)` consequence) and the failure digest's Team state changes lines
  * (src/failure/failure-state-change.ts, which keeps the short form) cannot drift on the base
  * wording. `tumwater pause`'s confirmation (operator/operator-commands.ts) interleaves its

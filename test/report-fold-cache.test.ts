@@ -30,7 +30,7 @@ test("warm collectReport equals the cold read before and after appends", () => {
   ]);
   const cold = collectReport(root, 5);
   assert.deepEqual(warmed(root, 5), cold);
-  // Append a new tick plus a merge event: the warm fold must match a fresh full read.
+  // Append a new run plus a merge event: the warm fold must match a fresh full read.
   fs.appendFileSync(
     eventsLogPath(root),
     [
@@ -82,28 +82,28 @@ test("a torn trailing write is ignored until its newline lands", () => {
 
 test("a rotated log replaced by a fresh larger one refolds instead of folding the new log's bytes", () => {
   const root = tmpdir();
-  // Five 100-token ticks warm the memo; the cache's offset lands at this file's size.
+  // Five 100-token runs warm the memo; the cache's offset lands at this file's size.
   writeEvents(root, Array.from({ length: 5 }, () => ({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 100 }))); // retired-name-ok: legacy event field in a fixture
   assert.equal(warmed(root, 2).totals.tokensOut, 500);
   // Rotation: rename the whole log away and let a fresh log grow in its place — with ten
-  // 10-token ticks AND a size already past the cached offset. Size/mtime alone read as
+  // 10-token runs AND a size already past the cached offset. Size/mtime alone read as
   // "grown", so the growth arm would fold the fresh log's bytes from the old offset into
   // the folds that cover the retired log — double-counting whatever slice it reads and
   // losing the rest; the inode pins the file the folds cover and forces the full refold.
   fs.renameSync(eventsLogPath(root), eventsLogPath(root) + ".1");
-  // Ten 10-token fresh ticks, but split by a padding run of spaces so the fresh file's size
+  // Ten 10-token fresh runs, but split by a padding run of spaces so the fresh file's size
   // exceeds the cached offset while the bytes past that offset hold only a strict SUFFIX of
   // the fresh events — whatever the growth arm folds from the old offset is a partial fold,
   // never the fresh log's full contribution.
-  const tick = () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 10 }); // retired-name-ok: legacy event field in a fixture
+  const run = () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 10 }); // retired-name-ok: legacy event field in a fixture
   const oldSize = fs.statSync(eventsLogPath(root) + ".1").size;
-  const head = [tick(), tick(), tick()].join("\n") + "\n";
-  const tail = [tick(), tick(), tick(), tick(), tick(), tick(), tick()].join("\n") + "\n";
+  const head = [run(), run(), run()].join("\n") + "\n";
+  const tail = [run(), run(), run(), run(), run(), run(), run()].join("\n") + "\n";
   const padLen = Math.max(1, oldSize - head.length + 40);
   fs.writeFileSync(eventsLogPath(root), head + " ".repeat(padLen) + "\n" + tail);
   assert.ok(fs.statSync(eventsLogPath(root)).size > oldSize, "fresh log must exceed the cached offset");
   // The window's history survives rotation via the archive (events.jsonl.1): the report
-  // folds the archived five 100-token ticks plus the fresh ten 10-token ticks.
+  // folds the archived five 100-token runs plus the fresh ten 10-token runs.
   const report = warmed(root, 2);
   assert.equal(report.totals.tokensOut, 600);
   assert.equal(report.totals.runs, 15);

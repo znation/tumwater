@@ -1,5 +1,5 @@
 /** Shared text-shaping helpers for human-facing one-line text — the observability layer's
- * display labels (live progress, transcripts), tick commit subjects and body fields, and
+ * display labels (live progress, transcripts), run commit subjects and body fields, and
  * build-check reason lines: whitespace collapsing, ellipsis truncation, and plain-decimal
  * integer parsing. (Number, money, and hash formats — compactTokens, shortSha, usd, usdCap —
  * live in format.ts; local date/time formatting and calendar-day arithmetic live in
@@ -37,7 +37,7 @@ export function stripTerminalControls(s: string): string {
  * The one home of the "a torn or hand-edited field reads as a visible placeholder, never
  * String(undefined)'s literal 'undefined'" coercion the event feed's free-text fields and
  * shortSha apply. Numbers stay admitted because events legitimately carry numeric fields
- * (a tick number, a pid) that a display line renders as text. */
+ * (a run number, a pid) that a display line renders as text. */
 export function textOr(value: unknown, fallback = "?"): string {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -196,9 +196,9 @@ export function parseNonNegativeInt(raw: string): number | null {
 
 /** The shared over-long-text message: `<subject> is <n> chars — shorten it to at most <max>`,
  * with `tail` naming where the text rides once accepted. The one home of that phrasing, used
- * by init's seed check (init.ts, "the initial prompt … every tick's prefill"), inbox-submit's
- * promptLengthProblem ("the prompt … the <role> tick's prefill"), and config-validation's
- * customRoles task and roles instructions caps (both "every tick's prefill"), so the four
+ * by init's seed check (init.ts, "the initial prompt … every run's prefill"), inbox-submit's
+ * promptLengthProblem ("the prompt … the <role> run's prefill"), and config-validation's
+ * customRoles task and roles instructions caps (both "every run's prefill"), so the four
  * too-long messages cannot drift apart in shape. Callers keep their own subject, cap, and
  * tail; this owns only the sentence around them. */
 export function tooLongMessage(subject: string, n: number, max: number, tail: string): string {

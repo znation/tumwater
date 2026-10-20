@@ -7,7 +7,7 @@
  * src/failure/failure-render.ts as a pure function of the collected data. */
 import type { RunResult } from "../run/run-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
-import { eventRole, eventUsage, tickSpanMs, tickStartMap } from "../events/event-read.js";
+import { eventRole, eventUsage, runSpanMs, runStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { resolveQueuedResult, bucketMergeEvents } from "../history/history-data.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
@@ -137,7 +137,7 @@ function pooledClusterCause(source: unknown): { key: string; example: string } {
 function runDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
   const own = nonNegativeNumber(ev.durationMs, null);
   if (own !== null) return own;
-  return tickSpanMs(ev, starts) ?? 0;
+  return runSpanMs(ev, starts) ?? 0;
 }
 
 /** Add one run to a {runs, ms, costUsd} accumulator — the single home of the fold shared
@@ -170,7 +170,7 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
    * reads it, so a capped ranking never passes as a complete itemization (BUGS.md 2026-10-01). */
   lossCausesHidden: number;
 } {
-  const starts = tickStartMap(allEvents);
+  const starts = runStartMap(allEvents);
   const emptyCell = (): SpendCell => ({ runs: 0, ms: 0, costUsd: 0 });
   const byRole = new Map<string, Record<"merged" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();

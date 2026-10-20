@@ -155,7 +155,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // prompt loop burned the window's tokens.
   lines.push(rankedRoleLine("Tokens by role", rankedRoleMap(data.tokensByRole).filter(([, n]) => n > 0), compactTokens));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
-  // an all-zero window renders "-" like the ticks line.
+  // an all-zero window renders "-" like the runs line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleMap(data.costByRole).filter(([, c]) => c > 0), usd));
   // The same breakdown per PROVIDER (plans: per-provider spend), gated to the team report
   // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
@@ -177,13 +177,13 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   lines.push(rankedRoleLine("Revisions by role", rankedRoleMap(data.revisionsByRole).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Refusals by role", rankedRoleMap(data.refusalsByRole).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
-  // digest's OUTCOME_CLASS — the ticks that burned agent time and merged nothing without
+  // digest's OUTCOME_CLASS — the runs that burned agent time and merged nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleMap(data.failedRunsByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleMap(data.fallbacksByRole).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleMap(data.imageReroutesByRole).filter(([, n]) => n > 0), String));
-  // Deferred maintenance ticks per reason code, the --since twin of the day render's line:
+  // Deferred maintenance runs per reason code, the --since twin of the day render's line:
   // how many due maintenance runs stood down and why (backlog / no-work / plans-full).
   // Gated to the team report — a reason is not a role, so a role-scoped window omits it.
   // Zero-means-absent: a window with no deferral prints no line.
@@ -297,10 +297,10 @@ export function renderReportMarkdown(data: ReportData): string {
     ...markdownTable(
       ["day", "tokens out", "runs", "commits", "cost"],
       data.series.map((d) => {
-        const ticks = Object.values(d.runsByRole).reduce((a, b) => a + b, 0);
+        const runs = Object.values(d.runsByRole).reduce((a, b) => a + b, 0);
         const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
         const bar = w > 0 ? ` ${"█".repeat(w)}` : ""; // Zero days carry no bar (and no stray space).
-        return [monthDay(d.date), `${compactTokens(d.tokensOut)}${bar}`, String(ticks), String(d.commits), usd(d.costUsd)];
+        return [monthDay(d.date), `${compactTokens(d.tokensOut)}${bar}`, String(runs), String(d.commits), usd(d.costUsd)];
       }),
       ["left", "right", "right", "right", "right"],
     ),
@@ -308,13 +308,13 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push("");
   lines.push(rankedRoleLine("Runs by role", rankedRoleTotals(data.series, (d) => d.runsByRole), String));
   // The same breakdown for output tokens (the resource the budget charges): window totals per
-  // role from tokensByRole, ranked like the ticks line. Zero-token roles are omitted; an
-  // all-zero window renders "-" like the ticks line.
+  // role from tokensByRole, ranked like the runs line. Zero-token roles are omitted; an
+  // all-zero window renders "-" like the runs line.
   lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}).filter(([, n]) => n > 0), compactTokens));
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
   // intervals wants the burning role first, not the busiest one). Zero-spend roles are
-  // omitted; an all-zero window renders "-" like the ticks line.
+  // omitted; an all-zero window renders "-" like the runs line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
   // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed team
   // spent what, straight from the events' providerCost maps (run_end's own runs and the
@@ -338,18 +338,18 @@ export function renderReportMarkdown(data: ReportData): string {
     if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
   // The same breakdown for review friction: window rejections per role from review_rejected
-  // events, ranked like the ticks line; a window with none renders "-".
+  // events, ranked like the runs line; a window with none renders "-".
   lines.push(rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Refusals by role", rankedRoleTotals(data.series, (d) => d.refusalsByRole ?? {}).filter(([, r]) => r > 0), String));
   // The same breakdown for outright failures: error-class run_ends per role under the
-  // digest's OUTCOME_CLASS — ticks that burned agent time and merged nothing without going
+  // digest's OUTCOME_CLASS — runs that burned agent time and merged nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
   lines.push(rankedRoleLine("Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedRunsByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Fallbacks by role", rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {}).filter(([, n]) => n > 0), String));
   lines.push(rankedRoleLine("Image reroutes by role", rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {}).filter(([, n]) => n > 0), String));
-  // Deferred maintenance ticks per reason code — how many due maintenance runs stood down
+  // Deferred maintenance runs per reason code — how many due maintenance runs stood down
   // and why, so an idle day reads as backlog-open / no-work / plans-full rather than blank,
   // the per-role breakdown of the deferred maintenances. Gated to the team report — a
   // reason is not a role (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a window

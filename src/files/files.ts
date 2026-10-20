@@ -84,7 +84,7 @@ export function terminateTornTail(file: string, st: { size: number } | null): bo
 /** Read a text file whole, or null when it does not exist (or cannot be read) — the harness's
  * "missing is no data" policy for the markdown and prompt text a render or prompt-building
  * path must never throw on: the backlog's PLANS/BUGS/QUESTIONS, the principles injected into
- * every tick prompt, the usage report's sources, and a queued prompt that vanished mid-
+ * every run prompt, the usage report's sources, and a queued prompt that vanished mid-
  * listing. The single home of that read-and-swallow step; callers pick their empty value
  * (`?? ""` when a blank default reads better than null). */
 export function readTextOrNull(file: string): string | null {
@@ -147,7 +147,7 @@ export function envPath(): string {
 /** Locate an executable on PATH the same way spawn() would resolve it: a regular file
  * with the execute bit in some PATH directory. Returns its absolute path, or null when
  * missing (or not executable), so callers can fail fast with a clear message instead of
- * letting every tick die with "spawn <name> ENOENT". */
+ * letting every run die with "spawn <name> ENOENT". */
 export function findOnPath(name: string, pathEnv: string = envPath()): string | null {
   for (const dir of pathEnv.split(path.delimiter)) {
     if (!dir) continue;
@@ -255,8 +255,8 @@ export function subdirectoryNames(dir: string, keep?: (name: string) => boolean)
  * reader of the same path sees either the old (absent) or the new content, never a partial
  * write: the prompt-inbox queue files (inbox.ts's enqueueRolePrompt) are written by one process
  * while dashboards poll, `--list` reads, and the roles dequeue in others, and a read that races
- * the write could run a tick on a truncated user request or flash one on the dashboard. The tmp
- * name carries the pid because several processes can write at once (CLI, TUI, GUI, a role's
+ * the write could start an agent run on a truncated user request or flash one on the dashboard.
+ * The tmp name carries the pid because several processes can write at once (CLI, TUI, GUI, a role's
  * re-queue); on failure the tmp is removed and the error rethrown, leaving the target untouched.
  * The harness's JSON writer (writeJsonAtomic in src/files/json-files.ts) and the config write-back
  * (writeBytesAtomic's caller, merge-git.ts's restoreConfigBytes) write through this, so the
@@ -368,7 +368,7 @@ export function pruneOldFiles(dir: string, days: number): number {
 
 /** Remove `dir` entirely when the directory itself is older than `days` days (its own mtime,
  * not its children's). Worktree builds leave a gitignored `dist/` dir that `git clean -fd`
- * does not drop; this prunes it at the next tick, bounded by the same age rule. Returns true
+ * does not drop; this prunes it at the next run, bounded by the same age rule. Returns true
  * when the directory was removed. Mirrors pruneOldFiles' vanish-tolerant style. */
 export function pruneOldDirectory(dir: string, days: number): boolean {
   if (!fs.existsSync(dir)) return false;

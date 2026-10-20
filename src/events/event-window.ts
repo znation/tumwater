@@ -67,7 +67,7 @@ export const SPARSE_WINDOW_NOTE =
  * "unreadable": a file exists with bytes but none of them parse as an event — a directory at
  * the path, a permission failure, or a run whose every complete line is corrupt. The failure
  * digest branches on this so an observer role can tell "the team was idle" from "I could not
- * read the log"; the never-fail-the-tick policy still holds — a read reports the state, it
+ * read the log"; the never-fail-the-run policy still holds — a read reports the state, it
  * never throws to do so. */
 export type EventLogState = "ok" | "empty" | "unreadable";
 
@@ -285,7 +285,7 @@ function scanFileReadState(file: string): EventLogState {
 }
 
 /** The duration-shaped windowed read whose consumer needs a SECOND view of the same window
- * with a wider cutoff (history's tick-row join: a queued tick spanning the rows' cutoff logged
+ * with a wider cutoff (history's run-row join: a queued run spanning the rows' cutoff logged
  * its merge_queued pin before that cutoff, so its merge verdict must be joined from evidence
  * up to `joinBackslackMs` older). One backwards scan serves both: the wide read's day key never
  * sits after the narrow one's, so every `ts >= cutoff` event it holds is exactly the narrow

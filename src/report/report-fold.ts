@@ -17,31 +17,31 @@ import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.
 import { addTo, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { commitTier } from "../roles/roles.js";
 
-/** The fields both usage collectors fold events into: per-role tick counts, per-role cost,
- * and the totals each render prints. `ticks` is counted only where a consumer needs a window
+/** The fields both usage collectors fold events into: per-role run counts, per-role cost,
+ * and the totals each render prints. `runs` is counted only where a consumer needs a window
  * total (the trailing-window report); the per-day series derives it later by summing
  * runsByRole, so a day carries no redundant counter. The merge fields mirror that split
  * for the merge slot's own pi runs (reviewer + conflict resolution): their tokens/cost
  * always accumulate into `mergeTokens`/`mergeCostUsd` — never into `tokensOut`/`costUsd`
  * here, so each collector decides once how the merge share joins its surfaced totals (the
  * budget charges these same events, so the totals must include it) — and `mergeRuns` counts
- * `merge_done`/`merge_failed` events on every target: unlike ticks there is no per-role map a day
+ * `merge_done`/`merge_failed` events on every target: unlike runs there is no per-role map a day
  * could derive a run count from, so the day must fold it for the totals to sum. */
 export interface UsageFold {
   runs?: number;
   runsByRole: Record<string, number>;
   /** review_rejected events per role id — the review gate's turn-backs, split by role so a
-   * role whose every change draws a new objection is visible alongside its ticks/cost. */
+   * role whose every change draws a new objection is visible alongside its runs/cost. */
   rejectionsByRole: Record<string, number>;
   /** revision events per role id — the rework rounds a rejected change is re-applied through,
    * split by role so a role whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the merge slot's). */
   revisionsByRole: Record<string, number>;
-  /** run_end events per role id whose result is `refused` — ticks that deliberately declined
+  /** run_end events per role id whose result is `refused` — runs that deliberately declined
    * their entry and merged nothing. The one deliberate per-role outcome the report used to
    * leave out, counted on the same already-computed role as the other usage lines, a parallel
    * tally never subtracted from runsByRole. `refused` is not error-class, so this is an
@@ -54,7 +54,7 @@ export interface UsageFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
-  /** ms of each provider_wait event that carries a positive waitedMs (a role tick whose
+  /** ms of each provider_wait event that carries a positive waitedMs (a role run whose
    * semaphore admission waited PROVIDER_WAIT_EVENT_MS or more for its provider/team slot),
    * unsorted. */
   providerWaitsMs: number[];
@@ -65,7 +65,7 @@ export interface UsageFold {
    * check permit), unsorted. */
   checkWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
-   * ticks that burned agent time and merged nothing without going through review. Split by role,
+   * runs that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
   failedRunsByRole: Record<string, number>;
   /** model_fallback_started events per role id, so a role whose primary keeps failing is
@@ -100,7 +100,7 @@ export interface UsageFold {
    * the merge gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
    * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
   mergeFailedByRole: Record<string, number>;
-  /** The merge_failed outcomes keyed by their event's `result` (the TickResult
+  /** The merge_failed outcomes keyed by their event's `result` (the RunResult
    * writeMergeOutcome logs — `rejected` for a review rejection, `merge_conflict`, a
    * `merge_blocked` failed fast-forward, an `aborted` shutdown, …), so a report can say
    * WHY a day's merges failed (fix the change vs rebase vs capacity), not just how many and
@@ -120,9 +120,9 @@ export interface UsageFold {
    * role. A run_start whose `model` is absent or empty contributes no key. Team-only: a
    * model is not a role, so a role-scoped report carries an empty map. */
   runsByModel: Record<string, number>;
-  /** run_deferred events per reason code (a maintenance tick that stood down — `DeferReason`
+  /** run_deferred events per reason code (a maintenance run that stood down — `DeferReason`
    * in src/scheduling/scheduling.ts: "backlog", "no-work" or "plans-full"), so a day's
-   * deferred maintenance ticks are tallied by why they stood down instead of reading as
+   * deferred maintenance runs are tallied by why they stood down instead of reading as
    * idle. A missing, foreign or torn reason folds as "no-work" — the same fallback
    * deferredReasonText applies in the feed — so the tally and the feed agree. Team-only: a
    * reason is not a role, so a role-scoped report carries an empty map. */
@@ -154,26 +154,26 @@ function pushPositiveWaitedMs(list: number[], ev: HarnessEvent): void {
   if (waited > 0) list.push(waited);
 }
 
-/** Fold one event into a usage accumulator: run_end events add a tick (per role and, when
- * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
+/** Fold one event into a usage accumulator: run_end events add a run (per role and, when
+ * the target counts runs, in total), their output tokens, and their cost — zero-cost runs
  * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
  * omitted" rule true on the aggregation itself, not just at display time; merged events add
  * a commit; merge_done/merge_failed events add a merge run and
- * accumulate their tokens/cost into the merge fields only — costByRole stays a ticks-only
+ * accumulate their tokens/cost into the merge fields only — costByRole stays a runs-only
  * breakdown, and the merge line is how the reviewer's share is named. Both collectors fold
  * through this one place, so the two windows' aggregation rules cannot drift apart. */
 export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   if (ev.type === "run_end") {
     const role = eventRole(ev);
     addTo(target.runsByRole, role, 1);
-    // Error-class ticks get their own parallel tally — the day report's ``Failed ticks by role``
+    // Error-class runs get their own parallel tally — the day report's ``Failed runs by role``
     // line — reusing the digest's OUTCOME_CLASS so "failed" cannot drift from the failure
     // report's meaning. Never subtracted from runsByRole; the two are independent counts.
-    if (OUTCOME_CLASS[ev.result as TickResult] === "error") addTo(target.failedRunsByRole, role, 1);
+    if (OUTCOME_CLASS[ev.result as RunResult] === "error") addTo(target.failedRunsByRole, role, 1);
     // A refusal is its own deliberate outcome (src/verdict/refusal.ts), not error-class, so
     // it needs an explicit result check: the one per-role rejection-without-review count a
     // day report should surface beside rejections, revisions and falls. Never subtracted from
-    // runsByRole; a refused tick still counts as a run.
+    // runsByRole; a refused run still counts as a run.
     if (ev.result === "refused") addTo(target.refusalsByRole, role, 1);
     if (target.runs !== undefined) target.runs++;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
@@ -183,7 +183,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
-    // The tick's own runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
+    // The agent runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
     // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
     // line names the expensive seam.
     foldProviderCost(target, ev.providerCost);
@@ -209,7 +209,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // One reroute per event, preflight or after a blind read.
     addTo(target.imageReroutesByRole, eventRole(ev), 1);
   } else if (ev.type === "run_deferred") {
-    // One deferral per event, a due maintenance tick that stood down. Bucket by the raw
+    // One deferral per event, a due maintenance run that stood down. Bucket by the raw
     // reason code ("backlog", "plans-full", else "no-work" for a missing/foreign/torn
     // reason — the same fallback deferredReasonText applies in the feed), so the collector
     // stays free of a presentation import and the render prints the code the event carried.
@@ -260,7 +260,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
       if (waited > 0) target.mergeWaitsMs.push(waited);
     } else {
       addTo(target.mergeFailedByRole, role, 1);
-      // The event's result (writeMergeOutcome's TickResult) names WHY the merge bounced
+      // The event's result (writeMergeOutcome's RunResult) names WHY the merge bounced
       // off the gate — rejected/merge_conflict/merge_blocked/aborted. A legacy event with
       // no result folds under `unknown`, so the reason buckets always sum to mergeFailed.
       const reason = typeof ev.result === "string" && ev.result.length > 0 ? ev.result : "unknown";
@@ -280,7 +280,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
 }
 
 /** One day's worth of folded events, the event-log half of a ReportDay: everything
- * foldUsageEvent accumulates for a single local day (ticks are not tracked — the series
+ * foldUsageEvent accumulates for a single local day (runs are not tracked — the series
  * derives them from runsByRole). Cached across calls by foldWindowEvents so an appended
  * log line is folded once, not once per report request. */
 interface DayFold {
@@ -399,7 +399,7 @@ export function scopeBases(role: string | readonly string[] | undefined): string
 
 /** Sum a per-role-id count/cost map over the scoped base roles: instance keys (`feature-2`)
  * fold into their base (`feature`), so a scoped report aggregates a whole role group exactly
- * as the per-role cap's group does. Ticks/tokens/cost are keyed by exact role id while commits are
+ * as the per-role cap's group does. Runs/tokens/cost are keyed by exact role id while commits are
  * already base-role keyed; running every key through `baseRoleOf` reads both shapes the same
  * and returns 0 when nothing matches. */
 export function roleSum(record: Record<string, number>, bases: string | readonly string[]): number {
@@ -412,7 +412,7 @@ export function roleSum(record: Record<string, number>, bases: string | readonly
 }
 
 /** Narrow a per-role-id count/cost map to the scoped base roles, one entry per base keyed by
- * that base; a role absent from the map (no ticks, or no nonzero cost) yields no entry, never
+ * that base; a role absent from the map (no runs, or no nonzero cost) yields no entry, never
  * a zero one — the same zero-means-absent rule the team render applies. Used by the
  * role-scoped collectors so a scoped series derives from the fold's per-role maps without
  * inventing entries. */

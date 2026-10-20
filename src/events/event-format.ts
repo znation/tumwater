@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
-import { eventRole, eventTick, eventUsage } from "./event-read.js";
+import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
@@ -27,7 +27,7 @@ function mostByPhrase(value: unknown): string {
 /** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (run_end,
  * merge_done): the usage numbers arrive via eventUsage (the loose-typing coercion every usage
  * consumer shares), rendered through the shared token/money formats (compactTokens, usd) in one
- * place. Either part is omitted when zero or absent, so skipped ticks and zero-usage merges render
+ * place. Either part is omitted when zero or absent, so skipped runs and zero-usage merges render
  * byte-identical to a pre-feature line — no leading or trailing separator. "·" is the separator
  * the budget badge already uses. Sentence contexts prepend their own " · " via usagePhrase;
  * table-cell contexts (history's usage column) use the bare text. */
@@ -118,7 +118,7 @@ function providerModelPair(e: HarnessEvent, providerDefault: string, modelDefaul
   return `${textOr(e.provider, providerDefault)}/${textOr(e.model, modelDefault)}`;
 }
 
-/** An event's outcome string — a tick's `result`, or a merge's or build check's `status`,
+/** An event's outcome string — a run's `result`, or a merge's or build check's `status`,
  * whichever the event carries; undefined when neither does. The activity feeds' tone and
  * filter key (tone.ts's eventKind takes it beside the event type), also shipped as the
  * status payload's per-event `result` field, so the two surfaces cannot disagree on what a
@@ -130,8 +130,8 @@ export function eventResult(e: HarnessEvent): string | undefined {
 /** eventResult as a display cell: the outcome text when the event carries one, else "?". A
  * torn or hand-edited event whose result/status is missing or non-string — the loose payload
  * HarnessEvent's index signature hands over unvalidated — reads "?" like eventRole's role and
- * eventTick's tick, never String(undefined)'s literal "undefined". The display surfaces — the
- * event line, the history row, the tick drill-down — use this; eventResult stays undefined
+ * eventRun's run, never String(undefined)'s literal "undefined". The display surfaces — the
+ * event line, the history row, the run drill-down — use this; eventResult stays undefined
  * for the tone and filter keys, which must tell "no outcome" apart from a real one. */
 export function outcomeText(e: HarnessEvent): string {
   return eventResult(e) ?? "?";
@@ -168,7 +168,7 @@ export function formatEvent(e: HarnessEvent): string {
   return `${time} ${roleCell} ${eventMessage(e)}`;
 }
 
-/** One event as the dashboard's activity feed consumes it: `result` is a tick's outcome, a
+/** One event as the dashboard's activity feed consumes it: `result` is a run's outcome, a
  * merge's result, or a build check's status — whichever string the event carries. The event
  * layer owns the event shape's projection, so both the status poll (ui/status-payload.ts) and
  * the slice endpoint (gui/gui-endpoints.ts's handleLogs) read the same fields, and a feed row's
@@ -194,20 +194,20 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "run_start":
-      return `run #${eventTick(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
+      return `run #${eventRun(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
     case "run_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
-      // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
+      // review_error runs, error (lastError) for error and merge-failed ones. Showing it
       // for every result that carries one keeps the event feed self-explanatory — a bare
-      // "tick #N refused" would force operators to open the transcript for the reason.
+      // "run #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${textOr(e.summary)}` : e.error ? ` — ${textOr(e.error)}` : "";
-      // Per-tick usage: where the day's spend went.
-      return `run #${eventTick(e)} ${eventTypeLabel(outcomeText(e))}${extra}${usagePhrase(e)}`;
+      // Per-run usage: where the day's spend went.
+      return `run #${eventRun(e)} ${eventTypeLabel(outcomeText(e))}${extra}${usagePhrase(e)}`;
     }
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "merge_queued":
-      // Merge queue 3/5: routine state change (the tick committed and the merge slot is
+      // Merge queue 3/5: routine state change (the run committed and the merge slot is
       // ahead) — no warning prefix. The merge's own events follow it.
       return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
     case "merge_done":
@@ -234,7 +234,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `woke (${textOr(e.reason)})`;
     case "run_deferred":
       // Routine state change (need-based prioritization), like counters_reset — no warning
-      // prefix. One per deferral episode; the tick's own events cover the episode's end.
+      // prefix. One per deferral episode; the run's own events cover the episode's end.
       return `deferred — ${deferredReasonText(e)}`;
     case "orchestrator_start":
       return `tumwater started (pid ${textOr(e.pid)}${e.build ? `, version ${shortSha(e.build)}` : ""})`;
@@ -252,8 +252,8 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine operation (the user reordered a queued prompt), not a warning.
       return `inbox message moved to the front: ${textOr(e.preview)}`;
     case "prompt_taken":
-      // Routine: a tick dequeued the operator's request to run it.
-      return `inbox message taken by run #${eventTick(e)}: ${textOr(e.preview)}`;
+      // Routine: a run dequeued the operator's request to run it.
+      return `inbox message taken by run #${eventRun(e)}: ${textOr(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that role; several → one harness-level event
       // listing them.
@@ -262,7 +262,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `counters reset${scope} (runs, merges, tokens, cost)`;
     }
     case "run_aborted":
-      // Routine state change (the user stopped one role's tick), like counters_reset — no
+      // Routine state change (the user stopped one role's run), like counters_reset — no
       // warning prefix. The resulting run_end line carries the user_aborted outcome.
       return `run stopped by you`;
     case "review_start": {
@@ -279,7 +279,7 @@ export function eventMessage(e: HarnessEvent): string {
       const reasons = stringList(e.reasons);
       // Only the first reason renders; when more exist, say so instead of letting the
       // one-liner read as the complete verdict — the full list rides in state.lastReview
-      // into the author's next tick prompt, and this line is the operator's pointer to it.
+      // into the author's next run prompt, and this line is the operator's pointer to it.
       const more =
         reasons.length > 1
           ? ` (+${reasons.length - 1} more — the author's next run carries every reason)`
@@ -322,7 +322,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the team stopped instead of
       // switching over, and an operator reading the feed must be able to act on it. So is a
-      // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
+      // free fallback the breaker demoted because its runs kept failing (BUGS.md 2026-09-20):
       // the backend, not the price, is what to fix, and the team retries it on its own.
       // Like role_cap_paused, the line names the lift paths: a raised or removed cap, or the
       // local day rolling over (the demoted branch's cool-down retry is the automatic third).
@@ -347,9 +347,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
     case "budget_handback": {
-      // Which ticks were handed back: the roles still running on the fallback when the budget
-      // reopened. Their ticks end `aborted` and resume promptly on the primary, so an operator
-      // reading the feed can connect the aborted ticks to this one line.
+      // Which runs were handed back: the roles still running on the fallback when the budget
+      // reopened. Their runs end `aborted` and resume promptly on the primary, so an operator
+      // reading the feed can connect the aborted runs to this one line.
       const roles = rolesPhrase(e.roles, "?");
       if (e.reason === "window") return `claude subscription window reset: handed ${roles} back to claude`;
       return `budget reopened: handed ${roles} back to the primary`;
@@ -521,7 +521,7 @@ export function eventMessage(e: HarnessEvent): string {
       // failure. Names the pair the role now runs on and why the primary was abandoned.
       return `model fallback — ${providerModelPair(e, "pi's default", "pi's default")} engaged (primary failing: ${textOr(e.reason, "backend failure")})`;
     case "model_fallback_ended":
-      // The return counterpart: names the pair ticks resume on and how long the episode ran.
+      // The return counterpart: names the pair runs resume on and how long the episode ran.
       return `model fallback ended — back on ${providerModelPair(e, "pi's default", "pi's default")} after ${minutes(e.durationMs)}m`;
     case "opencode_free_model_billed":
       // The promotion ended (plans/opencode-backend.md §7, part 6c/7): a run billed what the
@@ -532,7 +532,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "image_blind": {
       // Routine-with-explanation like the model-fallback events — no warning prefix: the
       // run was stopped (or a gate run noted) because the model cannot see the image. Names
-      // the file, the model, and whether the tick failed on it or a gate run only logged it.
+      // the file, the model, and whether the run failed on it or a gate run only logged it.
       const action =
         e.action === "logged"
           ? " (gate run logged)"
@@ -542,9 +542,9 @@ export function eventMessage(e: HarnessEvent): string {
       return `blind image read: ${textOr(e.path)} on ${textOr(e.model, "the model")}${action}`;
     }
     case "image_reroute":
-      // The tick's work moves to a model that can read the image (plans/image-input.md part
+      // The run's work moves to a model that can read the image (plans/image-input.md part
       // 4/5). Routine-with-explanation — no warning prefix: names the hop the way the
-      // handoff reads, and whether the traits-of-attachment preflight avoided a failed tick.
+      // handoff reads, and whether the traits-of-attachment preflight avoided a failed run.
       return e.preflight === true
         ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed run`
         : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next run goes there after a blind read on ${textOr(e.from, "the prior model")}`;

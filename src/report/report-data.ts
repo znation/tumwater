@@ -2,7 +2,7 @@
 /** Collection half of the usage report: read the harness's event log (through the shared
  * event-folding layer in src/report/report-fold.ts) and the backlog history over a window of
  * local calendar days and distill it into a `ReportData` / `SinceReport` — per-day
- * tick/token/commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and
+ * run/token/commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and
  * BUGS.md. The Markdown rendering of this data lives in src/report/report-render.ts, a pure
  * function of it; the split mirrors the failure report's (src/failure/failure-data.ts /
  * src/failure/failure-render.ts) and keeps "what happened" (window math, aggregation, bounds)
@@ -54,7 +54,7 @@ export interface ReportDay {
   tokensOut: number;
   runsByRole: Record<string, number>;
   /** Output tokens per role id, so the day report can break the day's token spend down by
-   * role the way Ticks/Cost do; absent only on hand-built fixtures (the collector always
+   * role the way Runs/Cost do; absent only on hand-built fixtures (the collector always
    * sets it — zero uses leave it an empty map). */
   tokensByRole?: Record<string, number>;
   costByRole: Record<string, number>;
@@ -62,7 +62,7 @@ export interface ReportDay {
   rejectionsByRole?: Record<string, number>;
   /** revision events per role id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
-  /** run_end events per role id (its result is `refused` — a tick that deliberately declined
+  /** run_end events per role id (its result is `refused` — a run that deliberately declined
    * its entry); absent when the day has none (zero means absent). */
   refusalsByRole?: Record<string, number>;
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
@@ -74,7 +74,7 @@ export interface ReportDay {
   /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
    * day has no merge that carried queuedMs. */
   mergeWaitMedianMs?: number;
-  /** Lower median of the day's provider-slot waits (a role tick's semaphore admission wait,
+  /** Lower median of the day's provider-slot waits (a role run's semaphore admission wait,
    * ms); absent when the day has no provider_wait that carried a positive waitedMs. */
   providerWaitMedianMs?: number;
   /** Lower median of the day's workspace-slot waits (a pooled workspace lease wait, ms);
@@ -124,7 +124,7 @@ export interface ReportDay {
    * model is not a role, so only the team series carries it (absent when the day had no
    * modelled start, zero means absent). */
   runsByModel?: Record<string, number>;
-  /** run_deferred events per reason code (a maintenance tick that stood down, bucketed by
+  /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); team-only like runsByModel, because a
    * reason is not a role. Absent when the day had no deferral (zero means absent). */
   deferredByReason?: Record<string, number>;
@@ -135,7 +135,7 @@ export interface ReportDay {
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the
- * tick and commit counts, cost (the merge share included), and the merge share named for
+ * run and commit counts, cost (the merge share included), and the merge share named for
  * itself. SinceReport carries it directly; ReportData adds the day-granular backlog tallies
  * on top. The single home of this shape, so report-render.ts's totalsLine/mergeShareLine
  * read exactly the fields the collectors produce. */
@@ -200,7 +200,7 @@ export interface SinceReport {
   rejectionsByRole: Record<string, number>;
   /** revision events per role id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
-  /** run_end events per role id whose result is `refused` (a tick that deliberately declined
+  /** run_end events per role id whose result is `refused` (a run that deliberately declined
    * its entry); empty when the window has none. */
   refusalsByRole: Record<string, number>;
   /** error-class run_end events per role id; empty when the window has none. */
@@ -240,7 +240,7 @@ export interface SinceReport {
    * costByProvider), so the --since render can gate its `Runs by model` line on the
    * window's own events. A model is not a role, so a scoped report carries an empty map. */
   runsByModel: Record<string, number>;
-  /** run_deferred events per reason code (a maintenance tick that stood down, bucketed by
+  /** run_deferred events per reason code (a maintenance run that stood down, bucketed by
    * why — "backlog", "no-work" or "plans-full"); absent when the window has none — the
    * same conditional the day collector applies to ReportDay.deferredByReason, so a --since
    * JSON carries it only when nonzero. A reason is not a role, so a scoped window omits it. */
@@ -486,7 +486,7 @@ export function collectReport(root: string, days: number, role?: string | readon
         day.mergeFailedByReason = fold.mergeFailedByReason;
     } else {
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
-      // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the
+      // the named role's runs/tokens/cost and (base-role-keyed) commits. The scope is the
       // base role, so an instance id's usage and its siblings' commits fold into one group and
       // the numbers match the per-role cap, which is base-role keyed too. The merge fields
       // stay unset — merge runs are the merge slot's, not this role's — and the work /

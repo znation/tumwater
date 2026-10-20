@@ -8,7 +8,7 @@ import type { HarnessEvent } from "./events.js";
 
 /** The READ side of the event feed: everything that consumes events.jsonl after the fact —
  * parseEventLine's skip-without-failing rule, the per-event query conventions (eventDayKey,
- * eventRole, eventUsage, tickStartMap/tickSpanMs) the reports and history share, and the
+ * eventRole, eventUsage, runStartMap/runSpanMs) the reports and history share, and the
  * stat-cached backwards tail scan readEvents is built on. The WRITE side — logEvent/warnEvent,
  * the append path with its torn-tail repair, rotation, and the subscriber list — and the
  * HarnessEvent shape itself live beside it in events.ts; the split keeps the append path's
@@ -35,7 +35,7 @@ export function parseEventLine(line: string): HarnessEvent | null {
  * numeric timestamp. The one day-bucketing rule the windowed reader (event-window.ts) and the
  * usage/failure reports all apply, so they agree on what counts as one day. A `ts` that is
  * present but not finite is as unusable as an absent one and reads null too (the same
- * finiteness check eventTick/eventUsage/tickStartMap/tickSpanMs apply): bare
+ * finiteness check eventRun/eventUsage/runStartMap/runSpanMs apply): bare
  * `typeof Infinity === "number"` let a JSON `1e999` through to dayKey, whose
  * `new Date(Infinity)` rendered the bucket key "NaN-NaN-NaN" and filed the event under a day
  * no window can name. */
@@ -50,14 +50,14 @@ export function eventRole(ev: HarnessEvent): string {
   return typeof ev.source === "string" && ev.source !== "" ? ev.source : "?";
 }
 
-/** The tick number an event names, or 0 when it is absent or non-finite. The one guard every
- * display surface applies to the loosened `tick` field: an event log is read without a shape
- * filter, so a torn or hand-edited line can carry no tick (String(undefined) printed "#undefined"
- * in the feed) or a non-numeric one (String(Number(…)) printed "#NaN" in history). Ticks are
- * 1-based — the role increments state.runs before logging its first tick — so 0 is visibly not
- * a real tick, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
+/** The run number an event names, or 0 when it is absent or non-finite. The one guard every
+ * display surface applies to the loosened `run` field: an event log is read without a shape
+ * filter, so a torn or hand-edited line can carry no run (String(undefined) printed "#undefined"
+ * in the feed) or a non-numeric one (String(Number(…)) printed "#NaN" in history). Runs are
+ * 1-based — the role increments state.runs before logging its first run — so 0 is visibly not
+ * a real run, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
  * aheadCommits apply, kept finite so a JSON consumer never sees NaN's null stand-in. */
-export function eventTick(ev: HarnessEvent): number {
+export function eventRun(ev: HarnessEvent): number {
   return finiteNumber(ev.run, 0);
 }
 
@@ -76,15 +76,15 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
   return { tokens, costUsd, notionalCostUsd };
 }
 
-/** Pair the run_start events of `events` by tick, keyed `${role}#${tick}` → the start event
+/** Pair the run_start events of `events` by run, keyed `${role}#${run}` → the start event
  * itself — the one home of that pairing and its key format, shared by the timestamps
- * (tickStartMap), the models (tickStartModelMap), and the tick drill-down's duration
- * (run-detail-data.ts uses tickSpanMs' key). A run_start whose `ts` is not a finite number is
+ * (runStartMap), the models (runStartModelMap), and the run drill-down's duration
+ * (run-detail-data.ts uses runSpanMs' key). A run_start whose `ts` is not a finite number is
  * as unusable as an absent one and adds no entry either (the same "a torn or hand-edited line
- * carries no usable timestamp" policy eventTick/eventUsage apply to their fields), so every
+ * carries no usable timestamp" policy eventRun/eventUsage apply to their fields), so every
  * entry is a real start the projections below can trust. Private: external consumers read one
  * of the projections, not this raw pairing. */
-function runStartMap(events: HarnessEvent[]): Map<string, HarnessEvent> {
+function runStartEvents(events: HarnessEvent[]): Map<string, HarnessEvent> {
   const starts = new Map<string, HarnessEvent>();
   for (const e of events) {
     const ts = finiteNumber(e.ts, null);
@@ -93,55 +93,55 @@ function runStartMap(events: HarnessEvent[]): Map<string, HarnessEvent> {
   return starts;
 }
 
-/** The run_start pairing's start epoch ms: `${role}#${tick}` → start epoch ms, the projection
- * of runStartMap onto each event's `ts` — shared by `tumwater history`'s row spans
- * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
+/** The run_start pairing's start epoch ms: `${role}#${run}` → start epoch ms, the projection
+ * of runStartEvents onto each event's `ts` — shared by `tumwater history`'s row spans
+ * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the run
  * drill-down's duration (run-detail-data.ts), so those consumers cannot drift into different
- * notions of a tick's span. A run_end whose start is not in `events` (log rotation cut it, or
- * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
+ * notions of a run's span. A run_end whose start is not in `events` (log rotation cut it, or
+ * the run was skipped before any start logged) has no entry; callers decide what an unpaired
  * end costs. Lives in the read module, not in a ui module, so core collectors can share it
  * without a core→ui import. */
-export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
+export function runStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
-  for (const [key, e] of runStartMap(events)) starts.set(key, finiteNumber(e.ts, 0));
+  for (const [key, e] of runStartEvents(events)) starts.set(key, finiteNumber(e.ts, 0));
   return starts;
 }
 
-/** The run_start pairing's model selectors: `${role}#${tick}` → the run's model when its
+/** The run_start pairing's model selectors: `${role}#${run}` → the run's model when its
  * run_start carries a non-empty string `model` (the agent-qualified selector string — a
  * per-role override, a fallback, or the primary — that the status rows carry; see
  * config-views.ts's agentQualifiedSelector). A run_start with no `model`, or an empty or
  * non-string one, adds no entry, so `tumwater history`'s model cell renders empty for a start
  * that named none — exactly the empty-usage convention applied to cells. The finite-`ts`
- * guard rides runStartMap, the one home of the pairing. */
-export function tickStartModelMap(events: HarnessEvent[]): Map<string, string> {
+ * guard rides runStartEvents, the one home of the pairing. */
+export function runStartModelMap(events: HarnessEvent[]): Map<string, string> {
   const models = new Map<string, string>();
-  for (const [key, e] of runStartMap(events)) {
+  for (const [key, e] of runStartEvents(events)) {
     if (typeof e.model === "string" && e.model !== "") models.set(key, e.model);
   }
   return models;
 }
 
-/** The model of the run_end event `ev` against `models` (tickStartModelMap's pairing): the
- * `${role}#${tick}` lookup, in one place beside the map it indexes, so the key format and the
- * "no model is null" rule are spelled once — the model twin of tickSpanMs. null when the
+/** The model of the run_end event `ev` against `models` (runStartModelMap's pairing): the
+ * `${role}#${run}` lookup, in one place beside the map it indexes, so the key format and the
+ * "no model is null" rule are spelled once — the model twin of runSpanMs. null when the
  * start is missing (rotation cut it) or carried no model; callers decide what an empty model
  * costs — history renders it as an empty cell. */
-export function tickStartModel(ev: HarnessEvent, models: Map<string, string>): string | null {
+export function runStartModel(ev: HarnessEvent, models: Map<string, string>): string | null {
   return models.get(`${ev.source}#${ev.run}`) ?? null;
 }
 
-/** The start→end span of the `run_end` event `ev` against `starts` (tickStartMap's pairing):
- * the `${role}#${tick}` lookup and the clamp to non-negative, in one place beside the map
+/** The start→end span of the `run_end` event `ev` against `starts` (runStartMap's pairing):
+ * the `${role}#${run}` lookup and the clamp to non-negative, in one place beside the map
  * they index, so the key format and the span rule are spelled once. null when the start is
  * missing (rotation cut it) or when `ev.ts` is not a finite number (a torn or hand-edited end
  * line can carry no usable timestamp); callers decide what an unpaired end costs — the failure
- * digest prices it as 0, history renders it as "—", tick detail omits the duration. The end's
- * guard is the same finiteness check eventTick/eventUsage apply to their fields: without it,
- * `Math.max(0, undefined - start)` was NaN, and the failure digest's `tickDurationMs`
- * (`tickSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
+ * digest prices it as 0, history renders it as "—", run detail omits the duration. The end's
+ * guard is the same finiteness check eventRun/eventUsage apply to their fields: without it,
+ * `Math.max(0, undefined - start)` was NaN, and the failure digest's `runDurationMs`
+ * (`runSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
  * `NaN ?? 0` is still NaN. */
-export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
+export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
   const startTs = starts.get(`${ev.source}#${ev.run}`);
   const endTs = finiteNumber(ev.ts, null);
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);

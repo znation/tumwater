@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** Local date/time formatting and calendar-day arithmetic — the zero-padded clock and
  * calendar parts, local-midnight day math, and the report-window header every display and
- * report surface (transcript run separators, the status table's last-tick cell, daily-budget
+ * report surface (transcript run separators, the status table's last-run cell, daily-budget
  * day stamps, the usage report's and failure digest's per-day buckets and headers) render
  * through, so what counts as one day and how a timestamp prints cannot drift per consumer.
  * Split out of text.ts — which keeps the one-line text shaping — because calendar
@@ -13,7 +13,7 @@ import { EVENTS_LOG_BASENAME } from "../paths.js";
 
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
- * tick cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */
+ * run cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */
 export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -53,7 +53,7 @@ export function formatDate(d: Date): string {
 }
 
 /** Wall-clock time as zero-padded `HH:MM:SS` in local time — the clock half formatTimestamp
- * builds, and the direct rendering of the status table's last-tick cell (status-render.ts's
+ * builds, and the direct rendering of the status table's last-run cell (status-render.ts's
  * lastTickCell), doctor-checks's probe-at stamp, failure-render's state-change stamp, and
  * operator-intent's pause/deadline wording, so a local time of day reads the same shape at
  * every surface. */
@@ -94,7 +94,7 @@ export function monthDay(dayKey: string): string {
  * the transcript's run separators, the history table's time cell, and the review-gate prompt's
  * rejection context, so a timestamp reads identically at every surface. A non-finite `ms` (a
  * corrupt event `ts`, a Date.parse of a malformed ISO match) renders as the em dash — the same
- * "no value" marker the history table uses for a tick with no reported duration, so a corrupt
+ * "no value" marker the history table uses for a run with no reported duration, so a corrupt
  * stamp reads as unknowable instead of printing `new Date(NaN)`'s `NaN-NaN-NaN NaN:NaN:NaN`
  * through every surface that renders events or rows. */
 export function formatTimestamp(ms: number): string {
@@ -162,7 +162,7 @@ export function humanAgo(sinceMs: number, now: number): string {
 }
 
 /** The shared "when may this role next act" phrase — the `next run` cell (status-render.ts's
- * nextRunCell) and the `Next tick` line (role-render.ts's scheduleLine) render their schedule
+ * nextRunCell) and the `Next run` line (role-render.ts's scheduleLine) render their schedule
  * through it, so the two surfaces cannot drift on the backoff prefix or the humanSeconds
  * bucketing. `remainSeconds` is the seconds until the next run (non-positive = due); `backoff`
  * adds the `backoff ` prefix the wake action clears; `dueWord` names the due case and `withIn`
@@ -189,7 +189,7 @@ export function dayLabel(days: number): string {
 }
 
 /** The report header both renderers print: the window's day-key bounds, its length in days
- * (singular at 1), and the event log it was read from. The failure digest appends its own tick
+ * (singular at 1), and the event log it was read from. The failure digest appends its own run
  * count. The rotation phrase is a required argument — eventsRotationLabel() supplies it from
  * events.ts's EVENTS_MAX_BYTES, so this header cannot keep claiming "16 MB" after the actual
  * threshold moves (this module stays presentation-only, owning no log facts of its own). The
@@ -204,7 +204,7 @@ export function reportWindow(from: string, to: string, days: number, rotation: s
  * with the window's start instant in local time. `duration` is the window length already phrased
  * by cli-args.ts's durationLabel (this helper supplies the leading `last `) — taken as a
  * string so this presentation-only module avoids importing the CLI layer; the failure digest
- * appends its own tick count. One home so the two reports' window wording cannot drift. */
+ * appends its own run count. One home so the two reports' window wording cannot drift. */
 export function sinceWindowLine(duration: string, fromIso: string): string {
   return `window: last ${duration} (since ${formatTimestamp(new Date(fromIso).getTime())})`;
 }

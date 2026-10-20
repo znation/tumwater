@@ -296,7 +296,7 @@ export function rolePayload(
   // The event log is read without a shape filter, so a torn or hand-edited run_end line can
   // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
   // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
-  // an absent one (the same "a torn line carries no usable timestamp" rule eventTick/tickStartMap
+  // an absent one (the same "a torn line carries no usable timestamp" rule eventRun/runStartMap
   // apply), so it contributes no outcome; a non-numeric durationMs is dropped like a missing one.
   const recentOutcomes = tickEnds
     .filter((ev) => {

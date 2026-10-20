@@ -6,7 +6,7 @@
  * kinds. These tests live only here — event-format.test.ts holds no copies of them. They share
  * one rendering
  * contract — a routine state change renders plainly, never with the warning prefix — so they
- * are tested together, apart from the tick/merge/review event lines in event-format.test.ts. */
+ * are tested together, apart from the run/merge/review event lines in event-format.test.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { formatEvent } from "../src/events/event-format.js";
@@ -77,7 +77,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(resumed, /tumwater\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
   // The per-role cap transitions (src/gates/role-cap-gates.ts) name the role, its spend vs its
-  // cap, and the two lift paths; the resume states the role ticks again. Team-rendering
+  // cap, and the two lift paths; the resume states the role runs again. Team-rendering
   // siblings of the budget pause/resume above, so they live here too.
   const rolePaused = formatEvent({
     ts: 0,
@@ -99,8 +99,8 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(roleResumed, /tumwater\s+role docs resumed — it is under its daily cap again and runs again/);
 
-  // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback ticks were
-  // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
+  // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback runs were
+  // handed back to the primary, so the resulting aborted runs read as the budget reopening.
   const handback = formatEvent({
     ts: 0,
     source: "tumwater",
@@ -221,7 +221,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
 // Operator-intent gate (src/orchestrator/orchestrator.ts): `tumwater pause`/`resume` log these once
 // per
 // transition. Both are routine state changes an operator reads at a glance; the paused line
-// states the scope and the director exemption, the resumed line says role ticks are back.
+// states the scope and the director exemption, the resumed line says role runs are back.
 test("formatEvent renders the team pause and resume events plainly", () => {
   const paused = formatEvent({ ts: 0, source: "tumwater", type: "team_paused" } as never);
   assert.match(
@@ -372,7 +372,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(modelLoad, /waiting: backend failing \(model load failure\) — dedupe hit backend failures; roles on every provider start no new runs for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
-  // A timeout storm names its own phrase too — the digest pools plain and progressing tick
+  // A timeout storm names its own phrase too — the digest pools plain and progressing run
   // timeouts under this kind, and a timeout hold must not borrow a connection's wording.
   const timeout = formatEvent({
     ts: 0, source: "tumwater", type: "rate_limit_hold", kind: "timeout", roles: ["tests"], holdMs: 60_000, escalation: 0,

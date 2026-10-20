@@ -25,7 +25,7 @@ test("collectReport buckets run_end/merged events by local day and totals them",
     // Out of the 5-day window (7 days ago) — must not count.
     JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 500, costUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture
-    // No tokens/costUsd fields — counts as a tick with zero spend (omitted when zero in the log).
+    // No tokens/costUsd fields — counts as a run with zero spend (omitted when zero in the log).
     JSON.stringify({ ts: at(4), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
     "this line is not json", // malformed lines are ignored
     JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }), // retired-name-ok: legacy event field in a fixture
@@ -51,7 +51,7 @@ test("collectReport buckets run_end/merged events by local day and totals them",
   assert.deepEqual(d0?.runsByRole, { feature: 1, bugfix: 1 });
   assert.deepEqual(d0?.costByRole, { feature: 0.5 }, "cost splits by role from the same run_end event");
   assert.ok(Math.abs((d0?.costUsd ?? -1) - 0.5) < 1e-9);
-  const d1 = data.series[1]; // at(3): a commit day with no ticks
+  const d1 = data.series[1]; // at(3): a commit day with no runs
   assert.equal(d1?.commits, 1);
   assert.equal(d1?.tokensOut, 0);
   const d2 = data.series[2]; // at(2): zero-filled gap
@@ -90,7 +90,7 @@ test("collectReport folds review_rejected events into per-day per-role rejection
   const data = collectReport(root, 4);
   const today = data.series[data.series.length - 1];
   assert.deepEqual(today?.rejectionsByRole, { feature: 2, qa: 1 });
-  assert.deepEqual(today?.runsByRole, { feature: 1 }, "run_end still counts ticks alongside rejections");
+  assert.deepEqual(today?.runsByRole, { feature: 1 }, "run_end still counts runs alongside rejections");
   // A day with no review_rejected has no rejectionsByRole key at all (zero means absent).
   for (const d of data.series) {
     if (d !== today) {
@@ -175,7 +175,7 @@ test("collectReport folds merge_done/merge_failed usage into the day and totals,
   // The day's tokensOut/costUsd include the merge share (the budget charges these same
   // events, so the day series must keep summing to the totals), while the merge fields
   // name the reviewer's part of it: both merge events' tokens/cost, 2 runs.
-  assert.equal(today?.tokensOut, 45_600); // 100 tick tokens + 45,500 merge tokens
+  assert.equal(today?.tokensOut, 45_600); // 100 run tokens + 45,500 merge tokens
   assert.ok(Math.abs((today?.costUsd ?? -1) - 0.95) < 1e-9);
   assert.equal(today?.mergeRuns, 2);
   assert.equal(today?.mergeTokens, 45_500);
@@ -187,7 +187,7 @@ test("collectReport folds merge_done/merge_failed usage into the day and totals,
   assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
   assert.equal(data.totals.runs, 1);
   assert.equal(data.totals.commits, 1, "merged still counts only as a commit");
-  // costByRole stays a ticks-only breakdown — the merge line is how the reviewer's share
+  // costByRole stays a runs-only breakdown — the merge line is how the reviewer's share
   // is named, not a role entry.
   assert.ok(Math.abs(Object.values(today?.costByRole ?? {}).reduce((a, b) => a + b, 0) - 0.1) < 1e-9);
   // Merge fields are sparse: a day that folded no merge event carries none.
@@ -207,7 +207,7 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
   writeEvents(root, lines);
 
   const data = collectReport(root, 7);
-  assert.equal(data.totals.tokensOut, 777); // the 2500 old ticks are out of window
+  assert.equal(data.totals.tokensOut, 777); // the 2500 old runs are out of window
   assert.equal(data.totals.runs, 1);
   assert.equal(data.totals.commits, 1);
   const today = data.series[data.series.length - 1];
@@ -610,7 +610,7 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
     // cutoff's own day, the case a day-keyed read cannot decide).
     JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: ago(6.5 * HOUR), loop: "feature", type: "merged", commit: "old1234", summary: "outside" }), // retired-name-ok: legacy event field in a fixture
-    // Inside the window: two ticks and one commit.
+    // Inside the window: two runs and one commit.
     JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "run_end", run: 3, result: "no_change" }), // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "inside" }), // retired-name-ok: legacy event field in a fixture
@@ -631,7 +631,7 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
   assert.equal(data.totals.commits, 1);
   assert.ok(Math.abs(data.totals.costUsd - 0.1) < 1e-9);
   assert.deepEqual(data.runsByRole, { feature: 1, bugfix: 1 });
-  assert.deepEqual(data.costByRole, { feature: 0.1 }, "zero-cost ticks leave no cost key");
+  assert.deepEqual(data.costByRole, { feature: 0.1 }, "zero-cost runs leave no cost key");
   assert.equal(data.coversFullWindow, true, "the log's oldest event predates the cutoff");
 });
 
@@ -763,7 +763,7 @@ test("collectReport scopes the day series and totals to one role, leaving team c
   const scoped = collectReport(root, 5, "feature");
   const today = scoped.series[scoped.series.length - 1];
   assert.equal(scoped.role, "feature");
-  assert.equal(today?.tokensOut, 500, "only feature's tick tokens; not bugfix's or the merge share");
+  assert.equal(today?.tokensOut, 500, "only feature's run tokens; not bugfix's or the merge share");
   assert.deepEqual(today?.runsByRole, { feature: 1 });
   assert.deepEqual(today?.costByRole, { feature: 0.5 });
   assert.equal(today?.commits, 1);
@@ -890,7 +890,7 @@ test("subscription runs total as notional spend, never in the cost totals", () =
   writeEvents(root, lines);
 
   const data = collectReport(root, 1);
-  assert.equal(data.totals.notionalCostUsd, 30, "ten $3 subscription ticks");
+  assert.equal(data.totals.notionalCostUsd, 30, "ten $3 subscription runs");
   assert.equal(data.totals.costUsd, 0, "against the cap");
   assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 30);
   assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 estimated/);
@@ -898,9 +898,9 @@ test("subscription runs total as notional spend, never in the cost totals", () =
 
 test("collectReport carries notionalByRole per role id and narrows it for a role scope", () => {
   const root = tmpdir();
-  const tick = (loop: string, n: number) => // retired-name-ok: legacy event field in a fixture
+  const run = (loop: string, n: number) => // retired-name-ok: legacy event field in a fixture
     JSON.stringify({ ts: at(0), loop, type: "run_end", run: n, result: "changed", notionalCostUsd: 2, billing: "subscription" }); // retired-name-ok: legacy event field in a fixture
-  writeEvents(root, [tick("feature", 1), tick("feature-2", 2), tick("plan", 3)]);
+  writeEvents(root, [run("feature", 1), run("feature-2", 2), run("plan", 3)]);
   const day = collectReport(root, 1).series[0];
   assert.deepEqual(day?.notionalByRole, { feature: 2, "feature-2": 2, plan: 2 });
   assert.deepEqual(collectReport(root, 1, "feature").series[0]?.notionalByRole, { feature: 4 });

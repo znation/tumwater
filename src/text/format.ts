@@ -14,7 +14,7 @@ import { textOr } from "./text.js";
  * commit trailer's ctx field — pinned here so those surfaces cannot drift even though they
  * live in different modules. */
 /** Append a section note to a running prompt, separated from what precedes it by a blank line.
- * The tick and authoring-tick prompt assemblers (run-prompt.ts, runner-run.ts) build a prompt by
+ * The run and authoring-run prompt assemblers (run-prompt.ts, runner-run.ts) build a prompt by
  * stacking nameless sections — assignment, held-entry, rejected-review, conflict-discard,
  * conflict-handback, revision and cut-off notes — each appended the same way. This is the single
  * append so the `\n\n` section separator stays in one place. The note is appended unconditionally,

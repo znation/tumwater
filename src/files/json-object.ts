@@ -32,11 +32,11 @@ export function stringList(value: unknown): string[] {
  * absent, not a number, or not finite (NaN/±Infinity poison arithmetic and comparisons: a
  * NaN costUsd makes every budget-cap comparison false, so the cap never trips) — the one
  * home of the "the field is the number or it is nothing" read. The call sites, by the
- * fallback each passes: event-read.ts's eventTick (tick → 0), eventUsage (tokens, costUsd →
- * 0), eventDayKey (ts → null), tickStartMap and tickSpanMs (both ts → null);
+ * fallback each passes: event-read.ts's eventRun (run → 0), eventUsage (tokens, costUsd →
+ * 0), eventDayKey (ts → null), runStartMap and runSpanMs (both ts → null);
  * event-format.ts's elapsed (ms → null), gigabytes (v → 0), minutes (ms → 0), and the
  * build_stale, slot_wait, restart, and permit_reserve renderers (aheadCommits, waitedMs,
- * abortedTicks, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
+ * abortedRuns, reserve → 0); phrases.ts's budgetPhrase (spentUsd, capUsd → 0); redeploy.ts's
  * autoRestartRecord (lastAt → null); build/build-info.ts's readBuildInfo (builtAt → 0);
  * failure/failure-state-change.ts's model_fallback_ended (durationMs → 0) and build_stale
  * renderer (aheadCommits → 0); gates/maintenance-quota.ts's foldLine and seed (ev.ts → null);
@@ -60,10 +60,10 @@ export function finiteNumber<T>(value: unknown, fallback: T): number | T {
  * runner/runner-state.ts's healNumber (every numeric RunnerState field → 0),
  * run/run-usage.ts's counter (each persisted usage count → 0), pi/pi-stream.ts's usageNumber
  * (one wire usage number → 0), ui/progress-data.ts's message_end read (totalTokens → the
- * previous context, output and its peak floor → 0), time-spend.ts's tickDurationMs (an event's
+ * previous context, output and its peak floor → 0), time-spend.ts's runDurationMs (an event's
  * durationMs → null, the "no own duration" marker), pi-extension/context-budget.ts's
  * contextNote (usedTokens, usedWindow → null), pi-extension/context-shake.ts's percentOf
- * (tokens, contextWindow → null), merge/merge-queue.ts's isMergeEntry (tick, enqueuedAt,
+ * (tokens, contextWindow → null), merge/merge-queue.ts's isMergeEntry (run, enqueuedAt,
  * revisionRound → null), git/slots-state.ts's isSlotLease (since, pid → null); and
  * agent/claude/claude-stream.ts's canonicalUsage (each wire usage
  * number → 0) and its result/retry/rate-limit reads (api_error_status, attempt,

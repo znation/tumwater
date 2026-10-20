@@ -9,7 +9,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { failingThenIdle, transientErrorText, type TransientFailure } from "./fakes/transient.js";
 import { fakeClock, sleepRecorder } from "./fakes/time.js";
-import { reviewVerdict, buildCheck, tickEnd, tickStart, writeEventLog } from "./fakes/log.js";
+import { reviewVerdict, buildCheck, runEnd, runStart, writeEventLog } from "./fakes/log.js";
 
 test("failingThenIdle's script fails the first N runs on the chosen class, then succeeds", () => {
   const marker = path.join(tmpdir(), "fakes-retry");
@@ -58,8 +58,8 @@ test("sleepRecorder records every wait and resolves instantly", async () => {
 test("the event-log builders stamp well-formed events a scratch repo's log reads back", () => {
   const root = tmpdir();
   writeEventLog(root, [
-    tickStart({ ts: 1 }),
-    tickEnd({ ts: 2, summary: "added a widget", tokens: 100, costUsd: 0.01 }),
+    runStart({ ts: 1 }),
+    runEnd({ ts: 2, summary: "added a widget", tokens: 100, costUsd: 0.01 }),
     reviewVerdict("a".repeat(40), { ts: 3, reason: "principles upheld" }),
     buildCheck({ ts: 4, scope: "gate", status: "passed", script: "npm test", durationMs: 57_000 }),
   ]);

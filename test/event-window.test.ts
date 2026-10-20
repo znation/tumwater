@@ -208,13 +208,13 @@ test("the report's per-day series sums to the seeded totals across the boundary"
     eventLine(tsDaysAgo(0), { run: 3, source: "feature", tokens: 30 }),
   ]);
   const report = collectReport(root, 5);
-  const totalTicks = report.series.reduce((n, d) => n + Object.values(d.runsByRole).reduce((a, b) => a + b, 0), 0);
+  const totalRuns = report.series.reduce((n, d) => n + Object.values(d.runsByRole).reduce((a, b) => a + b, 0), 0);
   const totalTokens = report.series.reduce((n, d) => n + d.tokensOut, 0);
-  assert.equal(totalTicks, 3, "both files' in-window ticks fold into the series");
+  assert.equal(totalRuns, 3, "both files' in-window runs fold into the series");
   assert.equal(totalTokens, 60);
   // The out-of-window archive day contributes nothing, and the series' dates do not repeat.
   const featureDay3 = report.series.find((d) => d.runsByRole["feature"] !== undefined);
-  assert.ok(featureDay3, "the archive day's feature tick lands on its own date");
+  assert.ok(featureDay3, "the archive day's feature run lands on its own date");
 });
 
 test("coversFullWindow is false when even the archive starts inside the window", () => {

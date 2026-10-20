@@ -4,7 +4,7 @@ import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
-// (the transcript run separators, status table's last-tick cell, daily-budget day stamps,
+// (the transcript run separators, status table's last-run cell, daily-budget day stamps,
 // and both reports' day windows render through it). These tests pin the documented contract
 // directly instead of only through one indirect case per consumer.
 

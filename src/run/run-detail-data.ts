@@ -9,7 +9,7 @@
  * existing record, not a new one. The rendering half — the summary header, formatEvent, the
  * CLI command — lives in run-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS, bucketMergeEvents, resolveQueuedResult } from "../history/history-data.js";
-import { eventUsage, readEvents, tickSpanMs, tickStartMap } from "../events/event-read.js";
+import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import type { HarnessEvent } from "../events/events.js";
 
@@ -113,7 +113,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
 }
 
 /** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
- * duration via tickSpanMs against the role's own start map (the shared pairing helper, so this
+ * duration via runSpanMs against the role's own start map (the shared pairing helper, so this
  * view and the history rows cannot drift on what a span is), events oldest-first. */
 function detailFrom(
   role: string,
@@ -130,7 +130,7 @@ function detailFrom(
     // A fresh claim cursor suits one run: the walk starts at the newest pin at or before this
     // run's end, which is its own pin, since later runs' pins sit after it.
     const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(scoped);
-    const resolved = resolveQueuedResult(end, mergeQueuedByRunner, outcomeByRunner, new Map(), tickStartMap(scoped), null);
+    const resolved = resolveQueuedResult(end, mergeQueuedByRunner, outcomeByRunner, new Map(), runStartMap(scoped), null);
     if (resolved !== null) {
       result = resolved.result;
       merge = resolved.outcome;
@@ -141,7 +141,7 @@ function detailFrom(
     run: runNumber,
     startTs,
     endTs: end === null ? null : end.ts,
-    durationMs: end === null ? null : tickSpanMs(end, tickStartMap(scoped)),
+    durationMs: end === null ? null : runSpanMs(end, runStartMap(scoped)),
     result,
     tokens: usageNums.tokens,
     costUsd: usageNums.costUsd,

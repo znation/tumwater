@@ -8,7 +8,7 @@
  * which change for different reasons — and keeps core data collection out of the
  * presentation layer, so a core consumer (as the GUI's /api/history already is) never
  * forces a core→ui import. */
-import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap, tickStartModel, tickStartModelMap } from "../events/event-read.js";
+import { eventRole, eventRun, eventUsage, readEvents, runSpanMs, runStartMap, runStartModel, runStartModelMap } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
@@ -462,8 +462,8 @@ export function runRows(
   const scoped = wanted === null ? events : events.filter((e) => wanted.has(e.source));
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a run's span.
-  const starts = tickStartMap(scoped);
-  const models = tickStartModelMap(scoped);
+  const starts = runStartMap(scoped);
+  const models = runStartModelMap(scoped);
   // The merge bookkeeping resolveQueuedResult joins over: per role, the merge_queued pins
   // (oldest first) and the merge_done/merge_failed outcomes (oldest first). Both ride the role
   // filter with their run, so the scoped events hold them exactly when they hold the row.
@@ -475,8 +475,8 @@ export function runRows(
       ? join.events
       : join.events.filter((e) => wanted.has(e.source))
     : scoped;
-  const joinStarts = join ? tickStartMap(joinScoped) : starts;
-  const joinModels = join ? tickStartModelMap(joinScoped) : models;
+  const joinStarts = join ? runStartMap(joinScoped) : starts;
+  const joinModels = join ? runStartModelMap(joinScoped) : models;
   const floorTs = join ? join.floorTs : null;
   const { mergeQueuedByRunner, outcomeByRunner } = bucketMergeEvents(joinScoped);
   const claimTop = new Map<string, number>();
@@ -497,10 +497,10 @@ export function runRows(
       tokens: usage.tokens,
       costUsd: usage.costUsd,
       role: eventRole(e),
-      run: eventTick(e),
+      run: eventRun(e),
       result,
-      model: tickStartModel(e, join ? joinModels : models),
-      durationMs: tickSpanMs(e, starts),
+      model: runStartModel(e, join ? joinModels : models),
+      durationMs: runSpanMs(e, starts),
       usage: usageText(e),
       detail: squash(textOr(e.summary, textOr(e.error, "")), DETAIL_MAX),
     });

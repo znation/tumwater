@@ -155,7 +155,7 @@ export function readTailTextWithEnd(
   const completeEnd = lastNl >= 0 ? coveredEnd - (raw.length - 1 - lastNl) : coveredEnd - raw.length;
   return { text: raw.toString("utf8"), coveredEnd: completeEnd };
 }
-/** Per-file state for a consumer that polls an append-only log tick by tick and only wants
+/** Per-file state for a consumer that polls an append-only log run by run and only wants
  * the bytes appended since its last visit: where it stopped reading (dev/ino guard against
  * rotation, offset always at a line boundary) plus its accumulated value. */
 export interface TailState<T> {
@@ -176,7 +176,7 @@ const MAX_TAILS = 64;
  *   from `fresh()`'s offset and folding every line into its fresh value;
  * - append-only growth since the last visit → fold only the newly complete lines in.
  * A torn trailing line is left unconsumed until its newline lands (the offset advances to
- * the last complete line). Shared by every observer that polls a log once per tick —
+ * the last complete line). Shared by every observer that polls a log once per run —
  * src/ui/progress-data.ts's live tail and transcript.ts's rendered entries. */
 export function withTail<T>(
   tails: Map<string, TailState<T>>,

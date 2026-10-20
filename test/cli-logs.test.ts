@@ -44,7 +44,7 @@ test("logs -n validates its value instead of misbehaving", async () => {
 // --- logs --json (the event feed as machine-readable NDJSON) ---
 
 // Seed a chronological run of run_start events directly (the -n view is newest-first).
-function seedTickEvents(repo: string, count: number): void {
+function seedRunEvents(repo: string, count: number): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
   const events = Array.from({ length: count }, (_, i) => ({
@@ -59,7 +59,7 @@ function seedTickEvents(repo: string, count: number): void {
 test("logs -n --json prints exactly the raw stored events, in the text view's order, one JSON object per line", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs json dump");
-  seedTickEvents(repo, 25);
+  seedRunEvents(repo, 25);
 
   const r = await cli(repo, "logs", "-n", "20", "--json");
   assert.equal(r.code, 0);
@@ -76,8 +76,8 @@ test("logs -n --json prints exactly the raw stored events, in the text view's or
   }
   // Log order — the last 20 of 25 events, chronological — exactly the order the text view
   // prints (readEvents returns the tail in file order, not reversed).
-  const ticks = lines.map((l) => JSON.parse(l).run);
-  assert.deepEqual(ticks, Array.from({ length: 20 }, (_, i) => 6 + i));
+  const runs = lines.map((l) => JSON.parse(l).run);
+  assert.deepEqual(runs, Array.from({ length: 20 }, (_, i) => 6 + i));
   // No rendered prose may leak into the JSON stream.
   assert.ok(!r.stdout.includes("tick #"), r.stdout);
 });
@@ -85,7 +85,7 @@ test("logs -n --json prints exactly the raw stored events, in the text view's or
 test("logs -f --json streams each newly landed event as a JSON line", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs json follow");
-  seedTickEvents(repo, 2);
+  seedRunEvents(repo, 2);
 
   const s = spawnCli(repo, ["logs", "-f", "--json"]);
   try {
@@ -133,7 +133,7 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
 test("logs -f's wait expires on the injected clock, not a real deadline", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs json follow deadline");
-  seedTickEvents(repo, 2);
+  seedRunEvents(repo, 2);
 
   const s = spawnCli(repo, ["logs", "-f", "--json"]);
   try {

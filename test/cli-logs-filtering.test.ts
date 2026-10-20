@@ -13,7 +13,7 @@ import { writeLogLines } from "./fixtures/log-fixtures.js";
 
 // Seed events.jsonl directly with events at fixed ages before `now` (the pattern that file
 // uses for the transcript view): each line a HarnessEvent-shaped run_start, distinguishable
-// by its tick number in the rendered line.
+// by its run number in the rendered line.
 function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
   const file = eventsLogPath(repo);
   writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "run_start", run: i + 1 }))); // retired-name-ok: legacy event field in a fixture
@@ -516,7 +516,7 @@ test("logs --type hints at a typo, but a valid-but-empty type stays hint-free", 
 test("logs --type -n composes with --grep (type AND text) and with --json", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs type compose");
-  seedMixedLog(repo); // two merge_failed (review_rejected / build_check), a review_rejected, ticks.
+  seedMixedLog(repo); // two merge_failed (review_rejected / build_check), a review_rejected, runs.
 
   // Both rules hold: merge_failed events whose text ALSO mentions "review rejected" (only the
   // one with result review_rejected, not the build_check one, and not the review_rejected

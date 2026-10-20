@@ -128,15 +128,15 @@ test("formatEvent renders a corrupt event's role as ? like the reports", () => {
   }
 });
 
-test("formatEvent renders a corrupt event's tick as #0, never undefined or NaN", () => {
+test("formatEvent renders a corrupt event's run as #0, never undefined or NaN", () => {
   // The log is read without a shape filter, so a torn or hand-edited run_start/run_end can
-  // carry no tick ("#undefined") or a non-numeric one ("#NaN"). eventTick's 0 is the one
-  // rule; ticks are 1-based, so 0 is visibly not a real tick.
-  for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
+  // carry no run ("#undefined") or a non-numeric one ("#NaN"). eventRun's 0 is the one
+  // rule; runs are 1-based, so 0 is visibly not a real run.
+  for (const run of [undefined, NaN, Infinity, "oops"] as const) {
     for (const type of ["run_start", "run_end"] as const) {
-      const line = formatEvent({ ts: 0, source: "clean", type, tick, result: "changed" } as never);
-      assert.ok(line.includes("#0"), `corrupt tick must render #0: ${line}`);
-      assert.ok(!/undefined|NaN/.test(line), `corrupt tick must not print undefined or NaN: ${line}`);
+      const line = formatEvent({ ts: 0, source: "clean", type, run, result: "changed" } as never);
+      assert.ok(line.includes("#0"), `corrupt run must render #0: ${line}`);
+      assert.ok(!/undefined|NaN/.test(line), `corrupt run must not print undefined or NaN: ${line}`);
     }
   }
 });
@@ -180,9 +180,9 @@ test("formatEvent renders wake reasons and warning messages operators rely on", 
   );
 });
 
-test("formatEvent carries the reason on non-changed tick outcomes", () => {
-  // The event feed is where operators see why a tick did not merge its work. refused and
-  // rejected ticks log their reason in `summary`, merge failures log lastError in `error` —
+test("formatEvent carries the reason on non-changed run outcomes", () => {
+  // The event feed is where operators see why a run did not merge its work. refused and
+  // rejected runs log their reason in `summary`, merge failures log lastError in `error` —
   // showing only "changed"/"error" left those outcomes as bare result words.
   const refused = formatEvent({
     ts: 0,
@@ -214,7 +214,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   } as never);
   assert.match(mergeFailed, /run #9 merge conflict — merge failed: merge_conflict/, `merge failure must show its error: ${mergeFailed}`);
 
-  // review_error ticks carry both (summary = gate detail, error = "review failed: …"); the
+  // review_error runs carry both (summary = gate detail, error = "review failed: …"); the
   // summary is the more specific of the two and wins.
   const reviewError = formatEvent({
     ts: 0,
@@ -228,11 +228,11 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   assert.match(reviewError, /run #10 review failed — no parseable VERDICT line/);
 });
 
-test("formatEvent renders a no-change tick with no summary or error suffix", () => {
+test("formatEvent renders a no-change run with no summary or error suffix", () => {
   // The third arm of the run_end ternary is the empty string: a regression that gave every
-  // result a suffix would print "— undefined" on every idle tick in every display surface.
+  // result a suffix would print "— undefined" on every idle run in every display surface.
   const line = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5, result: "no_change" } as never);
-  assert.match(line, /run #5 no change$/, `no-change tick must end at the result: ${line}`);
+  assert.match(line, /run #5 no change$/, `no-change run must end at the result: ${line}`);
 });
 
 test("formatEvent degrades gracefully for unknown event types", () => {
@@ -243,7 +243,7 @@ test("formatEvent degrades gracefully for unknown event types", () => {
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
 });
 
-test("formatEvent renders run_start's model after the tick number, and omits it when absent", () => {
+test("formatEvent renders run_start's model after the run number, and omits it when absent", () => {
   const withModel = formatEvent({ ts: 0, source: "feature", type: "run_start", run: 3, model: "prov/m1" } as never);
   assert.match(withModel, /feature\s+run #3 started on prov\/m1$/);
   const bare = formatEvent({ ts: 0, source: "feature", type: "run_start", run: 3 } as never);
@@ -312,7 +312,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
 
   // A bare `VERDICT: reject` reply parses to an empty reasons list; several reasons show only
   // the first plus a count of the rest (the full list rides along in state.lastReview for the
-  // author's next tick) — the second reason's text itself must not leak into the one-liner.
+  // author's next run) — the second reason's text itself must not leak into the one-liner.
   const rejected = formatEvent(
     { ts: 0, source: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep", "second reason"] } as never,
   );
@@ -422,10 +422,10 @@ test("formatEvent renders the resume event", () => {
   assert.match(line, /feature\s+resuming the run a shutdown interrupted \(same agent session and workspace\)/);
 });
 
-// Per-tick usage in the event feed (PLANS.md): run_end carries this tick's tokens and cost so
+// Per-run usage in the event feed (PLANS.md): run_end carries this run's tokens and cost so
 // operators see where spend went — after result/summary/error, "·"-separated like the budget
 // badge. Zero or absent fields render byte-identical to a pre-feature line (no trailing sep).
-test("formatEvent renders per-tick usage on run_end after result, summary, and error", () => {
+test("formatEvent renders per-run usage on run_end after result, summary, and error", () => {
   // Both parts, in order: tokens first (compactTokens), then two-decimal cost.
   const both = formatEvent({
     ts: 0,
@@ -433,13 +433,13 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
     type: "run_end",
     run: 7,
     result: "changed",
-    summary: "add per-tick usage",
+    summary: "add per-run usage",
     tokens: 18400,
     costUsd: 0.37,
   } as never);
   assert.match(
     both,
-    /run #7 merged — add per-tick usage · 18\.4k tok · \$0\.37$/,
+    /run #7 merged — add per-run usage · 18\.4k tok · \$0\.37$/,
     `both parts must render in order after the summary: ${both}`,
   );
 
@@ -454,7 +454,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
   } as never);
   assert.match(tokensOnly, /run #8 no change · 1234 tok$/, `tokens-only must render just the token part: ${tokensOnly}`);
 
-  // Cost rides after an error payload too (error ticks are exactly where spend matters).
+  // Cost rides after an error payload too (error runs are exactly where spend matters).
   const withError = formatEvent({
     ts: 0,
     source: "bugfix",
@@ -483,7 +483,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
 });
 
 // The user-abort feature's events (PLANS.md, abort plan item (f)): when the orchestrator
-// consumes a role's abort marker it logs run_aborted under that role, and the killed tick
+// consumes a role's abort marker it logs run_aborted under that role, and the killed run
 // ends with result "user_aborted". These are the lines an operator reads in logs/TUI/GUI to
 // see that their `tumwater abort` landed — routine state changes, not warnings.
 test("formatEvent renders run_aborted plainly under its role", () => {
@@ -496,9 +496,9 @@ test("formatEvent renders run_aborted plainly under its role", () => {
   assert.ok(!line.includes("warning"), `a user-initiated abort is routine, not a warning: ${line}`);
 });
 
-// Need-based scheduling (src/scheduling/scheduling.ts): a maintenance tick held back because its
+// Need-based scheduling (src/scheduling/scheduling.ts): a maintenance run held back because its
 // last
-// tick did nothing and no work has merged since. Routine state, not a warning — but the line
+// run did nothing and no work has merged since. Routine state, not a warning — but the line
 // must name the role and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders run_deferred with the clause that deferred it", () => {
   const backlog = formatEvent({ ts: 0, source: "clean", type: "run_deferred", reason: "backlog" } as never);
@@ -535,7 +535,7 @@ test("formatEvent renders a user_aborted run_end with its result verbatim", () =
   assert.match(line, /run #12 stopped by you$/, `the result must render verbatim with no suffix: ${line}`);
   assert.ok(!line.includes("warning"), `a deliberate stop is not a warning: ${line}`);
 
-  // The kill can land after pi already streamed turns on the tick; runRolePi folds that
+  // The kill can land after pi already streamed turns on the run; runRolePi folds that
   // partial spend, so usage still rides on the end line like every other result.
   const withUsage = formatEvent({
     ts: 0,
@@ -643,7 +643,7 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
 });
 
 // The merge queue's events (merge queue 3/5): the feed shows the queue's state changes — the
-// tick's enqueue, the slot's completion (with the merge's own spend), and the slot's failure.
+// run's enqueue, the slot's completion (with the merge's own spend), and the slot's failure.
 test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Every line starts with the wall-clock time and the padded role name — assert the payload.
   const queued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
@@ -749,14 +749,14 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   assert.match(restartBare, /\(finished current work in 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);
 });
 
-// eventResult — the activity feeds' outcome key: a tick's result, else a merge's or build
+// eventResult — the activity feeds' outcome key: a run's result, else a merge's or build
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
-test("eventResult takes a tick's result, else a merge's or build check's status, else undefined", () => {
+test("eventResult takes a run's result, else a merge's or build check's status, else undefined", () => {
   assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "changed" }), "changed");
   assert.equal(eventResult({ ts: 0, source: "x", type: "merge_done", status: "merged" }), "merged");
   assert.equal(eventResult({ ts: 0, source: "x", type: "build_check", status: "failed" }), "failed");
-  // A status is only a fallback: when both ride one event the tick's result wins.
+  // A status is only a fallback: when both ride one event the run's result wins.
   assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "error", status: "failed" }), "error");
   // Non-string values (a number smuggled into the loose payload) are not an outcome.
   assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: 7 } as never), undefined);
@@ -764,7 +764,7 @@ test("eventResult takes a tick's result, else a merge's or build check's status,
 });
 
 // outcomeText — eventResult as a display cell: the same extraction with "?" for an absent
-// outcome, so a torn run_end renders like eventRole's role and eventTick's tick rather than
+// outcome, so a torn run_end renders like eventRole's role and eventRun's run rather than
 // String(undefined)'s literal "undefined". eventResult must stay undefined for the tone and
 // filter keys, so the corrupt-field guard lives here, not there.
 test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {
@@ -776,8 +776,8 @@ test("outcomeText renders eventResult or ? for a missing or non-string outcome",
 });
 
 test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
-  const tickEnd = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5 } as never);
-  assert.match(tickEnd, /run #5 \?$/);
+  const runEnd = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5 } as never);
+  assert.match(runEnd, /run #5 \?$/);
   const mergeFailed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
   assert.match(mergeFailed, /failed \(\?\)/);
   const build = formatEvent({ ts: 0, source: "clean", type: "build_check", scope: "merge", script: "test" } as never);
@@ -882,7 +882,7 @@ test("formatEvent renders prompt_edited plainly with the preview", () => {
   assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
-test("formatEvent renders prompt_taken plainly with the tick and preview", () => {
+test("formatEvent renders prompt_taken plainly with the run and preview", () => {
   const line = formatEvent({ ts: 0, source: "perf", type: "prompt_taken", run: 7, preview: "fix x" });
   assert.match(line, /inbox message taken by run #7: fix x/);
   assert.ok(!line.includes("warning"), `a taken prompt is routine: ${line}`);

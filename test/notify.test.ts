@@ -434,7 +434,7 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
   const stderr = captureStderr();
   // Subscribe the poison before the notifier so the listener loop poisons the feed after the
   // triggering event is written but before the notifier spawns: whatever the child error's
-  // timing (synchronous inside spawn or a later tick), the warning's write meets a root that
+  // timing (synchronous inside spawn or a later run), the warning's write meets a root that
   // is now a regular file, so it cannot create .tumwater/log under it.
   const offPoison = subscribeEvents((e) => {
     if (e.type !== "budget_paused") return;

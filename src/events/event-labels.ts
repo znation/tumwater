@@ -3,7 +3,7 @@
  * result codes (the result cells). Pure, no I/O, so core modules and the UI may both import it. */
 
 import type { HarnessEvent } from "./events.js";
-import type { TickResult } from "../run/run-outcome.js";
+import type { RunResult } from "../run/run-outcome.js";
 
 /** The words for each event type. The `Record` type makes the compiler demand a label for every
  * type in the union, so a new event type cannot ship without one; renaming a type renames its key
@@ -98,7 +98,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
 };
 
 /** The words for each run result code, shown in the result cells. */
-export const RUN_RESULT_LABELS: Readonly<Record<TickResult, string>> = {
+export const RUN_RESULT_LABELS: Readonly<Record<RunResult, string>> = {
   changed: "merged",
   queued: "waiting to merge",
   no_change: "no change",
@@ -119,6 +119,6 @@ export const RUN_RESULT_LABELS: Readonly<Record<TickResult, string>> = {
  * underscores as spaces. The two code families are disjoint, so one lookup serves both. */
 export function eventTypeLabel(code: string): string {
   if (Object.hasOwn(EVENT_TYPE_LABELS, code)) return EVENT_TYPE_LABELS[code as HarnessEvent["type"]];
-  if (Object.hasOwn(RUN_RESULT_LABELS, code)) return RUN_RESULT_LABELS[code as TickResult];
+  if (Object.hasOwn(RUN_RESULT_LABELS, code)) return RUN_RESULT_LABELS[code as RunResult];
   return code.replace(/_/g, " ");
 }

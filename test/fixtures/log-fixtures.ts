@@ -67,7 +67,7 @@ export function writeEvents(root: string, lines: unknown[]): void {
  * fault the event-best-effort tests inject to prove a logging failure never cancels a
  * durable effect (a gate crossing, a queued prompt, the startup event, a merge decision, a
  * scheduling bookkeeping). Callers: the three *-event-best-effort files,
- * orchestrator-scheduling, merge-drain, leftover, revision, tick-stage, and
+ * orchestrator-scheduling, merge-drain, leftover, revision, run-stage, and
  * orchestrator-divergence. */
 export function unwritableEvents(root: string): void {
   const file = eventsLogPath(root);

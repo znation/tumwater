@@ -146,8 +146,8 @@ test("report --since narrows Revisions by role to the scoped base role", async (
 
 test("report folds error-class run_ends into Failed runs by role, beside Revisions by role", async () => {
   const root = makeRepo();
-  // Two failed ticks today on distinct roles (one hard error, one merge_conflict), a clean
-  // tick yesterday, and one revision. The day report must fold the failing run_ends into
+  // Two failed runs today on distinct roles (one hard error, one merge_conflict), a clean
+  // run yesterday, and one revision. The day report must fold the failing run_ends into
   // their own line, --json must carry failedRunsByRole only on the day that has failures
   // (zero-means-absent), and the failed tally must never subtract from Runs by role.
   writeEvents(root, [
@@ -161,7 +161,7 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   assert.equal(md.code, 0);
   assert.match(md.out, /\*\*Failed runs by role:\*\* clean — 1 · feature — 1/, "error-class run_ends fold as their own line, ranked desc then name asc");
   assert.match(md.out, /\*\*Revisions by role:\*\* feature — 1/, "revisions stay on their own line");
-  assert.match(md.out, /\*\*Runs by role:\*\* feature — 2 · clean — 1/, "the failed ticks still count in Runs by role (never subtracted)");
+  assert.match(md.out, /\*\*Runs by role:\*\* feature — 2 · clean — 1/, "the failed runs still count in Runs by role (never subtracted)");
 
   const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   const today = json.series[1];
@@ -170,7 +170,7 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   assert.ok(!("failedRunsByRole" in yesterday), "a day with no failure carries no failedRunsByRole key (zero means absent)");
 });
 
-test("report --since folds failed ticks by role and narrows to the scoped base role", async () => {
+test("report --since folds failed runs by role and narrows to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
@@ -183,7 +183,7 @@ test("report --since folds failed ticks by role and narrows to the scoped base r
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
   assert.equal(scoped.code, 0);
-  assert.match(scoped.out, /\*\*Failed runs by role:\*\* feature — 1/, "scoping --since narrows failed ticks to the base role");
+  assert.match(scoped.out, /\*\*Failed runs by role:\*\* feature — 1/, "scoping --since narrows failed runs to the base role");
   const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
   assert.deepEqual(scopedJson.failedRunsByRole, { feature: 1 }, "the scoped since JSON narrows failedRunsByRole");
 
@@ -208,7 +208,7 @@ test("report folds refused run_ends into Refusals by role, beside Revisions by r
   assert.equal(md.code, 0);
   assert.match(md.out, /\*\*Refusals by role:\*\* clean — 1 · feature — 1/, "refused run_ends fold as their own line, ranked desc then name asc");
   assert.match(md.out, /\*\*Revisions by role:\*\* feature — 1/, "revisions stay on their own line");
-  assert.match(md.out, /\*\*Runs by role:\*\* bugfix — 1 · clean — 1 · feature — 1/, "the refused ticks still count in Runs by role (never subtracted)");
+  assert.match(md.out, /\*\*Runs by role:\*\* bugfix — 1 · clean — 1 · feature — 1/, "the refused runs still count in Runs by role (never subtracted)");
   assert.match(md.out, /\*\*Failed runs by role:\*\* -/, "a refusal is not error-class, so Failed runs by role stays empty");
 
   const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
@@ -217,7 +217,7 @@ test("report folds refused run_ends into Refusals by role, beside Revisions by r
   assert.ok(!("failedRunsByRole" in today), "a refused run is not error-class, so no failedRunsByRole key");
 });
 
-test("report --since folds refused ticks by role and narrows to the scoped base role", async () => {
+test("report --since folds refused runs by role and narrows to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "refused", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
@@ -393,9 +393,9 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
     totals: { ...base.totals, runs: 5, costUsd: 2.1 },
   };
   const md = renderReportMarkdown(data);
-  // Ranked by spend (the two $0.90 roles first), not by tick count — feature leads the ticks
-  // line with 3 ticks but sits last on the cost line; equal spend breaks by name asc (alpha
-  // before bugfix). zeta has ticks but no spend, and feature's $0 entry: both omitted.
+  // Ranked by spend (the two $0.90 roles first), not by run count — feature leads the runs
+  // line with 3 runs but sits last on the cost line; equal spend breaks by name asc (alpha
+  // before bugfix). zeta has runs but no spend, and feature's $0 entry: both omitted.
   assert.match(md, /\*\*Cost by role:\*\* alpha — \$0\.90 · bugfix — \$0\.90 · feature — \$0\.30/);
   assert.match(md, /\*\*Runs by role:\*\* feature — 3 · bugfix — 1 · zeta — 1/);
   // The window's role split sums exactly to the Totals cost (both sourced from run_end alone).
@@ -419,7 +419,7 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   // A subscription seam's API-equivalent spend lands on its own notional provider line.
   assert.match(md, /\*\*Estimated by provider:\*\* claude — \$2\.00/);
   // The provider maps are a parallel tally, never subtracted: the per-role lines keep their
-  // exact current values (Cost by role from run_end costByRole alone — clean's notional tick
+  // exact current values (Cost by role from run_end costByRole alone — clean's notional run
   // adds no real costByRole entry), and the totals still sum the merge share.
   assert.match(md, /\*\*Cost by role:\*\* feature — \$1\.50/);
   assert.match(md, /\*\*Totals:\*\* 35 output tokens · 2 runs · 0 commits · \$1\.90 ·/);
@@ -847,7 +847,7 @@ test("report --json --days prints the collector's payload; the Markdown render i
 
 test("report --since --role omits Estimated by role when the scoped role spent none", async () => {
   const root = makeRepo();
-  // The team window has notional spend (plan's tick), but feature spends none — scoping to
+  // The team window has notional spend (plan's run), but feature spends none — scoping to
   // feature must drop the line/field, not render an empty "Estimated by role: -".
   writeEvents(root, [
     JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }), // retired-name-ok: legacy event field in a fixture

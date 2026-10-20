@@ -16,7 +16,7 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // rival shapes. All failures are caught in-process with a process.exit stub (the shared
 // stub in test/helpers/exit-capture.ts), so no spawned child is needed.
 
-/** A repo with three distinct tick events logged, in order. */
+/** A repo with three distinct run events logged, in order. */
 function repoWithEvents(): string {
   const repo = makeRepo();
   logEvent(repo, { source: "clean", type: "run_start", run: 1 });
