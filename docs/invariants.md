@@ -3652,3 +3652,44 @@ waiting on reserved runs"; `test/orchestrator-seams.test.ts` — "awaitMergeForH
 wait and lets a merge that finishes in time complete", "awaitMergeForHandoff aborts a merge past its
 window and waits for it to stop" and "awaitMergeForHandoff hands off without a merge still running
 after the abort, clearing its marker".
+
+## Git diff paths: a tree diff tells an unreadable answer from an empty one, lists both ends of a move, and decodes every name
+
+### INV-BM1: a tree diff is null when git fails, `[]` when the trees match, and lists both ends of a move
+
+**Guarantee.** `treeDiffFiles` returns null when git fails (an unknown commit) and `[]` for
+identical trees. It passes `--no-renames`, so a file moved from `src/` to `docs/` lists both its
+old and its new path. `exemptTreeDelta` treats null as not exempt, so an unreadable diff is never
+review-exempt and a code-to-docs move never reads as a docs-only delta.
+
+**Binds.** `src/git/git-diff.ts` (`treeDiffFiles`); `src/merge/merge-stack.ts`
+(`exemptTreeDelta`).
+
+**Pinned by.** `test/git-diff-paths.test.ts` — "treeDiffFiles is null for an unknown commit and
+empty for identical trees" and "treeDiffFiles lists a moved file under both its old and its new
+path".
+
+### INV-BM2: path lists hold decoded real paths, and the ahead range is three-dot
+
+**Guarantee.** `aheadOfMainFiles` and `treeDiffFiles` hand back decoded paths: `héllo.md` is not
+`"h\303\251llo.md"`. `aheadOfMainFiles` diffs from the branch's fork point (three-dot), so files
+only main gained are left out.
+
+**Binds.** `src/git/git-diff.ts` (`aheadOfMainFiles`, `treeDiffFiles`, `unquotePorcelainPath`).
+
+**Pinned by.** `test/git-diff-paths.test.ts` — "treeDiffFiles and aheadOfMainFiles decode a
+non-ASCII name to its real path"; `test/git-diff.test.ts` — "aheadOfMainFiles omits files only
+main gained after the branch forked (three-dot range)" and "unquotePorcelainPath keeps malformed
+and unrecognized escapes as-is".
+
+### INV-BM3: a capped `aheadOfMainDiff` stays within its budget on two git calls
+
+**Guarantee.** An `aheadOfMainDiff` over `maxBytes` is a truncation note, then `--stat`, then the
+largest files' whole sections while they fit, and it never exceeds `maxBytes`. It takes two git
+calls, not one per file.
+
+**Binds.** `src/git/git-diff.ts` (`aheadOfMainDiff`).
+
+**Pinned by.** `test/git-diff.test.ts` — "aheadOfMainDiff over the cap keeps --stat plus the
+largest files within budget" and "aheadOfMainDiff over the cap spawns only two git calls, not one
+per file".
