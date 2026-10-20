@@ -2029,3 +2029,56 @@ same check.
 **Pinned by.** `test/prompt-not-before.test.ts` — "deliverableAt delivers at the stamp's own
 millisecond, not before"; `test/inbox.test.ts` — "counts exclude deferred prompts and include them
 once due".
+
+## Pending prompts: an unfulfilled request goes back to its own role's queue, a resume reclaims exactly that file, and images follow the request
+
+The queue file is the durable store for a dequeued request, so every outcome that leaves the request
+undone hands it back before the run ends. One class holds that policy beside the queue mechanics in
+`src/inbox/inbox.ts`.
+
+### INV-AJ1: an unfulfilled request is re-queued into the running role's own queue, and a null or empty prompt queues nothing
+
+**Guarantee.** `requeueUnfulfilled` enqueues the prompt into the queue of the role the
+`PendingPrompt` was built for, so a re-queued request never crosses roles, and returns without
+queueing for a null or empty prompt. `requeuePendingUnfulfilled` re-queues whatever is still
+recorded and then clears the memory copy. Callers are `src/run/run-verdict.ts`,
+`src/runner/runner-recovery.ts` and `src/runner/runner-run.ts`.
+
+**Binds.** `src/inbox/pending-prompt.ts` (`requeueUnfulfilled`, `requeuePendingUnfulfilled`).
+
+**Pinned by.** `test/pending-prompt.test.ts` — "requeueUnfulfilled puts the prompt back in the
+role's own queue — never across roles" and "requeueUnfulfilled ignores null;
+requeuePendingUnfulfilled requeues and clears memory".
+
+### INV-AJ2: a non-director requeue for resume records its queue file, and the resume reclaims exactly that file or nothing; the record is consumed either way
+
+**Guarantee.** For a non-director role `requeueForResume` stores the new queue file in
+`state.resumePromptFile`; a director takes the plain requeue path and records nothing, and a null or
+empty prompt leaves the record untouched. `reclaimForResume` clears the record on every call, takes
+the recorded file only when the run is resuming, and reclaims nothing when that file has vanished.
+It never takes another prompt enqueued meanwhile. Its caller is `src/run/run-resume.ts`.
+
+**Binds.** `src/inbox/pending-prompt.ts` (`requeueForResume`, `reclaimForResume`).
+
+**Pinned by.** `test/pending-prompt.test.ts` — "requeueForResume: director takes the plain path; a
+role records the queue file", "requeueForResume ignores null without touching the resume record",
+"reclaimForResume consumes the flag even when not resuming — a stale record never survives",
+"reclaimForResume takes the exact recorded file, not whatever enqueued meanwhile" and
+"reclaimForResume reclaims nothing when the file was cancelled meanwhile".
+
+### INV-AJ3: a request's images are removed by its queue file's stem only when it was not handed back; a requeue moves them to the new stem and replaces a vanished reference with one loss note
+
+**Guarantee.** `settleImages` removes the same-stem images of the recorded queue file unless a
+requeue marked them retained, and always forgets the request afterwards. A requeue moves each
+attachment to the new queue file's stem, and a reference whose file is gone is dropped and replaced
+by one loss note. A resume that reclaims the requeued file records it as its queue file, so the
+resume's own fulfilment sweeps the moved images.
+
+**Binds.** `src/inbox/pending-prompt.ts` (`settleImages` and the private `enqueueCarryingImages`),
+via `movePromptImages` and `stripVanishedImageReferences` in `src/inbox/inbox-attachments.ts`.
+
+**Pinned by.** `test/pending-prompt.test.ts` — "settleImages removes a fulfilled request's images
+and keeps a requeued request's", "cancel removes an image a requeue moved to the new queue file's
+stem", "a requeue whose prompt lost one attachment still carries the survivors", "settleImages never
+deletes a file named by hand-typed prompt text" and "a resumed request's images survive the
+interrupted run and are swept from the reclaimed file's stem once the resume fulfils it".

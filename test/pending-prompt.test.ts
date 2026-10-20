@@ -185,6 +185,37 @@ test("settleImages removes a fulfilled request's images and keeps a requeued req
   assert.ok(!fs.existsSync(saved2.paths[0]!), "the image moved off the old stem");
 });
 
+test("a resumed request's images survive the interrupted run and are swept from the reclaimed file's stem once the resume fulfils it", () => {
+  const root = tmpdir();
+  const s = state();
+  const file = enqueueRolePrompt(root, "qa", "look");
+  const saved = savePromptImages(root, "qa", file, [png("a.png")]);
+  assert.ok("paths" in saved);
+  const text = "look" + imageReferenceLines(saved.paths);
+  const pending = new PendingPrompt(root, "qa"); // one instance across runs, as a RoleRunner keeps
+  dequeueRolePrompt(root, "qa");
+  pending.record(text, file);
+
+  // The interrupted run hands the request back for resume and settles.
+  pending.requeueForResume(s, text);
+  pending.settleImages();
+  assert.ok(resumeFile(s), "the requeue records the queue file for the resume");
+  const moved = imageReferencePaths(queuedRolePrompts(root, "qa")[0]!)[0];
+  assert.ok(moved, "the queued copy keeps its reference");
+  assert.ok(fs.existsSync(moved!), "the image survives the interrupted run's settle");
+  assert.ok(!fs.existsSync(saved.paths[0]!), "the image moved off the old stem");
+
+  // The resume reclaims exactly that file.
+  pending.reclaimForResume(s, true);
+  assert.equal(pending.get(), text.replace(saved.paths[0]!, moved!));
+  assert.deepEqual(queuedRolePrompts(root, "qa"), []);
+
+  // The resume fulfils: the sweep goes by the reclaimed file's stem.
+  pending.clear();
+  pending.settleImages();
+  assert.ok(!fs.existsSync(moved!), "the fulfilled resume's moved image is removed");
+});
+
 test("cancel removes an image a requeue moved to the new queue file's stem", () => {
   const root = tmpdir();
   const file = enqueueRolePrompt(root, "qa", "look");
