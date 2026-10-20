@@ -15,10 +15,12 @@
  *   clear            empty the note
  *
  * Exits 0 on success, 1 on a refusal (empty input, over-cap note, or no
- * TUMWATER_NOTES_PATH), and 2 with usage for anything else. */
+ * TUMWATER_NOTES_PATH), and 2 with usage for an unknown subcommand (a known subcommand with
+ * bad arguments refuses with usage and exit 1). */
 
 import fs from "node:fs";
 import { readTextOrNull } from "./files/files.js";
+import { errorMessage } from "./text/text.js";
 import { validateRoleNote, writeRoleNote } from "./agent/role-notes-write.js";
 
 /** The note's path, read ONLY from the environment — never from an argument. */
@@ -73,8 +75,8 @@ function main(): number {
         let text: string;
         try {
           text = fs.readFileSync(flagArg, "utf8");
-        } catch {
-          return refuse(`cannot read ${flagArg}`);
+        } catch (err) {
+          return refuse(`cannot read ${flagArg}: ${errorMessage(err)}`);
         }
         return writeNote(text);
       }
