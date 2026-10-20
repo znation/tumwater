@@ -8,6 +8,11 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code runner, part 14/14: Sweep the remaining loop names and retire the old runner names (planned 2026-10-16 by user; requires part 13/14 landed; design in plans/terminology.md "Code names" and "Guards"; touches every remaining src/ and test/ file with a loop name + test/retired-names.test.ts)
 
+**Needs replan 2026-10-19 by feature: rejected after 3 review rounds**
+
+Objections quoted from the final review:
+1. (prior 1) The sweep still rewrites "loop" meaning iteration to "role" in comments that now say something false, and the commit message's claim to have repaired these is still untrue. The revision fixed only the sites the prior review listed. Other sites in the same diff have the same defect, includ…
+
 **Goal.** No identifier, file name, comment or test title in src/ or test/ uses "loop" for a role or its worker. Every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old runner name comes back.
 
 **Approach.**
