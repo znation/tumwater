@@ -149,3 +149,18 @@ test("Ctrl+G is mutually exclusive with the other prompt-line editors, flashing 
     assert.match(tui.lastFrame(), /daily cap \$/, "still in budget mode");
   });
 });
+
+test("Ctrl+P and Ctrl+R do not open their editors over the instances editor", async () => {
+  const repo = await makeTuiRepo(); // roster: clean
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true }); // → clean's transcript
+    tui.key(undefined, "g", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "instances ›");
+    tui.key(undefined, "p", { ctrl: true });
+    assert.doesNotMatch(tui.lastFrame(), /pause clean:/);
+    tui.key(undefined, "r", { ctrl: true });
+    assert.equal(tui.lines().at(-1), "instances ›", "still the instances editor");
+    tui.key(undefined, "escape");
+    assert.doesNotMatch(tui.lastFrame(), /instances ›/);
+  });
+});

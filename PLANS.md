@@ -472,28 +472,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing tests "a free fallback whose ticks keep failing is demoted to a pause, then probed back once it serves" and "budgetPausedRoles holds the tiers that resolved to pause, and every demotion is published" pass unedited.
 - `npm run test:gate` passes.
 
-### The TUI's per-key editor guards ask the session's held registry instead of hand-listing editors, so a newly added editor can no longer be typed over by Ctrl+P/A/W/V, Ctrl+R, Ctrl+A, Ctrl+N or Ctrl+E (planned 2026-10-20 by the plan role; no dependency on any Planned entry)
-
-**Goal.** `createTuiEditorSession` (`src/ui/tui/tui-editor-session.ts`) already keeps a registry of which editors hold the prompt line: `heldEditorFlash` walks the six special holders plus `HOLDER_SUBJECTS`, and `anyEditorHeld` wraps it. Five key-entry guards still list `!session.held.<x>` flags by hand, though, and each list has fallen behind the editors added since it was written:
-- `createPauseEditor`'s per-role Ctrl+P/A/W/V arm (`src/ui/tui/tui-editor-pause.ts`) and `createPromptEditor`'s Ctrl+R arm (`src/ui/tui/tui-editor-prompt.ts`) run on the transcript views. Neither checks `held.instances`, even though `createInstancesEditor`'s Ctrl+G opens on those same views. With the instances editor open, Ctrl+P therefore opens the pause editor on top of it, and Ctrl+R opens the role-prompt editor on top of it. The pause arm also skips `attach`, `brief`, `providerCaps`, `slots`, `backends`, `fallback`, `model` and `claudeReserve`. The prompt arm also skips `retire`, `attach`, `brief`, `providerCaps`, `slots`, `fallback`, `model` and `claudeReserve`.
-- The answer editor's Ctrl+A arm (`src/ui/tui/tui-editor-answer.ts`), the entry editor's new-entry Ctrl+N arm (`src/ui/tui/tui-editor-entry.ts`) and the queued editor's Ctrl+E arm (`src/ui/tui/tui-editor-queued.ts`) each check at most eight holders.
-
-Every new editor plan has had to find and patch these lists. Reviewer rejections in the 24 hours to 13:00 UTC 2026-10-20 include "missed this sibling" findings of exactly this kind: a `held.slots` or `held.concurrency` left out of some guards but added to others.
-
-**Approach.**
-- **`src/ui/tui/tui-editor-session.ts`**: widen `anyEditorHeld(except?: "pause")` to `anyEditorHeld(...except: ReadonlyArray<"pause" | "rolePromptFor" | "search">)`. It returns true when any holder `heldEditorFlash` checks is set and is not named in `except`. The holders are `search`, `pause`, `queued`, `answer`, `entry`, `rolePromptFor` and every `HOLDER_SUBJECTS` mode. Implement it as its own walk over those flags, so `heldEditorFlash`'s ordering and wording stay unchanged. The existing `anyEditorHeld()` / `anyEditorHeld("pause")` call sites keep their meaning. `quietTeam` and the `pauseEdit*` fields are sub-state, not holders, and stay out. Update its doc comment.
-- **`tui-editor-pause.ts`**: replace the per-role arm's hand list with `!session.anyEditorHeld("rolePromptFor", "search")`. Role prompt and search stay excepted because the arm deliberately still lets Ctrl+P resume a paused role and Ctrl+A/Ctrl+V act while they are held, and its inner branches already flash `busyFlash("role prompt"/"search")` for the editor-opening cases. Leave those inner branches as they are.
-- **`tui-editor-prompt.ts`**: replace the Ctrl+R arm's list with `!session.anyEditorHeld("rolePromptFor")`. A second Ctrl+R still has to reach the arm to exit role-prompt mode.
-- **`tui-editor-answer.ts`, `tui-editor-entry.ts`** (the new-entry branch only, after the existing plan↔bug flip branch), **`tui-editor-queued.ts`**: replace each list with `!session.anyEditorHeld()`. In the entry and queued arms, the module-local `entryEditFor`/`queuedEditFor` checks are mirrored in `session.held.entry`/`session.held.queued`, so the registry covers them.
-- A blocked key keeps today's behaviour at every site: the arm returns false and the key falls through. No new flash is added.
-- Out of scope: `onArrow`'s history-recall list in `src/ui/tui/tui-editors.ts`. It deliberately leaves out holders such as `rolePromptFor`, whose mode keeps its own recall pair, so it is not the same guard.
-
-**Files touched.** `src/ui/tui/tui-editor-session.ts`, `tui-editor-pause.ts`, `tui-editor-prompt.ts`, `tui-editor-answer.ts`, `tui-editor-entry.ts`, `tui-editor-queued.ts`; tests in `test/tui-instances.test.ts` (the fixture `makeTuiRepo`/`withTui` from `test/fixtures/tui-fixtures.js`, as in "Ctrl+G is mutually exclusive with the other prompt-line editors, flashing the way out").
-
-**Acceptance criteria.**
-- New test: on clean's transcript, after Ctrl+G opens the instances editor, Ctrl+P does not open the pause editor (no `pause clean:` prompt in the frame) and Ctrl+R does not open the role-prompt editor. The frame still shows the instances editor's prompt, and Esc then exits it as before.
-- The existing tests that cover the per-role pause/wake/abort keys, Ctrl+R role-prompt toggling, Ctrl+A answer, Ctrl+N new entry and Ctrl+E queued edit pass unchanged. That includes the role-prompt/search cases where Ctrl+P on a paused role still resumes it.
-- After the change, `grep -n '!session.held\.' src/ui/tui/tui-editor-{pause,prompt,answer,entry,queued}.ts` finds no multi-flag guard chain.
-- `npm run test:gate` passes.
-
 ## Done

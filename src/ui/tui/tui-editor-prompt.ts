@@ -35,12 +35,7 @@ export function createPromptEditor(session: TuiEditorSession): TuiEditorModule {
     // the outer guard and the mirrored refusal in the Ctrl+B branch. Rides the same per-role
     // guard as the Ctrl+P/A/W pause controls so an editor's prompt line is never disturbed.
     if (
-      !session.held.budget &&
-      !session.held.pause &&
-      !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.notes && !session.held.quiet && !session.held.interval &&
-      !session.held.instructions && !session.held.concurrency &&
-      !session.held.notify && !session.held.backends && !session.held.roleModel &&
+      !session.anyEditorHeld("rolePromptFor") &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && key.name === "r"

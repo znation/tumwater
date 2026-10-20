@@ -168,12 +168,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     if (
-      !session.held.budget &&
-      !session.held.pause &&
-      !session.held.queued && !session.held.answer && !session.held.entry &&
-      !session.held.notes && !session.held.retire && !session.held.quiet && !session.held.interval &&
-      !session.held.instructions && !session.held.concurrency &&
-      !session.held.notify && !session.held.roleModel &&
+      !session.anyEditorHeld("rolePromptFor", "search") &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
       key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")

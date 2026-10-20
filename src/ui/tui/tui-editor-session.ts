@@ -131,9 +131,10 @@ export interface TuiEditorSession {
   takeDraft(): () => void;
   /** The one-line editor's busy-guard wording. */
   busyFlash(subject: string): string;
-  /** Whether any prompt-line editor other than `except` holds the line — the guard for a key that
-   * must never disturb an editor's pre-filled text. */
-  anyEditorHeld(except?: "pause"): boolean;
+  /** Whether any prompt-line editor other than those named in `except` holds the line — the guard
+   * for a key that must never disturb an editor's pre-filled text. Walks every holder
+   * `heldEditorFlash` checks, so a newly added editor is covered without touching the callers. */
+  anyEditorHeld(...except: ReadonlyArray<"pause" | "rolePromptFor" | "search">): boolean;
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out; null
@@ -227,8 +228,13 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     busyFlash(subject) {
       return `finish or cancel the ${subject} first (Esc cancels)`;
     },
-    anyEditorHeld(except) {
-      return session.heldEditorFlash(except ?? null) !== null;
+    anyEditorHeld(...except) {
+      const h = session.held;
+      if (h.search && !except.includes("search")) return true;
+      if (h.pause && !except.includes("pause")) return true;
+      if (h.rolePromptFor && !except.includes("rolePromptFor")) return true;
+      if (h.queued || h.answer || h.entry) return true;
+      return HOLDER_SUBJECTS.some(([mode]) => h[mode]);
     },
     heldEditorFlash(entering) {
       const h = session.held;

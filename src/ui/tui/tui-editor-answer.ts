@@ -33,9 +33,7 @@ export function createAnswerEditor(session: TuiEditorSession): TuiEditorModule {
   ): boolean => {
     if (
       key.ctrl && key.name === "a" &&
-      !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.pause && !session.held.queued &&
-      !session.held.answer && !session.held.entry && !session.held.retire &&
+      !session.anyEditorHeld() &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {
       // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);

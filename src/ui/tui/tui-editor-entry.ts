@@ -56,9 +56,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       // dispatch handles — this factory returns false so it runs.
       if (
         ctx.view === ctx.roleIds.length + 1 &&
-        !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-        !session.held.pause && !session.held.queued &&
-        !session.held.answer && !entryEditFor && !session.held.retire
+        !session.anyEditorHeld()
       ) {
         restoreDraft = session.takeDraft();
         entryEditFor = { kind: "plan", position: null, title: "" };
@@ -91,9 +89,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
     }
     if (
       key.ctrl && key.name === "e" &&
-      !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.pause && !session.held.queued &&
-      !session.held.answer && !entryEditFor && !session.held.retire &&
+      !session.anyEditorHeld() &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {
       // Ctrl+E opens the title editor on the selected plan or bug (mnemonic: **E**dit); Enter

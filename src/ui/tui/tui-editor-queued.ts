@@ -29,9 +29,7 @@ export function createQueuedEditor(session: TuiEditorSession): TuiEditorModule {
   ): boolean => {
     if (
       key.ctrl && key.name === "e" &&
-      !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
-      !session.held.pause && queuedEditFor === null &&
-      !session.held.answer && !session.held.entry &&
+      !session.anyEditorHeld() &&
       ctx.view === ctx.roleIds.length + 6 && ctx.selectedQueued !== null
     ) {
       // Ctrl+E opens the Queued pane's in-place editor on the selected row (mnemonic:
