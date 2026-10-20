@@ -745,4 +745,23 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - An enabled id or list still scopes the round as before. The existing scoped-round tests in test/orchestrator-once.e2e.test.ts and test/cli-run-guards.test.ts pass, apart from the two updated above.
 - `npm run test:gate` passes.
 
+### `tumwater role <id>` refuses an instance id the config does not run, so `tumwater role feature-9` no longer shows a made-up role card (planned 2026-10-20 by the plan role; independent of every eligible Planned entry — part 16/16 edits test/ comments only, the wake entry edits src/operator/operator-intent.ts, the `start --once --role` entry edits src/cli/cli-run.ts; this one touches src/roles/role-view.ts and test/role-view.test.ts)
+
+**Goal.** On a fresh project (feature at its default single instance), `tumwater role feature-9` exits 0 and prints `# tumwater role: feature-9`, `- Role: "feature-9" (feature implementer)`, `- State: disabled, not paused` and the rest of a role card (checked against main's built CLI on 2026-10-20). No such runner exists. Every other surface refuses the id: `tumwater role feature-9 --enable`, `logs --role feature-9`, `report --role feature-9`, `pause --role feature-3` and `wake --role feature-3` all exit 1 with `unknown role: … — did you mean \`feature\`?`. The GUI's `/api/role` validates through `rejectBadRole` before it calls `rolePayload`. The read-only view should give the same answer.
+
+**Cause.** `rolePayload` (src/roles/role-view.ts) resolves the id with `roleById(role)` (src/roles/roles.ts). That function maps any `feature-N` or `bugfix-N` with N ≥ 2 to its base through `baseRoleOf`, so the catalog lookup succeeds whatever the configured instance count. The unknown-role throw only fires when nothing resolves.
+
+**Approach.** In `rolePayload`, after the existing `resolved` check and before any other work, refuse an id that `knownRoleIds(cfg)` (src/config/config.ts, already imported there) does not hold. Throw `new Error(unknownRoleMessage(role, knownRoleIds(cfg)))`, the same wording as the existing throw. The simplest form is one guard: `if (!resolved || !knownRoleIds(cfg).includes(role)) throw …`. Update the comment above it to say an instance id counts only when the config runs it. `knownRoleIds` holds every catalog and custom id, the director included, plus the instance ids of enabled roles, so bare ids keep working as before, disabled ones included. This is the same set the `role` command's write branches check through `requireKnownRole` (src/cli/cli-query-commands.ts). An instance id of a disabled role is therefore refused by the view just as `role feature-2 --enable` already refuses it. Do not change `roleById`: the runner and prompt paths use it with ids they already validated.
+- Callers need no change. `cmdRole` already lets the collector own the unknown-role answer. `handleRole` (src/gui/gui-endpoints.ts) validates first. `roleInspectMarkdown` (src/ui/tui/tui-pane.ts) is caught by the TUI's Ctrl+N branch, which flashes the throw.
+
+**Tests (test/role-view.test.ts).**
+- Next to "an unknown role throws the shared unknownRoleMessage wording", add "an instance id the config does not run throws unknownRoleMessage". With a root that has no instances configured, `rolePayload(dir, "feature-9", NO_MODELS)` throws `/unknown role: feature-9 \(valid ids: /` and ``/did you mean `feature`/``. With `writeConfig(dir, { roles: { feature: { enabled: true, instances: 2 } } })`, `rolePayload(dir, "feature-4", NO_MODELS)` returns a payload, and `feature-5` throws, because runnerCount is twice the instances.
+- "an instance id reads its base role's quiet-hours window; no window leaves no key" calls `rolePayload(dir, "feature-2", …)` with no instances configured, so it would now throw. Add `roles: { feature: { enabled: true, instances: 2 } }` to its `writeConfig`. Run the file and fix any other test that reads an instance id it never configured in the same way, by configuring the instances; do not loosen the guard.
+
+**Acceptance criteria.**
+- On a fresh project, `tumwater role feature-9` and `tumwater role feature-9 --json` exit 1 with `tumwater: unknown role: feature-9 (valid ids: …) — did you mean \`feature\`?`.
+- With `roles.feature.instances: 2`, `tumwater role feature-2` still prints its card. The existing `cli(repo, "role", "feature-2")` assertions in test/cli-operators.test.ts pass unchanged.
+- A disabled bare role still renders: `tumwater role selfcheck` prints `State: disabled, not paused`.
+- `npm run test:gate` passes.
+
 ## Done
