@@ -13,6 +13,7 @@ import { applyMergeOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { displayWidth } from "../src/text/text-width.js";
 import { dayKey } from "./helpers/oracles.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { eventTypeLabel } from "../src/events/event-labels.js";
@@ -348,4 +349,16 @@ test("status table rows carry the role's label and no title column", () => {
   assert.ok(!headers.includes("title"), "the header has no title column");
   assert.ok(!rowOf("steward").includes("backlog curator"), "a steward row carries no title");
   assert.ok(!rowOf("feature #2").includes("feature implementer"), "an instance row carries no title");
+});
+
+test("the name column gives way last: a mixed-model table at 110 columns keeps every role label and every column header", () => {
+  const snap = snapshotWith([
+    { role: "clean", model: `prov-a/${"x".repeat(70)}` } as never,
+    { role: "dedupe", model: `prov-b/${"y".repeat(70)}` } as never,
+  ]);
+  const lines = renderStatus(tmpdir(), snap, 110).split("\n");
+  for (const l of lines) assert.ok(displayWidth(l) <= 110, l);
+  assert.match(lines.find((l) => l.startsWith("role")) ?? "", /next run/);
+  assert.ok(lines.some((l) => l.startsWith("clean")));
+  assert.ok(lines.some((l) => l.startsWith("dedupe")));
 });

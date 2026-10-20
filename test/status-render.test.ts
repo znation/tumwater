@@ -736,3 +736,36 @@ test("a scoped totals row sums today over the shown rows, not the team budget", 
   assert.doesNotMatch(shown, /\$9\.99/);
   assert.match(totals(renderStatus(tmpdir(), snap)), /\$9\.99/);
 });
+
+test("a model every role shares prints once under the table, not on each row", () => {
+  const shared = { model: "prov/org/m:route:low", modelFromPi: true };
+  const snap = snapshotWith([
+    { role: "clean", ...shared } as never,
+    { role: "dedupe", ...shared } as never,
+    { role: "feature", ...shared } as never,
+  ]);
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  assert.equal(lines.filter((l) => l.includes("(prov/")).length, 0);
+  assert.equal(lines.filter((l) => l === "model (every role): prov/org/m:route:low, pi default").length, 1);
+  const tiered = snapshotWith(["clean", "dedupe"].map((role) => ({ role, ...shared, modelTier: "strong" }) as never));
+  assert.ok(renderStatus(tmpdir(), tiered).split("\n").includes("model (every role): strong · prov/org/m:route:low"));
+});
+
+test("a mixed-model table keeps each row's suffix and prints no shared-model line", () => {
+  const snap = snapshotWith([{ role: "clean", model: "prov/a" } as never, { role: "dedupe", model: "prov/b" } as never]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /clean \(prov\/a\)/);
+  assert.doesNotMatch(text, /model \(every role\)/);
+  const oneBare = snapshotWith([{ role: "clean", model: "prov/a" } as never, { role: "dedupe" }]);
+  assert.doesNotMatch(renderStatus(tmpdir(), oneBare), /model \(every role\)/);
+});
+
+test("a shared model still leaves the over-cap marker on its row", () => {
+  const snap = snapshotWith([
+    { role: "feature", model: "prov/a", fallback: { provider: "p", model: "m", since: 1, reason: "x" } } as never,
+    { role: "clean", model: "prov/a" } as never,
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /feature \(over-cap model\)/);
+  assert.match(text, /model \(every role\): prov\/a/);
+});

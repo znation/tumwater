@@ -106,7 +106,8 @@ function stateCell(root: string, s: RunnerState, phase: string, live?: LiveProgr
  * not flexible: it is a short sibling time cell whose width follows lastTickCell's, and the
  * whole-line clip that already protects the header also bounds it. Indices are positional in
  * the `cols` array below — renumber when columns change. (`today`, like `cost`, is a short
- * fixed-width cell: never flexible.) */
+ * fixed-width cell: never flexible.)
+ * The name column (index 0) gives way after all of these, down to the longest bare role label. */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
   { index: 10, minWidth: 12 },
   { index: 1, minWidth: 12 },
@@ -316,23 +317,30 @@ export function renderStatusSpans(
     };
   });
   // User-defined roles (snapshot's `custom` flag) get an asterisk beside their name — the
-  // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS and
-  // its width derives from row content, so the extra character widens it automatically.
+  // dashboards' at-a-glance marker. The name column (index 0) is not in FLEXIBLE_COLUMNS;
+  // its width derives from row content and it shrinks only after those,
+  // so the extra character widens it.
   // Rows are ordered by the shared display rule (status-model's roleRank, then last tick most
   // recent first) so the TUI/status table groups roles the way the GUI table does.
   // Each cell is spans: the state cell takes its phase's tone (the p:N marker stays plain), the
   // last result tones its outcome word, a backoff countdown reads yellow.
   const cell = (text: string, tone?: StatusSpan["tone"]): StatusSpan[] => [{ text, ...(tone ? { tone } : {}) }];
+  // A model every role shares prints once in a footnote instead of on each name cell.
+  const modelInner = (s: (typeof snap.roles)[number]): string =>
+    s.modelTier
+      ? `${s.modelTier}${s.model ? ` · ${s.model}` : ""}`
+      : s.model
+        ? `${s.model}${s.modelFromPi ? ", pi default" : ""}`
+        : "";
+  const inners = snap.roles.map(modelInner);
+  const sharedModel = snap.roles.length >= 2 && inners[0] && inners.every((m) => m === inners[0]) ? inners[0] : undefined;
   const rows = sortRolesByState(withMetrics).map(({ s, m, live, phase }): StatusSpan[][] => {
     // The name cell appends the selector the role resolves to; with a top-level tier map
     // declared it additionally names the seam tier (model-tiers.md part 7a,
     // "Observability"). No model resolved and no tier keeps the name byte-identical to
     // today's.
-    const modelSuffix = s.modelTier
-      ? ` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})`
-      : s.model
-        ? ` (${s.model}${s.modelFromPi ? ", pi default" : ""})`
-        : "";
+    const inner = modelInner(s);
+    const modelSuffix = inner && !sharedModel ? ` (${inner})` : "";
     // Model failure fallback, part 2/2: while the role runs off-model its name cell says so,
     // so the operator can see which roles the fallback pair is carrying without reading logs.
     const fallbackSuffix = s.fallback ? " (over-cap model)" : "";
@@ -401,6 +409,14 @@ export function renderStatusSpans(
       widths[index] = current - reduction;
       overflow -= reduction;
     }
+    // The name column gives way last, down to the longest bare role label.
+    if (overflow > 0) {
+      const floor = Math.max(
+        displayWidth(cols[0] ?? ""),
+        ...snap.roles.map((s) => displayWidth(s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role))),
+      );
+      widths[0] = Math.max(floor, (widths[0] ?? 0) - overflow);
+    }
   }
 
   // Each cell clipped and padded to its column (padding stays untoned), the columns joined by
@@ -452,6 +468,7 @@ export function renderStatusSpans(
   lines.push(fmt(totalsRow, "bold"));
   // One footnote under the table when any custom role exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a team with no user-defined roles.
+  if (sharedModel) lines.push([{ text: `model (every role): ${sharedModel}`, tone: "dim" }]);
   if (snap.roles.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
