@@ -3730,3 +3730,44 @@ puts the claude tier on its fallback step; under the cap with no window it is em
 the cap a priced tier lists its fallback step, a free primary stays unlisted";
 `test/gate-polls.test.ts` — "pollTeamGates: fallback_switched is logged once per chain change and
 orchestrator info carries chain".
+
+## Orchestrator info: a publish writes once for a changed batch and never for an unchanged one, a failed write warns rather than throws, and a reader drops a wrong-shaped field
+
+### INV-BO1: a publish stages every field, writes once when any changed and not at all otherwise
+
+**Guarantee.** A publish stages every field of the batch, compares each by JSON serialization, writes
+once when any changed and not at all otherwise, and a field published as `undefined` leaves the file.
+
+**Binds.** `src/team/orchestrator-info.ts` (`publishInfoFields`, `assignInfoFieldIfChanged`).
+
+**Pinned by.** `test/orchestrator-info-publish.test.ts` — "publishInfoFields writes every field of a
+changed batch in one publish", "publishInfoFields leaves the file untouched when no field changed"
+and "publishInfoFields removes a field published as undefined".
+
+### INV-BO2: a publish never throws, and startup's write stays strict
+
+**Guarantee.** A publish never throws: a failed write logs one `warning`, keeps the new value in
+memory, and is not retried until the value changes again. Startup's `writeOrchestratorInfo` stays
+strict and atomic.
+
+**Binds.** `src/team/orchestrator-info.ts` (`publishInfoFields`, `writeOrchestratorInfoBestEffort`,
+`writeOrchestratorInfo`).
+
+**Pinned by.** `test/orchestrator-info-publish.test.ts` — "publishInfoFields warns instead of throwing
+when the info file cannot be written"; `test/orchestrator-info.test.ts` — "writeOrchestratorInfo
+leaves the previous file intact when a write is killed mid-flight".
+
+### INV-BO3: a reader drops a foreign-shaped field and keeps the well-formed ones
+
+**Guarantee.** `readOrchestratorInfo` returns null for a missing, torn or non-object file, and drops
+each nested field whose shape is foreign while it keeps well-formed ones; `orchestratorAlive` is
+false with no info.
+
+**Binds.** `src/team/orchestrator-info.ts` (`readOrchestratorInfo`, `normalizeInfoFields`,
+`orchestratorAlive`).
+
+**Pinned by.** `test/orchestrator-info.test.ts` — "readOrchestratorInfo returns null for missing,
+torn, and non-object files", "readOrchestratorInfo drops nested fields with a foreign shape and keeps
+well-formed ones", "readOrchestratorInfo round-trips a well-formed providerHolds and drops foreign
+entries" and "orchestratorAlive is false with no info and reflects pid liveness otherwise";
+`test/gate-polls.test.ts` — "pollTeamGates publishes the measured disk state for observers".
