@@ -7,7 +7,7 @@ import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js"
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsLogPath } from "../paths.js";
-import { gotSuffix } from "../text/text.js";
+import { gotSuffix, splitCommaList } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
 /** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed run, newest first. The
@@ -120,7 +120,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   if (resultRaw !== null) {
     if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
     // A comma list names several classes; the first unknown piece fails with its own hint.
-    const pieces = resultRaw.split(",").map((p) => p.trim()).filter((p) => p !== "");
+    const pieces = splitCommaList(resultRaw);
     if (pieces.length === 0) fail(HISTORY_RESULT_VALUE_ERROR);
     const parsed: HistoryResultClass[] = [];
     for (const piece of pieces) {
@@ -142,7 +142,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   let models: string[] | null = null;
   if (modelRaw !== null) {
     if (modelRaw === undefined || modelRaw === "") fail(HISTORY_MODEL_VALUE_ERROR);
-    const pieces = [...new Set(modelRaw.split(",").map((p) => p.trim()).filter((p) => p !== ""))];
+    const pieces = [...new Set(splitCommaList(modelRaw))];
     if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
     models = pieces;
     rows = runRowsOnModels(rows, pieces);

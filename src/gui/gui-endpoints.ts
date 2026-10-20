@@ -49,6 +49,7 @@ import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQue
 import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
+import { splitCommaList } from "../text/text.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one role's pi
  * log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also renders
@@ -166,7 +167,7 @@ function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string)
   const raw = q.get("role");
   let roles: string[] | undefined;
   if (raw !== null) {
-    const pieces = raw.split(",").map((p) => p.trim()).filter((p) => p !== "");
+    const pieces = splitCommaList(raw);
     if (pieces.length === 0) {
       rejectBadRole(root, res, raw);
       return null;
@@ -271,7 +272,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   // `model` is a comma list of exact selectors (trimmed, deduplicated); "", absent and a list
   // with no non-empty piece all filter nothing, and an unknown selector keeps no rows.
-  const modelPieces = [...new Set((q.get("model") ?? "").split(",").map((p) => p.trim()).filter((p) => p !== ""))];
+  const modelPieces = [...new Set(splitCommaList(q.get("model") ?? ""))];
   const onModels = (rows: RunRow[]): RunRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
   if (q.get("sinceMs") !== null) {

@@ -1,7 +1,7 @@
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "./revert.js";
@@ -78,7 +78,7 @@ function namedRole(root: string, args: string[]): string | null {
 function rolePieces(args: string[]): string[] | null {
   const value = flagValue(args, "--role");
   if (value === null) return null;
-  const pieces = (value ?? "").split(",").map((p) => p.trim()).filter((p) => p !== "");
+  const pieces = splitCommaList(value ?? "");
   if (pieces.length === 0) fail(ROLE_VALUE_ERROR);
   return pieces;
 }

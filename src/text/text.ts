@@ -83,6 +83,15 @@ export function isNonBlankString(v: unknown): v is string {
   return typeof v === "string" && v.trim() !== "";
 }
 
+/** Split a comma list into its trimmed, non-empty pieces, in order — the one spelling of the
+ * split-trim-drop-blanks step shared by the `--role` list flags (cli-args.ts and
+ * operator-commands.ts), `logs --type`, the history `--result` and `--model` filters, and the
+ * GUI's `role` and `model` query parameters. Deduplication and the no-piece-left error stay
+ * with each caller. */
+export function splitCommaList(raw: string): string[] {
+  return raw.split(",").map((p) => p.trim()).filter((p) => p !== "");
+}
+
 /** Drop the blank lines at the start of `lines`, in place — the one home of the
  * leading-blank trim loop shared by the backlog writer's section-content rebuild and
  * `questions answer`'s tail slice (the lines after the moved answer). Blank means

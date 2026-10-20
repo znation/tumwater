@@ -16,6 +16,7 @@ import { followFile } from "../files/tail.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
+import { splitCommaList } from "../text/text.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
@@ -147,7 +148,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
   // An older event name matches its current one; the empty-match prose still names what was typed.
-  const typePieces = type === null ? [] : type.split(",").map((p) => p.trim()).filter((p) => p !== "");
+  const typePieces = type === null ? [] : splitCommaList(type);
   if (type !== null && typePieces.length === 0) fail(TYPE_VALUE_ERROR);
   const wantedTypes = new Set(typePieces.map(canonicalEventType));
   const typeFilter = type === null ? null : (e: HarnessEvent) => wantedTypes.has(e.type);
