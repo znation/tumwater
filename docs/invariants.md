@@ -4154,3 +4154,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/inbox/inbox-top.ts` (`moveFileToTop`), `src/inbox/inbox-attachments.ts` (`movePromptImages`'s `moves`).
 
 **Pinned by.** `test/inbox-top.test.ts` — "movePromptToTop whose queue-file write fails moves the image back and leaves the queue as it was".
+
+## Refusal: a failed PLANS.md strip never fails the refusal
+
+### INV-CK1: a refusal whose stripped PLANS.md cannot be written logs one warning, leaves PLANS.md out of the commit, and still merges its other notes
+
+**Guarantee.** `handleRefusal` wraps the write of the Refused-note-stripped PLANS.md in a `try`; a failed write (full disk, EACCES) logs one warning naming the blocked plans and drops PLANS.md from the notes it commits, so the other notes (a BUGS.md Refused note) still merge and the unstripped note never reaches main.
+
+**Binds.** `src/verdict/refusal.ts` (`handleRefusal`, `withoutBlockedPlanRefusals`).
+
+**Pinned by.** `test/refusal.test.ts` — "a failed PLANS.md strip write warns, leaves PLANS.md out of the commit, and still merges the BUGS.md note".

@@ -4,11 +4,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
-import type { RunResult } from "../src/run/run-outcome.js";
+import type { RunOutcome, RunResult } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import { assertClean, commitIn, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { readEvents } from "../src/events/event-read.js";
+import { patchFsMethod, errnoError } from "./helpers/fs-faults.js";
+import { warningMessages } from "./fixtures/log-fixtures.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A refused pi run result; tests override only what they exercise. */
@@ -320,4 +322,38 @@ test("a refusal note commit carries the Model line", async () => {
   const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");
   assert.match(lines[lines.length - 2]!, /^Run: improve #/);
   assert.equal(lines[lines.length - 1], "Model: default · backend pi");
+});
+
+test("a failed PLANS.md strip write warns, leaves PLANS.md out of the commit, and still merges the BUGS.md note", async () => {
+  const base = BLOCKED_BASE("Planned");
+  const { root, wt } = await worktreeWithPlans(base);
+  const bugs = "# Bugs\n\n## Open\n\n### bug one (found by x 2026-10-12)\n\nbody\n\n## Fixed\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+  commitIn(root, "bugs");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
+  fs.writeFileSync(
+    path.join(wt, "BUGS.md"),
+    bugs.replace("### bug one (found by x 2026-10-12)", "### bug one (found by x 2026-10-12)\n\n**Refused 2026-10-12 by bugfix: y**"),
+  );
+  const { ctx, merges } = makeCtx(root);
+  const undo = patchFsMethod("writeFileSync", (orig) => (...args) => {
+    if (typeof args[0] === "string" && args[0].includes(".tmp-")) throw errnoError("ENOSPC");
+    return orig(...args);
+  });
+  let outcome: RunOutcome;
+  try {
+    outcome = await handleRefusal(ctx, freshRunnerState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  } finally {
+    undo();
+  }
+  assert.equal(outcome.result, "refused");
+  assert.ok(outcome.commit);
+  assert.equal(merges.length, 1);
+  assert.ok(!sh(wt, "git", "show", "HEAD:PLANS.md").includes(REFUSED_LINE));
+  assert.ok(sh(wt, "git", "show", "HEAD:BUGS.md").includes("**Refused 2026-10-12 by bugfix: y**"));
+  assertClean(wt);
+  const warnings = warningMessages(root);
+  assert.ok(warnings.some((m) => m.includes("could not drop refusal note") && m.includes("part 2/2: b")));
+  assert.ok(!warnings.some((m) => m.includes("dropped refusal note on blocked plan")));
 });

@@ -15,6 +15,7 @@ import { baseRoleOf } from "../roles/runner-ids.js";
 import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
+import { errorMessage } from "../text/text.js";
 import { labeledLine } from "./reply-contract.js";
 import { logEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../run/run-apply.js";
@@ -112,7 +113,9 @@ export interface RefusalContext {
 }
 
 /** Handle a refused run and return its outcome. Never throws: a failed note merge is recorded
- * in `state.lastError` and reported through the "refused" result like any other non-merge. */
+ * in `state.lastError` and reported through the "refused" result like any other non-merge. A
+ * failed write of the stripped PLANS.md logs a warning and leaves PLANS.md out of the commit,
+ * so the other notes still merge. */
 export async function handleRefusal(
   ctx: RefusalContext,
   state: RunnerState,
@@ -121,6 +124,7 @@ export async function handleRefusal(
 ): Promise<RunOutcome> {
   const reason = (pi.refusedReason ?? "").trim() || "no reason given";
   const plansFile = path.join(wt, "PLANS.md");
+  let plansUnstripped = false;
   if (fs.existsSync(plansFile)) {
     const { md, dropped } = withoutBlockedPlanRefusals(
       await fileContentAt(wt, ctx.mainBranch, "PLANS.md"),
@@ -132,17 +136,28 @@ export async function handleRefusal(
       // permanently dropping the plan entries past the cut point. writeTextAtomic is the
       // harness's one write-to-temp-then-rename entry point — the same one backlog-write.ts
       // and question-answer.ts use for the markdown backlog files.
-      writeTextAtomic(plansFile, md);
-      for (const title of dropped) {
+      try {
+        writeTextAtomic(plansFile, md);
+        for (const title of dropped) {
+          logEventBestEffort(ctx.root, {
+            source: ctx.role,
+            type: "warning",
+            message: `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
+          });
+        }
+      } catch (err) {
+        plansUnstripped = true;
         logEventBestEffort(ctx.root, {
           source: ctx.role,
           type: "warning",
-          message: `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
+          message: `could not drop refusal note(s) on blocked plan(s) ${dropped.map((t) => `"${t}"`).join(", ")}: ${errorMessage(err)}; PLANS.md is left out of this refusal's commit`,
         });
       }
     }
   }
-  const notes = (await changedFiles(wt)).filter((f) => f.toLowerCase().endsWith(".md"));
+  const notes = (await changedFiles(wt)).filter(
+    (f) => f.toLowerCase().endsWith(".md") && !(plansUnstripped && f === "PLANS.md"),
+  );
   const entries: string[] = [];
   // Best-effort naming for the entry_refused event; it must never fail the refusal.
   for (const { file, section } of [{ file: "PLANS.md", section: "Planned" }, { file: "BUGS.md", section: "Open" }]) {
