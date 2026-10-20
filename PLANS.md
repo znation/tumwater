@@ -8,6 +8,10 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Plain terms code run, part 15/20: Convert the status display and the TUI (planned 2026-10-16 by user; requires part 14/20 landed; design in plans/terminology.md "Code names"; touches src/ui/*.ts + src/ui/tui/ + their tests)
 
+**Needs replan 2026-10-20 by feature: rejected after 2 review rounds**
+
+1. (prior 2) The word swap left one more garbled phrase: `test/status-render-cells.test.ts:124` reads "A role that has never merged shows the same dash as a never-ran role." "never-ran" is the broken past participle the self-check plan in this diff's own PLANS-DONE.md lists as garbled ("never" + "-ran…
+
 **Goal.** The status model and renderer, the run-progress model and the TUI use run names: `lastRunCell`, `runProgress`, `progressOfRun` and `runStat`.
 
 **Approach.**
