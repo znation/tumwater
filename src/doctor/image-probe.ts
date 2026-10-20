@@ -17,7 +17,7 @@ import { PiStreamParser } from "../pi/pi-stream.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { imageProbesPath } from "../paths.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject } from "../files/json-object.js";
+import { isJsonObject, validEntries } from "../files/json-object.js";
 import { boundedProbe } from "./probe.js";
 
 /** How long a cached image-probe verdict stays valid while the claim is unchanged (7 days) —
@@ -101,12 +101,7 @@ function isImageProbeCacheEntry(value: unknown): value is ImageProbeCacheEntry {
  * no-data policy: a crashed writer never takes down a reader). An entry of a foreign shape is
  * dropped, so it reads as unprobed, and the doctor's next cache write leaves it out. */
 export function readImageProbeCache(root: string): ImageProbeCache {
-  const raw = readJsonFile<Record<string, unknown>>(imageProbesPath(root)) ?? {};
-  const cache: ImageProbeCache = {};
-  for (const [key, entry] of Object.entries(raw)) {
-    if (isImageProbeCacheEntry(entry)) cache[key] = entry;
-  }
-  return cache;
+  return validEntries(readJsonFile<Record<string, unknown>>(imageProbesPath(root)), isImageProbeCacheEntry);
 }
 
 /** Write the probe cache atomically (tmp+rename) so a concurrent reader never sees a torn

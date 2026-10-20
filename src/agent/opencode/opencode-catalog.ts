@@ -8,7 +8,7 @@
  * tests. */
 
 import { spawnSync } from "node:child_process";
-import { isJsonObject } from "../../files/json-object.js";
+import { isJsonObject, validEntries } from "../../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { opencodeModelsPath } from "../../paths.js";
 import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
@@ -198,9 +198,7 @@ export function readOpencodeCache(root: string): OpencodeCatalogCache {
     return {
       fetchedAt: existing.fetchedAt,
       cliVersion: typeof existing.cliVersion === "string" ? existing.cliVersion : undefined,
-      models: Object.fromEntries(
-        Object.entries(existing.models).filter(([, entry]) => isOpencodeCatalogModel(entry)),
-      ),
+      models: validEntries(existing.models, isOpencodeCatalogModel),
     };
   }
   return { fetchedAt: 0, models: {} };

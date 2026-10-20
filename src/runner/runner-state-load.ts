@@ -4,7 +4,7 @@ import { APPROVED_PATCH_IDS_MAX, freshRunnerState, SKIP_REASONS } from "./runner
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { readJsonFile } from "../files/json-files.js";
-import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
+import { isJsonObject, nonNegativeNumber, validEntries } from "../files/json-object.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { statePath, STATE_DIR } from "../paths.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -30,13 +30,7 @@ function healNumber(value: unknown, fallback: number): number {
 /** Heal the per-pair daily spend map: a non-object reads as `{}`, entries that are not
  * non-negative finite numbers drop, and a `__proto__` key stays an own property. */
 function healPairCosts(value: unknown): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (!isJsonObject(value)) return out;
-  for (const [k, v] of Object.entries(value)) {
-    if (typeof v === "number" && Number.isFinite(v) && v >= 0)
-      Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });
-  }
-  return out;
+  return validEntries(value, (v): v is number => nonNegativeNumber(v, -1) >= 0);
 }
 
 /** Heal one OPTIONAL numeric field of a persisted record in place, preserving the field's

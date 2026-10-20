@@ -97,6 +97,15 @@ export function objectOrEmpty(value: unknown): Record<string, unknown> {
   return isJsonObject(value) ? value : {};
 }
 
+/** The entries of `value` that pass `guard`, as a fresh record; `{}` when `value` is not a JSON
+ * object. The one home of "keep the well-formed entries of an untrusted map, drop the foreign
+ * ones" (the image-probe and opencode-catalog caches, the per-pair daily spend map). Built with
+ * `Object.fromEntries`, so a `__proto__` key stays an own property. */
+export function validEntries<T>(value: unknown, guard: (entry: unknown) => entry is T): Record<string, T> {
+  if (!isJsonObject(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((kv): kv is [string, T] => guard(kv[1])));
+}
+
 /** Assemble a stream translator's canonical usage block from the four already-validated non-
  * negative counts and the USD cost — the one home of the shape both the claude and opencode
  * translators (agent/claude/claude-stream.ts, agent/opencode/opencode-stream.ts) build, so the
