@@ -650,4 +650,26 @@ Both should say nothing changed, as the CLI does after part 1/2.
 - No write or commit changes: the note is computed from PLANS.md after the existing cancel and commit path.
 - `npm run test:gate` passes.
 
+### `tumwater plan|bug --release <n>` and `--top <n>` say when the entry is still held afterwards, instead of reporting a release or a move to the top that no role acts on (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches `releaseAndAnnounce` and `topAndAnnounce` in src/backlog/backlog-cli.ts and `holdMark` in src/backlog/backlog-eligibility.ts. It does not touch `editAndAnnounce` or `cancelAndAnnounce`, which the in-flight Backlog edits 1/2 and cancel entries change)
+
+**Goal.** Both commands report success even when the entry will not be taken. `releaseEntry` (src/backlog/backlog-write.ts) lifts one kind of note through `liftRefusal`: the Refused notes, or else the Waiting for the next failure notes. An entry that also carries a Needs-review or Needs-replan line, or a series part whose "requires part N/M landed" prerequisite is still in `## Planned`, stays held by `entryHoldAgainst`. Yet `releaseAndAnnounce` prints `released plan in PLANS.md: …` and wakes the role, which finds nothing to take. `moveEntryToTop` puts a held entry first, and `topAndAnnounce` prints `moved plan to the top of PLANS.md: …`, which `docs/cli.md` glosses as "so feature or bugfix takes it next". For a held entry that is false: `assignNext` skips it. After the write and commit, both commands should name the hold that remains, in the wording `--list` and the backlog index already use (`holdMark`).
+
+**Approach.**
+- src/backlog/backlog-eligibility.ts: add `export function stillHeldNote(hold: EntryHold): string`. It returns `""` for `null`. Otherwise it returns `still held <holdMark(hold).trim()>: no role takes it until that clears`, for example `still held [blocked: requires Plain terms code run 4/20]: no role takes it until that clears`. Reuse `holdMark` so the three surfaces cannot word a hold differently.
+- src/backlog/backlog-cli.ts `releaseAndAnnounce`: after the commit, read `backlogHolds(root)` and take the released entry's hold at `position - 1`, from `bugs` for `command === "bug"` and from `plans` otherwise. This is the same lookup `showEntry` makes; a release never moves an entry. When the hold is non-null, skip `requestWake` (nothing is newly eligible) and print `stillHeldNote(hold)` where the wake line would go. When it is null, the current output and wake are unchanged. In `--json`, add `hold` (the raw `EntryHold`, the shape `--list --json` and `--show --json` carry) only when it is non-null, so the existing `{ file, title }` payload stays as it is for an entry that is now eligible.
+- src/backlog/backlog-cli.ts `topAndAnnounce`: after the commit, take the hold at index 0 of the matching array (the moved entry is first now). Print `stillHeldNote(hold)` after the `moved …` line when it is non-null, and add `hold` to `--json` under the same rule. Update both doc comments.
+- docs/cli.md: in the `plan|bug` row's `--release <n>` clause, add "(when the entry stays held by another note or an unmerged prerequisite, it says so and wakes no one)". In the `--top <n>` clause, add "(a held entry stays held there, and the command says so)".
+
+**Tests.**
+- test/backlog-eligibility.test.ts: `stillHeldNote(null)` is `""`. `stillHeldNote({ blockedBy: ["Export series 1/2"] })` and `stillHeldNote("needs-review")` return the fixed strings above.
+- test/backlog-commit.test.ts, beside "plan and bug --release lift the Refused note and commit it on main": seed `### Export series, part 1/2: a (planned 2026-10-01)` and then `### Export series, part 2/2: b (planned 2026-10-02; requires part 1/2 landed)` whose body carries a Refused note. `plan --release 2` commits `Release plan: …`, the Refused line is gone, and stdout matches `/still held \[blocked: requires Export series 1\/2\]/`. `--json` on a second such entry carries `hold: { blockedBy: [...] }`. A plan carrying both a Refused and a Needs-review line releases to `still held [blocked: needs review]`. The existing assertions (plain release, `{ file, title }` deepEqual) still pass.
+- Same file, beside "plan and bug --top move an entry to the head of its section and commit it on main": `plan --top 2` on the dependent part prints the `still held [blocked: requires …]` line. Moving an unheld entry prints no `still held` line, and its `--json` stays `{ file, title }`.
+
+**Acceptance criteria.**
+- `tumwater plan|bug --release <n>` on an entry that stays held after the note is lifted commits the edit, prints the remaining hold in `holdMark` wording, and wakes no role. `--json` carries `hold`.
+- `tumwater plan|bug --top <n>` on a held entry commits the move and prints the same note. `--json` carries `hold`.
+- An entry that is eligible after the command gets output, wake and `--json` payload that stay as they are.
+- The TUI's and dashboard's release and top actions are not changed by this entry.
+- `npm run test:gate` passes.
+
 ## Done
