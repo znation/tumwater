@@ -29,7 +29,9 @@
  * purpose), a line marked `retired-name-ok`, and record prose, where history names old things.
  * A fifth, `detachedDocFindings`, reads the same `-U0` diff for a JSDoc block the change
  * separated from its declaration: code inserted between the two, or a declaration deleted
- * while its doc stayed.
+ * while its doc stayed. A sixth, `movedSourceFindings`, reads that diff for a file that still
+ * exists but lost lines found verbatim in another file, and lists the lines that still name the
+ * old file's path (outside record prose), which may describe code that now lives elsewhere.
  *
  * A fifth check, `garbledWordingFindings`, reports added lines (outside record prose) that carry
  * the broken participles and doubled "run" wording a word-swap rename leaves (has/have/had … ran,
@@ -76,6 +78,10 @@ const MAX_MISSING_PATHS = 10;
 const MAX_NEWLINE_FILES = 10;
 /** How many `file:line` sites one detached-doc finding names before it stops. */
 const MAX_DETACHED_DOCS = 10;
+/** The shortest trimmed line that counts toward a move, so braces and `});` never do. */
+const MOVED_LINE_MIN_CHARS = 12;
+/** How many moved lines make a modified file a move source. */
+const MOVED_LINES_MIN = 10;
 
 /** The path a unified diff's `+++ b/<path>` header names. Strips the four-character `+++ `
  * marker and git's `b/` prefix. A deleted file's new side is `+++ /dev/null`, which carries no
@@ -364,6 +370,7 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     findings.push(...garbledWordingFindings(diff));
     findings.push(...(await detachedDocFindings(wt, diff)));
     findings.push(...(await staleNameFindings(wt, diff)));
+    findings.push(...(await movedSourceFindings(wt, diff, entries)));
     return findings;
   } finally {
     // Restore the index to HEAD. Without this, the run's change detection (changedFiles and
@@ -557,6 +564,65 @@ async function staleNameFindings(wt: string, diff: string): Promise<string[]> {
     if (hits.length === 0) continue;
     findings.push(
       `\`${name}\` was removed by this change but is still named at: ${cappedList(hits, MAX_STALE_HITS)}`,
+    );
+  }
+  return findings;
+}
+
+/** (f) References to a file the change moved code out of. A modified (`M`) file is a source
+ * when at least MOVED_LINES_MIN of its removed `-U0` lines (trimmed, at least MOVED_LINE_MIN_CHARS
+ * long) were added verbatim to another file. Each hit of the source's path outside record prose
+ * and the source itself, including in a receiver, is listed for the author to re-check. */
+async function movedSourceFindings(
+  wt: string,
+  diff: string,
+  entries: NameStatusEntry[],
+): Promise<string[]> {
+  const files = new Map<string, { removed: string[]; added: Set<string> }>();
+  let cur: { removed: string[]; added: Set<string> } | undefined;
+  for (const line of diff.split("\n")) {
+    const header = /^diff --git a\/.* b\/(.*)$/.exec(line);
+    if (header) {
+      cur = { removed: [], added: new Set() };
+      files.set(header[1]!, cur);
+      continue;
+    }
+    if (!cur) continue;
+    const isRemoved = line.startsWith("-") && !line.startsWith("---");
+    const isAdded = line.startsWith("+") && !line.startsWith("+++");
+    if (!isRemoved && !isAdded) continue;
+    const text = line.slice(1).trim();
+    if (text.length < MOVED_LINE_MIN_CHARS) continue;
+    if (isRemoved) cur.removed.push(text);
+    else cur.added.add(text);
+  }
+  const findings: string[] = [];
+  for (const e of entries) {
+    if (e.status !== "M") continue;
+    if (findings.length >= MAX_STALE_PATHS) break;
+    const src = files.get(e.path);
+    if (!src) continue;
+    const others = [...files].filter(([f]) => f !== e.path);
+    const receivers = others
+      .filter(([, v]) => src.removed.some((l) => v.added.has(l)))
+      .map(([f]) => f);
+    const moved = src.removed.filter((l) => others.some(([, v]) => v.added.has(l))).length;
+    if (moved < MOVED_LINES_MIN) continue;
+    const out = await gitTry(wt, "grep", "-n", "-F", "-I", "--cached", "-e", e.path);
+    if (!out) continue;
+    const hits: string[] = [];
+    for (const line of out.split("\n")) {
+      const m = /^([^:]+):(\d+):(.*)$/.exec(line);
+      if (!m || m[1] === e.path || isRecordProse(m[1]!)) continue;
+      if (!hasStandalonePathOccurrence(m[3] ?? "", e.path)) continue;
+      hits.push(`${m[1]}:${m[2]}`);
+      if (hits.length >= MAX_STALE_HITS) break;
+    }
+    if (hits.length === 0) continue;
+    findings.push(
+      `${e.path} had ${moved} lines moved to ${cappedList(receivers, MAX_STALE_PATHS)}, but it is ` +
+        `still named at: ${hits.join(", ")} — check each still describes what stays in ${e.path}, ` +
+        `and point any that describes the moved code at its new file`,
     );
   }
   return findings;

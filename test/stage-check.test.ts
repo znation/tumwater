@@ -805,3 +805,71 @@ test("a detached doc in a non-JS file is not reported", async () => {
 
   assert.deepEqual(findings.filter((f) => f.includes(INSERTED) || f.includes(KEPT)), []);
 });
+
+// Moved-source check: a file that lost lines to another file and is still named elsewhere.
+const MOVE_LINES = Array.from({ length: 12 }, (_, i) => `export const valueNumber${i} = ${i} * 1000;`);
+const MOVE_BODY = `${MOVE_LINES.join("\n")}\n`;
+
+async function movedFindings(
+  base: Record<string, string>,
+  head: Record<string, string | null>,
+): Promise<string[]> {
+  const { wt } = await repoWith(base);
+  for (const [file, content] of Object.entries(head)) {
+    const full = path.join(wt, file);
+    if (content === null) {
+      fs.rmSync(full);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+  return (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes("lines moved to"));
+}
+
+const MOVE_BASE = { "src/big.ts": `export const keep = 1;\n${MOVE_BODY}`, "docs/x.md": "The bodies live in src/big.ts.\n" };
+
+test("moving code out of a file that a doc still names yields the moved-source finding", async () => {
+  const head = { "src/big.ts": "export const keep = 1;\n", "src/small.ts": MOVE_BODY };
+
+  const findings = await movedFindings(MOVE_BASE, head);
+  const fixed = await movedFindings(MOVE_BASE, { ...head, "docs/x.md": "The bodies live in src/small.ts.\n" });
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/big\.ts had 12 lines moved to src\/small\.ts, but it is still named at: docs\/x\.md:1/);
+  assert.deepEqual(fixed, []);
+});
+
+test("a reference inside the receiving file is reported too", async () => {
+  const findings = await movedFindings(
+    { "src/big.ts": MOVE_BASE["src/big.ts"] },
+    { "src/big.ts": "export const keep = 1;\n", "src/small.ts": `// pinned in tests (src/big.ts)\n${MOVE_BODY}` },
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /src\/small\.ts:1/);
+});
+
+test("a move below the line threshold, a pure deletion, or a reference in record prose yields no moved-source finding", async () => {
+  const partial = MOVE_LINES.slice(0, 5).join("\n") + "\n";
+  const small = await movedFindings(MOVE_BASE, {
+    "src/big.ts": `export const keep = 1;\n${MOVE_LINES.slice(5).join("\n")}\n`,
+    "src/small.ts": partial,
+  });
+  const deleted = await movedFindings(MOVE_BASE, { "src/big.ts": "export const keep = 1;\n" });
+  const prose = await movedFindings(
+    { "src/big.ts": MOVE_BASE["src/big.ts"], "PLANS.md": "The bodies live in src/big.ts.\n" },
+    { "src/big.ts": "export const keep = 1;\n", "src/small.ts": MOVE_BODY },
+  );
+
+  assert.deepEqual([small, deleted, prose], [[], [], []]);
+});
+
+test("a basename-only reference is not reported", async () => {
+  const findings = await movedFindings(
+    { ...MOVE_BASE, "docs/x.md": "See big.ts.\n" },
+    { "src/big.ts": "export const keep = 1;\n", "src/small.ts": MOVE_BODY },
+  );
+
+  assert.deepEqual(findings, []);
+});
