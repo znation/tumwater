@@ -4,7 +4,8 @@
  * pause/resume, abort), what it is working on, its last result, the metrics the team table
  * leaves out (tokens, context, cost, timings), its recent ticks (/api/history filtered to the
  * role), and its live transcript (/api/transcript, re-fetched on the 1 s poll and kept pinned
- * to the bottom while the reader is there). For a backlog entry it shows the entry in full
+ * to the bottom while the reader is there; a "Show prompts" button adds each agent run's prompt
+ * with `&prompt=1`). For a backlog entry it shows the entry in full
  * (/api/backlog), rendered as Markdown, with a shortcut into the composer — answering a
  * question, or asking the director about a plan or bug — and, for a plan or bug, a two-click
  * Cancel that removes the entry (/api/backlog-cancel). Esc, the close button, or clicking the
@@ -58,8 +59,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (lastStatus) renderTeam(lastStatus); // drop the row highlight
   }
 
+  let transcriptPrompts = false;
   function openRole(role) {
     drawer = { kind: "role", role };
+    transcriptPrompts = false;
     const hash = "#role/" + encodeURIComponent(role);
     if (location.hash !== hash) history.replaceState(null, "", hash);
     drawerTicks = null;
@@ -67,7 +70,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawerChange = null;
     drawerRole = null;
     showDrawer("<div id='draweractions' class='drawer-actions'></div><div id='drawermeta'></div><div id='drawerrole'></div><section class='transcript-sec'><div class='sec-head'><h3>Live transcript</h3>" +
-      "<span class='muted' style='margin-left:auto;font-size:13px'>last 200 lines</span></div>" +
+      "<button type='button' class='btn btn-sm' id='transcriptprompts' data-transcript-prompts style='margin-left:auto'>Show prompts</button>" +
+      "<span class='muted' style='margin-left:12px;font-size:13px'>last 200 lines</span></div>" +
       "<pre id='transcript' class='transcript'><span class='muted'>Loading…</span></pre></section>");
     if (lastStatus) {
       renderRoleDrawer(lastStatus);
@@ -557,20 +561,28 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   async function refreshTranscript(initial) {
     const role = openRoleId();
     if (!role) return;
+    const prompts = transcriptPrompts;
     let d;
     try {
-      d = await getJson("/api/transcript?role=" + encodeURIComponent(role) + "&n=200", pollSignal());
+      d = await getJson("/api/transcript?role=" + encodeURIComponent(role) + "&n=200" + (prompts ? "&prompt=1" : ""), pollSignal());
     } catch {
       return; // keep the previous content on a failed poll
     }
     const pre = $("transcript");
-    if (openRoleId() !== role || !pre) return;
+    if (openRoleId() !== role || !pre || transcriptPrompts !== prompts) return;
     const lines = Array.isArray(d.lines) ? d.lines : [];
     const html = lines.length ? transcriptHtml(lines) : "<span class='muted'>No transcript yet — it fills in once this role's next run starts.</span>";
     // Stay pinned to the newest line while the reader is at the bottom; leave them be if they
     // scrolled up to read.
     const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 12;
     if (paintPanel("transcript", html) && (initial || atBottom)) pre.scrollTop = pre.scrollHeight;
+  }
+
+  function toggleTranscriptPrompts() {
+    transcriptPrompts = !transcriptPrompts;
+    const b = $("transcriptprompts");
+    if (b) b.textContent = transcriptPrompts ? "Hide prompts" : "Show prompts";
+    refreshTranscript(true);
   }
 
   // A plan/bug cancel waits for its confirming click, the confirmAbort shape: the first click
@@ -641,6 +653,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   $("scrim").addEventListener("click", closeDrawer);
   $("drawer").addEventListener("click", (ev) => {
+    if (clickClosest(ev, "button[data-transcript-prompts]")) {
+      toggleTranscriptPrompts();
+      return;
+    }
     const b = clickClosest(ev, "button.rowaction");
     if (b) rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for));
   });

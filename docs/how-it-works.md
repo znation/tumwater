@@ -432,7 +432,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   queue, the same reorder `tumwater prompt --top` makes, addressed by the row's queue file; an open question's Answer button opens its
   drawer, whose Record answer form writes the decision to QUESTIONS.md as `tumwater questions
   answer` does. Clicking a role opens its details — its notes and next run's prompt included — and
-  its live transcript (`#role/<name>` links straight to it). Its History, Usage, Failures, and
+  its live transcript (`#role/<name>` links straight to it). A "Show prompts" button re-reads it through
+  `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Pending view also paints the merge queue as a card mirroring `tumwater
   queue`, and shows a role's full unmerged patch in its drawer. Its Settings view shows the

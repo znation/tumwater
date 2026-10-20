@@ -231,6 +231,10 @@ interface TranscriptValue {
 }
 
 const tails = new Map<string, TailState<TranscriptValue>>();
+/** The same cache for readers that render each agent run's prompt. Separate because withTail keys
+ * its state by file only: one shared map would let a prompts reader and a plain reader overwrite
+ * each other's renderer. */
+const promptTails = new Map<string, TailState<TranscriptValue>>();
 /** How many rendered entries to keep per file. Hot callers ask for at most ~50 (the GUI
  * panel polls with n=50, the TUI its line budget), so the cap bounds memory while keeping any
  * such request exact; a caller asking for more gets the newest MAX_ENTRIES. */
@@ -252,8 +256,15 @@ function feedEntries(value: TranscriptValue, line: string): void {
  * appended since the previous call are read and parsed — observers that call this every
  * second (the TUI's transcript view, the GUI panel) stop rescanning up to 16MB of JSON per
  * role per poll. A torn trailing line is left unconsumed until its newline lands. */
-export function readTranscript(root: string, role: string, limit = 50): string[] {
-  const log = statRoleLog(tails, root, role);
+export function readTranscript(
+  root: string,
+  role: string,
+  limit = 50,
+  opts: { includePrompts?: boolean } = {},
+): string[] {
+  const includePrompts = opts.includePrompts === true;
+  const cache = includePrompts ? promptTails : tails;
+  const log = statRoleLog(cache, root, role);
   if (!log) return []; // No raw log yet — nothing to show.
   if (log.st.size === 0) return [];
 
@@ -262,10 +273,10 @@ export function readTranscript(root: string, role: string, limit = 50): string[]
   // happens once per observation instead of on each one, and steady-state polls touch only
   // appends.
   const value = withTail(
-    tails,
+    cache,
     log.file,
     log.st,
-    () => ({ fromOffset: 0, value: { renderer: createTranscriptRenderer(), entries: [] } }),
+    () => ({ fromOffset: 0, value: { renderer: createTranscriptRenderer({ includePrompts }), entries: [] } }),
     feedEntries,
   );
 

@@ -51,7 +51,9 @@ import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one role's pi
- * log (same rendering as `tumwater logs --transcript <id>`). Unknown/missing role or a bad n → 400.
+ * log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also renders
+ * each agent run's prompt, the text `logs --transcript <id> --prompt` prints. Unknown/missing role
+ * or a bad n → 400.
  * User-defined roles are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
@@ -62,7 +64,7 @@ export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, r
   if (rejectBadRole(root, res, role)) return;
   const n = intQuery(q, res, "n", "positive", 50);
   if (n === null) return;
-  sendJson(res, 200, { lines: readTranscript(root, role as string, n) });
+  sendJson(res, 200, { lines: readTranscript(root, role as string, n, { includePrompts: q.get("prompt") !== null }) });
 }
 
 /** The /api/backlog `file` values and the open-section reader each addresses — one table so

@@ -480,3 +480,22 @@ test("a kind-only marker renders nothing and leaves a pending label intact", () 
     "  hi",
   ]);
 });
+
+test("readTranscript includePrompts shows each run's prompt without leaking into plain reads", () => {
+  const root = tmpdir();
+  const file = piLogPath(root, "feature");
+  writeLogLines(file, [agentStart(), userLine("asked-one"), assistantBlocks([{ type: "text", text: "said-one" }])]);
+
+  const joined = (lines: string[]): string => lines.join("\n");
+  const plain = joined(readTranscript(root, "feature"));
+  assert.ok(plain.includes("said-one"));
+  assert.ok(!plain.includes("asked-one"));
+
+  const withPrompts = joined(readTranscript(root, "feature", 50, { includePrompts: true }));
+  assert.ok(withPrompts.includes("said-one"));
+  assert.ok(withPrompts.includes("asked-one"));
+  assert.ok(withPrompts.indexOf("asked-one") < withPrompts.indexOf("said-one"));
+
+  // The two readers keep separate caches: a plain read after a prompts read still omits it.
+  assert.ok(!joined(readTranscript(root, "feature")).includes("asked-one"));
+});

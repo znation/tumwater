@@ -321,6 +321,11 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
     assert.ok(ok.lines.some((l) => l.startsWith("── run @ ")));
     assert.ok(ok.lines.includes("  did the thing"));
     assert.ok(ok.lines.includes("→ read PLANS.md"));
+    assert.ok(!ok.lines.some((l) => l.includes("tick prompt")));
+    const withPrompt = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10&prompt=1");
+    const promptAt = withPrompt.lines.findIndex((l) => l.includes("tick prompt"));
+    assert.ok(promptAt !== -1, "prompt=1 renders the run's prompt");
+    assert.ok(promptAt < withPrompt.lines.indexOf("  did the thing"));
 
     // Validation: unknown role, missing role, and bad n all → 400. Each 400 names the
     // offending value (or says it is required) so a client can tell which input was bad.

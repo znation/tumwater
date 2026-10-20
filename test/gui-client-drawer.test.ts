@@ -14,6 +14,7 @@ import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js"
 
 interface FakeEl {
   innerHTML: string;
+  textContent: string;
   hidden: boolean;
   scrollTop: number;
   clientHeight: number;
@@ -41,6 +42,7 @@ interface DrawerScope {
   stopModelEdit(): void;
   loadDrawerRole(role: string): Promise<void>;
   toggleRole(role: string): void;
+  toggleTranscriptPrompts(): void;
   toggleEntry(file: string, index: number): void;
   renderRoleDrawer(d: object): void;
   drawerChangeHtml(view: unknown): string;
@@ -75,7 +77,7 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     let node = els.get(id);
     if (!node) {
       node = {
-        innerHTML: "", hidden: true, scrollTop: 0, clientHeight: 100, scrollHeight: 100,
+        innerHTML: "", textContent: "", hidden: true, scrollTop: 0, clientHeight: 100, scrollHeight: 100,
         listeners: {},
         addEventListener(type, fn) { node!.listeners[type] = fn; },
       };
@@ -1120,4 +1122,36 @@ test("the Model overrides row names the raw triple and its editor prefills the r
   assert.match(noneRole, /<dt>Model overrides<\/dt><dd title='no overrides'>no overrides<button[^>]*data-act='model-edit'[^>]*>Set model<\/button><\/dd>/);
   none.scope.startModelEdit("clean", { provider: "", model: "", thinking: "" });
   assert.match(none.paintedFor("drawerrole"), /<input id='modeleditprovider'[^>]*value=''>/);
+});
+
+test("the drawer's Show prompts toggle swaps the transcript between plain and prompt lines", async () => {
+  const t = openDrawer(["toggleRole", "toggleTranscriptPrompts"], {
+    status: workingStatus(),
+    responses: {
+      "/api/transcript?role=clean&n=200": { lines: ["── run", "  plain-line"] },
+      "/api/transcript?role=clean&n=200&prompt=1": { lines: ["── run", "  prompt-line", "  plain-line"] },
+    },
+  });
+  t.scope.toggleRole("clean");
+  await flush();
+  assert.match(t.paintedFor("transcript"), /plain-line/);
+  assert.doesNotMatch(t.paintedFor("transcript"), /prompt-line/);
+
+  t.scope.toggleTranscriptPrompts();
+  await flush();
+  assert.match(t.paintedFor("transcript"), /prompt-line/);
+  assert.equal(t.el("transcriptprompts").textContent, "Hide prompts");
+
+  t.scope.toggleTranscriptPrompts();
+  await flush();
+  assert.doesNotMatch(t.paintedFor("transcript"), /prompt-line/);
+  assert.equal(t.el("transcriptprompts").textContent, "Show prompts");
+
+  // Reopening starts plain again, even after leaving prompts on.
+  t.scope.toggleTranscriptPrompts();
+  await flush();
+  t.scope.toggleRole("clean");
+  t.scope.toggleRole("clean");
+  await flush();
+  assert.doesNotMatch(t.paintedFor("transcript"), /prompt-line/);
 });
