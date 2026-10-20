@@ -621,4 +621,38 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The BUGS.md `logs -f` entry stays open, because its spawner question is not answered by this.
 - `npm run test:gate` passes.
 
+### A team start drops every `refs/tumwater/` pin whose commit is gone, so a disabled role's dangling pin no longer stops `git gc` until someone deletes it by hand (planned 2026-10-20 by the plan role; independent of every Planned entry: touches src/git/worktree.ts, src/runner/leftover.ts, src/orchestrator/orchestrator.ts, test/worktree.test.ts and test/leftover.test.ts. The in-flight `tumwater doctor` "tumwater pins" entry edits only src/doctor/ and its tests, and reports what this sweep drops. The blocked Plain terms code parts reword comments in these files and rename no identifier this entry uses or adds)
+
+**Goal.** A pin under `refs/tumwater/` whose commit is missing breaks every git command that walks all refs. `git gc`, and the `gc --auto` that commits trigger, exit 128 with `fatal: bad object <ref>`, so the repository stops being packed. Today the harness drops such a pin only when it trips over it. `checkoutDetached` (src/git/worktree.ts) drops one when a slot's `checkout --detach` fails on it. `dropDanglingPin` (src/runner/leftover.ts) drops a role's own merge pin when that role next runs. A rejected pin, a legacy landing pin, or the merge pin of a disabled or retired role stays until an operator runs `git update-ref -d`. Sweep them once at team start, before any run.
+
+There is a second gap in the same place. `dropDanglingPin` deletes with `deleteRefIfAt` (`git update-ref -d <ref> <sha>`). In a scratch repo, that guarded form exited 1 (`cannot lock ref …: unable to resolve reference`) for a dangling ref held in `.git/packed-refs` and left the ref. The unguarded `git update-ref -d <ref>` removed it, and `git gc` then exited 0. The guarded form did delete a loose dangling ref. So a packed dangling merge pin survives every recovery, and each of the role's runs logs another "dropped merge pin" warning.
+
+**Approach.**
+- src/git/worktree.ts:
+  - Give `logDroppedRef(root, ref)` a third parameter `why: string`. The event message becomes `dropped dangling ref ${ref} (<short sha>, object missing) ${why}`. `checkoutDetached` passes `"so a worktree checkout could proceed"`, so its message is unchanged.
+  - Add `export async function dropDanglingTumwaterPins(root: string): Promise<string[]>` beside `removeLegacyLandWorktrees`. For each `{ ref, sha }` of `await refsUnder(root, "refs/tumwater/")` (src/git/git.ts) where `!(await commitExists(root, sha))`, it calls `logDroppedRef(root, ref, "at team start")` and then `await deleteRef(root, ref)`. It returns the dropped ref names in `refsUnder` order.
+  - Use the unguarded `deleteRef`, as `checkoutDetached` does, because the guarded form cannot delete a packed dangling ref. The doc comment says so. It also says that the sweep runs before any run, while nothing else writes pins, and that refs outside `refs/tumwater/` are never touched.
+- src/orchestrator/orchestrator.ts (`runOrchestrator`): call `await dropDanglingTumwaterPins(root)` right after `await runStartupMigrations(root)`. Add a one-line comment: the `mergeRefs` migration has already moved legacy landing pins, it keeps a dangling one because `setRef` refuses a missing object, and the sweep drops what is left before any run.
+  - A role whose dangling merge pin the sweep dropped then goes through `recoverLeftover`'s no-pin path at its next run. That is the same path a role takes after a merge deletes its pin.
+  - Do not call the sweep from `runStartupMigrationsIfIdle` or src/cli/cli-start.ts: CLI readers do not change refs.
+- src/runner/leftover.ts (`dropDanglingPin`): delete with `deleteRef(root, ref)` instead of `deleteRefIfAt(root, ref, sha)`. Add a doc-comment clause saying why. That was the file's only `deleteRefIfAt` call, so drop it from the import.
+
+**Tests.**
+- test/worktree.test.ts, after "ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/": add "dropDanglingTumwaterPins drops loose and packed pins naming missing commits and keeps live ones". Set up a `makeRepo()`:
+  - Run `git update-ref refs/tumwater/rejected/bugfix HEAD`, then `git pack-refs --all`.
+  - Append `${"2".repeat(40)} refs/tumwater/merge/retired` to `.git/packed-refs`.
+  - Write a loose `.git/refs/tumwater/merge/feature-5` holding `"1".repeat(40)`.
+  - The call returns `["refs/tumwater/merge/feature-5", "refs/tumwater/merge/retired"]`.
+  - Afterwards `refsUnder(repo, "refs/tumwater/")` lists only `refs/tumwater/rejected/bugfix`, and `git gc -q` exits 0.
+  - `readEvents(repo)` holds two `warning` events whose messages end `at team start`, with `ref` and `sha` set.
+  - A second call returns `[]` and logs nothing more.
+- test/leftover.test.ts, beside "pinnedRetrySha drops a pin whose commit is missing": add "a packed merge pin whose commit is missing is dropped too". Build a `makeRepo()`, run `git pack-refs --all`, and append `${"1".repeat(40)} ${mergeRefName(ROLE)}` to `.git/packed-refs`. Then `pinnedRetrySha(root, ROLE, "main", {})` returns null and `refSha(root, mergeRefName(ROLE))` is null afterwards. Before the change the ref survives, so the test fails then.
+- The existing tests "ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128" and "a pin whose commit is missing is dropped with a warning and nothing is queued" pass unchanged.
+
+**Acceptance criteria.**
+- At team start, before any run, every `refs/tumwater/` ref whose commit is missing is deleted, loose or packed. Each deletion logs one `warning` event naming the ref and sha. Live pins and refs outside `refs/tumwater/` are left alone.
+- Leftover recovery deletes a packed dangling merge pin instead of warning on every run.
+- A `checkoutDetached` drop logs the same message as before.
+- `npm run test:gate` passes.
+
 ## Done
