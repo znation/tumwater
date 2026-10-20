@@ -2149,3 +2149,65 @@ import these instead of restating them: `src/ui/tui/tui-editor-attach.ts`,
 **Pinned by.** `test/inbox-attachments.test.ts` — "promptImagesProblem accepts valid images and
 names every rule it enforces" and "promptImageExtensionProblem names the near miss on a mistyped
 extension, the list alone otherwise".
+
+## Run markers: a mark names exactly one run, and the exit sweep signals only that run's processes and never fails a run
+
+Process groups cannot attribute a detached grandchild to its run (the `RUN_MARKER_VAR` doc comment
+explains why), so an environment mark does. One module, `src/process/run-marker.ts`, writes the
+mark, reads it and sweeps by it.
+
+### INV-AL1: a fresh mark is <harness pid>-<12 hex>, unique per run, and a nested run appends its mark to the inherited one
+
+**Guarantee.** `makeRunMarker` returns the harness pid, a hyphen and 12 hex digits of fresh random
+bytes, so two runs of one harness never share a mark. `runMarkerEnv` appends the new mark to an
+inherited `TUMWATER_RUN` value, comma-separated, and sets it alone when none was inherited.
+`agentBaseEnv` builds every backend's environment from it and prepends a given `binDir` to PATH.
+
+**Binds.** `src/process/run-marker.ts` (`makeRunMarker`, `runMarkerEnv`, `agentBaseEnv`).
+
+**Pinned by.** `test/run-marker.test.ts` — "runMarkerEnv appends to an inherited mark and makes fresh
+markers unique" and "agentBaseEnv prepends a given binDir to PATH (the notes shim dir)".
+
+### INV-AL2: a process carries a mark only when one comma-separated value equals it exactly, empty values are no mark, and the reader's own pid is never reported
+
+**Guarantee.** Each reader splits a `TUMWATER_RUN` value on commas and matches a whole value, so a
+prefix of a run id, or an id with extra characters around it, does not match. Empty values are
+dropped and duplicates collapse. `runMarkersInPs` and `pidsMarkedInPs` skip the reader's own pid.
+The ps reader counts any `TUMWATER_RUN=` token in the command column, argv included, as the
+grep row in the "pidsMarkedInPs" test shows.
+
+**Binds.** `src/process/run-marker.ts` (`runMarkersInEnviron`, `runMarkersInPs`, `pidsMarkedInPs`,
+`procEnvironCarriesMarker` and the private `markerValueCarries`).
+
+**Pinned by.** `test/run-marker.test.ts` — "pidsMarkedInPs picks the marked rows only, never the
+scanner itself", "runMarkersInEnviron and runMarkersInPs extract a mark's comma-separated values,
+skipping the reader's own pid", "procEnvironCarriesMarker reads NUL-separated environ entries" and
+"the ps readers match a mark as a whole comma-separated run id, never as a prefix, and drop empty
+values".
+
+### INV-AL3: the exit sweep sends SIGTERM to exactly the marked same-user processes, escalates to SIGKILL after 10 s, and an unreadable table makes it report 0 instead of throwing
+
+**Guarantee.** `sweepRunMarker` finds the same-user processes carrying the mark (a `/proc` walk on
+Linux, one `ps -wwE -U <uid>` pass elsewhere), sends each SIGTERM and returns how many it signaled.
+Unmarked neighbors are left alone. A survivor gets SIGKILL 10 s later on an unref'd timer. When the
+table cannot be read, the sweep returns 0 and throws nothing.
+
+**Binds.** `src/process/run-marker.ts` (`sweepRunMarker`, the private `findMarkedPids`,
+`readProcEnvironEntries` and `psEnvironTable`).
+
+**Pinned by.** `test/run-marker.test.ts` — "sweepRunMarker signals the marked orphan and spares the
+unmarked neighbor", "sweepRunMarker on Linux walks /proc environ and signals only the marked pid",
+"sweepRunMarker escalates to SIGKILL when a marked victim survives the SIGTERM leg" and
+"sweepRunMarker reports 0 and throws nothing when the process table cannot be read".
+
+### INV-AL4: a leftover warning is logged only when a run tumwater did not kill left marked processes running
+
+**Guarantee.** `leftoversSweptMessage` returns a warning only when the sweep signaled at least one
+process and tumwater did not kill the run. A killed run's own group SIGTERM would otherwise be
+counted as a leak. `runAgent` passes it the sweep's count and its killed flag.
+
+**Binds.** `src/process/run-marker.ts` (`leftoversSweptMessage`) and its caller in
+`src/agent/run-agent.ts`.
+
+**Pinned by.** `test/run-marker.test.ts` — "leftoversSweptMessage words the sweep's count and stays
+silent for a killed or clean run".

@@ -400,3 +400,33 @@ test("leftoversSweptMessage words the sweep's count and stays silent for a kille
   assert.equal(leftoversSweptMessage("author", 0, false), undefined);
   assert.equal(leftoversSweptMessage("author", 3, true), undefined);
 });
+
+test("the ps readers match a mark as a whole comma-separated run id, never as a prefix, and drop empty values", () => {
+  const marker = "4242-deadbeefcafe";
+  const stdout = [
+    `  111 node a.js TUMWATER_RUN=${marker}0`,
+    `  222 node b.js TUMWATER_RUN=x${marker}`,
+    "  333 node c.js TUMWATER_RUN=",
+    `  444 node d.js TUMWATER_RUN=,${marker},`,
+  ].join("\n");
+  assert.deepEqual(pidsMarkedInPs(stdout, marker), [444]);
+  assert.deepEqual(pidsMarkedInPs(stdout, "4242-dead"), [], "a prefix of a run id is not that run");
+  const marks = runMarkersInPs(stdout);
+  assert.equal(marks.has(333), false, "an empty value is not a mark");
+  assert.deepEqual(marks.get(444), [marker]);
+  assert.deepEqual(runMarkersInEnviron(["TUMWATER_RUN=,a,,a,"]), ["a"]);
+});
+
+test("sweepRunMarker reports 0 and throws nothing when the process table cannot be read", async (t) => {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux" });
+  const readdir = t.mock.method(fs, "readdirSync", () => {
+    throw errnoError("EACCES", "EACCES: permission denied");
+  });
+  try {
+    assert.equal(await sweepRunMarker(makeRunMarker()), 0);
+    assert.deepEqual(readdir.mock.calls.map((c) => c.arguments[0]), ["/proc"]);
+  } finally {
+    if (original) Object.defineProperty(process, "platform", original);
+  }
+});
