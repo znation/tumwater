@@ -160,7 +160,7 @@ export function setConfigKey(
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
-  let unchanged = false; // set by a mutation callback when value equals the resolved one
+  let unchanged: true | undefined; // set by a mutation callback when value equals the resolved one
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
@@ -372,7 +372,7 @@ export function setRoleModelFields(
   // the CLI's unsetConfigKey clear paths and the GUI's rejectBadRole use — rather than answer
   // a bogus id "updated".
   if (!knownRoleIdsCached(root).includes(base)) return fail(unknownRoleMessage(base, knownRoleIdsCached(root)));
-  let unchanged = false; // set when no field differs from the file
+  let unchanged: true | undefined; // set when no field differs from the file
   const result = writeConfigMutation(root, (cfg) => {
     const rawRolesCandidate = rawConfigObject(root).roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate) as Record<string, Record<string, unknown>>;
@@ -597,11 +597,12 @@ export function unsetConfigKey(
  * Returns null when no request file exists. `applied` names the custom roles now live (empty
  * unless the write happened); `ignored` lists the discarded top-level keys; `error`, when set,
  * names why nothing (or only part of the work) was done — the caller turns it and `ignored`
- * into warning events. */
+ * into warning events. `unchanged` is set when the request's array equals the live one;
+ * nothing is written. */
 export function applyConfigRequest(
   root: string,
   wt: string,
-): { applied: string[]; ignored: string[]; error?: string } | null {
+): { applied: string[]; ignored: string[]; error?: string; unchanged?: true } | null {
   const requestFile = configRequestPath(wt);
   const raw = readTextOrNull(requestFile);
   if (raw === null) return null; // no request this tick
@@ -609,6 +610,7 @@ export function applyConfigRequest(
   const ignored: string[] = [];
   let applied: string[] = [];
   let error: string | undefined;
+  let unchanged: true | undefined;
   try {
     const unnormalized: unknown = JSON.parse(raw);
     if (!isJsonObject(unnormalized))
@@ -628,6 +630,11 @@ export function applyConfigRequest(
     // whole-file overwrite (see writeConfigMutation).
     withConfigLock(root, () => {
       const current = loadConfig(root); // fresh — bypasses the stat cache: a writer sees the latest file
+      // Same as the live array: write nothing, like writeConfigMutation's no-op skip.
+      if (isDeepStrictEqual(entries, current.customRoles)) {
+        unchanged = true;
+        return;
+      }
       // Strip roles.<id> entries for custom roles this request removes (see docstring).
       // Structurally valid names only; anything else stays for validateConfig to reject — never
       // dereference a request entry before validation.
@@ -671,5 +678,5 @@ export function applyConfigRequest(
   } catch (err) {
     error ??= `config request file could not be deleted: ${errorMessage(err)}`;
   }
-  return { applied, ignored, error };
+  return unchanged ? { applied, ignored, error, unchanged } : { applied, ignored, error };
 }

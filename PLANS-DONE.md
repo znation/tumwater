@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The director's config request leaves tumwater.json untouched when it asks for the custom roles the team already has (planned 2026-10-20 by the plan role; the same no-op-skips-the-write rule `setConfigKey`, `unsetConfigKey` and `setRoleModelFields` already keep. Touches `applyConfigRequest` in src/config/config-write.ts and test/config-request.test.ts only. It waits on no other entry; the budget entry and the blocked cleanup rename touch other functions in config-write.ts; done 2026-10-20 by the feature role)
+
+**Goal.** `applyConfigRequest` (src/config/config-write.ts) always runs `writeJsonAtomic` with the loaded config, which is merged with defaults. A director request whose `customRoles` array matches the live one still re-serializes that merged config, so a hand-written, minimal tumwater.json gets every default expanded into it although nothing changed. Every other writer goes through `writeConfigMutation`, which skips the write when the mutation returns the loaded `cfg`. The director's request path should follow the same rule. Its only caller, `run-verdict.ts` (the `ctx.role === DIRECTOR_ROLE` block), logs only rejections and ignored keys, and the orchestrator's live reload emits `config_changed` only for keys that differ, so a skipped write is silent end to end.
+
+**Approach.**
+- In `applyConfigRequest`, inside the `withConfigLock` callback, right after `const current = loadConfig(root)` and before the roles strip: if `isDeepStrictEqual(entries, current.customRoles)` (already imported in that file), set a local `unchanged = true` and return without writing. `applied` stays `[]`. When the arrays are equal no custom role is removed, so the strip would change nothing, and the loaded `current` has already passed validation, so skipping `validateConfig` loses nothing.
+- Widen the return type to `{ applied: string[]; ignored: string[]; error?: string; unchanged?: true }` and set `unchanged: true` on the skip path only. Update the docstring's Returns paragraph: "`unchanged` is set when the request's array equals the live one; nothing is written". Leave the request-file deletion as it is (it runs on every path, this one included). Ignored keys are still collected and returned, so the caller's existing warning still fires.
+- No change to src/run/run-verdict.ts. docs/invariants.md INV-B3 needs no change, because when nothing is written the roles section is preserved.
+
+**Tests (test/config-request.test.ts).**
+- Add "applyConfigRequest leaves tumwater.json byte-identical when the request matches the live customRoles". Write a minimal tumwater.json by hand with `fs.writeFileSync` (for example `{"customRoles":[{"name":"docs","task":"t"}]}` plus a trailing newline). Use a raw file rather than `saveConfig`, which writes the expanded form and would hide the bug. Read the bytes, write a request with the same array, and apply it. Assert the bytes are identical, `unchanged === true`, `applied` deep-equals `[]`, `error` is undefined, and the request file is deleted.
+- In the same test, or a sibling one, a request with a changed `task` on that file still writes: `applied` is `["docs"]`, `unchanged` is undefined, and the new task loads.
+- The existing tests pass unmodified. Each one either changes the array or expects a rejection.
+
+**Acceptance criteria.**
+- A director request equal to the live `customRoles` writes nothing (byte-identical file), deletes the request file, and returns `unchanged: true` with `applied: []`.
+- A request that differs (added, removed, or edited entry) applies exactly as before, including the strip of removed roles' entries and the preservation of the file's own roles section ("applyConfigRequest preserves the file's own roles section" and "… strips a removed custom role's entry …" pass).
+- Ignored keys are still reported on the unchanged path.
+- `npm run test:gate` passes.
+
 ### The TUI's Ctrl+B budget editor says when nothing changed, and saving the team cap it already holds no longer rewrites tumwater.json (planned 2026-10-20 by the plan role, done 2026-10-20; the follow-up the in-flight TUI config-editor entry leaves out. Touches `setDailyBudgetUsd` in src/config/config-write.ts, src/ui/tui/tui-editor-budget.ts, test/config-budget.test.ts, test/tui-budget.test.ts and test/tui-keys.test.ts. The dashboard entry edits `setRoleModelFields` in config-write.ts and leaves `handleBudget` alone; the TUI entry does not touch the budget editor. The role-config, revert and cancel entries and part 2/20 edit none of these files)
 
 **Goal.** Ctrl+B opens the budget editor already filled with the current cap, so pressing Enter straight away is the common path. Today that path does two wrong things:

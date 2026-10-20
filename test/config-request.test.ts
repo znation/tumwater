@@ -263,3 +263,24 @@ test("applyConfigRequest strips a removed custom role's entry from the file's ow
   );
 });
 
+
+test("applyConfigRequest leaves tumwater.json byte-identical when the request matches the live customRoles", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  fs.writeFileSync(path.join(root, "tumwater.json"), '{"customRoles":[{"name":"docs","task":"t"}]}\n');
+  const before = fs.readFileSync(path.join(root, "tumwater.json"));
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "t" }], stray: 1 });
+  const result = applyConfigRequest(root, wt);
+  assert.deepEqual(fs.readFileSync(path.join(root, "tumwater.json")), before);
+  assert.equal(result?.unchanged, true);
+  assert.deepEqual(result?.applied, []);
+  assert.deepEqual(result?.ignored, ["stray"]);
+  assert.equal(result?.error, undefined);
+  assert.equal(fs.existsSync(configRequestPath(wt)), false);
+
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "changed" }] });
+  const changed = applyConfigRequest(root, wt);
+  assert.deepEqual(changed?.applied, ["docs"]);
+  assert.equal(changed?.unchanged, undefined);
+  assert.equal(loadConfig(root).customRoles[0]?.task, "changed");
+});
