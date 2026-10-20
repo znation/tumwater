@@ -99,6 +99,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         rows += row("blue", icon("gauge"), esc(tok),
           "Checks of the project's suite running at once out of maxConcurrentChecks, then how many wait for a check slot; merge checks go first.");
       }
+      // The workspace pool: the payload's preformatted workspacesBadge, present only while the
+      // pool is full or a run waits for a slot.
+      if (d.workspacesBadge) {
+        rows += row("blue", icon("gauge"), esc(String(d.workspacesBadge).replace(/^ · /, "")),
+          "Pooled workspaces leased out of worktreeSlots, shown once the pool is full, then how many runs wait for one; raise worktreeSlots when runs keep waiting.");
+      }
       // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
       if (d.runWindowBadge) {
         rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),

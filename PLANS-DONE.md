@@ -5,6 +5,47 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `tumwater status`, the TUI header and the dashboard's team panel show the workspace pool once it is full (`workspaces 8/8`, plus `, 2 waiting` when runs queue for a slot) (planned 2026-10-19 by the plan role; touches nothing the other eligible entries name except the in-flight check-permit entry above, which edits the same seven observer files — src/team/orchestrator-info.ts, src/orchestrator/orchestrator-poll.ts, src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui/gui-client-team.ts and their tests. This entry adds a sibling field and badge right after that entry's `checkPermits`/`checksBadge`, so whichever lands second rebases over the lines next to it. When that entry has landed, put each addition after its `checkPermits` counterpart; until then, put it after the `permits` counterpart. The blocked plain-terms parts reach src/ui/badges.ts and src/orchestrator/orchestrator-poll.ts only in far-behind parts; touches src/git/worktree-pool.ts + src/team/orchestrator-info.ts + src/orchestrator/orchestrator-poll.ts + src/status/status-data.ts + src/ui/badges.ts + src/ui/status-payload.ts + src/ui/status-render.ts + src/ui/gui/gui-client-team.ts + docs/how-it-works.md + test/worktree-pool.test.ts + test/orchestrator-info.test.ts + test/badges.test.ts) — done 2026-10-19 by the feature role
+
+**Goal.** Runs and approvals share `worktreeSlots` pooled workspaces (src/git/worktree-pool.ts). A run that finds every slot leased waits on the in-process `waiters` set. The wait is visible only afterwards: as a `slot_wait` event once it passes `SLOT_WAIT_EVENT_MS`, in the doctor's contention row, or in the report's workspace wait median. While the pool is saturated, an operator cannot see that all eight workspaces are leased and two runs are queued, which is the moment raising `worktreeSlots` would help. This plan publishes the pool's live state through the orchestrator info file, the same way `permits` is published, and shows it only while the pool is full or something waits. A team with spare workspaces keeps its header unchanged.
+
+**Approach.**
+- `src/git/worktree-pool.ts`: export `slotPoolSnapshot(root: string): { leased: number; limit: number; waiting: number }`.
+  - `leased` counts `readSlotsState(root).slots` whose `lease` is non-null and whose `lease.pid === process.pid`. A lease from another pid is dead (see the `SlotLease` doc in src/git/slots-state.ts).
+  - `limit` is `liveCount(root)`.
+  - `waiting` is `waiters.get(rootKey(root))?.size ?? 0`.
+  - Doc it as the pool's live state for observers. `wakeWaiters` empties the set before woken waiters re-register, so `waiting` can read low for one turn. Observers poll, so the next poll corrects it.
+- `src/team/orchestrator-info.ts`: add `export interface SlotPoolSnapshot { leased: number; limit: number; waiting: number }` beside `PermitSnapshot`.
+  - Add `slotPool?: SlotPoolSnapshot` to `OrchestratorInfo`, with a doc in the style of `permits` ("written by the orchestrator's poll whenever it changes; absent when the running orchestrator predates it").
+  - Add `parseSlotPool(v)`, which returns undefined unless all three fields are finite numbers (`isFiniteNumber`).
+  - Register it in `normalizeInfoFields` with `parseOrDelete(rec, "slotPool", parseSlotPool)`.
+- `src/orchestrator/orchestrator-poll.ts`: add a tuple `["slotPool", slotPoolSnapshot(root)]` to the `publishInfoFields(root, ctx.info, [["permits", …]])` call, plus one comment sentence. That sentence says the read is one small slots.json read per poll, and that `publishInfoFields` rewrites the info file only when the value changed.
+- `src/status/status-data.ts`: add `slotPool?: SlotPoolSnapshot` to `StatusSnapshot` and fill it as `running && info?.slotPool ? info.slotPool : undefined`, with the same stale-info reasoning as `permits`.
+- `src/ui/badges.ts`: add `export function workspacesBadge(pool: StatusSnapshot["slotPool"]): string`.
+  - It returns `""` when `pool` is undefined, and also when `pool.waiting === 0 && pool.leased < pool.limit` (spare capacity).
+  - Otherwise it returns `` ` · workspaces ${leased}/${limit}` ``, plus `` `, ${waiting} waiting` `` when `waiting > 0`.
+  - Its doc says a pool with a free workspace leaves the header byte-identical.
+- `src/ui/status-payload.ts`: beside the `permitsBadge` line, add `...(snap.slotPool ? { slotPool: snap.slotPool } : {})` and `workspacesBadge: workspacesBadge(snap.slotPool)`.
+- `src/ui/status-render.ts`: beside the `permitsBadge` spans, add `...badgeSpans(workspacesBadge(snap.slotPool), snap.slotPool && snap.slotPool.waiting > 0 ? "yellow" : "blue")`.
+- `src/ui/gui/gui-client-team.ts`: beside the `permitsBadge` row, add `if (d.workspacesBadge)`. It renders a row the same way, from `String(d.workspacesBadge).replace(/^ · /, "")` with tone `"blue"`, and uses an icon the file already imports. Its tooltip reads "Pooled workspaces leased out of worktreeSlots, shown once the pool is full, then how many runs wait for one; raise worktreeSlots when runs keep waiting."
+- `docs/how-it-works.md`: in the "Workspace pool" bullet, add a sentence. It says that while every workspace is leased, `tumwater status`, the TUI header and the dashboard's team panel show `workspaces <leased>/<worktreeSlots>`, plus `, <n> waiting` when runs queue for one.
+
+**Files touched.** src/git/worktree-pool.ts, src/team/orchestrator-info.ts, src/orchestrator/orchestrator-poll.ts, src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/gui/gui-client-team.ts, docs/how-it-works.md, test/worktree-pool.test.ts, test/orchestrator-info.test.ts, test/badges.test.ts.
+
+**Acceptance criteria.**
+- test/worktree-pool.test.ts: add a case "slotPoolSnapshot reports leased slots out of worktreeSlots and the leases waiting for one".
+  - With `writeConfig(root, { worktreeSlots: 1 })`, hold one `leaseSlot` and start a second without awaiting it. The snapshot reads `{ leased: 1, limit: 1, waiting: 1 }`.
+  - After the first lease is released and the second resolves, it reads `leased: 1, waiting: 0`.
+  - After both are released, it reads `leased: 0, waiting: 0`.
+- test/orchestrator-info.test.ts: add a case "readOrchestratorInfo keeps a well-formed slotPool and drops a malformed one". `slotPool: { leased: 8, limit: 8, waiting: 2 }` comes back unchanged. `slotPool: { leased: "8", limit: 8, waiting: 0 }` leaves `slotPool` undefined, and the file's other fields are still read.
+- test/badges.test.ts: add a case "workspacesBadge shows the pool only while it is full or a run waits". It asserts:
+  - `workspacesBadge(undefined) === ""`
+  - `workspacesBadge({ leased: 3, limit: 8, waiting: 0 }) === ""`
+  - `workspacesBadge({ leased: 8, limit: 8, waiting: 0 }) === " · workspaces 8/8"`
+  - `workspacesBadge({ leased: 8, limit: 8, waiting: 2 }) === " · workspaces 8/8, 2 waiting"`
+- The existing `permitsBadge` case and the existing worktree-pool cases pass unchanged.
+- `npm run test:gate` passes.
+
 ### Plain terms code runner, part 6c/14: Convert the review and verdict modules and the progress and transcript models (planned 2026-10-16 by user, split 2026-10-19 by the plan role from part 6/14; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/review/ + src/verdict/ + src/ui/tick-progress-model.ts + src/ui/progress-data.ts + src/ui/transcript.ts + src/ui/transcript-tail.ts + their tests; done 2026-10-19 by the feature role)
 
 **Goal.** src/review/, src/verdict/ and the TUI-and-dashboard progress and transcript models use role and runner names in identifiers, comments and test titles. Parts 6a/14, 6b/14 and 6c/14 touch disjoint files and merge in any order; part 7/14 requires all three.

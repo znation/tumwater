@@ -9,7 +9,7 @@ import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts } from "./team-alerts.js";
@@ -182,6 +182,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     permitsBadge: permitsBadge(snap.permits),
     ...(snap.checkPermits ? { checkPermits: snap.checkPermits } : {}),
     checksBadge: checksBadge(snap.checkPermits),
+    ...(snap.slotPool ? { slotPool: snap.slotPool } : {}),
+    workspacesBadge: workspacesBadge(snap.slotPool),
     // The `run --for` deadline: raw epoch ms (only when windowed) plus the display-ready badge.
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
     ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),

@@ -379,3 +379,11 @@ export function checksBadge(checks: StatusSnapshot["checkPermits"]): string {
   if (!checks || (checks.inUse === 0 && checks.waiting === 0)) return "";
   return ` · checks ${checks.inUse}/${checks.limit}${checks.waiting > 0 ? `, ${checks.waiting} waiting` : ""}`;
 }
+
+/** The workspace pool's header fragment: ` · workspaces 8/8`, plus `, 2 waiting` when runs queue
+ * for a slot. Shown only while the pool is full or something waits; a pool with a free workspace
+ * leaves the header byte-identical. */
+export function workspacesBadge(pool: StatusSnapshot["slotPool"]): string {
+  if (!pool || (pool.waiting === 0 && pool.leased < pool.limit)) return "";
+  return ` · workspaces ${pool.leased}/${pool.limit}${pool.waiting > 0 ? `, ${pool.waiting} waiting` : ""}`;
+}

@@ -67,6 +67,14 @@ export interface CheckPermitSnapshot {
   waiting: number;
 }
 
+/** The workspace pool's live state (src/git/worktree-pool.ts `slotPoolSnapshot`): slots leased,
+ * the `worktreeSlots` budget, and runs waiting for a slot. */
+export interface SlotPoolSnapshot {
+  leased: number;
+  limit: number;
+  waiting: number;
+}
+
 export interface DiskStatus {
   freeGB: number;
   holdGB: number;
@@ -129,6 +137,10 @@ export interface OrchestratorInfo {
    * by the orchestrator's poll whenever it changes; absent when the running orchestrator predates
    * it. */
   checkPermits?: CheckPermitSnapshot;
+  /** The workspace pool's live state: leased slots, the `worktreeSlots` budget and the runs
+   * waiting for one. Written by the orchestrator's poll whenever it changes; absent when the
+   * running orchestrator predates it. */
+  slotPool?: SlotPoolSnapshot;
   /** The standing per-provider failure holds (src/team/team-hold.ts `standingHolds`): a
    * provider storm's hold, as the orchestrator's poll publishes them, so the status snapshot
    * and the alert banner name why held providers hold. An entry's `provider` is omitted for
@@ -251,6 +263,11 @@ function parsePermits(v: unknown): PermitSnapshot | undefined {
   return { inUse: v.inUse, limit: v.limit, reserve: v.reserve, byKey };
 }
 
+function parseSlotPool(v: unknown): SlotPoolSnapshot | undefined {
+  if (!isJsonObject(v) || !isFiniteNumber(v.leased) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.waiting)) return undefined;
+  return { leased: v.leased, limit: v.limit, waiting: v.waiting };
+}
+
 function isLastReclaim(v: unknown): boolean {
   if (!isJsonObject(v)) return false;
   const mode = v.mode;
@@ -278,6 +295,7 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   parseOrDelete(rec, "fallbackDemoted", parseDemotion);
   parseOrDelete(rec, "permits", parsePermits);
   parseOrDelete(rec, "checkPermits", parseCheckPermits);
+  parseOrDelete(rec, "slotPool", parseSlotPool);
 
   const demotions = rec.fallbackDemotions;
   if (!isJsonObject(demotions)) delete rec.fallbackDemotions;

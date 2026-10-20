@@ -31,6 +31,7 @@ import {
 } from "../operator/operator-requests.js";
 import type { readPiDefaultModel } from "../pi/pi-settings.js";
 import { checkPermitSnapshot } from "../concurrency/check-permit.js";
+import { slotPoolSnapshot } from "../git/worktree-pool.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { createMainWatch } from "../baseline/main-watch.js";
 import { redeployTarget } from "../baseline/main-baseline.js";
@@ -217,10 +218,13 @@ export function pollGatesAndHolds(
   // line shows per-provider counts only while a cap map is configured. Written only when
   // it changes, like budget and disk; a map-less team publishes `byKey` empty, which
   // renders exactly as before. The check-permit pool rides along, so status can show checks
-  // running and waiting while merges stall.
+  // running and waiting while merges stall. The workspace pool's live state rides along too:
+  // one small slots.json read per poll, and publishInfoFields rewrites the info file only
+  // when a value changed.
   publishInfoFields(root, ctx.info, [
     ["permits", ctx.semaphore.snapshot()],
     ["checkPermits", checkPermitSnapshot()],
+    ["slotPool", slotPoolSnapshot(root)],
   ]);
 
   // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS

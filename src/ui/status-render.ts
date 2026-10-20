@@ -7,7 +7,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -261,6 +261,8 @@ export function renderStatusSpans(
     ...badgeSpans(permitsBadge(snap.permits), "blue"),
     // Checks running/waiting for a check permit; empty while the check pool is idle.
     ...badgeSpans(checksBadge(snap.checkPermits), snap.checkPermits && snap.checkPermits.waiting > 0 ? "yellow" : "blue"),
+    // The workspace pool, only while it is full or a run waits for a slot.
+    ...badgeSpans(workspacesBadge(snap.slotPool), snap.slotPool && snap.slotPool.waiting > 0 ? "yellow" : "blue"),
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
     ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),

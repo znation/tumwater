@@ -213,3 +213,16 @@ test("readOrchestratorInfo keeps a well-formed checkPermits and drops a malforme
   assert.equal(info?.checkPermits, undefined);
   assert.deepEqual(info?.roles, ["a"]);
 });
+
+test("readOrchestratorInfo keeps a well-formed slotPool and drops a malformed one", () => {
+  const root = tmpdir();
+  const file = orchestratorStatePath(root);
+  ensureParentDir(file);
+  const base = { pid: 42, startedAt: 1234, roles: ["feature"] };
+  fs.writeFileSync(file, JSON.stringify({ ...base, slotPool: { leased: 8, limit: 8, waiting: 2 } }));
+  assert.deepEqual(readOrchestratorInfo(root)?.slotPool, { leased: 8, limit: 8, waiting: 2 });
+  fs.writeFileSync(file, JSON.stringify({ ...base, slotPool: { leased: "8", limit: 8, waiting: 0 } }));
+  const info = readOrchestratorInfo(root);
+  assert.equal(info?.slotPool, undefined);
+  assert.equal(info?.pid, 42);
+});

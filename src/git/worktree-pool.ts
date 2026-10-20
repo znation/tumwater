@@ -277,6 +277,16 @@ async function acquire(
   }
 }
 
+/** The pool's live state for observers (status, TUI, dashboard): slots leased by this process out
+ * of the configured budget, and the leases waiting for one. A lease held by another pid is dead
+ * (see `SlotLease`), so it is not counted. `wakeWaiters` empties the waiter set before woken
+ * waiters re-register, so `waiting` can read low for one turn; observers poll, so the next poll
+ * corrects it. */
+export function slotPoolSnapshot(root: string): { leased: number; limit: number; waiting: number } {
+  const leased = readSlotsState(root).slots.filter((s) => s.lease !== null && s.lease.pid === process.pid).length;
+  return { leased, limit: liveCount(root), waiting: waiters.get(rootKey(root))?.size ?? 0 };
+}
+
 /** The live slot budget, or an unbounded one when the config is unreadable: an invalid config
  * must not stop a held slot from being freed. */
 function liveCount(root: string): number {

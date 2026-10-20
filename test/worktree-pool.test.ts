@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { leaseSlot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
+import { leaseSlot, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshLoopState, saveLoopState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -86,6 +86,20 @@ test("a waiting lease honors signal abort", async () => {
   controller.abort();
   await assert.rejects(pending, (err: Error) => err.name === "AbortError");
   held.release();
+});
+
+test("slotPoolSnapshot reports leased slots out of worktreeSlots and the leases waiting for one", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const first = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  const second = leaseSlot(root, { role: "bugfix", purpose: "run", ref: "main" });
+  await sleep(20);
+  assert.deepEqual(slotPoolSnapshot(root), { leased: 1, limit: 1, waiting: 1 });
+  first.release();
+  const acquired = await second;
+  assert.deepEqual(slotPoolSnapshot(root), { leased: 1, limit: 1, waiting: 0 });
+  acquired.release();
+  assert.deepEqual(slotPoolSnapshot(root), { leased: 0, limit: 1, waiting: 0 });
 });
 
 test("a role leases the free slot it released most recently", async () => {
