@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fail } from "./cli-output.js";
+import { removeTree } from "../files/files.js";
 
 /** Signal number → name, for the shell's 128+n convention: a shell that does not re-raise a
  * signal-killed child (dash on Linux) exits with 128+signo, so node sees an exit status where
@@ -54,7 +55,7 @@ export function editInEditor(initial: string, fileName: string, fallback = "pass
       saved = fs.readFileSync(file, "utf8");
     }
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
   // fail() exits the process, which would skip the finally above, so it runs after cleanup.
   if (failure !== undefined) fail(failure);

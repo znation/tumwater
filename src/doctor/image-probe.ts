@@ -16,6 +16,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { imageProbesPath } from "../paths.js";
+import { removeTree } from "../files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, validEntries } from "../files/json-object.js";
 import { boundedProbe } from "./probe.js";
@@ -312,6 +313,6 @@ export async function runImageProbe(
         }
       : { verdict: "fail", detail: `two wrong answers (${wrong[1]})` };
   } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeTree(dir);
   }
 }

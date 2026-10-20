@@ -12,7 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { ensureDir, ensureParentDir, rotateIfLarge } from "../files/files.js";
+import { ensureDir, ensureParentDir, removeTree, rotateIfLarge } from "../files/files.js";
 import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
 import { leftoversSweptMessage, makeRunMarker, sweepRunMarker } from "../process/run-marker.js";
@@ -434,7 +434,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // Best-effort: an unremovable scratch dir (read-only subdir, a straggler still writing) must
       // not throw out of the close handler before the run's result resolves.
       try {
-        fs.rmSync(runTmp, { recursive: true, force: true, maxRetries: 3 });
+        removeTree(runTmp);
       } catch {
         /* left for the OS temp sweep */
       }
