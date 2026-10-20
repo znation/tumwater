@@ -61,13 +61,47 @@ export function isTierName(s: string | undefined): s is ModelTier {
  * leaves pi's own default in charge. Map-form + legacy provider is a validation error, so
  * no legacy provider is in scope for a map's entries. */
 export function topTierSelector(config: TumwaterConfig, tier: ModelTier): ModelSelector | undefined {
-  if (typeof config.model === "string")
-    return parseModelSelector(config.model, config.provider);
-  if (isJsonObject(config.model)) {
-    const sel = config.model[tier] ?? config.model.default;
-    return sel !== undefined ? parseModelSelector(sel) : undefined;
+  return resolveTopTier(config, tier).sel;
+}
+
+/** One tier's top-level resolution: its selector, the explicit `backend` its entry names (when
+ * the entry is an object), and the thinking level the entry carries when no selector survives. */
+interface TopTier {
+  sel?: ModelSelector;
+  backend?: string;
+  thinking?: string;
+}
+
+function resolveTopTier(config: TumwaterConfig, tier: ModelTier): TopTier {
+  if (typeof config.model === "string") return { sel: parseModelSelector(config.model, config.provider) };
+  if (!isJsonObject(config.model)) return {};
+  const raw = config.model[tier] ?? config.model.default;
+  if (raw === undefined) return {};
+  if (typeof raw === "string") return { sel: parseModelSelector(raw) };
+  const withThinking = (t: TopTier): TopTier => {
+    if (raw.thinking === undefined) return t;
+    return t.sel ? { ...t, sel: { ...t.sel, thinking: raw.thinking } } : { ...t, thinking: raw.thinking };
+  };
+  if (raw.model !== undefined) {
+    const sel = parseModelSelector(raw.model);
+    return withThinking({ sel, ...(raw.backend !== undefined ? { backend: raw.backend } : {}) });
   }
-  return undefined;
+  // No model of its own: take `default`'s, but an explicit backend only when `default` routes
+  // there already (the inherited model then routes by its own spelling, exactly as `default` does).
+  const dflt = tier === "default" ? {} : resolveTopTier(config, "default");
+  if (
+    raw.backend !== undefined &&
+    (tier === "default" || withModelOverrides(config, "default", {}).agent !== raw.backend)
+  )
+    return withThinking({ backend: raw.backend });
+  return withThinking(dflt);
+}
+
+/** The explicit `backend` a tier's entry names — undefined for a string entry or an object entry
+ * without one, or when the entry names a backend `default`'s model does not route to and so
+ * inherits nothing (the backend then rides only its own tier default). */
+export function topTierBackend(config: TumwaterConfig, tier: ModelTier): string | undefined {
+  return resolveTopTier(config, tier).backend;
 }
 
 /** The selector one seam's tier resolves to at the top level — the tier's own map entry,
@@ -97,23 +131,35 @@ export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelecto
 export function withModelOverrides(
   config: TumwaterConfig,
   tier: ModelTier,
-  o: { provider?: string; model?: string; thinking?: string },
+  o: { provider?: string; model?: string; backend?: string; thinking?: string },
 ): ResolvedModelConfig {
   // The top-level model resolves at the seam's tier: a string form is the default tier's
   // selector; a map form takes the tier's entry, else `default`'s.
-  const topSel = topTierSelector(config, tier);
+  const top = resolveTopTier(config, tier);
   const ownSel =
     o.model !== undefined ? parseModelSelector(o.model, o.provider ?? config.provider) : undefined;
+  const configAgent = config.backend ?? "pi";
+  // A role's own `backend` binds only to its own model; alone it inherits the tier's model only
+  // when the tier already routes there, else the backend's tier default fills in. A role's
+  // `model` without `backend` routes by the legacy rules, never by the tier entry's backend.
+  const inherit =
+    o.model === undefined &&
+    (o.backend === undefined ||
+      routeModel(top.sel?.provider, top.sel?.model, configAgent, tier, top.backend).agent === o.backend);
+  // The tier's thinking level rides every path but a backend-only role whose tier routes elsewhere.
+  const topThinking = o.model === undefined && !inherit ? undefined : (top.sel?.thinking ?? top.thinking);
+  const topSel = inherit ? top.sel : undefined;
+  const backend = o.model !== undefined ? o.backend : inherit ? top.backend : o.backend;
   const provider = ownSel ? ownSel.provider : (o.provider ?? topSel?.provider ?? config.provider);
   const model = ownSel ? ownSel.model : topSel?.model;
   // The routed backend decides whether the provider half survives: a pi provider name is kept,
   // a backend namespace such as `claude` is dropped (that backend takes no provider).
-  const routed = routeModel(provider, model, config.backend ?? "pi", tier);
+  const routed = routeModel(provider, model, configAgent, tier, backend);
   return {
     ...config,
     provider: routed.agent === "pi" ? provider : undefined,
     model: routed.model,
-    thinking: o.thinking ?? ownSel?.thinking ?? topSel?.thinking ?? config.thinking,
+    thinking: o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking,
     agent: routed.agent,
   };
 }
@@ -121,14 +167,16 @@ export function withModelOverrides(
 /** The provider/model/thinking overrides a config section (a role entry or `review`) carries
  * into withModelOverrides: a tier-name `model` already chose the seam's tier, so it is not a
  * selector and drops out here. Shared by configForRole and reviewConfig. */
-function seamOverrides(s: { provider?: string; model?: string; thinking?: string }): {
+function seamOverrides(s: { provider?: string; model?: string; backend?: string; thinking?: string }): {
   provider?: string;
   model?: string;
+  backend?: string;
   thinking?: string;
 } {
   return {
     provider: s.provider,
     model: isTierName(s.model) ? undefined : s.model,
+    backend: s.backend,
     thinking: s.thinking,
   };
 }
@@ -344,13 +392,22 @@ export function seamConcurrencyKey(
  * "nothing changed". */
 export function teamModelLabel(config: TumwaterConfig): string | null {
   const entries = MODEL_TIERS.map((tier) => {
-    const sel = tierModel(config, tier);
-    if (!sel) return null;
-    const { agent } = routeModel(sel.provider, sel.model, config.backend ?? "pi", tier);
-    // routeModel consumed an agent-naming provider as the namespace; drop it so the label
-    // doesn't prefix the agent twice.
-    const provider = sel.provider !== undefined && isAgentId(sel.provider) ? undefined : sel.provider;
-    return { tier, label: agentQualifiedSelector({ ...sel, provider, agent }) };
+    const { sel, backend, thinking } = resolveTopTier(config, tier);
+    if (!sel && backend === undefined) return null;
+    const routed = routeModel(sel?.provider, sel?.model, config.backend ?? "pi", tier, backend);
+    if (routed.model === undefined) return null;
+    // routeModel consumed an agent-naming provider (or an explicit backend) as the agent; keep
+    // the provider only for a pi seam so the label doesn't prefix the agent twice.
+    const provider = routed.agent === "pi" ? sel?.provider : undefined;
+    return {
+      tier,
+      label: agentQualifiedSelector({
+        provider,
+        model: routed.model,
+        thinking: sel?.thinking ?? thinking,
+        agent: routed.agent,
+      }),
+    };
   }).filter((e): e is { tier: ModelTier; label: string } => e !== null);
   if (entries.length === 0) return null;
   if (entries.every((e) => e.label === entries[0]!.label)) return entries[0]!.label;

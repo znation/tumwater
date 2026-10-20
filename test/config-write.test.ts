@@ -738,3 +738,18 @@ test("setConfigKey writes maintenancePerWorkMerge and rejects a negative value u
   assert.equal(loadConfig(dir).maintenancePerWorkMerge, 3, "the failed write left the file untouched");
 });
 
+
+test("setConfigKey model.<tier> over an object entry replaces it and names the dropped backend", () => {
+  const dir = tmpdir();
+  const base = defaultConfig();
+  (base as { model?: unknown }).model = {
+    default: "qwenrunner/qwen3.8-27b",
+    strong: { backend: "claude", model: "claude-opus-5-5" },
+  };
+  saveConfig(dir, base);
+  const r = setConfigKey(dir, "model.strong", "qwenrunner/qwen3.8-27b");
+  assert.ok(r.ok);
+  assert.match(r.note ?? "", /model\.strong was an object entry.*dropping backend "claude"/);
+  const raw = readJson(path.join(dir, "tumwater.json")) as { model: Record<string, unknown> };
+  assert.equal(raw.model.strong, "qwenrunner/qwen3.8-27b");
+});

@@ -115,3 +115,50 @@ test("a fallback chain step may be an object with a positive maxDailyCostUsd", (
   assert.match(validationError({ fallback: [{ maxDailyCostUsd: 5 }] }), /fallback\[0\]\.model must be a non-empty model id/);
   assert.match(validationError({ fallback: [{ model: "hf/m", cap: 5 }] }), /cap/);
 });
+
+// `backend` beside `model` on a tier entry, a role and `review`: the backend must be a
+// registered id, and the model written beside it must be a valid id for that backend.
+test("backend beside model: tier entries, roles and review accept registered backends only", () => {
+  assert.doesNotThrow(() =>
+    validateConfig({
+      model: {
+        default: "qwenrunner/qwen3.8-27b",
+        strong: { backend: "claude", model: "claude-opus-5-5", thinking: "high" },
+        small: { backend: "opencode", model: "anthropic/claude-haiku-5-5" },
+      },
+      roles: { feature: { backend: "pi", model: "qwenrunner/qwen3.8-27b" } },
+      review: { backend: "claude" },
+    }),
+  );
+  assert.match(
+    validationError({ model: { strong: { backend: "gemini", model: "x" } } }),
+    /model\.strong\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+  );
+  assert.match(
+    validationError({ roles: { feature: { backend: "gemini" } } }),
+    /roles\.feature\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+  );
+  assert.match(
+    validationError({ review: { backend: "gemini" } }),
+    /review\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+  );
+  assert.match(
+    validationError({ model: { strong: { backend: "claude", mdoel: "x" } } }),
+    /unknown key "mdoel" in model\.strong/,
+  );
+});
+
+test("backend beside model: the id must fit the backend", () => {
+  assert.match(
+    validationError({ roles: { feature: { backend: "claude", model: "anthropic/claude-opus-5-5" } } }),
+    /roles\.feature\.model "anthropic\/claude-opus-5-5" has a "\/" but roles\.feature\.backend is "claude"/,
+  );
+  assert.match(
+    validationError({ model: { strong: { backend: "pi", model: "claude-opus-5-5" } } }),
+    /model\.strong\.model "claude-opus-5-5" has no provider but model\.strong\.backend is "pi"/,
+  );
+  assert.match(
+    validationError({ review: { backend: "pi", model: "claude/claude-opus-5-5" } }),
+    /review\.model "claude\/claude-opus-5-5" names the backend "claude" as its provider.*drop the "claude\/" namespace/,
+  );
+});

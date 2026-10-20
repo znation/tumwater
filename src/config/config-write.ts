@@ -146,7 +146,7 @@ export function setConfigKey(
   root: string,
   key: string,
   rawValue: string,
-): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
+): { ok: true; value: unknown; oldValue: unknown; note?: string } | { ok: false; error: string } {
   key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
@@ -233,6 +233,17 @@ export function setConfigKey(
       return { ...cfg, roles } as unknown as TumwaterConfig;
     });
     if (!result.ok) return result;
+    // A string replaces a whole object tier entry, so its `backend` goes with it.
+    if (parsed.kind === "tier" && isJsonObject(oldValue)) {
+      const dropped =
+        typeof oldValue.backend === "string" ? `backend ${show(oldValue.backend)}` : "its other keys";
+      return {
+        ok: true,
+        value,
+        oldValue,
+        note: `model.${parsed.tier} was an object entry — the string replaces it, dropping ${dropped}`,
+      };
+    }
     return { ok: true, value, oldValue };
   }
   const unknown = unknownConfigKeyError(key);

@@ -205,7 +205,8 @@ export function checkModelTripleField(
         `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's model id (got provider ${show(obj.provider)})`,
       );
     for (const [tier, v] of Object.entries(m))
-      if (!isNonBlankString(v))
+      // An object entry (`{ backend?, model?, thinking? }`) is validated by validateConfig.
+      if (!isNonBlankString(v) && !isJsonObject(v))
         problems.push(
           `${prefix}model.${tier} must be a non-empty model id (got ${show(v)})`,
         );

@@ -1,6 +1,9 @@
 // vocabulary: plain
 import {
   AGENT_IDS,
+  MODEL_TIERS,
+  SELECTOR_ENTRY_KEYS,
+  THINKING_LEVELS,
   AGENT_KEYS,
   CLAUDE_AGENT_KEYS,
   BACKOFF_KEYS,
@@ -168,8 +171,21 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // same empty-half check (the map form cannot coexist with a legacy provider, so it parses
   // as a pure selector).
   if (isJsonObject(r.model))
-    for (const [tier, sel] of Object.entries(r.model))
-      checkSelectorValue(`model.${tier}`, sel, undefined, problems);
+    for (const [tier, sel] of Object.entries(r.model)) {
+      if (!isJsonObject(sel)) {
+        checkSelectorValue(`model.${tier}`, sel, undefined, problems);
+        continue;
+      }
+      // An object tier entry: the model written beside the backend that runs it.
+      const at = `model.${tier}`;
+      checkKnownKeys(sel, SELECTOR_ENTRY_KEYS, at, problems);
+      checkString(sel, `${at}.`, "model", false);
+      const t = sel.thinking;
+      if (t !== undefined && !(isNonBlankString(t) && THINKING_LEVELS.has(t)))
+        problems.push(`${at}.thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`);
+      checkEntryBackend(sel, at, problems);
+      checkSelectorValue(`${at}.model`, sel.model, undefined, problems);
+    }
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
   checkString(r, "", "baseBranch", false);
@@ -355,6 +371,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     }
     checkModelTriple(o, "review.", "tier-name");
     checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
+    checkEntryBackend(o, "review", problems);
     checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
   });
 
@@ -449,6 +466,34 @@ function checkFallbackStep(at: string, step: Record<string, unknown>, problems: 
   const cap = step.maxDailyCostUsd;
   if (cap !== undefined && !(typeof cap === "number" && Number.isFinite(cap) && cap > 0))
     problems.push(`${at}.maxDailyCostUsd must be a positive number (got ${show(cap)})`);
+}
+
+/** Validate the `backend` of one model-choosing entry (a tier entry, a role or `review`): it must
+ * name a registered backend, and — when the entry also names a model — the model must be a
+ * valid id for that backend: claude's `--model` takes its own ids (no `/`), pi needs
+ * `provider/id` and no backend id as the provider namespace. A tier-name `model` (roles,
+ * review) is a reference, not an id, and is skipped. */
+function checkEntryBackend(o: Record<string, unknown>, at: string, problems: string[]): void {
+  const b = o.backend;
+  if (b === undefined) return;
+  if (!isNonBlankString(b)) {
+    if (typeof b === "string") problems.push(`${at}.backend must not be empty (got ${show(b)})`);
+    else problems.push(`${at}.backend must be a string (got ${show(b)})`);
+    return;
+  }
+  if (!isAgentId(b)) {
+    problems.push(`${at}.backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(b)})${typoSuffix(b, AGENT_IDS)}`);
+    return;
+  }
+  const m = o.model;
+  if (!isNonBlankString(m) || (MODEL_TIERS as readonly string[]).includes(m)) return;
+  const sel = parseModelSelector(m);
+  if (b === "claude" && sel.provider !== undefined)
+    problems.push(`${at}.model ${show(m)} has a "/" but ${at}.backend is "claude" — claude takes its own model ids (e.g. "claude-sonnet-5-5")`);
+  if (b === "pi" && sel.provider === undefined)
+    problems.push(`${at}.model ${show(m)} has no provider but ${at}.backend is "pi" — pi needs \`provider/id\``);
+  if (b === "pi" && isAgentId(sel.provider))
+    problems.push(`${at}.model ${show(m)} names the backend "${sel.provider}" as its provider but ${at}.backend is "pi" — drop the "${sel.provider}/" namespace`);
 }
 
 /** Report one selector string that parses to an empty provider or model half. `name` is the
@@ -568,6 +613,7 @@ function checkSelectorValue(
           );
         checkModelTriple(o, `roles.${id}.`, "tier-name");
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
+        checkEntryBackend(o, `roles.${id}`, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
         // Only feature and bugfix may split (src/roles/runner-ids.ts INSTANCE_ROLES); an

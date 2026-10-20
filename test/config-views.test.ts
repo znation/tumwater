@@ -2,7 +2,7 @@ import { tierChainSteps } from "../src/config/config-fallbacks.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import type { TumwaterConfig } from "../src/config/config-schema.js";
+import type { ModelSelectorEntry, TumwaterConfig } from "../src/config/config-schema.js";
 import {
   FALLBACK_REVIEW_TIMEOUT_S,
   REVIEW_TIMEOUT_S,
@@ -18,6 +18,8 @@ import {
   seamConcurrencyKey,
   seamHoldKey,
   tierModel,
+  topTierBackend,
+  withModelOverrides,
 } from "../src/config/config-views.js";
 import {
   applyFallbackModel,
@@ -821,4 +823,197 @@ test("teamModelLabel does not double-prefix a namespaced model", () => {
     cfg.model = model;
     assert.equal(teamModelLabel(cfg), want);
   }
+});
+
+// Routing goldens: each shape's seamsInUse list (grouped by agent|provider|model|thinking),
+// recorded from the code BEFORE `backend` entries existed — the explicit-backend change must
+// not move any spelling that loaded before it.
+const ROUTING_GOLDENS: Record<string, string[]> = {
+  "string model": [
+    "pi|anthropic|claude-sonnet-5-5|high <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "string model legacy provider": [
+    "pi|qwenrunner|qwen3.8-27b|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "map with tier entry and inherited default": [
+    "pi|qwenrunner|qwen3.8-27b|- <- 13:feature,bugfix,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
+    "pi|huggingface|zai-org/GLM-5.3-Flash:together|low <- 4:plan,director,review,resolver"
+  ],
+  "bare claude id under pi": [
+    "claude|-|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "claude namespace under pi": [
+    "claude|-|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "opencode namespace under pi": [
+    "opencode|-|anthropic/claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "anthropic id under claude backend": [
+    "pi|anthropic|claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "claude backend no model": [
+    "claude|-|claude-sonnet-5-5|- <- 12:feature,bugfix,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
+    "claude|-|claude-opus-5-5|- <- 4:plan,director,review,resolver",
+    "claude|-|claude-haiku-5-5|- <- 1:readme"
+  ],
+  "opencode backend no model": [
+    "opencode|-|-|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "role selector override": [
+    "claude|-|claude-haiku-5-5|low <- 1:feature",
+    "pi|qwenrunner|qwen3.8-27b|- <- 16:bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  ],
+  "role tier-name override": [
+    "claude|-|claude-opus-5-5|- <- 5:feature,plan,director,review,resolver",
+    "pi|qwenrunner|qwen3.8-27b|- <- 12:bugfix,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward"
+  ],
+  "review override": [
+    "pi|qwenrunner|qwen3.8-27b|- <- 16:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,resolver",
+    "opencode|-|anthropic/claude-sonnet-5-5|- <- 1:review"
+  ],
+  "fallback chain": [
+    "claude|-|claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver",
+    "pi|qwenrunner|qwen3.8-27b|- <- 1:fallback:default",
+    "claude|-|claude-haiku-5-5|- <- 1:fallback:default#1"
+  ]
+};
+
+test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () => {
+  const mk = (o: Partial<TumwaterConfig>): TumwaterConfig => ({ ...defaultConfig(), ...o });
+  const withRole = (o: Partial<TumwaterConfig>, id: string, rc: Record<string, unknown>): TumwaterConfig => {
+    const c = mk(o);
+    c.roles = { ...c.roles, [id]: { ...c.roles[id]!, ...rc } };
+    return c;
+  };
+  const review = mk({ model: "qwenrunner/qwen3.8-27b" });
+  review.review = { ...review.review, model: "opencode/anthropic/claude-sonnet-5-5" };
+  const cases: Record<string, TumwaterConfig> = {
+    "string model": mk({ model: "anthropic/claude-sonnet-5-5:high" }),
+    "string model legacy provider": mk({ provider: "qwenrunner", model: "qwen3.8-27b" }),
+    "map with tier entry and inherited default": mk({
+      model: { default: "qwenrunner/qwen3.8-27b", strong: "huggingface/zai-org/GLM-5.3-Flash:together:low" },
+    }),
+    "bare claude id under pi": mk({ model: "claude-opus-5-5" }),
+    "claude namespace under pi": mk({ model: "claude/claude-opus-5-5" }),
+    "opencode namespace under pi": mk({ model: "opencode/anthropic/claude-sonnet-5-5" }),
+    "anthropic id under claude backend": mk({ backend: "claude", model: "anthropic/claude-sonnet-5-5" }),
+    "claude backend no model": mk({ backend: "claude" }),
+    "opencode backend no model": mk({ backend: "opencode" }),
+    "role selector override": withRole({ model: "qwenrunner/qwen3.8-27b" }, "feature", {
+      model: "claude/claude-haiku-5-5",
+      thinking: "low",
+    }),
+    "role tier-name override": withRole(
+      { model: { default: "qwenrunner/qwen3.8-27b", strong: "claude-opus-5-5" } },
+      "feature",
+      { model: "strong" },
+    ),
+    "review override": review,
+    "fallback chain": mk({
+      model: "claude-sonnet-5-5",
+      fallback: ["qwenrunner/qwen3.8-27b", "claude/claude-haiku-5-5"],
+    }),
+  };
+  for (const [name, config] of Object.entries(cases)) {
+    const groups = new Map<string, string[]>();
+    for (const { label, agent, provider, model, thinking } of seamsInUse(config)) {
+      const key = [agent, provider ?? "-", model ?? "-", thinking ?? "-"].join("|");
+      groups.set(key, [...(groups.get(key) ?? []), label]);
+    }
+    const got = [...groups].map(([k, l]) => `${k} <- ${l.length}:${l.join(",")}`);
+    assert.deepEqual(got, ROUTING_GOLDENS[name], name);
+  }
+});
+
+test("explicit backend: a tier entry routes its own model on its backend, beside an unchanged pi default", () => {
+  const config = {
+    ...defaultConfig(),
+    model: {
+      default: "qwenrunner/qwen3.8-27b",
+      strong: { backend: "claude", model: "claude-opus-5-5" },
+    },
+  } as TumwaterConfig;
+  for (const seam of seamsInUse(config)) {
+    const strong = ["plan", "director", "review", "resolver"].includes(seam.label);
+    assert.equal(seam.agent, strong ? "claude" : "pi", seam.label);
+    assert.equal(seam.model, strong ? "claude-opus-5-5" : "qwen3.8-27b", seam.label);
+  }
+  // A role naming only `model` does not inherit the tier entry's backend.
+  config.roles.director = { ...config.roles.director!, model: "qwenrunner/qwen3.8-27b" };
+  const director = configForRole(config, "director");
+  assert.equal(director.agent, "pi");
+  assert.equal(director.provider, "qwenrunner");
+  assert.equal(director.model, "qwen3.8-27b");
+  assert.match(teamModelLabel(config)!, /strong=claude\/claude-opus-5-5/);
+});
+
+test("explicit backend: a role naming only backend inherits the tier's model only when the tier routes there", () => {
+  const role = (model: TumwaterConfig["model"], backend: string): ReturnType<typeof configForRole> => {
+    const config = { ...defaultConfig(), model } as TumwaterConfig;
+    config.roles.feature = { ...config.roles.feature!, backend };
+    return configForRole(config, "feature");
+  };
+  // Rule 3a routes the tier to claude, so a pi-only role gets pi's own default, not that id.
+  const pi = role({ default: "claude-opus-5-5" }, "pi");
+  assert.equal(pi.agent, "pi");
+  assert.equal(pi.model, undefined);
+  assert.equal(pi.provider, undefined);
+  // The tier is on claude through the namespace, so the claude role inherits its id.
+  const claude = role({ default: "claude/claude-opus-5-5" }, "claude");
+  assert.equal(claude.agent, "claude");
+  assert.equal(claude.model, "claude-opus-5-5");
+});
+
+test("explicit backend: a role's backend plus model passes the id verbatim; a bare tier entry backend takes the tier default", () => {
+  const config = { ...defaultConfig(), model: "qwenrunner/qwen3.8-27b" } as TumwaterConfig;
+  config.roles.feature = {
+    ...config.roles.feature!,
+    backend: "opencode",
+    model: "anthropic/claude-sonnet-5-5",
+  };
+  const feature = configForRole(config, "feature");
+  assert.equal(feature.agent, "opencode");
+  assert.equal(feature.model, "anthropic/claude-sonnet-5-5");
+  assert.equal(feature.provider, undefined);
+
+  const tiered = {
+    ...defaultConfig(),
+    model: { default: "qwenrunner/qwen3.8-27b", strong: { backend: "claude" } },
+  } as TumwaterConfig;
+  const strong = resolverConfig(tiered);
+  assert.equal(strong.agent, "claude");
+  assert.equal(strong.model, "claude-opus-5-5");
+});
+
+test("topTierBackend reads an object entry's backend, and yields none for a string or an uninheritable one", () => {
+  const strong: ModelSelectorEntry = { backend: "claude", model: "claude-opus-5-5" };
+  const config = { ...defaultConfig(), model: { default: "qwenrunner/qwen3.8-27b", strong } } as TumwaterConfig;
+  assert.equal(topTierBackend(config, "strong"), "claude");
+  assert.equal(topTierBackend(config, "default"), undefined);
+  // A tier entry naming a backend `default` does not route to takes no inherited model.
+  const bare = { ...defaultConfig(), model: { default: "qwenrunner/qwen3.8-27b", small: { backend: "claude" } } } as TumwaterConfig;
+  assert.equal(topTierBackend(bare, "small"), "claude");
+  assert.equal(tierModel(bare, "small"), undefined);
+});
+
+test("applyFallbackModel keeps a free object tier entry's backend and strips a role's backend", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "paid/gpt-x", strong: { backend: "claude", model: "opus" } };
+  config.fallback = "free/qwen-free";
+  config.roles.plan = { enabled: true, backend: "opencode", model: "ollama/qwen3" };
+  const resolved = resolveTierFallbacks(config, () => true);
+  const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
+  assert.equal(withModelOverrides(out, "strong", {}).agent, "claude", "the free tier keeps its backend");
+  assert.equal(out.roles.plan?.backend, undefined, "a priced role's backend is dropped with its model");
+  assert.equal(out.roles.plan?.model, undefined);
+});
+
+test("applyFallbackModel drops a paid backend pinned beside a tier-name role model", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.model = { default: "paid/gpt-x" };
+  config.fallback = "free/qwen-free";
+  config.roles.feature = { enabled: true, model: "strong", backend: "opencode" };
+  const out = applyFallbackModel(config, resolveTierFallbacks(config, () => true));
+  assert.equal(out.roles.feature?.model, "strong", "the tier reference stays");
+  assert.equal(out.roles.feature?.backend, undefined, "the paid backend does not survive the cap");
 });

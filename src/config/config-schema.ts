@@ -58,6 +58,17 @@ export function modelTierMap(model: unknown): Record<string, unknown> {
   return objectOrEmpty(model);
 }
 
+/** The object form of a tier entry in the top-level `model` map: the model written beside the
+ * `backend` that runs it (an explicit backend passes the id to that backend as written). */
+export interface ModelSelectorEntry {
+  backend?: string;
+  model?: string;
+  thinking?: string;
+}
+
+/** The keys an object tier entry may hold (validation feeds checkKnownKeys). */
+export const SELECTOR_ENTRY_KEYS: readonly string[] = ["backend", "model", "thinking"];
+
 /** Per-role configuration in tumwater.json. */
 export interface RoleConfig {
   enabled: boolean;
@@ -69,6 +80,9 @@ export interface RoleConfig {
    * (`small` / `default` / `strong`) naming that tier of the top-level `model` map (plans/
    * model-tiers.md). Falls back to the role's catalog tier when absent. */
   model?: string;
+  /** The backend that runs this role's `model` (`pi`, `claude`, `opencode`); the model passes
+   * to it as written. Alone, it inherits the tier's model only when the tier routes to it. */
+  backend?: string;
   /** pi thinking-level override for this role; falls back to the top-level value. */
   thinking?: string;
   /** Minimum seconds between two ticks of THIS role, overriding the top-level value — a
@@ -111,6 +125,8 @@ interface ReviewConfig {
    * (plans/model-tiers.md). Falls back to the `strong` tier when absent — the reviewer is
    * the seam where model quality matters most. */
   model?: string;
+  /** The backend that runs `model` (see RoleConfig.backend). */
+  backend?: string;
   /** pi thinking-level override for reviewer runs; falls back to the top-level value. */
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
@@ -209,7 +225,7 @@ export interface TumwaterConfig {
    * `provider/id[:thinking]` (shorthand for `{ default: <string> }`); a map names the model
    * for each tier it has (plans/model-tiers.md) — keys are exactly `small` / `default` /
    * `strong`, and a map-form `model` cannot coexist with the legacy top-level `provider`. */
-  model?: string | Partial<Record<ModelTier, string>>;
+  model?: string | Partial<Record<ModelTier, string | ModelSelectorEntry>>;
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
   /** The agent backend for bare selectors and the no-model default (plans/agent-backends.md
@@ -494,12 +510,13 @@ export const ROLE_ENTRY_KEYS = [
   "instructions",
   "provider",
   "model",
+  "backend",
   "thinking",
   "minRunIntervalSeconds",
   "instances",
 ];
 
-export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "thinking", "timeoutSeconds"];
+export const REVIEW_KEYS = ["enabled", "exemptPaths", "provider", "model", "backend", "thinking", "timeoutSeconds"];
 
 /** The `check` section's keys (plans/portability.md §6/7): the project's own verification
  * command, the optional cheaper gate-only command, their

@@ -12,6 +12,7 @@ import {
   MODEL_TIERS,
   type FallbackModelConfig,
   type FallbackStep,
+  type ModelSelectorEntry,
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
@@ -31,6 +32,7 @@ import {
   reviewConfig,
   reviewRunConfig,
   roleSeamTier,
+  topTierBackend,
   topTierSelector,
   withModelOverrides,
   type ResolvedModelConfig,
@@ -354,11 +356,20 @@ export function tiersResolveDistinctPairs(resolved: TierFallbackMap): boolean {
   return new Set(pairs).size >= 2;
 }
 
-/** Drop a model-override seam's provider/model/thinking fields — the one rule the fallback
+/** Drop a model-override seam's provider/model/backend/thinking fields — the one rule the fallback
  * view's role and reviewer strips share, so a field on that triple cannot be dropped from one
  * and left on the other (where it would reach a priced model after the cap). */
-function stripModel<T extends { provider?: string; model?: string; thinking?: string }>(o: T): T {
-  const { provider: _p, model: _m, thinking: _t, ...rest } = o;
+function stripModel<
+  T extends { provider?: string; model?: string; backend?: string; thinking?: string },
+>(o: T): T {
+  const { provider: _p, model: _m, backend: _b, thinking: _t, ...rest } = o;
+  return rest as T;
+}
+
+/** Drop only a seam's explicit backend, for a tier-name entry kept through the cap: the tier
+ * reference stays valid, but a paid `backend` pinned beside it must not outlive the cap. */
+function stripBackend<T extends { backend?: string }>(o: T): T {
+  const { backend: _b, ...rest } = o;
   return rest as T;
 }
 
@@ -383,7 +394,7 @@ function stripRoleModels(
   return Object.fromEntries(
     Object.entries(roles).map(([id, rc]) => [
       id,
-      keepTierNames && isTierName(rc?.model) ? rc : stripModel(rc),
+      keepTierNames && isTierName(rc?.model) ? stripBackend(rc) : stripModel(rc),
     ]),
   );
 }
@@ -400,7 +411,7 @@ function freeRoleModels(
   return Object.fromEntries(
     Object.entries(config.roles).map(([id, rc]) => {
       if (rc && free?.(withModelOverrides(config, roleSeamTier(config, id), rc))) return [id, rc];
-      return [id, isTierName(rc?.model) ? rc : stripModel(rc)];
+      return [id, isTierName(rc?.model) ? stripBackend(rc) : stripModel(rc)];
     }),
   );
 }
@@ -440,7 +451,7 @@ export function applyFallbackModel(
             thinking: f.pair.thinking,
           })
         : undefined;
-    const model: Partial<Record<ModelTier, string>> = {};
+    const model: Partial<Record<ModelTier, string | ModelSelectorEntry>> = {};
     const stepCaps: Record<string, number> = {};
     for (const tier of MODEL_TIERS) {
       // A free seam keeps the tier's own primary selector — the backend namespace a resolved
@@ -449,16 +460,32 @@ export function applyFallbackModel(
       const seam = withModelOverrides(config, tier, {});
       if (free?.(seam)) {
         const own = topTierSelector(config, tier);
-        if (own !== undefined)
-          model[tier] = formatModelSelector({ ...own, thinking: own.thinking ?? config.thinking });
+        // A tier entry that names a backend keeps it as an object entry: a bare selector string
+        // would route by namespace and drop the backend the entry chose.
+        const backend = topTierBackend(config, tier);
+        if (own !== undefined) {
+          const thinking = own.thinking ?? config.thinking;
+          if (backend !== undefined)
+            model[tier] = {
+              backend,
+              model: formatModelSelector({ ...own, thinking: undefined }),
+              ...(thinking !== undefined ? { thinking } : {}),
+            };
+          else model[tier] = formatModelSelector({ ...own, thinking });
+        }
         // A tier with no top-level selector — `agent: "claude"` riding its agent default —
         // has no own selector to carry the level, so name the routed default plus it.
-        else if (seam.model !== undefined)
-          model[tier] = formatModelSelector({
-            provider: seam.provider,
-            model: seam.model,
-            thinking: seam.thinking,
-          });
+        else if (seam.model !== undefined) {
+          const routed = { provider: seam.provider, model: seam.model };
+          model[tier] =
+            backend !== undefined
+              ? {
+                  backend,
+                  model: formatModelSelector(routed),
+                  ...(seam.thinking !== undefined ? { thinking: seam.thinking } : {}),
+                }
+              : formatModelSelector({ ...routed, thinking: seam.thinking });
+        }
         continue;
       }
       const sel = selectorOf(resolved[tier]);

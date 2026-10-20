@@ -93,13 +93,28 @@ const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> 
  * Rule 3a (plans/provider-concurrency.md "Routing a bare Claude model id to claude"): a bare id
  * (no provider) that starts with `claude-` runs on claude, whatever `configAgent` says — the one
  * prefix where the model id decides the backend. A named provider still wins
- * (`anthropic/claude-…` stays pi); bare aliases (`sonnet`, `opus`) keep today's routing. */
+ * (`anthropic/claude-…` stays pi); bare aliases (`sonnet`, `opus`) keep today's routing.
+ *
+ * An `explicitBackend` (a tier entry's, role's or review's `backend` key) overrides all of the
+ * above: it is the agent, and the id reaches it verbatim (see the branch below). */
 export function routeModel(
   provider: string | undefined,
   model: string | undefined,
   configAgent: string,
   tier: ModelTier,
+  explicitBackend?: string,
 ): { agent: string; model?: string } {
+  if (explicitBackend !== undefined) {
+    // An explicit backend is the agent and the id passes to it as written: pi keeps the parsed
+    // provider (the caller's), the others take the whole `provider/model` id with no provider.
+    const whole =
+      model !== undefined && provider !== undefined && explicitBackend !== "pi"
+        ? `${provider}/${model}`
+        : model;
+    if (whole !== undefined) return { agent: explicitBackend, model: whole };
+    const def = AGENT_DEFAULT_MODELS[explicitBackend as AgentId]?.[tier];
+    return def !== undefined ? { agent: explicitBackend, model: def } : { agent: explicitBackend };
+  }
   const agent =
     provider === undefined
       ? model?.startsWith("claude-")
