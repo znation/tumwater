@@ -56,10 +56,19 @@ test("a killed run leaves no grandchild behind (regression)", async () => {
   try {
     // Wait until the grandchild has recorded itself — the write the old version raced.
     const recordDeadline = Date.now() + 10_000;
-    while (!fs.existsSync(pidFile) && Date.now() < recordDeadline) {
+    // The shell's redirect creates the file before echo writes the pid, so existence alone can
+    // be an empty file; wait for the pid itself or an abort in that gap reads "" as pid 0.
+    const recorded = (): number => {
+      try {
+        return Number(fs.readFileSync(pidFile, "utf8").trim());
+      } catch {
+        return 0;
+      }
+    };
+    while (!(recorded() > 0) && Date.now() < recordDeadline) {
       await sleep(25);
     }
-    assert.ok(fs.existsSync(pidFile), "the grandchild recorded its pid within 10s");
+    assert.ok(recorded() > 0, "the grandchild recorded its pid within 10s");
     controller.abort();
     const result = await run;
     assert.equal(result.aborted, true, "the run ends killed by the abort");

@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a killed run leaves no grandchild behind (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ a killed run leaves no grandchild behind (regression) (60.537792ms)
+AssertionError [ERR_ASSERTION]: the grandchild recorded its pid
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/pi-process.test.js:63:16)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
+**Cause:** the test waited for the pid file to exist, but the shim's `echo $$ > file` creates the file before writing it; an abort in that gap left an empty file, read as pid 0 (the failing assert). The test now waits for a positive pid.
+
+**Validation gap:** no-repro — the window is a few microseconds between the shell's redirect and its write, so it was confirmed by reading the code, not reproduced.
+
 ### `merge_failed carries the reason mergeFailureReason derives, and omits it otherwise` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
