@@ -8,7 +8,8 @@ you reconstruct its contract from the tests and the surrounding code.
 Each entry:
 
 - **id** — stable, so a bug or a review can name it (`INV-A1`). Ids never change; an entry that
-  is retired is struck through and dated, never renumbered.
+  is retired is struck through and dated, never renumbered. Each section takes the next unused prefix; after `INV-Z`
+  prefixes run on in two letters (`INV-AA`, `INV-AB`, …).
 - **Guarantee** — one sentence, described from the code's side.
 - **Binds** — the modules and surfaces the guarantee spans.
 - **Pinned by** — the `test/...` case(s) that enforce it. A cited test must exercise the

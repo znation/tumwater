@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The invariants register accepts two-letter id prefixes, so sections after INV-Z get valid ids (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Touches only test/invariants-doc.test.ts and the id bullet at the top of docs/invariants.md; done 2026-10-20 by the feature role)
+
+**Goal.** docs/invariants.md has used every one-letter section prefix through `INV-Z` (the local-time section). The guard in test/invariants-doc.test.ts checks every heading with `ID_RE = /^INV-[A-Z]\d+$/`, so the next section has no valid id. The display-format plan was refused on 2026-10-20 for exactly this reason. Three in-flight plans (system-prompt trim `INV-AB`, full output `INV-AC`, text shaping `INV-AD`) use two-letter prefixes, and each will fail "this repo's docs/invariants.md is honest" unless its implementer widens the regex. This plan makes the rule explicit and tested: a section prefix is one or two capital letters, and the register says how ids continue after Z.
+
+**Approach.**
+- Check first: if `ID_RE` in test/invariants-doc.test.ts already accepts `INV-AB1` (an in-flight section may have widened it), do only the parts below that are still missing: the doc sentence and the new test.
+- In test/invariants-doc.test.ts, change `ID_RE` to `/^INV-[A-Z]{1,2}\d+$/`. Do not allow three letters or more: 26 + 676 prefixes is plenty, and the cap keeps a typo such as `INV-ABC1` reported. Leave `HEADING_RE` and the `malformed id, expected e.g. INV-A1` message as they are.
+- Add one test after "a malformed id is reported", titled exactly `a two-letter section prefix is a valid id, and a three-letter one is malformed`. It asserts the following:
+  - `invariantProblems(register(entry("INV-AB1")))` deep-equals `[]`.
+  - `invariantProblems(register(entry("INV-ABC1")))` has a problem containing `malformed id`.
+  - `invariantProblems(register(entry("INV-AB")))` (no number) has a problem containing `malformed id`.
+  Use the file's existing `register` and `entry` helpers unchanged.
+- In docs/invariants.md, extend the **id** bullet at the top (the one that cites `INV-A1`). Add one sentence after "Ids never change; …": each section takes the next unused prefix, and after `INV-Z` prefixes run on in two letters (`INV-AA`, `INV-AB`, …). Before writing it, check the guard: use `grep -n '^### INV-' docs/invariants.md` to make sure the sentence matches the headings in the file. Change no other entry.
+
+**Files touched.** test/invariants-doc.test.ts, docs/invariants.md (one sentence).
+
+**Acceptance criteria.**
+- `grep -n 'ID_RE = ' test/invariants-doc.test.ts` shows `/^INV-[A-Z]{1,2}\d+$/`.
+- The new test exists with the exact title above and passes. "a malformed id is reported" (`INV-a1`) still passes.
+- docs/invariants.md's id bullet says ids continue with two-letter prefixes after `INV-Z`.
+- "this repo's docs/invariants.md is honest" passes.
+- `npm run test:gate` passes.
+- Follow-up, not part of this plan: once this merges, the refused display-format entry can be replanned with the next free two-letter prefix.
+
 ### docs/invariants.md gains a system-prompt trim section, so a fixer touching what pi's system prompt sends reads what src/pi-extension/trim-system-prompt.ts promises instead of rebuilding it from tests (planned 2026-10-20 by the plan role; no dependency on any Planned entry. Appends after whatever invariants section is last, so it only rebases over the local-time and display-format sections if they merge first. Touches docs/invariants.md and one doc-comment sentence in src/pi-extension/trim-system-prompt.ts; done 2026-10-20 by the feature role)
 
 **Goal.** src/pi-extension/trim-system-prompt.ts is loaded on every pi run (src/pi/pi-args.ts lists `trim-system-prompt.js`). It cuts pi's `<docs>` section from the system prompt on every model. Its rule is the pure exported `withoutDocsSection` behind the default-export `before_agent_start` adapter. `grep -n 'trim-system-prompt' docs/invariants.md` finds nothing today, while its sibling extensions (context shake, bounded output, thinking strip and context notes) each have a section. test/trim-system-prompt.test.ts already pins every rule below, so no new test is needed. The module's header also carries a stale claim: it says the default export is "the thin adapter over pi's `before_agent_start` event and `ctx.model`", but since the 2026-10-18 change to trim on every model, the handler takes only `event` and never reads a model. This plan corrects that sentence.

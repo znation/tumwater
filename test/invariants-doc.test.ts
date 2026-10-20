@@ -233,6 +233,14 @@ test("a malformed id is reported", () => {
   assert.ok(problems.some((p) => p.includes("malformed id")), problems.join("; "));
 });
 
+test("a two-letter section prefix is a valid id, and a three-letter one is malformed", () => {
+  assert.deepEqual(invariantProblems(register(entry("INV-AB1"))), []);
+  for (const id of ["INV-ABC1", "INV-AB"]) {
+    const problems = invariantProblems(register(entry(id)));
+    assert.ok(problems.some((p) => p.includes("malformed id")), problems.join("; "));
+  }
+});
+
 test("a duplicate id is reported at the second entry", () => {
   const problems = invariantProblems(register(entry("INV-A1") + entry("INV-A1")));
   assert.ok(problems.some((p) => p.includes("duplicate id, first at entry 1")), problems.join("; "));
