@@ -926,3 +926,96 @@ collectReport slice", "collectReport folds merge_done/merge_failed usage into th
 with the merge share named", "collectReportSince folds merge_done/merge_failed usage into the
 window totals" and "collectReportSince scopes a trailing window to one role, excluding the merge
 share".
+
+## History rows: each merge verdict shows once, and missing evidence keeps the raw label
+
+`runRows` (`src/history/history-data.ts`) is the pure collector the CLI, the GUI and the tests
+share. `readRunRows` (the last-N view) and `readRunRowsSince` (`--since`) read the event log and
+feed it. Each row is one finished run, and a queued row joins the merge outcome of the change it
+queued.
+
+### INV-S1: a row's duration and model come only from its own run_start
+
+**Guarantee.** `runRows` pairs each run_end with its run_start through the shared
+`runStartMap` and `runStartModelMap`. A row whose start is not in the read gets `durationMs: null`
+(a dash), never a made-up span, and its model is null when the start is absent or carries no
+model. Rows come back newest first, at most `limit` of them, filtered by role.
+
+**Binds.** `src/history/history-data.ts` (`runRows`, `RunRow`), `src/events/event-read.ts`
+(`runStartMap`, `runSpanMs`, `runStartModel`).
+
+**Pinned by.** `test/history-data.test.ts` — "runRows pairs each run_end with its run_start for
+the duration", "runRows renders no duration when the run's start is outside the scanned window",
+"runRows names the model its run_start carried, or none when the start is absent or unnamed" and
+"runRows returns the newest limit rows, newest first, and filters by role".
+
+### INV-S2: the last-N view grows its window, and only up to a ceiling
+
+**Guarantee.** `readRunRows` re-reads with a four-times larger tail window while the rows fall
+short of `limit` or a row's start is unpaired, but only if the read filled the window. It stops at
+`HISTORY_SCAN_MAX_EVENTS`. `history -n` accepts only 1..`HISTORY_MAX_RUNS`.
+
+**Binds.** `src/history/history-data.ts` (`readRunRows`, `HISTORY_SCAN_MAX_EVENTS`,
+`HISTORY_MAX_RUNS`).
+
+**Pinned by.** `test/cli-history.test.ts` — "history grows the scan window to pair a run_start the
+first window's boundary cut off", "history --role grows its scan window until it reaches the
+role's runs" and "history -n accepts 1..200 and fails zero, negative, non-numeric, and over-large
+values".
+
+### INV-S3: a queued row reads its change's verdict, and each attempt's verdict shows on one row
+
+**Guarantee.** The authoring row takes the change's final verdict, walking forward through
+recovery re-enqueues (`isRecoveryPin`) and stopping at a pin that starts a fresh change. A
+recovery row takes the retriable verdict of the attempt it re-enqueued (`recoveredAttemptVerdict`).
+While a re-enqueued attempt is pending, the authoring row keeps "queued". The `claimTop` cursor
+hands each queued run the newest unclaimed pin at or before its end, so two runs never claim one
+pin.
+
+**Binds.** `src/history/history-data.ts` (`resolveQueuedResult`, `recoveredAttemptVerdict`,
+`isRecoveryPin`, `endsChange`, `bucketMergeEvents`), `src/runner/leftover.ts` (`recoverLeftover`,
+the "recovered leftover work from " summary prefix).
+
+**Pinned by.** `test/history-data.test.ts` — "a queued run resolves to its change's merge outcome
+— merged or merge_failed (BUGS.md 2026-09-30)", "a queued run resolves past a rebased retriable
+failure to the recovery's merged verdict (BUGS.md 2026-10-10)", "while a re-queued attempt is
+pending, the recovery row shows the failure and the authoring row waits to merge", "a change
+re-queued after seven review timeouts and then rejected reads each attempt once (feature-3,
+2026-10-18)", "a recovery pin after a change that ended is a fresh change's first attempt, read by
+the authoring rule" and "a retriable verdict is not swept up by the next FRESH change's merge
+(BUGS.md 2026-10-10)".
+
+### INV-S4: missing evidence keeps the raw label, and the join never crosses roles
+
+**Guarantee.** `resolveQueuedResult` returns null (the row stays "queued") when the merge has no
+outcome yet, when no outcome matches the pin's sha, or when the row's run_start sits before a
+since-read's `floorTs`. Pins and outcomes are bucketed per role (`bucketMergeEvents`), so a
+`--role` filter or a role list never lends one role's verdict to another. A torn outcome falls
+back to its type's default text.
+
+**Binds.** `src/history/history-data.ts` (`resolveQueuedResult`, `attemptVerdict`,
+`bucketMergeEvents`, `runRows`).
+
+**Pinned by.** `test/history-data.test.ts` — "a queued run whose merge is still in the pipeline
+keeps the raw label", "a queued run stays raw when no merge outcome matches its pinned sha", "a
+queued row whose run_start predates the join read's floor keeps the raw label", "the resolution
+survives the --role filter and never crosses roles", "runRows takes a list of role ids, joining
+each queued row's merge verdict" and "a queued run's torn merge outcome reads as its type default,
+never [object Object]".
+
+### INV-S5: the --since view holds exactly the window's runs, with a wider read for the join
+
+**Guarantee.** `readRunRowsSince` returns the run_ends at or after the cutoff and drops everything
+before it. A run that spans the cutoff renders a dash, because the ts filter removes its start
+too. Its queued verdict still resolves, because the join reads `RUN_ROW_JOIN_BACKSLACK_MS` further
+back through `readEventsSinceJoined`. `covered` stays false while the log starts inside the
+window, and a missing or empty log reads as no rows over a covered window.
+
+**Binds.** `src/history/history-data.ts` (`readRunRowsSince`, `RUN_ROW_JOIN_BACKSLACK_MS`,
+`RunRowJoin`), `src/events/event-window.ts` (`readEventsSinceJoined`).
+
+**Pinned by.** `test/history-data.test.ts` — "rows keep the in-window runs, newest first, and drop
+everything before the cutoff", "a run spanning the cutoff renders a dash: the ts filter removes
+its start too", "a queued run whose pin sits before the --since cutoff still resolves (BUGS.md
+2026-09-30)", "covered is false while the log starts inside the window, true once an event
+predates the cutoff" and "a missing or empty log reads as no rows over a covered window".
