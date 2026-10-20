@@ -887,4 +887,33 @@ _None yet._
 - test/pi.test.ts: the assertions on the marker's exact bytes are updated to parse the line and check `kind`/`agent`/`label` plus a numeric `ts` between the before and after `Date.now()` of the call. Grep test/ for other exact `{"type":"tumwater_run",` byte assertions on *written* logs and update them the same way. Fixtures that only *feed* markers to renderers stay as they are.
 - `npm run test:gate` passes.
 
+### The dashboard's History drill-down gets a "Show patch" button that loads the run's full commit patch below its stat, the dashboard twin of `tumwater history <role> <n> --patch` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight By-model drill-down plan edits `handleHistory` and src/ui/gui/gui-client-history.ts's table/query code, and this entry edits `handleTick` and the `history-detail` region, so the two meet only as a rebase. The blocked runner-rename parts rename `readTickDetail`/`TickDetail` later, also only a rebase. Touches src/tick/tick-detail.ts src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts)
+
+**Goal.** The dashboard's History drill-down (`histDetailCardHtml` in src/ui/gui/gui-client-history.ts, fed by `GET /api/run`, `handleTick` in src/gui/gui-endpoints.ts) shows a run's trail and its commit's per-file stat. It also offers "Revert this change…". It never shows what the change actually was. The CLI got `history <role> <n> --patch` (`tickDetailPatch` in src/tick/tick-detail.ts), and that plan kept the dashboard on the stat only. As a result, a dashboard user who is about to revert a change cannot read it first. This plan adds the patch to the drill-down, loaded only on demand, because a patch can be large and most expanded cards never need one.
+
+**Decided scope (no open question).**
+- `GET /api/run` takes an optional `patch` flag, which counts when present whatever its value (the rule `handleHistory` uses for `summary`). With the flag, the payload gains `patch: await tickDetailPatch(root, detail)`, the same text `history --patch` prints, placeholders included, with no byte cap. Without the flag, the payload carries no `patch` key, so the default expand costs no extra `git show`.
+- Every `/api/run` payload also gains `hasCommit: boolean`, which is `tickCommitSha(detail) !== null`. The client shows the button only when `hasCommit === true`. A run that sent nothing to merge gets no dead button, and a server too old to send the field gets no button either.
+- The button reads "Show patch". The first click fetches `/api/run?role=<id>&run=<n>&patch=1` and shows "Loading patch…" while the fetch runs. The answer renders as `<pre class='mono hist-detail-patch'>` directly under the `hist-detail-stat` block and above the revert control. Once loaded, the button reads "Hide patch" and toggles the block's visibility without refetching. A failed fetch shows the error message in an `err` div under the button, and the next click retries. The patch lives on the card's cache entry, so `fetchHistory`'s `histDetails.clear()` drops it with the trail.
+- No TUI change. The TUI History trail keeps its stat footer. A full patch in a fixed-height pane is a separate decision.
+
+**Approach.**
+- **src/tick/tick-detail.ts**: export `tickDetailPatch` (it is module-private today) and `tickCommitSha`. Neither body changes. Extend `tickDetailPatch`'s doc comment to name GET /api/run as its second caller.
+- **src/gui/gui-endpoints.ts** `handleTick`: import both, add `hasCommit` to the payload, and add `patch` when `q.get("patch") !== null`. Extend the doc comment with both fields.
+- **src/ui/gui/gui-client-history.ts**, inside the `history-detail:start`…`end` region:
+  - `fetchHistDetail` stores `hasCommit: d.hasCommit === true` on the ok entry.
+  - Add `histPatchHtml(entry, key)`, which returns the button (`data-hist-patch='<key>'`) plus the sub-state from `entry.patch`, a value of `{ state: "loading" | "ok" | "error", text?, message?, open? }`. `histDetailCardHtml` calls it after the stat block when `entry.hasCommit`.
+  - Add `async function toggleHistPatch(key)`. On an entry with a loaded patch, it flips `open`. Otherwise it sets `{ state: "loading" }`, calls `renderHistory()`, then `getJson` with `&patch=1`, and stores `ok` with `open: true` (or `error` when the fetch fails or the answer has no string `patch`), then calls `renderHistory()` again. `role` and `run` come from splitting the key on its last `#` (`histDetailKey` builds it as `role + "#" + tick`).
+  - Wire one more delegated `#histbody` click listener for `button[data-hist-patch]`, beside the revert listener.
+  - Update the cache-state comment above `histDetails` to list `hasCommit` and `patch`.
+- **docs/how-it-works.md**: after the "Revert this change…" sentence, add one sentence: the drill-down's "Show patch" button loads the run's commit patch on demand through `GET /api/run?…&patch=1`, the same `tickDetailPatch` text `tumwater history <role> <n> --patch` prints.
+
+**Acceptance criteria.**
+- test/gui-server-api.test.ts, a new test beside "gui /api/run carries revertSha only for a run whose commit is on main". For a run with a real commit, `/api/run?role=…&run=…` has `hasCommit: true` and no `patch` key, and the same request with `&patch=1` has a `patch` string that matches `diff --git`. For a run with no commit, the payload has `hasCommit: false`, and `&patch=1` gives `patch` equal to `(no commit: this run sent nothing to merge)`.
+- test/gui-client-history.test.ts:
+  - `histDetailCardHtml` renders a `data-hist-patch` button only for an ok entry with `hasCommit: true`, and none for `hasCommit` false or absent.
+  - A new test drives `toggleHistPatch` through `clientScope` with a stubbed `getJson`, as "the drill-down's revert button previews, then reverts, through /api/revert" does. The first toggle requests a URL that ends `&patch=1`. The card then contains `hist-detail-patch` with the escaped patch text (a `<` in the stub's patch renders as `&lt;`), and the button reads "Hide patch". A second toggle hides the block without another `getJson` call. A rejected `getJson` leaves an error message in the card, and the next toggle refetches.
+  - The existing tests "the fetched tick detail keeps the server's stat, …" and "GUI_CLIENT_JS carries the history module verbatim" still pass.
+- `npm run test:gate` passes.
+
 ## Done
