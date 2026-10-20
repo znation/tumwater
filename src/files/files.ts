@@ -58,6 +58,15 @@ export function sameStatIdentity(
   return prev.mtimeMs === undefined || st.mtimeMs === prev.mtimeMs;
 }
 
+/** The identity fields sameStatIdentity compares, all zero when the file is missing (`null`):
+ * the "empty log" observation, so a log that has not been created yet reads as zero bytes of a
+ * file no real stat can match. */
+export function statIdentityOrZero(
+  st: { dev: number; ino: number; size: number; mtimeMs: number } | null,
+): { dev: number; ino: number; size: number; mtimeMs: number } {
+  return { dev: st?.dev ?? 0, ino: st?.ino ?? 0, size: st?.size ?? 0, mtimeMs: st?.mtimeMs ?? 0 };
+}
+
 /** Open `file` for reading, or null when it vanished between a prior stat and this open — the
  * shared race-handling step for the incremental/tail log readers (forEachTailChunk,
  * terminateTornTail, readCompleteLines, readTranscriptTail), all of which treat a rotated-away

@@ -20,7 +20,7 @@ import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./fai
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
 import { addTo, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
-import { sameStatIdentity, statOrNull } from "../files/files.js";
+import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { nonNegativeNumber } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 
@@ -289,10 +289,7 @@ const FAILURE_DIGEST_CACHE_MAX = 8;
 
 /** The live log's identity, all zero when the file is missing (the empty-log case). */
 function digestStat(root: string): FailureDigestStat {
-  const st = statOrNull(eventsLogPath(root));
-  return st
-    ? { size: st.size, mtimeMs: st.mtimeMs, dev: st.dev, ino: st.ino }
-    : { size: 0, mtimeMs: 0, dev: 0, ino: 0 };
+  return statIdentityOrZero(statOrNull(eventsLogPath(root)));
 }
 
 /** Collect the digest over the last `days` local calendar days, reading a 2×-long window once

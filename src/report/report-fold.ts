@@ -6,7 +6,7 @@
  * --since and day windows present cannot drift apart; it lives here matching its own test
  * (test/report-fold-cache.test.ts). Zero incidental runtime dependencies: node built-ins and
  * the app's own modules only. */
-import { sameStatIdentity, statOrNull } from "../files/files.js";
+import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { readWindowEvents } from "../events/event-window.js";
 import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/event-read.js";
 import { readCompleteLines } from "../files/tail.js";
@@ -510,11 +510,7 @@ function foldLineInto(entry: ReportFoldEntry, line: string): void {
  * carrying yesterday's proof forward. */
 export function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
   const key = `${root}\0${fromKey}`;
-  const liveStat = statOrNull(eventsLogPath(root));
-  const size = liveStat?.size ?? 0;
-  const mtimeMs = liveStat?.mtimeMs ?? 0;
-  const dev = liveStat?.dev ?? 0;
-  const ino = liveStat?.ino ?? 0;
+  const { size, mtimeMs, dev, ino } = statIdentityOrZero(statOrNull(eventsLogPath(root)));
   const cached = reportFoldCache.get(key);
   if (
     cached &&

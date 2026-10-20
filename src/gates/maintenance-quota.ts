@@ -17,7 +17,7 @@
  * share one definition; `pollMaintenanceQuotaGate` is the one writer (the edge-triggered events)
  * and the one reader the scheduler holds from. */
 
-import { sameStatIdentity, statOrNull } from "../files/files.js";
+import { sameStatIdentity, statIdentityOrZero, statOrNull } from "../files/files.js";
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import { readWindowEvents } from "../events/event-window.js";
@@ -219,10 +219,7 @@ export function countMaintenanceWindow(
   // mid-poll (replaced between the stat and the read), so the folding itself is guarded too.
   const stat = statOrNull(eventsLogPath(root));
   const readable = stat?.isFile() ? stat : null;
-  const size = readable?.size ?? 0;
-  const mtimeMs = readable?.mtimeMs ?? 0;
-  const dev = readable?.dev ?? 0;
-  const ino = readable?.ino ?? 0;
+  const { size, mtimeMs, dev, ino } = statIdentityOrZero(readable);
   const unchanged = sameStatIdentity(
     { dev, ino, mtimeMs, size },
     { dev: counter.dev, ino: counter.ino, mtimeMs: counter.mtimeMs, size: counter.offset },
