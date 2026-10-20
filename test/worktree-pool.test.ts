@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { leaseSlot, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -17,6 +17,7 @@ import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { sleep } from "./helpers/wait.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { commitIn, headSha, makeRepo, sh, worktreeAt, writeConfig } from "./fixtures/repo-fixtures.js";
 
 /** Poll until `fn` returns a value, so a waiter test does not assume how many macrotasks its
@@ -647,8 +648,7 @@ test("a lease that waited under 30 s logs no slot_wait", async (t) => {
 
 test("a lease an old build wrote with the legacy purpose vet reads as verify and the next write stores it", () => {
   const root = makeRepo();
-  mkdirSync(dirname(slotsStatePath(root)), { recursive: true });
-  writeFileSync(
+  writeFileDeep(
     slotsStatePath(root),
     JSON.stringify({ slots: [{ dir: "/x", lease: { role: "feature", purpose: "vet", since: 1, pid: process.pid } }] }), // vocabulary-ok: legacy value
   );

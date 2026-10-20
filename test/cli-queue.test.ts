@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { enqueueMerge, type MergeEntry } from "../src/merge/merge-queue.js";
-import path from "node:path";
 import { mergeQueueDir, mergeStatePath, orchestratorStatePath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The `queue` command: the durable merge queue in execution order, via the CLI the way the
 // cli-diff tests `diff` — an initialized repo, child-process runs, output assertions.
@@ -75,14 +75,12 @@ test("queue prints the in-flight label only while an orchestrator is alive", asy
   const sha = "a".repeat(40);
   enqueueMerge(repo, entry("improve", sha, 3, "tidy the parser"));
   const marker = { role: "improve", sha, summary: "tidy", startedAt: Date.now() - 120_000, stage: "reviewing" };
-  fs.mkdirSync(path.dirname(mergeStatePath(repo)), { recursive: true });
-  fs.writeFileSync(mergeStatePath(repo), JSON.stringify(marker));
+  writeFileDeep(mergeStatePath(repo), JSON.stringify(marker));
   const stopped = await cli(repo, "queue");
   assert.doesNotMatch(stopped.stdout, /\[merge/, "no orchestrator alive: today's line");
   assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight, undefined);
   // This test process stands in for a live orchestrator (its pid is alive).
-  fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
-  fs.writeFileSync(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  writeFileDeep(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
   const live = await cli(repo, "queue");
   assert.match(live.stdout, /ago · \[merging 2m · reviewing\] · tidy the parser/);
   assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight.sha, sha);

@@ -43,6 +43,7 @@ import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // These tests pin the sequential merge stages (the check, then the review).
 process.env.TUMWATER_REVIEW_CHECK_OVERLAP = "0";
@@ -508,11 +509,9 @@ test("mergeChanges reads a one-change marker as one merge record", () => {
 
 test("a foreign changes shape or a null record degrades instead of crashing a merge", () => {
   const root = makeRepo();
-  fs.mkdirSync(path.dirname(mergeStatePath(root)), { recursive: true });
   // `changes` present but not an array: as unusable as an absent field. The reads fall back to
   // the legacy top-level shape and the writers no-op — never `scalar.find`.
-  fs.writeFileSync(
-    mergeStatePath(root),
+  writeFileDeep(mergeStatePath(root),
     JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
   );
   assert.doesNotThrow(() => setMergeChangeStatus(root, "improve", "approved"));

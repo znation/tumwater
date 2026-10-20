@@ -4,7 +4,6 @@
 // status-data.test.ts.
 
 import fs from "node:fs";
-import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { snapshot } from "../src/status/status-data.js";
@@ -18,6 +17,7 @@ import { writeEvents } from "./fixtures/log-fixtures.js";
 import { orchestratorStatePath, pausedPath, pausedRolesPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { pauseTeam, pauseRole, resumeTeam } from "../src/team/team-state.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 test("pausedRolesUntil carries a timed role pause's shared deadline only while the set is non-empty", async () => {
   const repo = tmpdir();
@@ -255,8 +255,7 @@ test("pausedRunners holds the role ids the scheduler treats as paused by the mar
   const config = loadConfig(repo);
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 2 };
   saveConfig(repo, config);
-  fs.mkdirSync(path.dirname(pausedRolesPath(repo)), { recursive: true });
-  fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["feature"], at: Date.now() }));
+  writeFileDeep(pausedRolesPath(repo), JSON.stringify({ roles: ["feature"], at: Date.now() }));
   const whole = snapshot(repo).pausedRunners;
   assert.ok(whole.includes("feature") && whole.includes("feature-2"), "a whole-role pause holds every instance");
   fs.writeFileSync(pausedRolesPath(repo), JSON.stringify({ roles: ["feature-1"], at: Date.now() }));

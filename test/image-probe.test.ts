@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { loadConfig } from "../src/config/config.js";
 import { imageProbesPath } from "../src/paths.js";
 import { childEnv } from "../src/process/process.js";
@@ -181,9 +181,7 @@ test("the probe cache drops a foreign entry and keeps the valid ones", () => {
   const root = readyRepo();
   const now = Date.now();
   const valid: ImageProbeCacheEntry = { verdict: "pass", detail: "ok", at: now, claim: true };
-  fs.mkdirSync(path.dirname(imageProbesPath(root)), { recursive: true });
-  fs.writeFileSync(
-    imageProbesPath(root),
+  writeFileDeep(imageProbesPath(root),
     JSON.stringify({
       "pi/a/valid": valid,
       "pi/a/null": null,

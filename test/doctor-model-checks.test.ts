@@ -34,6 +34,7 @@ import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { readImageProbeCache } from "../src/doctor/image-probe.js";
 import { imageProbesPath, piListedModelsPath } from "../src/paths.js";
 import { readPiListedModels } from "../src/pi/pi-listed-models.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -973,8 +974,7 @@ test("checkOpencode stands down on a pi-only config and reads the free model as 
   assert.match(free.detail, /db 0 B, no spill dir/);
   const dbBytes = 1536;
   const dbPath = path.join(root, ".tumwater", "opencode", "opencode.db");
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  fs.writeFileSync(dbPath, "x".repeat(dbBytes));
+  writeFileDeep(dbPath, "x".repeat(dbBytes));
   const withDb = await checkOpencode(root, empty, empty);
   assert.match(withDb.detail, /db 1\.5 KB, no spill dir/);
   assert.equal(withDb.level, "ok");

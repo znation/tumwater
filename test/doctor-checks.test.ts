@@ -50,6 +50,7 @@ import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
 import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for the pre-flight environment and repo checks
 // (src/doctor/doctor-checks.ts): every check's ok/fail/warn branches. The binary checks take an
@@ -1006,8 +1007,7 @@ test("checkBootstrap reports an active bootstrap, and stands down without config
   assert.equal(active.level, "ok");
   assert.match(active.detail, /^bootstrapping: \d+\/3 plans done — plan, feature and director runs$/);
 
-  fs.mkdirSync(path.dirname(bootstrapLatchPath(root)), { recursive: true });
-  fs.writeFileSync(bootstrapLatchPath(root), "");
+  writeFileDeep(bootstrapLatchPath(root), "");
   assert.equal(checkBootstrap(root, config).detail, "not bootstrapping");
 });
 
@@ -1218,8 +1218,7 @@ test("checkTumwaterPins fails naming a pin whose commit is gone and reads ok for
   sh(root, "git", "update-ref", "refs/tumwater/rejected/bugfix", "HEAD");
   assert.deepEqual(await checkTumwaterPins(root), { level: "ok", detail: "1 tumwater pin, each naming a commit that exists" });
   const refFile = path.join(root, ".git", "refs", "tumwater", "merge", "feature-5");
-  fs.mkdirSync(path.dirname(refFile), { recursive: true });
-  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  writeFileDeep(refFile, `${"1".repeat(40)}\n`);
   const out = await checkTumwaterPins(root);
   assert.equal(out.level, "fail");
   assert.match(out.detail, /refs\/tumwater\/merge\/feature-5 names \w+, which is gone — git gc and a detached checkout abort on it; `git update-ref -d <ref>` drops each/);

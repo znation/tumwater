@@ -16,6 +16,7 @@ import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** Unit coverage for src/run/run-prompt.ts — the assembly of what one role's run actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts, gate-notes.ts) are covered elsewhere;
@@ -218,8 +219,7 @@ test("the plan prompt reports zero eligible plans and other roles omit the count
 test("a role run prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "coverage");
-  fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "coverage runs through the oracle helpers\n");
+  writeFileDeep(notes, "coverage runs through the oracle helpers\n");
   const withNote = promptFor(dir, "coverage");
   assert.ok(withNote);
   assert.match(withNote.prompt, /<role-notes>\ncoverage runs through the oracle helpers\n<\/role-notes>/);
@@ -243,9 +243,8 @@ const NOTE_TRUNCATION_MARKER = `…[role notes truncated at ${ROLE_NOTES_MAX_BYT
 test("an over-long role note is truncated into the prompt with a visible marker", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "coverage");
-  fs.mkdirSync(path.dirname(notes), { recursive: true });
 
-  fs.writeFileSync(notes, "x".repeat(ROLE_NOTES_MAX_BYTES));
+  writeFileDeep(notes, "x".repeat(ROLE_NOTES_MAX_BYTES));
   const atCap = promptFor(dir, "coverage");
   assert.ok(atCap);
   assert.ok(!atCap.prompt.includes(NOTE_TRUNCATION_MARKER), "a note at the cap is untouched");

@@ -10,6 +10,7 @@ import {
 } from "../src/review/secret-leaks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const VALUE = "hf_abcdefghijklmnopqrstuvwxyz";
 const ENV_RAW = { HF_TOKEN: VALUE };
@@ -22,8 +23,7 @@ async function worktree(base: Record<string, string>, edit: Record<string, strin
   sh(root, "git", "commit", "-m", "base");
   const wt = await ensureWorktree(root, "improve", "main");
   for (const [f, c] of Object.entries(edit)) {
-    fs.mkdirSync(path.dirname(path.join(wt, f)), { recursive: true });
-    fs.writeFileSync(path.join(wt, f), c);
+    writeFileDeep(path.join(wt, f), c);
   }
   return wt;
 }

@@ -26,6 +26,7 @@ import { makeRepo, sh, tmpdir, worktreeAt } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { sleep } from "./helpers/wait.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** Give a linked worktree a tracked modified file, an untracked file, an ignored `build/`
  * dir, an ignored `.log`, and a nested repository — the shape part 2/4's acceptance criterion
@@ -106,8 +107,7 @@ test("a non-finite registry timestamp reads as never seen, not as used forever",
   // worktree is seeded as never seen (and excluded from this pass) rather than sorted as used
   // forever — `now - Infinity` is below every idle window, so it would never be reclaimed.
   const registryFile = worktreeUsePath(root);
-  fs.mkdirSync(path.dirname(registryFile), { recursive: true });
-  fs.writeFileSync(registryFile, '{"feature":{"lastUsedAt":1e999,"reclaimedAt":1e999}}');
+  writeFileDeep(registryFile, '{"feature":{"lastUsedAt":1e999,"reclaimedAt":1e999}}');
   assert.deepEqual(reclaimCandidates(root).map((c) => c.name), [], "seeded as never seen");
   const healed = readJson(registryFile) as Record<string, { lastUsedAt: number }>;
   assert.equal(Number.isFinite(healed["feature"]?.lastUsedAt), true, "the healed stamp is finite");

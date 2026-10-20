@@ -12,6 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { repoRoot } from "./helpers/repo-root.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
  * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, log-commands.ts,
@@ -69,8 +70,7 @@ test("the layering scanner flags a planted core->ui import and clears allowed on
   try {
     const write = (rel: string, body: string): void => {
       const file = path.join(srcDir, rel);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, body);
+      writeFileDeep(file, body);
     };
     write("ui/thing.ts", "export const thing = 1;\n");
     write("core.ts", 'import { thing } from "./ui/thing.js";\nvoid thing;\n'); // the violation

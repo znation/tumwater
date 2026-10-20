@@ -20,6 +20,7 @@ import { deleteRef, refSha, setRef } from "../src/git/git.js";
 import { makeRepo, pinOffMain } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const NO_USAGE = { tokens: 0, cost: 0, providerCost: {} };
 
@@ -129,9 +130,7 @@ test("a main_red pin stays parked while main's new head is cached red", async ()
   const recorded = state.mainRedRetry;
   assert.ok(recorded);
   const red = "e".repeat(40);
-  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
-  fs.writeFileSync(
-    baselineVerdictsPath(root),
+  writeFileDeep(baselineVerdictsPath(root),
     JSON.stringify({ reds: [{ sha: red, script: "test", failingTests: ["t"] }] }),
   );
   persistBaselineVerdicts(root);

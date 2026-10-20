@@ -21,6 +21,7 @@ import { claudeAccountPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 function account(over: Partial<ClaudeAccount> = {}): ClaudeAccount {
   return { billing: "subscription", observedAt: 1_000, windows: {}, ...over };
@@ -44,8 +45,7 @@ function withoutBillingEnv(fn: () => void): void {
 test("readClaudeAccount: absent and malformed files read as no account", () => {
   const root = tmpdir();
   assert.equal(readClaudeAccount(root), null, "no file");
-  fs.mkdirSync(path.dirname(claudeAccountPath(root)), { recursive: true });
-  fs.writeFileSync(claudeAccountPath(root), "{not json");
+  writeFileDeep(claudeAccountPath(root), "{not json");
   assert.equal(readClaudeAccount(root), null, "malformed json");
   fs.writeFileSync(claudeAccountPath(root), JSON.stringify({ billing: "subscription" }));
   assert.equal(readClaudeAccount(root), null, "no observedAt reads as absent");
@@ -90,9 +90,7 @@ test("readClaudeAccount drops a non-finite utilization instead of keeping Infini
   // `1e999` parses to Infinity, which would render as `Infinity%` and make the
   // claudeWindowEntries comparator return NaN.
   const root = tmpdir();
-  fs.mkdirSync(path.dirname(claudeAccountPath(root)), { recursive: true });
-  fs.writeFileSync(
-    claudeAccountPath(root),
+  writeFileDeep(claudeAccountPath(root),
     '{"billing":"subscription","observedAt":1000,"windows":{"five_hour":{"status":"allowed","utilization":1e999,"observedAt":1000}}}',
   );
   const read = readClaudeAccount(root, 1_000);

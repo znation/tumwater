@@ -22,6 +22,7 @@ import { withClaudeReplay } from "./fakes/fake-claude.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { claudeAssistant, claudeInit, claudeRateLimit, claudeResult, claudeToolUse } from "./fixtures/claude-events.js";
 import { setEnv } from "./helpers/env.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The resume guard dispatches to the registered backend, so this process must register the two
 // real adapters exactly as src/agent/run-agent.ts does when the harness loads.
@@ -58,8 +59,7 @@ function withClaudeAuthor(root: string, cwd: string, id = "c1"): void {
     at: Date.now(),
   });
   const transcript = claudeTranscriptPath(cwd, id);
-  fs.mkdirSync(path.dirname(transcript), { recursive: true });
-  fs.writeFileSync(transcript, "");
+  writeFileDeep(transcript, "");
 }
 
 function plan(

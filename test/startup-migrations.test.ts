@@ -11,6 +11,7 @@ import { mergeRefName, legacyLandingRefName, mergeQueueDir, legacyLandingStatePa
 import { registerStartupMigration } from "../src/orchestrator/startup-migrations.js";
 import { runStartupMigrations, runStartupMigrationsIfIdle } from "../src/orchestrator/startup-migration-steps.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 function oldLayout(root: string): void {
   const dir = legacyLandQueueDir(root);
@@ -77,8 +78,7 @@ test("registering a duplicate step name throws", () => {
 test("mergingMarker removes a leftover landing.json once", async () => {
   const root = makeRepo();
   const old = legacyLandingStatePath(root);
-  fs.mkdirSync(path.dirname(old), { recursive: true });
-  fs.writeFileSync(old, "{}");
+  writeFileDeep(old, "{}");
   await runStartupMigrations(root);
   assert.ok(!fs.existsSync(old));
   assert.equal(migrated(root).filter((e) => e.step === "mergingMarker").length, 1);

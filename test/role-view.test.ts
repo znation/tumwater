@@ -21,6 +21,7 @@ import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 
@@ -31,8 +32,7 @@ function root(): string {
 }
 
 function pauseRoles(dir: string, roles: string[]): void {
-  fs.mkdirSync(path.dirname(pausedRolesPath(dir)), { recursive: true });
-  fs.writeFileSync(pausedRolesPath(dir), JSON.stringify({ roles, at: Date.now() }));
+  writeFileDeep(pausedRolesPath(dir), JSON.stringify({ roles, at: Date.now() }));
 }
 
 test("a built-in role's payload resolves identity, tier, defaults, and its find text", () => {
@@ -318,8 +318,7 @@ test("with several prompts queued, the next-run block discloses that only the ol
 test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkdown splices in place", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "feature");
-  fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
+  writeFileDeep(notes, "the scheduler lives in team.ts\n");
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const p = rolePayload(dir, "feature", NO_MODELS);
@@ -356,8 +355,7 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
 test("a role's notes renders verbatim, or reads as none yet", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "feature");
-  fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
+  writeFileDeep(notes, "the scheduler lives in team.ts\n");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, "the scheduler lives in team.ts\n");

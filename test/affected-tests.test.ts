@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { buildDepGraph, selectAffected } from "./affected-tests.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The affected-test selector behind `npm run test:gate` (test/affected-tests.ts), pinned on a
 // synthetic checkout: TypeScript sources (whose existence maps compiled files back to them) and
@@ -14,12 +14,10 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 function checkout(files: Record<string, string>): string {
   const root = tmpdir("affected-");
   for (const [rel, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-    fs.writeFileSync(path.join(root, rel), content);
+    writeFileDeep(path.join(root, rel), content);
     const source = /^dist\/(.+)\.js$/.exec(rel);
     if (source) {
-      fs.mkdirSync(path.dirname(path.join(root, `${source[1]}.ts`)), { recursive: true });
-      fs.writeFileSync(path.join(root, `${source[1]}.ts`), "");
+      writeFileDeep(path.join(root, `${source[1]}.ts`), "");
     }
   }
   return root;

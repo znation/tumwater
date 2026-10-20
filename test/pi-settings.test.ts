@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { piSettingsPath, readPiDefaultModel } from "../src/pi/pi-settings.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 function writeSettings(agentDir: string, body: unknown): string {
   const file = path.join(agentDir, "settings.json");
@@ -47,8 +48,7 @@ test("readPiDefaultModel reads as null when the saved default cannot be known", 
   assert.equal(readPiDefaultModel(path.join(tmpdir("pi-null-missing-"), "settings.json"), project), null);
   // Malformed JSON.
   const malformed = path.join(tmpdir("pi-null-bad-"), "settings.json");
-  fs.mkdirSync(path.dirname(malformed), { recursive: true });
-  fs.writeFileSync(malformed, "{ not json");
+  writeFileDeep(malformed, "{ not json");
   assert.equal(readPiDefaultModel(malformed, project), null);
   // defaultModel without defaultProvider — pi uses a saved default only as a pair.
   assert.equal(

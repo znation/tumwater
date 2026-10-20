@@ -34,6 +34,7 @@ import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { setConfigKey } from "../src/config/config-write.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -223,8 +224,7 @@ test("notes edit mode reads a role's notes replacement from a typed file path", 
   keys.syncSnapshot(0, false, ["clean"]);
   // Seed a note so the notes view renders it, and a replacement file to type into the editor.
   const notePath = roleNotesPath(root, "clean");
-  fs.mkdirSync(path.dirname(notePath), { recursive: true });
-  fs.writeFileSync(notePath, "stale note\n");
+  writeFileDeep(notePath, "stale note\n");
   const replacement = path.join(root, "replacement.md");
   fs.writeFileSync(replacement, "the fresh note\n");
 
@@ -968,8 +968,7 @@ function writeTrailPiLog(root: string): void {
     { type: "message_end", message: { role: "user", content: [{ type: "text", text: "asked-one" }], timestamp: 1_700_000_010_000 } },
     { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "said-one" }], timestamp: 1_700_000_010_000 } },
   ];
-  fs.mkdirSync(path.dirname(piLogPath(root, "clean")), { recursive: true });
-  fs.writeFileSync(piLogPath(root, "clean"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  writeFileDeep(piLogPath(root, "clean"), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
 }
 
 test("Ctrl+R on the History trail cycles the agent transcript off, plain, prompts, off", () => {

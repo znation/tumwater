@@ -15,6 +15,7 @@ import { writeConfig } from "./fixtures/repo-fixtures.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { initializedWorktree } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** A RunVerdictContext for a finished, uneventful run: pi declared nothing-to-do on a clean
  * worktree, so the normal classification is a fulfilled no_change. Tests override only what
@@ -216,9 +217,7 @@ test("a blind read on a text-only tier with a vision reroute target aborts as im
   writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
   const config = loadConfig(root);
   const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  fs.mkdirSync(path.dirname(models), { recursive: true });
-  fs.writeFileSync(
-    models,
+  writeFileDeep(models,
     JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
   );
 
@@ -251,9 +250,7 @@ test("a blind read during an already-rerouted run fails instead of rerouting a s
   writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
   const config = loadConfig(root);
   const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  fs.mkdirSync(path.dirname(models), { recursive: true });
-  fs.writeFileSync(
-    models,
+  writeFileDeep(models,
     JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
   );
 
@@ -283,8 +280,7 @@ test("a blind read onto a built-in vision tier that pi lists as reading images a
   writeConfig(root, { model: { default: "local/text", strong: "builtin/vision-x" } });
   const config = loadConfig(root);
   const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
-  fs.mkdirSync(path.dirname(models), { recursive: true });
-  fs.writeFileSync(models, JSON.stringify({ providers: { local: { models: [{ id: "text" }] } } }));
+  writeFileDeep(models, JSON.stringify({ providers: { local: { models: [{ id: "text" }] } } }));
   const pi: PiRunResult = piRunResult({
     ok: false,
     imageBlind: { path: "/x/s.png" },

@@ -6,12 +6,12 @@ import { refSha } from "../src/git/git.js";
 import { mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
 import { migrateLegacyRoleIds } from "../src/roles/legacy-role-migration.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const MAP = { oldy: "newy" };
 
 function put(file: string, text: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, text);
+  writeFileDeep(file, text);
 }
 
 function oldRole(root: string): { sha: string; log: string } {

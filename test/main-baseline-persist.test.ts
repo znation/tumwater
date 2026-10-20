@@ -13,6 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { baselineVerdictsPath } from "../src/paths.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Main's green baseline verdicts survive a team restart (persistBaselineVerdicts in
 // src/baseline/main-baseline.ts). The mirror is process-wide state, so these tests live in their
@@ -36,8 +37,7 @@ test("greens are mirrored to the state dir as they are recorded, observed and in
 test("a new generation starts from the saved greens and does not re-run the suite on them", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture("improve", `echo run >> ${counter}; echo ok`);
-  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
-  fs.writeFileSync(baselineVerdictsPath(root), JSON.stringify({ greens: [{ sha: headSha(root) }] }));
+  writeFileDeep(baselineVerdictsPath(root), JSON.stringify({ greens: [{ sha: headSha(root) }] }));
   persistBaselineVerdicts(root);
   assert.equal(cachedBaselineVerdict(headSha(root)), "green");
   assert.equal((await checkMainBaseline(wt, defaultConfig())).baseline?.status, "green");
@@ -57,8 +57,7 @@ test("a red the watch recorded loads with its failing tests; a green a run turne
 
 test("a torn file or malformed entries read as no data", () => {
   const root = tmpdir("persist-torn-");
-  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
-  fs.writeFileSync(baselineVerdictsPath(root), "{ not json");
+  writeFileDeep(baselineVerdictsPath(root), "{ not json");
   assert.doesNotThrow(() => persistBaselineVerdicts(root));
   fs.writeFileSync(
     baselineVerdictsPath(root),
@@ -71,9 +70,7 @@ test("a torn file or malformed entries read as no data", () => {
 
 test("a restart reloads a saved red with its failing tests, and a new run keeps them", async () => {
   const root = tmpdir("persist-red-");
-  fs.mkdirSync(path.dirname(baselineVerdictsPath(root)), { recursive: true });
-  fs.writeFileSync(
-    baselineVerdictsPath(root),
+  writeFileDeep(baselineVerdictsPath(root),
     JSON.stringify({ reds: [{ sha: sha(7), script: "test", failingTests: ["a", "b"] }, { sha: "nope" }] }),
   );
   persistBaselineVerdicts(root);

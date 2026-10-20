@@ -25,6 +25,7 @@ import { backdate } from "./helpers/backdate.js";
 import { spawnReadyChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 test("isTeamPaused reads false with no .tumwater dir and no marker", () => {
   const root = tmpdir();
@@ -356,9 +357,8 @@ test("an over-cap pause reason never stores a lone surrogate", () => {
 test("a standing marker's reason is folded, capped, and type-guarded on read, whoever wrote it", () => {
   const root = tmpdir();
   const markerPath = pausedPath(root);
-  fs.mkdirSync(path.dirname(markerPath), { recursive: true });
   // Exactly what a pre-fold build's JSON.stringify stored: escaped newline and tab in the file.
-  fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "deploying\nthe new build\tv2" }));
+  writeFileDeep(markerPath, JSON.stringify({ at: Date.now(), reason: "deploying\nthe new build\tv2" }));
   assert.equal(pausedReason(root), "deploying the new build v2", "the raw note reads as one line");
   // An over-cap note in an old marker is capped on read by the same PAUSE_REASON_MAX.
   fs.writeFileSync(markerPath, JSON.stringify({ at: Date.now(), reason: "y".repeat(PAUSE_REASON_MAX + 50) }));

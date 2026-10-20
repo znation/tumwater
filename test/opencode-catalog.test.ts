@@ -9,7 +9,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   opencodeModelFree,
@@ -25,6 +24,7 @@ import {
 import { opencodeModelsPath } from "../src/paths.js";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** The real 2.0.32 catalogue capture (finding 10). From the compiled module
  * (dist/test) four levels up to the repo root; from the source module (test/) two. */
@@ -260,9 +260,7 @@ test("opencodeModelKey maps a bare gateway id and keeps a routed provider key", 
 test("readOpencodeCache drops a foreign catalog entry and keeps the valid ones", () => {
   const root = tmpdir("opencode-foreign-");
   const ok = { free: true, context: 1000, efforts: ["high"], extra: 1 };
-  fs.mkdirSync(path.dirname(opencodeModelsPath(root)), { recursive: true });
-  fs.writeFileSync(
-    opencodeModelsPath(root),
+  writeFileDeep(opencodeModelsPath(root),
     JSON.stringify({
       fetchedAt: 1,
       models: {

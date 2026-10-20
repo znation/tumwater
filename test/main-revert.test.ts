@@ -19,6 +19,7 @@ import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
 
@@ -170,8 +171,7 @@ test("a standing reverted verdict is cleared like a rejection once the revision 
 
 function pendingRoot(entries: unknown[]): { root: string; ctxOf: (runners: RoleRunner[]) => MergePipelineContext } {
   const root = tmpdir();
-  fs.mkdirSync(path.dirname(revertedPendingPath(root)), { recursive: true });
-  fs.writeFileSync(revertedPendingPath(root), JSON.stringify({ reverted: entries }));
+  writeFileDeep(revertedPendingPath(root), JSON.stringify({ reverted: entries }));
   const ctxOf = (runners: RoleRunner[]) => ({ root, mainBranch: "main", runners }) as unknown as MergePipelineContext;
   return { root, ctxOf };
 }

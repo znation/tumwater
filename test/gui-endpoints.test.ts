@@ -42,6 +42,7 @@ import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
 // level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
@@ -202,8 +203,7 @@ function serveRestart(root: string, body = "{}") {
 /** Seed an orchestrator info file whose pid is this test process (alive, by definition) with
  * the given published build — the staleness requestRestart consults. */
 function seedTeam(root: string, build: Record<string, unknown> | null): void {
-  fs.mkdirSync(path.dirname(orchestratorStatePath(root)), { recursive: true });
-  fs.writeFileSync(orchestratorStatePath(root), JSON.stringify({ pid: process.pid, ...(build ? { build } : {}) }));
+  writeFileDeep(orchestratorStatePath(root), JSON.stringify({ pid: process.pid, ...(build ? { build } : {}) }));
 }
 
 test("handleRestart writes the marker and replies ok while the running build is stale", async () => {
@@ -630,8 +630,7 @@ test("handleRole serves a role's notes and next prompt, refusing a missing or un
   // A notes written by the role's own earlier run — the text the drawer's Notes
   // section must show verbatim.
   const notes = roleNotesPath(root, "feature");
-  fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
+  writeFileDeep(notes, "the scheduler lives in team.ts\n");
 
   const { captured, data } = await serveRole(root, "?role=feature");
   assert.equal(captured.status, 200);
@@ -1160,8 +1159,7 @@ test("handleRoleInterval clears on null/empty/whitespace and rejects bad input w
 test("handleRoleInterval clears a key the file never set without writing and refuses a missing field or unknown role", async () => {
   const root = tmpdir();
   const before = Buffer.from(JSON.stringify({ minRunIntervalSeconds: 20 }, null, 2) + "\n");
-  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
-  fs.writeFileSync(configPath(root), before);
+  writeFileDeep(configPath(root), before);
   // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
   const cleared = await serveRoleInterval(root, { role: "feature", minRunIntervalSeconds: null });
   assert.equal(cleared.captured.status, 200);
@@ -1197,8 +1195,7 @@ test("handleRoleInterval writes and clears a seeded built-in role's override the
   // keeps the seeded value in the merged view but leaves the file bytes identical.
   const root = tmpdir();
   const before = Buffer.from(JSON.stringify({ minRunIntervalSeconds: 20 }, null, 2) + "\n");
-  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
-  fs.writeFileSync(configPath(root), before);
+  writeFileDeep(configPath(root), before);
   // Clearing a never-set built-in's override writes nothing (no-op success).
   const cleared = await serveRoleInterval(root, { role: "qa", minRunIntervalSeconds: null });
   assert.equal(cleared.captured.status, 200);
@@ -1277,8 +1274,7 @@ test("handleRoleInstances clears on null/empty/whitespace and rejects bad input 
 test("handleRoleInstances clears a key the file never set without writing and refuses a missing field or unknown role", async () => {
   const root = tmpdir();
   const before = Buffer.from(JSON.stringify({ roles: { feature: { enabled: true } } }, null, 2) + "\n");
-  fs.mkdirSync(path.dirname(configPath(root)), { recursive: true });
-  fs.writeFileSync(configPath(root), before);
+  writeFileDeep(configPath(root), before);
   // Unsetting a key the file never set is a no-op: the file's bytes stay identical.
   const cleared = await serveRoleInstances(root, { role: "feature", instances: null });
   assert.equal(cleared.captured.status, 200);

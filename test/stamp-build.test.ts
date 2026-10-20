@@ -14,13 +14,13 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // From dist/test/ this is the checkout's scripts/stamp-build.mjs.
 const script = fileURLToPath(new URL("../../scripts/stamp-build.mjs", import.meta.url));
 
 function touch(file: string): void {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, "");
+  writeFileDeep(file, "");
 }
 
 test("the prune keeps a .ts or .tsx source's output and removes a sourceless one", () => {

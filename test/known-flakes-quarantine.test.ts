@@ -4,12 +4,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { quarantinePath } from "../src/paths.js";
 import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import {
   QUARANTINE_MAX,
   loadQuarantine,
@@ -21,8 +21,7 @@ import {
 } from "../src/review/known-flakes.js";
 
 function writeStore(root: string, content: string): void {
-  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
-  fs.writeFileSync(quarantinePath(root), content);
+  writeFileDeep(quarantinePath(root), content);
 }
 
 test("quarantine: a failing list at the parser's cap is neither quarantined nor counted as only quarantined", () => {

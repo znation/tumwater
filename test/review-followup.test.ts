@@ -23,6 +23,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
 
 import type { PiRunOptions } from "../src/pi/pi.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 interface Captured {
   opts: PiRunOptions | null;
@@ -115,8 +116,7 @@ test("a claude gate session resumes through the ledger without a pi session file
       at: Date.now(),
     });
     const transcript = claudeTranscriptPath(ctx.wt, "gate-1");
-    fs.mkdirSync(path.dirname(transcript), { recursive: true });
-    fs.writeFileSync(transcript, "");
+    writeFileDeep(transcript, "");
     assert.equal(hasResumableSession(dir), false, "claude leaves no pi session file in the dir");
     const run = await requestVerdict(ctx);
     assert.equal(run, captured.result);

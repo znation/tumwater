@@ -12,6 +12,7 @@ import { shortSha } from "../src/text/format.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { eventsOfType, unwritableEvents, warningMessages } from "./fixtures/log-fixtures.js";
 import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for src/runner/leftover.ts's recoverLeftover — the salvage path that puts a commit
 // a
@@ -226,8 +227,7 @@ test("a stale ref already contained in main is deleted without queuing anything"
 function danglingPinFixture(): string {
   const root = makeRepo();
   const refFile = path.join(root, ".git", mergeRefName(ROLE));
-  fs.mkdirSync(path.dirname(refFile), { recursive: true });
-  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  writeFileDeep(refFile, `${"1".repeat(40)}\n`);
   return root;
 }
 

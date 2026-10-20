@@ -12,6 +12,7 @@ import {
 import { defaultConfig } from "../src/config/config.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The green carry-over in src/baseline/main-baseline.ts (inheritedGreen, noteInheritedGreen):
 // a main SHA whose tree differs from a green-verified ancestor only in review-exempt paths
@@ -27,8 +28,7 @@ const CFG = defaultConfig();
  * way a fresh run resets to main. Returns the new main SHA. */
 function advanceMain(root: string, wt: string, files: Record<string, string>, message: string): string {
   for (const [rel, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
-    fs.writeFileSync(path.join(root, rel), content);
+    writeFileDeep(path.join(root, rel), content);
   }
   // Only the named files: `add -A` would also stage the role worktree under .tumwater/ as a
   // gitlink (a real project gitignores it), a non-exempt path in every delta.

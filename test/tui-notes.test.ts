@@ -5,6 +5,7 @@ import path from "node:path";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { roleNotesPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Ctrl+N notes mode: on a role's transcript, the pane swaps the live transcript for the
 // role's notes and next run's prompt (PLANS.md "Inspect a loop's notebook and next tick
@@ -13,8 +14,7 @@ import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 /** Seed a role's notes file. */
 function seedNote(repo: string, role: string, text: string): void {
   const note = roleNotesPath(repo, role);
-  fs.mkdirSync(path.dirname(note), { recursive: true });
-  fs.writeFileSync(note, text);
+  writeFileDeep(note, text);
 }
 
 test("Ctrl+N shows the viewed role's notes and next run prompt, and toggles back", async () => {

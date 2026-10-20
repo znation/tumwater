@@ -9,6 +9,7 @@ import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
 import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { commitIn, headSha, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests
 // reach
@@ -115,8 +116,7 @@ test("a malformed slots.json degrades to no pooled slot instead of crashing the 
   const legacy = await ensureWorktree(repo, "feature", "main");
   // A stray null in the persisted pool (a hand edit, an older writer): every reader of
   // slots.json — `tumwater diff`, the dashboard, retire — must degrade, not throw.
-  fs.mkdirSync(path.dirname(slotsStatePath(repo)), { recursive: true });
-  fs.writeFileSync(slotsStatePath(repo), JSON.stringify({ slots: [null] }));
+  writeFileDeep(slotsStatePath(repo), JSON.stringify({ slots: [null] }));
   const view = await collectRoleChange(repo, "feature");
   assert.equal(view.state, "ready", "the legacy worktree still answers");
   assert.equal(view.ahead, 0);

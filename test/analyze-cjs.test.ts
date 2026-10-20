@@ -14,6 +14,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { gitInit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const ANALYZE = fileURLToPath(new URL("../../docs/code-metrics/analyze.cjs", import.meta.url));
 
@@ -126,8 +127,7 @@ function analyze(files: Array<[string, string]>): { data: Rec; stdout: string } 
   gitInit(root);
   for (const [name, content] of files) {
     const abs = path.join(root, name);
-    fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content);
+    writeFileDeep(abs, content);
   }
   const cats = path.join(root, "categories.cjs");
   fs.writeFileSync(cats, CATEGORIES);

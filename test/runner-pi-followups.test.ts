@@ -14,6 +14,7 @@ import { withClaudeReplay } from "./fakes/fake-claude.js";
 import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/runner-pi-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // RunnerPi's one-reply follow-up turns (src/runner/runner-pi.ts): requestSummary asks the run's
 // own session for the missing SUMMARY block, and requestStageFix asks it to address review
@@ -133,8 +134,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       // follow-up wiring rather than the claude resume mechanics already pinned elsewhere).
       const dir = sessionDir(root, "feature");
       recordSession(dir, { agent: "claude", id: "followup-session", kind: "author", name: "n", cwd: root, at: Date.now() });
-      fs.mkdirSync(path.dirname(claudeTranscriptPath(root, "followup-session")), { recursive: true });
-      fs.writeFileSync(claudeTranscriptPath(root, "followup-session"), "{}");
+      writeFileDeep(claudeTranscriptPath(root, "followup-session"), "{}");
       assert.equal(backendSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
       // The SUMMARY follow-up now continues that claude session.
       const result = await runnerPi.requestSummary(root, claudeSeam);

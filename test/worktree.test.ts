@@ -15,6 +15,7 @@ import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/merge/merge
 import { readEvents } from "../src/events/event-read.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { assertClean, headSha, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // The worktree helpers (src/git/worktree.ts): role worktrees, the mirror's detached checkout,
 // reset-to-main, and abortSync's interrupted-merge/rebase cleanup. The mirror test moved here
@@ -413,8 +414,7 @@ async function slotWithDanglingRef(refPath: string): Promise<{ repo: string; dir
   const dir = path.join(repo, ".tumwater", "worktrees", "_slot-1");
   await ensureDetachedWorktree(repo, dir, headSha(repo));
   const refFile = path.join(repo, ".git", refPath);
-  fs.mkdirSync(path.dirname(refFile), { recursive: true });
-  fs.writeFileSync(refFile, `${"1".repeat(40)}\n`);
+  writeFileDeep(refFile, `${"1".repeat(40)}\n`);
   sh(dir, "git", "commit", "--allow-empty", "-m", "wip");
   return { repo, dir, refFile };
 }
@@ -464,8 +464,7 @@ test("dropDanglingTumwaterPins drops loose and packed pins naming missing commit
   const gitDir = resolveGitDir(repo)!;
   appendPackedRef(gitDir, "2", "refs/tumwater/merge/retired");
   const loose = path.join(gitDir, "refs", "tumwater", "merge", "feature-5");
-  fs.mkdirSync(path.dirname(loose), { recursive: true });
-  fs.writeFileSync(loose, `${"1".repeat(40)}\n`);
+  writeFileDeep(loose, `${"1".repeat(40)}\n`);
 
   assert.deepEqual(await dropDanglingTumwaterPins(repo), ["refs/tumwater/merge/feature-5", "refs/tumwater/merge/retired"]);
 

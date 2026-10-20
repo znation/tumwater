@@ -10,6 +10,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 /** Unit tests for src/orchestrator/retention.ts — the session-retention prune gate (moved here
  * from
@@ -121,8 +122,7 @@ test("RetentionPruner: an OpenCode DB dir that cannot be created skips the sessi
   const root = tmpdir();
   // A regular file where the DB's directory belongs: the mkdir throws EEXIST.
   const dbDir = path.dirname(opencodeDbPath(root));
-  fs.mkdirSync(path.dirname(dbDir), { recursive: true });
-  fs.writeFileSync(dbDir, "x");
+  writeFileDeep(dbDir, "x");
   const toolOut = staleFile(toolOutputDir(root), "tool-out.txt");
   const day = 24 * 3600 * 1000;
   recordSession(

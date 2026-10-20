@@ -5,6 +5,7 @@ import path from "node:path";
 import { gitLevelFindings } from "../src/run/stage-path-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Pins that each git-level finding of the staging self-check stops at its cap, and that the
 // missing-path and lost-newline findings say how many they left out. Names are zero-padded so
@@ -14,8 +15,7 @@ import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 async function repoWith(files: Record<string, string>): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
   for (const [file, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-    fs.writeFileSync(path.join(root, file), content);
+    writeFileDeep(path.join(root, file), content);
   }
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "base");

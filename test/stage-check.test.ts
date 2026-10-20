@@ -14,6 +14,7 @@ import {
 } from "../src/run/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for src/run/stage-check.ts (PLANS.md "Pre-queue self-check, part 1/2"):
 // the merge gate's deterministic backlog checks run before a changed run commits, so the
@@ -49,8 +50,7 @@ function fixedBug(symbol: string): string {
 async function repoWith(files: Record<string, string>): Promise<{ root: string; wt: string }> {
   const root = makeRepo();
   for (const [file, content] of Object.entries(files)) {
-    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-    fs.writeFileSync(path.join(root, file), content);
+    writeFileDeep(path.join(root, file), content);
   }
   sh(root, "git", "add", "-A");
   sh(root, "git", "commit", "-m", "base");
@@ -747,8 +747,7 @@ const KEPT = "its doc comment was kept";
 async function detachedFindings(files: Record<string, string>, edits: Record<string, string>): Promise<string[]> {
   const { wt } = await repoWith(files);
   for (const [file, content] of Object.entries(edits)) {
-    fs.mkdirSync(path.dirname(path.join(wt, file)), { recursive: true });
-    fs.writeFileSync(path.join(wt, file), content);
+    writeFileDeep(path.join(wt, file), content);
   }
   return stageCheckFindings(wt, "main", EXEMPT, "feature");
 }
@@ -829,8 +828,7 @@ async function movedFindings(
       fs.rmSync(full);
       continue;
     }
-    fs.mkdirSync(path.dirname(full), { recursive: true });
-    fs.writeFileSync(full, content);
+    writeFileDeep(full, content);
   }
   return (await stageCheckFindings(wt, "main", EXEMPT, "feature")).filter((f) => f.includes("lines moved to"));
 }

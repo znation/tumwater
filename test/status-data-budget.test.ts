@@ -21,6 +21,7 @@ import { projectCapHit } from "../src/budget/budget.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 test("snapshot carries the daily cost budget aggregated from persisted runner state", async () => {
   const repo = makeRepo();
@@ -209,8 +210,7 @@ test("snapshot lists the roles whose budget tier resolved to pause in budgetPaus
   saveRunnerState(repo, plan);
 
   const models = path.join(tmpdir("budget-paused-models-"), "models.json");
-  fs.mkdirSync(path.dirname(models), { recursive: true });
-  fs.writeFileSync(models, MODELS_JSON);
+  writeFileDeep(models, MODELS_JSON);
 
   const snap = snapshot(repo, models);
   assert.ok(snap.budgetPausedRoles.includes("plan"), "the strong-tier role is held");

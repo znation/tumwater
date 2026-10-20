@@ -19,6 +19,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setEnv } from "./helpers/env.js";
 import { fakeClaudeReplay, readRunBlocks, withClaudeReplay } from "./fakes/fake-claude.js";
 import { writeScript } from "./fakes/fake-commands.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import {
   claudeAssistant,
   claudeInit,
@@ -219,8 +220,7 @@ test("claude's resumable predicate requires the kind, the recorded cwd, and a tr
       at: Date.now(),
     });
     const transcript = claudeTranscriptPath(cwd, "rec-id");
-    fs.mkdirSync(path.dirname(transcript), { recursive: true });
-    fs.writeFileSync(transcript, "");
+    writeFileDeep(transcript, "");
     assert.equal(
       claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
       true,
@@ -322,8 +322,7 @@ test("the resume check finds a transcript at a relocated CLAUDE_CONFIG_DIR", asy
       transcript.startsWith(reloc + path.sep),
       `the transcript lives under the relocated dir: ${transcript}`,
     );
-    fs.mkdirSync(path.dirname(transcript), { recursive: true });
-    fs.writeFileSync(transcript, "");
+    writeFileDeep(transcript, "");
     // The default `~/.claude` tree is untouched, so only the relocated file is relevant.
     assert.equal(
       claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
@@ -569,8 +568,7 @@ test("the native log rotates under logMaxBytes like the raw log", async () => {
     const run = claudeRun(dir, {
       config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", logMaxBytes: 16 },
     });
-    fs.mkdirSync(path.dirname(run.nativeLogFile), { recursive: true });
-    fs.writeFileSync(run.nativeLogFile, "x".repeat(100) + "\n");
+    writeFileDeep(run.nativeLogFile, "x".repeat(100) + "\n");
     await runAgent(run);
     assert.equal(
       fs.readFileSync(run.nativeLogFile + ".1", "utf8"),

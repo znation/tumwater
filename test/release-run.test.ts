@@ -12,6 +12,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { gitOnlyBinDir, headSha, pushedRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
 
@@ -140,8 +141,7 @@ function pushedRepoWithLock(version = "0.1.0"): { root: string; origin: string }
 function installRejectOncePushHook(root: string): void {
   const marker = path.join(tmpdir("release-hook-"), "pushed");
   const hook = path.join(root, ".git", "hooks", "pre-push");
-  fs.mkdirSync(path.dirname(hook), { recursive: true });
-  fs.writeFileSync(hook, `#!/bin/sh\nif [ -f "${marker}" ]; then exit 0; fi\ntouch "${marker}"\nexit 1\n`);
+  writeFileDeep(hook, `#!/bin/sh\nif [ -f "${marker}" ]; then exit 0; fi\ntouch "${marker}"\nexit 1\n`);
   fs.chmodSync(hook, 0o755);
 }
 
