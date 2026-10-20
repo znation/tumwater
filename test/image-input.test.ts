@@ -8,6 +8,7 @@ import { claudeBackend } from "../src/agent/claude/claude-backend.js";
 import { loadConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { readPiProviders } from "../src/pi/pi-models.js";
+import type { PiListedModels } from "../src/pi/pi-listed-models.js";
 import { imageReroute, imageRerouteTarget, seamImageInput } from "../src/agent/image-input.js";
 import { imageProbeKey, IMAGE_PROBE_TTL_MS, type ImageProbeCache } from "../src/doctor/image-probe.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -182,4 +183,35 @@ test("imageReroute fallback regime drops a free fallback pair whose probe failed
     [imageProbeKey("pi", "local", "fb-vision")]: { verdict: "fail", detail: 'answered "1234"', at: Date.now(), claim: true },
   };
   assert.equal(imageRerouteTarget(config, "feature", "fallback", models, null, probes), null);
+});
+
+// ── Pi's built-in catalog (plans/image-input.md "Capability"): a pair models.json does not
+// define answers what `pi --list-models` last said.
+
+const LISTED: PiListedModels = { checkedAt: 0, images: { "builtin/vision-x": true, "builtin/text-x": false } };
+
+test("seamImageInput reads pi's listed images column for a pair models.json does not define", () => {
+  const providers = readPiProviders(writeModels());
+  const read = (model: string, listed: PiListedModels | null) =>
+    seamImageInput({ provider: "builtin", model }, providers, undefined, listed);
+  assert.equal(read("vision-x", LISTED), true);
+  assert.equal(read("text-x", LISTED), false);
+  assert.equal(read("other", LISTED), null);
+  for (const model of ["vision-x", "text-x", "other"]) assert.equal(read(model, null), null);
+  // models.json wins for a pair it defines, even when the listing says the opposite.
+  const opposite: PiListedModels = { checkedAt: 0, images: { "local/vision": false, "local/text": true } };
+  assert.equal(seamImageInput({ provider: "local", model: "vision" }, providers, undefined, opposite), true);
+  assert.equal(seamImageInput({ provider: "local", model: "text" }, providers, undefined, opposite), false);
+  // A fresh failed probe turns a listed claim false.
+  const probes: ImageProbeCache = {
+    [imageProbeKey("pi", "builtin", "vision-x")]: { verdict: "fail", detail: "no", at: Date.now(), claim: true },
+  };
+  assert.equal(seamImageInput({ provider: "builtin", model: "vision-x" }, providers, probes, LISTED), false);
+});
+
+test("imageReroute picks a tier whose built-in model pi lists as reading images", () => {
+  const config = rerouteConfig({ model: { default: "local/text", strong: "builtin/vision-x" } });
+  const models = writeModels();
+  assert.equal(imageReroute(config, "feature", "primary", models, null, undefined, null, LISTED)?.tier, "strong");
+  assert.equal(imageReroute(config, "feature", "primary", models), null);
 });

@@ -13,6 +13,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text/text.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { roleImageInfo } from "../agent/image-input.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
 import { roleLabel } from "../roles/role-labels.js";
 
@@ -62,7 +63,9 @@ export function imagePromptGuidance(root: string, role: string): { refusal?: str
   // The same probe cache the status rows, role page, and images alert read (roleImageInfo's
   // fourth argument): a claimed pi model whose doctor probe failed reads text-only here too,
   // so the gate never grants image capability that the surfaces report as absent.
-  const { imageInput, imageReroute } = roleImageInfo(cfg, role, undefined, readImageProbeCache(root));
+  const { imageInput, imageReroute } = roleImageInfo(
+    cfg, role, undefined, readImageProbeCache(root), readPiListedModels(root),
+  );
   if (imageInput !== false) return {};
   if (imageReroute) {
     return {

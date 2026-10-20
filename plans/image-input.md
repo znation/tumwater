@@ -53,8 +53,9 @@ It lives at runtime level because it needs the backend registry:
   (`PiModelDef.input`).
   - Includes `"image"` → true.
   - Present without it, or absent → false. This matches pi's own default.
-  - Not in models.json at all (pi's built-in catalog) → `null`, unknown. The doctor's tier check
-    already fails such pairs.
+  - Not in models.json at all (pi's built-in catalog) → the images column the doctor last saved
+    from `pi --list-models` (`.tumwater/state/pi-listed-models.json`); a pair that listing does
+    not name reads `null`, unknown.
 - **Effective** = claimed **and not** a failed doctor probe (below). A failed probe overrides a
   claim. A passed probe never overrides a text-only claim, because pi strips the image anyway.
 

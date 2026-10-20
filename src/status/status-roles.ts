@@ -18,6 +18,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { runnerStateForPoll } from "./status-polls.js";
 import { roleImageInfo, seamImageLabel } from "../agent/image-input.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe.js";
 
 /** One status-table row: the persisted runner state plus the display-only fields the dashboard
@@ -73,6 +74,7 @@ export function collectRoleRows(
   // One probe-cache read per poll serves every row's image-input surface (same no-data policy
   // as every other degraded read: a missing cache is an empty one).
   const probes = readImageProbeCache(root);
+  const listed = readPiListedModels(root);
   return roles.map((r) => {
     const base = { ...runnerStateForPoll(root, r), custom: isCustomRole(cfg, r) };
     const leased = slots.find((slot) => slot.lease?.role === r);
@@ -88,7 +90,7 @@ export function collectRoleRows(
     // capability and its reroute target, one shared resolver so the status rows, the role
     // page, and the submit gate cannot disagree about who reads images or where a blind
     // prompt would run.
-    const image = roleImageInfo(cfg, r, modelsPath, probes);
+    const image = roleImageInfo(cfg, r, modelsPath, probes, listed);
     // Model failure fallback, part 2/2: while the role's episode is active its ticks run on
     // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so

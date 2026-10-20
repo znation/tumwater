@@ -27,6 +27,7 @@ import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-mod
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
@@ -403,7 +404,7 @@ export function rolePayload(
     ...(account !== null ? { billing: account.billing } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
-    ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
+    ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root), readPiListedModels(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     ...(minRunIntervalOverride !== undefined ? { minRunIntervalOverride } : {}),
     ...(providerOverride !== undefined ? { providerOverride } : {}),

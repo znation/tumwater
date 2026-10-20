@@ -21,6 +21,7 @@ import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { recordFlow } from "./qa-coverage.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import { subscriptionWindowRejected } from "../agent/claude/claude-account.js";
@@ -192,7 +193,8 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // kept worktree off to a FRESH session on the target.
     const regime = ctx.rerouteRegime ?? "primary";
     const target =
-      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime) : null;
+      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime, undefined, null, undefined, null, readPiListedModels(ctx.root))
+        : null;
     if (target) {
       const from = ctx.runModel ?? target.config.model ?? "the model";
       s.imageReroute = {

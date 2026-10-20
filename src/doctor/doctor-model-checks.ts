@@ -34,7 +34,7 @@ import { modelPairName, pairDailyCost } from "../budget/budget.js";
 import { formatBytes, usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
-import { parsePiModelImages, writePiListedModels } from "../pi/pi-listed-models.js";
+import { parsePiModelImages, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
@@ -639,6 +639,7 @@ export async function checkImageInput(
   // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
   // this check when a seam actually needs it — an all-claude team reads images without it.
   const accountNow = account === undefined ? readClaudeAccount(root) : account;
+  const listed = readPiListedModels(root);
   const pairs = seamPairs(config);
   const needsDefinitions = pairs.some((p) => usesPiModels(p.agent ?? "pi"));
   if (providers === null && needsDefinitions)
@@ -649,7 +650,7 @@ export async function checkImageInput(
   const claimed = new Map<string, { agent?: string; provider?: string; model: string; thinking?: string }>();
   for (const pair of pairs) {
     if (pair.model === undefined) continue;
-    if (seamImageInput(pair, providers) === true)
+    if (seamImageInput(pair, providers, undefined, listed) === true)
       claimed.set(imageProbeKey(pair.agent, pair.provider, pair.model), {
         agent: pair.agent,
         provider: pair.provider,
@@ -669,7 +670,7 @@ export async function checkImageInput(
     // (seamImageInput, imageReroute) resolve a pi seam to the "pi" agent, so the cache key
     // must carry "pi" — keying it `undefined` would write a verdict the readers never read.
     const agent = "pi";
-    if (seamImageInput(pair, providers) === true)
+    if (seamImageInput(pair, providers, undefined, listed) === true)
       claimed.set(imageProbeKey(agent, pair.provider, pair.model), {
         agent,
         provider: pair.provider,
@@ -729,9 +730,9 @@ export async function checkImageInput(
   for (const role of enabledRoleIds(config)) {
     const rc = configForRole(config, role);
     if (rc.model === undefined) continue;
-    if (seamImageInput(rc, providers, probes) !== false) continue; // reads images, or unknown (to tier models)
-    const rr = imageReroute(config, role, "primary", modelsPath, accountNow, probes);
-    if (rr && seamImageInput(rr.config, providers, probes) === true)
+    if (seamImageInput(rc, providers, probes, listed) !== false) continue; // reads images, or unknown (to tier models)
+    const rr = imageReroute(config, role, "primary", modelsPath, accountNow, probes, null, listed);
+    if (rr && seamImageInput(rr.config, providers, probes, listed) === true)
       reroutes.push(
         `${role} text-only (${label(rc.agent, rc.provider, rc.model)}) — reroutes to ${rr.tier} (${label(rr.config.agent, rr.config.provider, rr.config.model)})`,
       );

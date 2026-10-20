@@ -10,6 +10,7 @@ import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.
 import { leaseSlot } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
 import { useWorktree } from "../git/worktree-use.js";
+import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import {
@@ -213,8 +214,11 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
     const carriesImages = nextPrompt !== null && /^\[image attached: .+\]$/m.test(nextPrompt);
     if (carriesImages) {
       const providers = readPiProviders(piModelsPath());
-      if (seamImageInput(cfg, providers) !== true) {
-        const target = imageReroute(ctx.config, ctx.role, ctx.rerouteRegime(now));
+      const listed = readPiListedModels(ctx.root);
+      if (seamImageInput(cfg, providers, undefined, listed) !== true) {
+        const target = imageReroute(
+          ctx.config, ctx.role, ctx.rerouteRegime(now), undefined, null, undefined, null, listed,
+        );
         if (target !== null) {
           cfg = target.config;
           s.imageRerouteActive = true;

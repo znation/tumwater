@@ -1,4 +1,5 @@
 import test from "node:test";
+import { writePiListedModels } from "../src/pi/pi-listed-models.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -241,4 +242,35 @@ test("a blind read during an already-rerouted tick fails instead of rerouting a 
   assert.equal(outcome?.result, "error", "a rerouted tick's blind read fails, no second hop");
   assert.equal(state.imageReroute, undefined, "no new reroute marker is set");
   assert.match(state.lastError ?? "", /cannot read images/);
+});
+
+test("a blind read onto a built-in vision tier that pi lists as reading images aborts as image-reroute", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  // strong names a pair models.json does not define; only the saved `pi --list-models`
+  // listing says it reads images.
+  writeConfig(root, { model: { default: "local/text", strong: "builtin/vision-x" } });
+  const config = loadConfig(root);
+  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
+  fs.mkdirSync(path.dirname(models), { recursive: true });
+  fs.writeFileSync(models, JSON.stringify({ providers: { local: { models: [{ id: "text" }] } } }));
+  const pi: PiRunResult = piRunResult({
+    ok: false,
+    imageBlind: { path: "/x/s.png" },
+    errorMessage: "read /x/s.png, but local/text cannot read images",
+  });
+  const run = async () => {
+    const { ctx, state } = makeCtx(root, wt, "feature", { pi, config, runModel: "local/text", rerouteRegime: "primary" });
+    return { outcome: await resolveTickVerdict(ctx), state };
+  };
+
+  const unlisted = await run();
+  assert.equal(unlisted.outcome?.result, "error", "no listing: no reroute target");
+  assert.equal(unlisted.state.imageReroute, undefined);
+
+  writePiListedModels(root, { "builtin/vision-x": true });
+  const listed = await run();
+  assert.equal(listed.outcome?.result, "aborted");
+  assert.equal(listed.outcome?.resumeCause, "image-reroute");
+  assert.equal(listed.state.imageReroute?.tier, "strong");
+  assert.equal(listed.state.imageReroute?.model, "vision-x");
 });

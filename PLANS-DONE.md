@@ -5,6 +5,36 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Pi built-in image capability, part 2/2: `seamImageInput` answers from the saved `pi --list-models` images column for a pi pair missing from models.json, so a built-in vision model keeps its image prompts (planned 2026-10-19 by the plan role; "requires part 1/2 landed". Touches src/agent/image-input.ts, src/runner/runner-run.ts, src/tick/tick-verdict.ts, src/inbox/inbox-submit.ts, src/roles/role-view.ts, src/status/status-roles.ts, src/doctor/doctor-model-checks.ts, plans/image-input.md, test/image-input.test.ts, test/tick-verdict.test.ts, done 2026-10-20)
+
+**Goal.** Part 1/2 saves pi's own images column per `provider/model`. This part has the one resolver read it. A pi pair missing from models.json gets the listing's answer instead of `null`. With that, the preflight keeps an image prompt on a role whose built-in model reads images, and a reroute can target a built-in vision tier. The status, role and submit surfaces say what pi says, and the doctor's `image input` check probes the built-in claim like any other.
+
+**Approach.**
+- **src/agent/image-input.ts.**
+  - `seamImageInput(seam, providers, probes?, listed?: PiListedModels | null)`. In the pi branch, `base` becomes `piModelImageInput(providers, …)`. When that is null, use `piListedImageInput(listed, seam.provider, seam.model)` instead. models.json wins when it defines the pair. The failed-probe override that follows is unchanged, so it covers a listed claim too: it uses the same `imageProbeKey("pi", …)`.
+  - Update the doc comment: "absent from models.json → what `pi --list-models` last said (src/pi/pi-listed-models.ts), else null".
+  - Thread a trailing `listed: PiListedModels | null = null` through `imageReroute` (into its `capable` closure), `imageRerouteTarget` and `roleImageInfo`. `roleImageInfo` passes it to both its `seamImageInput` and its `imageReroute` call.
+- **Callers.** Each one reads `readPiListedModels(root)` once and passes it on. Every one of these already has `root` (or `ctx.root`):
+  - src/runner/runner-run.ts preflight: both the `seamImageInput` call and the `imageReroute` call.
+  - src/tick/tick-verdict.ts: the blind-read `imageReroute` call.
+  - src/inbox/inbox-submit.ts, src/roles/role-view.ts, src/status/status-roles.ts: their `roleImageInfo` calls.
+  - src/doctor/doctor-model-checks.ts `checkImageInput`: the two `claimed` loops' `seamImageInput(pair, providers)`, the per-role `seamImageInput(rc, providers, probes)` and its `imageReroute`. With this, a listed built-in vision pair is probed and cached like a models.json claim.
+- Leave src/agent/run-agent.ts' parser `imageInput` alone. It only acts on `false`, and for a model pi has built in, pi itself reports the non-vision note. Say so in one line of this plan's commit, not in code.
+- **plans/image-input.md** "Capability", pi bullet. Replace "Not in models.json at all (pi's built-in catalog) → `null` … already fails such pairs" with: built-in pairs read the images column the doctor last saved from `pi --list-models`, and an unlisted pair reads `null`.
+- docs/invariants.md INV-J1 (blind reads) is unaffected: it pins the stop on a blind read, not the capability source.
+
+**Acceptance criteria.**
+- test/image-input.test.ts, new "seamImageInput reads pi's listed images column for a pair models.json does not define". Use the file's `writeModels()` catalog:
+  - A pi seam `builtin/vision-x` with `listed = { checkedAt: 0, images: { "builtin/vision-x": true, "builtin/text-x": false } }` reads true.
+  - `builtin/text-x` reads false, and an unlisted `builtin/other` reads null.
+  - With no `listed`, all three read null, as before.
+  - A models.json pair stays on its catalog answer even when `listed` says the opposite.
+  - A fresh failed probe for `builtin/vision-x` (`imageProbeKey("pi", "builtin", "vision-x")`) turns it false.
+- Same file, new "imageReroute picks a tier whose built-in model pi lists as reading images". The default tier is text-only and the strong tier is `builtin/vision-x`. With the listing, `imageReroute(config, "feature", "primary", models, null, undefined, null, listed)?.tier === "strong"`. Without it, the result is null.
+- test/tick-verdict.test.ts, new twin of "a blind read on a text-only tier with a vision reroute target aborts as image-reroute". The strong tier is a pair models.json does not define, listed as reading images with `writePiListedModels(root, { "<pair>": true })` before the verdict. The tick aborts as image-reroute onto strong. Without the listing, the same setup takes the no-target path that "a blind image read fails the tick with an error naming the file and the model" pins. (No test drives the runner-run.ts preflight end to end today, and this part does not add one. The preflight reads the same `seamImageInput`/`imageReroute` the unit tests above cover.)
+- The existing image-input, runner, tick-verdict, status, role-view and doctor tests pass unchanged. They write no listing, so every caller reads null and behaves as today.
+- `npm run test:gate` passes.
+
 ### A `roles.<id>.model` or `review.model` value that misspells a tier name (`strnog`, `Strong`, `defualt`) is a config error naming the tier, so `tumwater role <id> --model strnog` refuses instead of writing a model id pi cannot resolve (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/ui/status-render.ts and src/doctor; this one touches src/config/config-field-checks.ts, test/config-validation-model.test.ts, test/cli-operators.test.ts, docs/config.md); done 2026-10-20 by the feature role
 
 **Goal.** `roles.<id>.model` and `review.model` accept a bare tier name (`small`, `default`, `strong`) as a reference into the top-level `model` map. `checkModelTripleField` (src/config/config-field-checks.ts) matches tier names exactly and case-sensitively, so any other bare string passes as a model id. A typo then goes to pi as a model pattern, and the role runs a model nobody chose. Verified 2026-10-19 in a scratch `tumwater init` project with main's build: `tumwater role feature --model strnog`, `--model Strong`, `--model defualt` and `--model smal` each printed `feature: model set to …` and exited 0. Afterwards `tumwater doctor` only warned `smal names no provider — pi resolves it with its own default, tumwater cannot verify it`. `role --model` writes through `setConfigKey` (src/config/config-write.ts), which validates the candidate config with `validateConfig`, so a new validation problem makes the CLI write, the TUI and dashboard model editors, and a hand edit of tumwater.json all refuse the typo the same way. After this change, a near-miss tier name is a validation problem that names the tier.

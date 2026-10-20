@@ -2,7 +2,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { piListedModelsPath } from "../paths.js";
 
 /** What `pi --list-models` last said about image input, per `provider/model`. */
-interface PiListedModels {
+export interface PiListedModels {
   checkedAt: number;
   images: Record<string, boolean>;
 }
