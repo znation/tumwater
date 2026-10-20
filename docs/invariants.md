@@ -1664,3 +1664,73 @@ window, or no model at all, gets the same trimmed prompt.
 
 **Pinned by.** `test/trim-system-prompt.test.ts` — "the extension trims on every model, whatever
 window it declares".
+
+## Shared phrases: a count agrees with its noun, a hold or budget never reads NaN, and an unreadable field falls back to fixed wording
+
+`src/text/phrases.ts` is the single home of these wordings, so the event feed, the failure digest,
+the status surfaces and the CLI cannot drift apart. It is pure presentation over `format.ts`'s
+tokens.
+
+### INV-AE1: a count's word is singular for exactly one and plural for every other count
+
+**Guarantee.** `plural(n, one, many)` renders `n === 1` with `one` and every other count, zero
+included, with `many` (default `one` plus `s`); `agree` makes the same choice without printing the
+count. The GUI keeps its own JS copy in `gui-client.ts`, which this entry does not bind.
+
+**Binds.** `src/text/phrases.ts` (`plural`, `agree`).
+
+**Pinned by.** `test/phrases.test.ts` — "plural and agree treat exactly one as singular and every
+other count as plural".
+
+### INV-AE2: a span under two minutes reads in seconds, and a hold never reads negative
+
+**Guarantee.** `shortSpanPhrase` reads a span in seconds while the rounded seconds count is under
+120, and in whole minutes otherwise, so a span that rounds up to two minutes reads `2m`, never
+`120s`. `holdPhrase` clamps a negative or unreadable hold to `for 0s` and names `(relapse N)` only
+when the escalation count is above zero.
+
+**Binds.** `src/text/phrases.ts` (`shortSpanPhrase`, `holdPhrase`).
+
+**Pinned by.** `test/phrases.test.ts` — "shortSpanPhrase rounds a near-two-minute span into the
+minute arm, never 120s" and "holdPhrase clamps an unreadable or negative hold to 0s and adds the
+relapse only past zero".
+
+### INV-AE3: a budget phrase reads a non-numeric field as $0.00, never $NaN
+
+**Guarantee.** `budgetPhrase` coerces the spent and cap fields through `finiteNumber` with a
+fallback of 0 before the money format renders them, so a string, `NaN` or infinite value reads
+`$0.00`.
+
+**Binds.** `src/text/phrases.ts` (`budgetPhrase`).
+
+**Pinned by.** `test/phrases.test.ts` — "budgetPhrase reads a non-numeric or non-finite event field
+as $0.00, never $NaN".
+
+### INV-AE4: a tool-call label is one bounded line naming the path's basename or the command after any leading cd
+
+**Guarantee.** `describeToolCall` takes the first string among `path`, `file_path`, `command`,
+`cmd`, `pattern` and `url`; a `path` or `file_path` reduces to its basename, a `command` or `cmd`
+loses any leading `cd <dir> &&` (or `;`) prefixes, and the others stay verbatim. The detail is
+squashed to one line of at most 32 characters. The label is the tool name and the detail, the bare
+detail when the name is empty, and the bare name when the args give no string detail.
+
+**Binds.** `src/text/phrases.ts` (`describeToolCall`, `withoutLeadingCd`).
+
+**Pinned by.** `test/phrases.test.ts` — "describeToolCall summarizes common arg shapes tersely",
+"describeToolCall with an omitted toolName yields the bare detail, no leading space",
+"describeToolCall basenames path-like keys and shows the others verbatim", "describeToolCall
+prefers the first present key in path, file_path, command, cmd, pattern, url order",
+"describeToolCall falls back to the bare tool name for non-object or non-string args" and
+"describeToolCall drops a leading cd so the label names the command".
+
+### INV-AE5: an unreadable reason or failure kind falls back to fixed wording
+
+**Guarantee.** `firstReason` returns the first reason when it is a string and the fixed
+no-reasons wording otherwise. `backendKindPhrase` names each known backend-failure kind and reads
+any other kind, or none, as `backend failure`.
+
+**Binds.** `src/text/phrases.ts` (`firstReason`, `backendKindPhrase`).
+
+**Pinned by.** `test/phrases.test.ts` — "firstReason returns the first string reason and falls back
+when there is none" and "backendKindPhrase names each backend-failure kind and falls back on an
+unreadable kind".

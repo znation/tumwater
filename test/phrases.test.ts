@@ -1,6 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backendKindPhrase, budgetPhrase, describeToolCall, firstReason, shortSpanPhrase } from "../src/text/phrases.js";
+import {
+  agree,
+  backendKindPhrase,
+  budgetPhrase,
+  describeToolCall,
+  firstReason,
+  holdPhrase,
+  plural,
+  shortSpanPhrase,
+} from "../src/text/phrases.js";
 
 // text/phrases.ts is the single home of the team's shared wording fragments (the tool-call label,
 // the backend-hold kind phrasing, and their siblings). These tests pin the documented contracts
@@ -116,4 +125,21 @@ test("describeToolCall drops a leading cd so the label names the command", () =>
   assert.equal(cmd("cd /tmp"), "bash cd /tmp");
   assert.equal(cmd("cd a || exit 1"), "bash cd a || exit 1");
   assert.equal(describeToolCall("bash", { path: "/x/cd y && z" }), "bash cd y && z");
+});
+
+test("plural and agree treat exactly one as singular and every other count as plural", () => {
+  assert.equal(plural(1, "run"), "1 run");
+  assert.equal(plural(0, "run"), "0 runs");
+  assert.equal(plural(2, "run"), "2 runs");
+  assert.equal(plural(2, "role is", "roles are"), "2 roles are");
+  assert.equal(agree(1, "is", "are"), "is");
+  assert.equal(agree(0, "is", "are"), "are");
+});
+
+test("holdPhrase clamps an unreadable or negative hold to 0s and adds the relapse only past zero", () => {
+  assert.equal(holdPhrase(60_000, 0), "for 60s");
+  assert.equal(holdPhrase(180_000, 2), "for 3m (relapse 2)");
+  assert.equal(holdPhrase(-5000, undefined), "for 0s");
+  assert.equal(holdPhrase("x", "y"), "for 0s");
+  assert.equal(holdPhrase(undefined, undefined), "for 0s");
 });
