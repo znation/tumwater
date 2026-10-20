@@ -647,22 +647,4 @@ Both should say nothing changed, as the CLI does after part 1/2.
 - The TUI's and dashboard's release and top actions are not changed by this entry.
 - `npm run test:gate` passes.
 
-### The dashboard's budget badge editor says when the cap it saves is the one already set, instead of "Daily cap set to …" for a save that wrote nothing (planned 2026-10-20 by the plan role; the dashboard follow-up the finished TUI Ctrl+B budget entry left out. Independent of every Planned entry: touches `handleBudget` in src/gui/gui-config-commands.ts, `saveBudget` in src/ui/gui/gui-client-operator.ts, test/gui-operator.test.ts and test/gui-client.test.ts, which no Planned entry names)
-
-**Goal.** `setDailyBudgetUsd` (src/config/config-write.ts) already returns `{ ok: true, unchanged: true }` and writes nothing when tumwater.json already resolves to the requested cap. `handleBudget` drops that flag and always answers `{ ok: true, maxDailyCostUsd }`. The badge editor opens filled with the current cap, so pressing Enter straight away is the common path, and `saveBudget` then flashes `Daily cap set to $50` for a save that changed nothing. The TUI's Ctrl+B editor says `budget is already $50, so tumwater.json was not written`. The dashboard's role drawer cap editor (`handleRoleCap` plus the `/api/role-cap` callback in src/ui/gui/gui-client-boot.ts) already reads `unchanged` and flashes `Daily cap unchanged`. Only the team badge is left out.
-
-**Approach.**
-- src/gui/gui-config-commands.ts `handleBudget`: answer `{ ok: true, maxDailyCostUsd: value, ...(result.unchanged ? { unchanged: true } : {}) }`, the same spread `handleRoleCap` uses. A changed cap still answers exactly `{ ok: true, maxDailyCostUsd }`. Add a sentence to the doc comment: "A cap already in place answers `unchanged: true` and writes nothing."
-- src/ui/gui/gui-client-operator.ts `saveBudget`: pass `postAction` a function instead of the fixed string (postAction in src/ui/gui/gui-client.ts already accepts `okMsg` as a function of the response). When `d && d.unchanged`, return `"Daily cap is already " + fmtCap(value) + " — nothing saved"` for `value > 0`, or `"Daily cap is already removed — nothing saved"` for 0. Otherwise return the current `Daily cap set to …`/`Daily cap removed` strings. The wording follows the Settings view's `is already that value — nothing saved` flash in src/ui/gui/gui-client-settings.ts. The editor still closes and the page refreshes, as for any success.
-
-**Tests.**
-- test/gui-operator.test.ts "POST /api/budget persists a valid cap and rejects invalid bodies without touching the file": after the 25 save, read the file bytes, post 25 again, and assert the body deep-equals `{ ok: true, maxDailyCostUsd: 25, unchanged: true }` and the bytes are identical. The existing first-save `deepEqual(…, { ok: true, maxDailyCostUsd: 25 })` still passes.
-- test/gui-client.test.ts "the cap editor refuses text the browser rejected instead of silently removing the cap" (or a new test beside it using `operatorScope()`): make the scope's fake post answer `{ ok: true, maxDailyCostUsd: 25, unchanged: true }`. `operatorScope`'s fake `postJson` always returns `{ ok: true }`, so give it a reply the test can set (for example a mutable `reply` object it returns, defaulting to `{ ok: true }`). `saveBudget()` with `25` then flashes `Daily cap is already $25 — nothing saved`, and with an empty field flashes `Daily cap is already removed — nothing saved`. The existing flashes for changed values (`Daily cap removed`, `Daily cap set to $25`) still pass.
-
-**Acceptance criteria.**
-- `POST /api/budget` with the cap tumwater.json already resolves to answers 200 with `unchanged: true` and leaves the file byte-identical. A changed cap answers `{ ok: true, maxDailyCostUsd }` as before.
-- Saving the badge editor's pre-filled cap flashes `Daily cap is already $<n> — nothing saved` (or `Daily cap is already removed — nothing saved` for 0). A changed value flashes the current `Daily cap set to …`/`Daily cap removed`.
-- The TUI, the CLI and `/api/role-cap` are not changed.
-- `npm run test:gate` passes.
-
 ## Done

@@ -224,8 +224,12 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     }
     const value = parsed.value;
     // A failure leaves the editor open so the value can be fixed.
-    await postAction("/api/budget", { maxDailyCostUsd: value },
-      value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed");
+    await postAction("/api/budget", { maxDailyCostUsd: value }, (d) => {
+      if (d && d.unchanged) {
+        return "Daily cap is already " + (value > 0 ? fmtCap(value) : "removed") + " — nothing saved";
+      }
+      return value > 0 ? "Daily cap set to " + fmtCap(value) : "Daily cap removed";
+    });
   }
   onClick((t, ev) => {
     if (t.closest("#budgetbadge")) {

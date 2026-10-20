@@ -213,6 +213,12 @@ test("POST /api/budget persists a valid cap and rejects invalid bodies without t
   assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25 });
   let onDisk = readJson(configFile) as { maxDailyCostUsd: number };
   assert.equal(onDisk.maxDailyCostUsd, 25);
+  // The same cap again writes nothing and says so.
+  const bytes = fs.readFileSync(configFile, "utf8");
+  res = await postJson(base, "/api/budget", { maxDailyCostUsd: 25 });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, maxDailyCostUsd: 25, unchanged: true });
+  assert.equal(fs.readFileSync(configFile, "utf8"), bytes);
 
   // Fractional dollars keep their cents (the badge renders them).
   res = await postJson(base, "/api/budget", { maxDailyCostUsd: 12.34 });

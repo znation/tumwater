@@ -434,6 +434,7 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const posts: Array<{ path: string; body: unknown }> = [];
   const flashes: string[] = [];
   const els: Record<string, unknown> = {};
+  const reply: Record<string, unknown> = { ok: true };
   const scope = clientScope<{
     budgetCardHtml(b: object, cw?: object): string;
     windowLinesHtml(cw: object): string;
@@ -448,14 +449,14 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
     lastPaint: {},
     icon: iconStub,
-    postJson: async (path: string, body: unknown) => { posts.push({ path, body }); return { ok: true }; },
+    postJson: async (path: string, body: unknown) => { posts.push({ path, body }); return reply; },
     showFlash: (m: string) => flashes.push(m),
     closeMenus: () => {},
     refresh: () => {},
     openMenu: null,
     lastStatus: state.lastStatus ?? null,
   });
-  return { scope, panels, posts, flashes, els };
+  return { scope, panels, posts, flashes, els, reply };
 }
 
 test("the stop control is empty when stopped, a menu opener when running, and Cancel when scheduled", () => {
@@ -584,6 +585,18 @@ test("the cap editor refuses text the browser rejected instead of silently remov
   input.value = "12.34";
   await scope.saveBudget();
   assert.deepEqual(posts.shift(), { path: "/api/budget", body: { maxDailyCostUsd: 12.34 } });
+});
+
+test("the cap editor says when the cap it saved is the one already set", async () => {
+  const { scope, flashes, els, reply } = operatorScope();
+  const input = { value: "25", validity: { badInput: false } };
+  els.budgetinput = input;
+  reply.unchanged = true;
+  await scope.saveBudget();
+  assert.equal(flashes.shift(), "Daily cap is already \$25 — nothing saved");
+  input.value = "";
+  await scope.saveBudget();
+  assert.equal(flashes.shift(), "Daily cap is already removed — nothing saved");
 });
 
 // One rule for both cap editors: the dashboard's parseBudgetField must admit and refuse exactly
