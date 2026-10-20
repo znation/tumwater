@@ -287,6 +287,8 @@ export class RunnerPi {
     // The agent run's model pair name, the key of the per-step daily spend
     // (RunnerState.dayCostByPair).
     const pair = seamPairName(opts.config);
+    // Names the seam in per-run provider warnings; omitted when pi picks its own default model.
+    const on = opts.config.model !== undefined ? ` on ${pair}` : "";
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run, provider, pair) : this.host.foldMergeUsage(run, provider, pair);
     // The agent run re-keys the calling run's provider lease to the provider THIS agent run uses,
@@ -315,14 +317,14 @@ export class RunnerPi {
     ) {
       this.host.warn(
         pi.transientPiCrash
-          ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
+          ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"})${on} — resuming the session once`
           : pi.transientRateLimit
-            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the agent run once`
+            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`})${on} — retrying the agent run once`
             : pi.backendKind === "stream-severed"
-              ? "provider severed the in-flight stream (terminated) — retrying the agent run once"
+              ? `provider severed the in-flight stream (terminated)${on} — retrying the agent run once`
               : pi.backendKind === "timeout"
-                ? "provider request timed out after accepting the connection — retrying the agent run once"
-                : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the agent run once",
+                ? `provider request timed out after accepting the connection${on} — retrying the agent run once`
+                : `model server timed out an idle predict stream (e.g. machine sleep)${on} — retrying the agent run once`,
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // team-wide rate-limit hold's input (RoleRunner.lastRateLimit, stamped at fold time), and
@@ -354,10 +356,10 @@ export class RunnerPi {
       this.warnFallbackClone(retry);
       this.observeFreeModelCost(retry, opts.config);
       if (foldFinal) fold(retry);
-      this.warnBackendKindFloor(retry);
+      this.warnBackendKindFloor(retry, on);
       return retry;
     }
-    this.warnBackendKindFloor(pi);
+    this.warnBackendKindFloor(pi, on);
     if (foldFinal) fold(pi);
     return pi;
   }
@@ -373,8 +375,9 @@ export class RunnerPi {
    * dies on an uncovered kind must warn exactly as a first attempt does. An agent run the retry
    * predicate DID admit on a backend kind (stream-severed/timeout) is excluded, so the warning's
    * "does not cover this kind" stays true and a retry failing on a covered kind emits no such line
-   * (BUGS.md 2026-10-09 review). */
-  private warnBackendKindFloor(run: PiRunResult): void {
+   * (BUGS.md 2026-10-09 review). The line names the seam's provider/model pair (`on`,
+   * empty with no model). */
+  private warnBackendKindFloor(run: PiRunResult, on: string): void {
     if (
       !run.ok &&
       !run.aborted &&
@@ -384,7 +387,7 @@ export class RunnerPi {
       !this.retryCoversBackendKind(run)
     ) {
       this.host.warn(
-        `provider backend failure (${backendKindPhrase(run.backendKind)}) — the transient retry does not cover this kind; the team-wide wait watches for a storm`,
+        `provider backend failure (${backendKindPhrase(run.backendKind)})${on} — the transient retry does not cover this kind; the team-wide wait watches for a storm`,
       );
     }
   }

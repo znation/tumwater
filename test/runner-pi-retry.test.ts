@@ -243,8 +243,48 @@ test("a backend-kind failure the retry does not cover warns once and earns no re
     // one warning naming the kind — where before it left only a per-run error event.
     assert.equal(warns.length, 1);
     assert.match(warns[0]!, /provider backend failure \(connection error\)/);
+    assert.ok(!warns[0]!.includes(" on "), "no model configured, so no ?/? label");
     assert.equal(usage.length, 1, "one attempt, one foldUsage — no retry for this kind");
     assert.equal(runArgs(args).length, 1, "exactly one pi invocation");
+  } finally {
+    restore();
+  }
+});
+
+test("the backend-kind floor warning names the seam's provider/model pair", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine("Connection error.")}'`,
+  });
+  try {
+    const cfg = defaultConfig();
+    cfg.agent = "pi";
+    cfg.provider = "omlx";
+    cfg.model = "qwen";
+    const { runnerPi, warns } = makeHost(root, cfg);
+    await runnerPi.runRolePi(root, "work", "tumwater-feature-7-author");
+    assert.equal(warns.length, 1);
+    assert.ok(warns[0]!.startsWith("provider backend failure (connection error) on omlx/qwen — "), warns[0]!);
+  } finally {
+    restore();
+  }
+});
+
+test("a retry warning names the seam's provider/model pair", async () => {
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
+  });
+  try {
+    const cfg = defaultConfig();
+    cfg.agent = "pi";
+    cfg.provider = "omlx";
+    cfg.model = "qwen";
+    const { runnerPi, warns } = makeHost(root, cfg);
+    await runnerPi.runRolePi(root, "work", "tumwater-feature-3-author");
+    assert.match(warns[0]!, /^provider rate-limited the request \(429, retry after 3s\) on omlx\/qwen — retrying the agent run once$/);
   } finally {
     restore();
   }
