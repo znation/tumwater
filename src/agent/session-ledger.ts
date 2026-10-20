@@ -12,7 +12,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
+import { daysAgoMs, dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
@@ -164,7 +164,7 @@ export function sessionResumable(
  * A ledger that cannot be rewritten (a full disk, a read-only dir) is left as it was and not
  * counted, because this pass runs in the orchestrator's poll loop, where a throw ends the team. */
 export function pruneSessionLedgers(sessionsRoot: string, days: number): number {
-  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  const cutoff = daysAgoMs(days);
   let pruned = 0;
   walkFiles(sessionsRoot, (file, entry) => {
     if (!entry.isFile() || entry.name !== SESSION_LEDGER_FILE) return;
@@ -224,7 +224,7 @@ export function pruneOpencodeSessions(
   days: number,
   opts: OpencodePruneOptions & { spillDir?: string },
 ): number {
-  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  const cutoff = daysAgoMs(days);
   let deleted = 0;
   if (opts.bin !== undefined) {
     walkFiles(sessionsRoot, (file) => {

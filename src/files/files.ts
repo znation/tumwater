@@ -325,6 +325,12 @@ export function removeTree(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 }
 
+/** The epoch-ms instant `days` days before now: the age cutoff the retention prunes compare a
+ * file's mtime against (pruneOldFiles, pruneOldDirectory, and session-ledger.ts's two prunes). */
+export function daysAgoMs(days: number): number {
+  return Date.now() - days * 24 * 3600 * 1000;
+}
+
 /** Delete regular files under `dir` (recursively) older than `days` days. Walks with a plain
  * per-directory readdir instead of {recursive: true} + entry.parentPath, so it stays within the
  * Node >= 20 floor declared in package.json — parentPath landed only in v20.12, and on earlier
@@ -344,7 +350,7 @@ export function removeTree(dir: string): void {
  * are left in place. */
 export function pruneOldFiles(dir: string, days: number): number {
   if (!fs.existsSync(dir)) return 0;
-  const cutoff = Date.now() - days * 24 * 3600 * 1000;
+  const cutoff = daysAgoMs(days);
   let pruned = 0;
   const walk = (d: string): void => {
     let entries: fs.Dirent[];
@@ -392,7 +398,7 @@ export function pruneOldDirectory(dir: string, days: number): boolean {
   if (!fs.existsSync(dir)) return false;
   let pruned = false;
   try {
-    if (fs.statSync(dir).mtimeMs < Date.now() - days * 24 * 3600 * 1000) {
+    if (fs.statSync(dir).mtimeMs < daysAgoMs(days)) {
       removeTree(dir);
       pruned = true;
     }
