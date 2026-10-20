@@ -8,7 +8,7 @@
 import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
 import { flagValue, parseCountFlag, parseGrepFlag, parsePositionFlag, parseRoleFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
-import { requireReadyRepo } from "./cli-repo-gate.js";
+import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -181,7 +181,8 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */
 export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
-  // command prints three empty sections in any directory (report's rationale, not config's).
+  // command prints three empty sections in any directory (report's rationale, not config's);
+  // the team-workspace refusal still applies.
   // --grep filters the three entry arrays to the matches, the finished-entry lists' one
   // matcher (entryMatches) on the active backlog; it composes with --ready (grep first, so
   // the hidden count and the kept entries count only the matches) and with --json. The
@@ -189,6 +190,7 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // parser's shared string.
   const BACKLOG_GREP_VALUE_ERROR = "backlog --grep needs text (usage: tumwater backlog --grep <text>)";
   rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG, grepFlagSpec(BACKLOG_GREP_VALUE_ERROR)]);
+  refuseTeamWorkspace(root);
   const { rest, pattern } = parseGrepFlag(args, BACKLOG_GREP_VALUE_ERROR);
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
   // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
@@ -221,7 +223,8 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
 /** `tumwater questions`: list open questions, or answer one with `answer <n> <decision>`. */
 export async function cmdQuestions(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: the reader degrades to an empty list on a
-  // missing QUESTIONS.md, so the command inspects any directory instead of refusing.
+  // missing QUESTIONS.md, so the command inspects any directory instead of refusing (a team
+  // workspace still refuses).
   // The answer form's decision is free-form prose, so peelPositionals cannot route the
   // tokens: a decision word may begin with a single dash (`questions answer 1 "-50% spend
   // cap"`), and peelPositionals would hand it to the flag gate as an unknown flag — the
@@ -292,6 +295,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     words.push(arg);
   }
   if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
+  refuseTeamWorkspace(root);
   if (show !== undefined) {
     if (grep !== undefined) fail("--grep does not apply to --show");
     if (words.length > 0) fail("--show prints one open question; it takes no subcommand");
@@ -428,9 +432,11 @@ function writeRoleConfigKey(
 export async function cmdRole(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
-  // a repo the team never started in — and a torn one — instead of refusing.
+  // a repo the team never started in — and a torn one — instead of refusing (a team
+  // workspace still refuses).
   const { id: positional, rest } = peelRolePositional(args);
   rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC]);
+  refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.

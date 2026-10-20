@@ -782,37 +782,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing image-input, runner, tick-verdict, status, role-view and doctor tests pass unchanged. They write no listing, so every caller reads null and behaves as today.
 - `npm run test:gate` passes.
 
-### Inside a team workspace, the ungated commands (`report`, `backlog`, `questions`, `role`, `bug`/`plan --list`/`--show`) refuse with the owning team root, so `tumwater role <id> --model` can no longer seed a phantom `tumwater.json` in a slot (planned 2026-10-19 by the plan role; independent of every eligible Planned entry. Touches src/cli/cli-repo-gate.ts, src/cli.ts (the `report` case), src/cli/cli-query-commands.ts, src/backlog/backlog-cli.ts, plus a new test/cli-team-workspace.test.ts)
-
-**Goal.** The done plan "Inside a team workspace (`<root>/.tumwater/worktrees/<slot>`), `tumwater init` refuses and every gated command names the owning team root…" covered `init` and the commands that call `requireReadyRepo`. Several commands skip that gate on purpose, because each one degrades to empty output in a directory that was never initialized. Inside a workspace, that degraded output is wrong. Measured 2026-10-19 with main's built CLI in a temp `R/.tumwater/worktrees/_slot-1` git repo:
-- `tumwater role feature --model strong` printed `feature: model set to strong`. It created `tumwater.json` in the slot.
-- `role feature --notes-file <f>` created `.tumwater/state/notes/feature.md` in the slot.
-- `git status` then showed both as untracked files, so a run's commit could pick them up.
-- The phantom `.tumwater` also makes `nearestTumwaterRoot(slot)` return the slot itself. After that, `owningTeamRoot` stops recognising the slot as a workspace, and the gated commands' workspace message stops firing there too.
-- Run from this plan role's own slot, `tumwater report --failures --since 2d` printed "0 runs, no events" for a team that is busy.
-
-After this change, every command that reads or writes team state answers inside a workspace with the same `teamWorkspaceMessage` the gated commands give.
-
-**Approach.**
-- `src/cli/cli-repo-gate.ts`: add `refuseTeamWorkspace(root: string): void`. It does `const owner = owningTeamRoot(root); if (owner !== undefined) fail(teamWorkspaceMessage(owner));`, importing `owningTeamRoot` from `../paths.js` and `teamWorkspaceMessage` from `../gates/readiness.js`. Doc comment: this is the workspace half of `requireReadyRepo` for the commands that deliberately skip the ready-repo gate. Outside a workspace it is a no-op, so those commands keep degrading to empty output in a plain directory.
-- Call it in each ungated state-reading command, after that command's argument gate (`rejectUnknownArgs` or its own parse) and before its first file read or write. This keeps the existing order: a malformed call fails with its usage first.
-  - `src/cli.ts` `report` case: after the `rejectUnknownArgs("report", …)` call, before `cmdReport`. This covers `--failures` and `--since` too.
-  - `src/cli/cli-query-commands.ts`:
-    - `cmdBacklog`: after its `rejectUnknownArgs`.
-    - `cmdQuestions`: after its argument scan, before the list, show or answer branches read QUESTIONS.md.
-    - `cmdRole`: after its `rejectUnknownArgs`, before the id resolution and every write branch.
-  - `src/backlog/backlog-cli.ts`: at the head of `listAndAnnounce` and `showAndAnnounce`, before they read the backlog file. These are the ungated `bug`/`plan --list` and `--show` forms; every other `bug`/`plan` form already calls `requireReadyRepo`.
-- Leave alone: `doctor` (its `checkInit` already prints the workspace message), `completion`, `help` and `version`, which hold no state. Update each touched "No requireReadyRepo gate" comment with a clause saying the workspace refusal still applies.
-
-**Acceptance criteria.**
-- New `test/cli-team-workspace.test.ts`. It uses `teamWorkspace()` from test/fixtures/repo-fixtures.ts and `cli` from test/helpers/cli-harness.ts.
-  - Test "an ungated command run in a team workspace names the owning team root". Each of these exits 1 with stderr containing `teamWorkspaceMessage(root)`: `report`, `report --failures`, `backlog`, `questions`, `role feature`, `bug --list`, `plan --show 1`.
-  - Test "`role <id> --model` in a team workspace refuses and writes nothing". `role feature --model strong` exits 1 with the workspace message. Afterwards the slot holds no `tumwater.json` and no `.tumwater`, and `git status --porcelain` in the slot is empty.
-  - Test "the argument gate still runs first in a workspace". `report --days abc` fails naming `--days`, not the workspace.
-  - Test "`completion bash` still works in a workspace". It exits 0.
-- Existing tests that run `report`, `backlog`, `questions` and `role` in plain temp repos pass unchanged, because none of those repos sits under a `.tumwater/worktrees`.
-- `npm run test:gate` passes.
-
 ### Shell completion completes `tumwater doctor` check names, quoting the multi-word ones (`image\ input`, `main\'s\ check`), so `tumwater doctor im<Tab>` finishes a name the operator would otherwise copy from the report (planned 2026-10-19 by the plan role; no dependency on any Planned entry. It follows the done plan "`tumwater doctor <check>...` runs only the named checks", which left check-name completion out of scope. None of the Planned entries touches these files. This one touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md)
 
 **Goal.** `tumwater doctor <check>...` takes check names as positionals, matched ignoring case against `DOCTOR_CHECK_NAMES` (src/doctor/doctor-check-names.ts). `tumwater completion bash|zsh|fish` offers only doctor's flags there, so the operator has to type a name exactly or copy it from a full report. Many names have spaces (`git binary`, `image input`, `models for each tier`), and `main's check` has an apostrophe, so the names must reach the command line quoted. After this change, every positional word after `doctor` that does not start with `-` completes to the check names. Names come back escaped (`image\ input`, `main\'s\ check`), or raw when the operator opened a quote (`"image in<Tab>`).

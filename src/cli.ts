@@ -46,7 +46,7 @@ import {
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
-import { requireReadyRepo } from "./cli/cli-repo-gate.js";
+import { refuseTeamWorkspace, requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
@@ -162,7 +162,8 @@ async function main(): Promise<void> {
     }
     case "report": {
       // No requireReadyRepo gate: the report aggregates files that degrade to zeros when
-      // missing, so it runs (and prints an all-zero window) in any directory.
+      // missing, so it runs (and prints an all-zero window) in any directory; the team-workspace
+      // refusal still applies.
       rejectUnknownArgs("report", args, [
         {
           names: ["--days"],
@@ -179,6 +180,7 @@ async function main(): Promise<void> {
         JSON_FLAG,
         ROLE_FLAG,
       ]);
+      refuseTeamWorkspace(root);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
       // trailing window vs a series over whole days), not a modifier of either.
       await (await import("./report/report.js")).cmdReport(root, args);

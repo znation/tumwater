@@ -25,7 +25,7 @@ import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./bac
 import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
-import { requireReadyRepo } from "../cli/cli-repo-gate.js";
+import { refuseTeamWorkspace, requireReadyRepo } from "../cli/cli-repo-gate.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { requestWake, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
@@ -380,6 +380,7 @@ export function listAndAnnounce(
   // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
   // both consumed above.
   rejectUnknownArgs(command, rest, []);
+  refuseTeamWorkspace(root);
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   const bugSection = sectionTitle === "Open";
@@ -511,6 +512,7 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
     rest.push(arg as string);
   }
   rejectUnknownArgs(command, rest, []);
+  refuseTeamWorkspace(root);
   if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
   if (done) {
     const bug = command === "bug";
