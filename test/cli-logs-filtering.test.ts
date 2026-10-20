@@ -228,11 +228,6 @@ test("logs --grep refuses the rival shapes, naming both flags", async () => {
   r = await cli(repo, "logs", "--grep", "x", "--prompt");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--grep .*--prompt/);
-
-  // --since is a filter of its own, not a window to filter.
-  r = await cli(repo, "logs", "--grep", "x", "--since", "1h");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--grep .*--since/);
 });
 
 test("logs --grep treats a flag-shaped pattern as text, not as the flag it spells", async () => {
@@ -485,6 +480,40 @@ test("logs --since --type filters the window, and an empty match is gentle prose
   const j = await cli(repo, "logs", "--since", "1h", "--type", "nosuchthing", "--json");
   assert.equal(j.code, 0);
   assert.equal(j.stdout, "", j.stdout);
+});
+
+test("logs --since --grep filters the window, and an empty match is gentle prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs grep since");
+  const now = Date.now();
+  writeLogLines(eventsLogPath(repo), [
+    { ts: now - 3 * 3_600_000, loop: "feature", type: "review_rejected", head: COMMIT_B, reasons: ["sloppy old handling"], durationMs: 400 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 400 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 }, // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  let r = await cli(repo, "logs", "--since", "1h", "--grep", "sloppy");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("sloppy error handling"), r.stdout);
+  assert.ok(!r.stdout.includes("sloppy old handling"), r.stdout);
+
+  r = await cli(repo, "logs", "--since", "1h", "--grep", "sloppy", "--type", "merge_failed");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events matching "sloppy" or no events matching "merge_failed"/);
+
+  r = await cli(repo, "logs", "--since", "1h", "--grep", "nosuchtext");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events matching "nosuchtext" in/);
+
+  r = await cli(repo, "logs", "--since", "1h", "--grep", "nosuchtext", "--json");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout, "", r.stdout);
+
+  r = await cli(repo, "logs", "--since", "1h", "--grep", "sloppy", "--json");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trim().split("\n");
+  assert.ok(lines.length > 0 && lines.every((l) => JSON.parse(l).type === "review_rejected"), r.stdout);
 });
 
 test("logs --type hints at a typo, but a valid-but-empty type stays hint-free", async () => {

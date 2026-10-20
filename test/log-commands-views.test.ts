@@ -102,7 +102,6 @@ test("logs rejects rival flag shapes, naming both flags in each failure", async 
   const repo = makeRepo();
   // --grep pairs
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--transcript", "clean"])), /--grep cannot be combined with --transcript/);
-  assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", "x", "--since", "1h"])), /--grep cannot be combined with --since/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep"])), /--grep needs a pattern/);
   assert.match(await expectFailAsync(() => cmdLogs(repo, ["--grep", ""])), /--grep needs a pattern/);
   // --since pairs

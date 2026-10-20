@@ -103,7 +103,7 @@ Usage:
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,
                                    case-insensitively (-n bounds the scanned window, not
-                                   the printed rows); --type shows only events of the listed
+                                   the printed rows; it composes with --since); --type shows only events of the listed
                                    exact event types (comma-separated), and an older event name matches its current one (it
                                    composes with --since); --count
                                    prints one \`N \u00d7 <type>\` line per present event type

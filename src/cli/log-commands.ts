@@ -62,7 +62,8 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
  * --transcript, so it is excluded with it), so each such flag fails naming both. One wording
  * for all of them — the --json, --grep, and --since checks cannot drift apart in what they say
  * or why. `active` is the flag's own presence — --json alone composes with nothing here but
- * --transcript, while --grep and --since call from inside their own presence guards. */
+ * --transcript, while --grep and --since call from inside their own presence guards. All three
+ * filter the --since window, so the only rival left is --transcript. */
 function rejectTranscriptViewRival(rest: string[], flag: string, active: boolean): void {
   if (active && (rest.includes("--transcript") || rest.includes("--prompt")))
     failRivalShapes(`logs ${flag}`, "--transcript", "the --transcript view is the role's agent transcript, not the event log; --prompt requires --transcript");
@@ -131,16 +132,16 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
   // (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
   // Rival shapes stay exclusive — --transcript swaps in a transcript rather than this event log
-  // (--prompt requires --transcript, so it is excluded with it), and --since is a filter of its own
-  // rather than a window to filter — and each failure names both flags. The flag scan itself
+  // (--prompt requires --transcript, so it is excluded with it) — and the failure names both
+  // flags. --grep filters the --since window like --type and --role do. The flag scan itself
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
   // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
   // the one home shared with history's identical preamble.
   const { rest: grepped, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
   // `--type <eventType>` filters the event feed by EXACT event type (e.type === value):
   // deterministic where --grep substrings — a merge_failed whose rendered line quotes
-  // "merge_failed" matches --grep but not --type. Unlike --grep it composes with --since
-  // (the window, not a filter of its own) as well as -n, -f, --json, and --grep; like --json
+  // "merge_failed" matches --grep but not --type. It composes with --since
+  // (the window it filters) as well as -n, -f, --json, and --grep; like --json
   // it is a rival only of the --transcript/--prompt transcript view. A comma list matches any
   // of its types. The value scan (keeping a
   // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
@@ -157,7 +158,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // the --type id, held in one place so the --since window, the -n tally, and the follow
   // cannot drift on what an event must satisfy.
   // `--role <id>[,<id>...]` joins them: an event passes when the role it was filed under, or
-  // that role's base id (so `--role feature` takes `feature-2` too), is listed. Unlike --grep it
+  // that role's base id (so `--role feature` takes `feature-2` too), is listed. It
   // composes with --since. The value scan reads `rest`, which holds no --grep/--type value tokens.
   const roles = parseRoleListScope(root, rest);
   const roleFilter = roles === null
@@ -191,8 +192,6 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   if (type !== null) rejectTranscriptViewRival(rest, "--type", true);
   if (grepPattern !== null) {
     rejectTranscriptViewRival(rest, "--grep", true);
-    if (rest.includes("--since"))
-      failRivalShapes("logs --grep", "--since", "--since is a filter of its own; --grep filters the -n view and its follow");
   }
   // `--since <duration>` is the window-shaped view over the same event log the -n view dumps:
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
@@ -209,16 +208,19 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
     const { events, covered } = readEventsSince(root, ms);
-    // `--type` composes with the window (it is NOT the --since rival --grep is): only the
-    // window events of the exact type are printed, and an all-filtered window answers with
-    // the no-match prose (the type's own line) instead of the generic empty-window one —
+    // `--grep`, `--type` and `--role` all filter the window through feedFilter: only the
+    // window events that pass are printed, and an all-filtered window answers with the
+    // no-match prose (the filter's own line) instead of the generic empty-window one —
     // "which merge_failed in the last hour" filters the same as it would the -n view.
-    const filtered = events.filter((e) => (typeFilter === null || typeFilter(e)) && (roleFilter === null || roleFilter(e)));
+    const filtered = events.filter(feedFilter);
     if (filtered.length === 0) {
       // In JSON mode an empty result answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.
       if (!json) {
-        if (type !== null) say(typeEmpty(type, typePieces));
+        if (grepPattern !== null && type !== null)
+          say(`no events matching "${grepPattern}" or ${typeEmpty(type, typePieces)}`);
+        else if (type !== null) say(typeEmpty(type, typePieces));
+        else if (grepPattern !== null) say(`no events matching "${grepPattern}" in ${durationLabel(ms)}`);
         else say(roles !== null ? `${roleEmpty} in ${durationLabel(ms)}` : `no events in ${durationLabel(ms)}`);
       }
       return;
