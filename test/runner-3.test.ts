@@ -39,7 +39,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     const runner = makeRoleRunner(repo, "improve");
     // Tick 1: the change is committed and enqueued, then the MERGE rejects it — nothing
     // merges on main.
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = roleWt(repo, "improve");
@@ -51,7 +51,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     // session. Since revise-rejected, the rejected diff is re-applied to current main as
     // uncommitted edits and the revision note carries the full reasons; the idle run then
     // declares nothing-to-do, so the revision is dropped and the worktree reset clean.
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
     assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
@@ -78,7 +78,7 @@ test("concurrent-main-advance still merges (rebase path, linear history)", async
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "organize");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
@@ -110,7 +110,7 @@ test("a clean resolution of a conflicted file with setext underlines merges (reg
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(
       await mergeHead(repo, runner, defaultConfig(), "improve"),

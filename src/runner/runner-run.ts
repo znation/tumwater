@@ -66,7 +66,7 @@ export interface FallbackRunContext {
 }
 
 /** Everything the tick-pipeline phases need from their `RoleRunner` host. The runner builds one
- * per tick (before its `runTick` override point) from its readonly fields and live config, plus
+ * per tick (before its `runOnce` override point) from its readonly fields and live config, plus
  * bound callbacks back into the runner for the work whose body stays there (the merge,
  * recovery phases, the fallback fold). Splitting the pipeline out of the class keeps each phase
  * a plain function of this context. */
@@ -85,7 +85,7 @@ export interface RunnerRunContext {
   warn(message: string): void;
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
   runSignal(): AbortSignal;
-  tickPrompt(agent?: string): string | null;
+  runPrompt(agent?: string): string | null;
   /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
    * "Regime"): the free fallback pairs while the budget gate is on fallback or the role is
    * in a model-fallback episode, else the primary tiers. Delegates to the runner's rule. */
@@ -94,16 +94,16 @@ export interface RunnerRunContext {
    * read at finalize time). */
   readonly recoveryFailure: string | undefined;
   setRecoveryFailure(message: string | undefined): void;
-  setTickPair(pair: { provider?: string; model?: string } | undefined): void;
+  setRunPair(pair: { provider?: string; model?: string } | undefined): void;
   setHandedBack(value: boolean): void;
   /** A fresh per-tick abort controller and a cleared user-abort flag. */
-  resetTickAbort(): void;
-  /** A tick's pipeline entry: the runner's `runTick` (test-overridable). */
-  runTick(cfg: ResolvedModelConfig, fallbackCtx: FallbackRunContext): Promise<TickOutcome>;
-  finishAbortedTick(userPrompt: string | null, wt: string): Promise<TickOutcome>;
+  resetRunAbort(): void;
+  /** A tick's pipeline entry: the runner's `runOnce` (test-overridable). */
+  runOnce(cfg: ResolvedModelConfig, fallbackCtx: FallbackRunContext): Promise<TickOutcome>;
+  finishAbortedRun(userPrompt: string | null, wt: string): Promise<TickOutcome>;
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   foldModelFallback(ctx: FallbackRunContext, pi: PiRunResult): void;
-  finishRecoveryTick(
+  finishRecoveryRun(
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
@@ -246,7 +246,7 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   // fallback tick carries `claude`, matching the configured fallback pair that tickOnPair
   // (src/gates/budget-gates.ts) compares against, so a tick on a claude fallback is handed
   // back when the budget gate reopens (PLANS.md "Mixed claude + pi fleets, part 2/4").
-  ctx.setTickPair({ provider: seamHoldKey(cfg), model: cfg.model });
+  ctx.setRunPair({ provider: seamHoldKey(cfg), model: cfg.model });
   ctx.setHandedBack(false);
   s.runs += 1;
   // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
@@ -260,7 +260,7 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   ctx.setRecoveryFailure(undefined);
   // A fresh per-tick abort controller and a cleared user-abort flag: an abort request that
   // lands while the runner is idle must not leak into the next tick.
-  ctx.resetTickAbort();
+  ctx.resetRunAbort();
   s.running = true;
   s.lastRunStartedAt = Date.now();
   const tick = s.runs;
@@ -287,13 +287,13 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
     // spending a model call. Everything else runs the pipeline as usual.
     outcome = preflightBlocked
       ? { result: "error" }
-      : await ctx.runTick(cfg, { fallback, probe: probing, primary: primaryCfg });
+      : await ctx.runOnce(cfg, { fallback, probe: probing, primary: primaryCfg });
   } catch (err) {
     outcome = { result: "error" };
     s.lastError = errorMessage(err);
     // An exception between the dequeue/reclaim and the pi run leaves the request only in
     // the pending field — memory this failed tick is about to drop, with no outcome handler
-    // left to re-queue it (the handlers run inside runTick, after the pi run). The queue is
+    // left to re-queue it (the handlers run inside runOnce, after the pi run). The queue is
     // the durable store, so the catch re-queues whatever is still pending, like every
     // unfulfilled outcome does; it is always null once a pi run has been accounted for.
     ctx.pending.requeuePendingUnfulfilled();
@@ -324,7 +324,7 @@ export async function tickPhase(ctx: RunnerRunContext): Promise<TickOutcome> {
   });
   // The tick is over: the captured pair must not outlive it (a later poll must never match
   // an idle runner's stale pair against a resumed fallback).
-  ctx.setTickPair(undefined);
+  ctx.setRunPair(undefined);
   return finalizeResult;
 }
 
@@ -346,7 +346,7 @@ export async function runTickPhase(
     role: ctx.role,
     state: s,
     pending: ctx.pending,
-    tickPrompt: (agent) => ctx.tickPrompt(agent),
+    runPrompt: (agent) => ctx.runPrompt(agent),
     agent: cfg.agent ?? DEFAULT_AGENT,
     // The team's configured claude config dir, so planTickStart's claude resume guard looks
     // under the same dir the run's env writes its transcript to (note 4/4). Unset → undefined.
@@ -427,7 +427,7 @@ async function runTickInLeasePhase(
     // The slot is pinned for the next tick's resume when the verdict armed `resumePending`
     // inside the tick (the error-dirty and rate-limit arms in src/run/run-verdict.ts), or
     // when the outcome is an abort, quiet kill, or context cut-off. applyTickOutcome sets
-    // `resumePending` for the other outcomes only after runTick returns, so those are read off
+    // `resumePending` for the other outcomes only after runOnce returns, so those are read off
     // the outcome here instead.
     const pin = slotPinnedForResume(ctx.state, outcome);
     // Detach is best-effort so it can never mask the tick's own outcome or error; the release
@@ -522,7 +522,7 @@ async function tickWithWorktreePhase(
       s.conflictHandback = undefined;
       s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
       prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
-    } else if (recovered) return ctx.finishRecoveryTick(recovered, userPrompt, wt, priorMergeFailure);
+    } else if (recovered) return ctx.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure);
     await resetWorktreeToMain(wt, ctx.mainBranch);
     // A promptless recovery run found nothing to salvage (or deleted a stale pin): it authors
     // nothing, so it ends here rather than reach the authoring run with a null prompt.
@@ -712,7 +712,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
   );
 }
 
-/** Turn a finished pi run into its TickOutcome: the post-run half of runTick, split off so each
+/** Turn a finished pi run into its TickOutcome: the post-run half of runOnce, split off so each
  * half reads on its own screen — the setup above ends at the pi return. The verdict
  * classification (abort, config request, quiet kill, timeout, refusal, failure, no-change) lives
  * in resolveTickVerdict (src/run/run-verdict.ts), and the fulfillable path — staging —
@@ -754,7 +754,7 @@ export async function handlePiResultPhase(
     runModel: cfg.model,
     warn: (message) => ctx.warn(message),
     merge: (w, sum) => mergePhase(ctx, w, sum),
-    finishAbortedTick: () => ctx.finishAbortedTick(userPrompt, wt),
+    finishAbortedRun: () => ctx.finishAbortedRun(userPrompt, wt),
   });
   if (verdict) return verdict;
 
@@ -788,6 +788,6 @@ export async function handlePiResultPhase(
     stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.config.review.exemptPaths, ctx.role),
     requestStageFix: (w, findings) => ctx.pi.requestStageFix(w, findings, cfg),
     pinAndReset: (w, sha) => ctx.pinAndReset(w, sha),
-    finishAbortedTick: () => ctx.finishAbortedTick(userPrompt, wt),
+    finishAbortedRun: () => ctx.finishAbortedRun(userPrompt, wt),
   });
 }

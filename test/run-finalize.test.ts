@@ -216,7 +216,7 @@ test("a leftover recovery failure feeds the error streak but never rides the tic
     recoveryFailure: "review gate errored",
   });
   const end = eventsOfType(root, "run_end")[0]!;
-  // The failure must not latch onto lastError: runTick cleared it so run_end carries no
+  // The failure must not latch onto lastError: runOnce cleared it so run_end carries no
   // foreign error, yet the streak still counts the failure.
   assert.equal(end.error, undefined);
   assert.equal(end.result, "queued");

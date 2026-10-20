@@ -47,14 +47,14 @@ function timedTickHarness(outcomes: TickOutcome[], stepMs = 100) {
     calls,
     acquire: async () => void calls.acquire++,
     release: () => void calls.release++,
-    tick: async (): Promise<TickOutcome> => outcomes[calls.ticks++] as TickOutcome,
+    run: async (): Promise<TickOutcome> => outcomes[calls.ticks++] as TickOutcome,
     now: () => (nowMs += stepMs),
   };
 }
 
 test("runTimedRoleTick returns the tick's wall-clock duration measured by the now seam", async () => {
   const h = timedTickHarness([{ result: "changed" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100); // startedAt = 100 (first call), end = 200 (second call)
   assert.equal(h.calls.acquire, 1);
   assert.equal(h.calls.release, 1);
@@ -66,7 +66,7 @@ test("runTimedRoleTick skips an already-aborted tick but still releases its perm
   const controller = new AbortController();
   controller.abort(); // Before the tick is even acquired: the documented regression —
   // addEventListener alone would never notice an abort that already happened.
-  const elapsed = await runTimedRoleTick(controller.signal, h.acquire, h.release, h.tick, h.now);
+  const elapsed = await runTimedRoleTick(controller.signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, null);
   assert.equal(h.calls.ticks, 0); // never started
   assert.equal(h.calls.release, 1); // permit returned even though the tick never ran
@@ -75,13 +75,13 @@ test("runTimedRoleTick skips an already-aborted tick but still releases its perm
 test("runTimedRoleTick returns null for an aborted tick outcome so it cannot drag the p75 window", async () => {
   for (const result of ["aborted", "user_aborted"] as const) {
     const h = timedTickHarness([{ result }]);
-    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
     assert.equal(elapsed, null, `result ${result} must be excluded from the window`);
     assert.equal(h.calls.release, 1);
   }
   // A non-aborted failure still measures: an errored tick is a real duration the window wants.
   const h = timedTickHarness([{ result: "error" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100);
 });
 
@@ -92,13 +92,13 @@ test("runTimedRoleTick returns null for a tick that ended without work so the wi
   // about how long the work the drain waits on takes, even when it did run the model.
   for (const result of ["no_change", "skipped"] as const) {
     const h = timedTickHarness([{ result }]);
-    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+    const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
     assert.equal(elapsed, null, `result ${result} must be excluded from the window`);
     assert.equal(h.calls.release, 1);
   }
   // A work-bearing outcome still measures — queued included: the sample's whole point.
   const h = timedTickHarness([{ result: "queued" }]);
-  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.tick, h.now);
+  const elapsed = await runTimedRoleTick(new AbortController().signal, h.acquire, h.release, h.run, h.now);
   assert.equal(elapsed, 100);
 });
 

@@ -160,7 +160,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // work): the drain-window sample is taken only for a work-bearing tick that finished
     // on its own (runTimedRoleTick; BUGS.md 2026-09-30).
     let durationMs: number | null = null;
-    // Whether runner.tick() was ever called — false when the start gate (or a shutdown)
+    // Whether runner.run() was ever called — false when the start gate (or a shutdown)
     // turned the tick away at its permit.
     let started = false;
     // The tick's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
@@ -249,7 +249,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
           const outcome = await withProviderLease(
             runner.role === DIRECTOR_ROLE ? directorLease! : lease!,
             semaphore,
-            () => runner.tick(),
+            () => runner.run(),
             { piDefault },
           );
           if (ranPair !== null && ranOn !== undefined) {
@@ -295,7 +295,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     })();
     const bucket = runner.role === DIRECTOR_ROLE ? directorInFlight : roleInFlight;
     bucket.add(task);
-    // A RoleRunner.tick folds every failure it handles into an `error` outcome, so this task
+    // A RoleRunner.run folds every failure it handles into an `error` outcome, so this task
     // should resolve. A throw outside that fold (a finalize-time file write, a runner bug)
     // rejects it instead; the drain awaits the bucket with allSettled, but chaining cleanup
     // off a bare `void task.finally(...)` would leave the derived promise's rejection

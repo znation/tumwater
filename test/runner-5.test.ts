@@ -44,7 +44,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
   const ran = path.join(tmpdir(), "ran-pin");
   await withPi(`touch "${ran}"`, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error", "a failed pin adoption fails the tick");
     assert.match(
       String(outcome.summary),
@@ -69,7 +69,7 @@ test("resume falls back to a fresh tick when there is no session to continue", a
     async () => {
       const runner = makeRoleRunner(repo, "improve");
       runner.state.resumePending = true; // e.g. the sessions were pruned since the abort
-      assert.equal((await runner.tick()).result, "no_change");
+      assert.equal((await runner.run()).result, "no_change");
       const run = fs.readFileSync(argsFile, "utf8").trim();
       assert.ok(!run.includes("--continue"), "nothing to resume: a fresh session is started");
       assert.ok(run.includes(" -n"));
@@ -104,7 +104,7 @@ test("an aborted director tick re-queues the user prompt", async () => {
     const controller = new AbortController();
     const runner = makeRoleRunner(repo, "director", defaultConfig(), "main", controller.signal);
     setTimeout(() => controller.abort(), 300);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "aborted");
     assert.equal(inboxSize(repo), 1, "prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "important request");
@@ -124,16 +124,16 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     const config = defaultConfig();
     const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
-    const tick = runner.tick();
+    const tick = runner.run();
     // Abort only once the half-done edit has landed: a fixed timer can fire before the
     // fake pi even starts under parallel load.
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
-      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      runner.abortRun(); // don't leave the hung fake pi running after a wait timeout
       throw err;
     }
-    runner.abortTick();
+    runner.abortRun();
     const outcome = await tick;
     assert.equal(outcome.result, "user_aborted");
 
@@ -166,14 +166,14 @@ test("a user-aborted director tick drops the prompt instead of re-queueing it", 
     enqueuePrompt(repo, "important request");
     assert.equal(inboxSize(repo), 1);
     const runner = makeRoleRunner(repo, "director");
-    const tick = runner.tick();
+    const tick = runner.run();
     try {
       await waitForFile(path.join(worktreePath(repo, "director"), "partial.txt"));
     } catch (err) {
-      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      runner.abortRun(); // don't leave the hung fake pi running after a wait timeout
       throw err;
     }
-    runner.abortTick();
+    runner.abortRun();
     const outcome = await tick;
     assert.equal(outcome.result, "user_aborted");
 
@@ -211,7 +211,7 @@ test("a failing director tick re-queues the user prompt (regression)", async () 
   await withPi(`echo 'pi exploded' >&2\nexit 1`, async () => {
     enqueuePrompt(repo, "please do the thing");
     const runner = makeRoleRunner(repo, "director");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
     assert.equal(dequeuePrompt(repo), "please do the thing");
@@ -225,7 +225,7 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
     const config = defaultConfig();
     config.runTimeoutSeconds = 1;
     const runner = makeRoleRunner(repo, "director", config);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
     assert.equal(inboxSize(repo), 1, "the unfulfilled prompt is back in the inbox");
@@ -239,7 +239,7 @@ test("a director tick that handles a prompt with no file changes does not re-que
   await withPi(`printf '%s\n' '${assistantLine("The answer is 42.")}'`, async () => {
     enqueuePrompt(repo, "what is the answer?");
     const runner = makeRoleRunner(repo, "director");
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
     assert.equal(inboxSize(repo), 0, "a handled prompt must not loop back into the inbox");
   });
 });
@@ -251,7 +251,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
     config.runTimeoutSeconds = 1;
     const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /timed out/);
     assert.equal(mainSha(repo), before);
@@ -279,7 +279,7 @@ test("a tick timeout that fires on a run still making progress is resumed like a
       config.runTimeoutSeconds = 2;
       const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "quiet_killed");
       assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
       assert.equal(mainSha(repo), before, "nothing merged on main");
@@ -303,7 +303,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
     config.runTimeoutSeconds = 1;
     const runner = makeRoleRunner(repo, "improve", config);
     const before = mainSha(repo);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.match(runner.state.lastError ?? "", /^timed out after 1s$/);
     assert.equal(mainSha(repo), before);
@@ -312,7 +312,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
 });
 
 // The budget handback (PLANS.md 2026-09-30): when the budget gate reopens, the orchestrator
-// hands the in-flight ticks still on the fallback back to the primary. handBackTick aborts
+// hands the in-flight ticks still on the fallback back to the primary. handBackRun aborts
 // WITHOUT the user-abort flag, so the tick ends `aborted` with its session and worktree edits
 // kept (the shutdown branch, not the discard), and the resume carries its own cause so the
 // bridge prompt says the model moved. Contrast with the user-abort test above: same kill
@@ -329,17 +329,17 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     fallback.provider = "local";
     fallback.model = "local-free";
     const runner = makeRoleRunner(repo, "improve", fallback);
-    const tick = runner.tick();
+    const tick = runner.run();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
-      runner.abortTick(); // don't leave the hung fake pi running after a wait timeout
+      runner.abortRun(); // don't leave the hung fake pi running after a wait timeout
       throw err;
     }
     // The runner reports what the in-flight tick runs on — the pair the orchestrator matches
     // against the fallback pair it just left.
-    assert.deepEqual(runner.tickModel(), { provider: "local", model: "local-free" });
-    runner.handBackTick();
+    assert.deepEqual(runner.runModelPair(), { provider: "local", model: "local-free" });
+    runner.handBackRun();
     const outcome = await tick;
     assert.equal(outcome.result, "aborted");
     assert.equal(outcome.resumeCause, "budget-resumed");
@@ -355,19 +355,19 @@ test("a budget handback ends the tick resumably; the resume continues the sessio
     );
     assert.ok((s.nextRunAt ?? 0) <= Date.now() + 50, "resumes promptly, no backoff");
 
-    // Idle: tickModel is null and a handback is a no-op.
-    assert.equal(runner.tickModel(), null);
-    runner.handBackTick();
+    // Idle: runModelPair is null and a handback is a no-op.
+    assert.equal(runner.runModelPair(), null);
+    runner.handBackRun();
 
     // The resume tick continues the SAME session (--continue) on the primary's pair — the
-    // orchestrator assigns the live config before calling handBackTick; mirrored here.
+    // orchestrator assigns the live config before calling handBackRun; mirrored here.
     restore();
     restore = fakePi(script(`printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`));
     const primary = defaultConfig();
     primary.provider = "paid";
     primary.model = "big-paid";
     runner.config = primary;
-    const outcome2 = await runner.tick();
+    const outcome2 = await runner.run();
     // The kept half-done edit is committed by the resume tick like any resumed session's
     // leftover work — the point is the session and the model, not the file's fate.
     assert.equal(outcome2.result, "queued");
@@ -402,7 +402,7 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
     const roles = ["improve", "clean", "perf"];
     for (const role of roles) {
       const runner = makeRoleRunner(repo, role);
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "no_change", `${role}: ${runner.state.lastError ?? ""}`);
     }
     const wtDir = path.join(repo, ".tumwater", "worktrees");
@@ -418,7 +418,7 @@ test("role ticks lease pooled slots; no legacy role worktree is created", async 
     }
     // The director still ticks in its dedicated checkout.
     enqueuePrompt(repo, "say hello");
-    assert.equal((await makeRoleRunner(repo, "director").tick()).result, "no_change");
+    assert.equal((await makeRoleRunner(repo, "director").run()).result, "no_change");
     assert.ok(fs.existsSync(path.join(wtDir, "director")), "the director keeps its dedicated worktree");
   });
 });

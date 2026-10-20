@@ -41,13 +41,13 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
   const marker = path.join(tmpdir(), "pi-invoked");
   await withPi(`touch '${marker}'`, async () => {
     const runner = makeRoleRunner(repo, "feature");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "main_red");
     assert.equal(outcome.summary, "code merges blocked until main is green");
     assert.ok(!fs.existsSync(marker), "no pi run starts while main is red");
 
     // A second tick on the same SHA: cached red — still no pi run and npm test did not re-run.
-    const again = await runner.tick();
+    const again = await runner.run();
     assert.equal(again.result, "main_red");
     assert.ok(!fs.existsSync(marker));
     assert.equal(
@@ -99,7 +99,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   const restore = approvingPi(marker);
   try {
     const runner = makeRoleRunner(repo, "feature");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
@@ -124,7 +124,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "readme");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued");
       assert.equal(
         await mergeHead(repo, runner, defaultConfig(), "readme"),
@@ -152,7 +152,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "bugfix");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
       assert.ok(fs.existsSync(marker), "its pi run started");
 
@@ -180,7 +180,7 @@ test("after a fix merges on main, the next tick re-checks the new SHA and author
   const restore = approvingPi(marker);
   try {
     const runner = makeRoleRunner(repo, "feature");
-    assert.equal((await runner.tick()).result, "main_red");
+    assert.equal((await runner.run()).result, "main_red");
 
     // The bugfix role (exempt) merges a fix on main — the suite is green at the new SHA.
     fs.writeFileSync(
@@ -191,7 +191,7 @@ test("after a fix merges on main, the next tick re-checks the new SHA and author
     sh(repo, "git", "commit", "-m", "fix the suite");
 
     // The next fresh tick resets to the new main and re-checks it — no waiting out backoff.
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "authoring resumed once main is green");
@@ -237,7 +237,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   const restorePath = pathReplace(`${piDir}:${gitBin}`); // pi + git only — no npm anywhere
   try {
     const runner = makeRoleRunner(repo, "feature");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
 
     // Authoring proceeded and merged: the skip is environmental (warn-and-proceed), not a block.
     assert.equal(outcome.result, "queued");

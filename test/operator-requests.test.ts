@@ -38,7 +38,7 @@ interface FakeRunner {
   aborts: number;
   resetCounters(): void;
   wake(): void;
-  abortTick(): void;
+  abortRun(): void;
 }
 
 function fakeRunner(role: string, running = false): FakeRunner {
@@ -54,7 +54,7 @@ function fakeRunner(role: string, running = false): FakeRunner {
     wake() {
       r.wakes++;
     },
-    abortTick() {
+    abortRun() {
       r.aborts++;
     },
   };
@@ -365,7 +365,7 @@ test("consumeAbortRequests consumes every marker when one tick abort cannot be l
 test("consumeAbortRequests keeps a marker whose abort side effect throws, without skipping later ones", () => {
   const root = tmpdir();
   const bad = fakeRunner("coverage", true);
-  bad.abortTick = () => {
+  bad.abortRun = () => {
     throw new Error("boom");
   };
   const good = fakeRunner("clean", true);

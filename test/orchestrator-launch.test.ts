@@ -9,7 +9,7 @@
  * where a slip in any of them would surface as a hung team, not a red test.
  *
  * The tests drive launchDueTicks directly with stand-in runners (the launch pass touches
- * only `role`, `state.running`, `state.parkedSince`, and `tick()` on a RoleRunner), a real
+ * only `role`, `state.running`, `state.parkedSince`, and `run()` on a RoleRunner), a real
  * Semaphore, and a real breaker; a zero-capacity semaphore makes the director's bypass
  * observable (the role parked behind it never gets a permit). */
 
@@ -37,7 +37,7 @@ import { captureStderr } from "./helpers/exit-capture.js";
  * model-fallback episode in the real runner. */
 function fakeRunner(
   role: string,
-  tick: () => Promise<TickOutcome> = async () => ({ result: "changed" }),
+  run: () => Promise<TickOutcome> = async () => ({ result: "changed" }),
   config: unknown = { roles: {} },
 ) {
   return {
@@ -45,7 +45,7 @@ function fakeRunner(
     state: {} as RunnerState,
     config,
     runConfig: () => config as ReturnType<RoleRunner["runConfig"]>,
-    tick,
+    run,
   } as unknown as RoleRunner;
 }
 
@@ -225,7 +225,7 @@ test("a model-fallback tick folds its breaker evidence into the pair runConfig n
     state: {} as RunnerState,
     config: { roles: {}, provider: "paid", model: "gpt" },
     runConfig: () => ({ roles: {}, provider: "free", model: "qwen" }),
-    tick: async () => ({ result: "error" }) as TickOutcome,
+    run: async () => ({ result: "error" }) as TickOutcome,
   } as unknown as RoleRunner;
   const c = ctx({ reasons: new Map([[runner, "scheduled"]]), budgetActive: true, gateStates });
   launchDueTicks(c);
@@ -312,8 +312,8 @@ test("an already-aborted signal launches nothing", async () => {
 });
 
 test("a rejected tick task is logged and un-reserved, not an unhandled rejection", async () => {
-  // A RoleRunner.tick normally folds every failure into an `error` outcome, but a throw
-  // before or after runTick (a finalize-time file write, a bug) rejects the task. The
+  // A RoleRunner.run normally folds every failure into an `error` outcome, but a throw
+  // before or after runOnce (a finalize-time file write, a bug) rejects the task. The
   // launch pass chains its bucket cleanup off a detached `void task.finally(...)`, so the
   // rejection would surface as an unhandled rejection and kill the whole team. The drain
   // already awaits these with allSettled, so mirror that here.

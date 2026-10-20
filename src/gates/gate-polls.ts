@@ -296,7 +296,7 @@ export function pollTeamGates(
     for (const leftPair of fallbackPairs) {
       if (stillMoved.some((p) => p.provider === leftPair.provider && p.model === leftPair.model)) continue;
       const matching = runners.filter(
-        (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
+        (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.runModelPair(), leftPair),
       );
       if (matching.length > 0) {
         logEventBestEffort(root, {
@@ -307,7 +307,7 @@ export function pollTeamGates(
           model: leftPair.model,
           ...(gateResumed ? {} : { reason: "window" }),
         });
-        for (const r of matching) r.handBackTick();
+        for (const r of matching) r.handBackRun();
       }
     }
   }

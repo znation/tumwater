@@ -48,7 +48,7 @@ export class PendingPrompt {
   }
 
   /** Drop the recorded request without re-queueing it — the explicit-stop arm of
-   * finishAbortedTick and every fulfilled path. Leaves the image files for settleImages:
+   * finishAbortedRun and every fulfilled path. Leaves the image files for settleImages:
    * the same clear runs before the requeue branches, whose requeue* methods mark the images
    * retained, so only a genuinely unrequeued request loses them. */
   clear(): void {
@@ -87,7 +87,7 @@ export class PendingPrompt {
   /** Re-queue whatever request is still recorded and drop it from memory: an exception between
    * the dequeue/reclaim and the pi run leaves the request only in this field — memory the
    * failed tick is about to drop, with no outcome handler left to re-queue it (the handlers
-   * run inside runTick, after the pi run). The queue is the durable store, so the catch
+   * run inside runOnce, after the pi run). The queue is the durable store, so the catch
    * re-queues whatever is still pending, like every unfulfilled outcome does; it is always
    * null once a pi run has been accounted for. */
   requeuePendingUnfulfilled(): void {

@@ -74,7 +74,7 @@ export async function runAbortedDirectorMerge(repo: string): Promise<void> {
       try {
         enqueuePrompt(repo, "ship the hello file");
         const runner = makeRoleRunner(repo, "director");
-        const outcome = await runner.tick();
+        const outcome = await runner.run();
         assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the merge's");
         const head = headMerge(repo);
         assert.ok(head, "the merge is queued");

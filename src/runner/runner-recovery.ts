@@ -9,7 +9,7 @@ import { shortSha } from "../text/format.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
 /** What the recovery phases need from their `RoleRunner` host. `setRecoveryFailure` writes the
- * merge failure back to the runner's field (which `tick` reads at finalize time) instead of
+ * merge failure back to the runner's field (which `run` reads at finalize time) instead of
  * the phase reaching into a runner instance. */
 interface RecoveryContext {
   root: string;
@@ -42,7 +42,7 @@ export async function finishAbortedTickPhase(
 ): Promise<TickOutcome> {
   if (userAborted) {
     // An explicit abort discards the request itself too: clear the dequeued prompt here —
-    // required on the author-run path (whose early return skips runTick's shared clearing),
+    // required on the author-run path (whose early return skips runOnce's shared clearing),
     // a no-op on the review-gate path (already cleared after the author run).
     ctx.pending.clear();
     await resetWorktreeToMain(wt, ctx.mainBranch);

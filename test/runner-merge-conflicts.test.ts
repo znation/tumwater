@@ -43,7 +43,7 @@ test("a rebase conflict is resolved by a second pi run and merges with linear hi
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       // The tick commits and enqueues; the MERGE is where the conflict is resolved now —
       // phase 2 (the resolution run) runs inside mergeHead.
       assert.equal(outcome.result, "queued");
@@ -83,7 +83,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
@@ -112,7 +112,7 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
     async () => {
       fs.writeFileSync(path.join(repo, "seed.txt"), "user's uncommitted edit\n");
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_blocked");
       // The user's local edit survives — the blocked merge must not touch it.
@@ -161,7 +161,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
       const runner = makeRoleRunner(repo, "improve");
       // Tick 1 commits and enqueues; its merge hits the conflict and fails (the m2 phase
       // leaves the markers): that conflict state is what tick 2's recovery must salvage.
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
       // The merge's commit is pinned by its merge ref: that is what recovery must salvage.
       // (The role branch itself is clean at main — the pin is the leftover now.)
@@ -171,7 +171,7 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
 
       // Tick 2's recovery puts the pin back on the merge queue and ends the tick there; the
       // merge slot then merges it.
-      assert.equal((await runner.tick()).result, "queued", "tick 2 re-queued the leftover instead of authoring");
+      assert.equal((await runner.run()).result, "queued", "tick 2 re-queued the leftover instead of authoring");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The stranded work merged on main via recovery.
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");

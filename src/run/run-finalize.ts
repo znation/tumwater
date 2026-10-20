@@ -33,7 +33,7 @@ interface FinalizeTickDeps {
    * event. */
   usage: TickUsage;
   /** The merge failure this tick's leftover recovery is retrying, if any (set by
-   * finishRecoveryTick); undefined for a tick that ran no leftover recovery. */
+   * finishRecoveryRun); undefined for a tick that ran no leftover recovery. */
   recoveryFailure?: string;
 }
 
@@ -47,7 +47,7 @@ const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
 ]);
 
 /** Fold a finished tick's outcome into the role's state and the event feed — everything that
- * happens AFTER the pi run, extracted from RoleRunner.tick (src/runner/runner.ts) so the runner
+ * happens AFTER the pi run, extracted from RoleRunner.run (src/runner/runner.ts) so the runner
  * keeps only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
  * outcome's folds are applied to state before applyTickOutcome schedules the next run, the
@@ -59,13 +59,13 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   let { outcome } = deps;
   // A re-queued leftover's merge failure is not the tick's own result, so it rides the
   // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
-  // below names it — even though runTick cleared `lastError` so it never latched onto
+  // below names it — even though runOnce cleared `lastError` so it never latched onto
   // `run_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
   // A main_red tick's cause is written for that result (src/baseline/main-red.ts), not a leftover
   // merge failure: fold it onto the state here so `run_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean
-  // (BUGS.md 2026-09-28). runTick cleared `lastError` at its start, so nothing foreign
+  // (BUGS.md 2026-09-28). runOnce cleared `lastError` at its start, so nothing foreign
   // can precede this.
   if (outcome.error !== undefined) s.lastError = outcome.error;
 

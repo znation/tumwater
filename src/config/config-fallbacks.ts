@@ -69,7 +69,7 @@ function fallbackSelectorFields(
  * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
  * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
  * team both read `claude` — so the budget gate's handback (gate-polls.ts's tickOnPair
- * against the tick's seamHoldKey capture, runner-run.ts's setTickPair) matches a tick on
+ * against the tick's seamHoldKey capture, runner-run.ts's setRunPair) matches a tick on
  * either selector form. The same routing rule as routeModel: a provider naming an agent is
  * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
  * its own provider (a bare pi selector keeps undefined, exactly as before). */

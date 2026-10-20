@@ -72,13 +72,13 @@ test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicat
 });
 
 /** A minimal runner stand-in: pollTeamGates only reads a runner's role and state,
- * assigns its config, and — on a budget reopen — matches tickModel() against the
- * fallback pair and calls handBackTick(). Recorded handbacks stand in for the real
+ * assigns its config, and — on a budget reopen — matches runModelPair() against the
+ * fallback pair and calls handBackRun(). Recorded handbacks stand in for the real
  * resumable abort the orchestrator's runners perform. */
 function fakeRunner(
   role: string,
   state: RunnerState,
-  tickPair: { provider?: string; model?: string } | null,
+  runPair: { provider?: string; model?: string } | null,
   handbacks: string[],
   provider = "paid",
 ): RoleRunner {
@@ -86,8 +86,8 @@ function fakeRunner(
     role,
     state,
     runProvider: () => provider,
-    tickModel: () => (state.running ? tickPair : null),
-    handBackTick: () => {
+    runModelPair: () => (state.running ? runPair : null),
+    handBackRun: () => {
       handbacks.push(role);
     },
   };

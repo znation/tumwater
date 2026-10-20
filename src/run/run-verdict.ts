@@ -63,7 +63,7 @@ interface TickVerdictContext {
   warn(message: string): void;
   /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<TickOutcome["result"]>;
-  finishAbortedTick(): Promise<TickOutcome>;
+  finishAbortedRun(): Promise<TickOutcome>;
 }
 
 /** Classify what the finished run left behind; null means the run is fulfillable and staging
@@ -81,7 +81,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   if (pi.resumeMissing && ctx.role !== DIRECTOR_ROLE) s.resumeMissing = true;
   // A killed run (shutdown or timeout) may leave half-done edits; never commit those.
   // The next tick's reset discards them.
-  if (pi.aborted) return ctx.finishAbortedTick();
+  if (pi.aborted) return ctx.finishAbortedRun();
   ctx.pending.clear();
   // Harness-mediated config writes (plans/portability.md §3/7): the director may have left a
   // config request in its worktree. Consume it here — after the abort return (a deliberate
@@ -314,7 +314,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     }
     // A cut-off run did real work and was NOT fulfilled: a director prompt goes back
     // to the inbox to rerun fresh; a role runner resumes the just-compacted session
-    // next tick (see the cutOff handling in tick()).
+    // next tick (see the cutOff handling in run()).
     if (diagnosis.cutOff) ctx.pending.requeueForResume(s, ctx.userPrompt);
     // A cut-off run did real work but was truncated before declaring its outcome: the FLOW
     // line it left mid-stream is not a finished verdict, so recording it would advance the

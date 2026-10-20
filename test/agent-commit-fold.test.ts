@@ -20,7 +20,7 @@ async function tickAndMerge(script: string[]): Promise<{ repo: string; before: s
   const before = sh(repo, "git", "rev-parse", "main");
   await withPi([APPROVE_PI, ...script].join("\n"), async () => {
     const runner = makeRoleRunner(repo, "organize");
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
   });
   return { repo, before };

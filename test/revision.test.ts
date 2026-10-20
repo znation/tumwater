@@ -67,7 +67,7 @@ function verdictCtx(
     flow: null,
     warn: () => {},
     merge: async () => "changed" as const,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
+    finishAbortedRun: async () => ({ result: "aborted" as const }),
   };
 }
 
@@ -410,7 +410,7 @@ function stageCtx(
     stageCheck: async () => [],
     requestStageFix: async () => null,
     pinAndReset: async () => true,
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
+    finishAbortedRun: async () => ({ result: "aborted" as const }),
     ...overrides,
   };
 }
@@ -634,7 +634,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       const runner = makeRoleRunner(repo, "improve");
       runner.state.revision = { sha, round: 1, at: Date.now() };
       runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued");
       const prompt = fs.readFileSync(prompts, "utf8");
@@ -671,7 +671,7 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
       const runner = makeRoleRunner(repo, "improve");
       runner.state.revision = { sha: "0".repeat(40), round: 1, at: Date.now() };
       runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued", "the run authored a fresh change and queued it");
       const prompt = fs.readFileSync(prompts, "utf8");

@@ -410,7 +410,7 @@ test("two ticks on one provider and a single worktree slot both finish (pool-slo
   // waits for a pool slot. With one pool slot and two omlx roles (cap 2 lets both hold omlx at
   // admission), the second tick parks on the slot and drops its omlx key while it waits; the
   // first releases the slot and both finish. The drop runs inside the tick's provider-lease
-  // store (orchestrator-launch wraps runner.tick()), so this reaches the pool-slot drop path
+  // store (orchestrator-launch wraps runner.run()), so this reaches the pool-slot drop path
   // in a live orchestrator.
   const repo = makeRepo();
   await initProject(repo, "pool slot serializes one provider");

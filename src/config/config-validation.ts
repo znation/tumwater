@@ -432,7 +432,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
 
   // Custom roles (plans/user-defined-loops.md): names become worktree dirs and git refs, so
   // they are validated strictly — a colliding name would silently shadow a built-in's prompt
-  // (roleById wins in tickPrompt), validation makes that impossible instead of subtle. The
+  // (roleById wins in runPrompt), validation makes that impossible instead of subtle. The
   // collected names feed the roles cross-check below: an id under `roles` is valid when it is
   // in the catalog OR listed as a customRoles name.
   const customNames = new Set<string>();
@@ -499,7 +499,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
       for (const [id, rc] of Object.entries(roles)) {
-        // An id outside the catalog and customRoles cannot work: tickPrompt has no prompt for
+        // An id outside the catalog and customRoles cannot work: runPrompt has no prompt for
         // it and the role would error every tick forever (checkKnownRoleId).
         if (!checkKnownRoleId("roles", id, customNames, problems)) continue;
         if (!isJsonObject(rc)) {

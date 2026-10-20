@@ -254,7 +254,7 @@ test("runMergePi still honors the harness shutdown signal", async () => {
       warn: () => {},
       foldUsage: () => {},
       foldMergeUsage: () => {},
-      tickNumber: () => 1,
+      runNumber: () => 1,
     } as unknown as ConstructorParameters<typeof RunnerPi>[0]);
     const pending = runnerPi.runMergePi(root, "land", "t");
     shutdown.abort();

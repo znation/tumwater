@@ -25,7 +25,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
   const script = failingThenIdle(path.join(tmpdir(), "phase"), 1, "timeout").join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
@@ -55,7 +55,7 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
     const { sleeps, sleep } = sleepRecorder();
     const runner = makeRoleRunner(repo, "clean", defaultConfig(), "main", undefined, sleep);
     const before = Date.now();
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
@@ -102,7 +102,7 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The trailer sums both runs' turns (3 + 1) — and only them: the reviewer run folds

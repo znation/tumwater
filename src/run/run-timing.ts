@@ -64,13 +64,13 @@ export const HANDOFF_MERGE_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
  * the hold may have parked in the semaphore queue long before it; checking the hold only at
  * scheduling let every such waiter start a fresh pi run mid-drain as slots freed — the very
  * ticks the restart then aborted (BUGS.md 2026-09-23). A held tick releases its permit without
- * calling `tick`, so it writes no state and logs no run_start/run_end; the caller hands its
+ * calling `run`, so it writes no state and logs no run_start/run_end; the caller hands its
  * reservation back. */
 export async function runTimedRoleTick(
   signal: AbortSignal,
   acquire: () => Promise<void>,
   release: () => void,
-  tick: () => Promise<TickOutcome>,
+  run: () => Promise<TickOutcome>,
   now: () => number = Date.now,
   held: () => boolean = () => false,
 ): Promise<number | null> {
@@ -78,7 +78,7 @@ export async function runTimedRoleTick(
   try {
     if (signal.aborted || held()) return null;
     const startedAt = now();
-    const outcome = await tick();
+    const outcome = await run();
     if (outcome.result === "aborted" || outcome.result === "user_aborted") return null;
     if (outcome.result === "no_change" || outcome.result === "skipped") return null;
     return now() - startedAt;

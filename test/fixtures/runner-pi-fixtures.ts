@@ -59,7 +59,7 @@ export function makeHost(
       mergeUsage.push(run);
       mergeFoldProviders.push(provider);
     },
-    tickNumber: () => 1,
+    runNumber: () => 1,
     // The retry's wait, recorded instead of lived through: a hint-less 429 now defaults to
     // a real minute (BUGS.md 2026-09-25), and no rate-limit test may spend wall clock on it.
     sleep: async (ms: number) => {

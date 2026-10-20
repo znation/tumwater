@@ -522,7 +522,7 @@ export function tickRows(
  * - A row's run_start went unpaired. The window boundary can cut inside a tick's own event
  *   block: every run_end of the ask sits within the window but the oldest one's run_start
  *   sits just before it, so the row renders a dash though the log holds the start. Every
- *   run_end the harness logs follows its run_start (tick() logs the start before runTick,
+ *   run_end the harness logs follows its run_start (run() logs the start before runOnce,
  *   skipped results included), so an unpaired start is either just past the window or lost
  *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan.
  *   (A queued row's merge verdict needs no growth: the merge_done/merge_failed event sits

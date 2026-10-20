@@ -73,7 +73,7 @@ const CUT_OFF_RESUME_LIMIT = 3;
 export const QUIET_KILL_RESUME_LIMIT = 3;
 
 /** Record a finished tick on the role's state and schedule its next run from the outcome.
- * Split out of RoleRunner.tick() (runner.ts) so the scheduling policy — which outcomes retry
+ * Split out of RoleRunner.run() (runner.ts) so the scheduling policy — which outcomes retry
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
  * the other scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
  * the caller's state object is authoritative across an in-flight tick (see resetCounters).

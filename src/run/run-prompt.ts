@@ -269,7 +269,7 @@ export function assembleTickPrompt(
     prompt = appendPromptNote(prompt, buildRejectedReviewNote(state.lastReview, role));
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
-  // its next change (the discarding tick itself appends it after recovery — see runTick).
+  // its next change (the discarding tick itself appends it after recovery — see runOnce).
   const discard = state.conflictDiscard;
   if (discard) prompt = appendPromptNote(prompt, buildConflictDiscardNote(discard.summary, discard.attempts));
   // A fresh tick after the previous run(s) were cut off at the context ceiling (the role

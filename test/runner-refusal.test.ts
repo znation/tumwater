@@ -39,7 +39,7 @@ test("a refused tick merges only its markdown note, discards code changes, and s
     ].join("\n"),
     async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "refused");
     assert.equal(outcome.summary, "it would delete user data");
 
@@ -69,7 +69,7 @@ test("a bare sentinel over work is not a refusal: the tick runs the normal flow 
     ].join("\n"),
     async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "the work is not discarded as a refusal");
     // The edit survived — committed on the branch, headed for the normal gate, no refusal note.
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
@@ -88,7 +88,7 @@ test("a reply ending TUMWATER_REFUSED: none merges its work instead of refusing 
     ].join("\n"),
     async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "a negated refusal never discards the work");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);
@@ -106,7 +106,7 @@ test("a refusal contradicted by its own SUMMARY beside work keeps the work behin
     ].join("\n"),
     async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "contradicted work runs the normal flow");
     const subjects = sh(repo, "git", "log", "--format=%s", "-5");
     assert.ok(!subjects.includes("refuse —"), `no refusal commit: ${subjects}`);

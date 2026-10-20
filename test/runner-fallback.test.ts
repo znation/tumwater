@@ -52,7 +52,7 @@ test("three provider failures trip fallback; the next tick runs the fallback pai
   config.fallback = "backup/f1";
   await withPi(failingRecorder(argsFile), async () => {
     const runner = makeRoleRunner(repo, "clean", config);
-    for (let i = 0; i < 4; i++) assert.equal((await runner.tick()).result, "error");
+    for (let i = 0; i < 4; i++) assert.equal((await runner.run()).result, "error");
     assert.ok(runner.state.modelFallback, "the episode is persisted");
     assert.ok(runner.state.modelFallback.since > 0);
     const started = eventsOfType(repo, "model_fallback_started");
@@ -90,12 +90,12 @@ test("a clean probe tick after the cooldown returns to primary and ends the epis
     `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   ].join("\n");
   await withPi(script, async () => {
-    for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "error");
+    for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "error");
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 1);
     assert.ok(runner.state.modelFallback);
     // Fast-forward the cooldown: the next tick is the due probe on the primary.
     runner.state.modelFallback.probeAt = Date.now() - 1;
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
   });
   assert.equal(runner.state.modelFallback, undefined, "the successful probe cleared the episode");
   const started = eventsOfType(repo, "model_fallback_started");
@@ -116,7 +116,7 @@ test("a role with no fallback configured never trips and keeps its primary argv"
   config.model = "primary/m1";
   await withPi(failingRecorder(argsFile), async () => {
     const runner = makeRoleRunner(repo, "clean", config);
-    for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "error");
+    for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "error");
     assert.equal(runner.state.modelFallback, undefined);
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 0);
     for (const line of readRunLines(argsFile)) assert.match(line, /model=m1 provider=primary/);
@@ -152,9 +152,9 @@ test("a fallback-episode tick's missing-SUMMARY follow-up runs on the fallback p
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean", config);
-    for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "error");
+    for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "error");
     assert.ok(runner.state.modelFallback?.since, "the episode is active");
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
   });
   const runs = readRunLines(argsFile);
   assert.equal(runs.length, 5, JSON.stringify(runs));
@@ -179,7 +179,7 @@ test("removing the fallback config mid-episode clears the episode on the next pr
   // answer ends the episode instead of leaving a stale "on fallback" mark with no pair.
   runner.config = { ...config, fallback: undefined };
   await withIdlePi(async () => {
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
   });
   assert.equal(runner.state.modelFallback, undefined, "the episode was cleared");
   const ended = eventsOfType(repo, "model_fallback_ended");
@@ -225,7 +225,7 @@ test("a due probe tick that never invokes pi leaves the episode active", async (
     reason: "server",
   };
   const before = runner.state.modelFallback;
-  const outcome = await runner.tick(); // empty director inbox: skipped, no pi run
+  const outcome = await runner.run(); // empty director inbox: skipped, no pi run
   assert.equal(outcome.result, "skipped");
   assert.equal(runner.state.modelFallback, before, "no pi ran, so there is no probe verdict");
   assert.equal(eventsOfType(repo, "model_fallback_ended").length, 0);
@@ -252,7 +252,7 @@ test("a provider failure the transient retry recovers does not count against the
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean", config);
-    for (let i = 0; i < 3; i++) assert.equal((await runner.tick()).result, "no_change");
+    for (let i = 0; i < 3; i++) assert.equal((await runner.run()).result, "no_change");
     assert.equal(runner.lastBackendFailure?.kind, "stream-severed", "the failed attempts did stamp the tick");
     assert.equal(runner.state.modelFallback, undefined, "the authoring run answered, so no trip");
     assert.equal(eventsOfType(repo, "model_fallback_started").length, 0);
@@ -276,9 +276,9 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
   // A directory where events.jsonl belongs makes every append throw EISDIR.
   fs.mkdirSync(eventsLogPath(repo), { recursive: true });
   await withIdlePi(async () => {
-    // Before the fix the run_start append rejected tick() itself, before runTick's try; after
+    // Before the fix the run_start append rejected run() itself, before runOnce's try; after
     // it, every event write on the tick path is best-effort and the run resolves normally.
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
   });
   assert.equal(runner.state.modelFallback, undefined, "the probe verdict folded despite the dead feed");
   assert.equal(loadRunnerState(repo, "clean").running, false, "the end-of-tick save ran");

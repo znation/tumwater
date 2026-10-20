@@ -503,8 +503,8 @@ test("every tick starts a fresh pi session", async () => {
     [logFlagsTo(argsFile), `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "clean");
-      await runner.tick();
-      await runner.tick();
+      await runner.run();
+      await runner.run();
       const runs = readRunLines(argsFile);
       assert.equal(runs.length, 2);
       for (const [i, run] of runs.entries()) {
@@ -525,7 +525,7 @@ test("a context-exceeded error fails the tick with the real cause", async () => 
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "clean");
-      assert.equal((await runner.tick()).result, "error");
+      assert.equal((await runner.run()).result, "error");
       assert.ok(runner.state.lastError, "the error is surfaced on the loop state");
     },
   );
@@ -663,7 +663,7 @@ test("a missing pi binary fails the tick with an error", async () => {
   const restorePath = pathReplace(binDir);
   try {
     const runner = makeRoleRunner(repo, "clean");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.match(String(runner.state.lastError), /failed to spawn pi/);
   } finally {

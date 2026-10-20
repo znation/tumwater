@@ -147,7 +147,7 @@ function buildCtx(
       calls.pins.push({ wt: pinWt, sha });
       return over.pinResult ?? true;
     },
-    finishAbortedTick: async () => {
+    finishAbortedRun: async () => {
       calls.abortedFinalized++;
       return over.abortedOutcome ?? { result: "aborted", summary: "aborted by the user" };
     },

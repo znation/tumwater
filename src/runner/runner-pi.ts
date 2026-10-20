@@ -84,7 +84,7 @@ function authoringBudgetCap(
 }
 
 /** What the extracted pi-run plumbing needs from its owning runner. The runner supplies live
- * accessors, not copies: `config()` and `tickNumber()` are read at every call so the
+ * accessors, not copies: `config()` and `runNumber()` are read at every call so the
  * orchestrator's live-reload (which swaps the config object under the runner) and the tick
  * lifecycle stay authoritative without any notification path. */
 interface RunnerPiHost {
@@ -107,7 +107,7 @@ interface RunnerPiHost {
    * seam's hold key — a 429 storm on a claude reviewer must hold `claude`, not the pi author's
    * provider. */
   foldMergeUsage(run: PiRunResult, provider?: string, pair?: string): void;
-  tickNumber(): number;
+  runNumber(): number;
   /** The transient retry's pause before re-running, injectable so tests record the wait
    * instead of living through it (a hint-less 429 waits a real minute). Unset means the
    * real clock via sleepFor. */
@@ -181,7 +181,7 @@ export class RunnerPi {
         logEventBestEffort(this.host.root, {
           source: this.host.role,
           type: "image_blind",
-          run: this.host.tickNumber(),
+          run: this.host.runNumber(),
           path,
           model: resolved.model,
           action,
@@ -516,7 +516,7 @@ export class RunnerPi {
       ...this.runnerPiOpts(
         wt,
         prompt,
-        `tumwater-${this.host.role}-${this.host.tickNumber()}-${suffix}`,
+        `tumwater-${this.host.role}-${this.host.runNumber()}-${suffix}`,
         "author",
         true,
         cfg,

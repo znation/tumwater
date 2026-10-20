@@ -64,17 +64,17 @@ export class RoleRunner {
    * unfulfilled tick (abort, timeout, or failure without changes) can re-queue it instead of
    * losing the request. */
   private readonly pending: PendingPrompt;
-  /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
+  /** Per-tick abort controller, recreated at every tick start: `abortRun()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
    * would stop the whole team. */
-  private tickAbort = new AbortController();
-  /** Set by abortTick() when a user-initiated abort lands mid-tick: runTick's two abort
+  private runAbort = new AbortController();
+  /** Set by abortRun() when a user-initiated abort lands mid-tick: runOnce's two abort
    * branches (author run, review gate) then diverge from shutdown semantics — worktree reset
    * to main, no director-prompt requeue, "user_aborted" result with normal backoff. Cleared
    * at the next tick start so a stale request can never leak into a later tick. */
   private userAborted = false;
-  /** Set by handBackTick() when a budget-reopened handback lands mid-tick: it aborts the
-   * tick WITHOUT the user-abort flag, so finishAbortedTick takes its shutdown branch (pi
+  /** Set by handBackRun() when a budget-reopened handback lands mid-tick: it aborts the
+   * tick WITHOUT the user-abort flag, so finishAbortedRun takes its shutdown branch (pi
    * session and worktree edits kept) and the tick ends `aborted` — but with a named resume
    * cause, so the resumed session's bridge prompt says the run moved back to the primary
    * model instead of claiming a harness restart. Cleared at the next tick start, like
@@ -82,11 +82,11 @@ export class RoleRunner {
   private handedBack = false;
   /** The provider/model pair this tick's config resolved to at tick start (configForRole):
    * what the in-flight tick is running on. The orchestrator's budget-gate poll reads it via
-   * tickModel() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30); with
+   * runModelPair() to hand fallback ticks back when the budget reopens (PLANS.md 2026-09-30); with
    * per-tier fallbacks (part 5c/8) the handback matches this pair against EVERY pair the tiers
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every tick start. */
-  private tickPair?: { provider?: string; model?: string };
+  private runPair?: { provider?: string; model?: string };
   /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
    * image reroute may then look only among the free fallback pairs, never a priced primary
@@ -95,7 +95,7 @@ export class RoleRunner {
    * primary regime unless they set it. */
   budgetFallbackActive = false;
   /** The merge failure this tick's leftover recovery is retrying, if any (a retriable merger
-   * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
+   * outcome that kept the pin, which recovery re-queued): set in finishRecoveryRun and
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
    * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
   private recoveryFailure?: string;
@@ -130,7 +130,7 @@ export class RoleRunner {
       warn: (message) => this.warn(message),
       foldUsage: (run, provider, pair) => this.foldUsage(run, provider, pair),
       foldMergeUsage: (run, provider, pair) => this.foldMergeUsage(run, provider, pair),
-      tickNumber: () => this.state.runs,
+      runNumber: () => this.state.runs,
       sleep: this.sleep,
     });
     // A persisted running flag means the previous process died mid-tick WITHOUT the
@@ -177,29 +177,29 @@ export class RoleRunner {
    * per-tick controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
    * escalation) exactly like a harness shutdown, but only this runner's run dies — the team
    * keeps running. */
-  abortTick(): void {
+  abortRun(): void {
     if (!this.state.running) return;
     this.userAborted = true;
-    this.tickAbort.abort();
+    this.runAbort.abort();
   }
 
   /** Hand this runner's in-flight tick back to the primary model after the budget gate reopens
    * (PLANS.md 2026-09-30): abort the per-tick controller WITHOUT the user-abort flag, so
-   * finishAbortedTick takes its shutdown branch — pi session and worktree edits kept — and
+   * finishAbortedRun takes its shutdown branch — pi session and worktree edits kept — and
    * the tick ends `aborted`, which applyTickOutcome schedules to resume promptly. The
-   * orchestrator calls this on every runner whose tickModel() still matches the fallback
+   * orchestrator calls this on every runner whose runModelPair() still matches the fallback
    * pair the gate just left; a tick started on the primary (and the director) keeps running.
-   * No-op when no tick is running, like abortTick. */
-  handBackTick(): void {
+   * No-op when no tick is running, like abortRun. */
+  handBackRun(): void {
     if (!this.state.running) return;
     this.handedBack = true;
-    this.tickAbort.abort();
+    this.runAbort.abort();
   }
 
   /** The provider/model pair the in-flight tick is running on (null when idle): the
    * orchestrator's budget handback matches this against the fallback pair it just left. */
-  tickModel(): { provider?: string; model?: string } | null {
-    return this.state.running ? (this.tickPair ?? null) : null;
+  runModelPair(): { provider?: string; model?: string } | null {
+    return this.state.running ? (this.runPair ?? null) : null;
   }
 
   /** The config this role's NEXT tick will run on: the tier fallback pair while the episode is
@@ -244,7 +244,7 @@ export class RoleRunner {
   /** The signal every pi run of the current tick watches: harness shutdown OR a per-tick user
    * abort (Node ≥ 20's AbortSignal.any). */
   private runSignal(): AbortSignal {
-    return this.signal ? AbortSignal.any([this.signal, this.tickAbort.signal]) : this.tickAbort.signal;
+    return this.signal ? AbortSignal.any([this.signal, this.runAbort.signal]) : this.runAbort.signal;
   }
 
   /** Assemble this tick's prompt via src/run/run-prompt.ts (the prompt-content concern lives
@@ -252,7 +252,7 @@ export class RoleRunner {
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
    * the runner has nothing to run (an empty director inbox); a role runner's assembly never
    * returns null. */
-  private tickPrompt(agent?: string): string | null {
+  private runPrompt(agent?: string): string | null {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
     if (assembled.userPrompt !== null) {
@@ -263,23 +263,23 @@ export class RoleRunner {
   }
 
   /** Thin delegate to finishAbortedTickPhase (src/runner/runner-recovery.ts). */
-  private async finishAbortedTick(userPrompt: string | null, wt: string): Promise<TickOutcome> {
-    return finishAbortedTickPhase(this.tickContext(), userPrompt, wt, this.userAborted, this.handedBack);
+  private async finishAbortedRun(userPrompt: string | null, wt: string): Promise<TickOutcome> {
+    return finishAbortedTickPhase(this.runContext(), userPrompt, wt, this.userAborted, this.handedBack);
   }
 
   /** Thin delegate to pinAndResetPhase (src/runner/runner-recovery.ts). */
   private async pinAndReset(wt: string, sha: string): Promise<boolean> {
-    return pinAndResetPhase(this.tickContext(), wt, sha);
+    return pinAndResetPhase(this.runContext(), wt, sha);
   }
 
   /** Thin delegate to finishRecoveryTickPhase (src/runner/runner-recovery.ts). */
-  private async finishRecoveryTick(
+  private async finishRecoveryRun(
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
     priorMergeFailure: string | undefined,
   ): Promise<TickOutcome> {
-    return finishRecoveryTickPhase(this.tickContext(), recovered, userPrompt, wt, priorMergeFailure);
+    return finishRecoveryTickPhase(this.runContext(), recovered, userPrompt, wt, priorMergeFailure);
   }
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
@@ -323,28 +323,28 @@ export class RoleRunner {
   /** Run one full tick of this role runner (the pipeline lives in src/runner/runner-run.ts):
    * `tickPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
    * and finalizes. Never throws: a failed tick is an "error" result, saved and logged. */
-  async tick(): Promise<TickOutcome> {
-    return tickPhase(this.tickContext());
+  async run(): Promise<TickOutcome> {
+    return tickPhase(this.runContext());
   }
 
   /** Thin delegate to foldModelFallbackPhase (src/runner/runner-fallback.ts). */
   private foldModelFallback(fallbackCtx: FallbackRunContext, pi: PiRunResult): void {
-    foldModelFallbackPhase(this.tickContext(), fallbackCtx, pi);
+    foldModelFallbackPhase(this.runContext(), fallbackCtx, pi);
   }
 
-  /** The tick pipeline's entry (src/runner/runner-run.ts): a thin delegate so `tick` assembles the
-   * phase context once and tests can still override `runTick` to bypass the pipeline. */
-  private async runTick(
+  /** The run pipeline's entry (src/runner/runner-run.ts): a thin delegate so `run` assembles
+   * phase context once and tests can still override `runOnce` to bypass the pipeline. */
+  private async runOnce(
     cfg: ResolvedModelConfig,
     fallbackCtx: FallbackRunContext,
   ): Promise<TickOutcome> {
-    return runTickPhase(this.tickContext(), cfg, fallbackCtx);
+    return runTickPhase(this.runContext(), cfg, fallbackCtx);
   }
 
   /** Assemble the tick pipeline's host context (src/runner/runner-run.ts) from this runner's
    * fields. `config` and `recoveryFailure` are live getters, so a mid-tick change is seen as
    * the pre-split methods saw it; every callback is bound to this runner. */
-  private tickContext(): RunnerRunContext {
+  private runContext(): RunnerRunContext {
     const self = this;
     return {
       root: this.root,
@@ -361,7 +361,7 @@ export class RoleRunner {
       save: () => this.save(),
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
-      tickPrompt: (agent) => this.tickPrompt(agent),
+      runPrompt: (agent) => this.runPrompt(agent),
       rerouteRegime: (now) => this.rerouteRegime(now),
       get recoveryFailure() {
         return self.recoveryFailure;
@@ -369,22 +369,22 @@ export class RoleRunner {
       setRecoveryFailure: (message) => {
         self.recoveryFailure = message;
       },
-      runTick: (cfg, fallbackCtx) => this.runTick(cfg, fallbackCtx),
-      setTickPair: (pair) => {
-        self.tickPair = pair;
+      runOnce: (cfg, fallbackCtx) => this.runOnce(cfg, fallbackCtx),
+      setRunPair: (pair) => {
+        self.runPair = pair;
       },
       setHandedBack: (value) => {
         self.handedBack = value;
       },
-      resetTickAbort: () => {
-        self.tickAbort = new AbortController();
+      resetRunAbort: () => {
+        self.runAbort = new AbortController();
         self.userAborted = false;
       },
-      finishAbortedTick: (userPrompt, wt) => this.finishAbortedTick(userPrompt, wt),
+      finishAbortedRun: (userPrompt, wt) => this.finishAbortedRun(userPrompt, wt),
       pinAndReset: (wt, sha) => this.pinAndReset(wt, sha),
       foldModelFallback: (fallbackCtx, pi) => this.foldModelFallback(fallbackCtx, pi),
-      finishRecoveryTick: (recovered, userPrompt, wt, priorMergeFailure) =>
-        this.finishRecoveryTick(recovered, userPrompt, wt, priorMergeFailure),
+      finishRecoveryRun: (recovered, userPrompt, wt, priorMergeFailure) =>
+        this.finishRecoveryRun(recovered, userPrompt, wt, priorMergeFailure),
     };
   }
 }

@@ -35,7 +35,7 @@ test("a run that recovers from a predict-stream timeout internally is not re-run
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "clean");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "no_change", "the recovered run's verdict stands");
       assert.ok(!runner.state.lastError);
       // Exactly one pi invocation: no harness-level retry of an already-healthy run.
@@ -71,7 +71,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
       const clock = watchdogClock(t, { timeouts: true });
       const runner = makeRoleRunner(repo, "clean", config);
       let settled = false;
-      const tick = runner.tick().finally(() => (settled = true));
+      const tick = runner.run().finally(() => (settled = true));
       const log = piLogPath(repo, "clean");
       for (let k = 1; await waitForLogLines(log, "predict stream timed out", k, () => settled); k++) clock.advance(3_000);
       const outcome = await tick;
@@ -94,7 +94,7 @@ test("a transient timeout on both attempts errors with the real cause (regressio
     `printf '%s\n' '${errorLine("Engine protocol predict stream timed out after 600000ms without receiving data.")}'\nexit 1`,
     async () => {
       const runner = makeRoleRunner(repo, "clean");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "error");
       assert.match(runner.state.lastError ?? "", /predict stream timed out/);
     },
@@ -141,7 +141,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       const runner = makeRoleRunner(repo, "improve");
       // Tick 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
       // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
       assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
@@ -150,7 +150,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       // as uncommitted edits and the revision note carries the reasons; the idle run then
       // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
       // prompts log holds exactly the two author runs: the merge spent none.
-      assert.equal((await runner.tick()).result, "no_change");
+      assert.equal((await runner.run()).result, "no_change");
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2, "two author runs and nothing from the merge");
       assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
@@ -184,7 +184,7 @@ test("a tick that posts a question merges it and emits question_posted with the 
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
 
@@ -225,7 +225,7 @@ test("a tick that changes other files emits no question_posted event", async () 
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
       const events = readEvents(repo);
@@ -279,14 +279,14 @@ test("the merge slot is the only merge-lock holder: another runner ticks and que
       let bEndAt = 0;
       let aMergeEndAt = 0;
       const pa = (async () => {
-        const tickOutcome = await a.tick();
+        const tickOutcome = await a.run();
         assert.equal(tickOutcome.result, "queued");
         const mergeDone = await mergeHead(repo, a, defaultConfig(), "improve");
         aMergeEndAt = Date.now();
         return mergeDone;
       })();
       const pb = (async () => {
-        const outcome = await b.tick();
+        const outcome = await b.run();
         bEndAt = Date.now();
         fs.writeFileSync(bDone, "");
         return outcome;

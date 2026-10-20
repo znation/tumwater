@@ -253,7 +253,7 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
   assert.equal(tickOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
   assert.equal(tickOnPair(null, pair), false, "an idle loop has nothing to hand back");
   assert.equal(tickOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
-  // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setTickPair now
+  // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setRunPair now
   // keys the in-flight tick by the seam that ran (seamHoldKey → "claude"), and the fallback
   // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedFallbackProvider names the
   // backend for both a `claude/<id>` and a bare `<id>` selector on a claude team) — so a

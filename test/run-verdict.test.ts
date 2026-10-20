@@ -39,7 +39,7 @@ function makeCtx(root: string, wt: string, role: string, over: Record<string, un
       merges.push({ wt: w, summary });
       return "changed" as const;
     },
-    finishAbortedTick: async () => ({ result: "aborted" as const }),
+    finishAbortedRun: async () => ({ result: "aborted" as const }),
     ...over,
   };
   return { ctx, warns, merges, state, pending };

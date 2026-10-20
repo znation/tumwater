@@ -33,7 +33,7 @@ async function abortHungImproveTick(repo: string): Promise<void> {
   try {
     const controller = new AbortController();
     const runner = makeRoleRunner(repo, "improve", defaultConfig(), "main", controller.signal);
-    const tick = runner.tick();
+    const tick = runner.run();
     try {
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
     } catch (err) {
@@ -82,7 +82,7 @@ test("a run cut off at the context ceiling warns, skips backoff, and resumes", a
       `printf '%s\n' '${JSON.stringify({ type: "compaction_start", reason: "threshold" })}'`,
     async () => {
       const runner = makeRoleRunner(repo, "clean");
-      assert.equal((await runner.tick()).result, "no_change");
+      assert.equal((await runner.run()).result, "no_change");
       const [warning] = eventsOfType(repo, "warning");
       assert.ok(warning, "expected exactly one warning");
       assert.match(String(warning.message), /cut off at the context ceiling/);
@@ -109,13 +109,13 @@ test("cut-off resumes stop after the streak limit and fall back to backoff", asy
       fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
       const runner = makeRoleRunner(repo, "perf");
       for (let i = 1; i <= 3; i++) {
-        assert.equal((await runner.tick()).result, "no_change");
+        assert.equal((await runner.run()).result, "no_change");
         assert.equal(runner.state.resumePending, true, `cut-off ${i} still resumes`);
         assert.equal(runner.state.cutOffStreak, i);
         assert.equal(runner.state.backoffSeconds, 0);
       }
       // Fourth consecutive cut-off: the task is not converging — give up and back off.
-      assert.equal((await runner.tick()).result, "no_change");
+      assert.equal((await runner.run()).result, "no_change");
       assert.equal(runner.state.resumePending, false, "past the limit the role stops resuming");
       assert.ok(runner.state.backoffSeconds > 0, "and backs off normally");
       const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
@@ -130,7 +130,7 @@ test("a cut-off director run re-queues the user prompt instead of resuming", asy
   await withPi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`, async () => {
     enqueuePrompt(repo, "add a widget");
     const runner = makeRoleRunner(repo, "director");
-    assert.equal((await runner.tick()).result, "no_change");
+    assert.equal((await runner.run()).result, "no_change");
     assert.equal(inboxSize(repo), 1, "the truncated prompt was not fulfilled: back in the inbox");
     assert.equal(dequeuePrompt(repo), "add a widget");
     assert.ok(!runner.state.resumePending, "the director reruns the prompt fresh");
@@ -145,7 +145,7 @@ test("an aborted run merges nothing, does not back off, and marks itself resumab
     const runner = makeRoleRunner(repo, "improve", defaultConfig(), "main", controller.signal);
     const before = mainSha(repo);
     setTimeout(() => controller.abort(), 300);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "aborted");
     assert.equal(mainSha(repo), before, "nothing merges on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
@@ -175,7 +175,7 @@ test("a resumed run continues the interrupted session and keeps the worktree edi
     );
     const resumed = makeRoleRunner(repo, "improve");
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
-    const outcome = await resumed.tick();
+    const outcome = await resumed.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     const run = fs.readFileSync(argsFile, "utf8").trim();
@@ -214,7 +214,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
     );
     const resumed = makeRoleRunner(repo, "improve");
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
-    const outcome = await resumed.tick();
+    const outcome = await resumed.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     const run = readRunBlocks(argsFile).join("\n");
@@ -264,7 +264,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     resumed.state.resumePending = true;
     resumed.state.revision = { sha, round: 1, at: Date.now() };
     resumed.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: sha, at: Date.now() };
-    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal((await resumed.run()).result, "queued");
     assert.equal(eventsOfType(repo, "revision").length, 0, "no re-apply runs on a handoff");
     // The handoff is a FRESH session and run-prompt suppresses the rejected-review note while
     // state.revision is set, so the revision note must ride this tick's prompt.
@@ -303,7 +303,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
     const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
-    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal((await resumed.run()).result, "queued");
     assert.equal(
       resumed.state.conflictHandback?.applied,
       false,
@@ -356,7 +356,7 @@ test("a cross-agent handoff re-sends an already-applied merge hand-back note", a
     const resumed = makeRoleRunner(repo, "improve");
     resumed.state.resumePending = true;
     resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: true };
-    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal((await resumed.run()).result, "queued");
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the hand-back");
     assert.match(run, /could not be merged/, "the note names the merge hand-back");
@@ -403,7 +403,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
       round: 1,
       applied: true,
     };
-    assert.equal((await resumed.tick()).result, "queued");
+    assert.equal((await resumed.run()).result, "queued");
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
@@ -437,7 +437,7 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
   );
   try {
     const runner = makeRoleRunner(repo, "improve", config);
-    const tick = runner.tick();
+    const tick = runner.run();
     // Wait for the half-done edit to land: a fixed timer can fire before the fake pi even
     // starts under parallel load. The watchdog kills the run itself — no abort controller.
     await waitForFile(path.join(roleWt(repo, "improve"), "kept.txt"));
@@ -469,7 +469,7 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
     );
     const resumed = makeRoleRunner(repo, "improve", config);
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
-    const outcome = await resumed.tick();
+    const outcome = await resumed.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, resumed, config, "improve"), "changed");
     const run = fs.readFileSync(argsFile, "utf8").trim();

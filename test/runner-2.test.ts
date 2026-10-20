@@ -47,7 +47,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
     config.thrashTurns = 1;
     config.thrashMinutes = 0;
     const runner = makeRoleRunner(repo, "improve", config);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(runner.state.lastResult, undefined, "a queued run records no completed result");
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
@@ -94,7 +94,7 @@ test("a changed run past only thrashTurns is not flagged high-friction", async (
     const config = defaultConfig();
     config.thrashTurns = 1;
     const runner = makeRoleRunner(repo, "improve", config);
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     assert.ok(!outcome.highFriction, "a turns-only fast run is not flagged high-friction");
@@ -122,7 +122,7 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
   await withPi(script, async () => {
     // Default thresholds (40 turns / 30 min): one fast turn is far under both.
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(!outcome.highFriction, "an ordinary run is not flagged high-friction");
@@ -174,7 +174,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     // Tick 1: compliant reply → the commit on main carries subject, body (all three fields,
     // in contract order), and the harness-stamped trailer as separate paragraphs. One author
     // turn plus one reviewer run — the trailer counts only the pre-commit author turns.
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const first = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(
@@ -183,7 +183,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     );
 
     // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const second = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(second, /^tumwater\(improve\): add world file\n\nRun: improve #2 · turns 1 · ctx 7$/m);
@@ -208,7 +208,7 @@ test("a changed run's run_end event carries its per-run tokens and cost", async 
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    assert.equal((await runner.tick()).result, "queued");
+    assert.equal((await runner.run()).result, "queued");
 
     const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1, "one run ran");
@@ -232,7 +232,7 @@ test("a skipped run's run_end event carries no usage fields", async () => {
   // tokens nor costUsd, so it renders byte-identical to a pre-feature line.
   const repo = await initializedRepo();
   const runner = makeRoleRunner(repo, "director");
-  assert.equal((await runner.tick()).result, "skipped");
+  assert.equal((await runner.run()).result, "skipped");
 
   const ends = eventsOfType(repo, "run_end");
   assert.equal(ends.length, 1, "one run ran");
@@ -256,7 +256,7 @@ test("a cut-off resume is bridged as a cut-off, and the fresh run after the limi
     fs.writeFileSync(path.join(sessionDir(repo, "perf"), "s.jsonl"), "{}\n");
     const runner = makeRoleRunner(repo, "perf");
     // Tick 1 fresh; ticks 2–4 resume (CUT_OFF_RESUME_LIMIT resumes); tick 5 is fresh again.
-    for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
+    for (let i = 1; i <= 5; i++) assert.equal((await runner.run()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 5);
     assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh run carries no cut-off text");
@@ -285,7 +285,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
   const controller = new AbortController();
   try {
     const runner = makeRoleRunner(repo, "clean", defaultConfig(), "main", controller.signal);
-    const first = runner.tick();
+    const first = runner.run();
     await waitForFile(path.join(roleWt(repo, "clean"), "partial.txt"));
     controller.abort();
     assert.equal((await first).result, "aborted");
@@ -303,7 +303,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
       ].join("\n"),
     );
     const resumed = makeRoleRunner(repo, "clean");
-    assert.equal((await resumed.tick()).result, "no_change");
+    assert.equal((await resumed.run()).result, "no_change");
     const run = fs.readFileSync(promptsFile, "utf8");
     assert.match(run, /Tumwater was restarted while you/);
     assert.doesNotMatch(run, /ran out of context/);
@@ -331,7 +331,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "clean");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the run");
     assert.ok(!runner.state.lastError, `no error recorded: ${runner.state.lastError}`);
     const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
@@ -364,7 +364,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
   fs.writeFileSync(path.join(blockedRef, "blocker"), "keep the directory non-empty\n");
   await withPi(script1, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "error");
     assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
     assert.equal(runner.state.lastError, "failed to pin the merge ref; left for the next run's recovery");
@@ -400,7 +400,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and me
   ].join("\n");
   await withPi(script2, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
     assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing merges inside the run");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -434,7 +434,7 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeRoleRunner(repo, "improve");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
 
     assert.equal(outcome.result, "error", "the run ends error on a blind image read");
     assert.match(runner.state.lastError ?? "", /read \/x\/shot\.png, but .* cannot read images/);
@@ -486,7 +486,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   // Tick 1: the blind read stops the tick; with a vision target it ends aborted/image-reroute
   // and records the one-shot marker instead of failing.
   await withPi(blindScript, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "aborted", "a blind read with a target ends aborted");
     assert.equal(outcome.resumeCause, "image-reroute");
   });
@@ -498,7 +498,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   // and the image, run_start is stamped reroute:"image" on local/vision, and the one-shot
   // marker is consumed.
   await withPi(settlePi, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change");
   });
   assert.equal(runner.state.imageReroute, undefined, "the one-shot marker is consumed by the rerouted run");
@@ -516,7 +516,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   // Tick 3: back on the runner's own text-only tier — run_start has no reroute stamp and names
   // the runner's own model.
   await withPi(settlePi, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change");
   });
   const startsAfter = readEvents(repo).filter((e) => e.type === "run_start");
@@ -568,7 +568,7 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   // Tick 1: the director's blind read ends aborted/`image-reroute` and records the one-shot
   // marker; the director never resumes, so the prompt re-queues to run fresh next tick.
   await withPi(blindScript, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "aborted", "a director blind read with a target ends aborted");
     assert.equal(outcome.resumeCause, "image-reroute");
   });
@@ -577,7 +577,7 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   // Tick 2: the rerouted director prompt runs FRESH on the vision target, and the one-shot
   // marker is consumed so it is NOT re-routed again.
   await withPi(settlePi, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change");
   });
   assert.equal(runner.state.imageReroute, undefined, "the one-shot marker clears for the director too");
@@ -591,7 +591,7 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   // would persist and this tick would re-route onto the vision target).
   enqueuePrompt(repo, "a follow-up director prompt");
   await withPi(settlePi, async () => {
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "no_change");
   });
   const startsAfter = readEvents(repo).filter((e) => e.type === "run_start");

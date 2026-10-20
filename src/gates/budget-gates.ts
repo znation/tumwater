@@ -177,21 +177,21 @@ function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
   return seamAgent(seam) === "claude";
 }
 
-/** Does an in-flight tick's captured model pair (RoleRunner.tickModel()) match the fallback
+/** Does an in-flight tick's captured model pair (RoleRunner.runModelPair()) match the fallback
  * pair a reopening budget gate just left? The orchestrator hands back exactly those ticks
  * (PLANS.md 2026-09-30): both sides must be present — no fallback pair means no tick ran on
  * one, and an idle role's null means there is nothing to hand back — and the provider/model
  * fields must be equal, undefined matching undefined only when both sides truly lack them
  * (which cannot happen here: a null pair is rejected before the field comparison). */
 export function tickOnPair(
-  tickModel: { provider?: string; model?: string } | null,
+  runModelPair: { provider?: string; model?: string } | null,
   pair: FallbackModelConfig | null,
 ): boolean {
   return (
-    tickModel !== null &&
+    runModelPair !== null &&
     pair !== null &&
-    tickModel.provider === pair.provider &&
-    tickModel.model === pair.model
+    runModelPair.provider === pair.provider &&
+    runModelPair.model === pair.model
   );
 }
 

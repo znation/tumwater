@@ -41,7 +41,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
       const before = mainSha(repo);
-      const tick = runner.tick();
+      const tick = runner.run();
       // The kill must come only once the shim has spoken and reached `echo partial` — the
       // "partial edit survives" assertion below is about the kill, not about shell startup.
       await waitForFile(path.join(roleWt(repo, "improve"), "partial.txt"));
@@ -83,7 +83,7 @@ test("a stalled tool call warns in the event feed with the command named", async
       config.toolCallStallSeconds = 2; // ...but the warning lands first, 3s ahead of it
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
-      const tick = runner.tick();
+      const tick = runner.run();
       await waitForLogLines(piLogPath(repo, "improve"), "tool_execution_start");
       clock.advance(30_000); // past the stall threshold, then past the quiet window
       const outcome = await tick;
@@ -121,7 +121,7 @@ test("a slow but talkative pi run is not killed by the quiet watchdog", async (t
     const clock = watchdogClock(t);
     const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
-    const tick = runner.tick().finally(() => (settled = true));
+    const tick = runner.run().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
     // A killed run prints nothing more: stop feeding it and let the assertion name the result.
     for (let k = 0; k < gaps && (await waitForLogLines(log, "turn_start", k + 1, () => settled)); k++) {
@@ -159,7 +159,7 @@ test("a run whose only output is content-bearing deltas is not killed by the qui
     const clock = watchdogClock(t);
     const runner = makeRoleRunner(repo, "improve", config);
     let settled = false;
-    const tick = runner.tick().finally(() => (settled = true));
+    const tick = runner.run().finally(() => (settled = true));
     const log = piLogPath(repo, "improve");
     // A killed run prints nothing more: stop feeding it and let the assertion name the result.
     for (let k = 0; k < gaps && (await waitForLogLines(log, "message_update", k + 1, () => settled)); k++) {
@@ -187,7 +187,7 @@ test("quietTimeoutSeconds 0 disables the watchdog", async (t) => {
       config.quietTimeoutSeconds = 0;
       const clock = watchdogClock(t);
       const runner = makeRoleRunner(repo, "improve", config);
-      const tick = runner.tick();
+      const tick = runner.run();
       await waitForLogLines(piLogPath(repo, "improve"), "turn_start");
       clock.advance(120_000); // two minutes of silence: any window at all would have fired
       fs.writeFileSync(go, "");
@@ -223,7 +223,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
       const controller = new AbortController();
       const runner = makeRoleRunner(repo, "improve", config, "main", controller.signal);
       let settled = false;
-      const tick = runner.tick().finally(() => (settled = true));
+      const tick = runner.run().finally(() => (settled = true));
       // Half a second of watchdog time per fresh keepalive, so bytes keep landing as the clock
       // runs — a watchdog that let raw bytes, or a content-free delta, count as progress would
       // never fire. Ten windows' worth bounds it: the abort then ends a run the watchdog

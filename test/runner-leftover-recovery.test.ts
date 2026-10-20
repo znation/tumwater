@@ -68,7 +68,7 @@ test("a merge pin left behind by an interrupted tick is re-merged through the ga
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       // Merge-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
       // changed tick and never merges it itself.
@@ -129,7 +129,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
     async () => {
       const runner = makeRoleRunner(repo, "improve");
       runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued", "the tick authored and queued the resolved change");
       assert.notEqual(outcome.commit, sha);
@@ -176,7 +176,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
       // A hand-back is already on record for this lineage, so the cap means discard, not hand back.
       runner.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
       assert.notEqual(outcome.commit, sha);
@@ -213,7 +213,7 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
     async () => {
       const runner = makeRoleRunner(repo, "improve");
       runner.state.conflictHandback = { sha: missing, at: Date.now(), reason: "merge", applied: false };
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
       const prompt = fs.readFileSync(prompts, "utf8");
@@ -261,7 +261,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      const outcome = await runner.tick();
+      const outcome = await runner.run();
       assert.equal(outcome.result, "queued", "recovery queued the pin");
       assert.equal(outcome.highFriction, true, "the queued outcome keeps the recovered flag");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -286,7 +286,7 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
   await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     enqueuePrompt(repo, "important request");
     const runner = makeRoleRunner(repo, "director");
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued", "the director's leftover went on the merge queue");
     assert.equal(headMerge(repo)?.entry.sha, sha);
     assert.ok(!fs.existsSync(ran), "no pi run: the prompt was never executed");
@@ -302,7 +302,7 @@ test("a promptless director with a kept pin re-queues it, runs no pi, and keeps 
   await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     const runner = makeRoleRunner(repo, "director");
     runner.state.imageReroute = { tier: "default" };
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "queued");
     assert.equal(headMerge(repo)?.entry.sha, sha);
     assert.ok(!fs.existsSync(ran), "no pi run");
@@ -320,7 +320,7 @@ test("a promptless director whose pin hit the conflict cap keeps it untouched an
   await withPi(`touch "${ran}"; printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`, async () => {
     const runner = makeRoleRunner(repo, "director");
     runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
-    const outcome = await runner.tick();
+    const outcome = await runner.run();
     assert.equal(outcome.result, "skipped");
     assert.ok(!fs.existsSync(ran), "no pi run");
     assert.ok(mergeRefExists(repo, "director"), "the pin is kept for its hand-back");
@@ -333,7 +333,7 @@ test("a promptless director whose pin hit the conflict cap keeps it untouched an
 test("a promptless director with no pin skips and touches nothing", async () => {
   const repo = await initializedRepo();
   const runner = makeRoleRunner(repo, "director");
-  const outcome = await runner.tick();
+  const outcome = await runner.run();
   assert.equal(outcome.result, "skipped");
   assert.equal(headMerge(repo), null);
 });
@@ -359,7 +359,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.tick()).result, "queued", "recovery adopted and queued the tip");
+      assert.equal((await runner.run()).result, "queued", "recovery adopted and queued the tip");
       // The role worktree is freed as soon as the adopted pin holds the commit.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -403,13 +403,13 @@ test("an unmergeable leftover is retried on the next tick and keeps its merge pi
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
       // Tick 2: recovery re-queues the pin, and its merge goes through the same gate (the early
       // approved return — no reviewer run — since the first merge's gate already signed off on
       // this HEAD) and hits the same unresolvable conflict.
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
       // merge_conflict is non-terminal: a fresh-context retry may resolve what two consecutive
@@ -443,14 +443,14 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
       // The merge's commit is pinned for recovery; the role worktree is clean at main.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
       assert.ok(pinned.length === 40, "the failed review's commit is pinned for re-review");
 
-      assert.equal((await runner.tick()).result, "queued", "tick 2 re-queued the pin");
+      assert.equal((await runner.run()).result, "queued", "tick 2 re-queued the pin");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
       // The failed recovery review (under the strike cap) deliberately kept its pin for
@@ -497,14 +497,14 @@ test("a persistent recovery review failure feeds the error streak and reads fail
     ].join("\n"),
     async () => {
       const runner = makeRoleRunner(repo, "improve");
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
       // Each following tick re-queues the still-pinned commit, and its merge's review fails
       // again. The ticks themselves end `queued` — healthy on their face — so only the re-queued
       // merge failure they carry can grow the streak.
       for (let i = 0; i < ERROR_STREAK_WARN; i++) {
-        assert.equal((await runner.tick()).result, "queued", "the tick re-queued the leftover");
+        assert.equal((await runner.run()).result, "queued", "the tick re-queued the leftover");
         assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
       }
       assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the merge failures fed the error streak");
@@ -549,14 +549,14 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
       const config = defaultConfig();
       config.review.model = "bad/model";
       const runner = makeRoleRunner(repo, "improve", config);
-      assert.equal((await runner.tick()).result, "queued");
+      assert.equal((await runner.run()).result, "queued");
       assert.equal(await mergeHead(repo, runner, config, "improve"), "review_error");
       assert.equal(runner.state.mergeReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
 
       // The next tick holds the pin: no re-queue and no second merge (which would pay another
       // full gate check for a request that can never succeed), and an error outcome so the runner
       // backs off on the error ladder instead of re-queuing at suite speed.
-      assert.equal((await runner.tick()).result, "error", "the held tick backs off instead of re-queuing");
+      assert.equal((await runner.run()).result, "error", "the held tick backs off instead of re-queuing");
       assert.equal(queueDepth(repo), 0, "nothing was re-queued while the config stayed bad");
       assert.equal(mergeRefExists(repo, "improve"), true, "the pin survives the hold");
       assert.equal(eventsOfType(repo, "review_failed").length, 1, "no second reviewer run while held");
@@ -571,7 +571,7 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
 
       // A changed reviewer selector clears the hold and re-queues the pin.
       runner.config.review.model = "good/model";
-      assert.equal((await runner.tick()).result, "queued", "a changed reviewer selector recovers the pin");
+      assert.equal((await runner.run()).result, "queued", "a changed reviewer selector recovers the pin");
       assert.equal(mergeRefExists(repo, "improve"), true, "the recovered pin is still there");
     },
   );

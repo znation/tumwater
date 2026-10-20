@@ -156,8 +156,8 @@ test("pollTeamGates: a budget reopen hands fallback ticks back even when the fee
     role: "feature",
     state: featureState,
     runProvider: () => "paid",
-    tickModel: () => ({ provider: "free", model: "qwen-free" }),
-    handBackTick: () => {
+    runModelPair: () => ({ provider: "free", model: "qwen-free" }),
+    handBackRun: () => {
       handbacks.push("feature");
     },
   } as unknown as RoleRunner;

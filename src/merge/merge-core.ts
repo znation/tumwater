@@ -91,7 +91,7 @@ export interface MergeScopeContext {
 /** MergerContext: what the merger (merge-batch.ts and merge-core.ts) needs from its owning
  * runner — not merge-to-main.ts's MergeContext, which is the conflict-resolving merge's own. It
  * carries the repo scope (MergeScopeContext), the live
- * state object (the gate updates it in place exactly as when it ran inside runTick), the runner's
+ * state object (the gate updates it in place exactly as when it ran inside runOnce), the runner's
  * shared pi wiring for merge-to-main.ts's conflict resolver — which folds usage internally —
  * and an explicit foldUsage for the reviewer run's FINAL result (runGatePi folds a retried
  * first attempt at retry time and leaves the final run to this fold — folding it in both

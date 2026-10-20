@@ -254,7 +254,7 @@ export async function awaitSettledTick(
 }
 
 /** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
- * (merge-drain.ts). Runner-level tests call `runner.tick()` directly — no poll loop — so the
+ * (merge-drain.ts). Runner-level tests call `runner.run()` directly — no poll loop — so the
  * entry a changed tick enqueues needs a driver: this verifies the head alone (startVerify, on a
  * one-permit semaphore) and, once approved, merges it (drainMerge), leaving every other queued
  * entry untouched — a test that ticks a second role meanwhile merges that one with its own call.

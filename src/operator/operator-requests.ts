@@ -346,7 +346,7 @@ export function consumeAbortRequests(
         merge.userAborted = true;
         merge.controller.abort();
       }
-      if (runner?.state.running) runner.abortTick();
+      if (runner?.state.running) runner.abortRun();
     } catch (err) {
       warnFailure(role, err);
       continue;

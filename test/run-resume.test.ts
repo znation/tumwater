@@ -66,7 +66,7 @@ function plan(
   root: string,
   s: RunnerState,
   opts: {
-    tickPrompt?: (agent?: string, compact?: boolean) => string | null;
+    runPrompt?: (agent?: string, compact?: boolean) => string | null;
     pending?: PendingPrompt;
     agent?: string;
   } = {},
@@ -76,7 +76,7 @@ function plan(
     role: s.role,
     state: s,
     pending: opts.pending ?? new PendingPrompt(root, s.role),
-    tickPrompt: opts.tickPrompt ?? (() => "assembled run prompt"),
+    runPrompt: opts.runPrompt ?? (() => "assembled run prompt"),
     agent: opts.agent,
   });
 }
@@ -108,7 +108,7 @@ test("a fresh run hands the effective agent to the prompt assembly", () => {
   let seen: string | undefined = "unset";
   const p = plan(dir, s, {
     agent: "claude",
-    tickPrompt: (agent) => {
+    runPrompt: (agent) => {
       seen = agent;
       return "assembled";
     },
@@ -122,7 +122,7 @@ test("a resumable session resumes with the restart bridge and skips the assemble
   const s = state({ resumePending: true });
   withSession(dir, "feature");
   let assembled = false;
-  const p = plan(dir, s, { tickPrompt: () => { assembled = true; return "assembled"; } });
+  const p = plan(dir, s, { runPrompt: () => { assembled = true; return "assembled"; } });
   assert.ok(p);
   assert.equal(assembled, false, "a resume must not assemble a fresh prompt");
   assert.equal(p.resuming, true);
@@ -340,7 +340,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next run hands
       flow: null,
       warn: () => {},
       merge: async () => "changed" as const,
-      finishAbortedTick: async () => ({ result: "aborted" as const }),
+      finishAbortedRun: async () => ({ result: "aborted" as const }),
     });
     assert.equal(outcome?.result, "error", "a failed run with no content is an error outcome");
     assert.equal(s.resumePending, true, "the failed dirty resume armed the next resume");
@@ -384,7 +384,7 @@ test("an aborted resumeMissing run records the missing session for the next run'
       flow: null,
       warn: () => {},
       merge: async () => "changed" as const,
-      finishAbortedTick: async () => ({ result: "aborted" as const }),
+      finishAbortedRun: async () => ({ result: "aborted" as const }),
     });
     assert.equal(outcome?.result, "aborted");
     assert.equal(s.resumeMissing, true, "the killed run's missing-session verdict is remembered");
@@ -480,7 +480,7 @@ test("a retriable merge failure feeds the error streak; other lastResults do not
 test("a null assembled prompt skips the run — but the flags are still consumed", () => {
   const dir = tmpdir();
   const s = state({ resumePending: true, resumeCause: "hung-tool" });
-  const p = plan(dir, s, { tickPrompt: () => null });
+  const p = plan(dir, s, { runPrompt: () => null });
   assert.equal(p, null);
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
@@ -563,7 +563,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
       flow: null,
       warn: () => {},
       merge: async () => "changed" as const,
-      finishAbortedTick: async () => ({ result: "aborted" as const }),
+      finishAbortedRun: async () => ({ result: "aborted" as const }),
     });
     assert.equal(outcome?.result, "error", "the window rejection is a hold, not a merge");
     // The lease release evaluates the pin condition right after the verdict, before
@@ -621,7 +621,7 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
       flow: null,
       warn: () => {},
       merge: async () => "changed" as const,
-      finishAbortedTick: async () => ({ result: "aborted" as const }),
+      finishAbortedRun: async () => ({ result: "aborted" as const }),
     });
     // A budget cap is a handback, not a failed tick: the verdict arms the resume before the
     // lease release reads it, and nothing resets the kept edits.

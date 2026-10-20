@@ -204,7 +204,7 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
  * comma list writes one marker per role). The CLI cannot
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
  * a per-role marker file a running team consumes within one poll cycle (the runner's
- * abortTick kills the pi child and resets the worktree to main). Requires a live harness —
+ * abortRun kills the pi child and resets the worktree to main). Requires a live harness —
  * with no team there is nothing to consume the marker. The role stays enabled: it backs
  * off normally and later ticks proceed as usual. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {

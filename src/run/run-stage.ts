@@ -63,7 +63,7 @@ interface TickStageContext {
   wt: string;
   /** The pi run's final reply text, the summary's source. */
   finalText: string;
-  /** When the tick's main authoring run started (runTick's pre-pi capture): the friction
+  /** When the tick's main authoring run started (runOnce's pre-pi capture): the friction
    * measurement's wall-clock base. */
   piStartedAt: number;
   /** The `qa` observer's FLOW record, or null for every other role. */
@@ -78,7 +78,7 @@ interface TickStageContext {
   /** Pin the commit by the role's merge ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   /** Finalize an aborted follow-up run through the role (requeue + worktree reset). */
-  finishAbortedTick(): Promise<TickOutcome>;
+  finishAbortedRun(): Promise<TickOutcome>;
 }
 
 /** Fold commits an agent run made since `base` into the tick's tree, keeping the harness commit
@@ -97,7 +97,7 @@ export async function foldAgentCommitsSince(
 /** Stage a changed worktree for the merge queue: derive the commit message from the reply's
  * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction ticks,
  * commit, pin the commit by the role's merge ref, and enqueue the merge. Extracted from
- * RoleRunner.runTick so the tick's own method stays the outcome classifier and this module is
+ * RoleRunner.runOnce so the tick's own method stays the outcome classifier and this module is
  * the commit-staging layer — the only place a fresh tick's work becomes a queued merge.
  * Returns the tick's outcome; a failed pin or an aborted follow-up returns an error/aborted
  * outcome without anything queued. */
@@ -132,7 +132,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     const base = await headOf(ctx.wt, "HEAD");
     const followUp = await ctx.requestSummary(ctx.wt);
     await foldAgentCommitsSince(ctx, ctx.wt, base);
-    if (followUp?.aborted) return ctx.finishAbortedTick();
+    if (followUp?.aborted) return ctx.finishAbortedRun();
     if (followUp) {
       summary = extractSummary(followUp.finalText);
       body = body ?? extractCommitBody(followUp.finalText);
@@ -156,7 +156,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
       const base = await headOf(ctx.wt, "HEAD");
       const followUp = await ctx.requestSummary(ctx.wt, over);
       await foldAgentCommitsSince(ctx, ctx.wt, base);
-      if (followUp?.aborted) return ctx.finishAbortedTick();
+      if (followUp?.aborted) return ctx.finishAbortedRun();
       const short = followUp && summaryOverCap(followUp.finalText) === null ? extractSummary(followUp.finalText) : null;
       if (short !== null) {
         summary = short;
@@ -217,7 +217,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
     const fixBase = await headOf(ctx.wt, "HEAD");
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);
     await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
-    if (fixUp?.aborted) return ctx.finishAbortedTick();
+    if (fixUp?.aborted) return ctx.finishAbortedRun();
     if (fixUp) {
       summary = extractSummary(fixUp.finalText) ?? summary;
       // Field-by-field: a fix-up reply need only restate the fields it changed, so the

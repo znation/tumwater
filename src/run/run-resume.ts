@@ -9,7 +9,7 @@ import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prom
 
 /** What a tick starts with, decided before any worktree or pi work: whether it resumes the
  * interrupted session (and why), the prompt it runs, and the raw user request it executes.
- * planTickStart owns the whole decision — runTick (src/runner/runner.ts) consumes the
+ * planTickStart owns the whole decision — runOnce (src/runner/runner.ts) consumes the
  * plan verbatim: a null plan means the role has nothing to run (the tick is skipped), a
  * resumed tick gets the cause-named bridge prompt, a fresh tick the assembled one. */
 export interface TickStartPlan {
@@ -17,7 +17,7 @@ export interface TickStartPlan {
    * merge_blocked — with the detail it wrote into `lastError`), captured before the plan
    * clears lastError: a non-terminally failed merge kept its pin, and when this tick's
    * recovery re-queues that pin the failure must still feed the error streak
-   * (finishRecoveryTick). Undefined when the last result was not a retriable merge failure. */
+   * (finishRecoveryRun). Undefined when the last result was not a retriable merge failure. */
   priorMergeFailure: string | undefined;
   /** Resume the interrupted session instead of starting fresh. */
   resuming: boolean;
@@ -34,7 +34,7 @@ export interface TickStartPlan {
    * bridge asks for the smallest finish); otherwise a shutdown/crash. */
   resumeCause: ResumeCause;
   /** The prompt this tick runs: the resume bridge when resuming, the assembled tick prompt
-   * otherwise (runTick may still append notes — a conflict-discard note, a main-red note —
+   * otherwise (runOnce may still append notes — a conflict-discard note, a main-red note —
    * before the run). Null only for a promptless recovery run (`recoveryOnly`): the tick
    * re-enqueues a kept merge pin and authors nothing. */
   prompt: string | null;
@@ -53,13 +53,13 @@ export function planTickStart(opts: {
   role: string;
   state: RunnerState;
   /** The role's prompt queue: the interrupted tick's re-queued request is reclaimed into it,
-   * and a fresh tick's assembled prompt is recorded onto it (via tickPrompt). */
+   * and a fresh tick's assembled prompt is recorded onto it (via runPrompt). */
   pending: PendingPrompt;
   /** Assemble a fresh tick's prompt (null when the role has nothing to run); the runner's
-   * tickPrompt() so the dequeued user request is recorded as pending exactly as before. The
+   * runPrompt() so the dequeued user request is recorded as pending exactly as before. The
    * effective `agent` below is passed through so the prompt speaks the dialect of the backend
    * the tick actually runs on, not the role's primary. */
-  tickPrompt: (agent?: string) => string | null;
+  runPrompt: (agent?: string) => string | null;
   /** The backend this tick would run on, for the resume decision: a newest author ledger line
    * naming another agent hands off instead of resuming. Defaults to pi, the historical
    * backend. */
@@ -76,7 +76,7 @@ export function planTickStart(opts: {
   // The last merge's failure, read before the clear below: a merge that failed
   // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
   // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
-  // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
+  // re-queues that pin, the failure must still feed the error streak (finishRecoveryRun).
   const priorMergeFailure =
     s.lastResult !== undefined && RETRIABLE_MERGE_RESULTS.has(s.lastResult)
       ? (s.lastError ?? `merge failed: ${s.lastResult}`)
@@ -170,7 +170,7 @@ export function planTickStart(opts: {
   if (resuming) {
     prompt = buildResumePrompt(opts.role, resumeCause, agent);
   } else {
-    const assembled = opts.tickPrompt(agent);
+    const assembled = opts.runPrompt(agent);
     // The image-reroute handoff note names the model the blind run was on and the image it
     // read; those facts ride the one-shot marker, which is consumed here. A handoff's fresh
     // session also needs the to-be-run model named for its own side of the note, but the
