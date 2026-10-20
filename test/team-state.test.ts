@@ -107,8 +107,8 @@ test("pauseRole and resumeRole maintain the marker set idempotently", () => {
     "the last removal deletes the marker outright",
   );
   // Custom-role ids are stored verbatim — the marker must survive config edits.
-  assert.equal(pauseRole(root, "my-custom-loop"), true);
-  assert.deepEqual(pausedRoles(root), ["my-custom-loop"]);
+  assert.equal(pauseRole(root, "my-custom-role"), true);
+  assert.deepEqual(pausedRoles(root), ["my-custom-role"]);
 });
 
 /** Spawn a child node process that spins on a start file, then pauses one role once — the way

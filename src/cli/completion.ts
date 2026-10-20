@@ -2,7 +2,7 @@
 /** Shell completion derived from the help text. The spec is parsed from the same HELP stanzas
  * `tumwater help <command>` and the unknown-command suggestion use, so a new command or flag
  * completes the moment it gains a help stanza and can never drift from the listing. */
-import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
+import { customRoleNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS, DOTTED_SECTION_FIELDS } from "../config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS } from "../history/history-data.js";
@@ -89,7 +89,7 @@ export function completionRoleIds(root: string): string[] {
 export function completionConfigKeys(root: string): string[] {
   let roleIds: string[];
   try {
-    roleIds = [...allRoleIds(), ...customLoopNames(loadConfig(root))];
+    roleIds = [...allRoleIds(), ...customRoleNames(loadConfig(root))];
   } catch {
     roleIds = allRoleIds();
   }

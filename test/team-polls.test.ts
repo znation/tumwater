@@ -54,7 +54,7 @@ test("pollTeamHold maps HoldInputs to observations: rate-limit with retry-after,
   );
   assert.notEqual(held.until, null, "two distinct roles' 429s trip the hold");
   // The first qualifying kind in observation order wins: the rate-limit group has the two
-  // roles it needs, so dry's connection failure rides along in the observations but does
+  // roles it needs, so dedupe's connection failure rides along in the observations but does
   // not join this hold.
   assert.equal(held.kind, "rate-limit");
   assert.deepEqual(held.roles, ["clean", "coverage"]);

@@ -17,7 +17,7 @@ import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "..
 import { detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
-import { telemetryDigest } from "./telemetry-digest.js";
+import { selfcheckDigest } from "./selfcheck-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
@@ -172,8 +172,8 @@ export function assembleRunPrompt(
     const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
     // The selfcheck role's evidence is the harness's own event log, one level outside this
-    // worktree, so its evidence module renders it (telemetryDigest) and the run injects it.
-    const digest = base === "selfcheck" ? telemetryDigest(root) : undefined;
+    // worktree, so its evidence module renders it (selfcheckDigest) and the run injects it.
+    const digest = base === "selfcheck" ? selfcheckDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
     // runtime state, and a missing or unreadable one degrades to no block

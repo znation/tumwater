@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { defaultConfig, customLoopNames, loadConfig } from "../src/config/config.js";
+import { defaultConfig, customRoleNames, loadConfig } from "../src/config/config.js";
 import { enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { loadRunnerState } from "../src/runner/runner-state.js";
 import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
@@ -496,7 +496,7 @@ test("a director run applies a config request without producing a commit", async
     // The request is not a worktree change: consumed and deleted before the dirty check, the
     // run is a fulfillment with nothing to commit (the orchestrator's reload starts the runner).
     assert.equal((await runner.run()).result, "no_change");
-    assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
+    assert.deepEqual(customRoleNames(loadConfig(repo)), ["docs"]);
     assert.ok(!fs.existsSync(configRequestPath(worktreePath(repo, "director"))), "request consumed");
     assert.equal(
       sh(repo, "git", "log", "--oneline", "main..tumwater/director").trim(),
@@ -517,7 +517,7 @@ test("a config request naming a disallowed key applies customRoles and warns nam
     enqueuePrompt(repo, "add docs and set the budget to 1");
     await runner.run();
     // The good half still applies…
-    assert.deepEqual(customLoopNames(loadConfig(repo)), ["docs"]);
+    assert.deepEqual(customRoleNames(loadConfig(repo)), ["docs"]);
     // …and the ignored key is named in a warning event, not dropped silently.
     const warnings = eventsOfType(repo, "warning");
     assert.ok(

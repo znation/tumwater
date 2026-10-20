@@ -105,7 +105,7 @@ export async function gateBuildPrecheck(
       // host were exactly that (BUGS.md 2026-09-23). The re-run is one more check, priced as
       // its own build_check event; if it passes, the tree is verified exactly like a
       // first-time pass and the flake is named in a warning (the headline clusters in the
-      // digest, so telemetry and bugfix can go after the flaky test). A re-run that fails
+      // digest, so selfcheck and bugfix can go after the flaky test). A re-run that fails
       // again goes to attribution below; a skipped one says nothing about the tree, so the
       // first failure stands.
       // A failure naming only known tests (main's, or quarantined) is judged below as it stands:

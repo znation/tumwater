@@ -250,7 +250,7 @@ function principlesBlock(principles: string): string {
   return `Design principles this project holds — uphold them in everything you produce:\n<principles>\n${principleBullets(principles)}\n</principles>`;
 }
 
-/** The <failure-digest> block injected into the telemetry role's prompt (plans/telemetry-role.md):
+/** The <failure-digest> block injected into the selfcheck role's prompt (plans/telemetry-role.md):
  * the harness renders the digest from its own event log at the project root and hands it over, so
  * the role spends no tool calls acquiring evidence and cannot read a stale or foreign log. */
 function digestBlock(digest: string): string {
@@ -297,7 +297,7 @@ interface RunPromptInput {
   role: Role;
   /** PRINCIPLES.md content (see readPrinciples); omitted from the prompt when empty. */
   principles?: string;
-  /** Rendered failure digest (see src/failure/failure-render.ts); telemetry only, omitted when
+  /** Rendered failure digest (see src/failure/failure-render.ts); selfcheck only, omitted when
    * unreadable. */
   digest?: string;
   /** Rendered flow-coverage block (see run/qa-coverage.ts); qa only, omitted when unreadable. */

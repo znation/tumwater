@@ -305,7 +305,7 @@ test("every role prompt carries the ask-don't-guess rule", () => {
 // what was tested before, so the find text must carry the flow menu, the vary rule, and the
 // once-per-day guard on expensive real runs in prose; these assertions pin that contract.
 
-// Prompt contract for the telemetry role (plans/telemetry-role.md): an observer that reads the
+// Prompt contract for the selfcheck role (plans/telemetry-role.md): an observer that reads the
 // harness's own event log — injected as a <failure-digest> block because the live log sits at the
 // project root, outside its worktree — and files at most one bug in BUGS.md. Every run is a
 // fresh session, so the find text must carry the load-bearing rule (a cluster is a bug only when

@@ -44,9 +44,6 @@ const RETIRED: readonly RetiredFamily[] = [
       "crashLoop", // a crash loop is a failure mode
       "onCrashLoop", // the crash-loop callback
       "customLoops", // the live legacy config key
-      "CustomLoop", // renamed by Plain terms code cleanup part 2/7
-      "customLoopNames", // renamed by Plain terms code cleanup part 2/7
-      "CUSTOM_LOOP_KEYS", // renamed by Plain terms code cleanup part 2/7
     ],
   },
   {

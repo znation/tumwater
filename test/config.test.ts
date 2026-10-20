@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   changedConfigKeys,
-  customLoopNames,
+  customRoleNames,
   defaultConfig,
   isCustomRole,
   knownRoleIds,
@@ -42,7 +42,7 @@ test("defaultConfig enables every role including director, except the opt-in sel
     if (id === "selfcheck") continue;
     assert.equal(config.roles[id]?.enabled, true, `role ${id} should default enabled`);
   }
-  // Telemetry files only harness bugs from the harness's own event log, so on any other project
+  // Selfcheck files only harness bugs from the harness's own event log, so on any other project
   // its findings land in the wrong backlog; tumwater's own tumwater.example.json opts in.
   assert.equal(config.roles.selfcheck?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
@@ -546,16 +546,16 @@ test("an invalid customRoles file keeps the team-visible contract: loadConfigSaf
   assert.match(broken.error ?? "", /collides with a built-in role id/);
 });
 
-test("customLoopNames, isCustomRole, and knownRoleIds are the one source of truth for custom ids", () => {
+test("customRoleNames, isCustomRole, and knownRoleIds are the one source of truth for custom ids", () => {
   const config = defaultConfig();
   config.customRoles = [{ name: "docs-auditor", task: "t" }];
-  assert.deepEqual(customLoopNames(config), ["docs-auditor"]);
+  assert.deepEqual(customRoleNames(config), ["docs-auditor"]);
   assert.equal(isCustomRole(config, "docs-auditor"), true);
   assert.equal(isCustomRole(config, "feature"), false);
   // Catalog first, customs appended — the same order as config.roles.
   assert.deepEqual(knownRoleIds(config), [...allRoleIds(), "docs-auditor"]);
   const empty = defaultConfig();
-  assert.deepEqual(customLoopNames(empty), []);
+  assert.deepEqual(customRoleNames(empty), []);
   assert.deepEqual(knownRoleIds(empty), allRoleIds());
 });
 

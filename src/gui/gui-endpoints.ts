@@ -216,7 +216,7 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
 
 /** Handle GET /api/failures?days=N[&role=<id>[,<id>...]] or
  * /api/failures?sinceMs=<ms>[&role=<id>[,<id>...]]: the
- * same bounded Markdown failure digest the telemetry role feeds on and `tumwater report
+ * same bounded Markdown failure digest the selfcheck role feeds on and `tumwater report
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
  * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can

@@ -23,7 +23,7 @@
  * HOLD_STORM_WINDOW_MS that trip the hold. Two, not one: a single role's failure is
  * exactly what the per-run retry already answers, and the hold exists for the cross-role
  * amplification it cannot see. Two, not three: calibrated on the 2026-09-21 storm, whose
- * clusters (improve + coverage 48 s apart at 18:13, dry + feature 6 s apart at 19:06, bugfix +
+ * clusters (improve + coverage 48 s apart at 18:13, dedupe + feature 6 s apart at 19:06, bugfix +
  * perf 18 s apart on 09-22 05:50) had two roles in the window as often as three, while the six
  * isolated 429s logged since the retry landed sit 4–20 minutes apart and trip nothing. A false
  * trip costs one base hold; a missed storm costs the day. */

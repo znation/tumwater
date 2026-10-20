@@ -375,11 +375,11 @@ test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order fo
   const freshOrganize = runner("organize"); // …a never-ran maintenance role.
   const recentClean = runner("clean");
   recentClean.state.lastRunEndedAt = 2000;
-  const olderDry = runner("dedupe");
-  olderDry.state.lastRunEndedAt = 1500; // Within-tier LRU: dry before clean.
+  const olderDedupe = runner("dedupe");
+  olderDedupe.state.lastRunEndedAt = 1500; // Within-tier LRU: dedupe before clean.
   const freshImprove = runner("improve"); // Fresh tie with organize: input order decides.
   assert.deepEqual(
-    fairOrder([staleFeature, recentClean, freshOrganize, olderDry, freshImprove]).map((r) => r.role),
+    fairOrder([staleFeature, recentClean, freshOrganize, olderDedupe, freshImprove]).map((r) => r.role),
     ["feature", "organize", "improve", "dedupe", "clean"],
   );
 });
@@ -444,7 +444,7 @@ test("deferRun: only a deferrable no_change role that has seen main and got no w
   // Work-tier roles and unknown/custom roles never defer, even with no_change + no work.
   // bugfix is the work-tier exception: it defers only while its backlog is empty (the tests
   // below), so with an open bug it sits in this list too.
-  for (const role of ["feature", "plan", "director", "my-custom-loop"]) {
+  for (const role of ["feature", "plan", "director", "my-custom-role"]) {
     assert.equal(deferRun(base, role, false, false, false, NOW), false);
   }
   assert.equal(deferRun(base, "bugfix", false, false, true, NOW), false);
@@ -490,7 +490,7 @@ test("deferRun: an open backlog defers idle maintenance even when work merged; p
 
   // Never-ran roles and work/custom roles are unaffected by the backlog.
   assert.equal(deferRun({ ...base, lastMainHead: "" }, "organize", true, true, false, NOW), false);
-  for (const role of ["feature", "plan", "director", "my-custom-loop"]) {
+  for (const role of ["feature", "plan", "director", "my-custom-role"]) {
     assert.equal(deferRun(base, role, true, true, false, NOW), false);
   }
 });

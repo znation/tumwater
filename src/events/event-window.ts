@@ -268,7 +268,7 @@ export function readWindowEvents(root: string, fromKey: string): EventWindow {
 
 /** The event feed's read outcome for a one-shot caller that needs no window — `doctor`'s
  * event-log pre-flight. Reads the live log and its archive whole and classifies each; the
- * combine rule matches readWindowEvents, so the doctor check and the telemetry digest agree on
+ * combine rule matches readWindowEvents, so the doctor check and the selfcheck digest agree on
  * what "unreadable" means. */
 export function eventLogState(root: string): EventLogState {
   return combineLogState(scanFileReadState(eventsLogPath(root)), scanFileReadState(eventsArchivePath(root)));

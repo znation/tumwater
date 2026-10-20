@@ -372,7 +372,7 @@ export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): s
 
 /** The names of the user-defined roles, in array order (plans/user-defined-loops.md).
  * One source of truth for "which ids are user-defined" so consumers cannot drift. */
-export function customLoopNames(config: TumwaterConfig): string[] {
+export function customRoleNames(config: TumwaterConfig): string[] {
   return config.customRoles.map((c) => c.name);
 }
 
@@ -384,7 +384,7 @@ export function isCustomRole(config: TumwaterConfig, id: string): boolean {
 /** Every valid role id — the catalog plus the user-defined roles (the one answer for "which
  * ids exist", so consumers cannot drift from each other). */
 export function knownRoleIds(config: TumwaterConfig): string[] {
-  const ids = [...allRoleIds(), ...customLoopNames(config)];
+  const ids = [...allRoleIds(), ...customRoleNames(config)];
   const seen = new Set(ids);
   // Parallel work instances (part 5b/7): an enabled role's instance role ids (`feature-2`) are
   // valid CLI and GUI targets even though they are not catalog roles. The bare ids are already

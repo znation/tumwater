@@ -278,7 +278,7 @@ interface FailureDigestEntry {
 }
 
 /** Bounded memo of whole failure digests, keyed by root and day count. The dashboard's Failures
- * tab, the TUI's Ctrl+T pane, and every telemetry run re-request the same digest, and the
+ * tab, the TUI's Ctrl+T pane, and every selfcheck run re-request the same digest, and the
  * collector re-reads and re-parses up to 2× the window's log bytes each time (~4 MB on this
  * repo's own log, growing toward the rotation cap). An unchanged log and window cost one stat
  * and return the prior result; any change — an append, a rotation, or a new local day —
@@ -497,7 +497,7 @@ function assembleFailureReport(
   // Merge review failures: a reviewer that could not return a parseable verdict (a dead
   // backend, a transport error) fails closed and keeps the commit, but its authoring run ends
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
-  // `run_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
+  // `run_end.error`. Clustered on their own so the selfcheck role can see a gate that keeps
   // failing without misreading it as a run error (BUGS.md 2026-09-21).
   const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
 

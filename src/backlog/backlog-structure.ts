@@ -367,7 +367,7 @@ export function strandedPlanEntriesFor(root: string): StrandedPlanEntry[] {
 }
 
 /** The clean role's `<backlog-structure>` prompt block for the primary checkout at `root`
- * (the same root the telemetry digest and qa coverage blocks read): a rendered block listing
+ * (the same root the selfcheck digest and qa coverage blocks read): a rendered block listing
  * each stranded heading with its current section, or undefined when PLANS.md is missing,
  * unreadable, or clean — an unreadable or clean file gives no block, so the prompt is
  * unchanged in the common case. The stranded entries are stat-cached (strandedPlanEntriesFor),

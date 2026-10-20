@@ -496,7 +496,7 @@ test("an abort for one queued role stops only that role's verify and discards it
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
       leasedRoleShell(),
-      `case "$role" in clean) touch '${dir}/clean-reviewing';; dedupe) touch '${dir}/dry-reviewing';; esac`,
+      `case "$role" in clean) touch '${dir}/clean-reviewing';; dedupe) touch '${dir}/dedupe-reviewing';; esac`,
       `i=0; while [ ! -e '${release}' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i+1)); done`,
       `printf '%s\\n' '${assistantLine("VERDICT: approve")}'; exit 0;;`,
       `esac; done`,
@@ -505,7 +505,7 @@ test("an abort for one queued role stops only that role's verify and discards it
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => fs.existsSync(path.join(dir, "clean-reviewing")) && fs.existsSync(path.join(dir, "dry-reviewing")),
+      () => fs.existsSync(path.join(dir, "clean-reviewing")) && fs.existsSync(path.join(dir, "dedupe-reviewing")),
       "both verifies' reviewer runs to be in flight",
       60_000,
     );
@@ -550,7 +550,7 @@ test("a role rejected in its verify runs again while another queued change is st
   const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minRunInterval 0: due on every poll
   await seedMergeQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
-  const held = path.join(dir, "dry-reviewing");
+  const held = path.join(dir, "dedupe-reviewing");
   const release = path.join(dir, "release");
   // Reviews tell the changes apart by their diff; dedupe's park is bounded (~60 s) so a failed
   // assert can never leave it spinning. Author runs (clean's fix run): nothing to do.
@@ -805,7 +805,7 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
       (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dedupe outlived its 0.5s deadline — aborted'),
     );
     const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.source === "clean" && e.result === "aborted");
-    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dedupe");
+    const dedupeFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dedupe");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
     // The drain cut its permit holder off AT the swap, and the merge was aborted only past its
     // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait
@@ -819,7 +819,7 @@ test("a restart's drain aborts only its permit-holding role runs — the in-flig
     assert.equal(restartEvent.abortedRuns, 1, "the drain counted clean's cut-off run");
     assert.ok(cleanAbortedAt > -1, "clean's in-flight run ended aborted");
     assert.ok(cleanAbortedAt < lapseAt, "clean's run was cut off by the drain at the swap, not at the hand-off's lapse");
-    assert.ok(waitAt > restartAt && lapseAt > waitAt && dryFailedAt > lapseAt && stopAt > dryFailedAt, "the merge got the announced window: wait, lapse, abort, stop — in that order");
+    assert.ok(waitAt > restartAt && lapseAt > waitAt && dedupeFailedAt > lapseAt && stopAt > dedupeFailedAt, "the merge got the announced window: wait, lapse, abort, stop — in that order");
 
     // The merge's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
     // next generation, nothing merged, no stale marker.

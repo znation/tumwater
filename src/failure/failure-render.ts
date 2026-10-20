@@ -1,9 +1,9 @@
 // vocabulary: plain
 /** Rendering half of the failure digest: turn a collected `FailureReportData` (failure-data.ts)
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
- * telemetry role's run evidence all print. Pure function of the data — no I/O, no clock
- * reads — so the byte bound argued at collection holds here unchanged. The telemetry role's
- * evidence wrapper (telemetryDigest, TELEMETRY_DIGEST_MS) lives in run/telemetry-digest.ts. */
+ * selfcheck role's run evidence all print. Pure function of the data — no I/O, no clock
+ * reads — so the byte bound argued at collection holds here unchanged. The selfcheck role's
+ * evidence wrapper (selfcheckDigest, SELFCHECK_DIGEST_MS) lives in run/selfcheck-digest.ts. */
 import type { RunResult } from "../run/run-outcome.js";
 import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-data.js";
 import type { SpendCell } from "./time-spend.js";

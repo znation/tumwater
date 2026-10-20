@@ -18,7 +18,7 @@ import { deferredReasonText } from "../events/event-format.js";
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
  * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
- * orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
+ * orchestrator lifecycle). They are the evidence the selfcheck role's load-bearing
  * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
  * (plans/telemetry-role.md) — so they sit beside the outcomes rather than being dropped. */
 export const STATE_CHANGE_TYPES = new Set<string>([

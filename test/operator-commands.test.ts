@@ -297,10 +297,10 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the team marker
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
   // A custom-role id resolves through the config-backed check like abort's does.
   const config = defaultConfig();
-  config.customRoles.push({ name: "myloop", task: "keep the examples current" });
+  config.customRoles.push({ name: "myrole", task: "keep the examples current" });
   writeJsonFile(configPath(root), config);
-  const custom = await expectOk(() => cmdPause(root, ["--role", "myloop"]));
-  assert.match(custom.stdout, /role myloop paused/);
+  const custom = await expectOk(() => cmdPause(root, ["--role", "myrole"]));
+  assert.match(custom.stdout, /role myrole paused/);
 });
 
 test("cmdResume --role lifts one role and reports the was-not-paused wording when absent", async () => {

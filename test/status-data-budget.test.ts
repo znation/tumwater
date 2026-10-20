@@ -40,10 +40,10 @@ test("snapshot carries the daily cost budget aggregated from persisted runner st
   saveRunnerState(repo, clean);
   const organize = spentRunnerState("organize", 0.75, now.getTime());
   saveRunnerState(repo, organize);
-  const dry = freshRunnerState("dedupe");
-  dry.dayStamp = "2000-01-01"; // not today's stamp → $0 today
-  dry.dayCostUsd = 9;
-  saveRunnerState(repo, dry);
+  const dedupe = freshRunnerState("dedupe");
+  dedupe.dayStamp = "2000-01-01"; // not today's stamp → $0 today
+  dedupe.dayCostUsd = 9;
+  saveRunnerState(repo, dedupe);
 
   let snap = snapshot(repo, undefined, now.getTime());
   // No provider/model is configured (pi's own default), so the team cannot be verified as
@@ -135,14 +135,14 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
   cfg.maxDailyCostUsdPerRole = { clean: 1, dedupe: 5, director: 1 };
   saveConfig(repo, cfg);
 
-  // clean is exactly at its cap (held); dry carries only yesterday's spend (a stale stamp
+  // clean is exactly at its cap (held); dedupe carries only yesterday's spend (a stale stamp
   // reads $0 today — the hold is a daily figure); the director is exempt like the gate.
   const clean = spentRunnerState("clean", 1);
   saveRunnerState(repo, clean);
-  const dry = freshRunnerState("dedupe");
-  dry.dayStamp = "2000-01-01";
-  dry.dayCostUsd = 99;
-  saveRunnerState(repo, dry);
+  const dedupe = freshRunnerState("dedupe");
+  dedupe.dayStamp = "2000-01-01";
+  dedupe.dayCostUsd = 99;
+  saveRunnerState(repo, dedupe);
   const director = spentRunnerState("director", 1);
   saveRunnerState(repo, director);
 

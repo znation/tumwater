@@ -553,10 +553,10 @@ function sweepStaleProbes(dir: string): void {
 }
 
 /** Event log readable — open and parse events.jsonl (and its rotated archive) so the one
- * failure the telemetry role is chartered to catch — a feed that hid itself — is named by the
+ * failure the selfcheck role is chartered to catch — a feed that hid itself — is named by the
  * pre-flight too. An absent or empty log is fine: a young project writes its first event on the
  * first run. A present-but-unparseable log (a directory at the path, a permission failure, or
- * every complete line corrupt) fails, because every observer — telemetry, the TUI/GUI feeds,
+ * every complete line corrupt) fails, because every observer — selfcheck, the TUI/GUI feeds,
  * `logs`, `report` — reads that one feed. Read-only. */
 export function checkEventLog(root: string): CheckOutcome {
   let state: EventLogState;

@@ -170,9 +170,9 @@ test("gen/peak ctx combine persisted totals with live in-run progress for runnin
   const cleanRow = out.split("\n").find((l) => l.startsWith("clean")) ?? "";
   assert.match(cleanRow, /\b1800\b/, "running role gen = persisted + live output (1000+300+500)");
   assert.match(cleanRow, /12\.0k/, "running role peak ctx = max(persisted, live) = 12000");
-  const dryRow = out.split("\n").find((l) => l.startsWith("dedupe")) ?? "";
-  assert.match(dryRow, /\b2000\b/, "idle role gen stays persisted — its log tail is not double-counted");
-  assert.match(dryRow, /\b4000\b/);
+  const dedupeRow = out.split("\n").find((l) => l.startsWith("dedupe")) ?? "";
+  assert.match(dedupeRow, /\b2000\b/, "idle role gen stays persisted — its log tail is not double-counted");
+  assert.match(dedupeRow, /\b4000\b/);
   const totals = out.split("\n").at(-1) ?? "";
   assert.match(totals, /\b3800\b/, "totals row sums the displayed (combined) values");
 });
@@ -484,8 +484,8 @@ test("a role with queued prompts carries a p:N marker on its state cell", () => 
   const lines = renderStatus(tmpdir(), snap).split("\n");
   const cleanRow = lines.find((l) => l.startsWith("clean")) ?? "";
   assert.match(cleanRow, /p:2/, "the queued count rides the state cell");
-  const dryRow = lines.find((l) => l.startsWith("dedupe")) ?? "";
-  assert.doesNotMatch(dryRow, /p:/, "an empty queue renders no marker");
+  const dedupeRow = lines.find((l) => l.startsWith("dedupe")) ?? "";
+  assert.doesNotMatch(dedupeRow, /p:/, "an empty queue renders no marker");
   assert.doesNotMatch(lines[lines.length - 1] ?? "", /p:/, "the totals row stays marker-free");
 });
 

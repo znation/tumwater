@@ -101,7 +101,7 @@ export interface RoleConfig {
  * (plans/user-defined-loops.md): each entry becomes a full-citizen role — persistent worktree +
  * branch, run lifecycle, review gate, merge to main. Only the director may write this key; every
  * other role's prompt keeps the blanket tumwater.json ban. */
-interface CustomLoop {
+interface CustomRole {
   /** The role id: worktree dir, branch suffix (`tumwater/<name>`), and status row.
    * Validated at load against /^[a-z0-9][a-z0-9_-]{0,31}$/ — it becomes a filesystem path
    * and a git ref — with no collision with any catalog id (including the director) and unique
@@ -437,7 +437,7 @@ export interface TumwaterConfig {
    * move makes every existing mechanism (runner creation, live enable/disable, configForRole,
    * status lists, gates) work unchanged. Optional in the file, defaulted to `[]`; required on
    * this type so read sites never see undefined. */
-  customRoles: CustomLoop[];
+  customRoles: CustomRole[];
   roles: Record<string, RoleConfig>;
 }
 
@@ -573,7 +573,7 @@ export const HARNESS_PI_FLAGS = new Map<string, string>([
   ["--no-extensions", "tumwater skips pi's discovered extensions itself"],
 ]);
 
-export const CUSTOM_LOOP_KEYS = ["name", "task"];
+export const CUSTOM_ROLE_KEYS = ["name", "task"];
 
 /** A custom role's name becomes a worktree dir and a git ref, so it is validated strictly:
  * lowercase alphanumerics plus dash/underscore, starting with an alphanumeric, ≤ 32 chars. */

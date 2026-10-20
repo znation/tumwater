@@ -8,7 +8,7 @@ import {
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
-  CUSTOM_LOOP_KEYS,
+  CUSTOM_ROLE_KEYS,
   CUSTOM_NAME_RE,
   CUSTOM_TASK_MAX_CHARS,
   HARNESS_PI_FLAGS,
@@ -447,7 +447,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
           problems.push(`${where} must be an object with keys name and task (got ${show(entry)})`);
           return;
         }
-        checkKnownKeys(entry, CUSTOM_LOOP_KEYS, where, problems);
+        checkKnownKeys(entry, CUSTOM_ROLE_KEYS, where, problems);
         const name = entry.name;
         if (typeof name !== "string") {
           problems.push(
