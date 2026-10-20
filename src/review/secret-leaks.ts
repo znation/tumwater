@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { errCode } from "../errno.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
@@ -84,12 +84,23 @@ export function knownSecrets(
   return all.filter((s, i) => all.findIndex((o) => o.value === s.value) === i);
 }
 
+/** Whether `err` says the path holds no file (deleted, or a parent replaced). */
+function noFile(err: unknown): boolean {
+  const code = errCode(err);
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+/** The finding for a changed file the gate could not read. */
+function unreadable(file: string, err: unknown): string {
+  return `\`${file}\` could not be read to check for leaked secrets (${errCode(err) ?? "error"})`;
+}
+
 /** The deterministic gate/stage finding for a change that writes the value of a secret
  * environment variable or stored pi credential into a file (a Node diagnostic report dumps
  * the whole environment). A value already present in the file at the merge-base is not this
  * change's leak. The reason
- * names files and variables, never the value. undefined when nothing leaked; never throws on
- * an unreadable file. */
+ * names files and variables, never the value. undefined when nothing leaked. A changed file
+ * that exists but cannot be read counts as a finding; a deleted file does not. */
 export async function secretLeakReason(
   wt: string,
   mainBranch: string,
@@ -104,12 +115,18 @@ export async function secretLeakReason(
     let stat: fs.Stats;
     try {
       stat = fs.statSync(full);
-    } catch {
+    } catch (err) {
+      if (!noFile(err)) leaks.push(unreadable(file, err));
       continue;
     }
     if (!stat.isFile() || stat.size > MAX_SCAN_BYTES) continue;
-    const head = readTextOrNull(full);
-    if (head === null) continue;
+    let head: string;
+    try {
+      head = fs.readFileSync(full, "utf8");
+    } catch (err) {
+      if (!noFile(err)) leaks.push(unreadable(file, err));
+      continue;
+    }
     const hits = secrets.filter((s) => head.includes(s.value));
     if (hits.length === 0) continue;
     baseRev ??= await changeBaseRev(wt, mainBranch);

@@ -427,6 +427,20 @@ resolver's resolution is not accepted.
 
 **Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read" and "hasConflictMarkers sees start/end markers but not a bare ======= separator" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
 
+### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
+
+**Guarantee.** When the secret-leak check cannot stat or read a changed file for any reason
+other than the path holding no file (`ENOENT`, `ENOTDIR`), it names the file as a finding
+("could not be read to check for leaked secrets") instead of passing it, so a credential the
+gate could not see never merges unchecked. Directories, gitlinks and oversized files stay
+deliberately skipped.
+
+**Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
+
+**Pinned by.** `test/secret-leaks.test.ts` — "secretLeakReason names a changed file it cannot
+read, and skips a missing one", "secretLeakReason passes a value already at the merge-base, a
+directory, and no secrets".
+
 ## Tumwater owns every commit
 
 ### INV-H1: a run's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the merged history

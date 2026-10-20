@@ -10,6 +10,7 @@ import {
 } from "../src/review/secret-leaks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 const VALUE = "hf_abcdefghijklmnopqrstuvwxyz";
@@ -117,4 +118,27 @@ test("secretLeakReason names the pi models.json source, never the value", async 
 test("knownSecrets keeps the first of two entries sharing a value", () => {
   const models = piDir({ providers: { p: { apiKey: VALUE } } }, undefined);
   assert.deepEqual(knownSecrets(ENV_RAW, models), [{ name: "$HF_TOKEN", value: VALUE }]);
+});
+
+test("secretLeakReason names a changed file it cannot read, and skips a missing one", async () => {
+  const wt = await worktree({ "README.md": "# T\n" }, { "clean.md": "nothing here\n" });
+  const fault = (name: string, code: string) =>
+    patchFsMethod(name, (orig) => (...args) => {
+      if (String(args[0]).endsWith("clean.md")) throw errnoError(code);
+      return orig(...args);
+    });
+  let undo = fault("readFileSync", "EMFILE");
+  try {
+    const reason = await secretLeakReason(wt, "main", ["clean.md"], ENV);
+    assert.match(reason!, /`clean\.md` could not be read to check for leaked secrets \(EMFILE\)/);
+  } finally {
+    undo();
+  }
+  undo = fault("statSync", "EACCES");
+  try {
+    assert.match((await secretLeakReason(wt, "main", ["clean.md"], ENV))!, /\(EACCES\)/);
+  } finally {
+    undo();
+  }
+  assert.equal(await secretLeakReason(wt, "main", ["gone.md", "a/b.md"], ENV), undefined);
 });
