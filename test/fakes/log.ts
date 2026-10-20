@@ -16,7 +16,7 @@ export function tickEnd(over: Partial<HarnessEvent> = {}): HarnessEvent {
   return { ts: 0, source: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
 }
 
-/** A `run_start` event, the pairing half tickRows reads durations from. */
+/** A `run_start` event, the pairing half runRows reads durations from. */
 export function tickStart(over: Partial<HarnessEvent> = {}): HarnessEvent {
   return { ts: 0, source: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }

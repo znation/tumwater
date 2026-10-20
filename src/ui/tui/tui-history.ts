@@ -6,11 +6,11 @@
  * has no full terminal width to measure columns against — so the parity with `history` is the
  * rows and their fields, not the CLI table's padding. Pure: a function of the rows it is
  * handed. */
-import { tickRowCells, type TickRow } from "../../history/history-data.js";
+import { runRowCells, type TickRow } from "../../history/history-data.js";
 
 /** The pane body for a set of tick rows: `time  role #tick  result  duration`, then `model`
  * (between the result and the duration), and `usage` and `detail` when they carry anything,
- * joined newest-first by newlines. The cells come from history-data.ts's tickRowCells, the one
+ * joined newest-first by newlines. The cells come from history-data.ts's runRowCells, the one
  * home the CLI's table builds on too, so a null `durationMs` (the tick's start sits outside
  * the scanned window) shows the em dash here the same way; an empty `model` (the start named
  * none or sat outside the window), an empty `usage` (neither tokens nor cost), and an empty
@@ -20,7 +20,7 @@ import { tickRowCells, type TickRow } from "../../history/history-data.js";
 export function historyPaneText(rows: readonly TickRow[]): string {
   return rows
     .map((row) => {
-      const { duration } = tickRowCells(row);
+      const { duration } = runRowCells(row);
       const parts = [row.time, `${row.role} #${row.run}`, row.result];
       if (row.model) parts.push(row.model);
       parts.push(duration);

@@ -85,7 +85,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
 test("tick's dispatcher admits --last for tick alone, and still rejects it elsewhere", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli tick last flag");
-  // The one-positional --last form reaches cmdTick through the dispatcher's gate.
+  // The one-positional --last form reaches cmdRunDetail through the dispatcher's gate.
   const ok = await cli(repo, "tick", "bugfix", "--last");
   assert.equal(ok.code, 0);
   assert.match(ok.stdout, /^no completed run for bugfix in the scanned window/);

@@ -67,14 +67,14 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
  * rejectUnknownArgs (only --json, --last, --stat, --patch, --transcript, --prompt), so a
  * listing flag such as --role is refused.
  * Arity is gated before the ready-repo check so a malformed call fails with its usage in any
- * directory; cmdTick owns the value validation and the --last/numbered rivals. */
+ * directory; cmdRunDetail owns the value validation and the --last/numbered rivals. */
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
-  const { cmdTick, TICK_USAGE } = await import("./run/run-detail.js");
+  const { cmdRunDetail, RUN_DETAIL_USAGE } = await import("./run/run-detail.js");
   const { positionals, rest } = peelPositionals(args);
   rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG]);
-  if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
+  if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${RUN_DETAIL_USAGE}`);
   await requireReadyRepo(root);
-  await cmdTick(root, positionals, rest.includes("--json"), {
+  await cmdRunDetail(root, positionals, rest.includes("--json"), {
     last: rest.includes("--last"),
     stat: rest.includes("--stat"),
     patch: rest.includes("--patch"),

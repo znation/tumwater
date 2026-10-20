@@ -1,6 +1,6 @@
 // vocabulary: plain
-/** Rendering + command half of `tumwater tick <role> <n>`: one completed tick's full event
- * block printed as a short summary header followed by the tick's events through the shared
+/** Rendering + command half of `tumwater history <role> <n>`: one completed run's full event
+ * block printed as a short summary header followed by the run's events through the shared
  * formatEvent. The payload itself is collected by run-detail-data.ts (the collector-in-core
  * convention beside history-data.ts / history.ts), so the CLI and the GUI History drill-down
  * serve the same payload; this module renders it for the terminal. Read-only over the event
@@ -8,8 +8,8 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { readTickRows } from "../history/history-data.js";
-import { readTickDetail, type TickDetail } from "./run-detail-data.js";
+import { readRunRows } from "../history/history-data.js";
+import { readRunDetail, type RunDetail } from "./run-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -21,39 +21,39 @@ import { readRunTranscript } from "../ui/transcript-run.js";
 import { gitTry } from "../git/git-run.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
-/** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
+/** The run command's synopsis, word for word what cli.ts's dispatcher gate and cmdRunDetail's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]] [--json]";
+export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
  * the not-found wordings below (the numbered form's exported message and the --last form's
  * module-local sibling), so the trailing hedge cannot drift between them. */
-function tickNotFoundPhrase(role: string, what: string): string {
+function runNotFoundPhrase(role: string, what: string): string {
   return `no ${what} for ${role} in the scanned window (the retained log may have rotated past it)`;
 }
 
-/** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
+/** The not-found wording a missed run lookup owes its surface — `tumwater history <role> <n>`'s
  * stdout line and the GUI /api/run endpoint's 404 JSON error, one template so the CLI's prose
  * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
- * can act on: the tick number, the role, and that the scanned window (not the world) is what
+ * can act on: the run number, the role, and that the scanned window (not the world) is what
  * came up empty. */
-export function tickNotFoundMessage(role: string, tick: number): string {
-  return tickNotFoundPhrase(role, `run #${tick}`);
+export function runNotFoundMessage(role: string, runNumber: number): string {
+  return runNotFoundPhrase(role, `run #${runNumber}`);
 }
 
-/** The not-found wording for `tumwater tick <role> --last`, sibling of tickNotFoundMessage —
+/** The not-found wording for `tumwater history <role> --last`, sibling of runNotFoundMessage —
  * the same surfaces but naming what the last-form scan actually asked for: the newest
- * completed tick, not a number the user supplied. Module-local: the GUI's /api/run 404 only
+ * completed run, not a number the user supplied. Module-local: the GUI's /api/run 404 only
  * ever serves the numbered form, so this wording has no second consumer. */
-function tickNotFoundLastMessage(role: string): string {
-  return tickNotFoundPhrase(role, "completed run");
+function runNotFoundLastMessage(role: string): string {
+  return runNotFoundPhrase(role, "completed run");
 }
 
-/** The commit a tick pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
+/** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
  * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
-export function tickCommitSha(d: TickDetail): string | null {
+export function runCommitSha(d: RunDetail): string | null {
   const queued = d.events.find(
     (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
   );
@@ -63,50 +63,50 @@ export function tickCommitSha(d: TickDetail): string | null {
 /** The sha a run's change merged under on main: the `merged` sha when the merge logged one, else
  * the pinned commit — a no-op fast-forward logs no `merged` event, so its pinned commit is what
  * merged. Null when the run pinned no commit. */
-export function tickMergedSha(d: TickDetail): string | null {
-  return d.mergedSha ?? tickCommitSha(d);
+export function runMergedSha(d: RunDetail): string | null {
+  return d.mergedSha ?? runCommitSha(d);
 }
 
-/** The `git show --stat` summary or full `--patch` of a tick's pinned commit. The sha is the
- * authored commit the tick pinned: a merge that rebased gives main a different sha with the
- * same changes, so this describes what the tick changed. */
-async function tickCommitShow(root: string, sha: string | null, what: "--stat" | "--patch"): Promise<string> {
+/** The `git show --stat` summary or full `--patch` of a run's pinned commit. The sha is the
+ * authored commit the run pinned: a merge that rebased gives main a different sha with the
+ * same changes, so this describes what the run changed. */
+async function runCommitShow(root: string, sha: string | null, what: "--stat" | "--patch"): Promise<string> {
   if (sha === null) return "(no commit: this run sent nothing to merge)";
   const out = await gitTry(root, "show", what, "--format=", sha);
   if (out === null) return `(commit ${shortSha(sha)} is not in this repository)`;
   return out.trimEnd();
 }
 
-/** The pinned commit's stat text for a tick, shared by `tick --stat` and GET /api/run so both
+/** The pinned commit's stat text for a run, shared by `run --stat` and GET /api/run so both
  * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)"
  * texts. */
-export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
-  return tickCommitShow(root, tickCommitSha(d), "--stat");
+export function runDetailStat(root: string, d: RunDetail): Promise<string> {
+  return runCommitShow(root, runCommitSha(d), "--stat");
 }
 
-/** The pinned commit's full patch for a tick, for `history --patch`. Like tickDetailStat it
- * shows the commit the tick pinned (tickCommitSha), not the `merged as` sha, so the stat and
+/** The pinned commit's full patch for a run, for `history --patch`. Like runDetailStat it
+ * shows the commit the run pinned (runCommitSha), not the `merged as` sha, so the stat and
  * the patch describe the same commit; the placeholder texts are the stat's. GET /api/run is its
  * second caller (the dashboard's "Show patch" button). */
-export function tickDetailPatch(root: string, d: TickDetail): Promise<string> {
-  return tickCommitShow(root, tickCommitSha(d), "--patch");
+export function runDetailPatch(root: string, d: RunDetail): Promise<string> {
+  return runCommitShow(root, runCommitSha(d), "--patch");
 }
 
-/** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
+/** The human view of a RunDetail: one summary line — result (or the in-flight/unpaired
  * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`merge_done`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
- * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose merge
+ * TUI use, so the trail reads exactly like the feed it came from. A queued run whose merge
  * has finished shows that verdict in the header and ends with the merge's outcome line; a
  * leftover-recovery run's verdict is the failed attempt it re-queued (resolveQueuedResult),
  * logged before the run began, so that outcome line leads the trail instead — the trail stays
  * in time order. */
-export function renderTickDetail(d: TickDetail): string {
+export function renderRunDetail(d: RunDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
   else summary.push(d.result ? eventTypeLabel(d.result) : "?");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
-  const sha = tickCommitSha(d);
+  const sha = runCommitSha(d);
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
@@ -122,34 +122,34 @@ export function renderTickDetail(d: TickDetail): string {
 /** The transcript block of `--transcript`: the rendered lines of the agent runs that started in the
  * run's window, or `found: []` plus the `note` the text view prints in their place. The
  * dashboard's `/api/run?transcript` serves the same text. */
-export function tickTranscriptLines(
+export function runTranscriptLines(
   root: string,
   role: string,
-  tick: number,
-  detail: TickDetail,
+  runNumber: number,
+  detail: RunDetail,
   opts: { includePrompts?: boolean } = {},
 ): { found: string[]; note: string } {
   if (detail.startTs === null) {
-    return { found: [], note: `(no transcript: run ${tick}'s start rotated out of the event log)` };
+    return { found: [], note: `(no transcript: run ${runNumber}'s start rotated out of the event log)` };
   }
   return {
     found: readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs, opts),
-    note: `(no transcript for ${role} run ${tick}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
+    note: `(no transcript for ${role} run ${runNumber}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
   };
 }
 
-/** `tumwater tick <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]]
+/** `tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]]
  * [--json]`: print one completed
- * tick's full event trail. Read-only: stdout only, no state file created — a tick the
+ * run's full event trail. Read-only: stdout only, no state file created — a run the
  * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
  * an absent record is an answer, not a failure), and under --json it prints the JSON document
  * `null` instead — the report --json precedent
- * that every exit-0 output is parseable, never prose. `tumwater tick <role> --last` resolves
- * the role's newest completed tick in the scanned window and prints its trail exactly as the
+ * that every exit-0 output is parseable, never prose. `tumwater history <role> --last` resolves
+ * the role's newest completed run in the scanned window and prints its trail exactly as the
  * numbered form would — the summary header and event rendering are shared, only the number's
- * provenance differs (readTickRows' newest-first scan, not the user's argument). --last and a
+ * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and a
  * numeric <n> are rivals: exactly one positional under --last, exactly two without. */
-export async function cmdTick(
+export async function cmdRunDetail(
   root: string,
   positionals: string[],
   json: boolean,
@@ -172,34 +172,34 @@ export async function cmdTick(
   // unknown-role wording plus the usage the positional command owes.
   if (positionals.length >= 1) {
     const ids = knownRoleIdsCached(root);
-    if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${TICK_USAGE})`);
+    if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${RUN_DETAIL_USAGE})`);
   }
   const arity = last ? 1 : 2;
   if (positionals.length !== arity) {
     if (positionals.length === 1) {
       fail(
-        `history ${role} needs a run number or --last — \`tumwater history --role ${role}\` lists its runs (usage: ${TICK_USAGE})`,
+        `history ${role} needs a run number or --last — \`tumwater history --role ${role}\` lists its runs (usage: ${RUN_DETAIL_USAGE})`,
       );
     }
     if (positionals.length === 2 && last) {
-      fail(`history --last takes no run number (got "${positionals[1]}") (usage: ${TICK_USAGE})`);
+      fail(`history --last takes no run number (got "${positionals[1]}") (usage: ${RUN_DETAIL_USAGE})`);
     }
-    fail(`usage: ${TICK_USAGE}`);
+    fail(`usage: ${RUN_DETAIL_USAGE}`);
   }
-  if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${TICK_USAGE})`);
-  // The tick number: either the user's positive integer (the numbered path, through the
+  if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${RUN_DETAIL_USAGE})`);
+  // The run number: either the user's positive integer (the numbered path, through the
   // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
-  // no cap — the number selects, it does not size the scan) or the newest completed tick's
-  // number, read from readTickRows' newest-first scan for the role. An empty scan is not
+  // no cap — the number selects, it does not size the scan) or the newest completed run's
+  // number, read from readRunRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
-  const tick = last
-    ? (readTickRows(root, 1, role)[0]?.run ?? null)
+  const runNumber = last
+    ? (readRunRows(root, 1, role)[0]?.run ?? null)
     : parseCountFlag("history <n>", positionals[1]);
-  const detail = tick === null ? null : readTickDetail(root, role, tick);
-  if (tick === null) {
+  const detail = runNumber === null ? null : readRunDetail(root, role, runNumber);
+  if (runNumber === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.
     if (json) sayJson(null);
-    else say(tickNotFoundLastMessage(role));
+    else say(runNotFoundLastMessage(role));
     return;
   }
   if (detail === null) {
@@ -208,15 +208,15 @@ export async function cmdTick(
     // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
     // prose line would end a jq pipe mid-team-incident.
     if (json) sayJson(null);
-    else say(tickNotFoundMessage(role, tick));
+    else say(runNotFoundMessage(role, runNumber));
     return;
   }
   // --json swaps the renderer for the collector's own payload, exactly as history --json: a
   // JSON document in every exit-0 case, never prose.
   const footer: { stat?: string; patch?: string } = {};
-  if (stat) footer.stat = await tickDetailStat(root, detail);
-  if (patch) footer.patch = await tickDetailPatch(root, detail);
-  const transcriptLines = transcript ? tickTranscriptLines(root, role, tick, detail, { includePrompts: prompt }) : null;
+  if (stat) footer.stat = await runDetailStat(root, detail);
+  if (patch) footer.patch = await runDetailPatch(root, detail);
+  const transcriptLines = transcript ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: prompt }) : null;
   if (json) {
     sayJson({ ...detail, ...footer, ...(transcriptLines === null ? {} : { transcript: transcriptLines.found }) });
   } else {
@@ -224,6 +224,9 @@ export async function cmdTick(
       transcriptLines === null
         ? []
         : [transcriptLines.found.length > 0 ? transcriptLines.found.join("\n") : transcriptLines.note];
-    say([renderTickDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
+    say([renderRunDetail(detail), ...Object.values(footer), ...transcriptText].join("\n\n"));
   }
 }
+
+/** @deprecated Use renderRunDetail. */
+export const renderTickDetail = renderRunDetail;

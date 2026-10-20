@@ -27,19 +27,19 @@ import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, tickRowsOnModels, type TickRow } from "../history/history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readTickRows, readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, runRowsMatchingGrep, runRowsOnModels, type TickRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readTickDetail, type TickDetail } from "../run/run-detail-data.js";
 import {
   renderTickDetail,
-  tickCommitSha,
-  tickDetailPatch,
-  tickDetailStat,
-  tickMergedSha,
-  tickNotFoundMessage,
-  tickTranscriptLines,
+  runCommitSha,
+  runDetailPatch,
+  runDetailStat,
+  runMergedSha,
+  runNotFoundMessage,
+  runTranscriptLines,
 } from "../run/run-detail.js";
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -237,12 +237,12 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * trailing window: the per-tick rows the CLI's `tumwater history` derives from the event log,
  * the dashboard's history tab renders them. The count shape ({ rows }) rides readTickRows (the
  * shared scan, window growth included, so a role-filtered ask on a busy team cannot silently
- * come back short); n is optional: absent → HISTORY_DEFAULT_TICKS; present but not a plain
+ * come back short); n is optional: absent → HISTORY_DEFAULT_RUNS; present but not a plain
  * non-negative integer → 400 (the handleBacklog index discipline — an explicit count that does
  * not parse is a client error, unlike the report's degrade-to-default typo rule); then clamped
- * to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails fast, its established
+ * to [1, HISTORY_MAX_RUNS] — the GUI clamps where the CLI fails fast, its established
  * convention. grep is optional: absent or empty filters nothing; present → the rows are
- * filtered through history-data.ts's shared tickRowsMatchingGrep rule, the same
+ * filtered through history-data.ts's shared runRowsMatchingGrep rule, the same
  * case-insensitive haystack rule `tumwater history --grep` uses (shared, not
  * re-implemented), after the n/role scan so n bounds the scanned window and not the
  * printed rows — the CLI's rule. The window shape ({ rows, covered, note }) rides
@@ -272,7 +272,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   // `model` is a comma list of exact selectors (trimmed, deduplicated); "", absent and a list
   // with no non-empty piece all filter nothing, and an unknown selector keeps no rows.
   const modelPieces = [...new Set((q.get("model") ?? "").split(",").map((p) => p.trim()).filter((p) => p !== ""))];
-  const onModels = (rows: TickRow[]): TickRow[] => (modelPieces.length ? tickRowsOnModels(rows, modelPieces) : rows);
+  const onModels = (rows: TickRow[]): TickRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
   if (q.get("sinceMs") !== null) {
     if (q.get("n") !== null) {
@@ -283,15 +283,15 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
       `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
     const { rows, covered } = readTickRowsSince(root, sinceMs, role);
-    const matched = onModels(grep === null ? rows : tickRowsMatchingGrep(rows, grep));
+    const matched = onModels(grep === null ? rows : runRowsMatchingGrep(rows, grep));
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeTickRows(matched), modelSummary: summarizeTickRowsByModel(matched) } : {}) });
     return;
   }
-  const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_TICKS);
+  const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_RUNS);
   if (parsed === null) return;
-  const n = clampCount(parsed, HISTORY_MAX_TICKS);
+  const n = clampCount(parsed, HISTORY_MAX_RUNS);
   let rows = readTickRows(root, n, role);
-  if (grep !== null) rows = tickRowsMatchingGrep(rows, grep);
+  if (grep !== null) rows = runRowsMatchingGrep(rows, grep);
   rows = onModels(rows);
   sendJson(res, 200, summary ? { rows, summary: summarizeTickRows(rows), modelSummary: summarizeTickRowsByModel(rows) } : { rows });
 }
@@ -333,7 +333,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
 
 /** handleTick's `transcript` text: the run's transcript lines joined, else the miss note. */
 function transcriptText(root: string, role: string, tick: number, detail: TickDetail, includePrompts: boolean): string {
-  const { found, note } = tickTranscriptLines(root, role, tick, detail, { includePrompts });
+  const { found, note } = runTranscriptLines(root, role, tick, detail, { includePrompts });
   return found.length > 0 ? found.join("\n") : note;
 }
 /** Handle GET /api/run?role=<id>&run=N: one tick's full event trail — readTickDetail's
@@ -344,15 +344,15 @@ function transcriptText(root: string, role: string, tick: number, detail: TickDe
  * tick's block contains. The role is a target here, not a filter, so it validates through
  * rejectBadRole (unknown/missing → 400 naming the valid ids); the tick is an explicit count
  * through intQuery (missing or not a positive integer → 400); and a tick the scanned window
- * does not hold — never ran, or rotation ate it — answers 404 with tickNotFoundMessage, the
+ * does not hold — never ran, or rotation ate it — answers 404 with runNotFoundMessage, the
  * CLI's exact not-found wording,
  * never a crash. `revertSha` is the run's landed commit's full sha when it is on the base branch
  * of a primary checkout that is on it (resolveRevertTarget, the revert cores' own check), else
  * null — the drill-down offers its revert button only when it is set. `hasCommit` says whether
- * the run pinned a commit (tickCommitSha), for the "Show patch" button; `patch` — the same text
+ * the run pinned a commit (runCommitSha), for the "Show patch" button; `patch` — the same text
  * `history --patch` prints — is added only when the `patch` flag is present, whatever its
  * value, so the default expand costs no extra `git show`. `transcript`, likewise flag-gated, is
- * the text `history --transcript` prints (tickTranscriptLines: the found lines joined, else its
+ * the text `history --transcript` prints (runTranscriptLines: the found lines joined, else its
  * note), so the default expand reads no pi log; a present `prompt` flag also renders each agent
  * run's prompt, the text `history --transcript --prompt` prints. Reads files directly, so
  * it works whether or not the team is running. */
@@ -363,18 +363,18 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
   if (tick === null) return;
   const detail = readTickDetail(root, role as string, tick);
   if (detail === null) {
-    sendJson(res, 404, { error: tickNotFoundMessage(role as string, tick) });
+    sendJson(res, 404, { error: runNotFoundMessage(role as string, tick) });
     return;
   }
-  const mergedAs = tickMergedSha(detail);
+  const mergedAs = runMergedSha(detail);
   const target = mergedAs === null ? null : await resolveRevertTarget(root, mergedAs);
   sendJson(res, 200, {
     ...detail,
     text: renderTickDetail(detail),
-    stat: await tickDetailStat(root, detail),
+    stat: await runDetailStat(root, detail),
     revertSha: target?.ok ? target.full : null,
-    hasCommit: tickCommitSha(detail) !== null,
-    ...(q.get("patch") !== null ? { patch: await tickDetailPatch(root, detail) } : {}),
+    hasCommit: runCommitSha(detail) !== null,
+    ...(q.get("patch") !== null ? { patch: await runDetailPatch(root, detail) } : {}),
     ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, tick, detail, q.get("prompt") !== null) } : {}),
   });
 }

@@ -323,7 +323,7 @@ export const FORCE_FLAG: FlagSpec = { names: ["--force"] };
 export const DRY_RUN_FLAG: FlagSpec = { names: ["--dry-run"] };
 
 /** The `--last` flag spec for `tumwater tick <role> --last`: one definition of the flag's
- * spelling, beside JSON_FLAG, so tick's gate and cmdTick's arity guards cannot disagree on
+ * spelling, beside JSON_FLAG, so tick's gate and cmdRunDetail's arity guards cannot disagree on
  * what the command admits. Like --json it takes no value and needs no wording — the
  * command body owns the meaning (resolve the newest completed tick instead of numbering
  * one) and the arity rules it implies. */

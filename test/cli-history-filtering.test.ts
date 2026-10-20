@@ -10,7 +10,7 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 // The `history` command's window-and-filter views — --since and --grep — split from
 // cli-history.test.ts so node --test runs the two files in parallel processes, the way
 // cli-logs-filtering.test.ts was split from cli-logs.test.ts. That file keeps the core views
-// (the table, --role, -n, --json, the flag edges); the tickRows collector's unit cases live
+// (the table, --role, -n, --json, the flag edges); the runRows collector's unit cases live
 // in test/history-data.test.ts and the direct in-process cmdHistory views in
 // cli-history-views.test.ts.
 

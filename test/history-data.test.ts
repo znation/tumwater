@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, summarizeTickRows, summarizeTickRowsByModel, tickRowCells, tickRowGrepHaystack, tickRows, tickRowsOnModels, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
+import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowCells, runRowGrepHaystack, runRows, runRowsOnModels, type HistorySummaryRow, type RunRow } from "../src/history/history-data.js";
 import { renderSummary } from "../src/history/history-render.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
-// The `src/history/history-data.ts` unit tests: the pure tickRows collector's pairing,
+// The `src/history/history-data.ts` unit tests: the pure runRows collector's pairing,
 // filtering, bounding, and usage/detail rendering, plus the `history --since` collector.
-// readTickRowsSince reuses the pure tickRows over a day-keyed window read (event-window.ts),
+// readRunRowsSince reuses the pure runRows over a day-keyed window read (event-window.ts),
 // filters the window's events to the cutoff, and reports coverage with the same predicate
 // cmdLogs consults. These tests pin the window's composition — what crosses the cutoff, what
 // pairs across it, and what `covered` claims — against a log seeded relative to the reader's
@@ -30,12 +30,12 @@ function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
   return { ts: 0, source: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }
 
-test("tickRowGrepHaystack is the canonical unpadded row line, run_end-prefixed", () => {
+test("runRowGrepHaystack is the canonical unpadded row line, run_end-prefixed", () => {
   // The shared haystack `tumwater history --grep` and the dashboard's /api/history?grep both
   // filter through: the row exactly as renderRow prints it when it is the widest row in each
   // column (padToWidth is the identity), with the raw event type in front so `run_end` is
   // greppable the way logs --grep's haystack carries e.type.
-  const row: TickRow = {
+  const row: RunRow = {
     ts: 1,
     time: "2026-10-10 12:00:00",
     role: "feature",
@@ -49,28 +49,28 @@ test("tickRowGrepHaystack is the canonical unpadded row line, run_end-prefixed",
     detail: "added a widget",
   };
   assert.equal(
-    tickRowGrepHaystack(row),
+    runRowGrepHaystack(row),
     "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  45s  1234 tok · $0.50  added a widget feature changed",
   );
   // A row whose run_end lost its start keeps the em dash the renderer shows — not a
   // fabricated duration; the trailing empty cells trim away exactly as renderRow's trimEnd does.
-  const unpaired: TickRow = { ...row, durationMs: null, usage: "", detail: "" };
-  assert.equal(tickRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed");
+  const unpaired: RunRow = { ...row, durationMs: null, usage: "", detail: "" };
+  assert.equal(runRowGrepHaystack(unpaired), "run_end 2026-10-10 12:00:00  feature  #7  merged  acme/m1  — feature changed");
 });
 
 test("a corrupt event's role renders as ? like the reports", () => {
   // eventRole's "?" rule (the usage report and failure digest already apply it); the row
   // used to carry String(undefined)'s literal "undefined", which the history table and the
   // GUI's /api/history rows printed.
-  const rows = tickRows([{ ts: 1, type: "run_end", run: 1, result: "changed" } as never], 10, null);
+  const rows = runRows([{ ts: 1, type: "run_end", run: 1, result: "changed" } as never], 10, null);
   assert.equal(rows[0]!.role, "?");
 });
 
-test("a corrupt event's tick reads as 0, never NaN", () => {
-  // The row's tick used to be Number(e.tick) raw: a torn or hand-edited run_end rendered
+test("a corrupt event's run reads as 0, never NaN", () => {
+  // The row's run used to be Number(e.run) raw: a torn or hand-edited run_end rendered
   // "#NaN" in the table and shipped JSON null (JSON.stringify(NaN)) in /api/history.
-  for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
-    const rows = tickRows([endEvent({ run: tick } as never)], 10, null);
+  for (const runNumber of [undefined, NaN, Infinity, "oops"] as const) {
+    const rows = runRows([endEvent({ run: runNumber } as never)], 10, null);
     assert.equal(rows[0]!.run, 0);
   }
 });
@@ -78,14 +78,14 @@ test("a corrupt event's tick reads as 0, never NaN", () => {
 test("a corrupt run_end outcome renders as ?, never undefined", () => {
   // The result cell used String(e.result) raw: a torn or hand-edited run_end rendered the
   // literal "undefined" in the history table and /api/history rows. It now rides the shared
-  // outcomeText, matching the role's and tick's corrupt-field rule.
+  // outcomeText, matching the role's and run's corrupt-field rule.
   for (const result of [undefined, 7, null] as const) {
-    const rows = tickRows([endEvent({ result } as never)], 10, null);
+    const rows = runRows([endEvent({ result } as never)], 10, null);
     assert.equal(rows[0]!.result, "?");
   }
 });
 
-test("a queued tick's torn merge outcome reads as its type default, never [object Object]", () => {
+test("a queued run's torn merge outcome reads as its type default, never [object Object]", () => {
   // resolveQueuedResult read the merge outcome's result through String(), so a torn or
   // hand-edited `merged` event whose result parsed to an object rendered the literal
   // "[object Object]" in the history table and /api/history. The shared textOr read falls
@@ -95,15 +95,15 @@ test("a queued tick's torn merge outcome reads as its type default, never [objec
     { ts: 42, source: "feature", type: "run_end", run: 1, result: "queued", summary: "work" },
     { ts: 50, source: "feature", type: "merge_done", commit: "sha1", result: { torn: true } },
   ] as never;
-  const rows = tickRows(events, 10, null);
+  const rows = runRows(events, 10, null);
   assert.equal(rows[0]!.result, "changed");
 });
 
-test("a torn summary falls back to the tick's error, never [object Object]", () => {
+test("a torn summary falls back to the run's error, never [object Object]", () => {
   // The detail cell read String(e.summary ?? e.error): a summary that parsed to an object is
   // not nullish, so the real error was hidden behind "[object Object]". textOr reads the
   // summary as no text and falls through to the error.
-  const rows = tickRows(
+  const rows = runRows(
     [endEvent({ summary: { torn: true }, error: "disk full" } as never)],
     10,
     null,
@@ -111,8 +111,8 @@ test("a torn summary falls back to the tick's error, never [object Object]", () 
   assert.equal(rows[0]!.detail, "disk full");
 });
 
-test("tickRows pairs each run_end with its run_start for the duration", () => {
-  const rows = tickRows(
+test("runRows pairs each run_end with its run_start for the duration", () => {
+  const rows = runRows(
     [
       startEvent({ ts: 1000, source: "feature", run: 1 }),
       endEvent({ ts: 46_000, source: "feature", run: 1, summary: "tidy up" }),
@@ -129,10 +129,10 @@ test("tickRows pairs each run_end with its run_start for the duration", () => {
   assert.equal(row.detail, "tidy up");
 });
 
-test("tickRows names the model its run_start carried, or none when the start is absent or unnamed", () => {
+test("runRows names the model its run_start carried, or none when the start is absent or unnamed", () => {
   // A run_start's model is the selector string (a per-role override, fallback, or primary);
   // the row carries it into the cells and the grep haystack so every surface can name it.
-  const rows = tickRows(
+  const rows = runRows(
     [
       startEvent({ ts: 1000, source: "feature", run: 1, model: "acme/m1" }),
       endEvent({ ts: 2000, source: "feature", run: 1, result: "changed", summary: "tidy" }),
@@ -143,15 +143,15 @@ test("tickRows names the model its run_start carried, or none when the start is 
   assert.equal(rows.length, 1);
   const row = rows[0]!;
   assert.equal(row.model, "acme/m1");
-  assert.equal(tickRowCells(row).model, "acme/m1");
-  assert.match(tickRowGrepHaystack(row), /acme\/m1/);
+  assert.equal(runRowCells(row).model, "acme/m1");
+  assert.match(runRowGrepHaystack(row), /acme\/m1/);
   // A run_end whose start is absent (rotation cut it) names no model — an empty cell, never
   // a fabricated selector.
-  const unpaired = tickRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
+  const unpaired = runRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
   assert.equal(unpaired[0]!.model, null);
-  assert.equal(tickRowCells(unpaired[0]!).model, "");
+  assert.equal(runRowCells(unpaired[0]!).model, "");
   // A run_start that carried no model names none, even though the start is present.
-  const unnamed = tickRows(
+  const unnamed = runRows(
     [
       startEvent({ ts: 1000, source: "feature", run: 3 }),
       endEvent({ ts: 2000, source: "feature", run: 3, result: "changed" }),
@@ -160,18 +160,18 @@ test("tickRows names the model its run_start carried, or none when the start is 
     null,
   );
   assert.equal(unnamed[0]!.model, null);
-  assert.equal(tickRowCells(unnamed[0]!).model, "");
+  assert.equal(runRowCells(unnamed[0]!).model, "");
 });
 
-test("tickRows renders no duration when the tick's start is outside the scanned window", () => {
-  // A skipped tick never logs run_start; log rotation can drop an older start too. Neither
+test("runRows renders no duration when the run's start is outside the scanned window", () => {
+  // A skipped run never logs run_start; log rotation can drop an older start too. Neither
   // may claim a duration.
-  const rows = tickRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
+  const rows = runRows([endEvent({ ts: 5000, run: 2, result: "skipped" })], 20, null);
   assert.equal(rows[0]!.durationMs, null);
   assert.equal(rows[0]!.result, "skipped");
 });
 
-test("tickRows returns the newest limit rows, newest first, and filters by role", () => {
+test("runRows returns the newest limit rows, newest first, and filters by role", () => {
   const events = [
     startEvent({ ts: 1000, source: "feature", run: 1 }),
     endEvent({ ts: 2000, source: "feature", run: 1 }),
@@ -180,69 +180,69 @@ test("tickRows returns the newest limit rows, newest first, and filters by role"
     endEvent({ ts: 5000, source: "feature", run: 3, result: "no_change" }),
   ];
   assert.deepEqual(
-    tickRows(events, 2, null).map((r) => [r.role, r.run, r.result]),
+    runRows(events, 2, null).map((r) => [r.role, r.run, r.result]),
     [
       ["feature", 3, "no_change"],
       ["feature", 2, "error"],
     ],
   );
   // The error row's detail is the error; the summary-less no_change row has none.
-  const all = tickRows(events, 20, null);
+  const all = runRows(events, 20, null);
   assert.equal(all[1]!.detail, "boom");
   assert.equal(all[0]!.detail, "");
-  // --role narrows to one role, ends and starts alike: the clean tick vanishes, and feature's
+  // --role narrows to one role, ends and starts alike: the clean run vanishes, and feature's
   // durations still pair.
-  const scoped = tickRows(events, 20, "clean");
+  const scoped = runRows(events, 20, "clean");
   assert.deepEqual(scoped.map((r) => [r.role, r.run]), [["clean", 1]]);
-  const feature = tickRows(events, 20, "feature");
+  const feature = runRows(events, 20, "feature");
   assert.equal(feature.length, 3);
-  assert.equal(feature[2]!.durationMs, 1000); // tick 1 still paired within the scoped window.
+  assert.equal(feature[2]!.durationMs, 1000); // run 1 still paired within the scoped window.
 });
 
-test("tickRows shows tokens and cost only when the event carries them", () => {
-  const withUsage = tickRows(
+test("runRows shows tokens and cost only when the event carries them", () => {
+  const withUsage = runRows(
     [endEvent({ ts: 1000, run: 1, tokens: 1234, costUsd: 0.5 })],
     20,
     null,
   )[0]!;
   assert.equal(withUsage.usage, "1234 tok · $0.50");
-  const bare = tickRows([endEvent({ ts: 1000, run: 1 })], 20, null)[0]!;
+  const bare = runRows([endEvent({ ts: 1000, run: 1 })], 20, null)[0]!;
   assert.equal(bare.usage, "");
-  const zero = tickRows([endEvent({ ts: 1000, run: 1, tokens: 0, costUsd: 0 })], 20, null)[0]!;
+  const zero = runRows([endEvent({ ts: 1000, run: 1, tokens: 0, costUsd: 0 })], 20, null)[0]!;
   assert.equal(zero.usage, "");
 });
 
-test("tickRows collapses and truncates the detail to keep the row one line", () => {
-  const rows = tickRows(
+test("runRows collapses and truncates the detail to keep the row one line", () => {
+  const rows = runRows(
     [endEvent({ ts: 1000, run: 1, summary: "wrapped  across\nmany   lines" })],
     20,
     null,
   );
   assert.equal(rows[0]!.detail, "wrapped across many lines");
-  const long = tickRows([endEvent({ ts: 1000, run: 1, summary: "x".repeat(200) })], 20, null);
+  const long = runRows([endEvent({ ts: 1000, run: 1, summary: "x".repeat(200) })], 20, null);
   assert.ok(long[0]!.detail.length < 200);
   assert.ok(long[0]!.detail.endsWith("…"));
 });
 
 test("a missing or empty log reads as no rows over a covered window", () => {
   const missing = tmpdir();
-  assert.deepEqual(readTickRowsSince(missing, TWO_HOURS, null), { rows: [], covered: true });
+  assert.deepEqual(readRunRowsSince(missing, TWO_HOURS, null), { rows: [], covered: true });
 
   const empty = tmpdir();
   writeEvents(empty, []);
-  assert.deepEqual(readTickRowsSince(empty, TWO_HOURS, null), { rows: [], covered: true });
+  assert.deepEqual(readRunRowsSince(empty, TWO_HOURS, null), { rows: [], covered: true });
 });
 
-test("rows keep the in-window ticks, newest first, and drop everything before the cutoff", () => {
+test("rows keep the in-window runs, newest first, and drop everything before the cutoff", () => {
   const root = tmpdir();
   const cutoff = Date.now() - TWO_HOURS;
-  // The log is append-only chronological: the pre-cutoff tick rides first.
+  // The log is append-only chronological: the pre-cutoff run rides first.
   writeEvents(root, [
     endEvent({ ts: cutoff - MIN, run: 1, result: "no_change" }),
     endEvent({ ts: Date.now() - 30 * MIN, run: 2 }),
     endEvent({ ts: Date.now() - 10 * MIN, run: 3, summary: "latest work" }),
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
     rows.map((r) => [r.run, r.result, r.detail]),
     [
@@ -252,7 +252,7 @@ test("rows keep the in-window ticks, newest first, and drop everything before th
   );
 });
 
-test("a tick spanning the cutoff renders a dash: the ts filter removes its start too", () => {
+test("a run spanning the cutoff renders a dash: the ts filter removes its start too", () => {
   const root = tmpdir();
   // One clock read per test, every ts derived from it (the BUGS.md 2026-09-30 strictEqual
   // flake in the --role test below was exactly this shape: a durationMs asserted at an exact
@@ -270,7 +270,7 @@ test("a tick spanning the cutoff renders a dash: the ts filter removes its start
     startEvent({ ts: t(30), run: 2 }),
     endEvent({ ts: t(20), run: 2 }),
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   assert.equal(rows.length, 2);
   assert.equal(rows[0]!.run, 2);
   assert.equal(rows[0]!.durationMs, 10 * MIN);
@@ -282,7 +282,7 @@ test("a run_end with a corrupt ts renders the em dash time, never NaN", () => {
   // The history table renders row.time unguarded; a corrupt ts reached it as
   // `NaN-NaN-NaN NaN:NaN:NaN`. formatTimestamp now owns that guard, so the row time is safe
   // for both a non-finite number and a non-numeric JSON field.
-  const rows = tickRows(
+  const rows = runRows(
     [endEvent({ ts: NaN, run: 1 }), endEvent({ ts: "oops" as never, run: 2 })],
     10,
     null,
@@ -308,26 +308,26 @@ test("--role narrows the window to one role", () => {
     endEvent({ ts: t(15), source: "clean", run: 1, result: "no_change" }),
     endEvent({ ts: t(5), source: "clean", run: 2, result: "changed" }),
   ]);
-  const all = readTickRowsSince(root, TWO_HOURS, null);
+  const all = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(all.rows.map((r) => [r.role, r.run]), [
     ["clean", 2],
     ["clean", 1],
     ["feature", 1],
   ]);
-  const clean = readTickRowsSince(root, TWO_HOURS, "clean");
+  const clean = readRunRowsSince(root, TWO_HOURS, "clean");
   assert.deepEqual(clean.rows.map((r) => [r.role, r.run]), [
     ["clean", 2],
     ["clean", 1],
   ]);
-  // The role filter scoping starts as well: the feature tick still pairs within its rows.
-  const feature = readTickRowsSince(root, TWO_HOURS, "feature");
+  // The role filter scoping starts as well: the feature run still pairs within its rows.
+  const feature = readRunRowsSince(root, TWO_HOURS, "feature");
   assert.equal(feature.rows[0]!.durationMs, 10 * MIN);
 });
 
-test("a queued tick resolves to its change's merge outcome — merged or merge_failed (BUGS.md 2026-09-30)", () => {
+test("a queued run resolves to its change's merge outcome — merged or merge_failed (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // The real order: merge_queued is logged DURING the tick (before its run_end); the merge
+  // The real order: merge_queued is logged DURING the run (before its run_end); the merge
   // slot logs merge_done/merge_failed with the same commit sha later.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
@@ -339,9 +339,9 @@ test("a queued tick resolves to its change's merge outcome — merged or merge_f
     { ts: t(28), source: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
     { ts: t(20), source: "feature", type: "merge_failed", commit: "sha2", result: "merge_conflict" },
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   // Each queued row joins its OWN change: the newest merge_queued at or before its run_end,
-  // then the FINAL same-sha merge outcome after that pin — never the other tick's.
+  // then the FINAL same-sha merge outcome after that pin — never the other run's.
   assert.deepEqual(
     rows.map((r) => [r.run, r.result, r.detail]),
     [
@@ -351,13 +351,13 @@ test("a queued tick resolves to its change's merge outcome — merged or merge_f
   );
 });
 
-test("a queued tick resolves past a rebased retriable failure to the recovery's merged verdict (BUGS.md 2026-10-10)", () => {
+test("a queued run resolves past a rebased retriable failure to the recovery's merged verdict (BUGS.md 2026-10-10)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
   // A retriable merge failure (merge_blocked) keeps the pin. When main moved first, the
   // verification's syncPinToMain rebased the ref before the gate, so recovery re-enqueues the
   // REBASED sha (sha2) while the failed attempt logged its authored sha (sha1), and the recovery's
-  // `merged` logs sha2. The authoring tick's row must read the FINAL outcome ("changed"),
+  // `merged` logs sha2. The authoring run's row must read the FINAL outcome ("changed"),
   // not latch sha1's first, non-terminal failure; the recovery run's row reads the attempt it
   // re-queued (sha1's merge_blocked), so each attempt's verdict shows on exactly one row.
   writeEvents(root, [
@@ -370,7 +370,7 @@ test("a queued tick resolves past a rebased retriable failure to the recovery's 
     { ts: t(28), source: "feature", type: "run_end", run: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
     { ts: t(20), source: "feature", type: "merge_done", commit: "sha2", result: "changed" },
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
@@ -395,7 +395,7 @@ test("while a re-queued attempt is pending, the recovery row shows the failure a
     { ts: t(29), source: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
     { ts: t(28), source: "feature", type: "run_end", run: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
@@ -432,7 +432,7 @@ test("a change re-queued after seven review timeouts and then rejected reads eac
     );
     events.push({ ts: (ts += 100), source: "feature-3", type: "merge_failed", commit: sha, result: last ? "rejected" : "review_error", summary } as HarnessEvent);
   });
-  const rows = tickRows(events, 20, "feature-3");
+  const rows = runRows(events, 20, "feature-3");
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
@@ -447,11 +447,11 @@ test("a change re-queued after seven review timeouts and then rejected reads eac
     ],
   );
   // What the CLI table and the dashboard drawer print: seven timeouts, one rejection.
-  const labels = rows.map((r) => tickRowCells(r).result);
+  const labels = rows.map((r) => runRowCells(r).result);
   assert.equal(labels.filter((l) => l === "review failed").length, 7);
   assert.deepEqual(labels.filter((l) => l === "rejected in review"), ["rejected in review"]);
   // The summary counts them the same way: eight problem runs, none of them merges.
-  const { total } = summarizeTickRows(rows);
+  const { total } = summarizeRunRows(rows);
   assert.deepEqual([total.runs, total.problems, total.changes], [8, 8, 0]);
 });
 
@@ -475,7 +475,7 @@ test("a recovery pin after a change that ended is a fresh change's first attempt
     { ts: 3_300, source: "feature", type: "merge_done", commit: "sha3", result: "changed" },
   ];
   assert.deepEqual(
-    tickRows(events, 20, null).map((r) => [r.run, r.result]),
+    runRows(events, 20, null).map((r) => [r.run, r.result]),
     [
       [3, "merge_conflict"],
       [2, "changed"],
@@ -490,7 +490,7 @@ test("a retriable verdict is not swept up by the next FRESH change's merge (BUGS
   // A retriable failure keeps the pin, but the same role can queue a fresh change before the
   // recovery re-enqueue lands (e.g. a conflict-cap discard starts new work). The walk must stop
   // at that fresh, non-recovery pin and keep the retriable verdict — never crediting the fresh
-  // change's later merge to the authoring tick.
+  // change's later merge to the authoring run.
   writeEvents(root, [
     { ts: t(50), source: "feature", type: "run_start", run: 1 },
     { ts: t(49), source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
@@ -501,7 +501,7 @@ test("a retriable verdict is not swept up by the next FRESH change's merge (BUGS
     { ts: t(28), source: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
     { ts: t(20), source: "feature", type: "merge_done", commit: "sha2", result: "changed" },
   ]);
-  const { rows } = readTickRowsSince(root, TWO_HOURS, null);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
     rows.map((r) => [r.run, r.result]),
     [
@@ -511,13 +511,13 @@ test("a retriable verdict is not swept up by the next FRESH change's merge (BUGS
   );
 });
 
-test("a queued tick whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
+test("a queued run whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
-  // Tick 1 SPANS the cutoff: its run_start and merge_queued pin sit before it, its run_end
+  // Run 1 SPANS the cutoff: its run_start and merge_queued pin sit before it, its run_end
   // and merge outcome after it. The row set (ts-filtered at the cutoff) keeps the run_end
-  // and the outcome but cuts the pin — so the join reads wider evidence (TICK_ROW_JOIN_BACK
-  // SLACK_MS) for the pins and claims them only while the row's tick block is whole there.
-  // Tick 2 sits fully inside the window; both changes merge, so both rows must resolve.
+  // and the outcome but cuts the pin — so the join reads wider evidence (RUN_ROW_JOIN_BACK
+  // SLACK_MS) for the pins and claims them only while the row's run block is whole there.
+  // Run 2 sits fully inside the window; both changes merge, so both rows must resolve.
   const cutoff = Date.now() - SINCE;
   const before = (mins: number) => cutoff - mins * MIN;
   const after = (mins: number) => cutoff + mins * MIN;
@@ -531,7 +531,7 @@ test("a queued tick whose pin sits before the --since cutoff still resolves (BUG
     { ts: after(5), source: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
     { ts: after(10), source: "feature", type: "merge_done", commit: "sha2", result: "changed" },
   ]);
-  const { rows } = readTickRowsSince(root, SINCE, null);
+  const { rows } = readRunRowsSince(root, SINCE, null);
   assert.deepEqual(
     rows.map((r) => [r.run, r.result, r.detail]),
     [
@@ -542,9 +542,9 @@ test("a queued tick whose pin sits before the --since cutoff still resolves (BUG
 });
 
 test("a queued row whose run_start predates the join read's floor keeps the raw label", () => {
-  // The guard, unit-pinned on the pure collector: a row whose tick block is not whole in the
+  // The guard, unit-pinned on the pure collector: a row whose run block is not whole in the
   // join set (here the floor sits between the run_start and the pin) cannot prove its own
-  // pin survived the read, and a pre-cutoff tick's pin IS in the join set — claiming it would
+  // pin survived the read, and a pre-cutoff run's pin IS in the join set — claiming it would
   // join another change's merge. Conservative fallback: the raw label.
   const events: HarnessEvent[] = [
     { ts: 1_000, source: "feature", type: "run_start", run: 1 },
@@ -555,18 +555,18 @@ test("a queued row whose run_start predates the join read's floor keeps the raw 
     { ts: 2_200, source: "feature", type: "run_end", run: 2, result: "queued", summary: "work one" },
     { ts: 2_500, source: "feature", type: "merge_done", commit: "sha1", result: "changed" },
   ];
-  // The row set is the ts-filtered tail the since scan would keep (tick 1 dropped as
-  // pre-cutoff); the join set is the unfiltered read, floor between tick 2's start and pin.
+  // The row set is the ts-filtered tail the since scan would keep (run 1 dropped as
+  // pre-cutoff); the join set is the unfiltered read, floor between run 2's start and pin.
   const rowEvents = events.filter((e) => e.ts >= 1_500);
-  const rows = tickRows(rowEvents, rowEvents.length, null, { events, floorTs: 2_050 });
+  const rows = runRows(rowEvents, rowEvents.length, null, { events, floorTs: 2_050 });
   assert.deepEqual(rows.map((r) => [r.run, r.result]), [[2, "queued"]]);
-  // The same rows with a floor BELOW tick 2's start resolve normally: the guard only bites
-  // when the join read may have cut the tick's own block.
-  const resolved = tickRows(rowEvents, rowEvents.length, null, { events, floorTs: 1_500 });
+  // The same rows with a floor BELOW run 2's start resolve normally: the guard only bites
+  // when the join read may have cut the run's own block.
+  const resolved = runRows(rowEvents, rowEvents.length, null, { events, floorTs: 1_500 });
   assert.deepEqual(resolved.map((r) => [r.run, r.result]), [[2, "changed"]]);
 });
 
-test("a queued tick whose merge is still in the pipeline keeps the raw label", () => {
+test("a queued run whose merge is still in the pipeline keeps the raw label", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: Date.now() - 10 * MIN, source: "feature", type: "run_start", run: 1 },
@@ -574,12 +574,12 @@ test("a queued tick whose merge is still in the pipeline keeps the raw label", (
     { ts: Date.now() - 8 * MIN, source: "feature", type: "run_end", run: 1, result: "queued", summary: "pending work" },
   ]);
   assert.deepEqual(
-    readTickRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.run, r.result]),
+    readRunRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.run, r.result]),
     [[1, "queued"]],
   );
 });
 
-test("a queued tick stays raw when no merge outcome matches its pinned sha", () => {
+test("a queued run stays raw when no merge outcome matches its pinned sha", () => {
   const root = tmpdir();
   // The only merge outcome in the log resolved a DIFFERENT change (an older retry's sha):
   // joining by role alone would steal it, so the sha must match and the unmatched row keeps
@@ -591,7 +591,7 @@ test("a queued tick stays raw when no merge outcome matches its pinned sha", () 
     { ts: Date.now() - 8 * MIN, source: "feature", type: "run_end", run: 1, result: "queued", summary: "unresolved work" },
   ]);
   assert.deepEqual(
-    readTickRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.run, r.result]),
+    readRunRowsSince(root, TWO_HOURS, null).rows.map((r) => [r.run, r.result]),
     [[1, "queued"]],
   );
 });
@@ -606,7 +606,7 @@ test("the resolution survives the --role filter and never crosses roles", () => 
     { ts: Date.now() - 20 * MIN, source: "feature", type: "merge_done", commit: "shaF", result: "changed" },
     { ts: Date.now() - 15 * MIN, source: "clean", type: "merge_failed", commit: "shaC", result: "rejected" },
   ]);
-  const all = readTickRowsSince(root, TWO_HOURS, null);
+  const all = readRunRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
     all.rows.map((r) => [r.role, r.run, r.result]),
     [
@@ -615,7 +615,7 @@ test("the resolution survives the --role filter and never crosses roles", () => 
     ],
   );
   // The role-filtered scope carries each role's own merge events, so the join holds there too.
-  const clean = readTickRowsSince(root, TWO_HOURS, "clean");
+  const clean = readRunRowsSince(root, TWO_HOURS, "clean");
   assert.deepEqual(clean.rows.map((r) => [r.role, r.result]), [["clean", "rejected"]]);
 });
 
@@ -625,7 +625,7 @@ test("covered is false while the log starts inside the window, true once an even
     endEvent({ ts: Date.now() - 30 * MIN, run: 1 }),
     endEvent({ ts: Date.now() - 10 * MIN, run: 2 }),
   ]);
-  assert.equal(readTickRowsSince(inside, TWO_HOURS, null).covered, false);
+  assert.equal(readRunRowsSince(inside, TWO_HOURS, null).covered, false);
 
   // The same log plus one older run: the window's oldest event predates the cutoff, so
   // the read covers it — exactly the predicate cmdLogs' coverage note consults.
@@ -635,14 +635,14 @@ test("covered is false while the log starts inside the window, true once an even
     endEvent({ ts: cutoff - MIN, run: 1, result: "no_change" }),
     endEvent({ ts: Date.now() - 30 * MIN, run: 2 }),
   ]);
-  assert.equal(readTickRowsSince(spanning, TWO_HOURS, null).covered, true);
+  assert.equal(readRunRowsSince(spanning, TWO_HOURS, null).covered, true);
 });
 
-test("summarizeTickRows tallies each role's outcome classes in name order with a total", () => {
-  const row = (role: string, result: string, ts = 0): TickRow => ({
+test("summarizeRunRows tallies each role's outcome classes in name order with a total", () => {
+  const row = (role: string, result: string, ts = 0): RunRow => ({
     ts, time: "", role, run: 1, result, model: null, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
-  const summary = summarizeTickRows([
+  const summary = summarizeRunRows([
     row("feature", "changed", 100),
     row("bugfix", "queued", 300),
     row("feature", "no_change", 900),
@@ -656,16 +656,16 @@ test("summarizeTickRows tallies each role's outcome classes in name order with a
     { role: "feature", runs: 4, changes: 1, none: 1, refused: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 100 },
   ]);
   assert.deepEqual(summary.total, { role: "total", runs: 7, changes: 2, none: 2, refused: 1, problems: 2, tokens: 0, costUsd: 0, lastChangeTs: 300 });
-  assert.deepEqual(summarizeTickRows([]), { roles: [], total: { role: "total", runs: 0, changes: 0, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null } });
-  const newest = summarizeTickRows([row("a", "changed", 5), row("a", "changed", 9), row("a", "changed", 7)]);
+  assert.deepEqual(summarizeRunRows([]), { roles: [], total: { role: "total", runs: 0, changes: 0, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null } });
+  const newest = summarizeRunRows([row("a", "changed", 5), row("a", "changed", 9), row("a", "changed", 7)]);
   assert.equal(newest.roles[0]?.lastChangeTs, 9);
 });
 
-test("summarizeTickRows sums tokens and cost per role and into the total", () => {
-  const row = (role: string, tokens: number, costUsd: number): TickRow => ({
+test("summarizeRunRows sums tokens and cost per role and into the total", () => {
+  const row = (role: string, tokens: number, costUsd: number): RunRow => ({
     ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens, costUsd, usage: "", detail: "",
   });
-  const summary = summarizeTickRows([
+  const summary = summarizeRunRows([
     row("feature", 1000, 0.1),
     row("bugfix", 200, 0.02),
     row("feature", 14000, 1.4),
@@ -678,11 +678,11 @@ test("summarizeTickRows sums tokens and cost per role and into the total", () =>
   assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, refused: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
 });
 
-test("summarizeTickRows sums each role's run time into the total, skipping null spans", () => {
-  const row = (role: string, durationMs: number | null): TickRow => ({
+test("summarizeRunRows sums each role's run time into the total, skipping null spans", () => {
+  const row = (role: string, durationMs: number | null): RunRow => ({
     ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
-  const summary = summarizeTickRows([
+  const summary = summarizeRunRows([
     row("feature", 60_000),
     row("bugfix", 30_000),
     row("feature", 120_000),
@@ -695,14 +695,14 @@ test("summarizeTickRows sums each role's run time into the total, skipping null 
   assert.deepEqual(summary.total, { role: "total", runs: 4, changes: 4, none: 0, refused: 0, problems: 0, tokens: 0, costUsd: 0, durationMs: 210000, lastChangeTs: 0 });
 });
 
-test("summarizeTickRows leaves durationMs absent when every row's span is null", () => {
-  const row = (role: string): TickRow => ({
+test("summarizeRunRows leaves durationMs absent when every row's span is null", () => {
+  const row = (role: string): RunRow => ({
     ts: 0, time: "", role, run: 1, result: "changed", model: null, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
-  const summary = summarizeTickRows([row("feature"), row("bugfix")]);
+  const summary = summarizeRunRows([row("feature"), row("bugfix")]);
   for (const r of [...summary.roles, summary.total]) assert.equal("durationMs" in r, false);
   // The empty-row shape also stays keyless.
-  assert.equal("durationMs" in summarizeTickRows([]).total, false);
+  assert.equal("durationMs" in summarizeRunRows([]).total, false);
 });
 
 test("renderSummary shows tokens, cost and time columns in order, with a dash for an untimed role", () => {
@@ -720,7 +720,7 @@ test("renderSummary shows tokens, cost and time columns in order, with a dash fo
   assert.match(lines[3]!, /\b1h\b/); // the total, the one timed span summed
 });
 
-test("tickRows takes a list of role ids, joining each queued row's merge verdict", () => {
+test("runRows takes a list of role ids, joining each queued row's merge verdict", () => {
   const events = [
     { ts: 10, source: "feature", type: "merge_queued", commit: "s1", summary: "a" },
     { ts: 11, source: "feature", type: "run_end", run: 1, result: "queued", summary: "a" },
@@ -728,28 +728,28 @@ test("tickRows takes a list of role ids, joining each queued row's merge verdict
     { ts: 13, source: "bugfix", type: "run_end", run: 1, result: "no_change" },
     { ts: 20, source: "feature", type: "merge_done", commit: "s1", result: "merged" },
   ] as never as HarnessEvent[];
-  const both = tickRows(events, 10, ["feature", "clean"]);
+  const both = runRows(events, 10, ["feature", "clean"]);
   assert.deepEqual(both.map((r) => r.role).sort(), ["clean", "feature"]);
-  assert.equal(both.find((r) => r.role === "feature")!.result, tickRows(events, 10, "feature")[0]!.result);
-  assert.deepEqual(tickRows(events, 10, ["feature"]), tickRows(events, 10, "feature"));
+  assert.equal(both.find((r) => r.role === "feature")!.result, runRows(events, 10, "feature")[0]!.result);
+  assert.deepEqual(runRows(events, 10, ["feature"]), runRows(events, 10, "feature"));
 });
 
-test("summarizeTickRowsByModel tallies per model with the null bucket last and the same total", () => {
-  const row = (model: string | null, result: string): TickRow => ({
+test("summarizeRunRowsByModel tallies per model with the null bucket last and the same total", () => {
+  const row = (model: string | null, result: string): RunRow => ({
     ts: 0, time: "", role: "feature", run: 1, result, model, durationMs: null, tokens: 0, costUsd: 0, usage: "", detail: "",
   });
   const rows = [row("b/m2", "error"), row(null, "changed"), row("a/m1", "changed"), row("a/m1", "no_change")];
-  const summary = summarizeTickRowsByModel(rows);
+  const summary = summarizeRunRowsByModel(rows);
   assert.deepEqual(summary.models.map((m) => m.model), ["a/m1", "b/m2", null]);
   assert.deepEqual(summary.models[0], { model: "a/m1", runs: 2, changes: 1, none: 1, refused: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: 0 });
-  assert.deepEqual(summary.total, summarizeTickRows(rows).total);
+  assert.deepEqual(summary.total, summarizeRunRows(rows).total);
 });
 
-test("tickRowsOnModels keeps exact, case-sensitive matches and drops null-model rows", () => {
-  const row = (model: string | null): TickRow => ({ ts: 0, time: "t", role: "r", run: 1, result: "changed", model, durationMs: null, usage: "", detail: "" }) as unknown as TickRow;
+test("runRowsOnModels keeps exact, case-sensitive matches and drops null-model rows", () => {
+  const row = (model: string | null): RunRow => ({ ts: 0, time: "t", role: "r", run: 1, result: "changed", model, durationMs: null, usage: "", detail: "" }) as unknown as RunRow;
   const rows = [row("m-a"), row("m-b"), row(null), row("m-c")];
-  assert.deepEqual(tickRowsOnModels(rows, ["m-a"]).map((r) => r.model), ["m-a"]);
-  assert.deepEqual(tickRowsOnModels(rows, ["m-a", "m-c"]).map((r) => r.model), ["m-a", "m-c"]);
-  assert.deepEqual(tickRowsOnModels(rows, ["M-A"]), [], "a case-different selector matches nothing");
-  assert.equal(tickRowsOnModels(rows, ["null"]).length, 0);
+  assert.deepEqual(runRowsOnModels(rows, ["m-a"]).map((r) => r.model), ["m-a"]);
+  assert.deepEqual(runRowsOnModels(rows, ["m-a", "m-c"]).map((r) => r.model), ["m-a", "m-c"]);
+  assert.deepEqual(runRowsOnModels(rows, ["M-A"]), [], "a case-different selector matches nothing");
+  assert.equal(runRowsOnModels(rows, ["null"]).length, 0);
 });

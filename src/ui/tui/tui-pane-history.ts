@@ -1,14 +1,14 @@
 // vocabulary: plain
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 import {
-  HISTORY_DEFAULT_TICKS,
-  HISTORY_MAX_TICKS,
+  HISTORY_DEFAULT_RUNS,
+  HISTORY_MAX_RUNS,
   historyClass,
   readTickRows,
   readTickRowsSince,
   summarizeTickRows,
   summarizeTickRowsByModel,
-  tickRowsMatchingGrep,
+  runRowsMatchingGrep,
   type HistoryResultClass,
   type HistorySummaryGroup,
   type TickRow,
@@ -16,7 +16,7 @@ import {
 import { renderModelSummary, renderSummary } from "../../history/history-render.js";
 import { historyPaneText } from "./tui-history.js";
 import { readTickDetail, type TickDetail } from "../../run/run-detail-data.js";
-import { renderTickDetail, tickTranscriptLines } from "../../run/run-detail.js";
+import { renderTickDetail, runTranscriptLines } from "../../run/run-detail.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -44,7 +44,7 @@ export function createHistoryPane(
   // role (`history --role`), where `feature-2` is its own slot.
   let historyRole: string | null = null;
   // The History pane's session free-text search (the `/` prompt-line editor), a
-  // case-insensitive substring over history-data.ts's tickRowGrepHaystack — the same rule
+  // case-insensitive substring over history-data.ts's runRowGrepHaystack — the same rule
   // `tumwater history --grep` and the dashboard search use. null is no search; session-only
   // like the window/result/role, so the next Ctrl+T into History computes the cache with it.
   let historyGrep: string | null = null;
@@ -77,7 +77,7 @@ export function createHistoryPane(
    * `tumwater history` applies them. Returns the raw read's coverage flag, the count after the
    * search (so an empty body can blame the filter that emptied the set: `afterGrep > 0` means
    * rows matched the pattern and the class then removed them) and the class-filtered rows. The
-   * search applies history-data.ts's shared tick-grep rule (tickRowsMatchingGrep), the same one
+   * search applies history-data.ts's shared tick-grep rule (runRowsMatchingGrep), the same one
    * the CLI and the dashboard use, so the surfaces cannot disagree. `limit` bounds a windowless
    * read; a window reads through readTickRowsSince. */
   const selectPaneRows = (
@@ -90,7 +90,7 @@ export function createHistoryPane(
     const { rows, covered } = sinceMs === null
       ? { rows: readTickRows(session.root, limit, role), covered: true }
       : readTickRowsSince(session.root, sinceMs, role);
-    const grepped = grep === null ? rows : tickRowsMatchingGrep(rows, grep);
+    const grepped = grep === null ? rows : runRowsMatchingGrep(rows, grep);
     const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
     return { covered, afterGrep: grepped.length, filtered };
   };
@@ -98,10 +98,10 @@ export function createHistoryPane(
   /** The History pane's body for one trailing window, one outcome class, one exact-role scope,
    * and one free-text search: the paneCache the Ctrl+T/Ctrl+S/Ctrl+O/Ctrl+G/`/` handlers store.
    * The default (null/null/null/null) read is byte-for-byte the newest-N pane that predates the
-   * window, outcome, role, and search cycles — readTickRows with HISTORY_DEFAULT_TICKS,
+   * window, outcome, role, and search cycles — readTickRows with HISTORY_DEFAULT_RUNS,
    * unfiltered. A trailing window reads through the same readTickRowsSince collector `tumwater
    * history --since` uses, a class filters through history-data.ts's canonical historyClass rule,
-   * and the search filters through tickRowGrepHaystack — the same haystack and case-insensitive
+   * and the search filters through runRowGrepHaystack — the same haystack and case-insensitive
    * substring rule `tumwater history --grep` and the dashboard's History search use — so the TUI,
    * the CLI, and the dashboard cannot disagree about the rows. The role is the exact role id the
    * raw roster (and `history --role`, and the dashboard picker) names — readTickRows filters
@@ -119,7 +119,7 @@ export function createHistoryPane(
     grep: string | null,
     summary: HistorySummaryGroup | null,
   ): string => {
-    const { covered, afterGrep, filtered } = selectPaneRows(sinceMs, resultClass, role, grep, HISTORY_DEFAULT_TICKS);
+    const { covered, afterGrep, filtered } = selectPaneRows(sinceMs, resultClass, role, grep, HISTORY_DEFAULT_RUNS);
     // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-role tally the CLI's
     // `history --summary` and the dashboard History view print (summarizeTickRows → renderSummary),
     // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
@@ -176,7 +176,7 @@ export function createHistoryPane(
     trailTranscriptText = null;
     if (trailTranscript === "off" || trailRun === null) return;
     try {
-      const { found, note } = tickTranscriptLines(session.root, trailRun.role, trailRun.run, trailRun.detail, {
+      const { found, note } = runTranscriptLines(session.root, trailRun.role, trailRun.run, trailRun.detail, {
         includePrompts: trailTranscript === "prompts",
       });
       trailTranscriptText = found.length > 0 ? found.join("\n") : note;
@@ -217,7 +217,7 @@ export function createHistoryPane(
     trailGen++;
     try {
       const unfiltered = historyWindow === null && historyResult === null && historyGrep === null;
-      const limit = unfiltered ? index + 1 : HISTORY_MAX_TICKS;
+      const limit = unfiltered ? index + 1 : HISTORY_MAX_RUNS;
       const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, limit).filtered[index];
       if (row === undefined) {
         if (onEmpty !== null) onEmpty();
@@ -311,7 +311,7 @@ export function createHistoryPane(
       if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
       if (promptLineFree(ctx.es)) {
         const next = trailIndex + 1;
-        if (!(next < HISTORY_MAX_TICKS && loadTrail(null, next))) {
+        if (!(next < HISTORY_MAX_RUNS && loadTrail(null, next))) {
           loadTrail(null, 0);
           session.flashMessage("oldest run reached; back to the newest");
         }

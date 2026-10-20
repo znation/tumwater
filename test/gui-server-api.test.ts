@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
-import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
+import { runRows, readTickRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
@@ -188,7 +188,7 @@ test("gui /api/prompt-top moves one queued prompt to its role's queue head", asy
 
 // The interleaved event seed /api/history and /api/run both read: one tick with a paired
 // start (its duration comes from the pair), one end-only skipped tick (no start, so no
-// fabricated duration), and a merged event that tickRows must ignore.
+// fabricated duration), and a merged event that runRows must ignore.
 function historySeedEvents(): HarnessEvent[] {
   return [
     { ts: 1_000, source: "feature", type: "run_start", run: 1 } as HarnessEvent,
@@ -201,7 +201,7 @@ function historySeedEvents(): HarnessEvent[] {
   ];
 }
 
-test("gui /api/history serves tickRows' JSON with role filtering and n clamped, not errored", async () => {
+test("gui /api/history serves runRows' JSON with role filtering and n clamped, not errored", async () => {
   const repo = makeRepo();
   await initProject(repo, "history api test");
   const events = historySeedEvents();
@@ -210,12 +210,12 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
   const { server, base } = await startLocalGui(repo);
   try {
     // Default window: the JSON equals what `tumwater history` derives for the same window —
-    // tickRows over the same seed, newest first, durations from run_start pairs, null when
+    // runRows over the same seed, newest first, durations from run_start pairs, null when
     // the start is outside the window.
     const res = await fetch(base + "/api/history");
     assert.equal(res.status, 200);
-    const d = (await res.json()) as { rows: ReturnType<typeof tickRows> };
-    assert.deepEqual(d, { rows: tickRows(events, 20, null) });
+    const d = (await res.json()) as { rows: ReturnType<typeof runRows> };
+    assert.deepEqual(d, { rows: runRows(events, 20, null) });
     assert.deepEqual(d.rows.map((r) => [r.role, r.run]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
     assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own run_start");
     assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
@@ -223,16 +223,16 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
     // role filters to that role's rows (a filter is not a target: an id with no ticks is a
     // legitimate empty result, not an error — no config validation).
     const scoped = await (await fetch(base + "/api/history?role=clean")).json();
-    assert.deepEqual(scoped, { rows: tickRows(events, 20, "clean") });
+    assert.deepEqual(scoped, { rows: runRows(events, 20, "clean") });
     const none = await fetch(base + "/api/history?role=nosuchloop");
     assert.equal(none.status, 200);
     assert.deepEqual(await none.json(), { rows: [] });
 
     // n: absent → 20; present but not a plain non-negative integer → 400 (the handleBacklog
     // index discipline); present and parseable → clamped to [1, 200], never errored.
-    assert.deepEqual(await (await fetch(base + "/api/history?n=500")).json(), { rows: tickRows(events, 200, null) });
+    assert.deepEqual(await (await fetch(base + "/api/history?n=500")).json(), { rows: runRows(events, 200, null) });
     const one = await (await fetch(base + "/api/history?n=0")).json();
-    assert.deepEqual(one, { rows: tickRows(events, 1, null) }, "n=0 clamps up to 1");
+    assert.deepEqual(one, { rows: runRows(events, 1, null) }, "n=0 clamps up to 1");
     for (const bad of ["abc", "-5", "1e3", "0x10", "%207", ""]) {
       const r = await fetch(base + "/api/history?n=" + bad);
       assert.equal(r.status, 400, `n=${bad} → 400 (a non-count is a client error, unlike days)`);
@@ -307,7 +307,7 @@ test("gui /api/history?grep filters through the CLI's shared haystack rule after
     // A pattern matching none is an empty row set, never prose or an error.
     assert.deepEqual(await (await fetch(base + "/api/history?grep=" + encodeURIComponent("no such text"))).json(), { rows: [] });
     // An empty pattern filters nothing.
-    assert.deepEqual(await (await fetch(base + "/api/history?grep=")).json(), { rows: tickRows(events, 20, null) });
+    assert.deepEqual(await (await fetch(base + "/api/history?grep=")).json(), { rows: runRows(events, 20, null) });
     // role and grep compose.
     const scoped = (await (await fetch(base + "/api/history?role=feature&grep=" + encodeURIComponent("sorted"))).json()) as { rows: unknown[] };
     assert.deepEqual(scoped.rows, []);

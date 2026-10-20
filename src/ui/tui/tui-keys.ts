@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TickDetail } from "../../run/run-detail-data.js";
-import { tickDetailStat } from "../../run/run-detail.js";
+import { runDetailStat } from "../../run/run-detail.js";
 import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
@@ -36,7 +36,7 @@ interface TuiKeysDeps {
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
-  /** The History trail's per-file stat footer; defaults to run-detail's tickDetailStat so
+  /** The History trail's per-file stat footer; defaults to run-detail's runDetailStat so
    * tests need not shell out to git. */
   tickStat?(root: string, detail: TickDetail): Promise<string>;
 }
@@ -250,7 +250,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const collectPending = deps.collectPending ?? collectTeamChanges;
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const collectChange = deps.collectChange ?? collectRoleChange;
-  const tickStat = deps.tickStat ?? tickDetailStat;
+  const tickStat = deps.tickStat ?? runDetailStat;
   // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
   // and fixed bugs), read fresh — tui-backlog.ts's one definition, shared with the render so
   // stale-selection clamping cannot drift.

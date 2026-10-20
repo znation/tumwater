@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
 import { initProject } from "../src/init/init.js";
-import { readTickRows, HISTORY_MAX_TICKS } from "../src/history/history-data.js";
+import { readTickRows, HISTORY_MAX_RUNS } from "../src/history/history-data.js";
 import { displayWidth } from "../src/text/text-width.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -16,7 +16,7 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 // validation, --json, and the unknown-flag/empty-log/help edges. The window-and-filter halves
 // (--since, --grep) live in cli-history-filtering.test.ts, split the way cli-logs.test.ts
 // keeps itself apart from cli-logs-filtering.test.ts so node --test runs the two in parallel.
-// The tickRows collector's own unit cases live beside readTickRows in test/history-data.test.ts;
+// The runRows collector's own unit cases live beside readTickRows in test/history-data.test.ts;
 // the direct in-process cmdHistory views in cli-history-views.test.ts.
 
 test("history CLI keeps the detail column aligned across usage and usage-less rows", async () => {
@@ -126,9 +126,9 @@ test("history -n accepts 1..200 and fails zero, negative, non-numeric, and over-
     assert.equal(r.code, 1, `-n ${bad} should fail`);
     assert.match(r.stderr, /-n needs a positive integer/);
   }
-  const over = await cli(repo, "history", "-n", String(HISTORY_MAX_TICKS + 1));
+  const over = await cli(repo, "history", "-n", String(HISTORY_MAX_RUNS + 1));
   assert.equal(over.code, 1);
-  assert.match(over.stderr, new RegExp(`-n must be between 1 and ${HISTORY_MAX_TICKS}`));
+  assert.match(over.stderr, new RegExp(`-n must be between 1 and ${HISTORY_MAX_RUNS}`));
 
   const one = await cli(repo, "history", "-n", "1");
   assert.equal(one.code, 0);
@@ -164,7 +164,7 @@ test("history --json prints the tick rows as machine-readable data", async () =>
   const payload = JSON.parse(r.stdout) as { rows: unknown[] };
   // The payload is the collector's own output: identical to what the GUI's /api/history
   // serves for the same log, and to what the table renders.
-  assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readTickRows(repo, HISTORY_MAX_TICKS, null) })));
+  assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readTickRows(repo, HISTORY_MAX_RUNS, null) })));
   const rows = payload.rows as Array<Record<string, unknown>>;
   assert.equal(rows.length, 3); // The run_start contributes no row.
   // Newest first, with the raw fields the table's renderings are derived from.

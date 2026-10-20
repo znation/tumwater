@@ -1,7 +1,7 @@
 // vocabulary: plain
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, tickRows, summarizeTickRows, summarizeTickRowsByModel, tickRowsMatchingGrep, tickRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, runRows, summarizeTickRows, summarizeTickRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js";
@@ -80,7 +80,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   if (followTail !== null) {
-    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_TICKS) : HISTORY_DEFAULT_TICKS;
+    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The seed goes through readTickRows, which widens its window until it finds `limit` rows;
     // the tail buffer only feeds the live follow.
     rows = readTickRows(root, limit, parseRoleListScope(root, rest));
@@ -92,8 +92,8 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     covered = windowed.covered;
   } else {
     // parseCountFlag's max caps the scan window: a typo'd "999999" must not build a
-    // HISTORY_MAX_TICKS-sized slice scan from a huge limit.
-    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_TICKS) : HISTORY_DEFAULT_TICKS;
+    // HISTORY_MAX_RUNS-sized slice scan from a huge limit.
+    const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The config is read (through loadConfigCached, never throwing) only when --role is present:
     // a read-only view must not refuse a transiently broken tumwater.json.
     const role = parseRoleListScope(root, rest);
@@ -102,7 +102,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // The filter runs on the collected rows, before rendering and before --json serialization:
   // the same rows the table would print, filtered the same way in both forms (the logs --grep
   // rule: -n bounds the scanned window, not the printed rows).
-  if (grepPattern !== null) rows = tickRowsMatchingGrep(rows, grepPattern);
+  if (grepPattern !== null) rows = runRowsMatchingGrep(rows, grepPattern);
   // The set --grep admitted, saved so the empty-state wording blames the filter that actually
   // emptied it: if the result filter below removes rows grep matched, naming the pattern would
   // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
@@ -146,7 +146,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
     const pieces = [...new Set(modelRaw.split(",").map((p) => p.trim()).filter((p) => p !== ""))];
     if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
     models = pieces;
-    rows = tickRowsOnModels(rows, pieces);
+    rows = runRowsOnModels(rows, pieces);
   }
   if (followTail !== null) {
     await followHistory(root, rest, rows, followTail, (r) => rowKept(r, grepPattern, resultClasses, models), seams, rest.includes("--json"));
@@ -211,9 +211,9 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
 
 /** The row filters `--grep`, `--result` and `--model` apply, as one predicate for followed rows. */
 function rowKept(row: TickRow, grep: string | null, classes: HistoryResultClass[] | null, models: string[] | null): boolean {
-  if (grep !== null && tickRowsMatchingGrep([row], grep).length === 0) return false;
+  if (grep !== null && runRowsMatchingGrep([row], grep).length === 0) return false;
   if (classes !== null && !classes.includes(historyClass(row.result))) return false;
-  return models === null || tickRowsOnModels([row], models).length > 0;
+  return models === null || runRowsOnModels([row], models).length > 0;
 }
 
 /** `history -f`: print the seed rows oldest first, then one row per `run_end` as it lands. A run
@@ -242,7 +242,7 @@ async function followHistory(
       buffer.push(e);
       if (buffer.length > HISTORY_FOLLOW_BUFFER_EVENTS) buffer.splice(0, buffer.length - HISTORY_FOLLOW_BUFFER_EVENTS);
       if (e.type !== "run_end") continue;
-      const row = tickRows(buffer, 1, role)[0];
+      const row = runRows(buffer, 1, role)[0];
       if (!row) continue;
       const key = `${row.role}#${row.run}`;
       if (seen.has(key) || !keep(row)) continue;

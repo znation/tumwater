@@ -15,7 +15,7 @@ import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesP
 import { commitIn, headSha, makeRepo, seedCommit, sh } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
 import { cli, CLI } from "./helpers/cli-harness.js";
-import { tickNotFoundMessage } from "../src/run/run-detail.js";
+import { runNotFoundMessage } from "../src/run/run-detail.js";
 import { spawnSync } from "node:child_process";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
@@ -1379,7 +1379,7 @@ test("revert refuses a run that did not merge, an unknown run and an unknown rol
   assert.match(r.stderr, /did not merge \(result: rejected\)/);
   r = await cli(repo, "revert", "clean", "9");
   assert.equal(r.code, 1);
-  assert.ok(r.stderr.includes(tickNotFoundMessage("clean", 9)), r.stderr);
+  assert.ok(r.stderr.includes(runNotFoundMessage("clean", 9)), r.stderr);
   r = await cli(repo, "revert", "nosuchrole", "1");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /nosuchrole/);

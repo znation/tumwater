@@ -23,7 +23,7 @@ import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
 import { abortRequestPath, branchName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/run/run-detail-data.js";
-import { renderTickDetail, tickTranscriptLines } from "../src/run/run-detail.js";
+import { renderTickDetail, runTranscriptLines } from "../src/run/run-detail.js";
 import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
@@ -973,12 +973,12 @@ test("Ctrl+R on the History trail cycles the agent transcript off, plain, prompt
   assert.equal(keys.state().trailTranscript, "off");
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().trailTranscript, "plain");
-  const plain = tickTranscriptLines(root, "clean", 1, detail).found;
+  const plain = runTranscriptLines(root, "clean", 1, detail).found;
   assert.ok(plain.length > 0 && plain.join("\n").includes("said-one"));
   assert.equal(keys.state().trailCache, `${bare}\n\n${plain.join("\n")}`);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(keys.state().trailTranscript, "prompts");
-  const withPrompts = tickTranscriptLines(root, "clean", 1, detail, { includePrompts: true }).found;
+  const withPrompts = runTranscriptLines(root, "clean", 1, detail, { includePrompts: true }).found;
   assert.equal(keys.state().trailCache, `${bare}\n\n${withPrompts.join("\n")}`);
   assert.ok(withPrompts.length > plain.length);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
@@ -996,7 +996,7 @@ test("Ctrl+R on a run with no transcript segment shows the note", () => {
   openHistory(keys);
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   keys.handleKey(undefined, { ctrl: true, name: "r" });
-  const note = tickTranscriptLines(root, "clean", 1, readTickDetail(root, "clean", 1)!).note;
+  const note = runTranscriptLines(root, "clean", 1, readTickDetail(root, "clean", 1)!).note;
   assert.ok((keys.state().trailCache ?? "").endsWith(`\n\n${note}`));
 });
 
@@ -1011,7 +1011,7 @@ test("the History trail composes detail, stat, then transcript whichever finishe
   resolve(" a.ts | 1 +");
   await new Promise((r) => setImmediate(r));
   const detail = readTickDetail(root, "clean", 1)!;
-  const plain = tickTranscriptLines(root, "clean", 1, detail).found.join("\n");
+  const plain = runTranscriptLines(root, "clean", 1, detail).found.join("\n");
   assert.equal(keys.state().trailCache, `${renderTickDetail(detail)}\n\n a.ts | 1 +\n\n${plain}`);
 });
 
@@ -1888,7 +1888,7 @@ test("Ctrl+Y's summary folds the History pane's exact-role scope, not the team r
   assert.doesNotMatch(summary, /^qa\b/m, "and no other role");
 });
 
-test("the `/` search filters the History pane through tickRowGrepHaystack and clears on an empty line", () => {
+test("the `/` search filters the History pane through runRowGrepHaystack and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture

@@ -6,7 +6,7 @@ import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "./revert.js";
-import { tickMergedSha, tickNotFoundMessage } from "../run/run-detail.js";
+import { runMergedSha, runNotFoundMessage } from "../run/run-detail.js";
 import { readTickDetail } from "../run/run-detail-data.js";
 import { readTickRows } from "../history/history-data.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -454,7 +454,7 @@ const REVERT_USAGE = "usage: tumwater revert <sha>|<role> <n>|<role> --last [--d
 
 /** The sha the run `<role> <n>` (or the newest completed run of `<role>` under `last`) merged
  * under, resolved the way `tumwater history <role> <n>` and the dashboard's revert resolve it
- * (`tickMergedSha`). Fails, exit 1, when the run is unknown or did not merge: revert is an
+ * (`runMergedSha`). Fails, exit 1, when the run is unknown or did not merge: revert is an
  * action, so a miss is an error rather than history's exit-0 "not found". */
 function revertRunSha(root: string, positionals: string[], last: boolean): { sha: string; line: string } {
   const role = canonicalRoleId(positionals[0]!);
@@ -465,10 +465,10 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
     : parseCountFlag("revert <n>", positionals[1]);
   if (run === null) fail(`no completed run of ${role} in the event log`);
   const detail = readTickDetail(root, role, run);
-  if (detail === null) fail(tickNotFoundMessage(role, run));
+  if (detail === null) fail(runNotFoundMessage(role, run));
   if (detail.result !== "merged")
     fail(`${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert`);
-  const sha = tickMergedSha(detail);
+  const sha = runMergedSha(detail);
   if (sha === null)
     fail(`${role} run #${run} merged but the event log no longer names its commit; pass the sha from git log instead`);
   return { sha, line: `run ${role} #${run} merged as ${shortSha(sha)}` };

@@ -402,7 +402,7 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
  * falls back to the built-in catalog instead of taking the view down or refusing every id.
  * The one home of that fallback rule — every read-only role-id consumer resolves through it:
  * parseRoleScope (cmdLogs/cmdHistory), validRoleIds (the GUI endpoints), cmdDiff's role flag,
- * cmdTick's positional, cmdPrompt's --list and list-wide --cancel/--edit scope, and
+ * cmdRunDetail's positional, cmdPrompt's --list and list-wide --cancel/--edit scope, and
  * collectTeamChanges' roster — so they cannot drift. (Read-only deliberately: state-changing
  * commands resolve ids through loadConfig and fail loudly, because the operator is owed the
  * config error before a write.) */
