@@ -6,37 +6,78 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Plain terms code runner, part 14/14: Sweep the remaining loop names and retire the old runner names (planned 2026-10-16 by user; requires part 13/14 landed; design in plans/terminology.md "Code names" and "Guards"; touches every remaining src/ and test/ file with a loop name + test/retired-names.test.ts)
+### Plain terms code runner, part 14/16: Rename the remaining loop identifiers and retire the old runner names (planned 2026-10-16 by user, replanned 2026-10-19 by the plan role after review rejection; requires part 13/16 landed; design in plans/terminology.md "Code names" and "Guards"; touches every src/ and test/ file with a loop identifier + test/retired-names.test.ts)
 
-**Needs replan 2026-10-19 by feature: rejected after 3 review rounds**
+Replanned 2026-10-19 by the plan role. The single 14/14 sweep was rejected after three review rounds. It rewrote "loop" meaning iteration to "role" in comments, which made them false, and its commit message claimed repairs it had not made. The sweep had about 150 identifier hits and about 250 comment lines in src/, with more in test/, which is too much prose to judge site by site in one run. This part therefore renames **identifiers only**. Comment and test-title wording moves to parts 15/16 (src/) and 16/16 (test/).
 
-Objections quoted from the final review:
-1. (prior 1) The sweep still rewrites "loop" meaning iteration to "role" in comments that now say something false, and the commit message's claim to have repaired these is still untrue. The revision fixed only the sites the prior review listed. Other sites in the same diff have the same defect, includ…
-
-**Goal.** No identifier, file name, comment or test title in src/ or test/ uses "loop" for a role or its worker. Every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old runner name comes back.
+**Goal.** No identifier or file name in src/ or test/ uses "loop" for a role or its worker. Every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old runner identifier comes back.
 
 **Approach.**
 - Series rules (every code-runner part):
   - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
-  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
-  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
-  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and identifiers where "loop" means a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields such as the `loop:` key in event fixtures, `--json`/`/api` keys, config keys, env vars) are out of scope. Name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose, so rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk.
   - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
-  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
-- Sweep the files earlier parts did not own: src/doctor/ (doctor-holds.ts's `const loops = loopIds(config)` → `runners`), src/backlog/, src/change/, src/concurrency/, src/git/, src/agent/, src/pi/, src/pi-extension/, src/process/ (supervisor.ts comments; `crashLoop` stays), src/redeploy/, src/team/, src/brief/, the root modules (src/paths.ts has about 12 comment lines, plus src/collections.ts and src/request-timeouts.ts), and their tests: test/doctor*.test.ts, test/backlog*.test.ts, test/pi.test.ts, test/supervisor.test.ts, test/worktree*.test.ts, test/cli.test.ts, test/completion.test.ts, test/test-runner.ts, test/fakes/*.ts, test/helpers/*.ts and test/fixtures/{repo,gate,victim}-fixtures.ts. Also include any file that gained a loop name from a feature that landed during this series: run `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` and `grep -rnwiE 'loops?' src test` and convert every role-or-worker sense.
-- Delete every remaining `@deprecated` alias this series added (`grep -rn '@deprecated Use' src test`: `LoopRunner`, `LoopState`, `freshLoopState`, `loadLoopState`, `saveLoopState`, `loopIds`, `loopEnabled`, `LoopPi`, `makeLoopRunner`, `spentLoopState`, `loopPhase`, `loopRank`, `LOOP_RANK_RULES`, `sortLoopsByState`, `loopRowCells`, `loopWakeMarker`, whichever remain), after migrating their last users.
-- Append a `runner` family to the guard in test/retired-names.test.ts. Plain terms code team 6/6 gave each family the shape `{ family, words, fileWords, allow }`, and the guard splits identifiers into words, including those in dashboard browser code. Use `words: ["loop", "loops"]` and `fileWords: ["loop", "loops"]`. Put in `allow`, each with its reason comment, the kept identifiers `pollLoop`, `crashLoop` and `onCrashLoop`, the live legacy config key `customLoops`, and, until Plain terms code cleanup renames them, `CustomLoop`, `customLoopNames` and `CUSTOM_LOOP_KEYS`. Rename a leftover JavaScript-loop variable called `loop` to say what it holds instead of allowing it. Legacy readers use the guard's existing exemptions: `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, and `retired-name-ok:start`/`end` regions. Add no new mechanism.
-- Run the retired-names guard and fix what it reports, for example a temp-dir prefix such as `tmpdir("loop-ids-cap-")` → `tmpdir("runner-ids-cap-")`. A hit inside a legacy reader that must keep an old name, such as an old-format event fixture with a `loop` field, gets one of the guard's exemptions, not a rename.
+- Work list: `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` minus the kept names above, plus bare `loop`/`loops` bindings (`grep -rnE '\b(const|let|var)\s+loops?\b|\(loops?[,)]|\bloops?\s*=>' src test`). Hit counts are highest in src/doctor/doctor-holds.ts (`loopIds`, `loopPaused`, `loadLoopStates`, `const loops = …`), src/doctor/doctor-checks.ts, src/git/worktree-pool.ts, src/team/team-polls.ts, src/ui/gui/gui-client-roles.ts and their tests.
+- Comments: edit only those that name an identifier you renamed, so they name the new identifier. Leave every other comment and test title alone, even one that says "loop" for a role. Parts 15/16 and 16/16 own those, and a stray prose edit here is out of scope.
+- Delete every remaining `@deprecated` alias this series added after migrating its last users. Run `grep -rn '@deprecated Use' src test` to find them. Today they are in src/runner/runner-state.ts, src/runner/runner.ts, src/roles/runner-ids.ts, src/ui/status-model.ts and test/fixtures/runner-fixtures.ts.
+- Append a `runner` family to the guard in test/retired-names.test.ts, in the existing `{ family, words, fileWords, allow }` shape, with `words: ["loop", "loops"]` and `fileWords: ["loop", "loops"]`. Put these in `allow`, each with its reason comment: `pollLoop`, `crashLoop`, `onCrashLoop`, the live legacy config key `customLoops`, and `CustomLoop`, `customLoopNames` and `CUSTOM_LOOP_KEYS` until Plain terms code cleanup part 2/7 renames them. Rename a leftover JavaScript-loop variable called `loop` to say what it holds instead of allowing it. Legacy readers use the guard's existing exemptions (`LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, `retired-name-ok:start`/`end` regions). Add no new mechanism.
+- Run the guard and fix what it reports, for example a temp-dir prefix such as `tmpdir("loop-ids-cap-")` → `tmpdir("runner-ids-cap-")`.
+- Commit message: list the serialized leftovers. Claim no comment repair, because this part makes none beyond renamed-identifier references.
 
-**Files touched.** The remaining files listed above; the alias declarations in src/runner/, src/roles/runner-ids.ts, src/ui/status-model.ts, src/ui/badges.ts and test/fixtures/runner-fixtures.ts; test/retired-names.test.ts.
+**Files touched.** The files the work list greps name; the alias declarations listed above; test/retired-names.test.ts.
 
 **Acceptance criteria.**
 - `grep -rn '@deprecated Use' src test` lists none of this series' old names.
-- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` lists only `loopback*`, `pollLoop`, `crashLoop`/`onCrashLoop`, `customLoop*`/`CUSTOM_LOOP_*`, and sites the retired-names guard exempts (the legacy readers).
-- test/retired-names.test.ts holds the `runner` family and passes; adding `const loopState = 1;` to any src/ module makes it fail (check locally, do not commit).
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` lists only `loopback*`, `pollLoop`, `crashLoop`/`onCrashLoop`, `customLoop*`/`CUSTOM_LOOP_*`, and sites the retired-names guard exempts.
+- Every `-` line in `git diff -U0 main -- src test` that contains "loop" in a comment is a comment naming a renamed identifier. No other comment or test title changes.
+- test/retired-names.test.ts holds the `runner` family and passes. Adding `const loopState = 1;` to any src/ module makes it fail (check locally, do not commit).
 - `npm run test` passes.
 
-### Plain terms code run, part 1/20: Move src/tick to src/run and the run command module to cli-start (planned 2026-10-16 by user; requires Plain terms code runner 14/14 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/ui/tick-progress-model.ts + src/cli/cli-run.ts + test/tick-*.test.ts + test/cli-run*.test.ts + test/helpers/run-live-harness.ts + every importer + docs/invariants.md + DEVELOPMENT.md + test/invariants-doc.test.ts)
+### Plain terms code runner, part 15/16: Reword role-sense "loop" in src/ comments, leaving every iteration-sense "loop" alone (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 14/16 landed; design in plans/terminology.md "Code names"; touches comments in src/ only)
+
+**Goal.** No comment in src/ says "loop" when it means a role or its worker. Every comment where "loop" means iteration (a `for`/`while` loop, "loop over", "loops through", the poll loop, the event loop, a retry, crash or feedback loop) reads exactly as before.
+
+**Approach.**
+- This part exists because the 14/14 review rejected blanket substitution. Judge each hit on its own and change nothing in code, string literals or serialized names.
+- Work list: `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` (about 250 lines today, most in src/ui, src/backlog, src/doctor, src/events, src/process, src/paths.ts, src/git, src/agent, src/change and src/pi). Also check trailing `// …` comments on code lines (`grep -rnwiE '//.*\bloops?\b' src`).
+- Before editing a hit, classify it by reading the whole sentence:
+  - Role sense: the sentence is about a configured role, its runner, its state file, its claim, or "each loop" meaning each role. Reword "loop" to "role", or to "runner" when the sentence is about the `RoleRunner` object or one instance's state. Fix the grammar ("a loop's" → "a role's", "loops" → "roles").
+  - Iteration sense: the sentence is about control flow, polling, retrying or feedback. Leave it byte-for-byte unchanged. Test: if "role" substituted in would make the sentence describe something other than iteration, it is iteration sense.
+  - Ambiguous: leave it unchanged, and list it in the commit message.
+- Leave alone: legacy readers (the files and regions listed in part 14/16's series rules), quoted PLANS.md/BUGS.md titles, `plans/*.md` names, commit subjects, and `customLoop*` names. Rewrap any edited comment past 100 columns.
+- Commit message: state the rule you applied. Name only repairs you made, without counts or "all".
+
+**Files touched.** Comments in src/ files from the work list; nothing in test/ (part 16/16).
+
+**Acceptance criteria.**
+- `git diff main -- src` changes only comment text: no code, string literal or identifier line changes. Check that every changed line is inside a comment.
+- In every changed comment, the old "loop" referred to a role or its runner. No removed line has "loop" in an iteration sense (for/while, "loop over/through", poll loop, event loop, retry/crash/feedback loop).
+- `grep -rnwiE 'loops?' src | grep -E ':[0-9]+:\s*(//|\*|/\*)'` lists only iteration-sense comments, legacy-reader comments, and the ambiguous ones the commit message names.
+- `npm run test` passes.
+
+### Plain terms code runner, part 16/16: Reword role-sense "loop" in test/ comments and test titles (planned 2026-10-19 by the plan role, split from the rejected 14/14; requires part 15/16 landed; design in plans/terminology.md "Code names"; touches comments and test titles in test/ + docs/invariants.md quotes of renamed titles)
+
+**Goal.** No comment or `it`/`test`/`describe` title in test/ says "loop" when it means a role or its worker. Iteration-sense wording is unchanged, and serialized fixture data is untouched.
+
+**Approach.**
+- Apply part 15/16's classification rule (role sense → "role"/"runner"; iteration sense and ambiguous → unchanged, ambiguous ones named in the commit message) to:
+  - comments: `grep -rnwiE 'loops?' test | grep -E ':[0-9]+:\s*(//|\*|/\*)'`, plus trailing `// …` comments;
+  - titles: `grep -rnwiE 'loops?' test | grep -E '\b(it|test|describe)\('`.
+- Most `loop` hits in test/ are the serialized `loop:` event field in fixtures (test/report*.test.ts, test/failure*.test.ts and others). Those are out of scope: do not touch them.
+- When you rename a test title that docs/invariants.md quotes (`grep -n '<old title>' docs/invariants.md`), update the quote in the same commit so test/invariants-doc.test.ts stays green.
+- Leave legacy-reader tests and fixtures that deliberately write old names alone.
+
+**Files touched.** Comments and titles in test/ files from the work list; docs/invariants.md quotes of renamed titles.
+
+**Acceptance criteria.**
+- `git diff main -- test` changes only comment text and test-title strings, never fixture data, `loop:` fields or code.
+- In every changed comment or title, the old "loop" referred to a role or its runner.
+- Every test title docs/invariants.md quotes still exists verbatim, and test/invariants-doc.test.ts passes.
+- `npm run test` passes.
+
+### Plain terms code run, part 1/20: Move src/tick to src/run and the run command module to cli-start (planned 2026-10-16 by user; requires Plain terms code runner 16/16 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/ui/tick-progress-model.ts + src/cli/cli-run.ts + test/tick-*.test.ts + test/cli-run*.test.ts + test/helpers/run-live-harness.ts + every importer + docs/invariants.md + DEVELOPMENT.md + test/invariants-doc.test.ts)
 
 **Goal.** Mechanical. The run pipeline's modules, the run-progress model, the `tumwater start` command module and their tests move to their final names, with every import path and path citation updated and no identifier changed.
 
