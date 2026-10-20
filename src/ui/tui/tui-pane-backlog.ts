@@ -1,5 +1,6 @@
 // vocabulary: plain
-import { tryCancelEntry, tryMoveEntryToTop, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { tryMoveEntryToTop, tryReleaseEntry } from "../../backlog/backlog-release.js";
 import { backlogHolds, cancelledClaimNote, entryKey, plansReleasedBy, releasedPartsNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
 import { allLiveClaims } from "../../runner/runner-state.js";

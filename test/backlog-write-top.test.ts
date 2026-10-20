@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { moveEntryToTop, tryMoveEntryToTop } from "../src/backlog/backlog-write.js";
+import { moveEntryToTop, tryMoveEntryToTop } from "../src/backlog/backlog-release.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // `tumwater plan --top <n>`: moveEntryToTop reorders one entry to the head of ## Planned,
