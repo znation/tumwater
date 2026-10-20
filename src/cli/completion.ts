@@ -5,7 +5,7 @@
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
-import { HISTORY_RESULT_FLAG_NAMES } from "../history/history-data.js";
+import { HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";
 import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
@@ -172,6 +172,14 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "${THINKING_LEVEL_WORDS.join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    `  if [ "$prev" = "--by" ]; then`,
+    `    COMPREPLY=( $(compgen -W "${HISTORY_SUMMARY_GROUPS.join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
+    `  if [ "$prev" = "--model" ] && [ "\${COMP_WORDS[1]}" = role ]; then`,
+    `    COMPREPLY=( $(compgen -W "${MODEL_TIERS.join(" ")}" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
@@ -191,13 +199,16 @@ function bashScript(help: string): string {
 }
 
 /** The value suffix a fish flag line carries: what completes after the flag. */
-function fishFlagValue(flag: string): string {
+function fishFlagValue(command: string, flag: string): string {
   if (flag === "--role") return ` -x -a "(tumwater completion --roles 2>/dev/null)"`;
   if (PATH_FLAGS.includes(flag)) return ` -r -F`;
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
   if (flag === "--result") return ` -x -a "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}"`;
   if (flag === "--type") return ` -x -a "${EVENT_TYPE_CODES.join(" ")}"`;
   if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
+  if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
+  // Only `role --model` is a closed set; `history --model` takes run selectors read from the log.
+  if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;
   return "";
 }
 
@@ -214,7 +225,7 @@ function fishScript(help: string): string {
     if (subs.length > 0)
       lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}; and test (__tumwater_argc) -eq 2" -a "${subs.join(" ")}"`);
     for (const flag of spec.flags[command] ?? [])
-      lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}" -l ${flag.slice(2)}${fishFlagValue(flag)}`);
+      lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}" -l ${flag.slice(2)}${fishFlagValue(command, flag)}`);
   }
   lines.push(
     `complete -c tumwater -n "__fish_seen_subcommand_from ${ROLE_POSITIONAL_COMMANDS.join(" ")}; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,

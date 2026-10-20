@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Shell completion completes `history --by` with `role`/`model` and `role <id> --model` with the tier names, so these closed-vocabulary flag values complete like `--thinking` and `--result` do (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/doctor, src/config/config-field-checks.ts and src/ comments; this one touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md; done 2026-10-19 by the feature role)
+
+**Goal.** `completionSpec` (src/cli/completion.ts) takes flag names from the help text, so `tumwater history --b<TAB>` completes `--by`. But no value completes after `--by`, and none completes after `role <id> --model` either, although both take a closed set of words. `--by` takes `HISTORY_SUMMARY_GROUPS` (`role`, `model`; src/history/history-data.ts). `role --model` takes a model id or a tier name from `MODEL_TIERS` (`small`, `default`, `strong`; src/config/config-schema.ts). In `bashScript`, a `$prev` of `--by` or `--model` falls through to the per-command arm, which completes only flags (`$cur` starting with `-`) or subcommands at word 2, so the reply is empty. `fishFlagValue` returns `""` for both flags. Offering the tier names also steers operators away from the misspelled tier references that the Planned tier-name typo entry rejects. After this change, `history --by <TAB>` offers `role model` and `role qa --model <TAB>` offers `small default strong`. `history --model <TAB>` still offers nothing, because its values are run selectors read from the event log.
+
+**Approach** (src/cli/completion.ts):
+- Import `HISTORY_SUMMARY_GROUPS` beside the existing `HISTORY_RESULT_FLAG_NAMES` import. `MODEL_TIERS` is already imported.
+- In `bashScript`, after the `--thinking` block, add `if [ "$prev" = "--by" ]` with `compgen -W "${HISTORY_SUMMARY_GROUPS.join(" ")}"`. Then add `if [ "$prev" = "--model" ] && [ "${COMP_WORDS[1]}" = role ]` with `compgen -W "${MODEL_TIERS.join(" ")}"`. Each block ends in `return 0`, like its neighbours.
+- Change `fishFlagValue(flag)` to `fishFlagValue(command, flag)` and update its one caller in `fishScript`. `--by` returns `` ` -x -a "role model"` `` (built from `HISTORY_SUMMARY_GROUPS`). `--model` returns `` ` -x -a "<MODEL_TIERS joined>"` `` only when `command === "role"`, and `""` otherwise. Every other flag keeps today's value. fish's `-a` offers candidates without restricting the value, so a full model id still types freely.
+- Add a short doc comment on the `--model` branch saying why `history --model` is excluded: its selectors come from the log, not a closed set.
+
+**Acceptance criteria.**
+- test/completion.test.ts, new test "the bash script completes summary groups after --by and tier names after role --model". It covers these cases:
+  - `complete(script, ["tumwater", "history", "--by", "m"], 3)` deep-equals `["model"]`.
+  - `["tumwater", "history", "--by", ""]` at word 3 deep-equals `["role", "model"]`.
+  - `["tumwater", "role", "qa", "--model", "st"]` at word 4 deep-equals `["strong"]`.
+  - `["tumwater", "role", "qa", "--model", ""]` at word 4 deep-equals `[...MODEL_TIERS]`.
+  - `["tumwater", "history", "--model", ""]` at word 3 deep-equals `[]`.
+- Same file, in "the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3":
+  - Some `flagLines("by")` line includes both `role` and `model` after `-a`.
+  - The `flagLines("model")` line containing `__fish_seen_subcommand_from role` includes `small`, `default` and `strong`.
+  - The `flagLines("model")` line containing `__fish_seen_subcommand_from history` contains no `-a`.
+- The existing completion tests pass unchanged, including the fish-parses test when fish is installed.
+- docs/cli.md: the `tumwater completion` paragraph's list of completed values adds "summary groups after `--by`, tier names after `role <id> --model`".
+- `npm run test:gate` passes.
+
 ### `tumwater doctor`'s "models for each tier" check accepts a model pi has built in, by asking `pi --list-models` about a pair that pi's `models.json` does not declare (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/ui/status-render.ts, src/init and src/gates. The blocked plain-terms parts may rename identifiers in src/doctor later, which only means a rebase. Touches src/doctor/doctor-model-checks.ts, test/doctor-model-checks.test.ts, docs/backends.md; done 2026-10-19 by the feature role)
 
 **Goal.** pi ships a built-in model catalog for its providers, and `~/.pi/agent/models.json` holds only the operator's additions. `checkTierModels` (src/doctor/doctor-model-checks.ts) resolves every declared pair through `readPiProviders(modelsPath)`, which reads models.json alone. So a valid built-in model fails the doctor. Verified 2026-10-19 in a scratch `tumwater init` project with main's build. After `tumwater role plan --model huggingface/deepseek-ai/DeepSeek-V3.1`, `tumwater doctor` printed `fail  models for each tier  huggingface/deepseek-ai/DeepSeek-V3.1 does not resolve in pi's definitions (…/models.json) — pi would price it at the provider default's rates and context window`. Yet `pi --list-models` lists that model under `huggingface`: 81 huggingface models, of which models.json declares 4. The fail text's pricing claim is also wrong for a built-in model, because pi prices it from its own catalog. The same false fail hits any built-in provider that is missing from models.json, such as `anthropic/…`, which reads `provider anthropic is not in pi's definitions`. After this change, a pair pi lists counts as resolved. Only a pair that is in neither source fails.

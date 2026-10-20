@@ -8,6 +8,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { completionConfigKeys, completionScript, completionSpec } from "../src/cli/completion.js";
 import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
+import { MODEL_TIERS } from "../src/config/config-schema.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { templateIds } from "../src/init/init-templates.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -176,6 +177,15 @@ test("the bash script completes event-type codes after logs --type", async () =>
   assert.ok((await complete(script, ["tumwater", "logs", "--type", ""], 3)).length > 0);
 });
 
+test("the bash script completes summary groups after --by and tier names after role --model", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--by", "m"], 3), ["model"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--by", ""], 3), ["role", "model"]);
+  assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--model", "st"], 4), ["strong"]);
+  assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--model", ""], 4), [...MODEL_TIERS]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", ""], 3), []);
+});
+
 test("the bash script completes pi thinking levels after --thinking", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--thinking", "h"], 4), ["high"]);
@@ -215,6 +225,10 @@ test("the fish script completes values after --role, path flags, --template, and
   assert.ok(flagLines("result").some((l) => l.includes("problems")));
   assert.ok(flagLines("type").some((l) => l.includes("merge_failed") && l.includes("run_start")));
   assert.ok(flagLines("thinking").some((l) => [...new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"])].every((w) => l.includes(w))));
+  assert.ok(flagLines("by").some((l) => l.includes("-a") && l.includes("role") && l.includes("model")));
+  const modelLine = (cmd: string) => flagLines("model").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
+  assert.ok(["small", "default", "strong"].every((t) => modelLine("role").includes(t)));
+  assert.ok(modelLine("history") !== "" && !modelLine("history").includes("-a"));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));
 });
 

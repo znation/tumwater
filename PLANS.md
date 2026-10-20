@@ -752,31 +752,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/config.md: the `roles.<id>` table's `model` row adds that a value one or two letters off a tier name (in any case) is rejected as a misspelled tier.
 - `npm run test:gate` passes.
 
-### Shell completion completes `history --by` with `role`/`model` and `role <id> --model` with the tier names, so these closed-vocabulary flag values complete like `--thinking` and `--result` do (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/doctor, src/config/config-field-checks.ts and src/ comments; this one touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md)
-
-**Goal.** `completionSpec` (src/cli/completion.ts) takes flag names from the help text, so `tumwater history --b<TAB>` completes `--by`. But no value completes after `--by`, and none completes after `role <id> --model` either, although both take a closed set of words. `--by` takes `HISTORY_SUMMARY_GROUPS` (`role`, `model`; src/history/history-data.ts). `role --model` takes a model id or a tier name from `MODEL_TIERS` (`small`, `default`, `strong`; src/config/config-schema.ts). In `bashScript`, a `$prev` of `--by` or `--model` falls through to the per-command arm, which completes only flags (`$cur` starting with `-`) or subcommands at word 2, so the reply is empty. `fishFlagValue` returns `""` for both flags. Offering the tier names also steers operators away from the misspelled tier references that the Planned tier-name typo entry rejects. After this change, `history --by <TAB>` offers `role model` and `role qa --model <TAB>` offers `small default strong`. `history --model <TAB>` still offers nothing, because its values are run selectors read from the event log.
-
-**Approach** (src/cli/completion.ts):
-- Import `HISTORY_SUMMARY_GROUPS` beside the existing `HISTORY_RESULT_FLAG_NAMES` import. `MODEL_TIERS` is already imported.
-- In `bashScript`, after the `--thinking` block, add `if [ "$prev" = "--by" ]` with `compgen -W "${HISTORY_SUMMARY_GROUPS.join(" ")}"`. Then add `if [ "$prev" = "--model" ] && [ "${COMP_WORDS[1]}" = role ]` with `compgen -W "${MODEL_TIERS.join(" ")}"`. Each block ends in `return 0`, like its neighbours.
-- Change `fishFlagValue(flag)` to `fishFlagValue(command, flag)` and update its one caller in `fishScript`. `--by` returns `` ` -x -a "role model"` `` (built from `HISTORY_SUMMARY_GROUPS`). `--model` returns `` ` -x -a "<MODEL_TIERS joined>"` `` only when `command === "role"`, and `""` otherwise. Every other flag keeps today's value. fish's `-a` offers candidates without restricting the value, so a full model id still types freely.
-- Add a short doc comment on the `--model` branch saying why `history --model` is excluded: its selectors come from the log, not a closed set.
-
-**Acceptance criteria.**
-- test/completion.test.ts, new test "the bash script completes summary groups after --by and tier names after role --model". It covers these cases:
-  - `complete(script, ["tumwater", "history", "--by", "m"], 3)` deep-equals `["model"]`.
-  - `["tumwater", "history", "--by", ""]` at word 3 deep-equals `["role", "model"]`.
-  - `["tumwater", "role", "qa", "--model", "st"]` at word 4 deep-equals `["strong"]`.
-  - `["tumwater", "role", "qa", "--model", ""]` at word 4 deep-equals `[...MODEL_TIERS]`.
-  - `["tumwater", "history", "--model", ""]` at word 3 deep-equals `[]`.
-- Same file, in "the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3":
-  - Some `flagLines("by")` line includes both `role` and `model` after `-a`.
-  - The `flagLines("model")` line containing `__fish_seen_subcommand_from role` includes `small`, `default` and `strong`.
-  - The `flagLines("model")` line containing `__fish_seen_subcommand_from history` contains no `-a`.
-- The existing completion tests pass unchanged, including the fish-parses test when fish is installed.
-- docs/cli.md: the `tumwater completion` paragraph's list of completed values adds "summary groups after `--by`, tier names after `role <id> --model`".
-- `npm run test:gate` passes.
-
 ### `tumwater doctor <check>...` runs only the named checks (`tumwater doctor orphans`, `tumwater doctor "image input" --reprobe`), so an operator re-checking one fixed problem waits for that check alone (planned 2026-10-19 by the plan role; no dependency on any Planned entry. The in-flight entries touch src/config/config-field-checks.ts, src/cli/completion.ts and src/ comments; this one touches src/doctor/doctor.ts, a new src/doctor/doctor-check-names.ts, src/cli.ts, src/cli/cli-command-args.ts, src/cli/help.ts, docs/cli.md, test/doctor.test.ts)
 
 **Goal.** `runDoctor` (src/doctor/doctor.ts) evaluates every check eagerly, in one array literal, so `tumwater doctor` always runs all of them. That includes the slow probes: claude auth/version, opencode, `pi --list-models`, the image probes, the process table walk. After the operator fixes one reported problem (kills an orphan, edits a tier model), the only way to confirm the fix is the whole report. Measured 2026-10-19 with main's build: a bare scratch `tumwater init` project took 3.1 s of wall time. `tumwater doctor orphans` exits 1 with `unknown argument: orphans (valid flags for tumwater doctor: --json, --reprobe, --problems)`. After this change, bare positional arguments name checks by the names the report prints. Only those checks run, and the report, the verdict and the exit code cover only them. `--json`, `--problems` and `--reprobe` still apply.
