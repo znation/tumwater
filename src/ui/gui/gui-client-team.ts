@@ -265,6 +265,7 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
 
   // ---- backlog: questions, plans, bugs, and queued prompts ----
   let backlogTab = recall("backlog") || "";
+  let backlogGrep = recall("backlog-grep") || "";
   // backlog:start
   // The Queued tab's in-place editor state, beside the tab choice its rows paint from:
   // backlogStatus is the last payload renderBacklog saw, queuedEdit is the open editor
@@ -287,6 +288,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     backlogNew = null;
     backlogNewPainted = false;
     if (lastStatus) renderBacklog(lastStatus);
+  }
+  // The Search box's text: trimmed, remembered, and the last payload repainted through it.
+  function setBacklogGrep(text) {
+    backlogGrep = text.trim();
+    store("backlog-grep", backlogGrep);
+    if (backlogStatus) renderBacklog(backlogStatus);
   }
   function beginBacklogNew(kind) {
     backlogNew = { kind };
@@ -330,6 +337,10 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       items[k].length + "</span></button>").join(""));
     const [key, , ic, tone, emptyTitle, emptyText] = BACKLOG.find((s) => s[0] === backlogTab);
     const list = items[key];
+    // Search narrows rows by the text each one shows; indexes stay the payload's own.
+    const needle = backlogGrep.toLowerCase();
+    const hit = (text) => !needle || String(text).toLowerCase().includes(needle);
+    let shown = 0;
     let html;
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
     else if (key === "queued") {
@@ -347,11 +358,14 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         // address stays the queue-file basename, the same one /api/prompt-cancel uses.
         if (queuedEdit && q.file === queuedEdit.file && q.role === queuedEdit.role) {
           queuedEditPainted = true;
+          shown++; // the open editor always shows, so a search never replaces it with "Nothing matches"
           return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span>" +
             "<textarea id='queuedit' class='queuedit'>" + esc(queuedEdit.text) + "</textarea>" +
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditsave' " + addr + ">Save</button>" +
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
         }
+        if (!hit(q.preview + " " + q.role)) return "";
+        shown++;
         const topBtn = alreadyFirst
           ? "<button type='button' class='btn btn-sm rowaction' data-action='prompttop' " + addr + ">Move to top</button>"
           : "";
@@ -375,22 +389,24 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       const rows = list.map((title, i) => {
         const t = splitTitle(title);
         const mark = holds[i] || "";
+        if (!hit(t.title + " " + t.meta + " " + mark)) return "";
+        shown++;
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + key + "' data-index='" + i + "'><span class='li-title'>" + esc(t.title) + "</span>" +
           (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
           (mark ? "<span class='li-meta'>" + esc(mark.trim()) + "</span>" : "") + "</button>" +
           (key === "questions" ? "<button type='button' class='btn btn-sm backloglink' data-file='questions' data-index='" + i + "'>Answer</button>" : "") + "</div>";
       });
-      const ready = rows.filter((r, i) => !blocked[i]);
+      const ready = rows.filter((r, i) => r && !blocked[i]);
       const series = key === "plans" ? (d.planSeries || []) : [];
       let heldCount = 0;
       const held = [];
       const seen = new Set();
       rows.forEach((r, i) => {
-        if (!blocked[i]) return;
+        if (!blocked[i] || !r) return;
         heldCount++;
         const s = series[i];
-        if (!s) { held.push(r); return; }
+        if (!s || needle) { held.push(r); return; }
         if (seen.has(s.name)) return;
         seen.add(s.name);
         held.push("<div class='list-item list-series'><button type='button' class='li-open' data-action='seriestoggle' data-series='" + esc(s.name) + "'><span class='li-title'>" + esc(s.label) + "</span><span class='li-meta'>blocked: each waits on an earlier part</span></button></div>");
@@ -398,21 +414,24 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       });
       html = ready.join("") + (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "");
     }
-    const answered = key === "questions" ? (d.answeredQuestions || []) : [];
+    const answered = (key === "questions" ? (d.answeredQuestions || []) : []).map((a, i) => ({ a, i })).filter((x) => hit(x.a.title + " " + (x.a.decision || "")));
+    shown += answered.length;
     if (answered.length) {
-      html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map((a, i) =>
+      html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map(({ a, i }) =>
         "<div class='list-item t-gray" + (openEntryKey() === "answered:" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span><button type='button' class='li-open backloglink' data-file='answered' data-index='" + i + "'><span class='li-title'>" + esc(a.title) + "</span>" +
         (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</button></div>").join("");
     }
-    const finished = key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : [];
+    const finished = (key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : []).map((f, i) => ({ f, i })).filter((x) => hit(x.f.title));
+    shown += finished.length;
     if (finished.length) {
-      html += "<div class='list-item list-divider'><span class='li-meta'>" + (key === "plans" ? "Done recently" : "Fixed recently") + "</span></div>" + finished.map((f, i) => {
+      html += "<div class='list-item list-divider'><span class='li-meta'>" + (key === "plans" ? "Done recently" : "Fixed recently") + "</span></div>" + finished.map(({ f, i }) => {
         const doneFile = key === "plans" ? "done" : "fixed";
         return "<div class='list-item t-gray" + (openEntryKey() === doneFile + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span>" +
           "<button type='button' class='li-open backloglink' data-file='" + doneFile + "' data-index='" + i + "'><span class='li-title'>" + esc(f.title) + "</span>" +
           (f.completedOn ? "<span class='li-meta'>" + esc((key === "plans" ? "done " : "fixed ") + f.completedOn) + "</span>" : "") + "</button></div>";
       }).join("");
     }
+    if (needle && list.length && !shown) html = "<div class='empty'><strong>Nothing matches this search</strong>Clear the search box to see every entry.</div>";
     if (key === "plans" || key === "bugs") {
       const kind = key === "plans" ? "plan" : "bug";
       if (backlogNew && backlogNew.kind === kind) {
@@ -433,6 +452,10 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     const b = clickClosest(ev, "button[data-tab]");
     if (b) setBacklogTab(b.dataset.tab);
   });
+  // Like #feedgrep, the box is static markup set once at load: the 1s poll repaints only the rows,
+  // never the box, so it cannot overwrite what the operator is typing.
+  $("backloggrep").value = backlogGrep;
+  $("backloggrep").addEventListener("input", (ev) => setBacklogGrep(ev.target.value));
   $("backlog").addEventListener("click", async (ev) => {
     const ser = clickClosest(ev, "button[data-action='seriestoggle']");
     if (ser) { toggleBacklogSeries(ser.dataset.series); return; }

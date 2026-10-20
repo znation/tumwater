@@ -16,10 +16,12 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     beginQueuedEdit(role: string, file: string, text: string): void;
     endQueuedEdit(): void;
     setBacklogTab(tab: string): void;
+    setBacklogGrep(text: string): void;
     beginBacklogNew(kind: string): void;
     toggleBacklogSeries(name: string): void;
-  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew", "toggleBacklogSeries"], {
+  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "setBacklogGrep", "beginBacklogNew", "toggleBacklogSeries"], {
     backlogTab,
+    backlogGrep: "",
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
     openEntryKey: () => null,
@@ -865,4 +867,78 @@ test("the Plans and Bugs tabs list finished entries under the open ones", () => 
   const q = backlogScope("questions");
   q.scope.renderBacklog({ ...base, donePlans, fixedBugs });
   assert.doesNotMatch(q.panels["backlog"] ?? "", /Done recently|Fixed recently/);
+});
+
+const grepBase = { questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+
+test("the Backlog Search keeps only matching rows under their original indexes", () => {
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "budget" });
+  scope.renderBacklog({ ...grepBase, plans: ["Alpha budget", "Bravo", "Charlie BUDGET"] });
+  const html = panels["backlog"] ?? "";
+  assert.match(html, /data-index='0'/);
+  assert.match(html, /data-index='2'/);
+  assert.doesNotMatch(html, /Bravo/);
+  assert.doesNotMatch(html, /data-index='1'/);
+  assert.match(panels["backlogtabs"] ?? "", /Plans<span class='badge'>3</);
+});
+
+test("a Backlog Search hit inside a collapsed blocked series paints without expanding it", () => {
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "S2" });
+  const slot = { name: "S", label: "S, 2 blocked parts (2/3–3/3)" };
+  scope.renderBacklog({
+    ...grepBase,
+    plans: ["Ready", "S1", "S2", "S3", "Other"],
+    planHolds: ["", "", " [blocked: requires S]", " [blocked: requires S]", " [refused]"],
+    planBlocked: [false, false, true, true, true],
+    planSeries: [null, null, slot, slot, null],
+  });
+  const html = panels["backlog"] ?? "";
+  assert.match(html, /data-index='2'/);
+  assert.doesNotMatch(html, /seriestoggle/);
+  assert.match(html, /Blocked \(1\)/);
+});
+
+test("the Backlog Search filters the Inbox, Answered and Done sections too", () => {
+  const inbox = backlogScope("queued", { backlogGrep: "keep" });
+  inbox.scope.renderBacklog({ ...grepBase, inboxPrompts: ["keep this", "drop this"], inboxFiles: ["a.md", "b.md"], inboxQueuedAt: [null, null] });
+  assert.match(inbox.panels["backlog"] ?? "", /keep this/);
+  assert.doesNotMatch(inbox.panels["backlog"] ?? "", /drop this/);
+  const q = backlogScope("questions", { backlogGrep: "keep" });
+  q.scope.renderBacklog({ ...grepBase, answeredQuestions: [{ title: "One", decision: "keep it" }, { title: "Two", decision: "other" }] });
+  assert.match(q.panels["backlog"] ?? "", /keep it/);
+  assert.doesNotMatch(q.panels["backlog"] ?? "", /other/);
+  const p = backlogScope("plans", { backlogGrep: "keep" });
+  p.scope.renderBacklog({ ...grepBase, plans: ["keep plan"], donePlans: [{ title: "keep done" }, { title: "drop done" }] });
+  assert.match(p.panels["backlog"] ?? "", /keep done/);
+  assert.doesNotMatch(p.panels["backlog"] ?? "", /drop done/);
+});
+
+test("an open Inbox editor survives a Search that matches no other row", () => {
+  const { scope, panels } = backlogScope("queued", { backlogGrep: "zzz" });
+  scope.renderBacklog({ ...grepBase, inboxPrompts: ["keep this"], inboxFiles: ["a.md"], inboxQueuedAt: [null] });
+  assert.match(panels["backlog"] ?? "", /Nothing matches/);
+  scope.beginQueuedEdit("director", "a.md", "keep this");
+  assert.match(panels["backlog"] ?? "", /id='queuedit'/);
+  assert.doesNotMatch(panels["backlog"] ?? "", /Nothing matches/);
+});
+
+test("a Backlog Search with no match paints its own empty state", () => {
+  const plans = backlogScope("plans", { backlogGrep: "zzz" });
+  plans.scope.renderBacklog({ ...grepBase, plans: ["Alpha"] });
+  assert.match(plans.panels["backlog"] ?? "", /Nothing matches this search/);
+  const bugs = backlogScope("bugs", { backlogGrep: "zzz" });
+  bugs.scope.renderBacklog({ ...grepBase, plans: ["Alpha"] });
+  assert.match(bugs.panels["backlog"] ?? "", /No open bugs/);
+});
+
+test("setBacklogGrep repaints and an empty search restores the tab byte-for-byte", () => {
+  const status = { ...grepBase, plans: ["Alpha", "Bravo"] };
+  const plain = backlogScope("plans", { backlogGrep: "" });
+  plain.scope.renderBacklog(status);
+  const { scope, panels } = backlogScope("plans", { backlogGrep: "", lastStatus: status });
+  scope.renderBacklog(status);
+  scope.setBacklogGrep("alpha");
+  assert.doesNotMatch(panels["backlog"] ?? "", /Bravo/);
+  scope.setBacklogGrep("");
+  assert.equal(panels["backlog"], plain.panels["backlog"]);
 });

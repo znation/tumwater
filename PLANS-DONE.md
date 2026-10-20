@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The dashboard's Backlog card gets a Search box that narrows the shown tab's rows by text, the browser twin of the TUI Backlog pane's `/` and `tumwater backlog --grep` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry: part 10/14 edits config/roles/init and the questions entry edits src/backlog/question-answer.ts and `cmdQuestions`, and neither touches src/ui/gui/gui-client-team.ts or src/ui/gui/gui-page.ts; done 2026-10-19 by the feature role)
+
+**Goal.** Text search on the backlog exists on the terminal: `plan|bug --list --grep`, `tumwater backlog --grep`, `questions --answered --grep`, and the TUI Backlog pane's `/` (`backlogGrep` in src/ui/tui/tui-pane-backlog.ts). The dashboard has a Search box on History (`histgrep`, src/ui/gui/gui-client-history.ts) and on Activity (`feedgrep`, src/ui/gui/gui-page.ts and gui-client-team.ts). Its Backlog card (`#backlogcard`, painted by `renderBacklog` in src/ui/gui/gui-client-team.ts) has no search. A long Plans list, such as today's blocked series plus several eligible entries, can only be scanned by eye. Add a Search box to the card that filters every tab's rows on the client as the operator types, the same way the Activity box filters its carried rows.
+
+**Decided scope (no open question).** Matching is case-insensitive substring over the text a row already shows, because the status payload carries no entry bodies. That text is the title plus meta (`splitTitle`) and the hold tag on Plans/Bugs rows, the title and decision on Answered rows, the title on Done/Fixed rows, and the preview plus role id on Inbox rows. Bodies stay searchable from `tumwater backlog --grep` and the TUI's `/`. Tab badges keep their unfiltered counts. A row keeps its original `data-index`, so the drawer, Answer, Release and Move to top still address the right entry. No server endpoint changes.
+
+**Approach.**
+- **src/ui/gui/gui-page.ts**: in `#backlogcard`'s `card-head`, after `#backlogtabs`, add `<label><span class="sr-only">Search</span><input class="field" id="backloggrep" type="search" placeholder="Search backlog…" autocomplete="off"></label>`, the markup the `feedgrep` box uses.
+- **src/ui/gui/gui-client-team.ts**:
+  - Beside `let backlogTab = recall("backlog") || "";`, which sits outside the marked region, add `let backlogGrep = recall("backlog-grep") || "";`.
+  - Inside the `backlog:start`/`backlog:end` region, add `setBacklogGrep(text)`. It sets `backlogGrep = text.trim()`, calls `store("backlog-grep", backlogGrep)`, and repaints with `renderBacklog(backlogStatus)` when `backlogStatus` is set.
+  - In `renderBacklog`, add a `const needle = backlogGrep.toLowerCase()` and a local `hit(text)` helper that returns true when `needle` is empty or `text` contains it, compared lowercased. Use it in four places:
+    - Inbox: keep only the queued rows where `hit(q.preview + " " + q.role)`. The `paintedFirst` group-head logic still runs over the unfiltered list, so a role's real head never gains a Move to top button.
+    - Plans/Bugs/Questions: `rows` becomes empty for a non-hit index, tested on `t.title + " " + t.meta + " " + mark`. When `needle` is set, blocked hits paint flat under the Blocked divider and skip the series collapse, so a matching part is not hidden in a closed series. `heldCount` counts the shown blocked rows only.
+    - Answered: test `a.title + " " + (a.decision || "")`.
+    - Done/Fixed: test `f.title`.
+  - When `needle` is set and the tab shows no rows in any section (open, answered, or finished), paint `<div class='empty'><strong>Nothing matches this search</strong>Clear the search box to see every entry.</div>`. A tab that is empty anyway keeps its own empty state. The New plan / File a bug button and form keep painting.
+  - After `backlog:end`, next to the `#backlogtabs` click listener, set `$("backloggrep").value = backlogGrep` once at load. Add an `input` listener that calls `setBacklogGrep(ev.target.value)`. Copy the `feedgrep` comment's reason: the 1s poll must never write the box back.
+- **docs/cli.md**: the TUI key table's `/` row ("on Backlog, filter the active entries by heading or body") gains "; the dashboard's Backlog card has a Search box that does the same over each row's shown text".
+
+**Files touched.** src/ui/gui/gui-page.ts, src/ui/gui/gui-client-team.ts, docs/cli.md, test/gui-client-team.test.ts.
+
+**Acceptance criteria.** All tests go in test/gui-client-team.test.ts. Each passes `backlogGrep` through `backlogScope`'s `extra` and adds `setBacklogGrep` to the scope's exported names.
+- "the Backlog Search keeps only matching rows under their original indexes": plans `["Alpha budget", "Bravo", "Charlie BUDGET"]` with `backlogGrep: "budget"` paint `data-index='0'` and `data-index='2'` but not `Bravo`. The Plans tab badge still reads 3.
+- "a Backlog Search hit inside a collapsed blocked series paints without expanding it": with the series fixture from "the Plans tab shows a blocked series as one row that expands on click" and `backlogGrep: "S2"`, the row `data-index='2'` paints with no `seriestoggle` row, under `Blocked (1)`.
+- "the Backlog Search filters the Inbox, Answered and Done sections too": an Inbox preview, an answered decision and a done title that don't match are dropped, and the matching ones stay.
+- "a Backlog Search with no match paints its own empty state": `backlogGrep: "zzz"` on a non-empty Plans tab paints `Nothing matches this search`. An empty Bugs tab with the same search keeps `No open bugs`.
+- "setBacklogGrep repaints and an empty search restores the tab byte-for-byte": the panel HTML after `setBacklogGrep("")` equals the HTML from a scope that never set a search.
+- The existing backlog-panel tests pass unchanged. That includes "an eligible Plans row is byte-identical whether or not the payload carries holds".
+- `npm run test:gate` passes.
+
 ### `tumwater questions --grep <text>` searches the open questions, the open-list twin of `questions --answered --grep` (planned 2026-10-19 by the plan role; independent of every eligible Planned entry — part 10/14 edits config/roles/init, the wake entry src/cli wake parsing, the report entry src/gui/gui-endpoints.ts; none touches src/backlog/question-answer.ts or `cmdQuestions`; done 2026-10-19 by the feature role)
 
 **Goal.** Every other backlog listing searches by text with the shared `entryMatches` (`src/backlog/backlog.ts`): `plan|bug --list --grep`, their `--done` forms, `tumwater backlog --grep`, and `questions --answered --grep`. The open-question list is the exception. `tumwater questions --grep x` exits 1 with `--grep needs --answered (it searches the answered questions)` (`cmdQuestions`, src/cli/cli-query-commands.ts). The parser already reads `--grep`; only that refusal and the list readers lack the filter. Let the bare list take `--grep` with the same matcher and the same unfiltered numbering, so a printed number still reaches `questions --show <n>` and `questions answer <n>`.
