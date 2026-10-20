@@ -835,4 +835,40 @@ So the role re-queues a dead sha on every run, ends each run on `error`, and nev
 - The existing tests "a pinned commit not in main is put on the merge queue, not merged" and "a stale ref already contained in main is deleted without queuing anything" still pass, so a live pin still gets no warning and is still queued.
 - `npm run test:gate` passes.
 
+### The dashboard's History "Show transcript" gets a "Show prompts" button that reloads the run's transcript with each agent run's prompt, the dashboard twin of `tumwater history <role> <n> --transcript --prompt` (planned 2026-10-19 by the plan role; no dependency on any Planned entry. "Logs role filter, part 1/2" edits only the `/api/transcript` doc comment in src/gui/gui-endpoints.ts, not `handleTick`'s, so whichever lands second just rebases. The leftover-recovery and slot-reset plans touch src/runner/, src/git/ and src/build/, none of these files. Touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-history.ts docs/how-it-works.md test/gui-server-api.test.ts test/gui-client-history.test.ts)
+
+**Goal.** `tumwater history <role> <n> --transcript --prompt` prints a past run's agent transcript together with the prompt each agent run was given. It does this by passing `{ includePrompts: true }` to `tickTranscriptLines` (src/tick/tick-detail.ts), which passes it on to `readRunTranscript` (src/ui/transcript-run.ts). The dashboard's History drill-down "Show transcript" button (`histTranscriptHtml`/`toggleHistTranscript`, src/ui/gui/gui-client-history.ts) fetches `/api/run?…&transcript=1`. `handleTick`'s `transcriptText` (src/gui/gui-endpoints.ts) calls `tickTranscriptLines` with four arguments, so the dashboard never shows the prompt. That prompt is the first thing an operator wants to see when a run went wrong. Close the gap the way the CLI does: prompts stay opt-in, because they are long.
+
+**Approach.**
+- **src/gui/gui-endpoints.ts.** Give `transcriptText` a fifth parameter `includePrompts: boolean` and pass `{ includePrompts }` to `tickTranscriptLines`. In `handleTick`, pass `q.get("prompt") !== null`. Like `patch` and `transcript`, the flag counts when present, whatever its value. `prompt` without `transcript` adds nothing, because the `transcript` key is still gated on `transcript` alone. In `handleTick`'s doc comment, extend the `transcript` sentence: a present `prompt` flag also renders each agent run's prompt, the text `history --transcript --prompt` prints.
+- **src/ui/gui/gui-client-history.ts.**
+  - The transcript sub-state gains optional fields `{ prompts?: boolean, promptText?: string, promptsLoading?: boolean, promptsError?: string }`. Add them to the state comment above `histDetails` (the `history-detail` region's header comment).
+  - `histTranscriptHtml(entry, key)`: when `t.state === "ok" && t.open`, render a second button after the Show/Hide transcript button: `<button type='button' class='btn btn-sm' data-hist-transcript-prompts='<esc key>'>`, labelled "Hide prompts" when `t.prompts`, else "Show prompts". When `t.promptsLoading`, follow it with ` <span class='muted'>Loading prompts…</span>`. When `t.promptsError`, add `<div class='err'>` holding the escaped error. The `<pre class='mono hist-detail-transcript'>` shows `t.prompts ? t.promptText : t.text`. A closed transcript shows no prompts button.
+  - New `async function toggleHistTranscriptPrompts(key)`. It returns early unless the entry is `ok` and its transcript is `ok` and open. It also returns while `promptsLoading`. When `typeof t.promptText === "string"`, it flips `t.prompts`, calls `renderHistory()` and returns, without refetching. Otherwise it:
+    - sets `t.promptsLoading = true`, deletes `t.promptsError` and calls `renderHistory()`;
+    - calls `getJson` on the same URL as `toggleHistTranscript` plus `&prompt=1`, and throws `"/api/run answered without a transcript field"` when `d.transcript` is not a string;
+    - on success sets `t.promptText = d.transcript` and `t.prompts = true`;
+    - on failure sets `t.promptsError` to the error message, falling back to `"the prompts failed to load"`;
+    - in both cases deletes `t.promptsLoading` and calls `renderHistory()`.
+    
+    Mutate the existing `entry.transcript` object rather than replacing it, so the open state and the plain text survive.
+  - In the init block, next to the "Show transcript" click listener, add a `$("histbody")` click listener for `button[data-hist-transcript-prompts]` that calls `toggleHistTranscriptPrompts(b.dataset.histTranscriptPrompts)`. Export the function in whatever way `toggleHistTranscript` is reachable from `clientScope` in the tests (it is listed by name there).
+- **docs/how-it-works.md.** After the "Show transcript" sentence in the History drill-down paragraph, add one sentence. It says that, once the transcript is open, a "Show prompts" button reloads it through `GET /api/run?…&transcript=1&prompt=1` with each agent run's prompt, the text `tumwater history <role> <n> --transcript --prompt` prints.
+
+**Files touched.** src/gui/gui-endpoints.ts; src/ui/gui/gui-client-history.ts; docs/how-it-works.md; test/gui-server-api.test.ts; test/gui-client-history.test.ts.
+
+**Acceptance criteria.**
+- In test/gui-server-api.test.ts, extend "gui /api/run carries the run's transcript only on request". The pi log segment gains a `{ type: "message_end", message: { role: "user", content: [{ type: "text", text: "asked-one" }], timestamp: 1500 } }` line before the assistant line, the shape test/tick-detail.test.ts's "history --transcript --prompt shows the run's own prompt" uses. It asserts:
+  - `&transcript=1` still matches `said-one` and does not match `asked-one`;
+  - `&transcript=1&prompt=1` matches both, with `asked-one` before `said-one`;
+  - `&prompt=1` alone has no `transcript` key.
+- New test in test/gui-client-history.test.ts, "the drill-down's Show prompts button reloads the transcript with prompts and toggles it". It uses the existing test's `clientScope` setup, with `toggleHistTranscriptPrompts` added to the exported names. Its `getJson` stub answers `{ transcript: "plain" }` for URLs without `&prompt=1` and `{ transcript: "with < prompt" }` for URLs with it. It asserts:
+  - a closed transcript renders no `data-hist-transcript-prompts`;
+  - after `toggleHistTranscript`, the card shows `data-hist-transcript-prompts='clean#9'>Show prompts<`;
+  - `toggleHistTranscriptPrompts` fetches a URL ending `&transcript=1&prompt=1` and the card shows `hist-detail-transcript'>with &lt; prompt<` and `>Hide prompts<`;
+  - a second call shows `plain` again and makes no new fetch;
+  - a failing stub renders `<div class='err'>boom</div>`, and the next call refetches.
+- The existing "the drill-down's Show transcript button loads the transcript on demand and toggles it" test still passes unchanged.
+- `npm run test:gate` passes.
+
 ## Done
