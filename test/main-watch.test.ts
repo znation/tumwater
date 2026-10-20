@@ -6,7 +6,8 @@ import { createMainWatch, knownMainFailures, onlyKnownMainFailures } from "../sr
 import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
 import { persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
-import { baselineVerdictsPath } from "../src/paths.js";
+import { baselineVerdictsPath, quarantinePath } from "../src/paths.js";
+import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -233,4 +234,26 @@ test("moving a quarantined test's bug out of ## Open releases it", async () => {
   fs.writeFileSync(file, md.replace("## Open", "## Fixed"));
   releaseQuarantine(root);
   assert.deepEqual(quarantinedTests(root), []);
+});
+
+test("a filing whose quarantine.json write failed is not filed again on the next poll", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  quarantineTests(root, ["flaky one"], "boom");
+  const watch = createMainWatch(root, "main");
+  const restore = failRenameSyncOn(quarantinePath(root), "disk full");
+  try {
+    await watchAt(watch, root);
+  } finally {
+    restore();
+  }
+  assert.equal(loadQuarantine(root)[0]?.bug, "");
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(warnings.some((m) => m.includes("quarantine housekeeping failed")), warnings.join("|"));
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  await watchAt(watch, root);
+  const bugs = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(bugs.match(/failed, then passed on the same tree \(quarantined by tumwater/g)?.length, 1);
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
+  const bug = loadQuarantine(root)[0]?.bug ?? "";
+  assert.ok(bug.startsWith("`flaky one` failed"), bug);
 });

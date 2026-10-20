@@ -4096,3 +4096,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/doctor/doctor.ts` (`runDoctorCheck`, `runDoctor`); `src/doctor/doctor-model-checks.ts` (`checkImageInput`).
 
 **Pinned by.** `test/doctor.test.ts` — "runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through"; `test/doctor-model-checks.test.ts` — "checkImageInput keeps a fresh probe's verdict when the probe cache cannot be saved, and warns".
+
+## Quarantine filing: a landed filing is never repeated
+
+### INV-CF1: a quarantined test whose entry is already under ## Open is not filed again
+
+**Guarantee.** `fileQuarantineBugsOnMain` reuses the BUGS.md `## Open` heading of a quarantined test whose entry is already there (a filing whose `markQuarantineFiled` failed after the commit) instead of appending a duplicate, and commits nothing when every test already has its entry.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
+
+**Pinned by.** `test/main-watch.test.ts` — "a filing whose quarantine.json write failed is not filed again on the next poll".

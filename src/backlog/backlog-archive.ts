@@ -31,7 +31,7 @@ import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-ru
 import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorFirstLine, errorMessage } from "../text/text.js";
-import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, type FinishedArchive } from "./backlog-md.js";
+import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, parseEntryDetails, type FinishedArchive } from "./backlog-md.js";
 import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-structure.js";
 import { appendBugEntryLocked } from "./backlog-write.js";
 import { formatDate } from "../text/datetime.js";
@@ -424,6 +424,13 @@ type QuarantineFilingOutcome =
   | { status: "filed"; bugs: Map<string, string> }
   | { status: "skipped"; reason: string };
 
+/** The start of a quarantine entry's title for `test`, up to the date. appendBugEntryLocked
+ * collapses whitespace in the title, so the test part is collapsed the same way; collapsing the
+ * whole prefix would trim its trailing space. */
+function quarantineTitlePrefix(test: string): string {
+  return collapseWhitespace(`\`${test}\` failed, then passed on the same tree`) + " (quarantined by tumwater ";
+}
+
 /** Output fenced into a bug body: a fence of its own length cannot be closed by the quoted text. */
 function fencedTail(tail: string): string {
   return ["~~~~", ...tail.replaceAll("~~~~", "~~~").split("\n").slice(-30), "~~~~"].join("\n");
@@ -432,7 +439,9 @@ function fencedTail(tail: string): string {
 /** File one BUGS.md `## Open` entry per newly quarantined test and commit BUGS.md on the base
  * branch as one `tumwater(operator):` commit, under the merge lock and the primary-worktree lock
  * exactly as archiveFinishedOnMain does. Skipped, writing nothing, when the primary checkout is
- * off the base branch or BUGS.md has uncommitted changes; a failed commit restores BUGS.md. */
+ * off the base branch or BUGS.md has uncommitted changes; a failed commit restores BUGS.md. A test
+ * whose quarantine entry is already under `## Open` (a filing whose markQuarantineFiled failed
+ * after the commit) gets that heading back and is not filed again. */
 export async function fileQuarantineBugsOnMain(
   root: string,
   tests: readonly { test: string; tail?: string }[],
@@ -455,17 +464,26 @@ export async function fileQuarantineBugsOnMain(
         const file = path.join(root, "BUGS.md");
         const before = readTextOrNull(file);
         const date = formatDate(new Date());
+        const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
         const bugs = new Map<string, string>();
+        let appended = 0;
         for (const { test, tail } of tests) {
+          const existing = open.find((t) => t.startsWith(quarantineTitlePrefix(test)));
+          if (existing !== undefined) {
+            bugs.set(test, existing);
+            continue;
+          }
           const body = [
             `The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves \`## Open\`. Find why it is unstable and fix it.`,
             ...(tail ? ["", fencedTail(tail)] : []),
           ].join("\n");
-          bugs.set(test, appendBugEntryLocked(root, `\`${test}\` failed, then passed on the same tree (quarantined by tumwater ${date})`, body));
+          bugs.set(test, appendBugEntryLocked(root, `${quarantineTitlePrefix(test)}${date})`, body));
+          appended++;
         }
+        if (appended === 0) return { status: "filed", bugs };
         const subject = stampedSubject(
           "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
-          `File ${plural(tests.length, "quarantined flaky test", "quarantined flaky tests")} in BUGS.md`,
+          `File ${plural(appended, "quarantined flaky test", "quarantined flaky tests")} in BUGS.md`,
         );
         try {
           await git(root, "add", "--", "BUGS.md");
