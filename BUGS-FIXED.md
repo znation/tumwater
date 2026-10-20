@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `pollPauseGates: a per-role pause whose shared deadline passes logs role_resumed with expired` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ pollPauseGates: a per-role pause whose shared deadline passes logs role_resumed with expired (102.711709ms)
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+- }
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/pause-gates.test.js:112:12)
+at Test.runInAsyncScope (node:async_hooks:226:14)
+generatedMessage: true,
+code: 'ERR_ASSERTION',
+actual: Set(0) {},
+expected: Set(1) { 'tests' },
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+~~~~
+
+**Cause:** the test paused with a 40 ms deadline then polled; under load the first poll ran after the deadline, so it saw no paused role (`Set(0)` vs `Set(1) {'tests'}`). The sibling timed team-pause test had the same race. Fixed in the tests: a 250 ms deadline and a wait until the clock passes it (`sleepPast`) instead of a fixed 60 ms sleep; no source change.
+
+**Validation gap:** no-repro — the race depends on load delaying the first poll past a 40 ms deadline, so it was confirmed by reading the test timing, not reproduced.
+
 ### `a killed run leaves no grandchild behind (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

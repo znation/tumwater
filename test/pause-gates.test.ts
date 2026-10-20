@@ -95,16 +95,19 @@ test("pollPauseGates: per-role pause/resume logs role events per crossing", () =
   assert.deepEqual(eventTypes(root, "role_paused", "role_resumed"), ["role_paused", "role_paused", "role_resumed", "role_resumed"]);
 });
 
-function sleepMs(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+function sleepPast(deadlineMs: number): void {
+  while (Date.now() <= deadlineMs) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
 }
 
 test("pollPauseGates: a timed team pause whose deadline passes logs team_resumed with expired", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
-  pauseTeam(root, Date.now() + 40);
+  const until = Date.now() + 250; // roomy: the first poll must land before it
+  pauseTeam(root, until);
   assert.equal(pollPauseGates(root, state).userPaused, true);
-  sleepMs(60); // the deadline passes between polls
+  sleepPast(until); // the deadline passes between polls
   assert.equal(pollPauseGates(root, state).userPaused, false);
   const resumed = eventsOfType(root, "team_resumed");
   assert.equal(resumed.length, 1);
@@ -128,9 +131,10 @@ test("pollPauseGates: an early resume of a timed team pause carries no expired",
 test("pollPauseGates: a per-role pause whose shared deadline passes logs role_resumed with expired", () => {
   const root = tmpdir("pause-gates-");
   const state = newPauseGateState();
-  pauseRole(root, "tests", Date.now() + 40);
+  const until = Date.now() + 250; // roomy: the first poll must land before it
+  pauseRole(root, "tests", until);
   assert.deepEqual(pollPauseGates(root, state).pausedRoles, new Set(["tests"]));
-  sleepMs(60);
+  sleepPast(until); // the deadline passes between polls
   assert.deepEqual(pollPauseGates(root, state).pausedRoles, new Set());
   const resumed = eventsOfType(root, "role_resumed");
   assert.equal(resumed.length, 1);
