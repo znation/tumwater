@@ -24,28 +24,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Invariants register: an id prefix belongs to exactly one section, so a wrapped line that starts with `## ` cannot silently split a section (planned 2026-10-20 by the plan role; independent of every eligible plan; touches test/invariants-doc.test.ts + docs/invariants.md)
-
-**Goal.** docs/invariants.md says "Each section takes the next unused prefix". The register test (`invariantProblems` in test/invariants-doc.test.ts, run on the real file by "this repo's docs/invariants.md is honest") checks id shape, duplicate ids, the three field labels and the cited tests, but never which `## ` section an entry sits under. That gap has already let the register break unnoticed. In the section "## Flake quarantine: a test that failed then passed on one tree is quarantined until its filed bug leaves ## Open, and a possibly truncated list never counts", INV-BI4's **Pinned by.** paragraph cites the test "moving a quarantined test's bug out of ## Open releases it". The citation wrapped so that one line starts with `## Open releases it"; `test/known-flakes-quarantine.test.ts` — …`. Markdown renders that line as an H2 heading. INV-BI5 then sits under a phantom section, and the register shows a stray heading in the middle of an entry. Checked 2026-10-20 with a scratch node script that maps each `### INV-` heading to the last `## ` line above it: across 98 `## ` headings, `BI` is the only prefix used under two sections, and no section mixes two prefixes. The same check fails a merge in which two concurrent changes claim one prefix for two different new sections with different numbers (say BL1 and BL2). That is a collision the duplicate-id rule misses.
-
-**Approach.** Test-only, plus the doc fix.
-1. docs/invariants.md, INV-BI4's **Pinned by.** paragraph: rewrap the lines so no line starts with `## `. For example, end the line before it at "moving a quarantined test's bug" and start the next line with "out of ## Open releases it"; …". Change no words. `citedTitles` collapses whitespace (`collapse`), and "a wrapped, truncated or template-expanded citation matches its test" already pins that, so the citation keeps matching.
-2. test/invariants-doc.test.ts, `invariantProblems`: in the existing per-entry loop, find the entry's section: the text of the last line matching `/^## /m` in `md.slice(0, start)`, or `""` when there is none. For a well-formed id (`ID_RE` passes), the prefix is the letters between `INV-` and the digits. Keep two maps, `sectionOfPrefix` (prefix → first section) and `prefixOfSection` (section → first prefix), and push at most one problem per entry for each rule:
-   - The prefix was first seen under a different section: `` `${label}: prefix INV-${prefix} already belongs to section "${first}" but this entry sits under "${section}" — each section takes one prefix; a wrapped line starting with "## " starts a stray section` ``. Clip each section title to 80 characters with `…`.
-   - The section was first seen with a different prefix: `` `${label}: section "${section}" already uses prefix INV-${firstPrefix} — each section takes one prefix` ``.
-   Keep `HEADING_RE` and the entry-body slicing as they are. A malformed id skips both rules; it already has its own problem.
-3. Do not touch the intro paragraph of docs/invariants.md. Its "Each section takes the next unused prefix" sentence becomes the rule the test enforces.
-
-**Files.** test/invariants-doc.test.ts, docs/invariants.md.
-
-**Acceptance criteria.**
-- New tests in test/invariants-doc.test.ts, placed after "a duplicate id is reported at the second entry":
-  - "an id prefix reused under a second section is reported": build `# Invariants\n\n## One\n\n` + `entry("INV-A1")` + `## Two\n\n` + `entry("INV-A2")`. Assert that a problem includes both `INV-A2 (entry 2)` and `prefix INV-A already belongs to section "One"`.
-  - "a wrapped line starting with ## inside an entry is reported as a stray section": `register(entry("INV-A1") + "## Open releases it\n\n" + entry("INV-A2"))`. Assert that a problem includes `INV-A2` and `stray section`.
-  - "a section that mixes two prefixes is reported": `register(entry("INV-A1") + entry("INV-B1"))`. Assert that a problem includes `already uses prefix INV-A`.
-  - "two sections with one prefix each yield no problems": `# Invariants\n\n## One\n\n` + `entry("INV-A1")` + `## Two\n\n` + `entry("INV-B1")`. `deepEqual` to `[]`.
-- "this repo's docs/invariants.md is honest" passes with the step-1 rewrap. Without that rewrap it reports INV-BI5. Check this once by reverting only the doc hunk, then restore it.
-- `grep -n '^## Open releases' docs/invariants.md` prints nothing (today it prints the stray line).
-- Every existing test in test/invariants-doc.test.ts passes unchanged, and `npm run test:gate` passes.
-
 ## Done

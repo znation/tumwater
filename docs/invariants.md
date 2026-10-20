@@ -3493,8 +3493,8 @@ is no longer under `## Open`. An unfiled test, or any test while BUGS.md is miss
 **Binds.** `src/review/known-flakes.ts` (`markQuarantineFiled`, `releaseQuarantine`).
 
 **Pinned by.** `test/known-flakes.test.ts` — "quarantine: a filed test leaves the list once its
-entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined test's bug out of
-## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
+entry is not under ## Open"; `test/main-watch.test.ts` — "moving a quarantined test's bug
+out of ## Open releases it"; `test/known-flakes-quarantine.test.ts` — "quarantine: a missing BUGS.md
 releases nothing, even a filed test".
 
 ### INV-BI5: a failed quarantine write warns and never throws out of the check that passed

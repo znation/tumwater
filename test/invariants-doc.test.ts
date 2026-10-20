@@ -90,6 +90,9 @@ function invariantProblems(
     return ["register holds no `### INV-…:` entries"];
   }
   const firstSeen = new Map<string, number>();
+  const sectionOfPrefix = new Map<string, string>();
+  const prefixOfSection = new Map<string, string>();
+  const clip = (s: string): string => (s.length > 80 ? s.slice(0, 79) + "…" : s);
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
     if (match === undefined) continue;
@@ -100,8 +103,28 @@ function invariantProblems(
     const end = next?.index ?? md.length;
     const body = md.slice(start, end);
     const label = `${id} (entry ${i + 1})`;
+    const section = md.slice(0, start).split("\n").reverse().find((l) => l.startsWith("## ")) ?? "";
     if (!ID_RE.test(id)) {
       problems.push(`${label}: malformed id, expected e.g. INV-A1 or INV-AA1`);
+    }
+    if (ID_RE.test(id)) {
+      const prefix = id.slice(4).replace(/\d+$/, "");
+      const firstSection = sectionOfPrefix.get(prefix);
+      if (firstSection === undefined) {
+        sectionOfPrefix.set(prefix, section);
+      } else if (firstSection !== section) {
+        problems.push(
+          `${label}: prefix INV-${prefix} already belongs to section "${clip(firstSection)}" but this entry sits under "${clip(section)}" — each section takes one prefix; a wrapped line starting with "## " starts a stray section`,
+        );
+      }
+      const firstPrefix = prefixOfSection.get(section);
+      if (firstPrefix === undefined) {
+        prefixOfSection.set(section, prefix);
+      } else if (firstPrefix !== prefix) {
+        problems.push(
+          `${label}: section "${clip(section)}" already uses prefix INV-${firstPrefix} — each section takes one prefix`,
+        );
+      }
     }
     const earlier = firstSeen.get(id);
     if (earlier !== undefined) {
@@ -244,6 +267,33 @@ test("a two-letter section prefix is a valid id, and a three-letter one is malfo
 test("a duplicate id is reported at the second entry", () => {
   const problems = invariantProblems(register(entry("INV-A1") + entry("INV-A1")));
   assert.ok(problems.some((p) => p.includes("duplicate id, first at entry 1")), problems.join("; "));
+});
+
+test("an id prefix reused under a second section is reported", () => {
+  const problems = invariantProblems(
+    "# Invariants\n\n## One\n\n" + entry("INV-A1") + "## Two\n\n" + entry("INV-A2"),
+  );
+  assert.ok(
+    problems.some((p) => p.includes("INV-A2 (entry 2)") && p.includes('prefix INV-A already belongs to section "## One"')),
+    problems.join("; "),
+  );
+});
+
+test("a wrapped line starting with ## inside an entry is reported as a stray section", () => {
+  const problems = invariantProblems(register(entry("INV-A1") + "## Open releases it\n\n" + entry("INV-A2")));
+  assert.ok(problems.some((p) => p.includes("INV-A2") && p.includes("stray section")), problems.join("; "));
+});
+
+test("a section that mixes two prefixes is reported", () => {
+  const problems = invariantProblems(register(entry("INV-A1") + entry("INV-B1")));
+  assert.ok(problems.some((p) => p.includes("already uses prefix INV-A")), problems.join("; "));
+});
+
+test("two sections with one prefix each yield no problems", () => {
+  assert.deepEqual(
+    invariantProblems("# Invariants\n\n## One\n\n" + entry("INV-A1") + "## Two\n\n" + entry("INV-B1")),
+    [],
+  );
 });
 
 test("each missing field label is reported", () => {
