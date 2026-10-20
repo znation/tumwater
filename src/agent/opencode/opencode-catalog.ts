@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import { isJsonObject, validEntries } from "../../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
+import { errorMessage } from "../../text/text.js";
 import { opencodeModelsPath } from "../../paths.js";
 import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
 import { opencodeQualifiedModel } from "./opencode-args.js";
@@ -79,42 +80,41 @@ export async function fetchOpencodeCatalog(fetchFn: CatalogFetch = defaultFetch)
  * the provider map at the top level; OpenCode's cached copy wraps that same map under a `body`
  * key (the 2.0.32 capture in test/fixtures), so both shapes are accepted. Each kept model is
  * keyed `<provider>/<model>`. A model never present yields no entry, so an unknown model is
- * automatically "not free" to opencodeModelFree. */
+ * automatically "not free" to opencodeModelFree. The body is untrusted network data: a malformed
+ * provider or model is skipped, never thrown on. */
 export function parseOpencodeCatalog(body: unknown, providers: readonly string[]): Record<string, OpencodeCatalogModel> {
   const out: Record<string, OpencodeCatalogModel> = {};
-  const root = body as { body?: unknown } | null;
+  const root = isJsonObject(body) ? body : {};
   // models.dev's api.json IS the provider map; OpenCode's cached copy wraps that map under `body`.
-  const wrapped = root?.body;
-  const catalog =
-    isJsonObject(wrapped) ? wrapped : ((body ?? {}) as Record<string, unknown>);
-  for (const [provider, providerRaw] of Object.entries(catalog)) {
+  const wrapped = root.body;
+  const catalog = isJsonObject(wrapped) ? wrapped : root;
+  for (const [provider, providerInfo] of Object.entries(catalog)) {
     if (provider !== "opencode" && !providers.includes(provider)) continue;
-    const providerInfo = providerRaw as { models?: Record<string, unknown> } | null;
-    if (providerInfo?.models === undefined) continue;
-    for (const [id, raw] of Object.entries(providerInfo.models)) {
-      const m = raw as {
-        cost?: { input?: number; output?: number };
-        limit?: { context?: number };
-        modalities?: { input?: string[] };
-        reasoning_options?: { type?: string; values?: string[] }[];
-      } | null;
+    if (!isJsonObject(providerInfo) || !isJsonObject(providerInfo.models)) continue;
+    for (const [id, m] of Object.entries(providerInfo.models)) {
+      if (!isJsonObject(m)) continue;
       // Only a present cost block marks a model free: a missing cost block is unknown price data,
       // and treating it as $0 is the unsafe direction for a budget gate.
-      const cost = m?.cost;
+      const cost = isJsonObject(m.cost) ? m.cost : undefined;
       const input = cost?.input ?? 0;
       const output = cost?.output ?? 0;
-      const model: OpencodeCatalogModel = { free: cost !== undefined && input === 0 && output === 0 };
+      const model: Record<string, unknown> = { free: cost !== undefined && input === 0 && output === 0 };
       if (cost !== undefined) {
         model.inputPerM = input;
         model.outputPerM = output;
       }
-      if (m?.limit?.context !== undefined) model.context = m.limit.context;
-      if (m?.modalities?.input !== undefined) model.images = m.modalities.input.includes("image");
-      const efforts = m?.reasoning_options
-        ?.filter((r) => r.type === "effort")
-        .flatMap((r) => r.values ?? []);
-      if (efforts !== undefined && efforts.length > 0) model.efforts = efforts;
-      out[`${provider}/${id}`] = model;
+      if (isJsonObject(m.limit) && m.limit.context !== undefined) model.context = m.limit.context;
+      if (isJsonObject(m.modalities) && Array.isArray(m.modalities.input)) {
+        model.images = m.modalities.input.includes("image");
+      }
+      if (Array.isArray(m.reasoning_options)) {
+        const efforts = m.reasoning_options
+          .flatMap((r: unknown) =>
+            isJsonObject(r) && r.type === "effort" && Array.isArray(r.values) ? (r.values as unknown[]) : [],
+          );
+        if (efforts.length > 0) model.efforts = efforts;
+      }
+      if (isOpencodeCatalogModel(model)) out[`${provider}/${id}`] = model;
     }
   }
   return out;
@@ -246,7 +246,8 @@ interface OpencodeRefreshOptions {
 /** Return a cache fresh enough to price by, fetching and persisting when the current one is
  * missing, stale (older than 24 h) or fetched by a different `opencode --version`. A failed
  * fetch keeps the old cache (logging one warning) so the team still prices by the last good
- * data; `billedAt` from the old cache survives a successful refresh (part 6c/7). */
+ * data; `billedAt` from the old cache survives a successful refresh (part 6c/7). A failed cache
+ * write warns and returns the fetched catalog, so the next start fetches again. */
 export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefreshOptions): Promise<OpencodeCatalogCache> {
   const now = opts.now !== undefined ? opts.now() : Date.now();
   const version = opts.cliVersion !== undefined ? opts.cliVersion : readCliVersion(opts.cliBin);
@@ -270,6 +271,10 @@ export async function refreshOpencodeCatalog(root: string, opts: OpencodeRefresh
     if (fresh !== undefined && old?.billedAt !== undefined) fresh.billedAt = old.billedAt;
   }
   const cache: OpencodeCatalogCache = { fetchedAt: now, cliVersion: version, models: parsed };
-  writeOpencodeCache(root, cache);
+  try {
+    writeOpencodeCache(root, cache);
+  } catch (err) {
+    opts.warn?.(`could not save the open code model catalog: ${errorMessage(err)}`);
+  }
   return cache;
 }

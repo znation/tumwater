@@ -4014,3 +4014,18 @@ state save or the events feed fails; a failed save warns under the role's id.
 (`saveRunnerStateBestEffort`).
 
 **Pinned by.** `test/run-finalize.test.ts` — "a failed role-state save cannot reject finalizeRun — run_end still logs and the run warns", "an unwritable events feed cannot reject finalizeRun — the outcome still folds and saves" and "finalizeRun folds the outcome onto the state, persists it, and logs run_end".
+
+## OpenCode catalog seed: a refresh never rejects the startup check
+
+### INV-BZ1: refreshOpencodeCatalog resolves for any fetched body and any cache-write failure
+
+**Guarantee.** `refreshOpencodeCatalog` resolves for any fetched body and any cache-write failure. It
+drops a malformed upstream provider or model rather than storing it or throwing, and a failed write
+warns through `opts.warn` and still returns the fetched catalog.
+
+**Binds.** `src/agent/opencode/opencode-catalog.ts` (`parseOpencodeCatalog`, `refreshOpencodeCatalog`,
+`isOpencodeCatalogModel`).
+
+**Pinned by.** `test/opencode-catalog.test.ts` — "parseOpencodeCatalog skips a malformed provider or
+model instead of throwing", "a failed catalog write warns and still returns the fetched catalog" and
+"a failed fetch keeps the old cache and logs one warning".

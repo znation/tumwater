@@ -287,3 +287,40 @@ test("readOpencodeCache drops a foreign catalog entry and keeps the valid ones",
     null,
   );
 });
+
+test("parseOpencodeCatalog skips a malformed provider or model instead of throwing", () => {
+  const body = {
+    opencode: {
+      models: {
+        a: { modalities: { input: 5 } },
+        b: { reasoning_options: { type: "effort" } },
+        c: { cost: { input: "0", output: 0 } },
+        d: null,
+        ok: { cost: { input: 0, output: 0 } },
+      },
+    },
+    "opencode-go": { models: null },
+  };
+  assert.deepEqual(parseOpencodeCatalog(body, ["opencode-go"]), {
+    "opencode/a": { free: false },
+    "opencode/b": { free: false },
+    "opencode/ok": { free: true, inputPerM: 0, outputPerM: 0 },
+  });
+});
+
+test("a failed catalog write warns and still returns the fetched catalog", async () => {
+  const root = tmpdir();
+  fs.mkdirSync(opencodeModelsPath(root), { recursive: true });
+  const warnings: string[] = [];
+  const cache = await refreshOpencodeCatalog(root, {
+    providers: [],
+    fetch: fetchOf(catalogCapture()),
+    cliVersion: "2.0.32",
+    now: () => 1_000,
+    warn: (m) => warnings.push(m),
+  });
+  assert.equal(cache.fetchedAt, 1_000);
+  assert.equal(cache.models["opencode/deepseek-v4.1-flash-free"]?.free, true);
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0]?.startsWith("could not save the open code model catalog"));
+});
