@@ -3524,3 +3524,61 @@ deletes the rejected ref", "a converging chain whose revisions raise only new ob
 revising", "a chain whose objections never repeat ends at the backstop" and "the director never
 gets a revision: a rejection leaves no revision state"; `test/revision-prior-tags.test.ts` — "a
 (prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".
+
+## Batch merge: a stack merges as one fast-forward on its own check, and only a full check that passed on exactly the merged tip seeds main's baseline
+
+`mergeStack` in `src/merge/merge-stack.ts` cherry-picks a batch of approved changes onto main's tip,
+checks the combined tree once, and fast-forwards main through the captured shas (`ffStackToMain`).
+
+### INV-BJ1: one batch check covers the whole stack, and a green stack fast-forwards main once
+
+**Guarantee.** One scope-`batch` check covers the whole stack. A green stack fast-forwards main once
+through the captured shas, logs one `merged` event per change, and deletes each change's merge ref.
+
+**Binds.** `src/merge/merge-stack.ts` (`mergeStack`, `ffStackToMain`).
+
+**Pinned by.** `test/merger-bisect.test.ts` — "a stack whose every change passes still takes exactly
+one batch check"; `test/merge-stack.test.ts` — "ffStackToMain fast-forwards main through the whole
+stack in one ff with per-change events".
+
+### INV-BJ2: a fast-forward lost to a moved main re-stacks a bounded number of times, and a lost race merges nothing
+
+**Guarantee.** A fast-forward lost to a moved main re-stacks on the new tip, up to
+`BATCH_RESTACK_ATTEMPTS` times. A re-stack whose tree adds only review-exempt changes to the checked
+tree skips its re-check. A race lost on every attempt, a primary checkout dirty in the stack's
+files, and a stop before an attempt all keep every ref and merge nothing.
+
+**Binds.** `src/merge/merge-stack.ts` (`mergeStack`, `BATCH_RESTACK_ATTEMPTS`).
+
+**Pinned by.** `test/merger-restack.test.ts` — "a fast-forward lost to a doc-only commit re-stacks
+without a second batch check", "a batch that loses the fast-forward race on every attempt keeps
+every ref as merge_blocked", "an abort between re-stack attempts stops the batch: aborted, refs
+kept, nothing merges" and "a batch whose files are dirty in the primary checkout is blocked before
+its check"; `test/merge-stack.test.ts` — "ffStackToMain returns merge_blocked when main diverged
+under the stack, with no events".
+
+### INV-BJ3: a stack whose whole delta is review-exempt runs no check, but not no cross-check
+
+**Guarantee.** A stack whose whole delta is review-exempt runs no check, but runs the same
+cross-checks as `verifyMerge`'s exempt arm. If either fails, the stack goes to the one-at-a-time
+fallback.
+
+**Binds.** `src/merge/merge-stack.ts` (`mergeStack`).
+
+**Pinned by.** `test/merger-bisect.test.ts` — "a stack whose every change is doc-only merges with no
+batch check" and "a doc-only stack that breaks backlog structure is blocked, not waved through".
+
+### INV-BJ4: only a full batch check that passed on exactly the merged tip seeds main's baseline
+
+**Guarantee.** After a merge, `mergeStack` seeds the merged tip green only when the batch check's
+status is `"passed"` and `check.mergeCommand` is unset. A doc-only stack (no check ran), a stack
+whose failures are all main's known failures, and a `check.mergeCommand` green seed nothing, so the
+main watch checks that tip itself.
+
+**Binds.** `src/merge/merge-stack.ts` (`mergeStack`), `src/baseline/main-baseline.ts`
+(`noteGreenBaseline`).
+
+**Pinned by.** `test/merge-stack-seed.test.ts` — "a stack whose batch check passed seeds the merged
+tip green", "a stack that fails only main's known failures merges but seeds nothing", "a doc-only
+stack runs no check and seeds nothing" and "a stack merged on check.mergeCommand runs it as a
+non-full batch check and seeds nothing".
