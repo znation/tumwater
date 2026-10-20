@@ -1,10 +1,9 @@
 // vocabulary: plain
 import { loadConfigSafe } from "../config/config.js";
-import { withStateLockAsync } from "../concurrency/lock.js";
+import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js";
 import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
 import { stampedRole, stampedSubject } from "../git/commit-message.js";
-import { primaryWorktreeLockPath } from "../paths.js";
 import { shortSha } from "../text/format.js";
 
 /** `tumwater revert <sha>`: undo one merged change on main, committing the inverse as
@@ -141,7 +140,7 @@ export async function revertMergedCommit(
     // call, and that write takes the same lock synchronously — a lock already held across our
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));
-    return await withStateLockAsync(primaryWorktreeLockPath(root), async () => {
+    return await withPrimaryWorktreeLockAsync(root, async () => {
       const target = await resolveRevertTarget(root, ref);
       if (!target.ok) return target;
       const { full } = target;

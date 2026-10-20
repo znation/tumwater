@@ -11,8 +11,7 @@ import { withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { fail } from "../cli/cli-output.js";
 import { trimTrailingBlankLines } from "../text/text.js";
-import { withStateLock } from "../concurrency/lock.js";
-import { primaryWorktreeLockPath } from "../paths.js";
+import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 
 /** Drop the Refused note from `entry`'s slice of `lines`, in place; an entry with none loses its
  * Waiting-for-the-next-failure note instead. False (and `lines` untouched) when the entry
@@ -44,7 +43,7 @@ export function tryReleaseEntry(
   expectedTitle: string,
 ): ReleaseEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const file = path.join(root, fileName);
     const md = readTextIfExists(file) ?? "";
     const entry = findEntry(md, sectionTitle, n);
@@ -64,7 +63,7 @@ export function tryReleaseEntry(
  * fails too, writing nothing. */
 export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
     if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused or Waiting for the next failure note`);
     writeTextAtomic(file, lines.join("\n"));
@@ -80,7 +79,7 @@ export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { f
  * ending as it did before the move (a trailing newline iff it had one). */
 export function moveEntryToTop(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
     if (n === 1) fail(`${kind} #1 "${entry.title}" is already first`);
     spliceEntryToTop(lines, sectionTitle, entry);
@@ -122,7 +121,7 @@ export function tryMoveEntryToTop(
   expectedTitle: string,
 ): MoveEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const file = path.join(root, fileName);
     const md = readTextIfExists(file) ?? "";
     const entry = findEntry(md, sectionTitle, n);

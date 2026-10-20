@@ -5,6 +5,7 @@ import { pidAlive } from "../process/process.js";
 import { errorMessage, parsePositiveInt } from "../text/text.js";
 import { ensureParentDir, removeTree } from "../files/files.js";
 import { errCode } from "../errno.js";
+import { primaryWorktreeLockPath } from "../paths.js";
 
 /** How old a lock dir must be before it is stale on age alone — regardless of whether its
  * recorded pid still looks alive, so a reused pid cannot latch a dead holder as live. */
@@ -247,4 +248,16 @@ export function withStateLock<T>(lock: string, fn: () => T, timeoutMs = 10_000):
 export async function withStateLockAsync<T>(lock: string, fn: () => Promise<T>, timeoutMs = 10_000): Promise<T> {
   ensureParentDir(lock);
   return withLock(lock, fn, timeoutMs);
+}
+
+/** withStateLock on the primary-worktree lock: the one lock every read-modify-write of a tracked
+ * file in the primary checkout (a backlog file, the brief) takes, which a merge's working-tree
+ * fast-forward takes too. */
+export function withPrimaryWorktreeLock<T>(root: string, fn: () => T): T {
+  return withStateLock(primaryWorktreeLockPath(root), fn);
+}
+
+/** The async twin of withPrimaryWorktreeLock, for a section that awaits git. */
+export function withPrimaryWorktreeLockAsync<T>(root: string, fn: () => Promise<T>): Promise<T> {
+  return withStateLockAsync(primaryWorktreeLockPath(root), fn);
 }

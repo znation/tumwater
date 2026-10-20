@@ -3,10 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceInitialPrompt } from "./brief.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
-import { withStateLock } from "../concurrency/lock.js";
+import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { writeTextAtomic } from "../files/files.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { primaryWorktreeLockPath } from "../paths.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { tooLongMessage } from "../text/text.js";
 
@@ -32,7 +31,7 @@ export async function editInitialPrompt(root: string, text: string): Promise<Bri
   const file = briefPath(root);
   if (file === null) return { ok: false, error: NO_BRIEF };
   const name = path.basename(file);
-  const changed = withStateLock(primaryWorktreeLockPath(root), (): boolean | string => {
+  const changed = withPrimaryWorktreeLock(root, (): boolean | string => {
     const current = fs.readFileSync(file, "utf8");
     const next = replaceInitialPrompt(current, prompt);
     if (next === null) return `${name} no longer carries a prompt block`;

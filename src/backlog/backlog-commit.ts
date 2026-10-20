@@ -1,8 +1,7 @@
 import { loadConfigSafe } from "../config/config.js";
-import { withStateLockAsync } from "../concurrency/lock.js";
+import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { commitAuthorArgs, committerIdentArgs, gitTry } from "../git/git-run.js";
-import { primaryWorktreeLockPath } from "../paths.js";
 
 /** Commit one operator-written backlog file on main, so the entry reaches the worktrees that
  * branch from main and the primary checkout stays clean for the next fast-forward. Runs under
@@ -17,7 +16,7 @@ export async function commitOperatorBacklogEdit(root: string, file: string, subj
     // call, and that write takes the same lock synchronously — a lock already held across our
     // awaits would block its event loop until the lock times out.
     await new Promise<void>((resolve) => setImmediate(resolve));
-    return await withStateLockAsync(primaryWorktreeLockPath(root), async () => {
+    return await withPrimaryWorktreeLockAsync(root, async () => {
       const primary = await currentBranch(root);
       if (primary === null) return false;
       if (targetBranch(loadConfigSafe(root).config?.baseBranch, primary) !== primary) return false;

@@ -4,8 +4,8 @@ import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
 import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
-import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
-import { withStateLockAsync } from "../concurrency/lock.js";
+import { CONFIG_BASENAME, configPath } from "../paths.js";
+import { withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { errorMessage } from "../text/text.js";
 
 /** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
@@ -261,7 +261,7 @@ export async function ffMainToOrWhy(
     // that read before this merge can rename its stale whole-file write over the merged change.
     // The ref-push arm below touches no working tree and needs no lock; the save/merge/restore
     // stays one short section, never held across a build re-check.
-    return withStateLockAsync(primaryWorktreeLockPath(root), async () => {
+    return withPrimaryWorktreeLockAsync(root, async () => {
       const saved = await configBytesToPreserve(root, ref);
       try {
         await git(root, "merge", "--ff-only", ref);

@@ -19,8 +19,7 @@ import { fail } from "../cli/cli-output.js";
 import { backlogHolds, type EntryHold } from "./backlog-eligibility.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
-import { withStateLock } from "../concurrency/lock.js";
-import { primaryWorktreeLockPath } from "../paths.js";
+import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
@@ -40,7 +39,7 @@ export function backlogTarget(kind: "bug" | "plan"): { fileName: string; section
  * primary-worktree lock (paths.ts), which a merge's working-tree fast-forward (`ffMainTo`) takes
  * too, so a filed entry and a merged change to the same backlog file cannot each clobber the other.
  * The section is one read plus one atomic rename — short, never held across a build check — and
- * withStateLock creates the state dir the lock lives under on first use. */
+ * withPrimaryWorktreeLock creates the state dir the lock lives under on first use. */
 function appendEntry(
   root: string,
   fileName: string,
@@ -49,7 +48,7 @@ function appendEntry(
   heading: string,
   body: string,
 ): void {
-  withStateLock(primaryWorktreeLockPath(root), () =>
+  withPrimaryWorktreeLock(root, () =>
     appendEntryLocked(root, fileName, template, sectionTitle, heading, body),
   );
 }
@@ -182,7 +181,7 @@ function removeEntry(
   sectionTitle: string,
   n: number,
 ): { file: string; title: string } {
-  return withStateLock(primaryWorktreeLockPath(root), () =>
+  return withPrimaryWorktreeLock(root, () =>
     removeEntryLocked(root, fileName, sectionTitle, n),
   );
 }
@@ -232,7 +231,7 @@ export function tryCancelEntry(
   expectedTitle: string,
 ): CancelEntryOutcome {
   const { fileName, sectionTitle } = backlogTarget(kind);
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const file = path.join(root, fileName);
     const md = readTextIfExists(file) ?? "";
     const entry = findEntry(md, sectionTitle, n);
@@ -254,7 +253,7 @@ function editEntry(
   title: string,
   body: string,
 ): { file: string; title: string; unchanged?: true } {
-  return withStateLock(primaryWorktreeLockPath(root), () =>
+  return withPrimaryWorktreeLock(root, () =>
     editEntryLocked(root, fileName, sectionTitle, n, title, body),
   );
 }
@@ -349,7 +348,7 @@ export function tryEditEntry(
   const { fileName, sectionTitle } = backlogTarget(kind);
   const title = stripEntryStamp(collapseWhitespace(rawTitle));
   const body = rawBody.replace(/\r\n?/g, "\n").trim();
-  return withStateLock(primaryWorktreeLockPath(root), () => {
+  return withPrimaryWorktreeLock(root, () => {
     const file = path.join(root, fileName);
     const md = readTextIfExists(file) ?? "";
     const entry = findEntry(md, sectionTitle, n);

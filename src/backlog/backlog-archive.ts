@@ -22,14 +22,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { withLock, withStateLockAsync } from "../concurrency/lock.js";
+import { withLock, withPrimaryWorktreeLockAsync } from "../concurrency/lock.js";
 import { loadConfigSafe } from "../config/config.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { changeBaseRev, currentBranch, fileContentAt, headOf, targetBranch } from "../git/git.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { commitAuthorArgs, committerIdentArgs, git, gitTry } from "../git/git-run.js";
-import { mergeLockDir, primaryWorktreeLockPath } from "../paths.js";
+import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
 import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, type FinishedArchive } from "./backlog-md.js";
@@ -348,7 +348,7 @@ export async function archiveFinishedOnMain(
   return withLock(
     mergeLockDir(root),
     () =>
-      withStateLockAsync(primaryWorktreeLockPath(root), async (): Promise<ArchiveOnMainOutcome> => {
+      withPrimaryWorktreeLockAsync(root, async (): Promise<ArchiveOnMainOutcome> => {
         const primary = await currentBranch(root);
         const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
         if (primary !== base) {
@@ -442,7 +442,7 @@ export async function fileQuarantineBugsOnMain(
   return withLock(
     mergeLockDir(root),
     () =>
-      withStateLockAsync(primaryWorktreeLockPath(root), async (): Promise<QuarantineFilingOutcome> => {
+      withPrimaryWorktreeLockAsync(root, async (): Promise<QuarantineFilingOutcome> => {
         const primary = await currentBranch(root);
         const base = targetBranch(loadConfigSafe(root).config?.baseBranch, primary);
         if (primary !== base) {

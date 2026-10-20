@@ -23,8 +23,7 @@ import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, trun
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
-import { withStateLock } from "../concurrency/lock.js";
-import { primaryWorktreeLockPath } from "../paths.js";
+import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 /** Cap on a question's one-line body preview, so one very long first line cannot dominate
  * the `questions` list. */
 const BODY_PREVIEW_MAX = 100;
@@ -279,7 +278,7 @@ export const UNCLOSED_FENCE_MESSAGE =
  * a block at position `n` titled otherwise is `moved` and nothing is written; the comparison runs
  * inside the lock, after the scan. */
 export function tryAnswerQuestion(root: string, n: number, rawDecision: string, expectedTitle?: string, keepLines = false): AnswerOutcome {
-  return withStateLock(primaryWorktreeLockPath(root), () => answerQuestionLocked(root, n, rawDecision, expectedTitle, keepLines));
+  return withPrimaryWorktreeLock(root, () => answerQuestionLocked(root, n, rawDecision, expectedTitle, keepLines));
 }
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
