@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A team start drops every `refs/tumwater/` pin whose commit is gone, so a disabled role's dangling pin no longer stops `git gc` until someone deletes it by hand (planned 2026-10-20 by the plan role; independent of every Planned entry: touches src/git/worktree.ts, src/orchestrator/orchestrator.ts, test/worktree.test.ts. The in-flight `tumwater doctor` "tumwater pins" entry edits only src/doctor/ and its tests, and reports what this sweep drops. The blocked Plain terms code parts reword comments in these files and rename no identifier this entry uses or adds) — done 2026-10-20
+
+**Goal.** A pin under `refs/tumwater/` whose commit is missing breaks every git command that walks all refs. `git gc`, and the `gc --auto` that commits trigger, exit 128 with `fatal: bad object <ref>`, so the repository stops being packed. Today the harness drops such a pin only when it trips over it. `checkoutDetached` (src/git/worktree.ts) drops one when a slot's `checkout --detach` fails on it. `dropDanglingPin` (src/runner/leftover.ts) drops a role's own merge pin when that role next runs. A rejected pin, a legacy landing pin, or the merge pin of a disabled or retired role stays until an operator runs `git update-ref -d`. Sweep them once at team start, before any run.
+
+**Approach.**
+- src/git/worktree.ts:
+  - Give `logDroppedRef(root, ref)` a third parameter `why: string`. The event message becomes `dropped dangling ref ${ref} (<short sha>, object missing) ${why}`. `checkoutDetached` passes `"so a worktree checkout could proceed"`, so its message is unchanged.
+  - Add `export async function dropDanglingTumwaterPins(root: string): Promise<string[]>` beside `removeLegacyLandWorktrees`. For each `{ ref, sha }` of `await refsUnder(root, "refs/tumwater/")` (src/git/git.ts) where `!(await commitExists(root, sha))`, it calls `logDroppedRef(root, ref, "at team start")` and then `await deleteRef(root, ref)`. It returns the dropped ref names in `refsUnder` order.
+  - Use the unguarded `deleteRef`, as `checkoutDetached` does: the sweep must not depend on the sha it read, and the guarded form fails on a `packed-refs` line that is out of order. The doc comment says so. It also says that the sweep runs before any run, while nothing else writes pins, and that refs outside `refs/tumwater/` are never touched.
+- src/orchestrator/orchestrator.ts (`runOrchestrator`): call `await dropDanglingTumwaterPins(root)` right after `await runStartupMigrations(root)`. Add a one-line comment: the `mergeRefs` migration has already moved legacy landing pins, it keeps a dangling one because `setRef` refuses a missing object, and the sweep drops what is left before any run.
+  - A role whose dangling merge pin the sweep dropped then goes through `recoverLeftover`'s no-pin path at its next run. That is the same path a role takes after a merge deletes its pin.
+  - Do not call the sweep from `runStartupMigrationsIfIdle` or src/cli/cli-start.ts: CLI readers do not change refs.
+
+**Tests.**
+- test/worktree.test.ts, after "ensureDetachedWorktree still throws on a dangling ref outside refs/tumwater/": add "dropDanglingTumwaterPins drops loose and packed pins naming missing commits and keeps live ones". Set up a `makeRepo()`:
+  - Run `git update-ref refs/tumwater/rejected/bugfix HEAD`, then `git pack-refs --all`.
+  - Append `${"2".repeat(40)} refs/tumwater/merge/retired` to `.git/packed-refs`.
+  - Write a loose `.git/refs/tumwater/merge/feature-5` holding `"1".repeat(40)`.
+  - The call returns `["refs/tumwater/merge/feature-5", "refs/tumwater/merge/retired"]`.
+  - Afterwards `refsUnder(repo, "refs/tumwater/")` lists only `refs/tumwater/rejected/bugfix`, and `git gc -q` exits 0.
+  - `readEvents(repo)` holds two `warning` events whose messages end `at team start`, with `ref` and `sha` set.
+  - A second call returns `[]` and logs nothing more.
+- The existing tests "ensureDetachedWorktree drops a dangling merge ref that makes `checkout --detach` exit 128" and "a pin whose commit is missing is dropped with a warning and nothing is queued" pass unchanged.
+
+**Acceptance criteria.**
+- At team start, before any run, every `refs/tumwater/` ref whose commit is missing is deleted, loose or packed. Each deletion logs one `warning` event naming the ref and sha. Live pins and refs outside `refs/tumwater/` are left alone.
+- A `checkoutDetached` drop logs the same message as before.
+- `npm run test:gate` passes.
+
 ### `tumwater plan|bug --edit`, the TUI's Ctrl+E and the dashboard drawer's Save say when the edited entry is still held, so editing a refused or Needs-replan entry does not read as handing it back to a role (planned 2026-10-20 by the plan role; independent of every Planned entry. Touches `editAndAnnounce` in src/backlog/backlog-cli.ts, `applyEntryEdit` in src/ui/tui/tui-editor-entry.ts, `handleBacklogEdit` in src/gui/gui-backlog-commands.ts and the `entry-edit-save` action in src/ui/gui/gui-client-boot.ts. The in-flight TUI/dashboard release-and-top entry edits other functions in src/gui/gui-backlog-commands.ts and adds the same `backlogHolds`/`stillHeldNote` names to its eligibility import, a one-line rebase. Plain terms code run 7/20 and 15/20 later rename code in src/ui/gui/ and src/ui/tui/; this entry renames nothing; done 2026-10-20)
 
 **Goal.** `--release` and `--top` (`releaseAndAnnounce`, `topAndAnnounce`) print `stillHeldNote(hold)` when the entry is still held after the commit. An edit is the other common write to a held entry: an operator rewrites a refused, Needs-review or Needs-replan entry, or one that waits on an unmerged "requires part N/M landed" prerequisite, and expects a role to pick it up. A rewrite keeps the body's note line unless the operator deletes it, and an edit keeps the heading's trailing parenthetical, so the entry stays held. All three edit surfaces still report only `edited`, so the operator cannot tell that `assignNext` skips the entry. Each surface should name the remaining hold. An entry that is not held reports what it does now. No surface wakes a role on edit, now or after this change.

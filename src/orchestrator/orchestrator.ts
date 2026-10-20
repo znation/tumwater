@@ -18,7 +18,7 @@ import {
   type PollContext,
 } from "./orchestrator-poll.js";
 import { RoleRunner } from "../runner/runner.js";
-import { removeLegacyLandWorktrees } from "../git/worktree.js";
+import { dropDanglingTumwaterPins, removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -194,6 +194,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // persisted-name migrations run before it. (After the info write and start event above, which
   // an in-process test or a second `tumwater run` probe reads synchronously.)
   await runStartupMigrations(root);
+  // The mergeRefs migration moved legacy landing pins but keeps a dangling one (setRef refuses a
+  // missing object); this drops what is left before any run.
+  await dropDanglingTumwaterPins(root);
   // Finished backlog entries still in the live files move to the archives now
   // (plans/backlog-archive.md), while no merge is in progress and no run is in flight: a
   // repository migrates on its first start with this build, and an entry a hand commit moved is

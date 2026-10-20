@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GIT_TIMEOUT_MS, git, gitTry } from "./git-run.js";
-import { branchExists, hasWorktreeRegistrations, isGitRepo, refShaFromFiles, resolveGitDir } from "./git.js";
+import { branchExists, commitExists, deleteRef, hasWorktreeRegistrations, isGitRepo, refShaFromFiles, refsUnder, resolveGitDir } from "./git.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { pruneOldDirectory, removeTree, subdirectoryNames } from "../files/files.js";
 import { KILL_GRACE_MS } from "../process/process-group.js";
@@ -149,6 +149,22 @@ export async function removeLegacyLandWorktrees(root: string): Promise<void> {
   if (names.length > 0) await gitTry(root, "worktree", "prune");
 }
 
+/** Delete every `refs/tumwater/` ref whose commit is missing, loose or packed, logging a warning
+ * for each, and return the dropped names in refsUnder order: a dangling pin makes `git gc` exit
+ * 128 until someone deletes it. Uses the unguarded deleteRef, as checkoutDetached does, so
+ * the delete does not depend on the sha read. Runs at team start, before any run, while nothing
+ * else writes pins; refs outside `refs/tumwater/` are never touched. */
+export async function dropDanglingTumwaterPins(root: string): Promise<string[]> {
+  const dropped: string[] = [];
+  for (const { ref, sha } of await refsUnder(root, "refs/tumwater/")) {
+    if (await commitExists(root, sha)) continue;
+    logDroppedRef(root, ref, "at team start");
+    await deleteRef(root, ref);
+    dropped.push(ref);
+  }
+  return dropped;
+}
+
 /** Cheap file-existence shape probe for removeWorktreeDir: resolveGitDir needs the `.git` pointer,
  * and probing it for a directory that does not exist would only produce a caught throw — the
  * existence check keeps the common absent case allocation-free. Not a usability check; that
@@ -255,7 +271,7 @@ async function checkoutDetached(root: string, wt: string, ref: string): Promise<
       const dangling = /fatal: bad object (refs\/tumwater\/\S+)/.exec(String(err instanceof Error ? err.message : err));
       if (dangling === null) throw err;
       const bad = dangling[1]!;
-      logDroppedRef(root, bad);
+      logDroppedRef(root, bad, "so a worktree checkout could proceed");
       await git(wt, "update-ref", "-d", bad);
     }
   }
@@ -263,7 +279,7 @@ async function checkoutDetached(root: string, wt: string, ref: string): Promise<
 
 /** Record a dangling pin about to be deleted: its ref, the sha it named and, for a loose ref
  * file, when it was last written (omitted when the ref was packed). */
-function logDroppedRef(root: string, ref: string): void {
+function logDroppedRef(root: string, ref: string, why: string): void {
   const sha = refShaFromFiles(root, ref);
   const gitDir = resolveGitDir(root);
   let refWrittenAt: string | undefined;
@@ -275,7 +291,7 @@ function logDroppedRef(root: string, ref: string): void {
   logEventBestEffort(root, {
     source: TUMWATER_SOURCE,
     type: "warning",
-    message: `dropped dangling ref ${ref} (${sha?.slice(0, 7) ?? "unknown sha"}, object missing) so a worktree checkout could proceed`,
+    message: `dropped dangling ref ${ref} (${sha?.slice(0, 7) ?? "unknown sha"}, object missing) ${why}`,
     ref,
     sha,
     ...(refWrittenAt === undefined ? {} : { refWrittenAt }),

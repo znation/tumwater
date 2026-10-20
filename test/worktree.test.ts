@@ -2,10 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { aheadOfMain, commitAll, currentBranch, headOf, resolveGitDir } from "../src/git/git.js";
+import { aheadOfMain, commitAll, currentBranch, headOf, refsUnder, resolveGitDir } from "../src/git/git.js";
 import {
   abortSync,
   ensureDetachedWorktree,
+  dropDanglingTumwaterPins,
   ensureWorktree,
   removeLegacyLandWorktrees,
   resetWorktreeToMain,
@@ -445,5 +446,39 @@ test("ensureDetachedWorktree still throws on a dangling ref outside refs/tumwate
   await assert.rejects(ensureDetachedWorktree(repo, dir, mainSha(repo)), /bad object/);
   assert.equal(fs.existsSync(refFile), true);
   assert.deepEqual(readEvents(repo).filter((e) => e.type === "warning"), []);
+});
+
+/** Add a ref naming a missing commit to packed-refs, keeping it sorted (git binary-searches). */
+function appendPackedRef(gitDir: string, digit: string, ref: string): void {
+  const file = path.join(gitDir, "packed-refs");
+  const [header, ...lines] = fs.readFileSync(file, "utf8").trimEnd().split("\n");
+  lines.push(`${digit.repeat(40)} ${ref}`);
+  lines.sort((a, b) => (a.slice(41) < b.slice(41) ? -1 : 1));
+  fs.writeFileSync(file, `${header}\n${lines.join("\n")}\n`);
+}
+
+test("dropDanglingTumwaterPins drops loose and packed pins naming missing commits and keeps live ones", async () => {
+  const repo = makeRepo();
+  sh(repo, "git", "update-ref", "refs/tumwater/rejected/bugfix", "HEAD");
+  sh(repo, "git", "pack-refs", "--all");
+  const gitDir = resolveGitDir(repo)!;
+  appendPackedRef(gitDir, "2", "refs/tumwater/merge/retired");
+  const loose = path.join(gitDir, "refs", "tumwater", "merge", "feature-5");
+  fs.mkdirSync(path.dirname(loose), { recursive: true });
+  fs.writeFileSync(loose, `${"1".repeat(40)}\n`);
+
+  assert.deepEqual(await dropDanglingTumwaterPins(repo), ["refs/tumwater/merge/feature-5", "refs/tumwater/merge/retired"]);
+
+  assert.deepEqual((await refsUnder(repo, "refs/tumwater/")).map((r) => r.ref), ["refs/tumwater/rejected/bugfix"]);
+  sh(repo, "git", "gc", "-q");
+  const warnings = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warnings.length, 2);
+  for (const w of warnings) {
+    assert.match(String(w.message), /at team start$/);
+    assert.equal(typeof w.ref, "string");
+    assert.equal(typeof w.sha, "string");
+  }
+  assert.deepEqual(await dropDanglingTumwaterPins(repo), []);
+  assert.equal(readEvents(repo).filter((e) => e.type === "warning").length, 2);
 });
 
