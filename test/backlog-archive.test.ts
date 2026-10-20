@@ -6,6 +6,7 @@ import {
   archiveFinishedOnMain,
   archiveFinishedText,
   archiveNewFinishedEntries,
+  fileQuarantineBugsOnMain,
   archiveTemplate,
   liveFinishedHistory,
 } from "../src/backlog/backlog-archive.js";
@@ -18,6 +19,7 @@ import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
 import { checkLiveFinished } from "../src/doctor/doctor-backlog.js";
 import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
+import { failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 
 // The backlog archive (plans/backlog-archive.md): finished entries move from the live files'
 // `## Done` / `## Fixed` to PLANS-DONE.md / BUGS-FIXED.md — a commit-time sweep of the entries a
@@ -334,4 +336,62 @@ test("the structure check rejects a new plan with no done date filed into PLANS-
     (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
     /PLANS-DONE\.md files "Brand new \(planned 2026-10-18\)" directly under "## Done" with no done date.*"## Planned" in PLANS\.md/,
   );
+});
+
+test("archiveFinishedOnMain restores the checkout when a file write fails, and archives on the next call", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
+  seedCommit(root, "BUGS.md", "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n", "seed bugs");
+  ignoreInRepo(root, ".tumwater/");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const restore = failRenameSyncOn(path.join(root, "BUGS.md"), "disk full");
+  let failed;
+  try {
+    failed = await archiveFinishedOnMain(root);
+  } finally {
+    restore();
+  }
+  assert.equal(failed.status, "skipped");
+  assert.match(failed.status === "skipped" ? failed.reason : "", /disk full/);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false);
+  assert.equal(fs.existsSync(path.join(root, "BUGS-FIXED.md")), false);
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### D1/);
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
+
+  assert.equal((await archiveFinishedOnMain(root)).status, "archived");
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+});
+
+test("fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fails, and files both on the next call", async () => {
+  const root = makeRepo();
+  const seeded = "# Bugs\n\n## Open\n\n## Fixed\n";
+  seedCommit(root, "BUGS.md", seeded, "seed");
+  ignoreInRepo(root, ".tumwater/");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const prefix = `${path.join(root, "BUGS.md")}.tmp-`;
+  let writes = 0;
+  const undo = patchFsMethod("renameSync", (orig) => (a, b) => {
+    if (typeof a === "string" && a.startsWith(prefix) && ++writes === 2) throw new Error("disk full");
+    return orig(a, b);
+  });
+  let failed;
+  try {
+    failed = await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }, { test: "flaky two" }]);
+  } finally {
+    undo();
+  }
+  assert.equal(failed.status, "skipped");
+  assert.match(failed.status === "skipped" ? failed.reason : "", /disk full/);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), seeded);
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
+
+  const filed = await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }, { test: "flaky two" }]);
+  assert.equal(filed.status, "filed");
+  assert.deepEqual(filed.status === "filed" ? [...filed.bugs.keys()] : [], ["flaky one", "flaky two"]);
+  const text = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(text.split("failed, then passed on the same tree (quarantined by tumwater").length - 1, 2);
+  assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), Number(commits) + 1);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
 });

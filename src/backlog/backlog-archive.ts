@@ -337,7 +337,7 @@ type ArchiveOnMainOutcome =
  * cannot lose its fast-forward to this commit, and the primary-worktree lock the CLI backlog
  * writers and the fast-forward share. Writes nothing when there is nothing to move, when the
  * primary checkout is not on the base branch, or when any of the files has uncommitted changes;
- * a failed commit restores the files. `tumwater archive` and team start call it. */
+ * a failed write or commit restores the files. `tumwater archive` and team start call it. */
 export async function archiveFinishedOnMain(
   root: string,
   opts: { keep?: number; lockTimeoutMs?: number } = {},
@@ -365,12 +365,12 @@ export async function archiveFinishedOnMain(
         if (plan.length === 0) return { status: "nothing" };
         const touched: string[] = plan.flatMap(({ spec }) => [spec.file, spec.archive]);
         const created: string[] = plan.map(({ spec }) => spec.archive).filter((f) => !fs.existsSync(path.join(root, f)));
-        for (const { spec, move } of plan) writeMove(root, spec, move);
         const subject = stampedSubject(
           "operator", // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
           archiveCommitWhat(plan),
         );
         try {
+          for (const { spec, move } of plan) writeMove(root, spec, move);
           await git(root, "add", "--", ...touched);
           await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", ...touched);
         } catch (err) {
@@ -378,7 +378,7 @@ export async function archiveFinishedOnMain(
           const tracked = touched.filter((f) => !created.includes(f));
           await gitTry(root, "checkout", "--", ...tracked);
           for (const f of created) fs.rmSync(path.join(root, f), { force: true });
-          return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
+          return { status: "skipped", reason: `the move could not be written or committed: ${errorFirstLine(err)}` };
         }
         return {
           status: "archived",
@@ -439,9 +439,9 @@ function fencedTail(tail: string): string {
 /** File one BUGS.md `## Open` entry per newly quarantined test and commit BUGS.md on the base
  * branch as one `tumwater(operator):` commit, under the merge lock and the primary-worktree lock
  * exactly as archiveFinishedOnMain does. Skipped, writing nothing, when the primary checkout is
- * off the base branch or BUGS.md has uncommitted changes; a failed commit restores BUGS.md. A test
- * whose quarantine entry is already under `## Open` (a filing whose markQuarantineFiled failed
- * after the commit) gets that heading back and is not filed again. */
+ * off the base branch or BUGS.md has uncommitted changes; a failed append or commit restores
+ * BUGS.md. A test whose quarantine entry is already under `## Open` (a filing whose
+ * markQuarantineFiled failed after the commit) gets that heading back and is not filed again. */
 export async function fileQuarantineBugsOnMain(
   root: string,
   tests: readonly { test: string; tail?: string }[],
@@ -467,18 +467,28 @@ export async function fileQuarantineBugsOnMain(
         const open = before === null ? [] : parseEntryDetails(before, "Open").map((e) => e.title);
         const bugs = new Map<string, string>();
         let appended = 0;
-        for (const { test, tail } of tests) {
-          const existing = open.find((t) => t.startsWith(quarantineTitlePrefix(test)));
-          if (existing !== undefined) {
-            bugs.set(test, existing);
-            continue;
+        const restoreBugs = async (): Promise<void> => {
+          await gitTry(root, "reset", "-q", "--", "BUGS.md");
+          if (before === null) fs.rmSync(file, { force: true });
+          else writeTextAtomic(file, before);
+        };
+        try {
+          for (const { test, tail } of tests) {
+            const existing = open.find((t) => t.startsWith(quarantineTitlePrefix(test)));
+            if (existing !== undefined) {
+              bugs.set(test, existing);
+              continue;
+            }
+            const body = [
+              `The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves \`## Open\`. Find why it is unstable and fix it.`,
+              ...(tail ? ["", fencedTail(tail)] : []),
+            ].join("\n");
+            bugs.set(test, appendBugEntryLocked(root, `${quarantineTitlePrefix(test)}${date})`, body));
+            appended++;
           }
-          const body = [
-            `The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves \`## Open\`. Find why it is unstable and fix it.`,
-            ...(tail ? ["", fencedTail(tail)] : []),
-          ].join("\n");
-          bugs.set(test, appendBugEntryLocked(root, `${quarantineTitlePrefix(test)}${date})`, body));
-          appended++;
+        } catch (err) {
+          await restoreBugs();
+          return { status: "skipped", reason: `a BUGS.md entry could not be written: ${errorFirstLine(err)}` };
         }
         if (appended === 0) return { status: "filed", bugs };
         const subject = stampedSubject(
@@ -489,9 +499,7 @@ export async function fileQuarantineBugsOnMain(
           await git(root, "add", "--", "BUGS.md");
           await git(root, ...(await committerIdentArgs(root)), "commit", ...commitAuthorArgs(), "--only", "-m", subject, "--", "BUGS.md");
         } catch (err) {
-          await gitTry(root, "reset", "-q", "--", "BUGS.md");
-          if (before === null) fs.rmSync(file, { force: true });
-          else writeTextAtomic(file, before);
+          await restoreBugs();
           return { status: "skipped", reason: `the commit failed: ${errorFirstLine(err)}` };
         }
         return { status: "filed", bugs };

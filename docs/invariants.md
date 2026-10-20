@@ -4116,3 +4116,21 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/gates/startup-gate.ts` (`runStartupCheck`, `seedOpencodeCatalog`).
 
 **Pinned by.** `test/startup-gate.test.ts` — "the startup seed logs a warning when the catalog fetch fails or the cache cannot be saved".
+
+## Backlog bulk archive: a failed move leaves the checkout as it was
+
+### INV-CH1: a bulk archive whose file write or commit fails restores every file it touched and returns skipped
+
+**Guarantee.** `archiveFinishedOnMain` writes each planned move inside the same `try` as its `git add` and commit. A throwing write (disk full) or a failed commit unstages the files, restores the tracked ones, removes the archive files it created, and returns `skipped`, so the checkout is clean and the next call archives.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`archiveFinishedOnMain`, `writeMove`).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "archiveFinishedOnMain restores the checkout when a file write fails, and archives on the next call".
+
+### INV-CH2: a quarantine filing whose BUGS.md append or commit fails restores BUGS.md and returns skipped
+
+**Guarantee.** `fileQuarantineBugsOnMain` appends its entries inside a `try` whose catch restores BUGS.md to its prior text (or removes it when it did not exist) and returns `skipped`. A failed commit restores it the same way. A half-filed BUGS.md never blocks the next filing.
+
+**Binds.** `src/backlog/backlog-archive.ts` (`fileQuarantineBugsOnMain`).
+
+**Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain restores BUGS.md when a second entry's write fails, and files both on the next call".
