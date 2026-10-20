@@ -44,6 +44,22 @@ export function rejectRepeatFlag(seen: boolean, flag: string): void {
   if (seen) fail(`${flag} may only be given once`);
 }
 
+/** The shared body of parseGrepFlag and parseTypeFlag: the flag's value (null when absent)
+ * alongside `rest`, the args with the value token removed, failing with `missingValueError`
+ * when the flag is valueless or its value is empty. */
+function takeValuedFlag(
+  args: string[],
+  flag: string,
+  missingValueError: string,
+): { rest: string[]; value: string | null } {
+  const i = args.indexOf(flag);
+  const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
+  const raw = flagValue(args, flag);
+  if (raw === null) return { rest, value: null };
+  if (raw === undefined || raw === "") fail(missingValueError);
+  return { rest, value: raw };
+}
+
 /** Parse an optional `--grep <text>` filter flag for the filtering views (logs, history): the
  * substring pattern, or null when absent, returned alongside `rest` — the args with the
  * flag's value token removed. The value token leaves the list because a flag-shaped token
@@ -55,12 +71,8 @@ export function rejectRepeatFlag(seen: boolean, flag: string): void {
  * case. Lives beside flagValue, whose indexOf/value pairing it builds on, so the views'
  * scans cannot drift apart. */
 export function parseGrepFlag(args: string[], missingValueError: string): { rest: string[]; pattern: string | null } {
-  const i = args.indexOf("--grep");
-  const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
-  const raw = flagValue(args, "--grep");
-  if (raw === null) return { rest, pattern: null };
-  if (raw === undefined || raw === "") fail(missingValueError);
-  return { rest, pattern: raw };
+  const { rest, value } = takeValuedFlag(args, "--grep", missingValueError);
+  return { rest, pattern: value };
 }
 
 /** Parse an optional `--type <eventType>` exact-type filter flag for the event feed view
@@ -72,12 +84,8 @@ export function parseGrepFlag(args: string[], missingValueError: string): { rest
  * caller's wording (each view names its own command) — the same error the `--type` gate spec
  * (typeFlagSpec) reports earlier for the trailing-no-value case. */
 export function parseTypeFlag(args: string[], missingValueError: string): { rest: string[]; type: string | null } {
-  const i = args.indexOf("--type");
-  const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
-  const raw = flagValue(args, "--type");
-  if (raw === null) return { rest, type: null };
-  if (raw === undefined || raw === "") fail(missingValueError);
-  return { rest, type: raw };
+  const { rest, value } = takeValuedFlag(args, "--type", missingValueError);
+  return { rest, type: value };
 }
 
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
