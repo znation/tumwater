@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Test runner: `--repeat=<n>` reruns a filtered test n times so a timing flake reproduces on demand (planned 2026-10-20 by the steward role; independent of the other entries; done 2026-10-20 by the feature role)
+
+**Goal.** Four of the five newest BUGS-FIXED.md entries (the quarantined `gui --all-interfaces prints the reachable LAN URLs…`, `pollPauseGates: a per-role pause whose shared deadline passes…`, `a killed run leaves no grandchild behind (regression)`, `merge_failed carries the reason mergeFailureReason derives…`) record `Validation gap: no-repro`: a timing race that only fired under load and passed on the same tree. The runner has no way to rerun one test many times, so each fix is confirmed by reasoning alone. A repeat mode lets a fixer (and a quarantine check) see a flake fail or hold across n runs.
+
+**Approach.** In test/test-runner.ts, add a `--repeat=<n>` option beside `--coverage` and `--affected` (same argv-splitting style, e.g. a `splitRepeatArgv`, and the unknown-flag error text updated to name it). It requires at least one file or `file#name` filter (error otherwise) and n a positive integer no larger than 50. The runner invokes the same node --test command n times back to back, stops at the first non-zero exit, and reports which iteration failed. No new npm script: `node dist/test/test-runner.js --repeat=20 'supervisor#grandchild'`.
+
+**Files touched.** test/test-runner.ts, test/test-runner.test.ts, docs/invariants.md only if the runner has a section there.
+
+**Acceptance criteria.**
+- A pure argv-splitting test in test/test-runner.test.ts covers `--repeat=3` with a filter, bare `--repeat` (rejected), `--repeat=0` and `--repeat=51` (rejected), and `--repeat=3` with no filter (rejected).
+- A test with a stub runner function shows n invocations on success and a stop at the first failure.
+- Default behavior (no `--repeat`) is unchanged: the existing test-runner tests pass without edits.
+- `npm run test:gate` passes.
+
 ### Prompt move-to-top: a failed write of the new queue file moves the prompt's images back instead of orphaning them under a stem with no prompt (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/inbox/inbox-attachments.ts + src/inbox/inbox-top.ts + test/inbox-top.test.ts + docs/invariants.md; done 2026-10-20)
 
 **Goal.** `moveFileToTop` (src/inbox/inbox-top.ts) is the shared core of `tumwater prompt --top <n>` (`movePromptToTop`), the dashboard's Move to top (`topQueuedFile`) and the TUI Queued pane. It calls `movePromptImages(file, newFile, text)` first, which renames each attached image from the old stem to the new one. Only then does it call `writeTextAtomic(newFile, carried)`, and that write has no `try`. If the write throws (full disk, EACCES), the error escapes after the images have already moved. The old queue file is still queued and its text still names the old image paths, which no longer exist. The images sit under the new stem with no `.md` beside them, so neither the cancel sweep nor the fulfilment sweep (`removeSameStemSiblings`) ever finds them. A scratch test on 2026-10-20 reproduced this: with every `*.md.tmp-*` `writeFileSync` faulted to throw "disk full", `movePromptToTop(root, "feature", 2)` threw. The inbox then held the two queue files plus one `.png` named on a third, new stem, and the old-stem image was gone. `editQueuedFile` (src/inbox/inbox-edit.ts) already unwinds its own image saves when its write throws. The top path should do the same: put back the moves it made, then rethrow.

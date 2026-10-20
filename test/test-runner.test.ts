@@ -16,8 +16,10 @@ import {
   noNameMatchReason,
   orderByDuration,
   parseFilter,
+  repeatRuns,
   selectTestFiles,
   splitCoverageArgv,
+  splitRepeatArgv,
   suiteEnv,
   suiteGitEnv,
   SUITE_TIMEOUT_MS,
@@ -586,4 +588,26 @@ test("the spawned runner exits 1 and lists candidates when a filter matches noth
   const r = runRunner(["nosuchfilter"]);
   assert.equal(r.status, 1);
   assert.match(r.stderr ?? "", /^tumwater: no test file matches "nosuchfilter" — available:/m);
+});
+
+test("splitRepeatArgv lifts --repeat=<n> off a filtered argv and rejects bad counts or a missing filter", () => {
+  assert.deepEqual(splitRepeatArgv(["--repeat=3", "supervisor#grandchild"]), {
+    rest: ["supervisor#grandchild"],
+    repeat: 3,
+  });
+  assert.deepEqual(splitRepeatArgv(["runner"]), { rest: ["runner"] });
+  assert.match(splitRepeatArgv(["--repeat", "runner"]).error ?? "", /whole number/);
+  assert.match(splitRepeatArgv(["--repeat=0", "runner"]).error ?? "", /whole number/);
+  assert.match(splitRepeatArgv(["--repeat=51", "runner"]).error ?? "", /whole number/);
+  assert.equal(splitRepeatArgv(["--repeat=50", "runner"]).repeat, 50);
+  assert.match(splitRepeatArgv(["--repeat=3"]).error ?? "", /at least one file/);
+});
+
+test("repeatRuns invokes the runner n times on success and stops at the first failure", () => {
+  const calls: number[] = [];
+  assert.deepEqual(repeatRuns(4, (i) => (calls.push(i), 0)), { status: 0, runs: 4 });
+  assert.deepEqual(calls, [1, 2, 3, 4]);
+  const seen: number[] = [];
+  assert.deepEqual(repeatRuns(5, (i) => (seen.push(i), i === 3 ? 1 : 0)), { status: 1, runs: 3, failedAt: 3 });
+  assert.deepEqual(seen, [1, 2, 3]);
 });

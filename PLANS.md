@@ -24,20 +24,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Test runner: `--repeat=<n>` reruns a filtered test n times so a timing flake reproduces on demand (planned 2026-10-20 by the steward role; independent of the other entries)
-
-**Goal.** Four of the five newest BUGS-FIXED.md entries (the quarantined `gui --all-interfaces prints the reachable LAN URLs…`, `pollPauseGates: a per-role pause whose shared deadline passes…`, `a killed run leaves no grandchild behind (regression)`, `merge_failed carries the reason mergeFailureReason derives…`) record `Validation gap: no-repro`: a timing race that only fired under load and passed on the same tree. The runner has no way to rerun one test many times, so each fix is confirmed by reasoning alone. A repeat mode lets a fixer (and a quarantine check) see a flake fail or hold across n runs.
-
-**Approach.** In test/test-runner.ts, add a `--repeat=<n>` option beside `--coverage` and `--affected` (same argv-splitting style, e.g. a `splitRepeatArgv`, and the unknown-flag error text updated to name it). It requires at least one file or `file#name` filter (error otherwise) and n a positive integer no larger than 50. The runner invokes the same node --test command n times back to back, stops at the first non-zero exit, and reports which iteration failed. No new npm script: `node dist/test/test-runner.js --repeat=20 'supervisor#grandchild'`.
-
-**Files touched.** test/test-runner.ts, test/test-runner.test.ts, docs/invariants.md only if the runner has a section there.
-
-**Acceptance criteria.**
-- A pure argv-splitting test in test/test-runner.test.ts covers `--repeat=3` with a filter, bare `--repeat` (rejected), `--repeat=0` and `--repeat=51` (rejected), and `--repeat=3` with no filter (rejected).
-- A test with a stub runner function shows n invocations on success and a stop at the first failure.
-- Default behavior (no `--repeat`) is unchanged: the existing test-runner tests pass without edits.
-- `npm run test:gate` passes.
-
 ### Refusal: a failed PLANS.md strip write keeps the refusal going (its other notes still merge) instead of throwing out of handleRefusal (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/verdict/refusal.ts + test/refusal.test.ts + docs/invariants.md)
 
 **Goal.** `handleRefusal` (src/verdict/refusal.ts) documents "Never throws". Before it gathers the notes to commit, it strips the Refused note from any plan that is still blocked by a planned prerequisite (`withoutBlockedPlanRefusals`). That strip ends in `writeTextAtomic(plansFile, md)`, and the write has no `try`. If the write throws (full disk, EACCES), the error escapes `handleRefusal` and its caller in src/run/run-verdict.ts. Nothing is committed, and every other note the run wrote goes unmerged with it, such as a BUGS.md Refused note. A scratch test on 2026-10-20 reproduced this. Main's PLANS.md held "S, part 1/2" and "S, part 2/2" (the second requires part 1/2). The worktree added a Refused note under part 2/2 and a Refused note under a BUGS.md entry. With every `.tmp-` `writeFileSync` faulted to throw ENOSPC, `handleRefusal` threw `Error: ENOSPC`. No merge was called, and `git status` showed ` M BUGS.md` and ` M PLANS.md`. The strip is a cleanup step, so its failure should not cost the refusal. Committing PLANS.md unstripped would merge the very note the strip exists to drop, so PLANS.md must stay out of the commit instead. A plan refusal skipped this way is not lost for good: the entry stays unrefused on main, and the next run that takes it can refuse it again.

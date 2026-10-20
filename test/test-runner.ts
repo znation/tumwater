@@ -136,7 +136,7 @@ export function selectTestFiles(filters: readonly string[], distDir: string): Te
     return {
       names: [],
       files: [],
-      error: `unknown option ${JSON.stringify(flag)} — the runner takes --coverage, --affected[=<ref>], and file or file#name filters`,
+      error: `unknown option ${JSON.stringify(flag)} — the runner takes --coverage, --affected[=<ref>], --repeat=<n>, and file or file#name filters`,
     };
   for (const raw of filters) {
     if (parseFilter(raw).name === "")
@@ -395,6 +395,36 @@ export function splitAffectedArgv(argv: readonly string[]): { rest: string[]; re
   return { rest, ref };
 }
 
+/** The most times `--repeat` may rerun a filtered test. */
+const MAX_REPEAT = 50;
+
+/** Split `--repeat=<n>` off the filters (already stripped of --coverage and --affected): n reruns
+ * of the same node --test command so a timing flake reproduces on demand. It needs at least one
+ * file or `file#name` filter and n a whole number from 1 to MAX_REPEAT; a bare `--repeat` is an
+ * error. Without the flag `repeat` is undefined. Exported for test/test-runner.test.ts. */
+export function splitRepeatArgv(argv: readonly string[]): { rest: string[]; repeat?: number; error?: string } {
+  const rest = argv.filter((a) => a !== "--repeat" && !a.startsWith("--repeat="));
+  const flag = argv.filter((a) => a === "--repeat" || a.startsWith("--repeat=")).pop();
+  if (flag === undefined) return { rest };
+  const raw = flag.slice("--repeat=".length);
+  const n = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  if (!(n >= 1 && n <= MAX_REPEAT))
+    return { rest, error: `--repeat needs a whole number from 1 to ${MAX_REPEAT}, as --repeat=<n>` };
+  if (!rest.some((f) => !f.startsWith("-")))
+    return { rest, error: "--repeat needs at least one file or file#name filter to rerun" };
+  return { rest, repeat: n };
+}
+
+/** Run `once` up to `n` times back to back, stopping at the first non-zero status. `failedAt` is
+ * that run's 1-based iteration (undefined when every run passed); `runs` is how many ran. */
+export function repeatRuns(n: number, once: (iteration: number) => number): { status: number; runs: number; failedAt?: number } {
+  for (let i = 1; i <= n; i++) {
+    const status = once(i);
+    if (status !== 0) return { status, runs: i, failedAt: i };
+  }
+  return { status: 0, runs: n };
+}
+
 /** Every repo-relative path a change touches in `repoRoot`: committed since its merge-base with
  * `ref`, plus staged, unstaged and untracked (not ignored) files, deleted paths included and a
  * rename as both its paths. An error names what git could not answer: the caller then runs the
@@ -477,10 +507,17 @@ function affectedTestFiles(distDir: string, ref: string): TestFileSelection {
 
 function main(): void {
   const { rest, ref } = splitAffectedArgv(process.argv.slice(2));
-  const { filters, coverage } = splitCoverageArgv(rest);
+  const { filters: allFilters, coverage } = splitCoverageArgv(rest);
+  const { rest: filters, repeat, error: repeatError } = splitRepeatArgv(allFilters);
+  if (repeatError !== undefined) {
+    process.stderr.write(`tumwater: ${repeatError}\n`);
+    process.exit(1);
+  }
   const distDir = defaultDistDir();
-  if (ref !== undefined && (filters.length > 0 || coverage)) {
-    process.stderr.write("tumwater: --affected picks its own test files; it takes no filters and no --coverage\n");
+  if (ref !== undefined && (filters.length > 0 || coverage || repeat !== undefined)) {
+    process.stderr.write(
+      "tumwater: --affected picks its own test files; it takes no filters, no --coverage and no --repeat\n",
+    );
     process.exit(1);
   }
   const sel = ref === undefined ? selectTestFiles(filters, distDir) : affectedTestFiles(distDir, ref);
@@ -514,25 +551,36 @@ function main(): void {
       { ...sel, files: orderByDuration(sel.files, readJsonFile<Record<string, number>>(durationsPath(distDir)) ?? {}) },
       { reporter, fresh, tap, coverage },
     );
-    const env = suiteEnv(scratch);
-    if (covDir) env.NODE_V8_COVERAGE = covDir;
-    const r = spawnSync(process.execPath, args, { stdio: "inherit", env, timeout: SUITE_TIMEOUT_MS });
-    const killed = timedOutFailure(r);
-    status = killed !== null ? 1 : (r.status ?? 1);
-    if (killed !== null) process.stderr.write(`tumwater: ${killed}\n`);
-    // A killed run leaves the durations file missing or partial — keep earlier runs' records.
-    // A coverage run skips the ledger: instrumentation slows every file, and recording the
-    // skewed times would skew later runs' ordering.
-    else if (!coverage) recordDurations(distDir, fresh);
-    // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
-    // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
-    if (sel.namePattern && status === 0) {
-      const miss = noNameMatchReason(tap, sel.nameFilters ?? []);
-      if (miss !== null) {
-        process.stderr.write(`tumwater: ${miss}\n`);
-        status = 1;
+    const runOnce = (): number => {
+      const env = suiteEnv(scratch);
+      if (covDir) env.NODE_V8_COVERAGE = covDir;
+      const r = spawnSync(process.execPath, args, { stdio: "inherit", env, timeout: SUITE_TIMEOUT_MS });
+      const killed = timedOutFailure(r);
+      let status = killed !== null ? 1 : (r.status ?? 1);
+      if (killed !== null) process.stderr.write(`tumwater: ${killed}\n`);
+      // A killed run leaves the durations file missing or partial — keep earlier runs' records.
+      // A coverage run skips the ledger: instrumentation slows every file, and recording the
+      // skewed times would skew later runs' ordering.
+      else if (!coverage && repeat === undefined) recordDurations(distDir, fresh);
+      // A pattern matching nothing exits 0 — node sees a green run of file wrappers — so the
+      // guard, not the exit code, catches the typo'd filter. Only a green run needs guarding.
+      if (sel.namePattern && status === 0) {
+        const miss = noNameMatchReason(tap, sel.nameFilters ?? []);
+        if (miss !== null) {
+          process.stderr.write(`tumwater: ${miss}\n`);
+          status = 1;
+        }
       }
-    }
+      return status;
+    };
+    const result = repeatRuns(repeat ?? 1, runOnce);
+    status = result.status;
+    if (repeat !== undefined)
+      console.log(
+        result.failedAt === undefined
+          ? `repeat: ${result.runs} of ${repeat} runs passed`
+          : `repeat: run ${result.failedAt} of ${repeat} failed`,
+      );
     // After node's own (flaky) table: the deterministic reading, from the dumps the run wrote.
     if (covDir) printCoverageTable(covDir, path.dirname(distDir));
   } finally {
