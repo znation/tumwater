@@ -75,6 +75,23 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
   assert.doesNotThrow(() =>
     validateConfig({ model: { default: "prov/a" }, review: { enabled: true, model: "default" } }),
   );
+  assert.match(
+    validationError({ roles: { plan: { enabled: true, model: "strnog" } } }),
+    /roles\.plan\.model "strnog" is not a tier name or a model id pi can resolve — did you mean `strong`\?/,
+  );
+  assert.match(
+    validationError({ review: { enabled: true, model: "Default" } }),
+    /review\.model "Default" is not a tier name or a model id pi can resolve — did you mean `default`\?/,
+  );
+  assert.match(
+    validationError({ roles: { plan: { enabled: true, model: "smal" } } }),
+    /did you mean `small`\?/,
+  );
+  for (const model of ["prov/strnog", "gpt-5", "sonnet"])
+    assert.doesNotThrow(() => validateConfig({ roles: { plan: { enabled: true, model } } }));
+  assert.doesNotThrow(() =>
+    validateConfig({ roles: { plan: { enabled: true, provider: "prov", model: "smal" } } }),
+  );
   // A tier-name override without a model map is legal but inert (it resolves to pi's default).
   // A non-string model keeps an actionable message.
   assert.match(

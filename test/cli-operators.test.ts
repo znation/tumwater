@@ -877,6 +877,13 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.match(r.stdout, /feature: model set to anthropic\/claude-sonnet-4/);
   assert.equal(config().roles.feature.model, "anthropic/claude-sonnet-4");
 
+  // A misspelled tier name refuses and leaves the file untouched (no legacy provider is set yet).
+  const beforeTypo = fs.readFileSync(path.join(repo, "tumwater.json"), "utf8");
+  r = await cli(repo, "role", "feature", "--model", "strnog");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /roles\.feature\.model "strnog" is not a tier name .* did you mean `strong`/);
+  assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), beforeTypo);
+
   // `--provider <id>` and `--thinking <level>` write the other two fields.
   r = await cli(repo, "role", "feature", "--provider", "openai");
   assert.equal(r.code, 0);

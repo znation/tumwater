@@ -7,7 +7,7 @@ import {
 } from "./config-schema.js";
 import { allRoleIds } from "../roles/roles.js";
 import { isJsonObject } from "../files/json-object.js";
-import { typoSuffix } from "../text/suggest.js";
+import { didYouMean, suggestClosest, typoSuffix } from "../text/suggest.js";
 import { truncate, isNonBlankString } from "../text/text.js";
 
 /** The generic field-check machinery behind validateConfig (config-validation.ts): error
@@ -179,9 +179,10 @@ export function checkStringField(
  * selector strings — a map cannot coexist with a legacy provider in the same section, since
  * the provider's old meaning (the whole string is a bare id under it) has no per-tier
  * reading; "tier-name" (roles.<id>.model, review.model) also accepts a bare tier name as a
- * reference into the top-level map. Tier names are valid ONLY where a tier reference means
- * something: elsewhere (top level, fallbackModel) one is rejected with the two places that
- * accept it, so a misplaced `"model": "strong"` is an error naming its fix instead of a
+ * reference into the top-level map. A bare value within two edits of a tier name (ignoring
+ * case) is rejected as a misspelled tier reference. Tier names are valid ONLY where a tier
+ * reference means something: elsewhere (top level, fallbackModel) one is rejected with the two
+ * places that accept it, so a misplaced `"model": "strong"` is an error naming its fix instead of a
  * bare model pattern pi can never resolve. */
 export function checkModelTripleField(
   problems: string[],
@@ -231,6 +232,14 @@ export function checkModelTripleField(
     problems.push(
       `${prefix}model must name a model id — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
     );
+    return;
+  }
+  if (modelShape === "tier-name" && !m.includes("/") && obj.provider === undefined) {
+    const tier = suggestClosest(m, MODEL_TIERS);
+    if (tier !== null)
+      problems.push(
+        `${prefix}model ${show(m)} is not a tier name or a model id pi can resolve${didYouMean(tier)}`,
+      );
   }
 }
 
