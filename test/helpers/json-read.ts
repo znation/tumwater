@@ -15,6 +15,11 @@ import fs from "node:fs";
 import { scheduledWakeDir } from "../../src/paths.js";
 import { errorMessage } from "../../src/text/text.js";
 
+/** A parsed JSON document a test only digs into and asserts on (`readJson<JsonTree>(f).a.b.c`),
+ * where a per-test interface for a deeply nested report would restate the script's output. The one
+ * place the suite types a document as `any`: the leaves go straight to assert.equal/deepEqual. */
+export type JsonTree = any;
+
 export function readJson<T = unknown>(file: string | URL): T {
   let raw: string;
   try {

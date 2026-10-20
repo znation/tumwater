@@ -19,6 +19,14 @@ import { runNotFoundMessage } from "../src/run/run-detail.js";
 import { spawnSync } from "node:child_process";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
+/** The slice of tumwater.json these tests read back; leaf values stay unknown for assert.equal. */
+type RoleKeys = Record<string, unknown>;
+interface TeamConfigFile {
+  roles: { feature: RoleKeys; director: RoleKeys };
+  quietHoursPerRole: { feature: unknown };
+  maxDailyCostUsdPerRole: { feature: unknown };
+}
+
 // --- abort --role <id>: request to kill one role's in-flight run via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
 // per-role marker (.tumwater/abort-<role>.json) a running team consumes within one poll
@@ -461,7 +469,7 @@ test("role --clear-notes and --notes-file write the role's notes", async () => {
 test("role --clear-instructions and --instructions-file write the role's instructions", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role instructions");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // Literal storage: a file whose whole content is `123` must stay the string "123" (the
   // JSON.stringify wrapper beats setConfigKey's JSON-parse fallback, which would re-type it).
@@ -495,7 +503,7 @@ test("role --clear-instructions and --instructions-file write the role's instruc
 
   // An instance id targets its base role: feature-2 writes roles.feature.instructions.
   // (feature-2 is a known id only once the base role has instances configured.)
-  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
   configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
   fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
   const base = path.join(repo, "base.md");
@@ -534,7 +542,7 @@ test("role --clear-instructions and --instructions-file write the role's instruc
 test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role quiet hours");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // `--quiet-hours <window>` writes quietHoursPerRole.feature through the config core.
   let r = await cli(repo, "role", "feature", "--quiet-hours", "23:00-07:00");
@@ -549,7 +557,7 @@ test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", 
   assert.match(r.stdout, /"23:00-07:00"/);
 
   // An instance id targets its base role: feature-2 writes quietHoursPerRole.feature.
-  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
   configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
   fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
   r = await cli(repo, "role", "feature-2", "--quiet-hours", "22:00-06:00");
@@ -611,7 +619,7 @@ test("role --quiet-hours and --clear-quiet-hours write the role's quiet hours", 
 test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval write the role's holds", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role cap and interval");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // `--cap <usd>` writes maxDailyCostUsdPerRole.feature through the config core.
   let r = await cli(repo, "role", "feature", "--cap", "5");
@@ -626,7 +634,7 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.equal(config().roles.feature.minRunIntervalSeconds, 300);
 
   // An instance id targets its base role: feature-2 writes the .feature keys.
-  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
   configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
   fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
   r = await cli(repo, "role", "feature-2", "--cap", "5");
@@ -727,7 +735,7 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
 test("role --instances/--clear-instances write the role's parallel-runner count", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role instances");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // `--instances <n>` writes roles.feature.instances through the config core.
   let r = await cli(repo, "role", "feature", "--instances", "3");
@@ -827,7 +835,7 @@ test("role --instances/--clear-instances write the role's parallel-runner count"
 test("role --enable and --disable write the role's enabled state", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role enable disable");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // A role already in the asked-for state is reported and the file is not written.
   const file = path.join(repo, "tumwater.json");
@@ -862,7 +870,7 @@ test("role --enable and --disable write the role's enabled state", async () => {
   assert.equal(config().roles.feature.enabled, true);
 
   // An instance id targets its base role: feature-2 disables feature.
-  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
   configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
   fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
   r = await cli(repo, "role", "feature-2", "--disable");
@@ -909,7 +917,7 @@ test("role --enable and --disable write the role's enabled state", async () => {
 test("role --provider/--model/--thinking (and --clear-*) write the role's model triple", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role model triple");
-  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const config = () => readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
 
   // `--model <id>` writes roles.feature.model through the config core.
   let r = await cli(repo, "role", "feature", "--model", "anthropic/claude-sonnet-4");
@@ -947,7 +955,7 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(config().roles.feature.model, "strong");
 
   // An instance id targets its base role: feature-2 writes roles.feature.*.
-  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
   configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
   fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
   r = await cli(repo, "role", "feature-2", "--model", "gpt-5");

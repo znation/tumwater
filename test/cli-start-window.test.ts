@@ -13,6 +13,7 @@ import { fakePi } from "./fakes/fake-pi.js";
 import { exitCode, spawnCli } from "./helpers/cli-harness.js";
 import { sleep } from "./helpers/wait.js";
 import { onlyCleanRole } from "./helpers/start-live-harness.js";
+import { readJson } from "./helpers/json-read.js";
 
 // `tumwater start`'s two live run modes: the `--for` bounded window that stops itself at its
 // deadline, and `--gui`, which serves the browser dashboard from the supervisor so it outlives
@@ -96,7 +97,7 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     const polled = Date.now() + bootAllowance;
     while (stopsAt === undefined && Date.now() < polled) {
       try {
-        stopsAt = JSON.parse(fs.readFileSync(orchestratorStatePath(repo), "utf8")).stopsAt;
+        stopsAt = readJson<{ stopsAt?: number }>(orchestratorStatePath(repo)).stopsAt;
       } catch { /* not written yet, or torn */ }
       if (stopsAt === undefined) await sleep(50);
     }

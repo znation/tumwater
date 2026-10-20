@@ -23,6 +23,7 @@ import { backdate } from "./helpers/backdate.js";
 import { validationError } from "./fixtures/config-fixtures.js";
 import { patchFsMethod, withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 // The longest run a hosted model legitimately took and still merged work (BUGS.md 2026-09-29:
 // selfcheck at 185 minutes). A shipped default at or below it re-kills every such run and
@@ -709,7 +710,7 @@ test("seedConfig + saveConfig round-trips a template that sets backends.pi.args"
   // The merged seed carries the default piArgs beside the template's backends.pi.args; saving
   // must collapse them so the freshly written tumwater.json reloads.
   saveConfig(root, seeded);
-  const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as Record<string, unknown>;
+  const raw = readJson(path.join(root, "tumwater.json")) as Record<string, unknown>;
   assert.ok(!("piArgs" in raw), "the default piArgs is not written beside backends.pi.args");
   assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(root), "the seeded config reloads");

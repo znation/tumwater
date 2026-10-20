@@ -20,6 +20,7 @@ import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
 
@@ -203,16 +204,16 @@ test("a busy own runner hands the revision to a free runner of the same base rol
 test("with no free runner the revision waits in reverted.json and is assigned once one frees", async () => {
   const busy = fakeRunner("improve", { running: true });
   const { root, b, ctx } = await revertWith([busy]);
-  const pending = JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")).reverted;
+  const pending = readJson<{ reverted: { commit: string; role: string }[] }>(revertedPendingPath(root)).reverted;
   assert.equal(pending.length, 1);
-  assert.equal(pending[0].commit, b);
-  assert.equal(pending[0].role, "improve");
+  assert.equal(pending[0]?.commit, b);
+  assert.equal(pending[0]?.role, "improve");
   await assignPendingReverts(ctx);
   assert.equal(busy.state.revision, undefined);
   busy.state.running = false;
   await assignPendingReverts(ctx);
   assert.equal((busy.state as RunnerState).revision?.sha, b);
-  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+  assert.deepEqual(readJson(revertedPendingPath(root)), { reverted: [] });
 });
 
 test("the reverted commit re-applies onto the post-revert main as uncommitted edits", async () => {
@@ -254,7 +255,7 @@ test("a torn reverted.json entry is dropped and the well-formed one is still han
   await assignPendingReverts(ctxOf([runner]));
   assert.equal(runner.state.revision?.sha, SHA);
   assert.deepEqual(runner.state.lastReview?.reasons, ["first"]);
-  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+  assert.deepEqual(readJson(revertedPendingPath(root)), { reverted: [] });
 });
 
 test("a hand-back whose state save fails warns and still counts as assigned", async () => {
@@ -267,7 +268,7 @@ test("a hand-back whose state save fails warns and still counts as assigned", as
     undo();
   }
   assert.equal(runner.state.revision?.sha, SHA);
-  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+  assert.deepEqual(readJson(revertedPendingPath(root)), { reverted: [] });
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0]?.source, "improve");
@@ -292,5 +293,5 @@ test("a failed reverted.json rewrite warns, and the next poll does not hand the 
   assert.match(String(eventsOfType(root, "warning").at(-1)?.message), /pending write refused/);
   await assignPendingReverts(ctx);
   assert.equal(second.state.revision, undefined);
-  assert.deepEqual(JSON.parse(fs.readFileSync(revertedPendingPath(root), "utf8")), { reverted: [] });
+  assert.deepEqual(readJson(revertedPendingPath(root)), { reverted: [] });
 });

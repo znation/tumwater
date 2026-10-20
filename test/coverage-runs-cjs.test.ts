@@ -18,6 +18,7 @@ import path from "node:path";
 import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson, type JsonTree } from "./helpers/json-read.js";
 
 const RUNS = fileURLToPath(new URL("../../docs/code-metrics/coverage-runs.cjs", import.meta.url));
 
@@ -75,7 +76,7 @@ test("coverage-runs.cjs averages passing runs and keeps failed runs and non-exec
   assert.match(r.stdout, /3 run\(s\): #1 10\/10 pass, 0 fail; #2 12\/12 pass, 0 fail; #3 5\/5 pass, 1 fail/);
   assert.match(r.stdout, /averaging the 2 passing run\(s\); excluded \(suite failed\): #3/);
 
-  const s = JSON.parse(fs.readFileSync(path.join(data, "coverage-runs.json"), "utf8"));
+  const s = readJson<JsonTree>(path.join(data, "coverage-runs.json"));
   assert.equal(s.runs, 2);
   assert.deepEqual(s.excluded, [3]);
   // node's table row: run 1 80/70/60, run 2 90/80/70 → means 85/75/65.

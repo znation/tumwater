@@ -35,6 +35,7 @@ import { readImageProbeCache } from "../src/doctor/image-probe.js";
 import { imageProbesPath, piListedModelsPath } from "../src/paths.js";
 import { readPiListedModels } from "../src/pi/pi-listed-models.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -881,7 +882,7 @@ test("checkImageInput caches a failed free-fallback probe under the pi agent key
   assert.equal(first.level, "fail");
   assert.match(first.detail, /local\/fb-vision failed the image probe/);
   // The cached key carries the pi agent segment — the segment the readers resolve and look up.
-  const cache = JSON.parse(fs.readFileSync(imageProbesPath(root), "utf8"));
+  const cache = readJson<Record<string, { verdict?: string } | undefined>>(imageProbesPath(root));
   const entry = cache["pi/local/fb-vision"];
   assert.ok(entry, `fallback fail cached under the pi agent key (keys: ${Object.keys(cache)})`);
   assert.equal(entry.verdict, "fail");

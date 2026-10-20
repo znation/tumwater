@@ -17,6 +17,7 @@ import path from "node:path";
 import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson, type JsonTree } from "./helpers/json-read.js";
 
 const COMPARE = fileURLToPath(new URL("../../docs/code-metrics/compare.cjs", import.meta.url));
 const REPOS_TSV = fileURLToPath(new URL("../../docs/code-metrics/oss-repos.tsv", import.meta.url));
@@ -89,7 +90,7 @@ test("compare.cjs builds repo/author/core metrics and the OSS spread, and prints
 
   const r = run(data);
   assert.equal(r.status, 0, r.stderr);
-  const out = JSON.parse(fs.readFileSync(path.join(data, "compare.json"), "utf8"));
+  const out = readJson<JsonTree>(path.join(data, "compare.json"));
   const m = out.metrics, k = out.decisionKinds;
 
   // Each OSS repo contributes its own prodSLOC, so the spread is 1..repos.length.
@@ -204,7 +205,7 @@ test("compare.cjs counts duplicated line windows and ignores same-line repeats",
 
   const r = run(data);
   assert.equal(r.status, 0, r.stderr);
-  const m = JSON.parse(fs.readFileSync(path.join(data, "compare.json"), "utf8")).metrics["tumwater repo"];
+  const m = readJson<JsonTree>(path.join(data, "compare.json")).metrics["tumwater repo"];
 
   // Five production files x five code lines = 25; A and B each contribute the five shared lines.
   assert.equal(m.prodSLOC, 25);

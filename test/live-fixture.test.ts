@@ -10,12 +10,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
+import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { allRoleIds } from "../src/roles/roles.js";
+import { readJson } from "./helpers/json-read.js";
 
 const FIXTURE = fileURLToPath(new URL("../../scripts/live-fixture.mjs", import.meta.url));
 
@@ -64,11 +65,18 @@ test("seedLiveTeam writes the orchestrator marker, one running state per role, a
   seedLiveTeam(root, ["alpha", "beta"]);
 
   const state = path.join(root, ".tumwater", "state");
-  const marker = JSON.parse(fs.readFileSync(path.join(state, "orchestrator.json"), "utf8"));
+  const marker = readJson<{ pid: number }>(path.join(state, "orchestrator.json"));
   assert.equal(marker.pid, process.pid);
 
   for (const role of ["alpha", "beta"]) {
-    const st = JSON.parse(fs.readFileSync(path.join(state, `${role}.json`), "utf8"));
+    const st = readJson<{
+      role: string;
+      runs: number;
+      running: boolean;
+      phase: string;
+      lastRunStartedAt: number;
+      lastRunEndedAt: number;
+    }>(path.join(state, `${role}.json`));
     assert.equal(st.role, role);
     assert.equal(st.runs, 3);
     assert.equal(st.running, true);

@@ -12,10 +12,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 const configPath = (repo: string): string => path.join(repo, "tumwater.json");
 const readConfig = (repo: string): { notify?: unknown } =>
-  JSON.parse(fs.readFileSync(configPath(repo), "utf8"));
+  readJson(configPath(repo));
 const configBytes = (repo: string): Buffer => fs.readFileSync(configPath(repo));
 
 test("Ctrl+E on Activity opens the notify editor pre-filled from the file, a command Enter saves it, and a non-string is refused unchanged", async () => {

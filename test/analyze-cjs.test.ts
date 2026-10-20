@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { gitInit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 const ANALYZE = fileURLToPath(new URL("../../docs/code-metrics/analyze.cjs", import.meta.url));
 
@@ -135,7 +136,7 @@ function analyze(files: Array<[string, string]>): { data: Rec; stdout: string } 
   const out = path.join(root, "out.json");
   const r = spawnSync(process.execPath, [ANALYZE, root, out, cats], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  return { data: JSON.parse(fs.readFileSync(out, "utf8")) as Rec, stdout: r.stdout ?? "" };
+  return { data: readJson(out) as Rec, stdout: r.stdout ?? "" };
 }
 
 test("analyze.cjs derives file classes, function complexity, markers and imports", () => {

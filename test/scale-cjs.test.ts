@@ -16,6 +16,7 @@ import path from "node:path";
 import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson, type JsonTree } from "./helpers/json-read.js";
 
 const SCALE = fileURLToPath(new URL("../../docs/code-metrics/scale.cjs", import.meta.url));
 
@@ -71,7 +72,7 @@ test("scale.cjs attributes code lines by area and author, and computes the effor
 
   const r = run(data);
   assert.equal(r.status, 0, r.stderr);
-  const out = JSON.parse(fs.readFileSync(path.join(data, "scale.json"), "utf8"));
+  const out = readJson<JsonTree>(path.join(data, "scale.json"));
 
   // Area split: src + src/ui are production (1200), test is 600; scripts and docs are dropped.
   assert.deepEqual(out.codeLines, { production: 1200, tests: 600, productionAndTests: 1800 });
@@ -130,7 +131,7 @@ test("scale.cjs folds a line whose file has no blame entry into human, keeping i
 
   const r = run(data);
   assert.equal(r.status, 0, r.stderr);
-  const out = JSON.parse(fs.readFileSync(path.join(data, "scale.json"), "utf8"));
+  const out = readJson<JsonTree>(path.join(data, "scale.json"));
   assert.equal(out.codeLines.production, 1);
   assert.equal(out.codeLines.tests, 0);
   assert.equal(out.pace.byAuthor.tumwater.codeLines, 0);

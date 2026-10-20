@@ -334,7 +334,7 @@ test("POST /api/pause with a reason stores it folded and capped and rejects bad 
   const repo = makeRepo();
   await initProject(repo, "gui pause reason test");
   await withGui(repo, async ({ base }) => {
-  const marker = () => JSON.parse(fs.readFileSync(pausedPath(repo), "utf8")) as { until?: number; reason?: string };
+  const marker = () => readJson(pausedPath(repo)) as { until?: number; reason?: string };
   let res = await postJson(base, "/api/pause", { paused: true, reason: "  deploying\n v2 " });
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, paused: true, reason: "deploying v2" });

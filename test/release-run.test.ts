@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { gitOnlyBinDir, headSha, pushedRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 const SCRIPT = fileURLToPath(new URL("../../scripts/release.mjs", import.meta.url));
 
@@ -153,12 +154,12 @@ test("bump commits the next patch version and pushes it to origin", () => {
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /bumped 0\.1\.0 → 0\.1\.1 \(patch\); committed and pushed/);
   assert.equal(
-    JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version,
+    readJson<{ version: string }>(path.join(root, "package.json")).version,
     "0.1.1",
     "package.json carries the bumped version",
   );
   assert.equal(
-    JSON.parse(fs.readFileSync(path.join(root, "package-lock.json"), "utf8")).version,
+    readJson<{ version: string }>(path.join(root, "package-lock.json")).version,
     "0.1.1",
     "package-lock.json carries the bumped version",
   );

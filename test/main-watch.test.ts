@@ -13,6 +13,7 @@ import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { logEvent } from "../src/events/events.js";
 import { loadQuarantine, quarantinedTests, quarantineTests, releaseQuarantine } from "../src/review/known-flakes.js";
+import { readJson } from "./helpers/json-read.js";
 
 // The main watch (src/baseline/main-watch.ts) records the full check's verdict on main's tip in the
 // background. The suite's process-wide verdict cache is keyed by SHA, and every fixture repo has
@@ -72,7 +73,7 @@ test("a red tip is re-run once, then logged failed with the failing test titles,
   assert.equal(checks[0]?.status, "failed");
   assert.deepEqual(checks[0]?.failingTests, ["first", "second", "third"]);
   assert.equal(runsOf(counter), 2, "the red was confirmed by one more run");
-  const saved = JSON.parse(fs.readFileSync(baselineVerdictsPath(root), "utf8")) as { reds: unknown[] };
+  const saved = readJson(baselineVerdictsPath(root)) as { reds: unknown[] };
   assert.deepEqual(saved.reds, [
     { sha: headSha(root), script: "test", failingTests: ["first", "second", "third"] },
   ]);

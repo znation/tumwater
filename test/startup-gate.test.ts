@@ -25,6 +25,7 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { readOpencodeCache, type CatalogFetch } from "../src/agent/opencode/opencode-catalog.js";
+import { readJson } from "./helpers/json-read.js";
 
 // `tumwater start`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdStart
 // fails fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation
@@ -125,7 +126,7 @@ test("the startup gate checks every enabled seam's agent and names that agent's 
   await initProject(repo, "startup gate claude seam");
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { claude: { bin: "/no/such/claude" } };
     cfg.review = { backend: "claude", model: "claude-opus-5-5" };
     fs.writeFileSync(file, JSON.stringify(cfg));
@@ -149,7 +150,7 @@ test("a claude seam that exists only as a fallback is checked and its account se
   writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { claude: { bin: path.join(claudeBin, "claude") } };
     cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
     cfg.roles = { feature: { enabled: true } };
@@ -170,7 +171,7 @@ test("an unwritable claude account file does not fail the startup gate", async (
   writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { claude: { bin: path.join(claudeBin, "claude") } };
     cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5" }];
     cfg.roles = { feature: { enabled: true } };
@@ -212,7 +213,7 @@ test("an opencode seam with a missing configured binary fails startup, naming th
   const missingBin = path.join(repo, "no-opencode");
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: missingBin } };
     cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
@@ -234,7 +235,7 @@ test("unregisteredBackendInUse names a seam routed to a backend with no register
   const repo = makeRepo();
   await initProject(repo, "startup gate unregistered backend");
   const file = path.join(repo, "tumwater.json");
-  const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  const cfg = readJson(file) as Record<string, unknown>;
   cfg.backend = "futuristic";
   assert.equal(unregisteredBackendInUse(cfg as never), "futuristic");
 });
@@ -259,7 +260,7 @@ test("a registered opencode adapter whose binary exists passes the gate", async 
   registerAgentBackend(fake);
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
     cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
@@ -279,7 +280,7 @@ test("opencodeProviders names every models.dev provider the config routes throug
   const repo = makeRepo();
   await initProject(repo, "startup gate opencode providers");
   const file = path.join(repo, "tumwater.json");
-  const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  const cfg = readJson(file) as Record<string, unknown>;
   // A bare gateway id (no provider) and a provider route on the strong tier; the gateway is
   // always kept by the parse, so only the provider route adds a name.
     cfg.backend = "opencode";
@@ -306,7 +307,7 @@ test("the startup gate seeds the catalog cache for an opencode boot, fetching on
   registerAgentBackend(fake);
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
     cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
@@ -352,7 +353,7 @@ test("a fresh on-disk catalog cache is reused without fetching (offline boot)", 
   registerAgentBackend(fake);
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
     cfg.backend = "opencode"; cfg.model = "deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
@@ -448,7 +449,7 @@ test("the startup seed logs a warning when the catalog fetch fails or the cache 
     const repo = makeRepo();
     await initProject(repo, name);
     const file = path.join(repo, "tumwater.json");
-    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    const cfg = readJson(file) as Record<string, unknown>;
     cfg.backends = { opencode: { bin: path.join(opencodeBin, "opencode") } };
     cfg.backend = "opencode";
     cfg.model = "deepseek-v4.1-flash-free";

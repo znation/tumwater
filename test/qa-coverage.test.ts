@@ -9,6 +9,7 @@ import {
 } from "../src/run/qa-coverage.js";
 import { qaCoveragePath } from "../src/paths.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** Unit coverage for src/run/qa-coverage.ts — the `qa` observer's flow-coverage ledger
  * (plans/observer-roles.md 2/2). Every run is a fresh session and a passing cheap check
@@ -79,7 +80,7 @@ test("recordFlow and readQaCoverage keep a flow named __proto__", () => {
     lastRunAt: NOW,
     result: "passed",
   });
-  const file = JSON.parse(fs.readFileSync(qaCoveragePath(root), "utf8")) as { flows: unknown };
+  const file = readJson(qaCoveragePath(root)) as { flows: unknown };
   assert.ok(Object.hasOwn(file.flows as object, "__proto__"), "the persisted file keeps the flow");
 });
 

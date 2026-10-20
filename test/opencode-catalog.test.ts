@@ -25,6 +25,7 @@ import { opencodeModelsPath } from "../src/paths.js";
 import type { HarnessEventInput } from "../src/events/events.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 /** The real 2.0.32 catalogue capture (finding 10). From the compiled module
  * (dist/test) four levels up to the repo root; from the source module (test/) two. */
@@ -32,7 +33,7 @@ function catalogCapture(): unknown {
   const fromDist = fileURLToPath(new URL("../../test/fixtures/opencode-captures/models-catalog-entries.json", import.meta.url));
   const fromSrc = fileURLToPath(new URL("./fixtures/opencode-captures/models-catalog-entries.json", import.meta.url));
   const file = fs.existsSync(fromDist) ? fromDist : fromSrc;
-  return JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+  return readJson(file) as unknown;
 }
 
 function fetchOf(body: unknown): CatalogFetch {
@@ -219,7 +220,7 @@ test("observeOpencodeRun demotes a cached free model on a priced run, once", () 
   );
   assert.equal(second, null);
   assert.equal(logged.length, 1, "the second priced run does not log again");
-  const persisted = JSON.parse(fs.readFileSync(opencodeModelsPath(root), "utf8")) as { models: Record<string, { billedAt?: number }> };
+  const persisted = readJson(opencodeModelsPath(root)) as { models: Record<string, { billedAt?: number }> };
   assert.equal(persisted.models["opencode/free-m"]?.billedAt, 42, "the demotion is written to the cache");
 });
 
@@ -234,7 +235,7 @@ test("observeOpencodeRun leaves a $0 run free and logs nothing", () => {
   );
   assert.equal(result, null);
   assert.equal(logged.length, 0, "a $0 run logs nothing");
-  const persisted = JSON.parse(fs.readFileSync(opencodeModelsPath(root), "utf8")) as { models: Record<string, { free: boolean; billedAt?: number }> };
+  const persisted = readJson(opencodeModelsPath(root)) as { models: Record<string, { free: boolean; billedAt?: number }> };
   assert.equal(persisted.models["opencode/free-m"]?.free, true);
   assert.equal(persisted.models["opencode/free-m"]?.billedAt, undefined, "a $0 run never demotes");
 });

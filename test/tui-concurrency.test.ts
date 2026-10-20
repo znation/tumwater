@@ -5,16 +5,16 @@
  * draft. The scope pin (Activity only, Backlog keeps Ctrl+N) and the frame's prefix/hint
  * branches live in the topic tests below. Uses the shared fake-TTY harness in
  * fixtures/tui-fixtures.ts. */
-import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 const configPath = (repo: string): string => path.join(repo, "tumwater.json");
 const readConfig = (repo: string): { maxConcurrent?: unknown } =>
-  JSON.parse(fs.readFileSync(configPath(repo), "utf8"));
+  readJson(configPath(repo));
 
 test("Ctrl+N on Activity opens the run-cap editor pre-filled from the file, saving a valid integer writes it, and an invalid value stays open unchanged", async () => {
   const repo = await makeTuiRepo();

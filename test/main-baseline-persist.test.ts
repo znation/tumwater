@@ -14,6 +14,7 @@ import { baselineVerdictsPath } from "../src/paths.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { readJson } from "./helpers/json-read.js";
 
 // Main's green baseline verdicts survive a team restart (persistBaselineVerdicts in
 // src/baseline/main-baseline.ts). The mirror is process-wide state, so these tests live in their
@@ -22,7 +23,7 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 const sha = (n: number) => n.toString(16).padStart(40, "0");
 
 function savedGreens(root: string): unknown {
-  return JSON.parse(fs.readFileSync(baselineVerdictsPath(root), "utf8"));
+  return readJson(baselineVerdictsPath(root));
 }
 
 test("greens are mirrored to the state dir as they are recorded, observed and inherited alike", () => {

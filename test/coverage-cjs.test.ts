@@ -20,6 +20,7 @@ import path from "node:path";
 import { runNodeScript } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 const COVERAGE = fileURLToPath(new URL("../../docs/code-metrics/coverage.cjs", import.meta.url));
 
@@ -129,7 +130,7 @@ test("coverage.cjs maps V8 ranges onto TS lines, merging any process and taking 
   // the never-run block, not the covered function root around it. Branch ranges map to the
   // generated line they start on: the module root to TS 10, add's to TS 11, sub's to TS 14,
   // nested's root to TS 17 and its if block to TS 18.
-  assert.deepEqual(JSON.parse(fs.readFileSync(out, "utf8")), {
+  assert.deepEqual(readJson(out), {
     [tsKey("src", "foo.ts")]: {
       loaded: true,
       lines: [[10, 1], [11, 1], [12, 1], [13, 1], [14, 1], [15, 1], [16, 1], [17, 1], [18, 1], [19, 0], [20, 0], [21, 1], [22, 1], [23, 1]],
@@ -157,7 +158,7 @@ test("coverage.cjs keeps a module no process loaded at zero", () => {
   assert.match(r.stdout, /processes 0 src scripts seen 0/);
   assert.match(r.stdout, /never-loaded src files: src\/bar\.ts/);
   // A source-map line still appears, at zero, so an untested module does not vanish from the docs.
-  assert.deepEqual(JSON.parse(fs.readFileSync(out, "utf8")), {
+  assert.deepEqual(readJson(out), {
     [tsKey("src", "bar.ts")]: { loaded: false, lines: [[2, 0]], branches: [], funcs: [] },
   });
 });

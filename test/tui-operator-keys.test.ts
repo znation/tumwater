@@ -17,6 +17,7 @@ import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
+import { readJson } from "./helpers/json-read.js";
 
 // Ctrl+P/Ctrl+A/Ctrl+W act on the role whose transcript is
 // on screen, through the same marker-writing cores the CLI's --role flags call, so the two
@@ -76,7 +77,7 @@ test("Ctrl+P, a duration, Enter pauses the viewed role for that long", async () 
     tui.key("h", "h");
     tui.key(undefined, "return");
     assert.deepEqual(pausedRoles(repo), ["clean"]);
-    const marker = JSON.parse(fs.readFileSync(pausedRolesPath(repo), "utf8")) as { until?: number };
+    const marker = readJson(pausedRolesPath(repo)) as { until?: number };
     assert.ok(marker.until !== undefined && Math.abs(marker.until - (before + 7_200_000)) < 60_000);
     assert.match(tui.lastFrame(), /role clean paused for 2h/);
   });
@@ -444,7 +445,7 @@ test("Ctrl+V resets the viewed role's counters through requestResetCounters", as
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
     tui.key(undefined, "v", { ctrl: true });
     assert.match(tui.lastFrame(), /counters reset for clean/);
-    const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as { roles: string[] };
+    const marker = readJson(resetRequestPath(repo)) as { roles: string[] };
     assert.deepEqual(marker.roles, ["clean"]);
     // No orchestrator marker, so requestResetCounters zeroes the state file directly: the
     // next run starts fresh.
