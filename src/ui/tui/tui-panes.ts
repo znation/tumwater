@@ -160,7 +160,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // Health owns Ctrl+P (re-probe image-input models) ahead of History's fallback.
     if (key.ctrl && key.name === "p" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
-    if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "y") {
+      // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
+      // through off it, so History keeps its Summary cycle on every other view.
+      if (transcript.handleKey?.(key, ctx)) return true;
+      return history.handleKey?.(key, ctx) ?? false;
+    }
     if (key.ctrl && key.name === "o") {
       // The Activity type cycle is routed first on its own view (0); on the Health view the
       // problems-only toggle precedes the History outcome cycle, and every other view keeps
@@ -274,6 +279,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       noteCache: tra.noteCache,
       changeMode: tra.changeMode,
       changeCache: tra.changeCache,
+      changeStat: tra.changeStat,
       transcriptGrep: tra.transcriptGrep,
       selectedEntry: back.selectedEntry,
       entryScroll: back.entryScroll,

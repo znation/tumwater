@@ -28,6 +28,14 @@ export function createTranscriptPane(session: TuiPaneSession) {
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
   let changeMode = false;
   let changeCache: string | null = null;
+  // Ctrl+Y on the change step (mnemonic: summarY) toggles the viewed role's diff between
+  // the full patch and `git diff --stat`'s summary — the terminal twin of `tumwater diff
+  // --role <id> --stat` and the dashboard drawer's Stat only toggle.
+  let changeStat = false;
+  // changeGen makes a stale collector harmless: it is bumped on every change-step load
+  // (loadChange, a Ctrl+Y toggle included), on the change → transcript branch, and on
+  // reset(), so a collector a newer load or a leave superseded must not paint the pane.
+  let changeGen = 0;
   // The `/` search over the live transcript step: the pattern belongs to the role it was applied
   // on, so a roster shift that puts another role at the same index does not inherit it.
   let transcriptSearch: { role: string; pattern: string } | null = null;
@@ -36,6 +44,44 @@ export function createTranscriptPane(session: TuiPaneSession) {
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
   ): boolean => {
+    // The change step's collector, shared by the notes→change arm and the Ctrl+Y diffstat
+    // toggle so both load through one path. It clears the cached render (the pane paints its
+    // loading note) and bumps changeGen; every resolution older than the current generator is
+    // dropped, which is what makes a Ctrl+Y toggle, a cycle away, or a reset without a new
+    // load harmless. The default collector degrades rather than throws, so the rejection arm
+    // only covers an injected seam (or an unexpected throw).
+    const loadChange = (role: string): void => {
+      changeCache = null;
+      const gen = ++changeGen;
+      const target = role;
+      // The role's waiting merges head the change, exact-matching this one runner id.
+      let queueText = "";
+      try {
+        const { view, scope } = scopeMergeQueue(readMergeQueue(session.root), [role], (r) => r === role);
+        if (view.entries.length > 0) {
+          const inFlight = queueInFlight(session.root, view.entries, orchestratorAlive(session.root));
+          queueText = renderMergeQueue(view, session.now(), inFlight, scope) + "\n\n";
+        }
+      } catch (err) {
+        queueText = "";
+        session.flashError(err);
+      }
+      void session.collectChange(session.root, target, changeStat ? { stat: true } : undefined).then(
+        (change) => {
+          // changeGen drops a load superseded by a re-load or a leave; the role match drops one
+          // a roster change (syncRoster mutates session.roleIds without resetting this pane)
+          // made stale, so an in-flight collection cannot paint the previous role's change.
+          if (gen !== changeGen || session.roleIds[session.view - 1] !== target) return;
+          changeCache = queueText + renderRoleChange(change);
+          session.requestRender();
+        },
+        (err: unknown) => {
+          if (gen !== changeGen || session.roleIds[session.view - 1] !== target) return;
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+    };
     if (key.ctrl && key.name === "n") {
       // Ctrl+N cycles the viewed role's pane live transcript → notes → change → transcript
       // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
@@ -61,43 +107,18 @@ export function createTranscriptPane(session: TuiPaneSession) {
       const role = session.roleIds[session.view - 1]!; // defined: view is clamped inside the transcript range
       if (changeMode) {
         changeMode = false;
+        changeGen += 1;
         changeCache = null;
       } else if (noteMode) {
-        // notes → change: reset the notes snapshot and kick off the collector
-        // fire-and-forget, caching the rendered text when it resolves (the Pending pane's
-        // pattern). Guard on the change pane still being current — changeMode on, same role
-        // at the same index — so a cycle away or a roster shift cannot overwrite the pane now
-        // shown. The default collector degrades rather than throws, so the rejection arm only
-        // covers an injected seam (or an unexpected throw).
+        // notes → change: reset the notes snapshot, start on the full patch, and kick off the
+        // collector fire-and-forget, caching the rendered text when it resolves (the Pending
+        // pane's pattern). changeGen drops a collector superseded by a Ctrl+Y toggle, a cycle
+        // away, or a reset.
         noteMode = false;
         noteCache = null;
         changeMode = true;
-        changeCache = null;
-        const target = role;
-        // The role's waiting merges head the change, exact-matching this one runner id.
-        let queueText = "";
-        try {
-          const { view, scope } = scopeMergeQueue(readMergeQueue(session.root), [role], (r) => r === role);
-          if (view.entries.length > 0) {
-            const inFlight = queueInFlight(session.root, view.entries, orchestratorAlive(session.root));
-            queueText = renderMergeQueue(view, session.now(), inFlight, scope) + "\n\n";
-          }
-        } catch (err) {
-          queueText = "";
-          session.flashError(err);
-        }
-        void session.collectChange(session.root, target).then(
-          (change) => {
-            if (!changeMode || session.roleIds[session.view - 1] !== target) return;
-            changeCache = queueText + renderRoleChange(change);
-            session.requestRender();
-          },
-          (err: unknown) => {
-            if (!changeMode || session.roleIds[session.view - 1] !== target) return;
-            session.flashError(err);
-            session.requestRender();
-          },
-        );
+        changeStat = false;
+        loadChange(role);
       } else {
         // rolePayload reads the notes and assembles the next run's prompt off disk; a
         // throw leaves the transcript shown (the mode stays off) and flashes the reason
@@ -111,6 +132,23 @@ export function createTranscriptPane(session: TuiPaneSession) {
         }
       }
       session.paneScroll = 0; // either way the pane starts at its head
+      session.requestRender();
+      return true;
+    }
+    if (
+      key.ctrl && key.name === "y" && changeMode &&
+      promptLineFree(ctx.es) &&
+      session.view >= 1 && session.view <= session.roleIds.length
+    ) {
+      // Ctrl+Y on the change step toggles the viewed role's diff between the full patch and
+      // the diffstat. The flip clears the cached render and kicks a fresh collector (so the
+      // pane paints its loading note and the new view when it resolves); jumping straight to
+      // the diffstat is the first question a large pending change answers. With any guard
+      // false it returns false so the router falls through to History's Summary toggle.
+      const role = session.roleIds[session.view - 1]!;
+      changeStat = !changeStat;
+      session.paneScroll = 0;
+      loadChange(role);
       session.requestRender();
       return true;
     }
@@ -162,11 +200,16 @@ export function createTranscriptPane(session: TuiPaneSession) {
       session.requestRender();
     },
     reset() {
-      // A cycle away leaves notes and change modes and drops their snapshots.
+      // A cycle away leaves notes and change modes and drops their snapshots; changeGen
+      // bumps so an in-flight change load cannot paint after the view cycled away, and
+      // changeStat resets so every fresh entry to the change step starts on the full patch
+      // (like the drawer, which refetches without stat on reopen).
       noteMode = false;
       noteCache = null;
       changeMode = false;
       changeCache = null;
+      changeGen += 1;
+      changeStat = false;
       transcriptSearch = null;
     },
     applySearch(pattern: string | null): void {
@@ -181,7 +224,7 @@ export function createTranscriptPane(session: TuiPaneSession) {
       const transcriptGrep = transcriptSearch !== null && session.roleIds[session.view - 1] === transcriptSearch.role
         ? transcriptSearch.pattern
         : null;
-      return { noteMode, noteCache, changeMode, changeCache, transcriptGrep };
+      return { noteMode, noteCache, changeMode, changeCache, changeStat, transcriptGrep };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
 }

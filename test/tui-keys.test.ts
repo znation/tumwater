@@ -2672,6 +2672,149 @@ test("Ctrl+T leaves change mode, and a resolution after a cycle away does not ca
   assert.equal(keys.state().changeCache, null, "a late resolution does not write the dropped cache");
 });
 
+test("Ctrl+Y on the Transcript change step toggles the diffstat, and a cycle away starts on the full patch", async () => {
+  const root = makeRoot();
+  const view = {
+    role: "clean",
+    branch: "tumwater/clean",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 2,
+    behind: 0,
+    commits: [{ sha: "abc1234", subject: "add a thing" }],
+    diff: "a.ts | 3 +--",
+    dirtyFiles: ["a.ts"],
+    uncommittedDiff: "",
+  };
+  const statView = { ...view, diff: "a.ts | 1 +", uncommittedDiff: "" };
+  // The collector stub records every call's opts and returns a fresh pending promise per call, so
+  // the test controls resolution order — the same shape the superseded-load test below relies on.
+  const calls: Array<{ opts?: { stat?: boolean } }> = [];
+  const resolvers: Array<(v: typeof view) => void> = [];
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectChange: (_r, _role, opts) => {
+      calls.push({ opts });
+      return new Promise<typeof view>((resolve) => resolvers.push(resolve));
+    },
+  });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notes
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → change
+  assert.equal(keys.state().changeMode, true);
+  assert.equal(keys.state().changeStat, false);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0]!.opts, undefined, "the first change-step load asks for the full patch");
+
+  keys.handleKey(undefined, { ctrl: true, name: "y" }); // → stat
+  assert.equal(keys.state().changeStat, true, "Ctrl+Y flips the diffstat on");
+  assert.equal(keys.state().changeCache, null, "the toggle clears the cached render for the loading note");
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1]!.opts, { stat: true }, "the second load asks for the diffstat");
+
+  resolvers[1]!(statView);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().changeCache, renderRoleChange(statView));
+
+  // Leave the change step while the diffstat is shown: the pane resets on the way out, so a
+  // fresh entry starts on the full patch again.
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // change → transcript, leaves while stat is on
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // transcript → notes
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // notes → change
+  assert.equal(keys.state().changeStat, false, "leaving the change step while the diffstat is shown resets the toggle");
+  assert.equal(calls.length, 3);
+  assert.equal(calls[2]!.opts, undefined, "the fresh entry's load asks for the full patch");
+
+  // Ctrl+Y still flips the diffstat on and back off on a live change step, starting each
+  // fresh entry from the full patch.
+  keys.handleKey(undefined, { ctrl: true, name: "y" }); // → stat
+  assert.equal(keys.state().changeStat, true, "Ctrl+Y on the fresh entry flips the diffstat on");
+  keys.handleKey(undefined, { ctrl: true, name: "y" }); // back to the full patch
+  assert.equal(keys.state().changeStat, false, "a later Ctrl+Y flips the diffstat back off");
+  assert.equal(calls.length, 5);
+  assert.equal(calls[4]!.opts, undefined, "a later Ctrl+Y asks for the full patch");
+});
+
+test("a superseded change-step load never paints over the newer one", async () => {
+  const root = makeRoot();
+  const view = {
+    role: "clean",
+    branch: "tumwater/clean",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 2,
+    behind: 0,
+    commits: [{ sha: "abc1234", subject: "add a thing" }],
+    diff: "a.ts | 3 +--",
+    dirtyFiles: ["a.ts"],
+    uncommittedDiff: "",
+  };
+  const statView = { ...view, diff: "a.ts | 1 +", uncommittedDiff: "" };
+  const calls: Array<{ opts?: { stat?: boolean } }> = [];
+  const resolvers: Array<(v: typeof view) => void> = [];
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectChange: (_r, _role, opts) => {
+      calls.push({ opts });
+      return new Promise<typeof view>((resolve) => resolvers.push(resolve));
+    },
+  });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → notes
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // → change, full-patch load held
+  assert.equal(calls.length, 1);
+
+  keys.handleKey(undefined, { ctrl: true, name: "y" }); // → stat, supersedes the full load
+  assert.equal(calls.length, 2);
+  assert.equal(keys.state().changeStat, true);
+
+  resolvers[1]!(statView); // the newer stat load resolves first
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().changeCache, renderRoleChange(statView));
+  resolvers[0]!(view); // the older full-patch load resolves late
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().changeCache, renderRoleChange(statView), "the stale full patch does not paint over the stat view");
+  assert.equal(keys.state().changeStat, true);
+});
+
+test("Ctrl+Y off the change step falls through to History: inert on the live transcript, cycling the Summary there", async () => {
+  const root = makeRoot();
+  const calls: Array<{ opts?: { stat?: boolean } }> = [];
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectChange: (_r, _role, opts) => {
+      calls.push({ opts });
+      return new Promise<never>(() => {});
+    },
+  });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → transcript (live)
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().changeStat, false, "Ctrl+Y on the live transcript does not flip the diffstat");
+  assert.equal(calls.length, 0, "no change collector runs off the change step");
+  assert.equal(keys.state().historySummary, "role", "the History fallthrough still toggles the Summary label off-view");
+  // Reach History (view roleIds.length + 4 = 5) and cycle its Summary: the router still reaches it.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // backlog → usage → failures → history
+  assert.equal(keys.state().view, 5);
+  keys.handleKey(undefined, { ctrl: true, name: "y" });
+  assert.equal(keys.state().historySummary, "model", "on History Ctrl+Y still cycles the Summary table");
+  assert.equal(calls.length, 0, "still no change collector ran");
+});
+
 test("the Queued pane caches the CLI's rendered queue list on entry and drops it on a cycle away", () => {
   const root = makeRoot();
   enqueuePrompt(root, "director text");

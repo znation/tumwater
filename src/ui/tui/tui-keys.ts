@@ -48,7 +48,7 @@ interface TuiKeysDeps {
   revertCommit?: typeof revertMergedCommit;
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
-  collectChange?(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>;
+  collectChange?(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
   /** The History trail's per-file stat footer; defaults to run-detail's runDetailStat so
    * tests need not shell out to git. */
   runStat?(root: string, detail: RunDetail): Promise<string>;
@@ -196,6 +196,10 @@ interface TuiKeysState {
   /** The change view's rendered text (renderRoleChange), null until its async collector
    * resolves; windowed by paneBody. */
   changeCache: string | null;
+  /** Whether the change step paints the `git diff --stat` summary instead of the full patch
+   * (Ctrl+Y on the change step toggles it), the terminal twin of `diff --role <id> --stat`
+   * and the dashboard drawer's Stat only toggle. */
+  changeStat: boolean;
   paneScroll: number;
   /** The Activity pane's body-window start into the loaded event tail, or null to follow the
    * live tail. Paged by PgUp/PgDn and reset to null on every Ctrl+T view cycle. */
