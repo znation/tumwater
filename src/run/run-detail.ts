@@ -7,7 +7,8 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { readRunRows } from "../history/history-data.js";
+import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, type HistoryResultClass } from "../history/history-data.js";
+import { parseHistoryResultList } from "../history/history.js";
 import { readRunDetail, type RunDetail } from "./run-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -23,7 +24,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** The run command's synopsis, word for word what cli.ts's dispatcher gate and cmdRunDetail's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]";
+export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -46,8 +47,9 @@ export function runNotFoundMessage(role: string, runNumber: number): string {
  * the same surfaces but naming what the last-form scan actually asked for: the newest
  * completed run, not a number the user supplied. Module-local: the GUI's /api/run 404 only
  * ever serves the numbered form, so this wording has no second consumer. */
-function runNotFoundLastMessage(role: string): string {
-  return runNotFoundPhrase(role, "completed run");
+function runNotFoundLastMessage(role: string, classes: HistoryResultClass[] | null = null): string {
+  const flagNames = classes?.map((c) => HISTORY_RESULT_FLAG_NAMES[c]).join(",");
+  return runNotFoundPhrase(role, classes ? `completed run with result "${flagNames}"` : "completed run");
 }
 
 /** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
@@ -143,7 +145,7 @@ export function runTranscriptLines(
   };
 }
 
-/** `tumwater history <role> [<n>] [--last] [--stat] [--patch]
+/** `tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch]
  * [--transcript [--prompt] [--grep <text>]] [--json]`: print one completed
  * run's full event trail. Read-only: stdout only, no state file created — a run the
  * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
@@ -153,18 +155,21 @@ export function runTranscriptLines(
  * the role's newest completed run in the scanned window and prints its trail exactly as the
  * numbered form would — the summary header and event rendering are shared, only the number's
  * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and a
- * numeric <n> are rivals: exactly one positional under --last, exactly two without. */
+ * numeric <n> are rivals: exactly one positional under --last, exactly two without. With
+ * --last, `--result <class>[,...]` picks the newest run in the listed outcome classes instead
+ * (the listing's classes, scanning up to HISTORY_MAX_RUNS runs); it needs --last. */
 export async function cmdRunDetail(
   root: string,
   positionals: string[],
   json: boolean,
-  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null }: {
+  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null, result = null }: {
     last?: boolean;
     stat?: boolean;
     patch?: boolean;
     transcript?: boolean;
     prompt?: boolean;
     grep?: string | null;
+    result?: string | null;
   } = {},
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
@@ -194,19 +199,24 @@ export async function cmdRunDetail(
   }
   if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${RUN_DETAIL_USAGE})`);
   if (grep !== null && !transcript) fail(`history --grep needs --transcript on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
+  if (result !== null && !last) fail(`history --result needs --last on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
+  const classes = result !== null ? parseHistoryResultList(result) : null;
   // The run number: either the user's positive integer (the numbered path, through the
   // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
   // no cap — the number selects, it does not size the scan) or the newest completed run's
   // number, read from readRunRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
   const runNumber = last
-    ? (readRunRows(root, 1, role)[0]?.run ?? null)
+    ? ((classes
+        ? readRunRows(root, HISTORY_MAX_RUNS, role).find((r) => classes.includes(historyClass(r.result)))
+        : readRunRows(root, 1, role)[0]
+      )?.run ?? null)
     : parseCountFlag("history <n>", positionals[1]);
   const detail = runNumber === null ? null : readRunDetail(root, role, runNumber);
   if (runNumber === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.
     if (json) sayJson(null);
-    else say(runNotFoundLastMessage(role));
+    else say(runNotFoundLastMessage(role, classes));
     return;
   }
   if (detail === null) {

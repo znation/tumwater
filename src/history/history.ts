@@ -42,6 +42,25 @@ export const HISTORY_BY_VALUE_ERROR = "history --by needs role or model";
  * run's start is paired from. */
 const HISTORY_FOLLOW_BUFFER_EVENTS = 2000;
 
+/** Parse a `--result` value: a comma list of outcome classes (the spellings
+ * HISTORY_RESULT_FLAG_NAMES prints, plus the hidden `changes` alias), deduplicated in first-seen
+ * order. A missing, empty or all-commas value fails with HISTORY_RESULT_VALUE_ERROR; the first
+ * unknown piece fails naming the accepted classes (gotSuffix plus a did-you-mean hint). Shared by
+ * the listing and the one-run trail's `--last --result`. */
+export function parseHistoryResultList(raw: string | undefined): HistoryResultClass[] {
+  if (raw === undefined || raw === "") fail(HISTORY_RESULT_VALUE_ERROR);
+  const pieces = splitCommaList(raw);
+  if (pieces.length === 0) fail(HISTORY_RESULT_VALUE_ERROR);
+  const parsed: HistoryResultClass[] = [];
+  for (const piece of pieces) {
+    const cls = parseHistoryResultClass(piece);
+    if (cls === null)
+      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(piece)}${typoSuffix(piece, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
+    if (!parsed.includes(cls)) parsed.push(cls);
+  }
+  return parsed;
+}
+
 /** `tumwater history [--role <id>[,<id>...]] [-n N] [-f] [--since <duration>]
  * [--until <duration>] [--grep <text>] [--result <class>] [--model <selector>[,...]]`: print the
  * last N completed runs, newest first — or,
@@ -122,18 +141,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const resultRaw = flagValue(rest, "--result");
   let resultClasses: HistoryResultClass[] | null = null;
   if (resultRaw !== null) {
-    if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
-    // A comma list names several classes; the first unknown piece fails with its own hint.
-    const pieces = splitCommaList(resultRaw);
-    if (pieces.length === 0) fail(HISTORY_RESULT_VALUE_ERROR);
-    const parsed: HistoryResultClass[] = [];
-    for (const piece of pieces) {
-      const cls = parseHistoryResultClass(piece);
-      if (cls === null)
-        fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(piece)}${typoSuffix(piece, Object.values(HISTORY_RESULT_FLAG_NAMES))}`);
-      if (!parsed.includes(cls)) parsed.push(cls);
-    }
-    const wanted = parsed;
+    const wanted = parseHistoryResultList(resultRaw);
     resultClasses = wanted;
     rows = rows.filter((r) => wanted.includes(historyClass(r.result)));
   }

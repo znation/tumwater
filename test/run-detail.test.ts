@@ -224,7 +224,7 @@ test("cmdRunDetail fails with the usage on a missing, unknown, or extra position
   await initProject(repo, "run arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdRunDetail(repo, ["nosuch", "3"], false));
@@ -304,7 +304,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -331,6 +331,68 @@ test("cmdRunDetail --last resolves the newest run's trail, identical to naming t
     (await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "7"], true))).stdout,
   ) as RunDetail;
   assert.deepEqual(lastJson, numJson);
+});
+
+test("cmdRunDetail --last --result picks the newest run in the listed classes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last result");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 2 }),
+    end({ ts: 2000, run: 2, result: "changed" }),
+    start({ ts: 3000, run: 5 }),
+    end({ ts: 4000, run: 5, result: "error" }),
+    start({ ts: 5000, run: 7 }),
+    end({ ts: 6000, run: 7, result: "no_change" }),
+  ]);
+  const out = async (argv: string[], opts: { last?: boolean; result?: string } = {}, json = false) =>
+    (await expectOkAsync(() => cmdRunDetail(repo, argv, json, opts))).stdout;
+  const run5 = await out(["bugfix", "5"]);
+  const run2 = await out(["bugfix", "2"]);
+  assert.equal(await out(["bugfix"], { last: true, result: "problems" }), run5);
+  assert.equal(await out(["bugfix"], { last: true, result: "merged" }), run2);
+  assert.equal(await out(["bugfix"], { last: true, result: "problems,merged" }), run5);
+  assert.equal(await out(["bugfix"], { last: true, result: "changes" }), run2);
+  assert.deepEqual(
+    JSON.parse(await out(["bugfix"], { last: true, result: "problems" }, true)),
+    JSON.parse(await out(["bugfix", "5"], {}, true)),
+  );
+});
+
+test("--last --result with no matching run: not-found line at exit 0, null under --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last result miss");
+  writeEvents(repo, [start({ ts: 1000, run: 2 }), end({ ts: 2000, run: 2, result: "changed" })]);
+  const miss = await expectOkAsync(() => cmdRunDetail(repo, ["bugfix"], false, { last: true, result: "refused" }));
+  assert.match(miss.stdout, /^no completed run with result "refused" for bugfix in the scanned window/);
+  const json = await expectOkAsync(() => cmdRunDetail(repo, ["bugfix"], true, { last: true, result: "refused" }));
+  assert.equal(JSON.parse(json.stdout), null);
+});
+
+test("--result needs --last and a known class", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run result guards");
+  assert.match(
+    await expectFailAsync(() => cmdRunDetail(repo, ["bugfix", "5"], false, { result: "problems" })),
+    /--result needs --last/,
+  );
+  assert.match(
+    await expectFailAsync(() => cmdRunDetail(repo, ["bugfix"], false, { last: true, result: "problemz" })),
+    /history --result must be one of merged, none, refused, problems/,
+  );
+});
+
+test("history <role> --last --result <class> through the CLI is not read as a run number", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last result cli");
+  writeEvents(repo, [
+    start({ ts: 3000, run: 5 }),
+    end({ ts: 4000, run: 5, result: "error" }),
+    start({ ts: 5000, run: 7 }),
+    end({ ts: 6000, run: 7, result: "no_change" }),
+  ]);
+  const r = await cli(repo, "history", "bugfix", "--last", "--result", "problems");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^bugfix run #5 /);
 });
 
 test("cmdRunDetail --last on an empty log: not-found line at exit 0, parseable null under --json", async () => {

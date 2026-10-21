@@ -88,6 +88,15 @@ export function parseTypeFlag(args: string[], missingValueError: string): { rest
   return { rest, type: value };
 }
 
+/** Parse an optional `--result <class>[,...]` flag for the history trail form: the raw value
+ * (null when absent) alongside `rest`, the args with the value token removed so a class name
+ * cannot be read as a positional. Validation of the classes belongs to the caller
+ * (parseHistoryResultList); a valueless or empty value fails with `missingValueError`. */
+export function parseResultFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
+  const { rest, value } = takeValuedFlag(args, "--result", missingValueError);
+  return { rest, raw: value };
+}
+
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
  * (or drop leading lines) instead of showing the requested tail. With `max`, the count is

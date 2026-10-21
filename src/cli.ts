@@ -12,7 +12,7 @@
  * modules; this file owns the shared sequence, including each case's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
  * the CLI's one error path. */
-import { parseCountFlag, parseGrepFlag } from "./cli/cli-args.js";
+import { parseCountFlag, parseGrepFlag, parseResultFlag } from "./cli/cli-args.js";
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import {
   grepFlagSpec,
@@ -67,11 +67,12 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
  * directory; cmdRunDetail owns the value validation and the --last/numbered rivals. */
 async function runTrailCommand(root: string, args: string[]): Promise<void> {
   const { cmdRunDetail, RUN_DETAIL_USAGE } = await import("./run/run-detail.js");
-  const { HISTORY_GREP_VALUE_ERROR } = await import("./history/history.js");
+  const { HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } = await import("./history/history.js");
   // parseGrepFlag removes the pattern token, so `--grep two` cannot read "two" as a positional.
   const { rest: ungrepped, pattern: grep } = parseGrepFlag(args, HISTORY_GREP_VALUE_ERROR);
-  const { positionals, rest } = peelPositionals(ungrepped);
-  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG, { names: ["--grep"] }]);
+  const { rest: unresulted, raw: result } = parseResultFlag(ungrepped, HISTORY_RESULT_VALUE_ERROR);
+  const { positionals, rest } = peelPositionals(unresulted);
+  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG, { names: ["--grep"] }, { names: ["--result"] }]);
   if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${RUN_DETAIL_USAGE}`);
   await requireReadyRepo(root);
   await cmdRunDetail(root, positionals, rest.includes("--json"), {
@@ -81,6 +82,7 @@ async function runTrailCommand(root: string, args: string[]): Promise<void> {
     transcript: rest.includes("--transcript"),
     prompt: rest.includes("--prompt"),
     grep,
+    result,
   });
 }
 
