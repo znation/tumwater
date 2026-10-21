@@ -44,4 +44,41 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater prompt --list --grep` output is unchanged: its existing tests pass unchanged, test/tui-keys-doc.test.ts passes, and `npm run test:gate` passes.
 
 
+### TUI Pending pane Ctrl+G cycles the overlapping-files block through each holding role, keeping only the shared files that role holds, each still naming every holder: the terminal twin of `tumwater diff --overlaps --role <id>` and the dashboard Overlapping files card's Role picker (planned 2026-10-20 by the plan role; independent of every eligible plan: Backend/model split part 5/5 changes src/config and test configs, bare `history --last` changes src/run/run-detail.ts and the history CLI, the dashboard Inbox search and `diff?stat=1` plans change src/gui and src/ui/gui. The TUI Inbox `/` search plan also edits src/ui/tui/tui-panes.ts and src/ui/tui/tui-frame.ts, but in different arms: its `/` search plumbing and the Inbox hint line, while this plan adds one Ctrl+G routing line and edits the Pending hint line)
+
+**Goal.** The TUI Pending pane (`createPendingPane`, src/ui/tui/tui-pane-pending.ts) lists every file two or more roles' pending changes touch, and Ctrl+N steps through them. It cannot narrow that list to one role. The CLI can (`diff --overlaps --role <id>`, through `scopeChangeOverlaps` in src/change/change-data.ts), and so can the dashboard's Role picker. With several feature instances running, an operator asks "what does feature-3 collide with?", and the terminal should answer it without leaving the TUI. Ctrl+G is free on the Pending view: today the `tui-panes.ts` Ctrl+G router sends it to the report pane's scope arm, which only changes the Usage/Failures scope behind the scenes, and docs/cli.md's Ctrl+G row does not list Pending.
+
+**Approach.**
+1. src/ui/tui/tui-pane-pending.ts:
+   - `pendingOverlapsText(view, scope?: string)`: with no `scope`, behave exactly as today. With a `scope`, narrow first through `scopeChangeOverlaps(view, [scope])`. A no-base view still returns `""`. An empty narrowed list returns `renderChangeOverlaps(narrowed, [scope])`, which gives the CLI's `no file held by <id> is touched by another pending change`. A non-empty one is headed `overlapping files held by <id> (N):` and then lists `renderChangeOverlaps(narrowed)`.
+   - New `export function overlapHolders(view: ChangeOverlapsView): string[]`. It returns the distinct roles named across `view.overlaps` in first-seen order (paths are already sorted, and roles keep holdings order), and `[]` for a no-base view.
+   - In `createPendingPane`, add `let overlapScope: string | null = null` and `let head = ""`. `head` is the queue text plus the roster, which today is everything in `base` before the overlaps block. Add a `compose()` helper that sets `base = head + (block ? "\n\n" + block : "")` with `block = pendingOverlapsText(lastOverlaps, overlapScope ?? undefined)`. `refresh()` sets `head = queueText` up front and `head = queueText + "\n\n" + renderTeamChange(team)` on resolve, then calls `compose()`. The painted text with no scope must equal today's text, so the existing Pending tests pass unchanged. `refresh()` does not reset `overlapScope`, so the scope survives Ctrl+R and leaving and re-entering the pane. The module is created once per session in `createTuiPanes`.
+   - The Ctrl+N arm steps through the narrowed list: `overlapScope === null ? lastOverlaps : scopeChangeOverlaps(lastOverlaps, [overlapScope])`. `overlapDrillHeading`'s total is the narrowed count. When the narrowed list is empty it flashes the existing "no overlapping files to step through".
+   - New Ctrl+G arm, guarded the way the Ctrl+N arm is (`promptLineFree(ctx.es) && session.view === session.roleIds.length + 5`). When `lastOverlaps` is not `ready` or `overlapHolders` is empty, set `overlapScope = null`, call `compose()`, and flash `no overlapping files to scope`. Otherwise cycle `overlapScope` through `[null, ...overlapHolders(lastOverlaps)]`: the next slot after `indexOf(overlapScope)`, so a scope whose role no longer holds a shared file after a refresh goes back to `null`. Then close any open drill-down (`overlapIndex = -1`, `++drillGen`), call `compose()`, set `session.paneCache = base` and `session.paneScroll = 0`, and request a render.
+   - Extend the module's doc comment and the Ctrl+N comment to name the Ctrl+G scope.
+2. src/ui/tui/tui-panes.ts, Ctrl+G router: before the report fallback, add `if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;`. Update the router comment ("Activity on 0, the History exact-role scope on N+4, the Pending overlap scope on N+5, and the report team/base-role scope everywhere else").
+3. src/ui/tui/tui-frame.ts, the `view.kind === "pending"` keys array: insert `["Ctrl+G", "overlap role"]` after `["Ctrl+N", "overlaps"]`.
+4. Docs:
+   - docs/cli.md, the `Ctrl+G` row: add Pending to the views column. Add the text "on Pending, keep only the overlapping files one holding role touches (each still naming every holder), cycling through the holders and back to all; the twin of `diff --overlaps --role <id>`".
+   - docs/how-it-works.md, the Pending pane paragraph: after the Ctrl+N sentence, add "Ctrl+G cycles the list through each holding role and back to all, keeping only the files that role holds (the `tumwater diff --overlaps --role <id>` view, through the same `scopeChangeOverlaps`); Ctrl+N then steps through only those files."
+
+**Files touched.** src/ui/tui/tui-pane-pending.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, docs/cli.md, docs/how-it-works.md, test/tui-keys.test.ts.
+
+**Acceptance criteria.** All new tests go in test/tui-keys.test.ts and reuse its `drillKeys`/`settle` helpers.
+- "pendingOverlapsText narrows to one holding role": for a ready view with overlaps `src/a.ts: feature, feature-2` and `src/b.ts: feature, qa`:
+  - with no scope it returns the existing output;
+  - with `"qa"` it returns `overlapping files held by qa (1):\nsrc/b.ts: feature, qa`;
+  - with `"bugfix"` it returns `no file held by bugfix is touched by another pending change`;
+  - a no-base view with a scope returns `""`.
+- "overlapHolders lists each holding role once in first-seen order": the view above gives `["feature", "feature-2", "qa"]`, and a no-base view gives `[]`.
+- "Ctrl+G on the Pending pane cycles the overlap scope through each holder and back": `drillKeys` with the two overlaps above, then `await settle()` and record `before = paneCache`.
+  - The first Ctrl+G gives a paneCache that ends with `overlapping files held by feature (2):\nsrc/a.ts: feature, feature-2\nsrc/b.ts: feature, qa`.
+  - The second gives one ending with `held by feature-2 (1):\nsrc/a.ts: feature, feature-2`, and the third one ending with `held by qa (1):\nsrc/b.ts: feature, qa`.
+  - The fourth gives back exactly `before`.
+- "Ctrl+N under a Pending overlap scope steps through only the scoped files": scope to `qa` (three Ctrl+G presses), then Ctrl+N and `await settle()`. paneCache starts with `overlapDrillHeading(0, 1, "src/b.ts")`, and the recorded `collectChange` calls are exactly `[["feature", { path: "src/b.ts" }], ["qa", { path: "src/b.ts" }]]`. The next Ctrl+N returns to the scoped base text.
+- "Ctrl+G on the Pending pane closes an open drill-down and survives Ctrl+R": open a drill-down with Ctrl+N, then press Ctrl+G. paneCache ends with the `held by feature (2):` block and does not start with `overlap `. Press Ctrl+R and `await settle()` twice: paneCache still ends with the `held by feature (2):` block.
+- "Ctrl+G on the Pending pane with no overlaps flashes": `drillKeys([])`. Ctrl+G leaves paneCache unchanged, and flash equals `no overlapping files to scope`.
+- The existing Pending pane tests, including "the Pending pane lists overlapping files below the roster…" and the Ctrl+N drill-down tests, pass unchanged. The existing Ctrl+G tests for Activity, History and Usage/Failures also pass unchanged.
+- `npm run test:gate` passes.
+
 ## Done
