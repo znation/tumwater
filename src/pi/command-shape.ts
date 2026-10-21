@@ -7,6 +7,8 @@
  * keeps a legitimately slow suite below it while a hang surfaces within one quiet window of
  * the default. Both stall surfaces (runPi's warning, the dashboard's flag) must apply the
  * same threshold or one cries wolf while the other stays silent. */
+import { streamsToolOutput } from "../agent/backend-traits.js";
+
 export function bufferedCommandStallMs(stallMs: number): number {
   return Math.max(stallMs * 2, 10 * 60_000);
 }
@@ -44,4 +46,15 @@ export function commandBuffersOutput(command: string): boolean {
     return true; // `>` / `>&` / `<>`: stdout's destination is no longer pi's pipe
   }
   return false;
+}
+
+/** True when a tool call gives no silence signal, so it must be judged by the buffered
+ * wall-clock threshold instead: either the agent never streams tool output (claude and
+ * opencode, which send no content updates) or the command itself buffers its stdout
+ * (commandBuffersOutput). The two stall surfaces — pi-watchdogs.ts's runPi stall warning and
+ * progress-data.ts's in-flight stall flag — must agree on this or one surface cries wolf
+ * while the other stays silent (BUGS.md 2026-09-28); this composes streamsToolOutput with the
+ * command classifier so they cannot drift. */
+export function callBuffersOutput(agent: string | undefined, command: string): boolean {
+  return !streamsToolOutput(agent) || commandBuffersOutput(command);
 }

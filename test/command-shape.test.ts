@@ -6,7 +6,7 @@
 // surfaces must classify identically (BUGS.md 2026-09-28).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commandBuffersOutput } from "../src/pi/command-shape.js";
+import { callBuffersOutput, commandBuffersOutput } from "../src/pi/command-shape.js";
 
 test("commandBuffersOutput classifies the redirect shapes", () => {
   const buffered = [
@@ -26,4 +26,13 @@ test("commandBuffersOutput classifies the redirect shapes", () => {
   ];
   for (const c of buffered) assert.equal(commandBuffersOutput(c), true, `buffered: ${c}`);
   for (const c of live) assert.equal(commandBuffersOutput(c), false, `live: ${c}`);
+});
+
+test("callBuffersOutput folds the agent trait over the command classifier", () => {
+  // An agent that streams nothing buffers every call; a pi-routed agent falls back to the
+  // command shape, so a bare command still streams.
+  assert.equal(callBuffersOutput("claude", "sleep 999"), true);
+  assert.equal(callBuffersOutput("opencode", "sleep 999"), true);
+  assert.equal(callBuffersOutput("pi", "sleep 999"), false);
+  assert.equal(callBuffersOutput("pi", "npm run test 2>&1 | tail -8"), true);
 });

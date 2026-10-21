@@ -6,8 +6,7 @@ import {
   type OpenToolCall,
   type PiRunKind,
 } from "../pi/pi-event-line.js";
-import { bufferedCommandStallMs, commandBuffersOutput } from "../pi/command-shape.js";
-import { streamsToolOutput } from "../agent/backend-traits.js";
+import { bufferedCommandStallMs, callBuffersOutput } from "../pi/command-shape.js";
 import { describeToolCall } from "../text/phrases.js";
 import { squash } from "../text/text.js";
 import { defaultConfig, liveConfig } from "../config/config.js";
@@ -309,7 +308,7 @@ export function stalledToolLabel(
     // claude never sends content-bearing tool updates, so silence is expected for every call
     // and only the wall-clock duration can show a hang (plans/agent-backends.md "Watchdogs and
     // progress"); pi keeps the per-command classification.
-    if (!streamsToolOutput(agent) || commandBuffersOutput(call.command || call.label)) {
+    if (callBuffersOutput(agent, call.command || call.label)) {
       if (now - call.lastActivityAt >= bufferedCommandStallMs(stallMs)) return call.label;
       continue;
     }
