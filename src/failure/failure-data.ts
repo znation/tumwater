@@ -9,7 +9,7 @@
  * the per-role × outcome-class pricing and the loss ranking — lives in time-spend.ts.
  */
 import type { RunResult } from "../run/run-outcome.js";
-import { assertReportSinceMs, eventWindowCovers, readWindowEvents, type EventLogState } from "../events/event-window.js";
+import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming, type EventLogState } from "../events/event-window.js";
 import { eventDayKey, eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { scopeBases } from "../report/report-fold.js";
@@ -347,10 +347,8 @@ export function collectFailureReportSince(
   untilMs?: number,
 ): FailureReportData {
   assertReportSinceMs(sinceMs);
-  const now = Date.now();
-  const end = untilMs === undefined ? now : now - untilMs;
+  const { now, cutoff, end, slice } = sinceWindowTiming(sinceMs, untilMs);
   const length = sinceMs - (untilMs ?? 0);
-  const cutoff = now - sinceMs;
   const priorFrom = cutoff - length;
   const raw = readWindowEvents(root, dayKey(priorFrom));
   const current: HarnessEvent[] = [];
@@ -364,9 +362,7 @@ export function collectFailureReportSince(
     days: Math.ceil(length / 86_400_000),
     from: dayKey(cutoff),
     to: dayKey(end),
-    sinceMs,
-    fromIso: new Date(cutoff).toISOString(),
-    ...(untilMs === undefined ? {} : { untilMs, toIso: new Date(end).toISOString() }),
+    ...slice,
   }, role);
 }
 

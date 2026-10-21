@@ -379,3 +379,31 @@ export function eventsSince(
     (ev) => keep(ev) && ev.ts >= now - sinceMs,
   );
 }
+
+/** The `--since` / `?sinceMs=` trailing window's bounds and identity slice, shared by the two
+ * trailing-window collectors (`collectReportSince` in report-data.ts and
+ * `collectFailureReportSince` in failure-data.ts): an open-ended window (cutoff = now − sinceMs,
+ * end = now) when `untilMs` is absent, else the bounded [now − sinceMs, now − untilMs). Both
+ * collectors budget events with the same open/closed comparisons against `cutoff`/`end` (and
+ * `now` for the open-ended case), and both stamp the same fromIso/toIso identity fields into
+ * their JSON, so the timing math and the ISO stamping live here rather than drifting per
+ * collector. `slice` is exactly the identity object each embeds: sinceMs and fromIso always,
+ * plus untilMs and toIso only when the window is bounded. */
+export function sinceWindowTiming(
+  sinceMs: number,
+  untilMs: number | undefined,
+): { now: number; cutoff: number; end: number; slice: { sinceMs: number; fromIso: string; untilMs?: number; toIso?: string } } {
+  const now = Date.now();
+  const cutoff = now - sinceMs;
+  const end = untilMs === undefined ? now : now - untilMs;
+  return {
+    now,
+    cutoff,
+    end,
+    slice: {
+      sinceMs,
+      fromIso: new Date(cutoff).toISOString(),
+      ...(untilMs === undefined ? {} : { untilMs, toIso: new Date(end).toISOString() }),
+    },
+  };
+}

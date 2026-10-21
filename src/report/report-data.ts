@@ -11,7 +11,7 @@
  * collectors; the report shapes they produce live in src/report/report-types.ts, and the
  * event-log folding and its memoized per-window cache in src/report/report-fold.ts (its own
  * test, report-fold-cache). */
-import { assertReportSinceMs, eventWindowCovers, readWindowEvents } from "../events/event-window.js";
+import { assertReportSinceMs, eventWindowCovers, readWindowEvents, sinceWindowTiming } from "../events/event-window.js";
 import {
   DONE_DATE_RE,
   FIXED_DATE_RE,
@@ -51,9 +51,7 @@ export function collectReportSince(
   untilMs?: number,
 ): SinceReport {
   assertReportSinceMs(sinceMs);
-  const now = Date.now();
-  const cutoff = now - sinceMs;
-  const end = untilMs === undefined ? now : now - untilMs;
+  const { now, cutoff, end, slice } = sinceWindowTiming(sinceMs, untilMs);
   // The window key is the cutoff's local calendar day, from the shared dayKey helper
   // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
   // filter below; the day-keyed read may include earlier hours of that day, which the ts
@@ -142,9 +140,7 @@ export function collectReportSince(
   // window actually deferred (zero means absent), so a deferral-free --since JSON omits it.
   const deferred = scopedByRole(acc.deferredByReason, bases);
   return {
-    sinceMs,
-    fromIso: new Date(cutoff).toISOString(),
-    ...(untilMs === undefined ? {} : { untilMs, toIso: new Date(end).toISOString() }),
+    ...slice,
     ...(bases === undefined ? {} : { role: bases.join(",") }),
     totals: scopedTotals,
     runsByRole: scopedByRole(acc.runsByRole, bases),
