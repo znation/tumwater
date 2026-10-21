@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkMergeQueueFiles, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
-import { enqueueMerge } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queuedMergeFiles, readMergeQueue, unreadableMergeQueueFiles } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { mergeQueueDir } from "../src/paths.js";
@@ -867,4 +867,48 @@ test("checkStaleQueuedMerges appends the last 24h merge wait to its detail", () 
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, / · merges in the last 24h waited .* \(2 merges\)$/);
   assert.ok(!checkStaleQueuedMerges(queueRoot(), now).detail.includes(" · merges"));
+});
+
+// checkMergeQueueFiles — the queue files readMergeQueue skips (torn, foreign, vanished
+// mid-listing) are named so a stranded entry is visible to `tumwater doctor` instead of only a
+// count on `tumwater queue`. Warns, never fails, like the other document checks.
+
+test("checkMergeQueueFiles reads ok for an absent, an empty, and an all-readable queue", () => {
+  assert.equal(checkMergeQueueFiles(tmpdir("doctor-merge-queue-files-")).level, "ok");
+  assert.equal(checkMergeQueueFiles(queueRoot()).level, "ok");
+  const root = queueRoot();
+  enqueueMerge(root, advice("improve", "tidy parser"));
+  assert.equal(checkMergeQueueFiles(root).level, "ok");
+});
+
+test("checkMergeQueueFiles warns naming every file the reader skips", () => {
+  const root = queueRoot();
+  enqueueMerge(root, advice("improve", "tidy parser"));
+  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
+  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
+  const out = checkMergeQueueFiles(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /000-torn\.json/);
+  assert.match(out.detail, /999-foreign\.json/);
+  assert.match(out.detail, /2 files/);
+  assert.ok(!out.detail.includes(path.basename(queuedMergeFiles(root)[0]!.file)), "the readable entry's own file is not named");
+});
+
+test("checkMergeQueueFiles names the extras via andMore", () => {
+  const root = queueRoot();
+  for (let i = 0; i < 4; i++) fs.writeFileSync(path.join(mergeQueueDir(root), `${i}.json`), '{"nope":true}');
+  const out = checkMergeQueueFiles(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /0\.json/);
+  assert.match(out.detail, /and 3 more/);
+});
+
+test("unreadableMergeQueueFiles matches readMergeQueue's count", () => {
+  const root = queueRoot();
+  enqueueMerge(root, advice("improve", "tidy parser"));
+  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
+  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
+  const files = unreadableMergeQueueFiles(root);
+  assert.equal(files.length, readMergeQueue(root).unreadable);
+  for (const f of files) assert.ok(f.endsWith(".json"));
 });

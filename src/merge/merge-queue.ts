@@ -268,6 +268,19 @@ export function readMergeQueue(root: string): MergeQueueView {
   return { entries, unreadable };
 }
 
+/** The full path of every queue file `readMergeQueue` skips — torn, foreign, or vanished
+ * mid-listing — in filename order. This names what `readMergeQueue.unreadable` counts, through
+ * the same skip policy, so the count and the list cannot drift: nothing else ages a skipped
+ * file (the drain repairs only an unreadable head), so each here is a stranded entry the
+ * queue reader silently passes over. A missing queue directory reads as an empty list. */
+export function unreadableMergeQueueFiles(root: string): string[] {
+  const out: string[] = [];
+  for (const file of queueFiles(root)) {
+    if (readEntry(file) === null) out.push(file);
+  }
+  return out;
+}
+
 /** The head of the queue — its oldest entry — plus the file to drop on completion, or null when
  * the queue is empty or its oldest file is a vanished/torn entry. */
 export function headMerge(root: string): { entry: MergeEntry; file: string } | null {

@@ -15,7 +15,7 @@ import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { queuedMerges } from "../merge/merge-queue.js";
+import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
@@ -31,7 +31,8 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) and queues rather
  * than the environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated
  * `## ` headings, refused entries, stale open bugs, stale queued merges, stale queued prompts,
- * and uncommitted edits to the backlog files in the primary checkout. They share this module's
+ * the merge-queue files the reader skips, and uncommitted edits to the backlog files in the
+ * primary checkout. They share this module's
  * helpers (readDoc and its checked wrapper readDocChecked, andMore) and the heading-trim
  * constant, and all of them warn instead of failing: damaged documentation is operator signal,
  * not a broken environment. doctor.ts composes them beside the environment checks; the shared
@@ -367,6 +368,23 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
   return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
+}
+
+/** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing —
+ * named so a stranded queue entry is a health signal instead of only a number on `tumwater
+ * queue`'s output. It exists because `tumwater queue` counts the skips but does not name them,
+ * and the drain drops only an unreadable head, so a non-head skip is otherwise silent: it sits
+ * in `.tumwater/merge-queue/` forever, never drained, and neither the queue reader nor the
+ * stale-queued-merges doctor row (which reads only readable entries) surfaces it. Warn, never
+ * fail, like the module's other document checks: a foreign file is operator signal, not a
+ * broken environment. */
+export function checkMergeQueueFiles(root: string): CheckOutcome {
+  const files = unreadableMergeQueueFiles(root);
+  if (files.length === 0) return okOutcome("the queue reader skips no merge-queue file");
+  const [first, ...rest] = files;
+  const more = andMore(rest, (f) => path.relative(root, f), "file(s)");
+  return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${path.relative(root, first!)}${more}; ` +
+    `a torn or foreign file is never cleared, so nothing ages it or surfaces its merge — remove it (a crashed enqueue's merge ref still recovers on the next run)`);
 }
 
 /** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check
