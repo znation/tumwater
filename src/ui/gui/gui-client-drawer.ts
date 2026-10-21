@@ -207,10 +207,15 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const dirty = Array.isArray(view.dirtyFiles) ? view.dirtyFiles : [];
     if (view.state === "absent") return "<p class='muted'>No workspace yet — this role has not run.</p>";
     if (view.state === "no-base") return "<p class='muted'>Main branch " + esc(view.mainBranch) + " does not exist.</p>";
+    const scoped = typeof view.path === "string";
+    if (scoped && view.state === "ready" && commits.length === 0 && dirty.length === 0) {
+      return "<p class='muted'>No pending change to " + esc(view.path) + ".</p>";
+    }
     if (view.state !== "ready" || (view.ahead === 0 && dirty.length === 0)) return "<p class='muted'>No unlanded work.</p>";
     let html = "<p class='note'>" + esc(view.branch) + " · " + esc(plural(view.ahead, "commit")) +
       " ahead of " + esc(view.mainBranch) +
-      (dirty.length ? " · " + esc(plural(dirty.length, "uncommitted file")) : "") + "</p>";
+      (dirty.length ? " · " + esc(plural(dirty.length, "uncommitted file")) : "") +
+      (scoped ? " · limited to " + esc(view.path) : "") + "</p>";
     html += commitRowsHtml(commits);
     if (view.diff) html += diffPre(view.diff);
     if (dirty.length) {

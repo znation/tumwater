@@ -48,6 +48,7 @@ interface DrawerScope {
   toggleEntry(file: string, index: number): void;
   renderRoleDrawer(d: object): void;
   drawerChangeHtml(view: unknown): string;
+  overlapDetailHtml(rows: unknown): string;
   mergeSummary(d: object, role: string): string;
   transcriptHtml(lines: string[]): string;
   loadRoleRuns(force: boolean): Promise<void>;
@@ -520,6 +521,25 @@ test("drawerChangeHtml renders the full patch for a ready view and degrades the 
   assert.match(t.scope.drawerChangeHtml({ state: "ready", ahead: 0, commits: [], dirtyFiles: [] }), /No unlanded work/);
   assert.match(t.scope.drawerChangeHtml(null), /unavailable/);
   assert.match(t.scope.drawerChangeHtml({}), /No unlanded work/);
+});
+
+test("overlapDetailHtml paints each role's path-scoped change, loading, and error rows", () => {
+  const t = openDrawer(["overlapDetailHtml", "drawerChangeHtml"]);
+  const html = t.scope.overlapDetailHtml([
+    { role: "feature-2", state: "ok", view: { state: "ready", path: "src/a.ts", mainBranch: "main", ahead: 2, commits: [], dirtyFiles: [] } },
+    { role: "qa", state: "ok", view: {
+      state: "ready", path: "src/a.ts", branch: "tumwater/qa", mainBranch: "main", ahead: 1,
+      commits: [{ sha: "abc12345", subject: "touch a" }], diff: "diff --git a/src/a.ts b/src/a.ts\n+line\n", dirtyFiles: [],
+    } },
+    { role: "clean", state: "error", message: "<boom>" },
+    { role: "docs", state: "loading" },
+  ]);
+  assert.match(html, /<h3 class='mono'>feature #2<\/h3>/);
+  assert.match(html, /No pending change to src\/a\.ts\./);
+  assert.match(html, /limited to src\/a\.ts/);
+  assert.match(html, /diff --git a\/src\/a\.ts/);
+  assert.match(html, /&lt;boom&gt;/);
+  assert.match(html, /Loading…/);
 });
 
 test("transcriptHtml classifies run separators, tool calls, thinking, and warnings, escaping each line", () => {

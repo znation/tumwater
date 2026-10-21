@@ -11,6 +11,7 @@ import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { aheadOfMain, branchExists, countCommitsInRange, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { aheadOfMainDiff, aheadOfMainFiles, changedFiles } from "../git/git-diff.js";
+import { isAbsolute } from "node:path";
 import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
 import { roleWorktreeDir } from "../git/slots-state.js";
@@ -184,6 +185,15 @@ function parseOnelineLog(out: string | null): RoleChangeCommit[] {
       const cut = line.indexOf(" ");
       return cut < 0 ? { sha: line, subject: "" } : { sha: line.slice(0, cut), subject: line.slice(cut + 1) };
     });
+}
+
+/** The normalised repo-relative `path` scope of a role's change view (shared by `diff --role
+ * --path` and the dashboard's `GET /api/diff?role&path`): leading `./` pieces and trailing `/`
+ * characters stripped; null for an empty, `.`, absolute or `..`-bearing result. */
+export function normalizeDiffPath(raw: string): string | null {
+  const norm = raw.replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  const bad = norm === "" || norm === "." || isAbsolute(norm) || norm.split("/").includes("..");
+  return bad ? null : norm;
 }
 
 /** Whether a porcelain path lies under the `--path` scope (always true without one): the path

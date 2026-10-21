@@ -8,6 +8,7 @@
  * script, reaching its helpers (esc, getJson, icon, errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlaps = null;
+  let pendingOverlapOpen = null;
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -98,7 +99,18 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   }
   // The Overlapping files card: one "path: role, role" line per file two or more pending changes
   // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps.
-  function pendingOverlapsHtml(view) {
+  // The expanded detail under one overlap line: each holding role's path-scoped change, or its
+  // loading / error row. Pure.
+  function overlapDetailHtml(rows) {
+    return (Array.isArray(rows) ? rows : []).map((r) => {
+      let body;
+      if (r.state === "loading") body = "<p class='muted'>Loading…</p>";
+      else if (r.state === "error") body = "<p class='muted'>" + esc(r.message || "Pending change unavailable") + "</p>";
+      else body = drawerChangeHtml(r.view);
+      return "<h3 class='mono'>" + esc(roleLabel(r.role)) + "</h3>" + body;
+    }).join("");
+  }
+  function pendingOverlapsHtml(view, open) {
     const ok = view && typeof view === "object";
     let body;
     if (ok && view.state === "no-base") {
@@ -106,10 +118,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     } else if (!ok || !Array.isArray(view.overlaps) || view.overlaps.length === 0) {
       body = "<div class='empty'>No file is touched by two pending changes</div>";
     } else {
-      body = "<div style='padding:10px 16px 12px'>" + view.overlaps.map((o) => {
+      body = "<div style='padding:10px 16px 12px'>" + view.overlaps.map((o, i) => {
         const roles = o && Array.isArray(o.roles) ? o.roles : [];
         const path = o && typeof o.path === "string" ? o.path : "?";
-        return "<div class='mono clamp1' style='padding:3px 0'>" + esc(path) + ": " + esc(roles.map(roleLabel).join(", ")) + "</div>";
+        const line = "<button type='button' class='li-open mono clamp1' data-overlap='" + i + "'>" + esc(path) + ": " + esc(roles.map(roleLabel).join(", ")) + "</button>";
+        return open && open.path === path ? line + "<div class='overlap-detail'>" + overlapDetailHtml(open.rows) + "</div>" : line;
       }).join("") + "</div>";
     }
     return "<div class='card-head'><h2>Overlapping files</h2></div>" + body;
@@ -122,6 +135,38 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!card) return;
     card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels);
   }
+  function paintPendingOverlaps() {
+    const card = $("pendingoverlaps");
+    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps, pendingOverlapOpen);
+  }
+  // Toggle one overlap line's detail: fetch each holding role's change scoped to the path. A
+  // reply is dropped once another line (or a Refresh) replaced the open detail.
+  async function togglePendingOverlap(index) {
+    const o = pendingOverlaps && Array.isArray(pendingOverlaps.overlaps) ? pendingOverlaps.overlaps[index] : null;
+    if (!o || typeof o.path !== "string") return;
+    const path = o.path;
+    if (pendingOverlapOpen && pendingOverlapOpen.path === path) {
+      pendingOverlapOpen = null;
+      paintPendingOverlaps();
+      return;
+    }
+    const roles = Array.isArray(o.roles) ? o.roles : [];
+    const open = { path, rows: roles.map((role) => ({ role, state: "loading" })) };
+    pendingOverlapOpen = open;
+    paintPendingOverlaps();
+    await Promise.all(roles.map(async (role, k) => {
+      let row;
+      try {
+        const view = await getJson("/api/diff?role=" + encodeURIComponent(role) + "&path=" + encodeURIComponent(path));
+        row = { role, state: "ok", view };
+      } catch (err) {
+        row = { role, state: "error", message: err && err.message ? err.message : "Pending change unavailable" };
+      }
+      if (pendingOverlapOpen !== open) return;
+      open.rows[k] = row;
+      paintPendingOverlaps();
+    }));
+  }
   function buildPendingView() {
     if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every role's unmerged change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
       "<div class='toolbar'><button type='button' class='btn btn-sm' id='pendingrefresh'>" + icon("refresh") + "Refresh</button></div></div>" +
@@ -129,11 +174,16 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       "<div class='card' id='pendingoverlaps'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
+    $("pendingoverlaps").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-overlap]");
+      if (b) togglePendingOverlap(Number(b.dataset.overlap));
+    });
   }
   // Load the team-wide change roster. Called when the view opens and by the Refresh button;
   // no timer of its own, and the roster only changes when a role merges or edits its worktree.
   // Load the overlapping-files card on its own, so neither read can blank the other's card.
   async function fetchPendingOverlaps() {
+    pendingOverlapOpen = null;
     try {
       pendingOverlaps = await getJson("/api/diff?overlaps=1");
     } catch (err) {
@@ -141,8 +191,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       if (card) card.innerHTML = errorPanel("Overlaps unavailable", err);
       return;
     }
-    const card = $("pendingoverlaps");
-    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps);
+    paintPendingOverlaps();
   }
   async function fetchPending() {
     buildPendingView();

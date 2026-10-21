@@ -1754,6 +1754,47 @@ test("handleDiff with ?overlaps serves collectChangeOverlaps's document and refu
   assert.deepEqual(doc.overlaps, []);
 });
 
+test("handleDiff with ?role&path serves the path-scoped view, matching collectRoleChange", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff path");
+  fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
+  commitIn(root, "seed notes.txt");
+  const feature = await ensureWorktree(root, "feature", "main");
+  fs.appendFileSync(path.join(feature, "notes.txt"), "feature\n");
+  fs.writeFileSync(path.join(feature, "feature.md"), "work\n");
+  commitIn(feature, "feature work");
+  fs.appendFileSync(path.join(feature, "notes.txt"), "more\n");
+
+  const ok = await serveDiff(root, "?role=feature&path=notes.txt");
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, await collectRoleChange(root, "feature", { path: "notes.txt" }));
+  const doc = ok.data as unknown as { path: string; dirtyFiles: string[]; diff: string };
+  assert.equal(doc.path, "notes.txt");
+  assert.deepEqual(doc.dirtyFiles, ["notes.txt"]);
+  assert.ok(!doc.diff.includes("feature.md"));
+  const dotted = await serveDiff(root, "?role=feature&path=" + encodeURIComponent("./notes.txt/"));
+  assert.deepEqual(dotted.data, ok.data);
+  const md = (await serveDiff(root, "?role=feature&path=feature.md")).data as unknown as { commits: unknown[]; dirtyFiles: string[] };
+  assert.equal(md.commits.length, 1);
+  assert.deepEqual(md.dirtyFiles, []);
+});
+
+test("handleDiff refuses path without role, with overlaps, and outside the repo", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff path refusals");
+  await ensureWorktree(root, "feature", "main");
+  const err = async (q: string) => {
+    const r = await serveDiff(root, q);
+    assert.equal(r.captured.status, 400);
+    return (r.data as { error: string }).error;
+  };
+  assert.match(await err("?path=notes.txt"), /path needs role/);
+  assert.match(await err("?overlaps=1&path=notes.txt"), /overlaps reads every file; drop path/);
+  for (const bad of ["../x", "/etc", "."]) {
+    assert.match(await err("?role=feature&path=" + encodeURIComponent(bad)), /repo-relative path/);
+  }
+});
+
 // ---- GET /api/prompt-text and POST /api/prompt-edit: the Queued tab's file-addressed edit
 // seam (PLANS.md 2026-10-11, part 1/2). Both address one prompt by its queue-file basename,
 // the /api/prompt-cancel address, and share inbox-edit.ts's core with the CLI's

@@ -186,6 +186,27 @@ test("drawerQueueHtml lists only the role's queued merges under their whole-queu
   assert.match(drawerQueueHtml({ depth: 1, entries: [e("clean", "<b>x</b>")] }, "clean", now), /&lt;b&gt;x&lt;\/b&gt;/);
 });
 
+test("pendingOverlapsHtml makes each path a toggle and expands only the open one", () => {
+  const { pendingOverlapsHtml } = clientScope<{ pendingOverlapsHtml(view: unknown, open?: unknown): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingOverlapsHtml"],
+    { drawerChangeHtml: () => "<p>patch</p>" },
+  );
+  const view = { mainBranch: "main", state: "ready", overlaps: [
+    { path: "src/a.ts", roles: ["feature"] },
+    { path: "src/b.ts", roles: ["qa"] },
+  ] };
+  const closed = pendingOverlapsHtml(view);
+  assert.match(closed, /data-overlap='0'/);
+  assert.match(closed, /data-overlap='1'/);
+  assert.doesNotMatch(closed, /overlap-detail/);
+  const html = pendingOverlapsHtml(view, { path: "src/a.ts", rows: [{ role: "feature", state: "loading" }] });
+  assert.equal(html.split("overlap-detail").length, 2);
+  const at = html.indexOf("overlap-detail");
+  assert.ok(html.indexOf("src/a.ts: feature") < at && at < html.indexOf("src/b.ts: qa"));
+  assert.match(html.slice(at, html.indexOf("src/b.ts: qa")), /Loading…/);
+});
+
 test("pendingOverlapsHtml lists each shared path with its roles, and states no-base, empty, and malformed documents", () => {
   const { pendingOverlapsHtml } = clientScope<{ pendingOverlapsHtml(view: unknown): string }>(
     ["format", "labels", "pending-table"],

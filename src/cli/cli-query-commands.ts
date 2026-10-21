@@ -4,7 +4,6 @@
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
 
-import { isAbsolute } from "node:path";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { DIFF_PATH_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
@@ -16,7 +15,7 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges } from "../change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
@@ -167,9 +166,8 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
 function diffPathArg(args: string[]): string | undefined {
   const raw = flagValue(args, "--path");
   if (raw === null || raw === undefined) return undefined;
-  const norm = raw.replace(/^(\.\/)+/, "").replace(/\/+$/, "");
-  const bad = norm === "" || norm === "." || isAbsolute(norm) || norm.split("/").includes("..");
-  if (bad) fail("diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)");
+  const norm = normalizeDiffPath(raw);
+  if (norm === null) fail("diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)");
   return norm;
 }
 

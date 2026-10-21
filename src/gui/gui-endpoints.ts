@@ -25,7 +25,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../events/event-window.js";
@@ -156,9 +156,14 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
  * (exactly `tumwater diff --overlaps --json`'s `{ mainBranch, state, overlaps }`); with `role` it
  * is a 400. */
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
+  const rawPath = q.get("path");
   if (q.get("overlaps") !== null) {
     if (q.get("role") !== null) {
       badRequest(res, "overlaps reads every role; drop role");
+      return;
+    }
+    if (rawPath !== null) {
+      badRequest(res, "overlaps reads every file; drop path");
       return;
     }
     sendJson(res, 200, await collectChangeOverlaps(root));
@@ -166,11 +171,20 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   }
   const role = q.get("role");
   if (role === null) {
+    if (rawPath !== null) {
+      badRequest(res, "path needs role (the team roster carries no patch)");
+      return;
+    }
     sendJson(res, 200, await collectTeamChanges(root));
     return;
   }
   if (rejectBadRole(root, res, role)) return;
-  sendJson(res, 200, await collectRoleChange(root, role));
+  const path = rawPath === null ? undefined : normalizeDiffPath(rawPath);
+  if (path === null) {
+    badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
+    return;
+  }
+  sendJson(res, 200, await collectRoleChange(root, role, path === undefined ? {} : { path }));
 }
 
 /** Parse and validate the role-scoped, sinceMs-or-days query the report and failures endpoints
