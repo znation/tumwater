@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
+import { collectFailureReportSince } from "../src/failure/failure-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago, todayTs } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
@@ -1518,13 +1519,13 @@ test("collectReportSince with untilMs drops events at or after the window end", 
   assert.equal(collectReportSince(root, 6 * HOUR).totals.tokensOut, 1332);
 });
 
-test("report --until is refused without --since, when not shorter, and with --failures", async () => {
+test("report --until is refused without --since, and when not shorter", async () => {
   const root = makeRepo();
   const cases: Array<[string[], RegExp]> = [
     [["--until", "1h"], /report --until requires --since/],
     [["--since", "1h", "--until", "2h"], /report --until \(.*\) must be shorter than --since/],
     [["--since", "1h", "--until", "1h"], /report --until \(.*\) must be shorter than --since/],
-    [["--since", "6h", "--until", "1h", "--failures"], /report --until does not apply to --failures/],
+    [["--since", "6h", "--until", "6h", "--failures"], /report --until \(.*\) must be shorter than --since/],
     [["--since", "6h", "--until"], /report --until needs a value/],
   ];
   for (const [flags, re] of cases) {
@@ -1533,4 +1534,42 @@ test("report --until is refused without --since, when not shorter, and with --fa
     assert.match(r.out, re, flags.join(" "));
   }
   assert.match((await runCli(root, "help", "report")).out, /--until <duration>/);
+});
+
+function seedBoundedFailures(root: string): void {
+  writeEvents(root, [
+    { ts: ago(8 * HOUR), error: "prior-a" },
+    { ts: ago(3 * HOUR), error: "current-b" },
+    { ts: ago(HOUR / 2), error: "after-c" },
+  ].map((e, i) => JSON.stringify({ ...e, loop: "feature", type: "run_end", run: i + 1, result: "error" }))); // retired-name-ok: legacy event field in a fixture
+}
+
+test("report --failures --since --until digests only the bounded window and compares the same length before", async () => {
+  const root = makeRepo();
+  seedBoundedFailures(root);
+  const md = await runCli(root, "report", "--failures", "--since", "6h", "--until", "1h");
+  assert.equal(md.code, 0, md.out);
+  assert.match(md.out, /window: 6h to 1h ago \(since .*, until .*\) · 1 runs/);
+  assert.match(md.out, /## Deltas vs the preceding 5h/);
+  const json = JSON.parse((await runCli(root, "report", "--failures", "--since", "6h", "--until", "1h", "--json")).out) as {
+    runs: number;
+    untilMs: number;
+    toIso: unknown;
+    deltas: Array<{ role: string; runs: number; prevRuns: number }>;
+  };
+  assert.equal(json.runs, 1);
+  assert.equal(json.untilMs, HOUR);
+  assert.equal(typeof json.toIso, "string");
+  const row = json.deltas.find((d) => d.role === "feature");
+  assert.equal(row?.runs, 1);
+  assert.equal(row?.prevRuns, 1);
+});
+
+test("collectFailureReportSince with untilMs drops events at or after the window end", () => {
+  const root = makeRepo();
+  seedBoundedFailures(root);
+  assert.equal(collectFailureReportSince(root, 6 * HOUR, undefined, HOUR).runs, 1);
+  const unbounded = collectFailureReportSince(root, 6 * HOUR);
+  assert.equal(unbounded.runs, 2);
+  assert.ok(!("untilMs" in unbounded));
 });

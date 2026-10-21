@@ -8,7 +8,7 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { dayKey, dayLabel, formatTime, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
+import { boundedWindowLine, dayKey, dayLabel, formatTime, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -138,17 +138,22 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // The since shape prints the same sections as the day shape but labels its window as an
   // instant span (the wording renderSinceReportMarkdown uses); the day shape keeps its
   // day-window line. The empty branch follows the same split so neither claims the other's unit.
+  const bounded = data.sinceMs !== undefined && data.untilMs !== undefined && data.toIso !== undefined;
   lines.push(
-    data.sinceMs !== undefined
-      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.runs} runs`
-      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.runs} runs`,
+    bounded
+      ? `${boundedWindowLine(durationLabel(data.sinceMs!), durationLabel(data.untilMs!), data.fromIso!, data.toIso!)} · ${data.runs} runs`
+      : data.sinceMs !== undefined
+        ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.runs} runs`
+        : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.runs} runs`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   if (data.logState === "unreadable") lines.push("log unreadable — evidence missing");
   else if (data.emptyLog) lines.push("no events retained");
   else if (!data.hasEvents) {
     lines.push(
-      data.sinceMs !== undefined
+      bounded
+        ? `no events from ${durationLabel(data.sinceMs!)} to ${durationLabel(data.untilMs!)} ago`
+        : data.sinceMs !== undefined
         ? `no events in the last ${durationLabel(data.sinceMs)}`
         : `no events in the last ${dayLabel(data.days)}`,
     );
@@ -257,7 +262,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
 
   lines.push("");
   lines.push(
-    `## Deltas vs the preceding ${data.sinceMs !== undefined ? durationLabel(data.sinceMs) : dayLabel(data.days)}`,
+    `## Deltas vs the preceding ${data.sinceMs !== undefined ? durationLabel(data.sinceMs - (data.untilMs ?? 0)) : dayLabel(data.days)}`,
   );
   if (data.deltas.length === 0) {
     lines.push("_no runs in either window_");

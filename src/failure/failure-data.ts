@@ -119,6 +119,8 @@ export interface FailureReportData {
   to: string; // today
   sinceMs?: number; // trailing-window length; set only by collectFailureReportSince
   fromIso?: string; // cutoff instant as ISO; set only by collectFailureReportSince
+  untilMs?: number; // the --until bound; absent when the window ends now
+  toIso?: string; // window end as ISO; set only with untilMs
   runs: number; // run_end events in the current window
   hasEvents: boolean; // any event in either window (a day-key read can reach past them)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
@@ -335,26 +337,36 @@ export function collectFailureReport(root: string, days: number, role?: string |
  * the window and the equal-length window immediately before it (the same current/prior split
  * the day collector builds, so the Deltas table compares like with like). The read starts at the
  * prior half's own day key, exactly as the day collector reads 2× its window; the cutoff instant
- * for coverage is the prior half's start, which a day key alone cannot prove. */
-export function collectFailureReportSince(root: string, sinceMs: number, role?: string | readonly string[]): FailureReportData {
+ * for coverage is the prior half's start, which a day key alone cannot prove. With `untilMs` the
+ * window is the bounded `[now - sinceMs, now - untilMs)`; the prior window then has that
+ * window's own length, `sinceMs - untilMs`. */
+export function collectFailureReportSince(
+  root: string,
+  sinceMs: number,
+  role?: string | readonly string[],
+  untilMs?: number,
+): FailureReportData {
   assertReportSinceMs(sinceMs);
   const now = Date.now();
+  const end = untilMs === undefined ? now : now - untilMs;
+  const length = sinceMs - (untilMs ?? 0);
   const cutoff = now - sinceMs;
-  const priorFrom = cutoff - sinceMs;
+  const priorFrom = cutoff - length;
   const raw = readWindowEvents(root, dayKey(priorFrom));
   const current: HarnessEvent[] = [];
   const prior: HarnessEvent[] = [];
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number") continue;
-    if (ev.ts >= cutoff && ev.ts <= now) current.push(ev);
+    if (ev.ts >= cutoff && (untilMs === undefined ? ev.ts <= now : ev.ts < end)) current.push(ev);
     else if (ev.ts >= priorFrom && ev.ts < cutoff) prior.push(ev);
   }
   return assembleFailureReport(current, prior, raw.events, eventWindowCovers(raw, priorFrom), raw.logState, {
-    days: Math.ceil(sinceMs / 86_400_000),
+    days: Math.ceil(length / 86_400_000),
     from: dayKey(cutoff),
-    to: dayKey(now),
+    to: dayKey(end),
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
+    ...(untilMs === undefined ? {} : { untilMs, toIso: new Date(end).toISOString() }),
   }, role);
 }
 
@@ -368,7 +380,7 @@ function assembleFailureReport(
   allEventsRaw: HarnessEvent[],
   coversFullWindow: boolean,
   logState: EventLogState,
-  window: { days: number; from: string; to: string; sinceMs?: number; fromIso?: string },
+  window: { days: number; from: string; to: string; sinceMs?: number; fromIso?: string; untilMs?: number; toIso?: string },
   role?: string | readonly string[],
 ): FailureReportData {
   // Scope first when a role was named: every section below derives from these partitions, so

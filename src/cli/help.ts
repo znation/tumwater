@@ -60,17 +60,18 @@ Usage:
                                    14 days); --role <id>[,<id>...] scopes the digest to the listed roles'
                                    rows; --since windows the digest over a trailing
                                    span (capped at 7d)
-  tumwater report --failures --since <duration> [--role <id>[,<id>...]] [--json]
+  tumwater report --failures --since <duration> [--until <duration>] [--role <id>[,<id>...]] [--json]
                                    The failure digest over a trailing window, compared
-                                   against the equal-length window before it
+                                   against the equal-length window before it; --until
+                                   <duration> ends both windows' span that long ago
   tumwater report --since <duration> [--until <duration>] [--role <id>[,<id>...]] [--json]
                                    Totals over a trailing window (capped at 7d) —
                                    tokens/runs/commits/cost since a point in time; totals
                                    also include merge runs (reviewer + conflict
                                    resolution); --role <id>[,<id>...] scopes the totals to the listed roles
                                    (merge runs and backlog tallies omitted); --until <duration>
-                                   ends that window the given duration ago (requires --since;
-                                   not with --failures); not combinable with --days
+                                   ends that window the given duration ago (requires --since);
+                                   not combinable with --days
   tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak

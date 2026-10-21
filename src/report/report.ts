@@ -29,13 +29,11 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // --days is still a rival shape: it counts whole local days, while --since totals a trailing
     // window. --failures is not a rival anymore — the digest has a windowed-since collector that
     // reuses the day digest's own sections, so `report --failures --since <d>` dispatches it
-    // through the existing --json / render choice.
+    // through the existing --json / render choice; --until bounds its window's end.
     if (args.includes("--days"))
       failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
-    if (untilMs !== null && args.includes("--failures"))
-      fail("report --until does not apply to --failures: the digest compares its window against the equal-length window before it");
     if (args.includes("--failures")) {
-      const digest = collectFailureReportSince(root, ms, role ?? undefined);
+      const digest = collectFailureReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
       if (args.includes("--json")) sayJson(digest);
       else say(renderFailureMarkdown(digest));
       return;

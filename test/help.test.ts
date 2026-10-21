@@ -68,7 +68,7 @@ test("multi-form commands yield every usage form in their topic", () => {
   const report = helpTopic("report")!;
   assert.match(report, /report \[--days N\]/);
   assert.match(report, /report --failures \[--days N\] \[--since <duration>\] \[--role <id>\[,<id>\.\.\.\]\] \[--json\]/);
-  assert.match(report, /report --failures --since <duration> \[--role <id>\[,<id>\.\.\.\]\] \[--json\]/);
+  assert.match(report, /report --failures --since <duration> \[--until <duration>\] \[--role <id>\[,<id>\.\.\.\]\] \[--json\]/);
   const prompt = helpTopic("prompt")!;
   assert.match(prompt, /prompt <text\.\.\.>/);
   assert.match(prompt, /prompt --list/);
