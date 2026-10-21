@@ -251,13 +251,16 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater bug --list [--grep <text>] [--json]
+  tumwater bug --list [--ready] [--grep <text>] [--json]
                                    List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
                                    hold, inProgress — as data; \`[working on it: …]\` marks an
-                                   entry a role is working on; --grep keeps the entries whose
-                                   heading or body contains the text, case-insensitively
+                                   entry a role is working on; --ready keeps only the entries
+                                   no hold keeps from being picked (entries a role is working
+                                   on stay), under their unfiltered numbers; --grep keeps the
+                                   entries whose heading or body contains the text,
+                                   case-insensitively
   tumwater bug --list --done [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in BUGS.md ## Fixed, newest first
                                    (default 10); --json prints {entries, older}, each entry
@@ -303,15 +306,17 @@ Usage:
                                    With neither text nor --file, open the Nth entry as --show
                                    prints it in $VISUAL or $EDITOR and write it back on save;
                                    an unchanged buffer writes nothing
-  tumwater plan --list [--grep <text>] [--json]
+  tumwater plan --list [--ready] [--grep <text>] [--json]
                                    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
                                    body, hold, inProgress — as data; \`[working on it: …]\`
                                    marks an entry a role is working on; a series' blocked
-                                   parts show as one line naming their positions; --grep keeps
-                                   the entries whose heading or body contains the text,
-                                   case-insensitively
+                                   parts show as one line naming their positions; --ready keeps
+                                   only the entries no hold keeps from being picked (entries a
+                                   role is working on stay), under their unfiltered numbers;
+                                   --grep keeps the entries whose heading or body contains the
+                                   text, case-insensitively
   tumwater plan --list --done [-n <count>] [--grep <text>] [--json]
                                    List the newest entries, numbered, in PLANS.md ## Done, newest first
                                    (default 10); --json prints {entries, older}, each entry

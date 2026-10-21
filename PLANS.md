@@ -97,34 +97,6 @@ This part rewrites them first. Series goal and siblings: part 1/5; part 4b/5 han
 - "the fish script parses under fish when fish is installed" and "the zsh script wraps the bash script in bashcompinit" pass unchanged.
 - `npm run test:gate` passes.
 
-### `plan --list --ready` and `bug --list --ready` keep only the entries a role could claim, each under its unfiltered number, the numbered twin of `tumwater backlog --ready` (planned 2026-10-20 by the plan role; independent of every eligible plan — the Backend/model split parts change test configs and src/config, the TUI History model filter touches src/ui/tui, and the two completion plans touch src/cli/completion.ts; this one touches the backlog list view, help and docs only)
-
-**Goal.** `tumwater backlog --ready` hides held entries (`readyBacklog`, src/backlog/backlog-render.ts), but it prints no position numbers. `plan --list` and `bug --list` print the numbers that `--top`/`--edit`/`--cancel`/`--show` take, but they cannot hide held entries. A long backlog with blocked series and refused bugs buries the claimable ones. With `--ready`, `plan --list` and `bug --list` keep only the entries whose hold is null. Each entry keeps its unfiltered position, so `plan --list --ready` followed by `plan --top <n>` acts on the entry that was printed.
-
-**Approach.**
-1. src/backlog/backlog-cli-view.ts `listAndAnnounce`: add a `ready` boolean to the argument loop, parsed like `--done`, with `rejectRepeatFlag(ready, "--ready")`. After the `-n needs --done` check, add `if (ready && done) fail("--ready needs the active list (finished entries carry no holds)")`.
-2. In the active branch, after `matches` is computed (the grep filter), add `const kept = ready ? matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null) : matches;` and `const hidden = matches.length - kept.length;`. Then use `kept` instead of `matches` in the JSON branch, the prose rows, and the bug lines. An entry a role is working on has no hold, so it stays with its `[working on it: …]` mark, as `readyBacklog` keeps it. Positions stay the unfiltered `position` values. The JSON shape does not change; it just has fewer entries.
-3. Prose endings:
-   - The existing `no …s` and `no …s match "<grep>"` lines keep their conditions.
-   - Add a new case after them: `kept.length === 0` with `ready` set prints `no ${noun}s ready (${hidden} held; run \`tumwater ${command} --list\` to see them)`.
-   - When `hidden > 0` and something is kept, push a last line after the rows (and after the grouped-series footnote when there is one): `(${hidden} held entries hidden; run \`tumwater ${command} --list\` to see them)`. This matches `cmdBacklog`'s wording.
-4. Update the `listAndAnnounce` doc comment with one sentence on `--ready`: it keeps entries with no hold under their unfiltered numbers, composes with `--grep` and `--json`, and is refused with `--done`.
-5. src/cli/help.ts: change the `tumwater plan --list [--grep <text>] [--json]` and `tumwater bug --list [--grep <text>] [--json]` stanzas to `[--ready] [--grep <text>] [--json]`. Add to each stanza's description: "--ready keeps only the entries no hold keeps from being picked (entries a role is working on stay), under their unfiltered numbers".
-6. docs/cli.md: in the "Steer the project" row's `--list` sentence, after the `--grep <text>` clause on the active `--list`, add "; `--ready` keeps only the entries no hold keeps from being picked, under their unfiltered numbers (composes with `--grep` and `--json`; not with `--done`)".
-
-**Files touched.** src/backlog/backlog-cli-view.ts, src/cli/help.ts, docs/cli.md, test/backlog-write-list.test.ts.
-
-**Acceptance criteria** (in test/backlog-write-list.test.ts, reusing `seededPlansForList` and `seededBugsForList`; part 2/2 is blocked, and bug 1 is refused):
-- New test "plan|bug --list --ready keeps the claimable entries under their unfiltered numbers":
-  - `plan --list --ready` prints `planned features in PLANS.md:`, then `1. <p1><age suffix>`, then `(1 held entries hidden; run \`tumwater plan --list\` to see them)`.
-  - `bug --list --ready` prints `open bugs in BUGS.md:`, then `2. <b2><age suffix>`, then the same hidden line naming `bug --list`.
-  - `bug --list --ready --json` has entries `[{ position: 2, hold: null, … }]`.
-  - `plan --list --ready --grep "add import"` prints `no planned features ready (1 held; run \`tumwater plan --list\` to see them)`.
-- New test "--ready appears once and does not combine with --done": `plan --list --ready --ready` exits 1 with the repeat-flag error, and `bug --list --done --ready` exits 1 with `--ready needs the active list`.
-- "help topics name the --list forms" now matches `tumwater bug --list \[--ready\] \[--grep <text>\] \[--json\]` and the plan equivalent.
-- Every other test in the file passes unchanged. Without `--ready`, output does not change.
-- `npm run test:gate` passes.
-
 ### `history <role> --last --result <class>[,...]` opens the role's newest run in the listed outcome classes, e.g. `history feature --last --result problems` jumps straight to its latest failure's trail (planned 2026-10-20 by the plan role; independent of every eligible plan: the Backend/model split parts change test configs and src/config, the two completion plans change src/cli/completion.ts, and the `--list --ready` plan changes the backlog list view; this one changes the one-run trail command, the history `--result` parser and the CLI arg helpers)
 
 **Goal.** To read a role's last failure today, you run `tumwater history --role feature --result problems -n 1`, copy the run number, then run `tumwater history feature <n>`. `history <role> --last` jumps to the newest run of any outcome. Add `--result` to the `--last` form so one command does it: `history <role> --last --result <class>[,<class>...]` prints the trail of the role's newest completed run whose outcome class is listed. It uses the same classes and spellings as the listing's `--result` (merged, none, refused, problems; `changes` stays a hidden alias), and it composes with `--stat`, `--patch`, `--transcript [--prompt] [--grep]` and `--json` exactly as `--last` does.

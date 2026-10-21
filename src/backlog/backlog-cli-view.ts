@@ -51,6 +51,9 @@ function positionRuns(positions: readonly number[]): string {
  * position still reaches `--show`/`--edit`/`--cancel` — the active twin of the finished
  * entries' `--done --grep`.
  *
+ * `--ready` keeps the entries with no hold under their unfiltered numbers (composes with
+ * `--grep` and `--json`; refused with `--done`, whose entries carry no holds).
+ *
  * `--done [-n <count>] [--grep <text>]` (each once; `-n` and `--grep` need `--done`) lists the
  * newest finished entries instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10)
  * with `older` counting those left out; --json carries each entry's `position` and
@@ -68,6 +71,7 @@ export function listAndAnnounce(
   let json = false;
   let list = false;
   let done = false;
+  let ready = false;
   let count: number | null = null;
   let grep: string | null = null;
   const rest: string[] = [];
@@ -85,6 +89,11 @@ export function listAndAnnounce(
     if (arg === "--done") {
       rejectRepeatFlag(done, "--done");
       done = true;
+      continue;
+    }
+    if (arg === "--ready") {
+      rejectRepeatFlag(ready, "--ready");
+      ready = true;
       continue;
     }
     if (arg === "-n") {
@@ -112,6 +121,7 @@ export function listAndAnnounce(
   refuseTeamWorkspace(root);
   if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
+  if (ready && done) fail("--ready needs the active list (finished entries carry no holds)");
   const bugSection = sectionTitle === "Open";
   if (done) {
     const numbered = (bugSection ? fixedBugEntries(root) : donePlanEntries(root)).map((entry, i) => ({
@@ -156,9 +166,11 @@ export function listAndAnnounce(
   // `--grep` keeps each match's original position so a printed number still reaches them.
   const numbered = entries.map((entry, i) => ({ entry, position: i + 1 }));
   const matches = grep === null ? numbered : numbered.filter((m) => entryMatches(m.entry, grep));
+  const kept = ready ? matches.filter((m) => (entryHolds[m.position - 1] ?? null) === null) : matches;
+  const hidden = matches.length - kept.length;
   if (json) {
     sayJson({
-      entries: matches.map(({ entry, position }) => {
+      entries: kept.map(({ entry, position }) => {
         const since = filingDate(entry.title);
         return {
           position,
@@ -184,15 +196,22 @@ export function listAndAnnounce(
     say(`no ${noun}s match "${grep}"`);
     return;
   }
+  if (ready && kept.length === 0) {
+    say(`no ${noun}s ready (${hidden} held; run \`tumwater ${command} --list\` to see them)`);
+    return;
+  }
+  const hiddenNote = `(${hidden} held entries hidden; run \`tumwater ${command} --list\` to see them)`;
   const line = (entry: { title: string }, i: number): string =>
     `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
   if (bugSection) {
-    say(`${noun}s in ${fileName}:\n${matches.map(({ entry, position }) => `${position}. ${line(entry, position - 1)}`).join("\n")}`);
+    const bugLines = kept.map(({ entry, position }) => `${position}. ${line(entry, position - 1)}`);
+    if (hidden > 0) bugLines.push(hiddenNote);
+    say(`${noun}s in ${fileName}:\n${bugLines.join("\n")}`);
     return;
   }
   // Plans: a series' blocked parts show as one line naming their positions, as the prompt's
   // backlog index does; numbering is unchanged so --show/--edit/--cancel <n> reach every part.
-  const rows = matches.map(({ entry, position }) => ({
+  const rows = kept.map(({ entry, position }) => ({
     position,
     title: entry.title,
     hold: entryHolds[position - 1] ?? null,
@@ -205,6 +224,7 @@ export function listAndAnnounce(
     return `${positionRuns(g.rows.map((r) => r.position))}. ${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`;
   });
   if (grouped) lines.push("(each blocked series is one line; --show <n> prints a part, --json lists every entry)");
+  if (hidden > 0) lines.push(hiddenNote);
   say(`${noun}s in ${fileName}:\n${lines.join("\n")}`);
 }
 

@@ -61,6 +61,42 @@ function seededBugsForList(): string {
   ].join("\n");
 }
 
+test("plan|bug --list --ready keeps the claimable entries under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  fs.writeFileSync(path.join(repo, "BUGS.md"), seededBugsForList());
+  const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
+  const b2 = "open bug (reported by the operator 2026-10-02)";
+  let r = await cli(repo, "plan", "--list", "--ready");
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.stdout,
+    `planned features in PLANS.md:\n1. ${p1}${entryAgeSuffix(p1)}\n(1 held entries hidden; run \`tumwater plan --list\` to see them)\n`,
+  );
+  r = await cli(repo, "bug", "--list", "--ready");
+  assert.equal(
+    r.stdout,
+    `open bugs in BUGS.md:\n2. ${b2}${entryAgeSuffix(b2)}\n(1 held entries hidden; run \`tumwater bug --list\` to see them)\n`,
+  );
+  r = await cli(repo, "bug", "--list", "--ready", "--json");
+  const parsed = JSON.parse(r.stdout) as { entries: { position: number; hold: unknown }[] };
+  assert.equal(parsed.entries.length, 1);
+  assert.equal(parsed.entries[0]!.position, 2);
+  assert.equal(parsed.entries[0]!.hold, null);
+  r = await cli(repo, "plan", "--list", "--ready", "--grep", "add import");
+  assert.equal(r.stdout, "no planned features ready (1 held; run `tumwater plan --list` to see them)\n");
+});
+
+test("--ready appears once and does not combine with --done", async () => {
+  const repo = makeRepo();
+  let r = await cli(repo, "plan", "--list", "--ready", "--ready");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--ready/);
+  r = await cli(repo, "bug", "--list", "--done", "--ready");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--ready needs the active list/);
+});
+
 test("plan --list prints the Planned entries numbered with their eligibility marks and age", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
@@ -188,10 +224,10 @@ test("help topics name the --list forms", async () => {
   const repo = makeRepo();
   let r = await cli(repo, "help", "bug");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater bug --list \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater bug --list \[--ready\] \[--grep <text>\] \[--json\]/);
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /tumwater plan --list \[--grep <text>\] \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --list \[--ready\] \[--grep <text>\] \[--json\]/);
   assert.match(r.stdout, /tumwater plan --list --done/);
   r = await cli(repo, "help", "bug");
   assert.match(r.stdout, /tumwater bug --list --done/);
