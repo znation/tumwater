@@ -45,7 +45,7 @@ import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
-import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
+import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, untilMsQuery, windowDays } from "./gui-args.js";
 import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
@@ -200,7 +200,7 @@ function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string)
 }
 
 /** Handle GET /api/report?days=N[&role=<id>[,<id>...]] or
- * /api/report?sinceMs=<ms>[&role=<id>[,<id>...]]: the
+ * /api/report?sinceMs=<ms>[&untilMs=<ms>][&role=<id>[,<id>...]]: the
  * usage report — the day series (collectReport's ReportData) as JSON the dashboard's report tab
  * charts, or, when sinceMs is set, the trailing-window totals rendered through
  * renderSinceReportMarkdown as { markdown } (the CLI's `report --since` shape). The day window
@@ -210,8 +210,10 @@ function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string)
 export function handleReport(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const scope = reportScope(q, res, root);
   if (scope === null) return;
+  const untilMs = untilMsQuery(q, res, scope.sinceMs);
+  if (untilMs === null) return;
   if (scope.sinceMs !== undefined) {
-    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, scope.sinceMs, scope.roles)) });
+    sendJson(res, 200, { markdown: renderSinceReportMarkdown(collectReportSince(root, scope.sinceMs, scope.roles, untilMs)) });
     return;
   }
   sendJson(res, 200, collectReport(root, windowDays(q), scope.roles));
@@ -250,8 +252,9 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)) });
 }
 
-/** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms> for a
- * trailing window: the per-run rows the CLI's `tumwater history` derives from the event log,
+/** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms>[&untilMs=<ms>]
+ * for a trailing window (untilMs ends it that long ago, via untilMsQuery; without sinceMs → 400):
+ * the per-run rows the CLI's `tumwater history` derives from the event log,
  * the dashboard's history tab renders them. The count shape ({ rows }) rides readRunRows (the
  * shared scan, window growth included, so a role-filtered ask on a busy team cannot silently
  * come back short); n is optional: absent → HISTORY_DEFAULT_RUNS; present but not a plain
@@ -299,11 +302,14 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
     const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
       `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
-    const { rows, covered } = readRunRowsSince(root, sinceMs, role);
+    const untilMs = untilMsQuery(q, res, sinceMs);
+    if (untilMs === null) return;
+    const { rows, covered } = readRunRowsSince(root, sinceMs, role, untilMs ?? null);
     const matched = onModels(grep === null ? rows : runRowsMatchingGrep(rows, grep));
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeRunRows(matched), modelSummary: summarizeRunRowsByModel(matched) } : {}) });
     return;
   }
+  if (untilMsQuery(q, res, undefined) === null) return; // a count has no window end to move
   const parsed = intQuery(q, res, "n", "non-negative", HISTORY_DEFAULT_RUNS);
   if (parsed === null) return;
   const n = clampCount(parsed, HISTORY_MAX_RUNS);

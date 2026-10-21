@@ -37,7 +37,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson, fakeReq } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
-import { summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
+import { readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
@@ -145,6 +145,31 @@ test("handleReport serves the trailing-window totals as { markdown } when ?since
   assert.match(payload.markdown, /window: last 1h/);
   assert.match(payload.markdown, /1234 output tokens/, "the 30-minute-old run counts");
   assert.doesNotMatch(payload.markdown, /9999/, "the 3-hour-old run is outside the window");
+});
+
+test("handleReport's ?untilMs ends the since window that long ago", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    JSON.stringify({ ts: now - 30 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 111 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: now - 3 * 60 * 60 * 1000, loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const ok = await serveReport(root, "?sinceMs=14400000&untilMs=3600000");
+  assert.equal(ok.captured.status, 200);
+  const { markdown } = ok.data as { markdown: string };
+  assert.match(markdown, /window: 4h to 1h ago/);
+  assert.match(markdown, /999 output tokens/);
+  assert.doesNotMatch(markdown, /111/);
+  for (const [qs, err] of [
+    ["?untilMs=3600000", /requires sinceMs/],
+    ["?days=7&untilMs=3600000", /requires sinceMs/],
+    ["?sinceMs=3600000&untilMs=3600000", /must be shorter than sinceMs/],
+    ["?sinceMs=3600000&untilMs=abc", /untilMs/],
+  ] as const) {
+    const r = await serveReport(root, qs);
+    assert.equal(r.captured.status, 400, qs);
+    assert.match((r.data as { error: string }).error, err, qs);
+  }
 });
 
 test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", async () => {
@@ -506,6 +531,27 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   assert.equal(wdata.rows.length, 4);
   assert.equal(wdata.summary.total.runs, 4);
   assert.deepEqual(wdata.summary, summarizeRunRows(wdata.rows));
+});
+
+test("handleHistory's ?untilMs drops the window's newer rows", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 30 * 60 * 1000, loop: "clean", type: "run_start", run: 9 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60 * 1000, loop: "clean", type: "run_end", run: 9, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5 * 60 * 1000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+  ].map((e) => JSON.stringify(e)));
+  const win = await serveHistory(root, "?sinceMs=7200000&untilMs=600000");
+  assert.equal(win.captured.status, 200);
+  const rows = (win.data as { rows: { role: string; run: number }[] }).rows;
+  assert.deepEqual(rows, readRunRowsSince(root, 7200000, null, 600000).rows);
+  assert.deepEqual(rows.map((r) => [r.role, r.run]), [["clean", 9]]);
+  for (const qs of ["?n=20&untilMs=600000", "?untilMs=600000"]) {
+    const r = await serveHistory(root, qs);
+    assert.equal(r.captured.status, 400, qs);
+    assert.match((r.data as { error: string }).error, /requires sinceMs/, qs);
+  }
+  assert.equal((await serveHistory(root, "?sinceMs=600000&untilMs=600000")).captured.status, 400);
 });
 
 test("handleHistory ?summary also folds the served rows per model", async () => {

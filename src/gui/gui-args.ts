@@ -176,6 +176,32 @@ export function sinceMsQuery(
   return sinceMs;
 }
 
+/** Parse the report and history endpoints' optional `?untilMs=` window end — how long ago a
+ * `sinceMs` window stops, the twin of the CLI's `--until`. Absent → undefined (the window ends
+ * now). Present without a `sinceMs` → 400 (the CLI's "--until requires --since"), so the
+ * count and day shapes never ignore it silently; otherwise the value rides intQuery's
+ * positive-integer rule, and one not shorter than `sinceMs` is a 400 (the CLI's "must be
+ * shorter than --since"; sinceMs is already capped, so this bounds untilMs too). Returns the
+ * parsed length, undefined when absent, or null once the 400 is sent. */
+export function untilMsQuery(
+  q: URLSearchParams,
+  res: http.ServerResponse,
+  sinceMs: number | undefined,
+): number | undefined | null {
+  if (q.get("untilMs") === null) return undefined;
+  if (sinceMs === undefined) {
+    badRequest(res, "untilMs requires sinceMs (it ends a sinceMs window that long ago)");
+    return null;
+  }
+  const untilMs = intQuery(q, res, "untilMs", "positive");
+  if (untilMs === null) return null;
+  if (untilMs >= sinceMs) {
+    badRequest(res, `untilMs (${untilMs}) must be shorter than sinceMs (${sinceMs})`);
+    return null;
+  }
+  return untilMs;
+}
+
 /** Pull the required curated config key out of a config endpoint's body — the shared validator
  * for /api/config-set and /api/config-unset, which must reject a missing or uncurated key with
  * the same 400 wording: the panel's reach stays exactly EDITABLE_CONFIG_KEYS, and the browser and
