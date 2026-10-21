@@ -21,6 +21,7 @@ import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
+import { patchId } from "../src/git/git.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
 
@@ -66,6 +67,16 @@ test("a named culprit is reverted on main, main_revert is logged and the next ve
   await poll();
   assert.equal(eventsOfType(root, "main_check").at(-1)?.status, "passed");
   assert.equal(await revertSkipReason(root, "main", found[0]!), "a revert of it already merged");
+});
+
+test("a successful revert logs main_revert with the culprit's patch-id", async () => {
+  const { root, b, found } = await redMain("improve");
+  await runMainRevert(root, "main", defaultConfig(), found[0]!);
+  const expected = await patchId(root, `${b}^`, b);
+  assert.ok(expected, "the culprit's patch id is computable");
+  const reverts = eventsOfType(root, "main_revert");
+  assert.equal(reverts.length, 1);
+  assert.equal(reverts[0]?.patchId, expected, "main_revert carries the culprit's patch-id");
 });
 
 test("a revert that conflicts leaves main alone and queues the heal prompt naming the culprit", async () => {

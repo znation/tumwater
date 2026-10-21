@@ -24,7 +24,8 @@ import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
-import { redMainWarning } from "../baseline/main-guardrails.js";
+import { redMainWarning, revertWarnings } from "../baseline/main-guardrails.js";
+import { loadQuarantine } from "../review/known-flakes.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
@@ -292,8 +293,10 @@ export function checkMainRed(
       : "; no bugfix role is enabled to repair it — fix main by hand or enable bugfix";
     phrases.push(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
   }
-  const red = redMainWarning(readEventsSince(root, DAY_MS).events, now);
+  const events = readEventsSince(root, DAY_MS).events;
+  const red = redMainWarning(events, now);
   if (red !== null) phrases.push(red);
+  phrases.push(...revertWarnings(events, loadQuarantine(root), now));
   if (phrases.length === 0) return okOutcome("no role waiting on main's check");
   return warnOutcome(phrases.join("; "));
 }

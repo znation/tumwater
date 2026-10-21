@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseTeam, pauseRole } from "../src/team/team-state.js";
@@ -10,6 +12,7 @@ import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { humanSeconds } from "../src/text/datetime.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../src/run/run-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { quarantinePath } from "../src/paths.js";
 
 test("checkPause: no markers is ok", () => {
   assert.deepEqual(checkPause(tmpdir("tw-hold-")), { level: "ok", detail: "not paused" });
@@ -389,6 +392,20 @@ test("checkMainRed: one row joins the held-role phrase and the red-main phrase",
   assert.equal(r.level, "warn");
   assert.match(r.detail, /1 code role waiting/);
   assert.match(r.detail, /main has had no passing full check for 31 min/);
+});
+
+test("checkMainRed: the main's check row carries a false-revert phrase", () => {
+  const root = tmpdir("tw-mainred-");
+  const now = Date.now();
+  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
+  fs.writeFileSync(
+    quarantinePath(root),
+    JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 3_600_000, lastSeen: now - 300_000, count: 1, bug: "flaky" }] }),
+  );
+  writeEvents(root, [{ ts: now - 10 * 60_000, source: "tumwater", type: "main_revert", commit: "abcdef123456", failingTests: ["test/T.ts"] }]);
+  const r = checkMainRed(root, bcfg({}), now);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /did not reproduce/);
 });
 
 const PH_NOW = Date.now();

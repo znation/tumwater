@@ -97,14 +97,113 @@ export function quarantineWarning(entries: readonly { test: string; firstSeen: n
   return phrases.length > 0 ? phrases.join("; ") : null;
 }
 
+/** How many `main_revert` events in the trailing 24 h the doctor and digest warn once the
+ * daily ceiling is passed (G2's rate test): a burst of reverts reads like a flaky-revert
+ * habit, distinct from a single false revert. */
+export const REVERT_RATE_LIMIT = 5;
+
+/** One `main_revert` in the last 24 h looks false when either G2 test holds — its failure did
+ * not reproduce (a test it names has been quarantined at or since the revert, or a later
+ * `main_check`'s `quarantined` list names it), or its change came back unchanged and main
+ * stayed green (a later `merged` event carries the culprit's patch-id, and the first
+ * `main_check` after that merge which actually ran the check passed). */
+function revertLooksFalse(
+  r: HarnessEvent,
+  events: readonly HarnessEvent[],
+  quarantine: readonly { test: string; lastSeen: number }[],
+): "quarantined" | "remerged" | null {
+  const rts = typeof r.ts === "number" ? r.ts : 0;
+  const tests = Array.isArray(r.failingTests)
+    ? r.failingTests.filter((t): t is string => typeof t === "string")
+    : [];
+  const firstTest = tests[0];
+  // Did not reproduce: the named test is quarantined at or since the revert, or a later
+  // main_check's `quarantined` list names it (src/baseline/main-watch.ts records a red naming
+  // only quarantined flaky tests as passed there).
+  if (
+    firstTest !== undefined &&
+    (quarantine.some((q) => q.test === firstTest && q.lastSeen >= rts) ||
+      events.some(
+        (e) =>
+          e.type === "main_check" &&
+          typeof e.ts === "number" &&
+          e.ts >= rts &&
+          Array.isArray(e.quarantined) &&
+          e.quarantined.includes(firstTest),
+      ))
+  )
+    return "quarantined";
+  // Came back unchanged and main stayed green: a later `merged` carries this revert's
+  // patch-id, and the first `main_check` after that merge which ran the check passed.
+  const patch = typeof r.patchId === "string" ? r.patchId : undefined;
+  if (patch === undefined) return null;
+  const remerged = events.find(
+    (e) => e.type === "merged" && e.patchId === patch && typeof e.ts === "number" && e.ts >= rts,
+  );
+  if (remerged === undefined) return null;
+  const rmTs = typeof remerged.ts === "number" ? remerged.ts : 0;
+  const after = events
+    .filter(
+      (e) =>
+        e.type === "main_check" &&
+        typeof e.ts === "number" &&
+        e.ts >= rmTs &&
+        typeof e.durationMs === "number" &&
+        e.durationMs > 0,
+    )
+    .sort((a, b) => a.ts - b.ts)[0];
+  return after?.status === "passed" ? "remerged" : null;
+}
+
+/** G2 over `events` and the quarantine list: warns on a `main_revert` in the trailing 24 h that
+ * looks false, and on more than REVERT_RATE_LIMIT reverts a day. The detail names each
+ * false-looking revert (culprit sha and which test failed / that it landed again unchanged)
+ * and the count when over the rate limit. Returns the phrases that fire (empty when none do). */
+export function revertWarnings(
+  events: readonly HarnessEvent[],
+  quarantine: readonly { test: string; lastSeen: number }[],
+  now: number,
+): string[] {
+  const cutoff = now - DAY_MS;
+  const reverts = events.filter(
+    (e) => e.type === "main_revert" && typeof e.ts === "number" && e.ts >= cutoff,
+  );
+  if (reverts.length === 0) return [];
+  const phrases: string[] = [];
+  if (reverts.length > REVERT_RATE_LIMIT) {
+    phrases.push(`${reverts.length} reverts in the last 24 h — over the ${REVERT_RATE_LIMIT}-revert ceiling`);
+  }
+  for (const r of reverts) {
+    const culprit =
+      typeof r.commit === "string" ? r.commit : typeof r.sha === "string" ? r.sha : "";
+    const reason = revertLooksFalse(r, events, quarantine);
+    if (reason === "quarantined") {
+      const tests = Array.isArray(r.failingTests)
+        ? r.failingTests.filter((t): t is string => typeof t === "string")
+        : [];
+      phrases.push(
+        `revert ${shortSha(culprit)} blamed ${squash(tests[0] ?? "", 60)}, which has been quarantined since — the failure did not reproduce`,
+      );
+    } else if (reason === "remerged") {
+      phrases.push(
+        `revert ${shortSha(culprit)}'s change merged again unchanged and main stayed green — the revert looks false`,
+      );
+    }
+  }
+  return phrases;
+}
+
 /** Both guardrail phrases that fire for `root`, reading the trailing 24 h of the event log and
  * quarantine.json, oldest-test text bounded as the doctor rows are. */
 export function guardrailWarnings(root: string, now: number = Date.now()): string[] {
   const warnings: string[] = [];
-  const red = redMainWarning(readEventsSince(root, DAY_MS).events, now);
+  const events = readEventsSince(root, DAY_MS).events;
+  const red = redMainWarning(events, now);
   if (red !== null) warnings.push(red);
-  const q = quarantineWarning(loadQuarantine(root), now);
-  if (q !== null) warnings.push(q);
+  const q = loadQuarantine(root);
+  const qw = quarantineWarning(q, now);
+  if (qw !== null) warnings.push(qw);
+  warnings.push(...revertWarnings(events, q, now));
   return warnings;
 }
 

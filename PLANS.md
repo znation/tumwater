@@ -6,27 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge guardrails, part 2/3: `tumwater doctor` and the selfcheck digest warn on a revert that looks false and on more than 5 reverts a day (planned 2026-10-21 by user; requires part 1/3 landed; design in plans/fast-merge.md "Guardrails" G2; touches src/baseline/main-guardrails.ts src/baseline/main-revert.ts src/merge/merge-core.ts src/merge/merge-to-main.ts src/merge/merge-stack.ts src/events/events.ts src/doctor/doctor-holds.ts docs/how-it-works.md and their tests)
-
-**Goal.** Make a misfiring revert visible. Today a `main_revert` that blamed a flaky test, or that removed a change which later merged again unchanged with main green, leaves no trace beyond the event, and a burst of reverts reads the same as one.
-
-**Approach.**
-- Events: `main_revert` gains `patchId`, the culprit's (`patchId(wt, C^, C)` in `runMainRevert`, src/baseline/main-revert.ts). `merged` gains `patchId`, the merged commit's, on the single path (src/merge/merge-to-main.ts; mergeApprovedChangeIn in src/merge/merge-core.ts already computes `pinPatch` and may pass it down when no conflict was resolved) and on the batch path (src/merge/merge-stack.ts, `patchId(root, sha^, sha)` per stacked entry). A failed patch-id omits the field. src/events/events.ts's comments for both types name it.
-- src/baseline/main-guardrails.ts: `revertWarnings(events, quarantine, now)` with G2's two tests per `main_revert` in the last 24 h, and the rate test (more than 5). `guardrailWarnings` includes it, so the digest section from part 1/3 carries it.
-- src/doctor/doctor-holds.ts `checkMainRed` adds the revert phrases to its row.
-- docs/how-it-works.md: the revert bullet says what doctor warns about.
-
-**Acceptance criteria.**
-- test/main-revert.test.ts: a successful revert logs `main_revert` with the culprit's patch-id.
-- test/merge-to-main.test.ts and test/merge-stack.test.ts: `merged` carries the merged commit's patch-id on both paths.
-- test/main-guardrails.test.ts:
-  - a revert naming test T, with T in quarantine with `lastSeen` after the revert, warns that the failure did not reproduce;
-  - a later `merged` with the revert's `patchId`, then a passed `main_check` with `durationMs` > 0, warns that the change merged again unchanged and main stayed green;
-  - the same with that `main_check` failed, or with a different `patchId`, or with no `patchId`, does not warn;
-  - 6 reverts in 24 h warn naming 6; 5 do not.
-- test/doctor-holds.test.ts: the "main's check" row carries a revert phrase.
-- `npm test` passes.
-
 ### Merge on `check.gateCommand` when `check.mergeCommand` is unset, and review clean, dedupe and coverage after merging by default (planned 2026-10-21 by user; design in plans/fast-merge.md "Defaults"; touches src/build/build-check-detect.ts src/config/config.ts src/config/config-validation.ts src/doctor/doctor-checks.ts docs/config.md docs/how-it-works.md DEVELOPMENT.md and their tests)
 
 **Goal.** Fast merge parts 6/14 and 14/14 shipped `check.mergeCommand` and `review.afterMerge` as opt-in keys. tumwater.json is gitignored, so no team commit could set them. On 2026-10-21 the merge lock still ran the full `npm test` on every code merge (142–330 s each, the latest at 02:24), and every role was still reviewed before merging. Make both on by default (decided 2026-10-21 by you): a project that declared `check.gateCommand` merges on it, and clean, dedupe and coverage are reviewed after merging, unless the config opts out. This repo's tumwater.json sets `gateCommand`, so both switches take effect here at the next redeploy.

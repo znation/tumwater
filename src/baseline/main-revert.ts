@@ -4,7 +4,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { withLock } from "../concurrency/lock.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { branchHead } from "../git/git.js";
+import { branchHead, patchId } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -120,6 +120,10 @@ export async function runMainRevert(
       }
       const ffFailure = await withLock(mergeLockDir(root), () => ffMainToOrWhy(root, reverted.sha, mainBranch));
       if (ffFailure !== null) return { reason: ffFailure };
+      // The culprit's patch-id (`C^...C`, src/git/git.ts patchId, -U0 so a re-landing onto a
+      // moved main keeps the id): the fast-merge guardrail G2 matches a later `merged`
+      // event against it to spot a change that came back unchanged (plans/fast-merge.md).
+      const culpritPatch = await patchId(wt, `${c.commit}^`, c.commit).catch(() => null);
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "main_revert",
@@ -127,6 +131,7 @@ export async function runMainRevert(
         revert: reverted.sha,
         runner: c.runner,
         failingTests: c.failingTests,
+        ...(culpritPatch ? { patchId: culpritPatch } : {}),
       });
       await onReverted?.(c).catch((err: unknown) =>
         logEventBestEffort(root, {

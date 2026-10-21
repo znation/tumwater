@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge guardrails, part 2/3: `tumwater doctor` and the selfcheck digest warn on a revert that looks false and on more than 5 reverts a day (planned 2026-10-21 by user; requires part 1/3 landed; design in plans/fast-merge.md "Guardrails" G2; touches src/baseline/main-guardrails.ts src/baseline/main-revert.ts src/merge/merge-to-main.ts src/merge/merge-stack.ts src/events/events.ts src/doctor/doctor-holds.ts docs/how-it-works.md and their tests) — done 2026-10-21 by the feature role
+
+**Goal.** Make a misfiring revert visible. Today a `main_revert` that blamed a flaky test, or that removed a change which later merged again unchanged with main green, leaves no trace beyond the event, and a burst of reverts reads the same as one.
+
+**Approach.**
+- Events: `main_revert` gains `patchId`, the culprit's (`patchId(wt, C^, C)` in `runMainRevert`, src/baseline/main-revert.ts). `merged` gains `patchId`, the merged commit's, on the single path (src/merge/merge-to-main.ts; `patchId(wt, mainBefore, commit)` computed after the fast-forward, so a conflict-resolved merge carries the resolved change's id too) and on the batch path (src/merge/merge-stack.ts, `patchId(root, sha^, sha)` per stacked entry). A failed patch-id omits the field. src/events/events.ts's comments for both types name it.
+- src/baseline/main-guardrails.ts: `revertWarnings(events, quarantine, now)` with G2's two tests per `main_revert` in the last 24 h, and the rate test (more than 5). `guardrailWarnings` includes it, so the digest section from part 1/3 carries it.
+- src/doctor/doctor-holds.ts `checkMainRed` adds the revert phrases to its row.
+- docs/how-it-works.md: the revert bullet says what doctor warns about.
+
+**Acceptance criteria.**
+- test/main-revert.test.ts: a successful revert logs `main_revert` with the culprit's patch-id.
+- test/merge-to-main.test.ts and test/merge-stack.test.ts: `merged` carries the merged commit's patch-id on both paths.
+- test/main-guardrails.test.ts:
+  - a revert naming test T, with T in quarantine with `lastSeen` after the revert, warns that the failure did not reproduce;
+  - a later `merged` with the revert's `patchId`, then a passed `main_check` with `durationMs` > 0, warns that the change merged again unchanged and main stayed green;
+  - the same with that `main_check` failed, or with a different `patchId`, or with no `patchId`, does not warn;
+  - 6 reverts in 24 h warn naming 6; 5 do not.
+- test/doctor-holds.test.ts: the "main's check" row carries a revert phrase.
+- `npm test` passes.
+
 ### `tumwater backlog -f/--follow` repaints the backlog every couple of seconds until Ctrl+C or its parent exits, the snapshot command's live twin of the TUI Backlog pane and the dashboard Backlog card (planned 2026-10-21 by the plan role; shares src/cli/cli-query-commands.ts, src/cli/help.ts and the `tumwater backlog` clause of docs/cli.md with the in-flight `tumwater queue -f/--follow` entry ahead of this one in `## Planned` and reuses the `followView` helper that entry's step 1 introduces, so whichever lands second rebases there; the in-flight TUI Activity tally plan edits `sayTally` in src/cli/log-commands.ts, src/ui/tui/tui-pane.ts, src/events/event-tally.ts, docs/cli.md's `logs --count` sentence and docs/how-it-works.md's Activity paragraph; the in-flight TUI Pending Ctrl+G plan edits src/ui/tui/tui-pane-pending.ts, test/tui-keys.test.ts and docs/how-it-works.md's Pending paragraph; the Codex parts edit src/events, src/config, src/gates, src/team, src/orchestrator and src/agent. None of those touches `cmdBacklog`, the `backlog` stanza of src/cli/help.ts or the new test. Touches src/cli/cli-query-commands.ts src/cli/help.ts docs/cli.md test/cli-backlog-follow.test.ts (new)) — done 2026-10-21 by the feature role
 
 **Goal.** `tumwater backlog` prints the planned features, open bugs, and open questions once (`cmdBacklog`, src/cli/cli-query-commands.ts), with `--ready` hiding the held entries and counting them and `--grep` filtering them. The dashboard's Backlog card and the TUI's Backlog pane repaint as the team claims and finishes entries, but the CLI snapshot has no live form. Add `-f/--follow`: repaint the same text every couple of seconds until Ctrl+C or the parent process exits (the rule `status -f`, `queue -f`, `logs -f` and `history -f` use), composing with `--ready` and `--grep` so each frame reflects the current backlog; `--json` is refused with a follow because it prints one document.
