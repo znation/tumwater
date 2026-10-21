@@ -652,6 +652,31 @@ const PROVIDER_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 const CHECK_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const CHECK_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
+/** Fold a window's `*_wait` events into the three numbers every contention check reads: how
+ * many waits there were (each event counts once), the total ms they waited, and the longest
+ * single wait — plus the longest event itself, for the check that names the role/purpose off
+ * it. The single home of that fold for the three contention checks (checkWorktreePool's
+ * `slot_wait` half, checkProviderContention, checkCheckContention), so the sum and the
+ * longest-wait selection cannot drift between them. A wait that omits or corrupts `waitedMs`
+ * reads as 0 for the sum, exactly as each inline `finiteNumber(ev.waitedMs, 0)` fold did;
+ * the longest-wait tie keeps the first event that reached it. */
+function sumWaits(waits: readonly HarnessEvent[]): { count: number; totalMs: number; longestMs: number; longest: HarnessEvent } {
+  let count = 0;
+  let totalMs = 0;
+  let longestMs = 0;
+  let longest = waits[0]!;
+  for (const ev of waits) {
+    count += 1;
+    const waited = finiteNumber(ev.waitedMs, 0);
+    totalMs += waited;
+    if (waited > longestMs) {
+      longestMs = waited;
+      longest = ev;
+    }
+  }
+  return { count, totalMs, longestMs, longest };
+}
+
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
  * states an operator should act on — a legacy `<role>` or `_land-*` checkout the pool migration
  * left behind, a pin older than PIN_STALE_MS (a paused role holding a checkout), and the last
@@ -683,18 +708,12 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   try {
     const waits = eventsSince(root, SLOT_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "slot_wait");
     if (waits.length > 0) {
-      let total = 0;
-      let longest = waits[0]!;
-      for (const ev of waits) {
-        const waited = finiteNumber(ev.waitedMs, 0);
-        total += waited;
-        if (waited > finiteNumber(longest.waitedMs, 0)) longest = ev;
-      }
-      contended = total >= SLOT_WAIT_WARN_TOTAL_MS;
+      const { count, totalMs, longestMs, longest } = sumWaits(waits);
+      contended = totalMs >= SLOT_WAIT_WARN_TOTAL_MS;
       const purpose = longest.purpose === "verify" ? "check" : "run";
       parts.push(
-        `${plural(waits.length, "wait")} to start in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
-          finiteNumber(longest.waitedMs, 0),
+        `${plural(count, "wait")} to start in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(
+          longestMs,
         )} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slots.length}` : ""}`,
       );
     }
@@ -714,17 +733,18 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
  * A counterpoint to checkWorktreePool's slot-wait half; read-only, like every doctor check.
  * `now` is a test seam for the window. */
 export function checkProviderContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  let count = 0;
-  let total = 0;
-  let longestMs = 0;
   const perKey = new Map<string, number>();
+  let count = 0;
+  let totalMs = 0;
+  let longestMs = 0;
   try {
     const waits = eventsSince(root, PROVIDER_WAIT_CHECK_WINDOW_MS, now, (ev) => ev.type === "provider_wait");
+    const sum = sumWaits(waits);
+    count = sum.count;
+    totalMs = sum.totalMs;
+    longestMs = sum.longestMs;
     for (const ev of waits) {
-      count += 1;
       const waited = finiteNumber(ev.waitedMs, 0);
-      total += waited;
-      if (waited > longestMs) longestMs = waited;
       const key = ev.cap !== "team" && typeof ev.key === "string" && ev.key.length > 0 ? ev.key : "";
       perKey.set(key, (perKey.get(key) ?? 0) + waited);
     }
@@ -746,8 +766,8 @@ export function checkProviderContention(root: string, config: TumwaterConfig | u
     ranked.length === 1
       ? `(${bucketLabel(ranked[0]!.key)})`
       : `(${cells[0]}, also ${cells.slice(1).join(", ")})`;
-  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)} ${parenthetical}`;
-  const contended = total >= PROVIDER_WAIT_WARN_TOTAL_MS;
+  let detail = `${plural(count, "wait")} for a provider slot in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)} ${parenthetical}`;
+  const contended = totalMs >= PROVIDER_WAIT_WARN_TOTAL_MS;
   if (contended) {
     const advice = ranked
       .filter((b) => b.key !== "" && config?.maxConcurrentPerProvider?.[b.key] !== undefined)
@@ -777,16 +797,18 @@ function checkHolderKind(label: string): string {
  * wait counts once toward each distinct kind that held a slot. `now` is a test seam for the
  * window. */
 export function checkCheckContention(root: string, config: TumwaterConfig | undefined, now = Date.now()): CheckOutcome {
-  let count = 0;
-  let total = 0;
-  let longestMs = 0;
   const perKind = new Map<string, number>();
+  let count = 0;
+  let totalMs = 0;
+  let longestMs = 0;
   try {
-    for (const ev of eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait")) {
-      count += 1;
+    const waits = eventsSince(root, CHECK_WAIT_CHECK_WINDOW_MS, now, (e) => e.type === "check_wait");
+    const sum = sumWaits(waits);
+    count = sum.count;
+    totalMs = sum.totalMs;
+    longestMs = sum.longestMs;
+    for (const ev of waits) {
       const waited = finiteNumber(ev.waitedMs, 0);
-      total += waited;
-      if (waited > longestMs) longestMs = waited;
       for (const kind of new Set(stringList(ev.heldBy).map(checkHolderKind))) {
         perKind.set(kind, (perKind.get(kind) ?? 0) + waited);
       }
@@ -795,12 +817,12 @@ export function checkCheckContention(root: string, config: TumwaterConfig | unde
     return okOutcome(`could not read the event log for check waits: ${errorMessage(err)}`);
   }
   if (count === 0) return okOutcome("no check waits");
-  let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(longestMs)}`;
+  let detail = `${plural(count, "wait")} for a check slot in the last 24h, ${shortSpanPhrase(totalMs)} total, longest ${shortSpanPhrase(longestMs)}`;
   if (perKind.size > 0) {
     const ranked = rankCountEntries(perKind);
     detail += ` (behind ${ranked.map(([kind, ms]) => `${kind} ${shortSpanPhrase(ms)}`).join(", ")})`;
   }
-  if (total < CHECK_WAIT_WARN_TOTAL_MS) return okOutcome(detail);
+  if (totalMs < CHECK_WAIT_WARN_TOTAL_MS) return okOutcome(detail);
   detail += ` — raise maxConcurrentChecks above ${config?.maxConcurrentChecks ?? defaultConfig().maxConcurrentChecks}`;
   return warnOutcome(detail);
 }
