@@ -269,8 +269,9 @@ export function runRowsMatchingGrep(rows: RunRow[], pattern: string): RunRow[] {
 
 /** The shared model filter: keeps the rows whose run_start named exactly one of `models`
  * (case-sensitive, the strings `history --summary --by model` prints); a null-model row never
- * matches. Two call sites apply it — `tumwater history --model` and /api/history?model — so the
- * CLI and the dashboard cannot disagree on what a model selector matches. */
+ * matches. Four call sites apply it — `tumwater history --model`, /api/history?model, the TUI
+ * History model selector, and newestRunRow's `--last` model filter — so the surfaces cannot
+ * disagree on what a model selector matches. */
 export function runRowsOnModels(rows: RunRow[], models: string[]): RunRow[] {
   return rows.filter((r) => r.model !== null && models.includes(r.model));
 }
