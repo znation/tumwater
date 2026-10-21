@@ -15,6 +15,10 @@ export interface TuiEditorCtx {
   queuedRows: QueuedListRow[];
   /** The History pane's active free-text search (the `/` editor's applied pattern). */
   historyGrep: string | null;
+  /** Whether `/` on History targets the run trail's showing transcript. */
+  trailSearch: boolean;
+  /** The trail transcript's applied search. */
+  trailGrep: string | null;
   /** The Activity pane's active free-text search (the `/` editor's applied pattern). */
   activityGrep: string | null;
   /** The Backlog pane's active free-text search (the `/` editor's applied pattern). */

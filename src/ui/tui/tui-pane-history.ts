@@ -66,6 +66,8 @@ export function createHistoryPane(
   // twin of `history <role> <n> --transcript [--prompt]`. trailCache is composed from the parts
   // below (detail, stat, transcript, in `tumwater run`'s order) for the run in trailRun.
   let trailTranscript: "off" | "plain" | "prompts" = "off";
+  // The transcript search (`/` while it shows); set only while trailTranscript !== "off".
+  let trailGrep: string | null = null;
   let trailText = "";
   let trailStat: string | null = null;
   let trailTranscriptText: string | null = null;
@@ -177,6 +179,7 @@ export function createHistoryPane(
     try {
       const { found, note } = runTranscriptLines(session.root, trailRun.role, trailRun.run, trailRun.detail, {
         includePrompts: trailTranscript === "prompts",
+        grep: trailGrep ?? undefined,
       });
       trailTranscriptText = found.length > 0 ? found.join("\n") : note;
     } catch (err) {
@@ -263,6 +266,14 @@ export function createHistoryPane(
     // Apply a finished History search on the pane: set the grep, recompute the cached rows now
     // (the pane is showing), and re-enter at the body's head — the leaf the search editor's
     // Enter calls through its applyHistorySearch dep.
+    if (trailMode && trailTranscript !== "off") {
+      // The transcript is showing: the search narrows its entries, the run rows stay as they are.
+      trailGrep = pattern;
+      loadTranscript();
+      composeTrail();
+      session.paneScroll = 0;
+      return;
+    }
     historyGrep = pattern;
     if (trailMode) refreshTrail();
     session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary);
@@ -291,6 +302,7 @@ export function createHistoryPane(
         trailCache = null;
         trailIndex = 0;
         trailTranscript = "off";
+        trailGrep = null;
       } else {
         // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
         // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
@@ -326,6 +338,7 @@ export function createHistoryPane(
       if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
       if (promptLineFree(ctx.es)) {
         trailTranscript = trailTranscript === "off" ? "plain" : trailTranscript === "plain" ? "prompts" : "off";
+        if (trailTranscript === "off") trailGrep = null;
         loadTranscript();
         composeTrail();
         session.paneScroll = 0;
@@ -411,6 +424,7 @@ export function createHistoryPane(
       trailCache = null;
       trailIndex = 0;
       trailTranscript = "off";
+      trailGrep = null;
     },
     dropScopes(roles) {
       // The same drop for History's exact-role scope: a retired or renamed role must not keep
@@ -436,6 +450,7 @@ export function createHistoryPane(
         trailIndex,
         trailCache,
         trailTranscript,
+        trailGrep,
       };
     },
   } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };

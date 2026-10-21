@@ -50,8 +50,8 @@ export function createSearchEditor(session: TuiEditorSession): TuiEditorModule {
       else searchFor = "transcript";
       searchMode = true;
       session.held.search = true;
-      const applied = { activity: ctx.activityGrep, history: ctx.historyGrep, backlog: ctx.backlogGrep, transcript: ctx.transcriptGrep }[searchFor];
-      const noun = { activity: "events", history: "runs", backlog: "backlog", transcript: "transcript" }[searchFor];
+      const applied = { activity: ctx.activityGrep, history: ctx.trailSearch ? ctx.trailGrep : ctx.historyGrep, backlog: ctx.backlogGrep, transcript: ctx.transcriptGrep }[searchFor];
+      const noun = { activity: "events", history: ctx.trailSearch ? "transcript" : "runs", backlog: "backlog", transcript: "transcript" }[searchFor];
       session.input = applied ?? "";
       session.cursor = session.input.length;
       session.flashMessage(`search ${noun}: Enter to filter, Esc to cancel`);

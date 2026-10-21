@@ -171,6 +171,8 @@ interface TuiKeysState {
   /** The trail's agent transcript level (Ctrl+R): off, the plain transcript, or the transcript
    * with each agent run's prompt — `history <role> <n> --transcript [--prompt]`'s text. */
   trailTranscript: "off" | "plain" | "prompts";
+  /** The trail transcript's applied search (`/` while it shows); null when none. */
+  trailGrep: string | null;
   /** Whether the viewed role's pane shows the collected unmerged change (the second Ctrl+N
    * step) instead of the transcript — true only on a transcript view. */
   changeMode: boolean;

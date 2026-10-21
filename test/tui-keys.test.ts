@@ -4196,3 +4196,46 @@ test("Ctrl+N's change step heads the change with the viewed role's queued merges
   assert.doesNotMatch(text, /clean-2 run/);
   assert.doesNotMatch(text, /feature run #3/);
 });
+
+test("`/` on a History trail whose transcript shows searches the transcript, not the run rows", () => {
+  const root = historyTrailRoot();
+  writeTrailPiLog(root);
+  const { keys } = makeKeys(root, () => 0, () => new Promise<string>(() => {}));
+  openHistory(keys);
+  const search = (text: string): void => {
+    keys.handleKey("/", { name: "/" });
+    keys.handleKey(undefined, { ctrl: true, name: "u" });
+    for (const ch of text) keys.handleKey(ch, { name: ch });
+    keys.handleKey(undefined, { name: "return" });
+  };
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  const detail = readRunDetail(root, "clean", 1)!;
+  const bare = renderRunDetail(detail);
+  search("said-one");
+  assert.equal(keys.state().trailGrep, "said-one");
+  assert.equal(keys.state().historyGrep, null);
+  const hit = runTranscriptLines(root, "clean", 1, detail, { grep: "said-one" }).found;
+  assert.equal(keys.state().trailCache, `${bare}\n\n${hit.join("\n")}`);
+  search("zzz-none");
+  const miss = runTranscriptLines(root, "clean", 1, detail, { grep: "zzz-none" }).note;
+  assert.ok(keys.state().trailCache!.endsWith(miss));
+  search("said-one");
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "said-one", "re-opening pre-fills the transcript pattern");
+  keys.handleKey(undefined, { name: "escape" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().trailTranscript, "prompts");
+  assert.equal(keys.state().trailGrep, "said-one", "the prompts level keeps the search");
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(keys.state().trailGrep, null, "turning the transcript off drops its search");
+  assert.equal(keys.state().trailCache, bare);
+  search("clean");
+  assert.equal(keys.state().historyGrep, "clean", "with the transcript off `/` searches the run rows");
+  assert.equal(keys.state().trailGrep, null);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  search("said-one");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailGrep, null, "leaving and re-entering the trail starts bare");
+});
