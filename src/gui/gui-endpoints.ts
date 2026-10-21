@@ -27,7 +27,7 @@ import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, parseHistoryResultClass, type HistoryResultClass, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, parseHistoryResultClass, type HistoryResultClass, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -281,6 +281,22 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)) });
 }
 
+/** Parse `result=<class>[,...]` for /api/run?last and /api/history: the deduplicated classes in
+ * first-seen order (`[]` filters nothing), or null after sending the 400 for an unknown class. */
+function resultClassesQuery(q: URLSearchParams, res: http.ServerResponse): HistoryResultClass[] | null {
+  const classes: HistoryResultClass[] = [];
+  const names = Object.values(HISTORY_RESULT_FLAG_NAMES);
+  for (const piece of splitCommaList(q.get("result") ?? "")) {
+    const cls = parseHistoryResultClass(piece);
+    if (cls === null) {
+      badRequest(res, `result must be one of ${names.join(", ")}${gotSuffix(piece)}${typoSuffix(piece, names)}`);
+      return null;
+    }
+    if (!classes.includes(cls)) classes.push(cls);
+  }
+  return classes;
+}
+
 /** Handle GET /api/history?role=<id>&n=N[&grep=<text>] — or ?role=<id>&sinceMs=<ms>[&untilMs=<ms>]
  * for a trailing window (untilMs ends it that long ago, via untilMsQuery; without sinceMs → 400):
  * the per-run rows the CLI's `tumwater history` derives from the event log,
@@ -313,13 +329,18 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * about what a run was. It also adds `modelSummary`, `{ models, total }`, the
  * `history --summary --by model` tally of the same rows. `model=<selector>[,...]` keeps only the
  * runs that started on exactly one of those models (the `history --model` rule), after `grep` and
- * before the summaries fold. Reads files directly, so it works whether
+ * before the summaries fold. `result=<class>[,...]` keeps only the runs in those outcome classes
+ * (the `history --result` rule, parsed by resultClassesQuery like /api/run's), after `grep` and
+ * before `model`; an unknown class is a 400. Reads files directly, so it works whether
  * or not the team is running. */
 export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   // `model` is a comma list of exact selectors (trimmed, deduplicated); "", absent and a list
   // with no non-empty piece all filter nothing, and an unknown selector keeps no rows.
+  const classes = resultClassesQuery(q, res);
+  if (classes === null) return;
+  const inClasses = (rows: RunRow[]): RunRow[] => (classes.length ? rows.filter((r) => classes.includes(historyClass(r.result))) : rows);
   const modelPieces = splitCommaListUnique(q.get("model") ?? "");
   const onModels = (rows: RunRow[]): RunRow[] => (modelPieces.length ? runRowsOnModels(rows, modelPieces) : rows);
   const summary = q.get("summary") !== null; // the flag's presence, whatever its value
@@ -334,7 +355,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
     const untilMs = untilMsQuery(q, res, sinceMs);
     if (untilMs === null) return;
     const { rows, covered } = readRunRowsSince(root, sinceMs, role, untilMs ?? null);
-    const matched = onModels(grep === null ? rows : runRowsMatchingGrep(rows, grep));
+    const matched = onModels(inClasses(grep === null ? rows : runRowsMatchingGrep(rows, grep)));
     sendJson(res, 200, { rows: matched, covered, note: covered ? "" : SPARSE_WINDOW_NOTE, ...(summary ? { summary: summarizeRunRows(matched), modelSummary: summarizeRunRowsByModel(matched) } : {}) });
     return;
   }
@@ -344,7 +365,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   const n = clampCount(parsed, HISTORY_MAX_RUNS);
   let rows = readRunRows(root, n, role);
   if (grep !== null) rows = runRowsMatchingGrep(rows, grep);
-  rows = onModels(rows);
+  rows = onModels(inClasses(rows));
   sendJson(res, 200, summary ? { rows, summary: summarizeRunRows(rows), modelSummary: summarizeRunRowsByModel(rows) } : { rows });
 }
 
@@ -456,13 +477,8 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
     if (run === null) return;
   } else {
     if (q.get("run") !== null) return badRequest(res, "last cannot be combined with run (a number and the newest run are rival selectors)");
-    const classes: HistoryResultClass[] = [];
-    const names = Object.values(HISTORY_RESULT_FLAG_NAMES);
-    for (const piece of splitCommaList(q.get("result") ?? "")) {
-      const cls = parseHistoryResultClass(piece);
-      if (cls === null) return badRequest(res, `result must be one of ${names.join(", ")}${gotSuffix(piece)}${typoSuffix(piece, names)}`);
-      if (!classes.includes(cls)) classes.push(cls);
-    }
+    const classes = resultClassesQuery(q, res);
+    if (classes === null) return;
     const models = splitCommaListUnique(q.get("model") ?? "");
     const classFilter = classes.length ? classes : null;
     const modelFilter = models.length ? models : null;

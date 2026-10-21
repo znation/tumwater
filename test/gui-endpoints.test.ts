@@ -708,6 +708,37 @@ test("handleHistory ?model keeps exact selectors in both shapes, before the summ
   assert.deepEqual((none.data as Body).rows, []);
 });
 
+test("handleHistory ?result keeps outcome classes in both shapes, before model and the summaries fold", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 3_000_000, loop: "feature", type: "run_start", run: 1, model: "m-b" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2_990_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_800_000, loop: "clean", type: "run_start", run: 1, model: "m-a" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 1_790_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 300_000, loop: "qa", type: "run_end", run: 1, result: "error", summary: "c", tokens: 50, costUsd: 0.01 }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  type Rows = Parameters<typeof summarizeRunRows>[0];
+  interface Body { rows: (Rows[number] & { role: string })[]; summary: unknown; error?: string }
+  const get = async (q: string) => (await serveHistory(root, q)).data as Body;
+  const roles = async (q: string) => (await get(q)).rows.map((r) => r.role).sort();
+  assert.deepEqual(await roles("?n=50&result=problems"), ["qa"]);
+  assert.deepEqual(await roles("?n=50&result=merged,none"), ["clean", "feature"]);
+  assert.deepEqual(await roles("?sinceMs=3600000&result=none"), ["clean"]);
+  const composed = await serveHistory(root, "?n=50&result=merged&model=m-a");
+  assert.equal(composed.captured.status, 200);
+  assert.deepEqual((composed.data as Body).rows, []);
+  const folded = await get("?n=50&result=none&summary=1");
+  assert.deepEqual(folded.summary, summarizeRunRows(folded.rows));
+  assert.equal((await get("?n=50&result=")).rows.length, 3);
+  assert.equal((await get("?n=50&result=,")).rows.length, 3);
+  for (const q of ["?n=50&result=bogus", "?sinceMs=3600000&result=bogus"]) {
+    const bad = await serveHistory(root, q);
+    assert.equal(bad.captured.status, 400);
+    assert.match((bad.data as Body).error ?? "", /result must be one of/);
+  }
+});
+
 function serveRun(root: string, query: string) {
   return captureJson((res) => handleRun(new URLSearchParams(query), res, root));
 }
