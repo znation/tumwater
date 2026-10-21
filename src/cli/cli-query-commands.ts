@@ -30,7 +30,7 @@ import { roleNotesPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
-import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
+import { INSTANCE_ROLES, baseRoleOf, roleInScope } from "../roles/runner-ids.js";
 import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 
 /** `role`'s notes-write flags: clear the note, or replace it from a file (`-` for stdin). */
@@ -245,7 +245,7 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // whole-queue positions; the in-flight marker is judged against the kept entries only, and
   // `unreadable` stays whole because an unreadable file has no role to attribute it to.
   const whole = readMergeQueue(root);
-  const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roles.includes(r) || roles.includes(baseRoleOf(r))) : undefined;
+  const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roleInScope(r, roles)) : undefined;
   const view = scoped ? scoped.view : whole;
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
   const scope = scoped?.scope;

@@ -3,7 +3,7 @@ import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import type { CheckPermitSnapshot, OrchestratorInfo, PermitSnapshot, SlotPoolSnapshot } from "../team/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
+import { baseRoleOf, roleInScope, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
 import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
@@ -366,7 +366,7 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
 /** The snapshot keeping only the listed roles' rows: a base id also keeps its instances
  * (`feature` keeps `feature-2`). Every other field stays team-wide. */
 export function scopeSnapshotToRoles(snap: StatusSnapshot, roles: readonly string[]): StatusSnapshot {
-  return { ...snap, roles: snap.roles.filter((s) => roles.includes(s.role) || roles.includes(baseRoleOf(s.role))) };
+  return { ...snap, roles: snap.roles.filter((s) => roleInScope(s.role, roles)) };
 }
 
 /** One fresh team snapshot for observers. `modelsPath` overrides pi's model definitions

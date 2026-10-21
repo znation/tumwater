@@ -14,7 +14,7 @@ import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
 import { canonicalEventType } from "../events/event-legacy.js";
 import { EVENT_TYPE_LABELS, eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
+import { roleInScope } from "../roles/runner-ids.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
@@ -165,7 +165,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   const roles = parseRoleListScope(root, rest);
   const roleFilter = roles === null
     ? null
-    : (e: HarnessEvent) => roles.includes(eventRole(e)) || roles.includes(baseRoleOf(eventRole(e)));
+    : (e: HarnessEvent) => roleInScope(eventRole(e), roles);
   if (roles !== null) rejectTranscriptViewRival(rest, "--role", true);
   const feedFilter = (e: HarnessEvent) =>
     (grepLower === null || eventMatchesGrep(e, grepLower)) &&

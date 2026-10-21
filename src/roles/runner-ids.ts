@@ -38,6 +38,14 @@ export function instanceIndex(id: string): number {
   return m ? Number(m[2]) : 1;
 }
 
+/** Whether a runner id is listed in a role scope, directly or through its base role — a scope
+ * naming `feature` takes `feature-2` too. One home for the instance-aware membership test
+ * shared by `logs --role`'s and the merge queue's filters and status snapshot scoping, so the
+ * three cannot drift on whether a bare role id takes its instances. */
+export function roleInScope(id: string, scope: readonly string[]): boolean {
+  return scope.includes(id) || scope.includes(baseRoleOf(id));
+}
+
 /** The instance count configured for a runner id's base role (`roles.<base>.instances`, default
  * 1). A caller tells a multi-instance base (whose unassigned runs stage claims for their
  * siblings) from a single-runner one by this. */
