@@ -112,6 +112,14 @@ export function splitCommaListUnique(raw: string): string[] {
   return [...new Set(splitCommaList(raw))];
 }
 
+/** A value or list of `T` as a list: a bare `T` is one item, an array stays itself. The
+ * single home of the string-or-list normalization (a `--role` selector is either one id or a
+ * comma-split list): report-fold.ts's scopeBases/roleSum/narrowToRole and history-data.ts's
+ * role filter each spelled the `typeof x === "string" ? [x] : x` wrap by hand before. */
+export function asList(value: string | readonly string[]): readonly string[] {
+  return typeof value === "string" ? [value] : value;
+}
+
 /** Drop the blank lines at the start of `lines`, in place — the one home of the
  * leading-blank trim loop shared by the backlog writer's section-content rebuild and
  * `questions answer`'s tail slice (the lines after the moved answer). Blank means

@@ -13,7 +13,7 @@ import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp, HOUR_MS } from "../text/datetime.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
-import { squash, textOr } from "../text/text.js";
+import { asList, squash, textOr } from "../text/text.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { compareCodeUnits } from "../collections.js";
@@ -287,7 +287,7 @@ export function runRows(
   role: RoleScope,
   join?: RunRowJoin,
 ): RunRow[] {
-  const wanted = role === null ? null : new Set(typeof role === "string" ? [role] : role);
+  const wanted = role === null ? null : new Set(asList(role));
   const scoped = wanted === null ? events : events.filter((e) => wanted.has(e.source));
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a run's span.

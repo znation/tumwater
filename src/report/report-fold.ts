@@ -14,6 +14,7 @@ import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
 import { addTo, memoSetLru } from "../collections.js";
+import { asList } from "../text/text.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { RunResult } from "../run/run-outcome.js";
@@ -386,7 +387,7 @@ export function zeroMergeCounts(): {
  * `feature-2,feature` is one base. */
 export function scopeBases(role: string | readonly string[] | undefined): string[] | undefined {
   if (role === undefined) return undefined;
-  const ids = typeof role === "string" ? [role] : role;
+  const ids = asList(role);
   if (ids.length === 0) return undefined;
   const out: string[] = [];
   for (const id of ids) {
@@ -402,7 +403,7 @@ export function scopeBases(role: string | readonly string[] | undefined): string
  * already base-role keyed; running every key through `baseRoleOf` reads both shapes the same
  * and returns 0 when nothing matches. */
 export function roleSum(record: Record<string, number>, bases: string | readonly string[]): number {
-  const list = typeof bases === "string" ? [bases] : bases;
+  const list = asList(bases);
   let sum = 0;
   for (const [key, n] of Object.entries(record)) {
     if (list.includes(baseRoleOf(key))) sum += n;
@@ -420,7 +421,7 @@ export function narrowToRole(
   bases: string | readonly string[],
 ): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const base of typeof bases === "string" ? [bases] : bases) {
+  for (const base of asList(bases)) {
     const n = roleSum(record, base);
     if (n !== 0) out[base] = n;
   }
