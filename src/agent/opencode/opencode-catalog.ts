@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import { isJsonObject, validEntries } from "../../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { errorMessage } from "../../text/text.js";
+import { DAY_MS } from "../../text/datetime.js";
 import { opencodeModelsPath } from "../../paths.js";
 import { logEventBestEffort, type HarnessEventInput } from "../../events/events.js";
 import { opencodeQualifiedModel } from "./opencode-args.js";
@@ -23,7 +24,7 @@ const CATALOG_URL = "https://models.dev/api.json";
 const CATALOG_FETCH_TIMEOUT_MS = 30_000;
 
 /** How long a fetched cache is trusted before it is refreshed. */
-const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CATALOG_CACHE_TTL_MS = DAY_MS;
 
 /** One model the config routes through OpenCode: whether it is free (input and output cost both
  * 0 in the catalog) plus the fields later parts read (per-M prices for doctor, the context

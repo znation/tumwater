@@ -4,7 +4,7 @@ import path from "node:path";
 import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { formatDate, formatTime, humanUntil } from "../text/datetime.js";
+import { formatDate, formatTime, humanUntil, DAY_MS } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
 import { questionAsker } from "../backlog/question-answer.js";
@@ -367,7 +367,7 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
  * value whose wall-clock resume time no `Date` can even hold (a `--for 100000000d` once printed
  * "resumes automatically at NaN:NaN:NaN"). Lives beside the marker contract it caps, which
  * every surface shares, so no new `--for` consumer can outgrow it unnoticed. */
-export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
+export const PAUSE_FOR_MAX_MS = 90 * DAY_MS;
 
 /** One manual reclaim, shared by `tumwater reclaim` and the dashboard's POST /api/reclaim: with
  * a live team the pass is requested through the marker the orchestrator consumes (so in-use

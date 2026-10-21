@@ -3,6 +3,7 @@
  * renderer — so every observer role's evidence builder has its own module the way
  * qa-coverage.ts and backlog-structure.ts do, and the run lifecycle (run-prompt.ts) injects
  * it from there instead of reaching into a report module. */
+import { DAY_MS } from "../text/datetime.js";
 import { collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 
@@ -11,7 +12,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
  * previous evening. The CLI keeps the usage report's 14-day default; the role reads 24 h so a
  * cluster re-surfaces only while it is live. The collector's equal-length prior window is what
  * makes the delta line meaningful. */
-export const SELFCHECK_DIGEST_MS = 24 * 60 * 60 * 1000;
+export const SELFCHECK_DIGEST_MS = DAY_MS;
 
 /** The `selfcheck` role's run-time evidence: the failure digest rendered over its own
  * trailing 24 h window. A missing or corrupt log omits the block (undefined) and never fails the

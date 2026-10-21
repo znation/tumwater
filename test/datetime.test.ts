@@ -1,12 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
+import { DAY_MS, HOUR_MS, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
 // (the transcript run separators, status table's last-run cell, daily-budget day stamps,
 // and both reports' day windows render through it). These tests pin the documented contract
 // directly instead of only through one indirect case per consumer.
+
+test("HOUR_MS / DAY_MS are the canonical hour and day in ms, day composed from hour", () => {
+  // Pin the two exported constants the window/retention constants across the tree derive
+  // through, so a single spelling of "an hour/day in ms" is the one source of truth.
+  assert.equal(HOUR_MS, 60 * 60 * 1000);
+  assert.equal(HOUR_MS, 3_600_000);
+  assert.equal(DAY_MS, 24 * HOUR_MS);
+  assert.equal(DAY_MS, 86_400_000);
+});
 
 test("dayAt returns local midnight offset from the given instant, rolling month/year edges", () => {
   const now = new Date(2026, 2, 1, 14, 30, 5); // 2026-03-01 14:30 local

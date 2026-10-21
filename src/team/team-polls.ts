@@ -10,6 +10,7 @@ import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 import { eventsSince } from "../events/event-window.js";
+import { DAY_MS } from "../text/datetime.js";
 
 /** The orchestrator's three team-health polls — the wiring half of the team-wide failure
  * alarms (src/team/team-hold.ts, src/team/error-storm.ts,
@@ -172,7 +173,7 @@ export function claudeWindowObservation(
 
 /** A claude usage window is open for at most `seven_day`, so any window still open was logged
  * within this span of the event log. */
-const CLAUDE_WINDOW_LOOKBACK_MS = 7 * 24 * 3600_000;
+const CLAUDE_WINDOW_LOOKBACK_MS = 7 * DAY_MS;
 
 /** The `windowType:resetsAt` keys of the still-open windows whose `type` event is already in the
  * event log, so a restart does not re-announce a window that is still open. Events without a

@@ -6,6 +6,7 @@
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { DAY_MS } from "../text/datetime.js";
 import { ensureParentDir, pruneOldFiles } from "../files/files.js";
 import { pruneSessionLedgers, pruneOpencodeSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
@@ -17,7 +18,7 @@ import { opencodeDbPath, sessionsRootDir, toolOutputDir } from "../paths.js";
 export function dueForPrune(lastPruneAt: number | null, now: number, retentionDays: number): boolean {
   if (retentionDays <= 0) return false; // 0 disables pruning — never due.
   if (lastPruneAt === null) return true; // Never pruned yet — due immediately.
-  return now - lastPruneAt >= 24 * 3600 * 1000;
+  return now - lastPruneAt >= DAY_MS;
 }
 
 /** The retention state machine across one orchestrator's lifetime: which window was last

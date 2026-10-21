@@ -23,6 +23,7 @@ import {
   type CatalogFetch,
 } from "../agent/opencode/opencode-catalog.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { HOUR_MS } from "../text/datetime.js";
 import { errorMessage } from "../text/text.js";
 import { backendById } from "../agent/agent-backend.js";
 // Register the built-in pi and claude adapters into the registry this module reads (see
@@ -166,7 +167,7 @@ export function seedOpencodeCatalog(
 
 /** How long a running team waits between attempts to refetch a missing or stale opencode
  * catalog. */
-export const OPENCODE_CATALOG_RETRY_MS = 60 * 60 * 1000;
+export const OPENCODE_CATALOG_RETRY_MS = HOUR_MS;
 
 /** The poll-driven catalog refresh: a running team refetches a missing or stale catalog, so a
  * failed startup fetch or a days-long run does not price by nothing or by an old copy. The poll

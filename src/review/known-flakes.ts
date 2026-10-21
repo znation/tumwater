@@ -10,6 +10,7 @@
  * evidence of flakiness — it is exactly the attribution this memory exists to avoid making
  * twice. */
 
+import { DAY_MS } from "../text/datetime.js";
 import { TUMWATER_SOURCE, tryOrWarn, type HarnessEvent } from "../events/events.js";
 import { readEventsSince } from "../events/event-window.js";
 import { increment } from "../collections.js";
@@ -27,7 +28,7 @@ import path from "node:path";
  * headline at 15:57, and a day is short enough that a retired flake stops excusing failures
  * while still covering a team's working span. Exported so the doctor's `flaky checks` check
  * and the gate share the one window and cannot drift. */
-export const KNOWN_FLAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const KNOWN_FLAKE_WINDOW_MS = DAY_MS;
 
 /** The exact prefix review-precheck.ts writes before a flake's failure headline. Exported so
  * the writer and reader cannot drift over the separator. */

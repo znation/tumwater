@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errCode } from "../errno.js";
+import { DAY_MS } from "../text/datetime.js";
 
 /** Generic file operations under the harness's error policy — missing is no data, cleanup
  * must not throw, directories are created before writes: stat-or-missing for log readers,
@@ -349,7 +350,7 @@ export function removeTree(dir: string): void {
 /** The epoch-ms instant `days` days before now: the age cutoff the retention prunes compare a
  * file's mtime against (pruneOldFiles, pruneOldDirectory, and session-ledger.ts's two prunes). */
 export function daysAgoMs(days: number): number {
-  return Date.now() - days * 24 * 3600 * 1000;
+  return Date.now() - days * DAY_MS;
 }
 
 /** Delete regular files under `dir` (recursively) older than `days` days. Walks with a plain

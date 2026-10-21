@@ -16,7 +16,7 @@ import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
-import { humanUntil } from "../text/datetime.js";
+import { HOUR_MS, humanUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../team/team-polls.js";
@@ -197,7 +197,7 @@ export function checkClaudeWindow(
  * hold can stay is HOLD_CAP_MS (team-hold's 15-minute cap that escalation doubles against),
  * so a window a comfortable multiple of that covers any standing hold's crossing event plus
  * its resume — an older resumed event must not be missed or a re-opened provider reads held. */
-const HOLD_CHECK_WINDOW_MS = 2 * 3600_000;
+const HOLD_CHECK_WINDOW_MS = 2 * HOUR_MS;
 
 /** The `provider hold` check: names each provider whose team-wide failure hold
  * (src/team/team-hold.ts, polled by pollTeamHold) stands now — a 429/backend-failure storm

@@ -18,6 +18,7 @@ import {
   roleTier,
 } from "../roles/roles.js";
 import { baseRoleOf, runnerEnabled } from "../roles/runner-ids.js";
+import { HOUR_MS } from "../text/datetime.js";
 import { yieldMultiplierFor } from "./backoff.js";
 
 /** Options that vary isEligible's gates without changing their shape. */
@@ -178,7 +179,7 @@ export function workMerged(subjects: string[]): boolean {
  * `lastResult` and lets the next deferral episode start. Three hours is a compromise between
  * the backlog-aware intent (queued feature/bugfix work outranks idle maintenance) and
  * liveness (five roles had been off for days; BUGS.md 2026-09-17). */
-export const DEFER_MAX_MS = 3 * 3600 * 1000;
+export const DEFER_MAX_MS = 3 * HOUR_MS;
 
 /** Has a due run been deferred past DEFER_MAX_MS? `nextRunAt` is the reference: a deferred
  * run leaves it untouched, so `now - nextRunAt` measures how long the run has been waiting

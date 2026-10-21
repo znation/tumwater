@@ -10,7 +10,7 @@
 import { eventRole, eventRun, eventUsage, readEvents, runSpanMs, runStartMap, runStartModel, runStartModelMap } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
-import { formatTimestamp } from "../text/datetime.js";
+import { formatTimestamp, HOUR_MS } from "../text/datetime.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { squash, textOr } from "../text/text.js";
@@ -152,7 +152,7 @@ export const HISTORY_SCAN_MAX_EVENTS = 20_000;
  * queued later than that keeps the raw label, the conservative fallback. The wider read shares
  * one bounded backwards scan with the rows' own window (readEventsSinceJoined), and its
  * day-keyed scan never reaches past its own window's first day. */
-const RUN_ROW_JOIN_BACKSLACK_MS = 6 * 60 * 60 * 1000;
+const RUN_ROW_JOIN_BACKSLACK_MS = 6 * HOUR_MS;
 
 /** Wider join evidence for a row set whose own window cut events the queued-row join needs
  * (the `--since` path; the tail-count path needs none — see readRunRows). `events` is the

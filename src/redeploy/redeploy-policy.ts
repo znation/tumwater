@@ -1,3 +1,4 @@
+import { HOUR_MS, DAY_MS } from "../text/datetime.js";
 import type { BuildStaleness } from "../build/build-info.js";
 import type { CompileResult } from "../build/build-stage.js";
 
@@ -57,10 +58,10 @@ export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
  * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. Cut from twelve
  * hours to four on 2026-10-20: the last eight drains took a median of about 7 min (2 s to
  * 26 min) and only one aborted runs, so the longer wait cost more than the drains it prevented. */
-export const RESTART_COOLDOWN_MS = 4 * 60 * 60_000;
+export const RESTART_COOLDOWN_MS = 4 * HOUR_MS;
 
 /** The cooldown in whole hours — the one home of that ms→h division, for the warning text. */
-export const RESTART_COOLDOWN_HOURS = RESTART_COOLDOWN_MS / 3_600_000;
+export const RESTART_COOLDOWN_HOURS = RESTART_COOLDOWN_MS / HOUR_MS;
 
 /** The cooldown's urgency carve-out (BUGS.md 2026-09-30): when the RUNNING build's own commit
  * carries a red baseline verdict, the deferral is cut to this window instead of the ordinary
@@ -80,10 +81,10 @@ export const RESTART_URGENT_COOLDOWN_MIN = RESTART_URGENT_COOLDOWN_MS / 60_000;
  * different commit, so the aggregate — hours pinned on a stale build while every rebuild dies —
  * raised no alarm anywhere the operator reads. One warning at this age, then at most one per
  * STALE_ESCALATE_EVERY_MS for as long as the episode lasts. */
-export const STALE_ESCALATE_AFTER_MS = 6 * 60 * 60_000;
+export const STALE_ESCALATE_AFTER_MS = 6 * HOUR_MS;
 
 /** The sustained-pin warning's repeat cadence: daily, not per poll and not per head. */
-export const STALE_ESCALATE_EVERY_MS = 24 * 60 * 60_000;
+export const STALE_ESCALATE_EVERY_MS = DAY_MS;
 
 /** What the orchestrator should do this poll: `hold` starts no new runs (a restart is pending),
  * `restart` means dist/ now holds the new build — stop and exit RESTART_EXIT_CODE. */

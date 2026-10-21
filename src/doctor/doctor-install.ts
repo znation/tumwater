@@ -5,12 +5,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { installDrift } from "../build/dep-install.js";
 import { readEventsSince } from "../events/event-window.js";
+import { DAY_MS } from "../text/datetime.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** How far back a failed `dep_install` event may sit and still explain the drift. */
-const DEP_INSTALL_CHECK_WINDOW_MS = 24 * 3600_000;
+const DEP_INSTALL_CHECK_WINDOW_MS = DAY_MS;
 
 export function checkRootInstall(root: string, now = Date.now()): CheckOutcome {
   if (!fs.existsSync(path.join(root, "package-lock.json")))

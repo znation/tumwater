@@ -49,6 +49,7 @@ import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
+import { DAY_MS } from "../text/datetime.js";
 import { errorMessage, textOr, joinParts } from "../text/text.js";
 import { lowerMedian, rankCountEntries } from "../collections.js";
 import { formatBytes, formatGB, shortSha } from "../text/format.js";
@@ -587,7 +588,7 @@ export function checkDiskSpace(
     return warnOutcome(`cannot measure free space at ${where} (statfs failed) — the disk hold is off for this process`);
   const freeGB = free / BYTES_PER_GB;
   const freeText = `${formatGB(freeGB)} free at ${where}`;
-  const phrase = diskReclaimPhrase(readEventsSince(root, 24 * 60 * 60 * 1000).events);
+  const phrase = diskReclaimPhrase(readEventsSince(root, DAY_MS).events);
   const withReclaim = (detail: string) => (phrase ? `${detail} · ${phrase}` : detail);
   if (holdGB > 0 && freeGB < holdGB)
     return failOutcome(withReclaim(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the team waits to start new work until space recovers`));
@@ -628,7 +629,7 @@ export function checkMergeLock(root: string): CheckOutcome {
 
 /** A pin older than a day is the doctor's stuck-pin signal: a paused or retired role is holding
  * a pooled checkout nobody will reuse (plans/worktree-pool.md, "Observability"). */
-const PIN_STALE_MS = 24 * 60 * 60 * 1000;
+const PIN_STALE_MS = DAY_MS;
 
 /** Directory names under the worktrees root that the pool no longer owns: a legacy per-role
  * `<role>` checkout (the pre-pool layout) or a `_land-<role>` checkout from the merge queue. The
@@ -642,13 +643,13 @@ function leftoverWorktreeDirs(root: string): string[] {
 }
 
 /** The window of `slot_wait` events the pool row sums, and the total wait inside it that warns. */
-const SLOT_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const SLOT_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const SLOT_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
-const PROVIDER_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const PROVIDER_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const PROVIDER_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
-const CHECK_WAIT_CHECK_WINDOW_MS = 24 * 3600_000;
+const CHECK_WAIT_CHECK_WINDOW_MS = DAY_MS;
 const CHECK_WAIT_WARN_TOTAL_MS = 10 * 60_000;
 
 /** Worktree pool (plans/worktree-pool.md, part 5/5): report the pooled slots and warn on the
@@ -991,7 +992,7 @@ export function checkBuildCheck(
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
     return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)");
-  const phrase = checkDurationPhrase(readEventsSince(root, 24 * 60 * 60 * 1000).events);
+  const phrase = checkDurationPhrase(readEventsSince(root, DAY_MS).events);
   const withTiming = (detail: string) => okOutcome(phrase ? `${detail} · ${phrase}` : detail);
   if (check.kind === "command") {
     const where = path.relative(root, check.cwd);

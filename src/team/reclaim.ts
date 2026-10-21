@@ -9,6 +9,7 @@
  * in-use half lives in src/git/worktree-use.ts and the hold half in src/gates/disk-gate.ts. */
 
 import path from "node:path";
+import { HOUR_MS } from "../text/datetime.js";
 import { worktreesDir } from "../paths.js";
 import { git, gitTry } from "../git/git-run.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -30,7 +31,6 @@ import {
  * wrapped runs mark them in use exactly like a role run. */
 const RESERVED_WORKTREES = new Set(["_main", "_build"]);
 
-const HOUR_MS = 60 * 60 * 1000;
 
 /** A worktree the registry has never seen counts as used at first sight: seeding it with
  * `lastUsedAt = now` and excluding it from this pass means an upgrade under pressure does not

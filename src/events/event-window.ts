@@ -1,5 +1,5 @@
 import type { Stats } from "node:fs";
-import { dayAt, dayKey, humanSeconds } from "../text/datetime.js";
+import { dayAt, dayKey, humanSeconds, DAY_MS } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
@@ -21,13 +21,13 @@ export const REPORT_MAX_DAYS = 90;
  * signal, and the log rotates at 16 MB (EVENTS_MAX_BYTES in events.ts) anyway, so a huge window
  * mostly reads rotated-away nothing. Lives here so the CLI's flag validation and its window
  * read share one bound. */
-export const LOGS_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+export const LOGS_SINCE_MAX_MS = 7 * DAY_MS;
 
 /** The `tumwater report --since <duration>` window's cap: 7 days. The same bound as the logs
  * view above, for the same rationale — a longer window only re-reads more log without adding
  * signal, and the log rotates at 16 MB (EVENTS_MAX_BYTES in events.ts) anyway. Lives here so
  * the CLI's flag validation and the collector's window read share one bound. */
-export const REPORT_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
+export const REPORT_SINCE_MAX_MS = 7 * DAY_MS;
 
 /** Why a trailing-window length is refused, as the rejection text naming the out-of-range
  * value (`sinceMs must be between 1 and 7d (got 604800000)`). The single home of the report

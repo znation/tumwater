@@ -8,6 +8,7 @@
 
 import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { DAY_MS } from "../text/datetime.js";
 import { hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
 import { type EligibleEntry, backlogHolds, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { entryKey } from "../backlog/backlog-parts.js";
@@ -19,7 +20,7 @@ import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner
 /** How long a claim may sit while its runner is idle before the poll releases it as stale. A
  * day is far past any run, so the release only catches a claim whose runner stopped taking
  * work — an abandoned entry must return to the free pool for another instance. */
-export const CLAIM_IDLE_MAX_MS = 24 * 60 * 60 * 1000;
+export const CLAIM_IDLE_MAX_MS = DAY_MS;
 
 /** The number of eligible plans PLANS.md's `## Planned` should hold before the plan role stops
  * for lack of work: one waiting plan per configured feature instance, plus one, so every

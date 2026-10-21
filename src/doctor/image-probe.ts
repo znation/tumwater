@@ -13,6 +13,7 @@ import path from "node:path";
 import { randomInt } from "node:crypto";
 import zlib from "node:zlib";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import { DAY_MS } from "../text/datetime.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { imageProbesPath } from "../paths.js";
@@ -23,7 +24,7 @@ import { boundedProbe } from "./probe.js";
 
 /** How long a cached image-probe verdict stays valid while the claim is unchanged (7 days) —
  * a model's endpoint can change underneath a stale pass, so the answer is dated. */
-export const IMAGE_PROBE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const IMAGE_PROBE_TTL_MS = 7 * DAY_MS;
 
 /** The probe's deadline (90 s): a local model may need to load, far beyond the quick credential
  * probes, but a doctor run is still a pre-flight — a hung backend must lose, not stall the

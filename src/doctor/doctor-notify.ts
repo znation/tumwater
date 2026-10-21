@@ -1,13 +1,13 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { eventsSince } from "../events/event-window.js";
 import { isNotifyFailure } from "../events/notify.js";
-import { humanAgo } from "../text/datetime.js";
+import { DAY_MS, humanAgo } from "../text/datetime.js";
 import { plural } from "../text/phrases.js";
 import { errorMessage, squash } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** How far back the `notify` check looks for failed pages. */
-const NOTIFY_CHECK_WINDOW_MS = 24 * 3600_000;
+const NOTIFY_CHECK_WINDOW_MS = DAY_MS;
 
 /** The `notify` check: whether a notify command is configured, and a warning when it failed to
  * page within the last day (a nonzero exit, a kill, or a failed start — the warnings

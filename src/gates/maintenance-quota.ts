@@ -23,7 +23,7 @@ import { eventsLogPath } from "../paths.js";
 import { readWindowEvents } from "../events/event-window.js";
 import { eventRole, parseEventLine } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
-import { dayKey } from "../text/datetime.js";
+import { dayKey, DAY_MS } from "../text/datetime.js";
 import { commitTier } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -34,7 +34,7 @@ import type { HarnessEvent } from "../events/events.js";
 export const MAINTENANCE_DAILY_FLOOR = 12;
 
 /** The rolling window length: 24 h in ms. */
-const MAINTENANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const MAINTENANCE_WINDOW_MS = DAY_MS;
 
 /** The allowance verdict for one poll. `allowance` is what the window permits, `used` is the merged
  * maintenance count plus the maintenance roles in flight, and `held` is true while used has reached

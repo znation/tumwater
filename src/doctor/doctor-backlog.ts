@@ -19,7 +19,7 @@ import { queuedMerges } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
-import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
 import { eventsSince, readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
@@ -328,9 +328,9 @@ export function checkPlanDependencies(root: string): CheckOutcome {
  * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
  * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
-const MERGE_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
+const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
 /** The window of the merge-wait phrase on the stale merge-queue row. */
-const MERGE_WAIT_WINDOW_MS = 24 * 3600_000;
+const MERGE_WAIT_WINDOW_MS = DAY_MS;
 
 /** Stale queued merges — a change that has sat in the durable merge queue too long without starting
  * (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its own role or
@@ -373,7 +373,7 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
  * warns: a day, fixed. An opinionated default with no knob, like MERGE_QUEUE_STALE_MS: a day is
  * long enough that a healthy role's next run would have dequeued the prompt, and short enough
  * that a paused or disabled role's stranded prompt shows up. */
-const STALE_PROMPT_MS = 24 * 60 * 60 * 1000;
+const STALE_PROMPT_MS = DAY_MS;
 
 /** Stale queued prompts — a prompt queued for a role (`tumwater prompt --role <id>`, the
  * dashboard composer, the TUI, a `--at` delay whose time has now passed) that has waited more

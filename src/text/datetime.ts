@@ -10,6 +10,21 @@
 import { plural } from "./phrases.js";
 import { EVENTS_LOG_BASENAME } from "../paths.js";
 
+/** Milliseconds in an hour — the shared unit for this repo's window and timeout
+ * constants (reclaim's idle threshold, the doctor's merge/stale-pin/wait checks, the
+ * claim/review/queue expiry, the scheduling defer cap, redeploy's cooldowns, the
+ * provider-hold window), so no two of them can spell the hour multiplier differently
+ * (`60 * 60 * 1000` vs `60 * 60_000` vs `3600_000`). Day-sized spans use `DAY_MS`
+ * (or `N * DAY_MS`) below. */
+export const HOUR_MS = 60 * 60 * 1000;
+
+/** Milliseconds in a day — the sibling of `HOUR_MS`: the shared day unit for the
+ * day-sized retention and lookback constants (the opencode-catalog and image-probe TTLs,
+ * the doctor's stale-pin/merge/prompt/wait checks, the known-flake and selfcheck
+ * windows, the dashboard-history since bound, the retention prune, the claude-window
+ * lookback) so one day cannot mean slightly different spans per consumer. */
+export const DAY_MS = 24 * HOUR_MS;
+
 /** Zero-pad an integer to two digits — the clock and calendar components every local-time
  * display in the harness renders through (transcript run separators, the status table's last-
  * run cell, the daily-budget day stamp), so zero-padding cannot drift per consumer. */
