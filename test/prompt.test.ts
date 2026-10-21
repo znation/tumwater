@@ -472,7 +472,7 @@ test("every run, director, conflict, and review prompt states the given date exa
   for (const p of rolePrompts) {
     assert.match(
       oneLine(p),
-      /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md heading ends "\(found by the <role> role YYYY-MM-DD\)", a closing date reads "— fixed YYYY-MM-DD by the <role> role", a new PLANS\.md heading reads "\(planned YYYY-MM-DD by the <role> role …\)", and a Refused or Needs-review note carries the date too — and count plan deadlines from it; never infer the date from the repo\./,
+      /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md heading ends "\(found by the <role> role YYYY-MM-DD\)", a BUGS\.md record closes with "— fixed YYYY-MM-DD by the <role> role", a finished plan's Done stamp reads "— done YYYY-MM-DD by the <role> role" appended after its "\(planned YYYY-MM-DD by the <role> role …\)" parenthetical, and a Refused or Needs-review note carries the date too — and count plan deadlines from it; never infer the date from the repo\./,
     );
   }
   // The verdict contract survives the extra line: still exactly the two advertised forms.

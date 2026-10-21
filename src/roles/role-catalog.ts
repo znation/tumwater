@@ -82,7 +82,7 @@ export const ROLES: Role[] = [
       the entry's files-touched list and acceptance criteria, so land everything the entry
       promises, or update the entry to say what changed and why. When a plan's anchors no longer
       match the code, correct the entry in the same change instead of refusing.
-   6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done", "PLANS-DONE.md")}
+   6. Mark the plan done in PLANS.md — ${backlogMoveGuidance("PLANS.md", "## Planned", "## Done", "PLANS-DONE.md", "done")}
    7. Verify last, after the PLANS.md edit, so one run of the project's check covers everything
       you changed (see "Leave the project working" below).
 A plan that resists implementation is a finding: refuse it with the objection recorded rather
@@ -103,7 +103,7 @@ than forcing it.`,
       heading, and end the run. Do not keep investigating without new evidence.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.
-   4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed", "BUGS-FIXED.md")}
+   4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed", "BUGS-FIXED.md", "fixed")}
    5. In the moved entry, write the required validation-gap trace line (format below).
    6. Verify last, after the BUGS.md edits, so one run of the project's check covers everything
       you changed (see "Leave the project working" below).

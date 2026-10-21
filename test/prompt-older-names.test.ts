@@ -40,6 +40,7 @@ test("the shared preamble spells the attribution stamps", () => {
   const prompt = buildRunPrompt({ role: ROLES[0]! });
   assert.match(prompt, /\(found by the <role> role YYYY-MM-DD\)/);
   assert.match(prompt, /fixed YYYY-MM-DD by the <role> role/);
+  assert.match(prompt, /done YYYY-MM-DD by the <role> role/);
   assert.match(prompt, /\(planned YYYY-MM-DD by the <role> role/);
 });
 

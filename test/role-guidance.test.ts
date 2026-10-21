@@ -17,6 +17,7 @@ import {
   VALIDATION_GAP_TALLY,
   WAITING_FOR_FAILURE_NOTE,
   WAITING_FOR_FAILURE_PREFIX,
+  backlogMoveGuidance,
 } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -230,4 +231,24 @@ test("bugfix find writes the waiting note and selfcheck find deletes it on a rec
   const selfcheck = oneLine(roleById("selfcheck")!.find);
   assert.ok(selfcheck.includes(WAITING_FOR_FAILURE_PREFIX));
   assert.ok(selfcheck.includes("delete the note line"));
+});
+
+test("the closing guidance names the kind's token and the heading-key rule", () => {
+  // BUGS.md 2026-10-21: the feature and bugfix roles share one move guidance, so the plan stamp
+  // must carry the plan's "done" token, the bug record its "fixed", and the wording must say the
+  // heading key cannot change — a feature role that stamped per the old generic wording was
+  // rejected repeatedly.
+  const planGuidance = backlogMoveGuidance("PLANS.md", "## Planned", "## Done", "PLANS-DONE.md", "done");
+  const bugGuidance = backlogMoveGuidance("BUGS.md", "## Open", "## Fixed", "BUGS-FIXED.md", "fixed");
+  assert.match(oneLine(planGuidance), /— done YYYY-MM-DD by the <role> role/);
+  assert.match(oneLine(planGuidance), /\(planned …\)/);
+  assert.match(oneLine(bugGuidance), /— fixed YYYY-MM-DD by the <role> role/);
+  assert.ok(!planGuidance.includes("fixed YYYY-MM-DD"), "a plan is stamped done, not fixed");
+  assert.ok(!bugGuidance.includes("done YYYY-MM-DD"), "a BUGS.md record is stamped fixed, not done");
+  for (const g of [planGuidance, bugGuidance]) {
+    assert.match(oneLine(g), /heading text before its first ` \(` must not change/);
+  }
+  // The assembled prompts pick the token by kind.
+  assert.match(oneLine(roleById("feature")!.find), /— done YYYY-MM-DD by the <role> role/);
+  assert.match(oneLine(roleById("bugfix")!.find), /— fixed YYYY-MM-DD by the <role> role/);
 });

@@ -24,11 +24,16 @@ independently; if the parts are not truly independent, keep a single entry.`;
  * numbered step of their task. The pasted entry does not stay there: tumwater moves it to the top
  * of `archive` when the change commits (plans/backlog-archive.md), which the last line says so no
  * run opens the archive to do it by hand. Takes the file, section and archive names so the feature
- * and bugfix texts cannot drift apart; lives here with the other shared fragments. */
-export function backlogMoveGuidance(file: string, openSection: string, resolvedSection: string, archive: string): string {
+ * and bugfix texts cannot drift apart; lives here with the other shared fragments. Also takes
+ * the closing token ("done" for a finished plan, "fixed" for a BUGS.md record) chosen by the
+ * caller, so the verb and the heading-key rule are named instead of left for the role to guess. */
+export function backlogMoveGuidance(file: string, openSection: string, resolvedSection: string, archive: string, token: string): string {
   return `move the entry, step by step:
       a. cut the entry out of \`${openSection}\`;
-      b. add the closing date to its \`### \` heading;
+      b. add the closing stamp to its \`### \` heading, at the end — \`— ${token} YYYY-MM-DD by the <role> role\`
+         (a finished plan appends it after its existing \`(planned …)\` parenthetical; the heading
+         text before its first \` (\` must not change, or the gate reads it as a brand-new entry
+         under \`${resolvedSection}\` rather than a move);
       c. paste it as the first entry under the file's existing \`${resolvedSection}\` heading;
       d. if it was the last entry under \`${openSection}\`, leave a \`_None yet._\` placeholder
          there.

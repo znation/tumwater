@@ -368,8 +368,9 @@ function sharedPreamble(today?: string): string[] {
   return [
     `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by tumwater after you finish.`,
     `${dateLine(today)} Stamp it on anything you record now — a new BUGS.md heading ends
-"(found by the <role> role YYYY-MM-DD)", a closing date reads "— fixed YYYY-MM-DD by the <role> role",
-a new PLANS.md heading reads "(planned YYYY-MM-DD by the <role> role …)", and a Refused or
+"(found by the <role> role YYYY-MM-DD)", a BUGS.md record closes with "— fixed YYYY-MM-DD by the <role> role",
+a finished plan's Done stamp reads "— done YYYY-MM-DD by the <role> role" appended after its
+"(planned YYYY-MM-DD by the <role> role …)" parenthetical, and a Refused or
 Needs-review note carries the date too — and count plan deadlines from it; never infer the date
 from the repo.`,
     OLDER_NAMES_SENTENCE,
