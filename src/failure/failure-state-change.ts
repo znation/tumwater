@@ -10,9 +10,9 @@ import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
-import { formatClock } from "../text/datetime.js";
+
 import { shortSha } from "../text/format.js";
-import { deferredReasonText } from "../events/event-format.js";
+import { deferredReasonText, untilClockSuffix } from "../events/event-format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
  * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
@@ -106,16 +106,14 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
     case "team_paused":
-      text = teamPausePhrase();
-      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatClock(finiteNumber(ev.until, 0))}`;
+      text = teamPausePhrase() + untilClockSuffix(ev.until);
       if (isNonBlankString(ev.reason)) text += `: ${field(ev.reason)}`;
       break;
     case "team_resumed":
       text = teamResumePhrase() + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");
       break;
     case "role_paused":
-      text = rolePausePhrase(field(ev.role ?? "?"));
-      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatClock(finiteNumber(ev.until, 0))}`;
+      text = rolePausePhrase(field(ev.role ?? "?")) + untilClockSuffix(ev.until);
       break;
     case "role_resumed":
       text = roleResumePhrase(field(ev.role ?? "?")) + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");

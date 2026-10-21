@@ -73,11 +73,21 @@ function minutes(ms: unknown): number {
   return Math.round(Number(finiteNumber(ms, 0)) / 60_000);
 }
 
-/** ` until HH:MM:SS` and `: reason` for a team_paused event, each "" when its field is absent or
- * the wrong type (the corrupt-field rule windowResetPhrase applies). */
-function pauseSuffix(until: unknown, reason: unknown): string {
+/** ` until HH:MM:SS` for a timestamped pause event (team_paused/role_paused) whose until time is
+ * present, or "" when it is missing or non-numeric — the same corrupt-field rule windowResetPhrase
+ * applies (a torn or hand-edited line must not coerce Number("…") into a fabricated clock). Shared
+ * by the event feed's pauseSuffix and the failure digest's pause lines so the three cannot drift on
+ * the spacing or the clock format. */
+export function untilClockSuffix(until: unknown): string {
   const ms = finiteNumber(until, null);
-  return `${ms === null ? "" : ` until ${formatClock(ms)}`}${isNonBlankString(reason) ? `: ${reason}` : ""}`;
+  return ms === null ? "" : ` until ${formatClock(ms)}`;
+}
+
+/** ` until HH:MM:SS` and `: reason` for a paused event, each "" when its field is absent or
+ * the wrong type (the corrupt-field rule windowResetPhrase applies). The until half is
+ * untilClockSuffix, so the feed and digest aggregators share it. */
+function pauseSuffix(until: unknown, reason: unknown): string {
+  return `${untilClockSuffix(until)}${isNonBlankString(reason) ? `: ${reason}` : ""}`;
 }
 
 /** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
