@@ -107,6 +107,7 @@ export const GUI_PAGE = `<!doctype html>
             <button type="button" data-filter="notable" class="active">Notable</button><button type="button" data-filter="all">All events</button>
           </div>
           <label><span class="sr-only">Role</span><select class="field" id="feedrole"><option value="">All roles</option></select></label>
+          <label><span class="sr-only">Window</span><select class="field" id="feedwindow"></select></label>
           <label><span class="sr-only">Search</span><input class="field" id="feedgrep" type="search" placeholder="Search activity…" autocomplete="off"></label>
         </header>
         <ol id="feed" class="feed"></ol>

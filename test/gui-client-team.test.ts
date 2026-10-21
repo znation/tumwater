@@ -765,10 +765,12 @@ test("the Activity filter persists its choices and the page ships the controls i
   assert.match(GUI_CLIENT_FEED_JS, /store\("feed-role"/);
   assert.match(GUI_CLIENT_FEED_JS, /store\("feed-grep"/);
   assert.match(GUI_CLIENT_FEED_JS, /store\("feed-type"/);
+  assert.match(GUI_CLIENT_FEED_JS, /store\("feed-window"/);
   const card = GUI_PAGE.slice(GUI_PAGE.indexOf('aria-labelledby="activity-title"'));
   const head = card.slice(0, card.indexOf("</header>"));
   assert.match(head, /id="feedrole"/);
   assert.match(head, /id="feedgrep"/);
+  assert.match(head, /id="feedwindow"/);
 });
 
 test("the Plans and Bugs tabs offer a New form that survives polls and drops on a tab switch", () => {
@@ -971,4 +973,110 @@ test("setBacklogGrep asks /api/backlog-match for the trimmed text", () => {
   assert.deepEqual(getJsonPaths, ["/api/backlog-match?grep=zebra"]);
   scope.setBacklogGrep("");
   assert.equal(getJsonPaths.length, 1);
+});
+
+test("a chosen window fetches /api/logs?sinceMs= even with no filter", async () => {
+  const payload = { roles: [], eventItems: [{ ts: Date.now(), source: "qa", type: "merged", message: "carried row" }] };
+  const calls: string[] = [];
+  const { scope, panels } = feedScope({ "feed-window": "3600000" }, {
+    getJson: async (path: string) => {
+      calls.push(path);
+      return { events: [{ ts: 1, source: "qa", type: "merged", message: "window row" }], covered: true, note: "" };
+    },
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?sinceMs=3600000"]);
+  assert.match(panels["feed"] ?? "", /window row/);
+  assert.doesNotMatch(panels["feed"] ?? "", /carried row/);
+});
+
+test("the window composes with Role and Search in the query", async () => {
+  const calls: string[] = [];
+  const payload = { roles: [{ role: "qa" }], eventItems: [] };
+  const { scope } = feedScope({ "feed-window": "21600000", "feed-role": "qa", "feed-grep": "boom" }, {
+    getJson: async (path: string) => { calls.push(path); return { events: [] }; },
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.deepEqual(calls, ["/api/logs?sinceMs=21600000&grep=boom&role=qa"]);
+});
+
+test("a recalled unknown window falls back to Recent", async () => {
+  const calls: string[] = [];
+  const payload = { roles: [], eventItems: [] };
+  const { scope, els } = feedScope({ "feed-window": "999" }, {
+    getJson: async (path: string) => { calls.push(path); return { events: [] }; },
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  assert.deepEqual(calls, []);
+  assert.equal(els["feedwindow"]?.value, "");
+});
+
+test("a windowed feed refetches only when a new event arrives", async () => {
+  const mk = (ts: number) => ({ roles: [], eventItems: [{ ts, source: "qa", type: "merged", message: "carried " + ts }] });
+  let calls = 0;
+  let release: () => void = () => {};
+  const { scope, panels } = feedScope({ "feed-window": "3600000" }, {
+    getJson: async () => {
+      calls++;
+      if (calls === 2) await new Promise<void>((r) => { release = r; });
+      return { events: [{ ts: 1, source: "qa", type: "merged", message: "slice " + Math.min(calls, 2) }] };
+    },
+    lastStatus: mk(10),
+  });
+  scope.renderFeed(mk(10));
+  await feedSettle();
+  assert.equal(calls, 1);
+  scope.renderFeed(mk(10));
+  await sleep(10);
+  assert.equal(calls, 1, "a poll with no new event fetches nothing");
+  scope.renderFeed(mk(11));
+  await sleep(10);
+  assert.equal(calls, 2);
+  assert.match(panels["feed"] ?? "", /slice 1/, "the old slice stays painted until the answer lands");
+  release();
+  await sleep(10);
+  assert.match(panels["feed"] ?? "", /slice 2/);
+});
+
+test("a sparse window names its note and an empty window names its span", async () => {
+  const payload = { roles: [], eventItems: [] };
+  const getJson = async () => ({ events: [], covered: false, note: "SPARSE" });
+  const plain = feedScope({ "feed-window": "3600000" }, { getJson, lastStatus: payload });
+  plain.scope.renderFeed(payload);
+  await feedSettle();
+  assert.match(plain.panels["feed"] ?? "", /SPARSE/);
+  assert.match(plain.panels["feed"] ?? "", /No events in the last hour/);
+  const filtered = feedScope({ "feed-window": "3600000", "feed-grep": "x" }, { getJson, lastStatus: payload });
+  filtered.scope.renderFeed(payload);
+  await feedSettle();
+  assert.match(filtered.panels["feed"] ?? "", /No events match this filter in the last hour/);
+});
+
+test("the feed paints at most FEED_MAX_ROWS rows and says so", async () => {
+  const payload = { roles: [], eventItems: [] };
+  const events = Array.from({ length: 501 }, (_, i) => ({ ts: i, source: "qa", type: "merged", message: "row " + i }));
+  const { scope, panels } = feedScope({ feed: "all", "feed-window": "86400000" }, {
+    getJson: async () => ({ events, covered: true, note: "" }),
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  const html = panels["feed"] ?? "";
+  assert.equal((html.match(/<li class='feed-item/g) ?? []).length, 500);
+  assert.match(html, /Showing the newest 500 of 501 events/);
+});
+
+test("Clear filter resets the window", () => {
+  const payload = { roles: [], eventItems: [] };
+  const { scope, stores, els } = feedScope({ "feed-window": "3600000", "feed-grep": "x" }, { lastStatus: payload });
+  els["feedwindow"] = { ...(els["feedwindow"] ?? { innerHTML: "", children: [], addEventListener: () => {} }), value: "3600000" };
+  scope.clearFeedFilter();
+  assert.equal(stores["feed-window"], "");
+  assert.equal(els["feedwindow"].value, "");
 });
