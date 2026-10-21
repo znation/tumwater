@@ -66,6 +66,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 2c/9: Budget gates, holds, the reserve and the window moves read each subscription backend's own account (planned 2026-10-21 by the plan role; requires parts 2a/9 and 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/team/team-polls.ts src/orchestrator/orchestrator.ts and their tests)
 
+**Needs review 2026-10-21 by feature: too large for one run** — touches 4 source modules (the budget-gate fallback-chain state machine reworked from a single claude windowOut to per-backend maps) plus 7 test files (~3,800 lines) and new `sub`-backend coverage; exceeds a single focused run.
+
 **Goal.** Every window decision — a job moving down its chain, the director's move, the handback, the reserve and the subscription-window hold — works for any backend that reports a subscription. Today each is keyed to claude by `pairIsClaude`/`seamIsClaude` (src/gates/budget-gates.ts), the observation's `provider: "claude"` (src/team/team-polls.ts `claudeWindowObservation`) and one `windowOut` (src/gates/budget-gates.ts). With part 2a/9 (the account lookup) and part 2b/9 (the event `backend` and `windowReserveFor`) landed, no signature or event work is left. This is the state-machine half the feature role split out of part 2/9. No behavior change for a claude-only or pi-only team.
 
 **Approach.**
