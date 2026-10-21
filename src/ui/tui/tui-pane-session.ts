@@ -30,7 +30,7 @@ export interface TuiPanesDeps {
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
-  runDoctor(root: string): Promise<DoctorReport>;
+  runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
@@ -168,7 +168,7 @@ export interface TuiPaneSession {
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
-  runDoctor(root: string): Promise<DoctorReport>;
+  runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;

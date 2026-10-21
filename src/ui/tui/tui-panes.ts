@@ -149,6 +149,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {
       return report.handleKey?.(key, ctx) ?? false;
     }
+    // Health owns Ctrl+P (re-probe image-input models) ahead of History's fallback.
+    if (key.ctrl && key.name === "p" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "o") {

@@ -606,11 +606,12 @@ export async function checkTierModels(
  * which of the team's seams claim to read images, and whether every text-only enabled role can
  * reroute to one that does. Part 2 adds the live probe — with `probeImages` "missing" (the
  * terminal `tumwater doctor` default) each claimed pi model with no fresh cached verdict is
- * shown a real image and the answer is checked; with "all" (the `--reprobe` flag) every claimed
- * model is re-probed; with "never" (the TUI Health tab and the GUI doctor endpoint) nothing is
- * spawned and only cached verdicts are read, so a refresh never spends a model call. claude
- * seams are never probed — every Claude model reads images, and a probe would spend subscription
- * window to confirm it.
+ * shown a real image and the answer is checked; with "all" (the `--reprobe` flag, the
+ * dashboard's Re-probe models button and the TUI Health tab's Ctrl+P) every claimed model is
+ * re-probed; with "never" (the TUI Health tab and GUI doctor endpoint on entry and refresh)
+ * nothing is spawned and only cached verdicts are read, so a refresh never spends a model call.
+ * claude seams are never probed — every Claude model reads images, and a probe would spend
+ * subscription window to confirm it.
  *
  * Covers the same seams as `tier models` (seamPairs — the tiers, enabled roles and the
  * reviewer) plus the tiers' fallback pairs (the reroute part picks its target among them, so a

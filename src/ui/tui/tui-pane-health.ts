@@ -7,8 +7,9 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the problems-only
- * Ctrl+O toggle and the runDoctor collector it re-reads on every entry. Split out of the
- * pane-navigation monolith; it owns the problems flag and the last resolved report. */
+ * Ctrl+O toggle, the Ctrl+P image-model re-probe and the runDoctor collector it re-reads on
+ * every entry. Split out of the pane-navigation monolith; it owns the problems flag and the last
+ * resolved report. */
 export function createHealthPane(session: TuiPaneSession) {
   // Within the Health pane (Ctrl+O), whether the cached report paints only its warn and fail
   // checks, the same problems-only trim `tumwater doctor --problems` applies. Session-only
@@ -24,14 +25,16 @@ export function createHealthPane(session: TuiPaneSession) {
   // current. Extracted so both the enter half of the Ctrl+T cycle and the Ctrl+R in-place
   // refresh run the same body; a run already in flight is superseded by the new read.
   let runGen = 0;
-  const run = (): void => {
+  // Whether a Ctrl+P re-probe is in flight, so a held key never spends a second round of probes.
+  let reprobing = false;
+  const run = (probeImages: "never" | "all" = "never"): Promise<void> => {
     // Generation guard: each run bumps the counter, and a resolution paints only if it is
     // the latest request's — Ctrl+R held twice, or a re-run raced with a re-entry, must not
     // let an out-of-order older resolution overwrite the newer report.
     const gen = ++runGen;
     session.paneCache = null;
     lastDoctorReport = null;
-    void session.runDoctor(session.root).then(
+    return session.runDoctor(session.root, probeImages).then(
       (report) => {
         if (gen !== runGen || session.view !== session.roleIds.length + 7) return;
         lastDoctorReport = report;
@@ -55,7 +58,26 @@ export function createHealthPane(session: TuiPaneSession) {
       // twin of the dashboard Health card's Re-run button — repainting through the current
       // problems-only toggle, and re-enters at the head so the changed body starts at the
       // top. Every other view keeps today's Ctrl+R (the backlog release).
-      run();
+      void run();
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "p" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {
+      // Ctrl+P on the Health pane (mnemonic: **P**robe) is the terminal twin of `tumwater doctor
+      // --reprobe` and the dashboard's Re-probe models: it re-runs the checks with every claimed
+      // pi image-input model re-probed, spending one model call each and rewriting
+      // .tumwater/state/image-probes.json. Every other view keeps its own Ctrl+P.
+      if (reprobing) {
+        session.flashMessage("a re-probe is already running");
+        session.requestRender();
+        return true;
+      }
+      reprobing = true;
+      session.flashMessage("re-probing image-input models (one model call each) …");
+      void run("all").finally(() => {
+        reprobing = false;
+      });
       session.paneScroll = 0;
       session.requestRender();
       return true;
@@ -71,7 +93,7 @@ export function createHealthPane(session: TuiPaneSession) {
       void runManualReclaim(session.root).then(
         (message) => {
           session.flashMessage(message);
-          run();
+          void run();
           session.paneScroll = 0;
           session.requestRender();
         },
@@ -132,7 +154,7 @@ export function createHealthPane(session: TuiPaneSession) {
       void session.killOrphans(session.root).then(
         (report) => {
           session.flashMessage(orphanKillLines(report).join("; "));
-          run();
+          void run();
           session.paneScroll = 0;
           session.requestRender();
         },
@@ -165,7 +187,7 @@ export function createHealthPane(session: TuiPaneSession) {
     handleKey,
     enter() {
       // Health reruns `tumwater doctor`'s checks on each entry and with the Ctrl+R refresh.
-      run();
+      void run();
       return true;
     },
     state() {

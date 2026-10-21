@@ -3345,6 +3345,67 @@ test("the Health pane re-runs the doctor checks in place with Ctrl+R, honoring t
   assert.ok(renders > before);
 });
 
+test("Ctrl+P on the Health view re-runs the doctor with every image-input model re-probed", async () => {
+  const root = makeRoot();
+  const report = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], routing: [], verdict: "ok" } as DoctorReport;
+  const probes: string[] = [];
+  let resolveDoctor: (r: DoctorReport) => void = () => {};
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: (_root, probe) => {
+      probes.push(probe);
+      return new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve));
+    },
+  });
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+  };
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.deepEqual(probes, ["never"]);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(probes.at(-1), "all");
+  assert.equal(probes.length, 2);
+  assert.equal(keys.state().paneCache, null);
+  assert.match(keys.state().flash ?? "", /re-probing image-input models/);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(probes.length, 2, "a second Ctrl+P adds no call");
+  assert.match(keys.state().flash ?? "", /already running/);
+  resolveDoctor(report);
+  await settle();
+  assert.equal(keys.state().paneCache, renderDoctor(report));
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.deepEqual(probes.slice(2), ["all"]);
+  resolveDoctor(report);
+  await settle();
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(probes.at(-1), "never");
+});
+
+test("Ctrl+P off the Health view never re-probes", () => {
+  const root = makeRoot();
+  const probes: string[] = [];
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: (_root, probe) => {
+      probes.push(probe);
+      return new Promise<DoctorReport>(() => {});
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 4);
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.ok(!probes.includes("all"));
+});
+
 test("the Brief tab caches renderBrief of the brief file on entry, and holds null with no prompt block", async () => {
   const root = await initializedRepo();
   const { keys } = makeKeys(root, () => 0);
