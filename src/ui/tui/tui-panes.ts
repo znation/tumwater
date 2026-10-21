@@ -145,6 +145,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
+    // Ctrl+P on Usage/Failures steps the report window back; every other view is History's.
+    if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {
+      return report.handleKey?.(key, ctx) ?? false;
+    }
     if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "o") {
@@ -262,6 +266,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       backlogGrep: back.backlogGrep,
       scopeRole: rep.scopeRole,
       reportSince: rep.reportSince,
+      reportStep: rep.reportStep,
       historyRole: hist.historyRole,
       historySince: hist.historySince,
       historyStep: hist.historyStep,

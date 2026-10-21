@@ -110,6 +110,17 @@ export const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
   ...SESSION_WINDOW_TAIL,
 ];
 
+/** The bounds of the report window `step` window lengths back from now: the trailing window
+ * itself (`untilMs` undefined, the collectors' own default) for a null window or step 0, else
+ * `(step + 1) * windowMs` to `step * windowMs` ago — the `report --since --until` pair. */
+export function steppedWindowBounds(
+  windowMs: number | null,
+  step: number,
+): { sinceMs: number | null; untilMs: number | undefined } {
+  if (windowMs === null || step === 0) return { sinceMs: windowMs, untilMs: undefined };
+  return { sinceMs: (step + 1) * windowMs, untilMs: step * windowMs };
+}
+
 /** The shared cross-pane session and seams every pane module takes (the analog of
  * `TuiEditorSession`): the state `createTuiKeys` and the pane arms all share — the view index,
  * the roster, the shared pane scroll/budget state, the active pane's cache slot, and the armed

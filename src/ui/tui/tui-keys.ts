@@ -203,6 +203,9 @@ interface TuiKeysState {
   /** The Usage and Failures panes' active trailing window label (Ctrl+E), or null for the
    * default day report; named in the hint line. */
   reportSince: string | null;
+  /** How many window lengths back the Usage and Failures window ends (Ctrl+P); 0 is the
+   * trailing window. */
+  reportStep: number;
   /** The History pane's active outcome class label (Ctrl+O), "all" when unfiltered; named in
    * the hint line. */
   historyResult: string | null;

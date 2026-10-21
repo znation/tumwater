@@ -532,7 +532,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   (`scope: team` or `scope: <role>`). `Ctrl+E` cycles a session-only trailing window for the
   Usage and Failures panes (default, 1h, 6h, 1d, 7d) through the same collectors `tumwater report
   --since` and `tumwater report --failures --since` use, with the hint line naming it
-  (`window: default` or `window: <window>`).
+  (`window: default` or `window: <window>`). `Ctrl+P` steps that window back by its own length
+  through the same `--until` bound `tumwater report --since --until` uses; the body's window
+  line names the span, and `Ctrl+E` returns to the trailing window.
 - In the TUI, viewing a role's transcript puts that role's controls on the hint line: `Ctrl+P`
   on an unpaused role opens a duration editor (empty pauses until resumed, Esc cancels) that
   writes the same `pauseRole` marker `tumwater pause --role --for` does — the deadline is the

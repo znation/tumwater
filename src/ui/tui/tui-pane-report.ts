@@ -1,22 +1,26 @@
 import { collectReport, collectReportSince } from "../../report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
-import { REPORT_DEFAULT_DAYS } from "../../events/event-window.js";
+import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
 import { pageDir } from "./tui-keymap.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
-import { nextInCycle, cycleLabel, REPORT_WINDOWS, scopeCycle, type TuiPaneSession } from "./tui-pane-session.js";
+import { nextInCycle, cycleLabel, REPORT_WINDOWS, scopeCycle, steppedWindowBounds, type TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Usage (view N+2) and Failures (view N+3) panes of the TUI (src/ui/tui/tui.tsx): the
- * session report window (Ctrl+E), the team/base-role scope (Ctrl+G, shared with the other
- * scope panes), and the Markdown-pane PgUp/PgDn body window. Split out of the pane-navigation
- * monolith; it owns the report window and team scope state and the arms that touch them. */
+ * session report window (Ctrl+E) and its step back through earlier windows (Ctrl+P), the
+ * team/base-role scope (Ctrl+G, shared with the other scope panes), and the Markdown-pane
+ * PgUp/PgDn body window. Split out of the pane-navigation monolith; it owns the report window
+ * and team scope state and the arms that touch them. */
 export function createReportPane(session: TuiPaneSession) {
   // The Usage and Failures panes' session trailing window (Ctrl+E), a REPORT_WINDOWS length or
   // null for the default day report. Session-only like the view/scroll state; the next Ctrl+T
   // into either pane computes the cache with it.
   let reportWindow: number | null = null;
+  // How many window lengths back the report window ends (Ctrl+P); 0 is the trailing window.
+  // Session-only; Ctrl+E resets it, Ctrl+G and view changes keep it.
+  let reportStep = 0;
   // The session-scoped role the Usage and Failures panes collect for, cycled by Ctrl+G, null
   // for the team. Session-only, like the view/selection/scroll state: a fresh TUI starts
   // team-wide, and syncSnapshot clears it when the roster drops the role.
@@ -28,16 +32,18 @@ export function createReportPane(session: TuiPaneSession) {
    * through the same collectReportSince collector `tumwater report --since` uses, so the TUI,
    * CLI, and dashboard cannot disagree. Both honor the Ctrl+G role scope, so the two session
    * cycles compose. */
-  const usagePaneCache = (sinceMs: number | null, scope?: string): string => {
+  const usagePaneCache = (sinceMs: number | null, scope: string | undefined, step: number): string => {
     if (sinceMs === null) return renderReportMarkdown(collectReport(session.root, REPORT_DEFAULT_DAYS, scope));
-    return renderSinceReportMarkdown(collectReportSince(session.root, sinceMs, scope));
+    const b = steppedWindowBounds(sinceMs, step);
+    return renderSinceReportMarkdown(collectReportSince(session.root, b.sinceMs!, scope, b.untilMs));
   };
 
   /** The Failures pane's body for one window and role scope, the digest sibling of
    * usagePaneCache; renderFailureMarkdown renders both the day and --since shapes. */
-  const failuresPaneCache = (sinceMs: number | null, scope?: string): string => {
+  const failuresPaneCache = (sinceMs: number | null, scope: string | undefined, step: number): string => {
     if (sinceMs === null) return renderFailureMarkdown(collectFailureReport(session.root, REPORT_DEFAULT_DAYS, scope));
-    return renderFailureMarkdown(collectFailureReportSince(session.root, sinceMs, scope));
+    const b = steppedWindowBounds(sinceMs, step);
+    return renderFailureMarkdown(collectFailureReportSince(session.root, b.sinceMs!, scope, b.untilMs));
   };
 
   /** Recompute the Usage/Failures panes' cached body if either is the current view, re-entering
@@ -48,8 +54,8 @@ export function createReportPane(session: TuiPaneSession) {
     const isFailures = session.view === session.roleIds.length + 3;
     if (!isUsage && !isFailures) return false;
     session.paneCache = isUsage
-      ? usagePaneCache(reportWindow, scopeRole ?? undefined)
-      : failuresPaneCache(reportWindow, scopeRole ?? undefined);
+      ? usagePaneCache(reportWindow, scopeRole ?? undefined, reportStep)
+      : failuresPaneCache(reportWindow, scopeRole ?? undefined, reportStep);
     session.paneScroll = 0;
     return true;
   };
@@ -72,7 +78,31 @@ export function createReportPane(session: TuiPaneSession) {
       // only changes the label, and the next Ctrl+T into one computes the cache with it; on a
       // report pane this handler recomputes the cached Markdown from the newly windowed
       // collector and re-enters the body at its head.
+      reportStep = 0;
       reportWindow = nextInCycle(REPORT_WINDOWS, reportWindow);
+      recompute();
+      session.requestRender();
+      return true;
+    }
+    if (
+      key.ctrl && key.name === "p" &&
+      (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3) &&
+      !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.pauseEditMode &&
+      !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
+      !ctx.es.retireMode && promptLineFree(ctx.es)
+    ) {
+      // Ctrl+P steps the chosen trailing window back one window length (the `report --since
+      // --until` window), wrapping to the trailing window once the next window's start would
+      // pass the 7-day cap.
+      if (reportWindow === null) {
+        session.flashMessage("pick a window with Ctrl+E to step back through earlier windows");
+        return true;
+      }
+      if ((reportStep + 2) * reportWindow <= REPORT_SINCE_MAX_MS) reportStep += 1;
+      else {
+        reportStep = 0;
+        session.flashMessage(`oldest window reached; back to the last ${cycleLabel(REPORT_WINDOWS, reportWindow)}`);
+      }
       recompute();
       session.requestRender();
       return true;
@@ -122,6 +152,7 @@ export function createReportPane(session: TuiPaneSession) {
     state() {
       return {
         scopeRole,
+        reportStep,
         reportSince: reportWindow === null ? null : cycleLabel(REPORT_WINDOWS, reportWindow),
       };
     },

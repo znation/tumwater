@@ -144,6 +144,10 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The Usage and Failures panes name their trailing report window in the Ctrl+E hint,
   // default or active; the two report panes share the same hint shape.
   assert.match(hint({ kind: "usage", scope: null, window: "1h" }), /Ctrl\+E window: 1h/);
+  for (const kind of ["usage", "failures"] as const) {
+    assert.match(hint({ kind, scope: null, window: "1h" }), /Ctrl\+P earlier window/);
+    assert.doesNotMatch(hint({ kind, scope: null, window: null }), /Ctrl\+P/);
+  }
   assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "failures", scope: null, window: "7d" }), /Ctrl\+E window: 7d/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);

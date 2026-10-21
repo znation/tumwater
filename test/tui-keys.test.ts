@@ -36,6 +36,7 @@ import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { steppedWindowBounds } from "../src/ui/tui/tui-pane-session.js";
 import { pendingOverlapsText } from "../src/ui/tui/tui-pane-pending.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
@@ -1650,6 +1651,77 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
   assert.match(keys.state().paneCache ?? "", /· 1 runs/, "the 1h digest drops the three-day-old error run");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the digest at its head");
+});
+
+const CTRL = (name: string) => ({ ctrl: true, name });
+
+function seedStepRoot(now: number) {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "error", tokens: 100 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 90 * 60_000, loop: "feature", type: "run_end", run: 2, result: "error", tokens: 200 }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2.5 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 3, result: "error", tokens: 300 }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const { keys } = makeKeys(root, () => now);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, CTRL("t")); // → usage
+  return keys;
+}
+
+test("Ctrl+P on Usage steps the report window back one window length, and Ctrl+E resets it", () => {
+  const keys = seedStepRoot(Date.now());
+  keys.handleKey(undefined, CTRL("e")); // 1h
+  keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 1);
+  assert.match(keys.state().paneCache ?? "", /window: 2h to 1h ago/);
+  assert.match(keys.state().paneCache ?? "", /200 output tokens/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /100 output tokens/);
+
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, CTRL("e")); // 6h, 1d, 7d, default
+  assert.equal(keys.state().reportStep, 0);
+  assert.equal(keys.state().reportSince, null);
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, CTRL("e")); // 1h, 6h, 1d
+  assert.equal(keys.state().reportSince, "1d");
+  keys.handleKey(undefined, CTRL("p"));
+  keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 2);
+  assert.match(keys.state().paneCache ?? "", /window: 3d to 2d ago/);
+  assert.match(keys.state().paneCache ?? "", /300 output tokens/);
+
+  keys.handleKey(undefined, CTRL("t")); // → failures
+  assert.equal(keys.state().reportStep, 2);
+  assert.match(keys.state().paneCache ?? "", /window: 3d to 2d ago/);
+  assert.match(keys.state().paneCache ?? "", /· 1 runs/);
+});
+
+test("Ctrl+P wraps the stepped report window after the 7-day cap", () => {
+  const keys = seedStepRoot(Date.now());
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, CTRL("e")); // 1h, 6h, 1d
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 6);
+  assert.match(keys.state().paneCache ?? "", /window: 7d to 6d ago/);
+  keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 0);
+  assert.match(keys.state().flash ?? "", /oldest window reached; back to the last 1d/);
+  keys.handleKey(undefined, CTRL("e")); // 7d
+  keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 0);
+  assert.match(keys.state().flash ?? "", /oldest window reached; back to the last 7d/);
+});
+
+test("Ctrl+P on the default report window only flashes the Ctrl+E hint", () => {
+  const keys = seedStepRoot(Date.now());
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, CTRL("p"));
+  assert.equal(keys.state().reportStep, 0);
+  assert.equal(keys.state().paneCache, before);
+  assert.match(keys.state().flash ?? "", /Ctrl\+E/);
+});
+
+test("steppedWindowBounds maps a step to the --since/--until pair", () => {
+  assert.deepEqual(steppedWindowBounds(3_600_000, 0), { sinceMs: 3_600_000, untilMs: undefined });
+  assert.deepEqual(steppedWindowBounds(86_400_000, 2), { sinceMs: 259_200_000, untilMs: 172_800_000 });
+  assert.deepEqual(steppedWindowBounds(null, 3), { sinceMs: null, untilMs: undefined });
 });
 
 test("Ctrl+E is inert in the prompt-line modes and off the report views only moves the label", () => {
