@@ -9,6 +9,7 @@
  * prose (isRecordProse), where an old or not-yet-created path is correct as written. The gate does
  * not run any of them. */
 
+import fs from "node:fs";
 import path from "node:path";
 import { changeBaseRev } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
@@ -167,8 +168,20 @@ async function detachedDocFindings(wt: string, diff: string): Promise<string[]> 
   let cur: Hunk | null = null;
   const flush = async (): Promise<void> => {
     if (file !== null && hunks.length > 0) {
-      const text = readTextOrNull(path.join(wt, file));
-      if (text !== null) check(file, hunks, text.split("\n"));
+      // lstat, not stat: a symlink among the changed files is never followed out of the
+      // worktree (a change that adds a symlink writes no content of its own — the same
+      // policy secret-leaks/INV-G4 pins), so it contributes no lines to analyze.
+      const full = path.join(wt, file);
+      let isFile = false;
+      try {
+        isFile = fs.lstatSync(full).isFile();
+      } catch {
+        isFile = false;
+      }
+      if (isFile) {
+        const text = readTextOrNull(full);
+        if (text !== null) check(file, hunks, text.split("\n"));
+      }
     }
     file = null;
     hunks = [];

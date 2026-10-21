@@ -5,6 +5,7 @@ import path from "node:path";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
 import { spawnLockHolder, stopChild } from "./helpers/child-process.js";
 import {
+  conflictedFileHunks,
   conflictedFiles,
   conflictMarkerReason,
   continueRebase,
@@ -229,6 +230,22 @@ test("hasConflictMarkers and conflictMarkerReason fail closed on a file that can
   }
   // A directory (EISDIR) cannot hold a text marker.
   assert.equal(hasConflictMarkers(wt, ["sub"]), false);
+});
+
+test("does not follow a symlink out of the worktree", async () => {
+  const { root, wt } = await initializedWorktree();
+  // A hostile file outside the worktree holding a start marker: if the gate followed a symlink
+  // to it, hasConflictMarkers would report a conflict that the change never wrote.
+  const outside = path.join(root, "outside-marker.txt");
+  fs.writeFileSync(outside, "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> b\n");
+  fs.symlinkSync(outside, path.join(wt, "link.txt"));
+  assert.equal(hasConflictMarkers(wt, ["link.txt"]), false);
+  assert.equal(conflictMarkerReason(wt, ["link.txt"]), undefined);
+  const hunks = conflictedFileHunks(wt, ["link.txt"]);
+  assert.deepEqual(hunks, [{ path: "link.txt", hunks: [], more: 0 }]);
+  // A real regular file's markers are still seen.
+  fs.writeFileSync(path.join(wt, "real.txt"), "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> b\n");
+  assert.equal(hasConflictMarkers(wt, ["real.txt"]), true);
 });
 
 test("ffMainToOrWhy names main having moved off the ref's base, with its new head", async () => {

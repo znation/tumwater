@@ -134,6 +134,18 @@ const MARKER_EDGE = /^(<{7}|>{7})( |$)/m;
  * a path with no file (deleted, a parent replaced, or a directory/gitlink) is clean without
  * being read; any other read error cannot be vouched for. */
 function markerState(wt: string, f: string): "clean" | "marked" | "unreadable" {
+  // lstat, not stat: a symlink is never followed out of the worktree. A symlink (or a
+  // directory/gitlink) holds no text of its own to check, so it counts as clean — the same
+  // policy secret-leaks (INV-G4) already pins: a change that adds a symlink writes no
+  // content, and its target is not what the worktree put there.
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(path.join(wt, f));
+  } catch (err) {
+    const code = errCode(err);
+    return code === "ENOENT" || code === "ENOTDIR" ? "clean" : "unreadable";
+  }
+  if (!st.isFile()) return "clean";
   let text: string;
   try {
     text = fs.readFileSync(path.join(wt, f), "utf8");
@@ -198,8 +210,15 @@ export function conflictHunkRanges(text: string): Array<{ start: number; end: nu
  * file counts, backlog or code; a deleted, unreadable or binary (NUL-bearing) file lists none. */
 export function conflictedFileHunks(wt: string, files: readonly string[]): ConflictedFile[] {
   return files.map((f) => {
-    // Deleted or unreadable reads as empty: no ranges to name.
-    const text = readTextOrNull(path.join(wt, f)) ?? "";
+    // Deleted or unreadable reads as empty: no ranges to name. A symlink is never followed
+    // out of the worktree (it holds no text of its own), so it too reads as empty.
+    let full = path.join(wt, f);
+    try {
+      if (!fs.lstatSync(full).isFile()) return { path: f, hunks: [], more: 0 };
+    } catch {
+      return { path: f, hunks: [], more: 0 };
+    }
+    const text = readTextOrNull(full) ?? "";
     const all = text.includes("\0") ? [] : conflictHunkRanges(text);
     return { path: f, hunks: all.slice(0, MAX_LISTED_HUNKS), more: Math.max(0, all.length - MAX_LISTED_HUNKS) };
   });
