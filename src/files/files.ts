@@ -239,12 +239,8 @@ export function walkFiles(
   visit: (file: string, entry: fs.Dirent) => void,
   skipDirs: ReadonlySet<string> = new Set(),
 ): void {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return; // Vanished or unreadable — skip this directory.
-  }
+  const entries = tryReadDirEntries(dir);
+  if (!entries) return; // Vanished or unreadable — skip this directory.
   for (const entry of entries) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -262,12 +258,8 @@ export function walkFiles(
  * with the same walk-and-swallow error policy, so it lives here once. (walkFiles above is the
  * recursive, file-only sibling.) */
 export function subdirectoryNames(dir: string, keep?: (name: string) => boolean): string[] {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return []; // Missing or unreadable — no data.
-  }
+  const entries = tryReadDirEntries(dir);
+  if (!entries) return []; // Missing or unreadable — no data.
   const names = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   return keep ? names.filter(keep) : names;
 }
@@ -281,6 +273,20 @@ export function dirEntryNames(dir: string): string[] {
     return fs.readdirSync(dir);
   } catch {
     return [];
+  }
+}
+
+/** The `Dirent` list directly under `dir`, or null when the directory is missing or
+ * unreadable — the walk-and-swallow prelude walkFiles, subdirectoryNames, pruneOldFiles, and
+ * treeBytes all began by spelling out, so the "a vanished or unreadable directory is skipped,
+ * never an error" policy lives in one place. `dirEntryNames` above is the plain-name sibling
+ * for scans that need no file/directory distinction. build-stage.ts's pruneStaleStagings reads
+ * the staging root the same way, and exports it the way dirEntryNames is exported.) */
+export function tryReadDirEntries(dir: string): fs.Dirent[] | null {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
   }
 }
 
@@ -368,12 +374,8 @@ export function pruneOldFiles(dir: string, days: number): number {
   const cutoff = daysAgoMs(days);
   let pruned = 0;
   const walk = (d: string): void => {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return; // Vanished (or unreadable) mid-scan; skip this directory.
-    }
+    const entries = tryReadDirEntries(d);
+    if (!entries) return; // Vanished (or unreadable) mid-scan; skip this directory.
     for (const entry of entries) {
       const file = path.join(d, entry.name);
       if (entry.isDirectory()) {
@@ -430,12 +432,8 @@ export function treeBytes(dir: string): number {
   const stack = [dir];
   while (stack.length > 0) {
     const current = stack.pop()!;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    const entries = tryReadDirEntries(current);
+    if (!entries) continue;
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) stack.push(full);

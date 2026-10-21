@@ -3,7 +3,7 @@ import path from "node:path";
 import { distDir, stampBuild } from "./build-info.js";
 import { clipBuildTail } from "./build-check-report.js";
 import { resolveFromNodeModules } from "./build-check-detect.js";
-import { ensureDir, removeTree } from "../files/files.js";
+import { ensureDir, removeTree, tryReadDirEntries } from "../files/files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
 import { warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -39,12 +39,8 @@ export const STAGED_PRUNE_AFTER_MS = 45 * 60_000;
 export function pruneStaleStagings(root: string, keep: string, now = Date.now()): number {
   const stagingRoot = stagingRootDir(root);
   let removed = 0;
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(stagingRoot, { withFileTypes: true });
-  } catch {
-    return 0; // No staging root yet (first compile) — nothing to prune.
-  }
+  const entries = tryReadDirEntries(stagingRoot);
+  if (!entries) return 0; // No staging root yet (first compile) — nothing to prune.
   for (const entry of entries) {
     if (!entry.isDirectory() || !/^[0-9a-f]{40}$/.test(entry.name)) continue;
     const dir = path.join(stagingRoot, entry.name);
