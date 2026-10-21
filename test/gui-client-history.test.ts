@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { GUI_CLIENT_HISTORY_JS } from "../src/ui/gui/gui-client-history.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { historyClass as sharedHistoryClass } from "../src/history/history-data.js";
-import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
@@ -760,4 +760,56 @@ test("the open transcript's search box narrows it through &grep, drops a stale a
   fail = true;
   await searchHistTranscript("clean#9", "z");
   assert.match(card(), /<div class='err'>boom<\/div>/);
+});
+
+test("historyQuery steps a window back by its own length with untilMs", () => {
+  const { historyQuery } = clientScope<{ historyQuery(...a: unknown[]): string }>(HISTORY_REGIONS, ["historyQuery"], { icon: iconStub });
+  assert.equal(historyQuery(50, "", "1d", "", "", 1), "/api/history?sinceMs=172800000&untilMs=86400000&summary=1");
+  assert.equal(historyQuery(50, "clean", "1h", "x", "", 2), "/api/history?sinceMs=10800000&untilMs=7200000&role=clean&grep=x&summary=1");
+  assert.equal(historyQuery(50, "", "1d", "", "", 0), "/api/history?sinceMs=86400000&summary=1");
+  assert.equal(historyQuery(50, "", "1d", "", "", undefined), "/api/history?sinceMs=86400000&summary=1");
+  assert.equal(historyQuery(50, "", "", "", "", 3), "/api/history?n=50&summary=1");
+});
+
+test("histCanStepEarlier stops at the server's sinceMs cap", () => {
+  const s = clientScope<{ HIST_MAX_MS: number; histCanStepEarlier(k: string, n: number): boolean }>(
+    HISTORY_REGIONS,
+    ["HIST_MAX_MS", "histCanStepEarlier"],
+    { icon: iconStub },
+  );
+  assert.equal(s.HIST_MAX_MS, LOGS_SINCE_MAX_MS);
+  assert.equal(s.histCanStepEarlier("7d", 0), false);
+  assert.equal(s.histCanStepEarlier("1d", 5), true);
+  assert.equal(s.histCanStepEarlier("1d", 6), false);
+  assert.equal(s.histCanStepEarlier("6h", 26), true);
+  assert.equal(s.histCanStepEarlier("6h", 27), false);
+  assert.equal(s.histCanStepEarlier("", 0), false);
+});
+
+test("histWindowPhrase and historyStepHtml name a stepped window", () => {
+  const s = clientScope<{ histWindowPhrase(k: string, n: number): string; historyStepHtml(k: string, n: number): string }>(
+    HISTORY_REGIONS,
+    ["histWindowPhrase", "historyStepHtml"],
+    { icon: iconStub },
+  );
+  assert.equal(s.histWindowPhrase("1d", 0), "the last day");
+  assert.equal(s.histWindowPhrase("1d", 1), "between 2 days and 1 day ago");
+  assert.equal(s.histWindowPhrase("6h", 1), "between 12 hours and 6 hours ago");
+  assert.equal(s.histWindowPhrase("6h", 4), "between 30 hours and 1 day ago");
+  assert.equal(s.historyStepHtml("1d", 0), "");
+  assert.ok(s.historyStepHtml("1d", 1).includes("Showing runs between 2 days and 1 day ago."));
+});
+
+test("historyTableHtml's empty stepped window names its bounds", () => {
+  const { historyTableHtml } = clientScope<{ historyTableHtml(...a: unknown[]): string }>(
+    HISTORY_REGIONS,
+    ["historyTableHtml", "historyClass"],
+    { icon: iconStub },
+  );
+  assert.match(historyTableHtml([], "all", new Set(), "", "1d", "", 1), /No runs between 2 days and 1 day ago/);
+  assert.match(historyTableHtml([], "all", new Set(), "", "1d", "", 0), /No runs in the last day/);
+});
+
+test("the History toolbar holds the step buttons inside #histstep", () => {
+  assert.match(GUI_CLIENT_HISTORY_JS, /id='histstep'[^>]*><button[^>]*id='histearlier'[\s\S]*?id='histlater'/);
 });

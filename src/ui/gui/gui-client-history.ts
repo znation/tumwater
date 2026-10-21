@@ -3,7 +3,8 @@
  * role (server-side, so a quiet role still gets its full count), searches the rendered row text
  * (server-side, through the same haystack rule `tumwater history --grep` uses), to an outcome
  * class (changes, no change, problems — client-side over the fetched rows), and picks how many
- * runs to fetch or a trailing window matching `tumwater history --since`. It refetches when the
+ * runs to fetch or a trailing window matching `tumwater history --since`; ◀ Earlier / Later ▶
+ * step that window back by its own length (`--since --until`). It refetches when the
  * view opens and, while it stays open, whenever the status poll sees new events — never on a
  * timer of its own. A row opens that role's drawer. Spliced into gui-client.ts's script,
  * reaching its helpers (esc, getJson, resultInfo, the formatters) through that concatenation. */
@@ -15,6 +16,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   let histGrep = recall("hist-grep") || "";
   let histSinceKey = recall("hist-since") || "";
   let histModel = ""; // view state, not persisted: set by clicking a By model row
+  let histStep = 0; // view state, not persisted: how many window lengths back the window ends
   let histNote = "";
   let histFilter = "all";
   const m = recall("hist-mode");
@@ -35,6 +37,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       "<label><span class='sr-only'>Runs to show</span><select class='field' id='histcount'>" +
       HIST_COUNTS.map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
       histWindowOptions() + "</select></label>" +
+      "<span id='histstep' style='display:none'><button type='button' class='btn btn-sm' id='histearlier'>◀ Earlier</button><button type='button' class='btn btn-sm' id='histlater'>Later ▶</button></span>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
       "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>")) return;
     $("histcount").value = HIST_WINDOWS[histSinceKey] ? histSinceKey : String(histCount);
@@ -63,6 +66,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         store("hist-n", String(histCount));
       }
       store("hist-since", histSinceKey);
+      histStep = 0;
       fetchHistory();
     });
     $("histfilter").addEventListener("click", (ev) => {
@@ -77,6 +81,14 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       histMode = b.dataset.histsum;
       store("hist-mode", histMode);
       renderHistory();
+    });
+    $("histearlier").addEventListener("click", () => {
+      histStep += 1;
+      fetchHistory();
+    });
+    $("histlater").addEventListener("click", () => {
+      histStep = Math.max(0, histStep - 1);
+      fetchHistory();
     });
     $("histrefresh").addEventListener("click", () => fetchHistory());
     // The drill-down's details toggle: the button alone expands or collapses (the row's own
@@ -406,7 +418,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     buildHistoryView();
     syncHistoryRoles(lastStatus);
     try {
-      const d = await getJson(historyQuery(histCount, histRole, histSinceKey, histGrep, histModel));
+      const d = await getJson(historyQuery(histCount, histRole, histSinceKey, histGrep, histModel, histStep));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
       // The summary rides the same fetch (the endpoint folds the exact rows it served into
       // its additive summary), so toggling to Summary never refetches; a server too old to
@@ -436,9 +448,35 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // is set, the count shape otherwise, role and grep appended only when chosen. summary=1 rides
   // every ask — the endpoint's additive summary folds the exact served rows, so the Summary
   // mode renders from already-fetched data and the toggle swaps only the body.
-  function historyQuery(count, role, sinceKey, grep, model) {
+  function historyQuery(count, role, sinceKey, grep, model, step) {
     const w = HIST_WINDOWS[sinceKey];
-    return (w ? "/api/history?sinceMs=" + w[0] : "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "") + (model ? "&model=" + encodeURIComponent(model) : "") + "&summary=1";
+    const win = w && step > 0 ? "/api/history?sinceMs=" + (step + 1) * w[0] + "&untilMs=" + step * w[0] : w ? "/api/history?sinceMs=" + w[0] : null;
+    return (win || "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "") + (model ? "&model=" + encodeURIComponent(model) : "") + "&summary=1";
+  }
+  // The server's LOGS_SINCE_MAX_MS (src/events/event-window.ts), the cap /api/history's sinceMs
+  // rides; the two must agree (a test pins it).
+  const HIST_MAX_MS = 604_800_000;
+  // A whole-hour length as "1 day"/"N days" when it is a whole number of days, else hours.
+  function histSpan(ms) {
+    const d = ms % 86_400_000 === 0;
+    const n = d ? ms / 86_400_000 : ms / 3_600_000;
+    return n + (d ? " day" : " hour") + (n === 1 ? "" : "s");
+  }
+  // Whether the window can step one more length back: the next earlier window's sinceMs must
+  // stay under the server's cap.
+  function histCanStepEarlier(sinceKey, step) {
+    const w = HIST_WINDOWS[sinceKey];
+    return Boolean(w) && (step + 2) * w[0] <= HIST_MAX_MS;
+  }
+  // The window in words: the trailing phrase at step 0, else the bounds in cmdLogs' wording.
+  function histWindowPhrase(sinceKey, step) {
+    const w = HIST_WINDOWS[sinceKey];
+    if (!w) return "";
+    return step ? "between " + histSpan((step + 1) * w[0]) + " and " + histSpan(step * w[0]) + " ago" : w[1];
+  }
+  // The note above a stepped window's table; empty at step 0 or for an unknown key.
+  function historyStepHtml(sinceKey, step) {
+    return step && HIST_WINDOWS[sinceKey] ? "<p class='muted window-note'>Showing runs " + histWindowPhrase(sinceKey, step) + ".</p>" : "";
   }
   // The window options, the phrase capitalized for the select ("The last day").
   function histWindowOptions() {
@@ -462,7 +500,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // server-side) and an outcome filter; known is
   // the set of the team's role ids, whose rows open that role's drawer. Pure — the view's
   // render paints what this returns.
-  function historyTableHtml(rows, filter, known, grep, sinceKey, model) {
+  function historyTableHtml(rows, filter, known, grep, sinceKey, model, step) {
     const shown = (rows || []).filter((r) => filter === "all" || historyClass(r.result) === filter);
     if (!shown.length) {
       const hasRows = Boolean(rows && rows.length);
@@ -474,7 +512,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         return "<div class='empty'><strong>No runs match this search</strong>Try another search.</div>";
       const w = HIST_WINDOWS[sinceKey];
       return w
-        ? "<div class='empty'><strong>No runs in " + w[1] + "</strong>The window may have had nothing to do, or its older events may have rotated out.</div>"
+        ? "<div class='empty'><strong>No runs " + (step ? histWindowPhrase(sinceKey, step) : "in " + w[1]) + "</strong>The window may have had nothing to do, or its older events may have rotated out.</div>"
         : "<div class='empty'><strong>No runs yet</strong>Completed runs show up here as the roles work.</div>";
     }
     return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Role</th><th class='c-run num'>Run</th>" +
@@ -568,7 +606,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       ? histSummaryHtml(histSummary)
       : histMode === "models" && histModelSummary && hasRows
       ? histModelSummaryHtml(histModelSummary)
-      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey, histModel);
-    body.innerHTML = historyNoteHtml(histNote) + bodyHtml;
+      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey, histModel, histStep);
+    body.innerHTML = historyNoteHtml(histNote) + historyStepHtml(histSinceKey, histStep) + bodyHtml;
+    const stepEl = $("histstep");
+    if (stepEl) {
+      stepEl.style.display = HIST_WINDOWS[histSinceKey] ? "" : "none";
+      $("histearlier").disabled = !histCanStepEarlier(histSinceKey, histStep);
+      $("histlater").disabled = histStep === 0;
+    }
   }
 `;
