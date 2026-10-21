@@ -186,6 +186,38 @@ test("drawerQueueHtml lists only the role's queued merges under their whole-queu
   assert.match(drawerQueueHtml({ depth: 1, entries: [e("clean", "<b>x</b>")] }, "clean", now), /&lt;b&gt;x&lt;\/b&gt;/);
 });
 
+test("pendingOverlapsHtml's Role picker keeps only the files the chosen role holds, under their unfiltered indexes", () => {
+  const { pendingOverlapsHtml, pendingOverlapHolders } = clientScope<{
+    pendingOverlapsHtml(view: unknown, open?: unknown, role?: string): string;
+    pendingOverlapHolders(view: unknown): string[];
+  }>(["format", "labels", "pending-table"], ["pendingOverlapsHtml", "pendingOverlapHolders"]);
+  const view = { mainBranch: "main", state: "ready", overlaps: [
+    { path: "src/a.ts", roles: ["feature", "qa"] },
+    { path: "src/b.ts", roles: ["feature-2", "qa"] },
+    { path: "src/c.ts", roles: ["feature", "feature-2"] },
+  ] };
+  assert.deepEqual(pendingOverlapHolders(view), ["feature", "feature-2", "qa"]);
+  assert.deepEqual(pendingOverlapHolders(null), []);
+  assert.deepEqual(pendingOverlapHolders({ overlaps: "x" }), []);
+  const all = pendingOverlapsHtml(view);
+  assert.match(all, /id='pendingoverlaprole'/);
+  assert.match(all, /<option value=''>All roles<\/option>/);
+  assert.match(all, /<option value='feature-2'>feature #2<\/option>/);
+  assert.match(all, /<option value='qa'>qa<\/option>/);
+  assert.doesNotMatch(all, / selected/);
+  for (const i of [0, 1, 2]) assert.ok(all.includes("data-overlap='" + i + "'"));
+  const one = pendingOverlapsHtml(view, null, "feature-2");
+  assert.ok(one.includes("data-overlap='1'") && one.includes("data-overlap='2'"));
+  assert.ok(!one.includes("data-overlap='0'") && !one.includes("src/a.ts"));
+  assert.match(one, /<option value='feature-2' selected>/);
+  assert.ok(one.includes("src/b.ts: feature #2, qa"));
+  const ghost = pendingOverlapsHtml(view, null, "ghost");
+  for (const i of [0, 1, 2]) assert.ok(ghost.includes("data-overlap='" + i + "'"));
+  for (const v of [{ overlaps: [] }, { state: "no-base", mainBranch: "main" }, null, { overlaps: "x" }]) {
+    assert.doesNotMatch(pendingOverlapsHtml(v), /pendingoverlaprole/);
+  }
+});
+
 test("pendingOverlapsHtml makes each path a toggle and expands only the open one", () => {
   const { pendingOverlapsHtml } = clientScope<{ pendingOverlapsHtml(view: unknown, open?: unknown): string }>(
     ["format", "labels", "pending-table"],

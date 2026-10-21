@@ -4,11 +4,13 @@
  * uncommitted-file count; a row opens that role's drawer, whose Pending change section fetches
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
  * Refresh button is pressed — never on a timer of its own. It also paints the overlapping-files
- * card from `/api/diff?overlaps=1`. Spliced into gui-client.ts's
- * script, reaching its helpers (esc, getJson, icon, errorPanel) through that concatenation. */
+ * card from `/api/diff?overlaps=1`, with a Role picker that narrows it client-side.
+ * Spliced into gui-client.ts's script, reaching its helpers (esc, getJson, icon, errorPanel)
+ * through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlaps = null;
   let pendingOverlapOpen = null;
+  let pendingOverlapRole = "";
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -98,7 +100,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
   }
   // The Overlapping files card: one "path: role, role" line per file two or more pending changes
-  // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps.
+  // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps. Its Role
+  // picker keeps only the lines the chosen role holds (diff --overlaps --role), each line still
+  // naming every holder and keeping its index in the unfiltered list.
   // The expanded detail under one overlap line: each holding role's path-scoped change, or its
   // loading / error row. Pure.
   function overlapDetailHtml(rows) {
@@ -110,22 +114,37 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       return "<h3 class='mono'>" + esc(roleLabel(r.role)) + "</h3>" + body;
     }).join("");
   }
-  function pendingOverlapsHtml(view, open) {
+  // The sorted, de-duplicated role ids any overlap names; empty for a malformed document.
+  function pendingOverlapHolders(view) {
+    if (!view || typeof view !== "object" || !Array.isArray(view.overlaps)) return [];
+    const ids = new Set();
+    for (const o of view.overlaps) {
+      if (o && Array.isArray(o.roles)) for (const id of o.roles) if (typeof id === "string") ids.add(id);
+    }
+    return [...ids].sort();
+  }
+  function pendingOverlapsHtml(view, open, role) {
     const ok = view && typeof view === "object";
     let body;
+    let head = "<div class='card-head'><h2>Overlapping files</h2></div>";
     if (ok && view.state === "no-base") {
       body = "<div class='empty'>Main branch " + esc(view.mainBranch) + " does not exist</div>";
     } else if (!ok || !Array.isArray(view.overlaps) || view.overlaps.length === 0) {
       body = "<div class='empty'>No file is touched by two pending changes</div>";
     } else {
+      const holders = pendingOverlapHolders(view);
+      const active = role && holders.includes(role) ? role : "";
+      head = "<div class='card-head'><h2>Overlapping files</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingoverlaprole'><option value=''>All roles</option>" +
+        holders.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
       body = "<div style='padding:10px 16px 12px'>" + view.overlaps.map((o, i) => {
         const roles = o && Array.isArray(o.roles) ? o.roles : [];
+        if (active && !roles.includes(active)) return "";
         const path = o && typeof o.path === "string" ? o.path : "?";
         const line = "<button type='button' class='li-open mono clamp1' data-overlap='" + i + "'>" + esc(path) + ": " + esc(roles.map(roleLabel).join(", ")) + "</button>";
         return open && open.path === path ? line + "<div class='overlap-detail'>" + overlapDetailHtml(open.rows) + "</div>" : line;
       }).join("") + "</div>";
     }
-    return "<div class='card-head'><h2>Overlapping files</h2></div>" + body;
+    return head + body;
   }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
@@ -137,7 +156,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   }
   function paintPendingOverlaps() {
     const card = $("pendingoverlaps");
-    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps, pendingOverlapOpen);
+    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps, pendingOverlapOpen, pendingOverlapRole);
   }
   // Toggle one overlap line's detail: fetch each holding role's change scoped to the path. A
   // reply is dropped once another line (or a Refresh) replaced the open detail.
@@ -178,6 +197,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       const b = e.target.closest("[data-overlap]");
       if (b) togglePendingOverlap(Number(b.dataset.overlap));
     });
+    $("pendingoverlaps").addEventListener("change", (e) => {
+      if (e.target.id !== "pendingoverlaprole") return;
+      pendingOverlapRole = e.target.value;
+      pendingOverlapOpen = null;
+      paintPendingOverlaps();
+    });
   }
   // Load the team-wide change roster. Called when the view opens and by the Refresh button;
   // no timer of its own, and the roster only changes when a role merges or edits its worktree.
@@ -191,6 +216,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       if (card) card.innerHTML = errorPanel("Overlaps unavailable", err);
       return;
     }
+    if (!pendingOverlapHolders(pendingOverlaps).includes(pendingOverlapRole)) pendingOverlapRole = "";
     paintPendingOverlaps();
   }
   async function fetchPending() {
