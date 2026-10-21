@@ -1,8 +1,9 @@
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { cmdStatus } from "../src/cli/cli-query-commands.js";
 import { initProject } from "../src/init/init.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { captureStdout, expectFailAsync } from "./helpers/exit-capture.js";
 import { sleep } from "./helpers/wait.js";
 
@@ -127,4 +128,18 @@ test("status -f clears the screen only on a TTY", async (t) => {
   parent = { value: 4242 };
   const pipedOut = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, () => (parent.value = 1));
   assert.ok(!pipedOut.includes(CLEAR), "non-TTY follow never clears the screen");
+});
+
+test("status -f strips terminal controls from rendered data", async (t) => {
+  // A project whose name (the repo basename, which the header renders as `tumwater · <name>`)
+  // carries a terminal escape sequence: hostile content the follow reprints raw on each frame.
+  // The one-shot `status` sanitizes at say(); the follow bypasses say(), so it must strip the
+  // controls itself. Regression: before the fix the ESC-and-bracket sequence appeared verbatim.
+  const hostile = path.join(tmpdir(), `evil\x1b[31msite`);
+  const repo = makeRepo(hostile);
+  await initProject(repo, "hostile name");
+  await sleep(50);
+  const parent = { value: 4242 };
+  const out = await runFollow(t, repo, ["-f"], { ppid: () => parent.value, intervalMs: 5, tty: false }, 1, () => (parent.value = 1));
+  assert.ok(!out.includes("evil\x1b[31m"), "the hostile control sequence is stripped before it reaches the terminal");
 });

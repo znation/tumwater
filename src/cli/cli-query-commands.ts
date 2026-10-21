@@ -28,7 +28,7 @@ import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf, roleInScope } from "../roles/runner-ids.js";
@@ -151,7 +151,13 @@ async function followView(frameText: () => string, seams: FollowViewSeams): Prom
   const tty = seams.tty ?? process.stdout.isTTY;
   const interval = seams.intervalMs ?? FOLLOW_VIEW_INTERVAL_MS;
   const frame = (): void => {
-    process.stdout.write(tty ? "\x1b[H\x1b[2J" + frameText() + "\n" : frameText() + "\n\n");
+    // The frame's text is rendered from model-written data (role live progress, run
+    // summaries, backlog titles) that can carry terminal escape sequences. The one-shot
+    // forms of these commands sanitize at say(); this live reprint writes raw to the
+    // terminal while rerendering its own clear-screen prefix, so it must strip controls
+    // itself — the display-boundary rule stripTerminalControls documents, applied here.
+    const text = stripTerminalControls(frameText());
+    process.stdout.write(tty ? "\x1b[H\x1b[2J" + text + "\n" : text + "\n\n");
   };
   frame();
   await new Promise<void>((resolve) => {
