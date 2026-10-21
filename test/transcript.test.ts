@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createTranscriptFilter, createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
+import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./fixtures/log-fixtures.js";
@@ -516,4 +517,19 @@ test("createTranscriptFilter keeps matching entries under their run's separator,
     ["── run @ b ──", "  leak late"],
   ]);
   assert.equal(filter([]), null);
+});
+
+test("paneBody filters the live transcript through pane.grep, case-insensitively, and names a miss", () => {
+  const { root } = writeTurnLog(3);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root, width: 200, eventBudget: 20, entryBudget: 5, state };
+  const pane = { kind: "transcript" as const, role: "feature", index: 1, count: 1, note: false, change: false };
+  const text = (grep?: string) => paneBody({ ...pane, grep }, opts).body.map((l) => l.map((s) => s.text).join("")).join("\n");
+  const hit = text("TURN 2");
+  assert.ok(hit.includes("turn 2") && !hit.includes("turn 1") && !hit.includes("turn 3"));
+  const miss = paneBody({ ...pane, grep: "nomatch" }, opts);
+  assert.deepEqual(miss.body, []);
+  assert.equal(miss.emptyNote, '(no transcript entries match "nomatch")');
+  const all = text();
+  assert.ok(all.includes("turn 1") && all.includes("turn 3"));
 });

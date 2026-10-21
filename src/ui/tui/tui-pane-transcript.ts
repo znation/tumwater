@@ -13,8 +13,9 @@ import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The per-role transcript panes (views 1..roleIds.length) of the TUI: the Ctrl+N
  * transcript→notes→change cycle and its two-step Ctrl+X notes-clear arm, plus the
- * notes/change PgUp/PgDn body window. Split out of the pane-navigation monolith; it owns
- * the notes/change mode state and the arms that touch them. */
+ * notes/change PgUp/PgDn body window, and the `/` search over the live transcript step. Split
+ * out of the pane-navigation monolith; it owns the notes/change mode state and the arms that
+ * touch them. */
 export function createTranscriptPane(session: TuiPaneSession) {
   // Ctrl+N toggles the viewed role's pane between its live transcript and a read-only
   // notes view (its note and next run's prompt). Like paneCache, noteCache is computed
@@ -27,6 +28,9 @@ export function createTranscriptPane(session: TuiPaneSession) {
   // pane paints a loading note meanwhile; both reset on leaving the mode or cycling the view.
   let changeMode = false;
   let changeCache: string | null = null;
+  // The `/` search over the live transcript step: the pattern belongs to the role it was applied
+  // on, so a roster shift that puts another role at the same index does not inherit it.
+  let transcriptSearch: { role: string; pattern: string } | null = null;
 
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
@@ -163,9 +167,21 @@ export function createTranscriptPane(session: TuiPaneSession) {
       noteCache = null;
       changeMode = false;
       changeCache = null;
+      transcriptSearch = null;
+    },
+    applySearch(pattern: string | null): void {
+      // The `/` editor's Enter on a role's live transcript: sets (or clears) the pattern for the
+      // viewed role and returns the pane to its head.
+      if (session.view < 1 || session.view > session.roleIds.length) return;
+      transcriptSearch = pattern === null ? null : { role: session.roleIds[session.view - 1]!, pattern };
+      session.paneScroll = 0;
+      session.requestRender();
     },
     state() {
-      return { noteMode, noteCache, changeMode, changeCache };
+      const transcriptGrep = transcriptSearch !== null && session.roleIds[session.view - 1] === transcriptSearch.role
+        ? transcriptSearch.pattern
+        : null;
+      return { noteMode, noteCache, changeMode, changeCache, transcriptGrep };
     },
-  } satisfies TuiPaneModule;
+  } satisfies TuiPaneModule & { applySearch(pattern: string | null): void };
 }

@@ -61,7 +61,9 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       historyGrep: s.historyGrep,
       activityGrep: s.activityGrep,
       backlogGrep: s.backlogGrep,
+      transcriptGrep: s.transcriptGrep,
       noteMode: s.noteMode,
+      changeMode: s.changeMode,
       briefMode: s.view === s.roleIds.length + 8,
     };
   };
@@ -252,6 +254,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       noteCache: tra.noteCache,
       changeMode: tra.changeMode,
       changeCache: tra.changeCache,
+      transcriptGrep: tra.transcriptGrep,
       selectedEntry: back.selectedEntry,
       entryScroll: back.entryScroll,
       backlogGrep: back.backlogGrep,
@@ -280,6 +283,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     applyHistorySearch: history.applySearch,
     applyActivitySearch: activity.applySearch,
     applyBacklogSearch: backlog.applySearch,
+    applyTranscriptSearch: transcript.applySearch,
     beginKey,
     editorCtx,
     cycleView,

@@ -19,10 +19,14 @@ export interface TuiEditorCtx {
   activityGrep: string | null;
   /** The Backlog pane's active free-text search (the `/` editor's applied pattern). */
   backlogGrep: string | null;
+  /** The viewed role's live-transcript search (the `/` editor's applied pattern). */
+  transcriptGrep: string | null;
   /** Whether the viewed role's pane shows its notes (Ctrl+N) instead of the live
    * transcript — the notes Ctrl+E editor's open guard: it may only take the prompt line
    * while the notes view is up, so the Report window arm keeps Ctrl+E on its own views. */
   noteMode: boolean;
+  /** Whether the viewed role's pane shows its change step (the second Ctrl+N step). */
+  changeMode: boolean;
   /** Whether the Brief view is selected — the brief Ctrl+E editor's open guard: it may only
    * take the prompt line on the Brief view, so the Health reclaim and Report window arms keep
    * Ctrl+E on their own views. */

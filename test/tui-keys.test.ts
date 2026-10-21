@@ -801,13 +801,14 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
   keys.setLineBudgets(5, 4);
 
   // Off Activity and History, `/` types into the prompt as before.
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature transcript (view 1)
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage (roleIds.length + 2 = 3)
+  assert.equal(keys.state().view, 3);
   keys.handleKey("/", { name: "/" });
-  assert.equal(keys.state().input, "/", "`/` on a transcript types into the prompt");
+  assert.equal(keys.state().input, "/", "`/` on Usage types into the prompt");
   keys.handleKey(undefined, { ctrl: true, name: "u" });
 
   // Search History; the target is the History pattern, not Activity's.
-  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4 = 5)
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history (roleIds.length + 4 = 5)
   assert.equal(keys.state().view, 5, "History is roleIds.length + 4");
   keys.handleKey("/", { name: "/" });
   for (const ch of "clean") keys.handleKey(ch, { name: ch });
@@ -824,6 +825,57 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().activityGrep, "widget");
   assert.equal(keys.state().historyGrep, "clean", "the Activity search does not touch the History filter");
+});
+
+test("the `/` search filters the viewed role's live transcript, stays off the notes step, and clears on Ctrl+T", () => {
+  const root = makeRoot();
+  writeFileDeep(roleNotesPath(root, "feature"), "a note\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, ["feature", "clean"]);
+  keys.setLineBudgets(5, 4);
+  const key = (str: string | undefined, k: { ctrl?: boolean; name?: string }) => keys.handleKey(str, k);
+  key(undefined, { ctrl: true, name: "t" }); // → feature transcript (view 1)
+  assert.equal(keys.state().view, 1);
+  assert.equal(keys.state().transcriptGrep, null);
+
+  key("/", { name: "/" });
+  assert.equal(keys.state().input, "", "the Transcript search opens blank");
+  for (const ch of "Turn") key(ch, { name: ch });
+  key(undefined, { name: "return" });
+  assert.equal(keys.state().transcriptGrep, "Turn");
+  assert.equal(keys.state().flash, 'search: "Turn"');
+  assert.equal(keys.state().input, "");
+
+  key("/", { name: "/" });
+  assert.equal(keys.state().input, "Turn", "reopening pre-fills the applied pattern");
+  key(undefined, { name: "escape" });
+  assert.equal(keys.state().transcriptGrep, "Turn");
+
+  key(undefined, { ctrl: true, name: "n" }); // → notes
+  assert.equal(keys.state().noteMode, true);
+  key("/", { name: "/" });
+  assert.equal(keys.state().input, "/", "`/` on the notes step types into the prompt");
+  assert.equal(keys.state().transcriptGrep, "Turn");
+  key(undefined, { ctrl: true, name: "u" });
+  key(undefined, { ctrl: true, name: "n" }); // → change
+  key(undefined, { ctrl: true, name: "n" }); // → transcript
+  assert.equal(keys.state().noteMode, false);
+  assert.equal(keys.state().changeMode, false);
+  assert.equal(keys.state().transcriptGrep, "Turn");
+
+  key("/", { name: "/" });
+  key(undefined, { ctrl: true, name: "u" });
+  key(undefined, { name: "return" });
+  assert.equal(keys.state().transcriptGrep, null);
+  assert.equal(keys.state().flash, "search cleared");
+
+  key("/", { name: "/" });
+  key("x", { name: "x" });
+  key(undefined, { name: "return" });
+  assert.equal(keys.state().transcriptGrep, "x");
+  key(undefined, { ctrl: true, name: "t" }); // → clean (view 2)
+  assert.equal(keys.state().view, 2);
+  assert.equal(keys.state().transcriptGrep, null);
 });
 
 test("the `/` search filters the Backlog pane's active entries, clears, and persists across view cycling", () => {
@@ -1950,13 +2002,13 @@ test("`/` opens a search on Activity and History with an empty line, types elsew
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["clean"]);
 
-  // On a channel without a search, `/` types into the prompt line. Activity now owns a search
-  // itself, so step onto the role's transcript first.
-  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → clean transcript
+  // On a view without a search, `/` types into the prompt line. Activity and the transcript
+  // own a search themselves, so step onto Usage first.
+  for (let i = 0; i < 3; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → usage
   keys.handleKey("/", { name: "/" });
-  assert.equal(keys.state().input, "/", "`/` on a transcript types into the prompt");
+  assert.equal(keys.state().input, "/", "`/` on Usage types into the prompt");
   keys.handleKey(undefined, { ctrl: true, name: "u" }); // clear the draft
-  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   assert.equal(keys.state().view, 5, "History is roleIds.length + 4");
 
   // On History with a non-empty line, `/` types instead of entering search.

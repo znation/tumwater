@@ -62,6 +62,9 @@ export interface TuiEditorsDeps {
   /** Apply a finished Backlog search on the pane (sets backlogGrep, clears the selection so the
    * next frame starts in list mode). */
   applyBacklogSearch(pattern: string | null): void;
+  /** Apply a finished Transcript search on the viewed role's pane (sets its pattern, resets the
+   * scroll). */
+  applyTranscriptSearch(pattern: string | null): void;
   /** Flash a one-line notice on the prompt line. */
   flashMessage(message: string): void;
   /** Flash a caught failure as `error: <message>`. */

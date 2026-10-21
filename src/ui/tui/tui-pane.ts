@@ -122,6 +122,13 @@ export function paneBody(
         emptyNote: "(loading pending change…)",
       };
     }
+    if (pane.grep) {
+      // Filtered: scan the drawer's 200 entries with the shared keep rule (a lowercased needle).
+      return {
+        body: readTranscript(root, pane.role, 200, { grep: pane.grep.toLowerCase() }).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
+        emptyNote: `(no transcript entries match "${pane.grep}")`,
+      };
+    }
     return {
       body: readTranscript(root, pane.role, eventBudget).slice(-eventBudget).map((l) => toneLine(l, width, transcriptTone(l))),
       emptyNote: "(no transcript yet)",

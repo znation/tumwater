@@ -126,7 +126,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · Ctrl+T next view · Ctrl+D quit",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+X role model · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+V reset counters · Ctrl+B daily cap · Ctrl+O quiet hours · Ctrl+G instances · / search · Ctrl+T next view · Ctrl+D quit",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
@@ -412,4 +412,13 @@ test("the transcript Ctrl+G instances mode names its save/cancel keys, an `insta
   assert.equal(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, edit, 300)), "Enter save instances · Esc cancel · Ctrl+D quit");
   assert.equal(plain(promptPrefix(edit)), "instances › ");
   assert.match(plain(hintLine({ kind: "transcript", role: "qa", index: 1, count: 1, note: false, change: false }, base, 300)), /Ctrl\+G instances/);
+});
+
+test("the transcript hint offers `/` search on the live step only and names an applied pattern", () => {
+  const modes = { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null };
+  const hint = (extra: { note?: boolean; change?: boolean; grep?: string | null }) =>
+    plain(hintLine({ kind: "transcript", role: "feature", index: 1, count: 1, note: false, change: false, ...extra }, modes, 440));
+  assert.match(hint({ grep: "boom" }), /search: boom/);
+  assert.match(hint({ grep: null }), /\/ search/);
+  assert.doesNotMatch(hint({ note: true }), /search/);
 });
