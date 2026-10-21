@@ -266,7 +266,7 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */
-export async function cmdBacklog(root: string, args: string[]): Promise<void> {
+export async function cmdBacklog(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
   // command prints three empty sections in any directory (report's rationale, not config's);
   // the team-workspace refusal still applies.
@@ -274,37 +274,42 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // matcher (entryMatches) on the active backlog; it composes with --ready (grep first, so
   // the hidden count and the kept entries count only the matches) and with --json. The
   // missing-value wording lives in BACKLOG_GREP_VALUE_ERROR, the flag gate's and this
-  // parser's shared string.
+  // parser's shared string. -f/--follow repaints the same view every couple of seconds
+  // until Ctrl+C or the parent process exits, composing with --ready and --grep; it refuses
+  // --json (a live view is one repainted document, not one snapshot).
   const BACKLOG_GREP_VALUE_ERROR = "backlog --grep needs text (usage: tumwater backlog --grep <text>)";
-  rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG, grepFlagSpec(BACKLOG_GREP_VALUE_ERROR)]);
+  rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG, grepFlagSpec(BACKLOG_GREP_VALUE_ERROR), FOLLOW_FLAG]);
   refuseTeamWorkspace(root);
   const { rest, pattern } = parseGrepFlag(args, BACKLOG_GREP_VALUE_ERROR);
+  const ready = rest.includes("--ready");
+  const follow = rest.includes("-f") || rest.includes("--follow");
+  if (follow && rest.includes("--json")) fail("backlog --json prints one document; -f/--follow repaints a live view — drop one of them");
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
   // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
   // plus `holds.plans`/`holds.bugs` parallel to the entry arrays so a skipped entry's
   // reason is data, not inference: a pretty-printed JSON document in every exit-0 case,
-  // never prose. The payload is a thunk, so whichever branch runs reads the three entry
-  // files through their stat caches once — the Markdown renderer consumes the same arrays
-  // the JSON document prints.
+  // never prose. The payload is read once per branch (snapshot or frame) so the Markdown
+  // renderer and the JSON document consume the same arrays.
   // --ready filters both branches through readyBacklog; the Markdown branch adds a count of
   // the held entries it hid. The --json/--ready reads go over `rest` (the --grep value token
   // removed), so a flag-shaped pattern like `--grep --json` greps for "--json" rather than
   // flipping this branch into JSON mode.
-  const ready = rest.includes("--ready");
-  let hidden = 0;
-  sayJsonOrRender(
-    rest,
-    () => {
-      const view = { ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) };
-      const filtered = pattern === null ? view : grepBacklog(view, pattern);
-      if (!ready) return filtered;
-      const kept = readyBacklog(filtered);
-      hidden = filtered.plans.length + filtered.bugs.length - kept.plans.length - kept.bugs.length;
-      return kept;
-    },
-    (v) => renderBacklogMarkdown(v) + (hidden > 0
-      ? `\n\n_(${hidden} held entries hidden; run \`tumwater backlog\` to see them)_` : ""),
-  );
+  const readBacklog = (): { view: ReturnType<typeof backlogPayload>; hidden: number } => {
+    const view = { ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) };
+    const filtered = pattern === null ? view : grepBacklog(view, pattern);
+    if (!ready) return { view: filtered, hidden: 0 };
+    const kept = readyBacklog(filtered);
+    return { view: kept, hidden: filtered.plans.length + filtered.bugs.length - kept.plans.length - kept.bugs.length };
+  };
+  const renderBacklogText = (r: { view: ReturnType<typeof backlogPayload>; hidden: number }): string =>
+    renderBacklogMarkdown(r.view) + (r.hidden > 0
+      ? `\n\n_(${r.hidden} held entries hidden; run \`tumwater backlog\` to see them)_` : "");
+  if (follow) {
+    await followView(() => renderBacklogText(readBacklog()), seams);
+    return;
+  }
+  const result = readBacklog();
+  sayJsonOrRender(rest, result.view, () => renderBacklogText(result));
 }
 
 /** Refuse an unknown role id with the shared unknownRoleMessage wording before a per-role

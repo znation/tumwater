@@ -218,7 +218,7 @@ Usage:
                                    -f/--follow repaints the queue every couple of seconds
                                    until Ctrl+C or the process that started it exits, so a
                                    backgrounded follow does not outlive its parent; it refuses --json
-  tumwater backlog [--ready] [--grep <text>] [--json]
+  tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
@@ -229,7 +229,10 @@ Usage:
                                    an \`inProgress\` key parallel to the arrays); --ready keeps only the
                                    planned plans and open bugs no hold keeps from being
                                    picked (entries a role is working on stay); --grep keeps the
-                                   entries whose heading or body contains the text, case-insensitively
+                                   entries whose heading or body contains the text, case-insensitively;
+                                   -f/--follow repaints the backlog every couple of seconds until
+                                   Ctrl+C or the process that started it exits, so a backgrounded
+                                   follow does not outlive its parent; it refuses --json
   tumwater archive [--json]        Move the finished entries still under PLANS.md ## Done and
                                    BUGS.md ## Fixed to the top of PLANS-DONE.md and BUGS-FIXED.md
                                    and commit them on the base branch, waiting for a merge in

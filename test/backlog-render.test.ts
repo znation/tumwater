@@ -106,7 +106,7 @@ test("tumwater backlog prints the backlog and rejects flags; works outside a rea
   // like every other command, whether alone or beside a valid one.
   const bad = await runCli(root, "backlog", "--nope");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json, --ready, --grep <text>\)/);
+  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json, --ready, --grep <text>, -f\/--follow\)/);
   const badPair = await runCli(root, "backlog", "--json", "--nope");
   assert.notEqual(badPair.code, 0);
   assert.match(badPair.out, /unknown argument: --nope/);
@@ -246,7 +246,7 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
 
 test("tumwater help lists the backlog command", async () => {
   const help = await runCli(makeRepo(), "help");
-  assert.match(help.out, /^  tumwater backlog \[--ready\] \[--grep <text>\] \[--json\]\n {35}Show planned features, open bugs/m);
+  assert.match(help.out, /^  tumwater backlog \[--ready\] \[--grep <text>\] \[-f\/--follow\] \[--json\]\n {35}Show planned features, open bugs/m);
 });
 
 test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", () => {
@@ -401,8 +401,8 @@ test("tumwater backlog --grep keeps only matching entries and composes with --re
   assert.equal(repeat.code, 1);
   assert.match(repeat.out, /--grep may only be given once/);
   assert.match((await runCli(root, "backlog", "--bogus")).out, /--grep/);
-  // `tumwater help backlog` names --grep.
-  assert.match((await runCli(root, "help", "backlog")).out, /backlog \[--ready\] \[--grep <text>\] \[--json\]/);
+  // `tumwater help backlog` names --grep and --follow.
+  assert.match((await runCli(root, "help", "backlog")).out, /backlog \[--ready\] \[--grep <text>\] \[-f\/--follow\] \[--json\]/);
 });
 
 test("renderBacklogMarkdown prints a blocked series as one heading", () => {
