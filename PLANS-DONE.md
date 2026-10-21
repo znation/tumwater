@@ -5,6 +5,40 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### TUI Pending pane Ctrl+N steps through the overlapping files, showing each holding role's pending change limited to that file: the terminal twin of the dashboard's overlap drill-down and `tumwater diff --role <id> --path <path>` (planned 2026-10-20 by the plan role; independent of every eligible plan — the `diff --overlaps --role` plan only gives `renderChangeOverlaps` an optional second argument, which `pendingOverlapsText` keeps calling with one) — done 2026-10-20 by the feature role
+
+**Goal.** The Pending pane (`createPendingPane` in src/ui/tui/tui-pane-pending.ts) lists `overlapping files (N):` as `path: role, role` lines (`pendingOverlapsText`). The dashboard lets the operator click a line to see each holder's change to that file (`GET /api/diff?role=<id>&path=<path>`, PLANS-DONE "Dashboard overlap drill-down"). The terminal has no way to do that. Ctrl+N on the Pending pane steps through the overlaps: each press shows the next overlapping file's per-role path-scoped change, and the press after the last one returns to the normal pane.
+
+**Approach.**
+1. src/ui/tui/tui-keys.ts and src/ui/tui/tui-pane-session.ts: widen the existing `collectChange` seam (it appears in both interfaces in tui-pane-session.ts and in the `TuiKeysDeps` field) to `collectChange(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>`. The default stays `collectRoleChange`, which already takes `opts`. Existing callers that pass two arguments do not change. Do not add a new seam.
+2. src/ui/tui/tui-pane-pending.ts, inside `createPendingPane`:
+   - Add closure state: `let base = ""` (the last full pane text), `let lastOverlaps: ChangeOverlapsView | null = null`, `let overlapIndex = -1` and `let drillGen = 0`.
+   - `refresh()`: at its start, set `overlapIndex = -1`, `lastOverlaps = null` and `++drillGen`. Wherever it assigns `session.paneCache`, also assign `base`. In the resolve arm, also set `lastOverlaps = overlaps`.
+   - Add an exported pure helper `overlapDrillHeading(index: number, total: number, path: string): string`. It returns `` `overlap ${index + 1}/${total}: ${path} (Ctrl+N next)` ``.
+   - In `handleKey`, add a Ctrl+N arm guarded like the Ctrl+R arm (`promptLineFree(ctx.es) && session.view === session.roleIds.length + 5`):
+     - When `lastOverlaps` is null, is not `state === "ready"`, or has an empty `overlaps` list: call `session.flashMessage("no overlapping files to step through")` and return true.
+     - Otherwise, increment `overlapIndex`. When it reaches the list's length, set it back to -1, set `session.paneCache = base`, set `paneScroll = 0`, request a render, and return true.
+     - Otherwise, take `{ path, roles }` at that index. Set `session.paneCache = heading + "\n\nloading…"` and `paneScroll = 0`, then request a render. Capture `const gen = ++drillGen` and the current `refreshGen`. Call `Promise.all(roles.map((r) => session.collectChange(session.root, r, { path })))`. On resolve, paint only when `gen === drillGen`, `refreshGen` is unchanged, and the view is still N+5. The painted text is `heading + "\n\n" + renderRoleChanges({ mainBranch: lastOverlaps.mainBranch, roles: views })`. On reject, under the same guard, keep the heading and call `session.flashError(err)`. Either arm then requests a render. Because `renderRoleChanges` is the CLI's renderer, the text matches `tumwater diff --role a,b --path <path>`.
+   - Update the pane's doc comment: it now has two key arms.
+3. src/ui/tui/tui-panes.ts `handleKey`, in the Ctrl+N block: route `pending.handleKey` after the Health and History arms and before the transcript fallback. The transcript arm consumes Ctrl+N on every view, so it must stay last. Update that block's comment to name the Pending arm.
+4. src/ui/tui/tui-frame.ts: add `["Ctrl+N", "overlaps"]` to the `pending` footer's key list, after `["Ctrl+R", "refresh"]`.
+5. Docs:
+   - docs/how-it-works.md, the paragraph starting "The Pending pane shows the durable merge queue": add that Ctrl+N steps through the overlapping files, showing each holder's change to the file (the `diff --role --path` view).
+   - docs/invariants.md, the change-view paragraph that names the TUI's Pending pane: add that its Ctrl+N drill-down reads `collectRoleChange` with `{ path }` and renders through `renderRoleChanges`.
+
+**Files touched.** src/ui/tui/tui-pane-pending.ts, src/ui/tui/tui-pane-session.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, test/tui-keys.test.ts, docs/how-it-works.md, docs/invariants.md.
+
+**Acceptance criteria.**
+- New test in test/tui-keys.test.ts: "Ctrl+N on the Pending pane steps through each overlap's path-scoped change, then back". Build it like "the Pending pane lists overlapping files below the roster, through the CLI's renderChangeOverlaps", with two overlaps (`src/a.ts: feature, feature-2` and `src/b.ts: feature, qa`) and a `collectChange` stub that records `(role, opts)` and resolves a `ready` `RoleChangeView` for `role` with no commits or dirty files and `path: opts?.path`.
+  - After the first Ctrl+N and a `setImmediate`, `paneCache` starts with `overlap 1/2: src/a.ts (Ctrl+N next)` and equals that heading + `"\n\n"` + `renderRoleChanges` of the two stub views. The stub saw `feature` and `feature-2`, each with `{ path: "src/a.ts" }`.
+  - The second press shows `overlap 2/2: src/b.ts …` for `feature` and `qa`.
+  - The third press restores exactly the pane text from before the first press.
+- New test: "Ctrl+N on the Pending pane with no overlaps flashes and keeps the pane". It uses an empty `ready` overlaps list; the pane text is unchanged and the flash reads `no overlapping files to step through`.
+- New test: "Ctrl+R on the Pending pane closes an open overlap drill-down". Press Ctrl+N, then Ctrl+R. After the collectors resolve, the pane shows the normal queue/roster/overlaps text, and the next Ctrl+N opens overlap 1 again.
+- On a role view, Ctrl+N still cycles the transcript pane, and on Health and History it still runs those arms. The existing Ctrl+N tests in test/tui-keys.test.ts pass unchanged.
+- The existing Pending tests and test/cli-diff.test.ts pass unchanged.
+- `npm run test:gate` passes.
+
 ### `history <role> --last --model <selector>[,...]` opens the role's newest run that started on one of the listed models, e.g. `history feature --last --model claude-sonnet-5-5` reads that model's latest trail (planned 2026-10-20 by the plan role; independent of every eligible plan: Backend/model split part 5/5 changes src/config and test configs, `diff --path` changes cmdDiff, and `prompt --list --grep` changes the inbox list; this one changes the one-run trail command, the history `--model` parser and the CLI arg helpers) — done 2026-10-20 by the feature role
 
 **Goal.** `history <role> --last [--result <class>[,...]]` jumps to the role's newest run, or its newest run in some outcome classes. When you are comparing models (a per-role override, a fallback switch), you still have to run `tumwater history --role feature --model <m> -n 1`, copy the run number, then run `history feature <n>`. Add `--model` to the `--last` form: `history <role> --last --model <selector>[,<selector>...]` prints the trail of the role's newest completed run whose run_start named one of the listed selectors. It uses the listing's `--model` matching (exact, case-sensitive, `runRowsOnModels`), composes with `--result` (both must hold), and composes with `--stat`, `--patch`, `--transcript [--prompt] [--grep]` and `--json` exactly as `--last` does.

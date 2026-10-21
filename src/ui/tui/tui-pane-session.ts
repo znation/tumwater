@@ -35,7 +35,7 @@ export interface TuiPanesDeps {
   killOrphans(root: string): Promise<OrphanKillReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
-  collectChange(root: string, role: string): Promise<RoleChangeView>;
+  collectChange(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
 }
 
@@ -180,7 +180,7 @@ export interface TuiPaneSession {
   killOrphans(root: string): Promise<OrphanKillReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
-  collectChange(root: string, role: string): Promise<RoleChangeView>;
+  collectChange(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
 }
 

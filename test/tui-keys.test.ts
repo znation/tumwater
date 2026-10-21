@@ -14,9 +14,10 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import type { previewRevert } from "../src/operator/revert.js";
+import { overlapDrillHeading } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
-import { renderRoleChange } from "../src/change/change-render.js";
+import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
 import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
@@ -2414,6 +2415,81 @@ test("the Pending pane lists overlapping files below the roster, through the CLI
     keys.state().paneCache,
     "merge queue empty\n\nfeature: 1 commit ahead of main\n\noverlapping files (1):\nsrc/a.ts: feature, feature-2",
   );
+});
+
+function drillKeys(overlaps: { path: string; roles: string[] }[], calls: [string, { path?: string } | undefined][] = []) {
+  const keys = createTuiKeys({
+    root: makeRoot(),
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "ready" as const, overlaps }),
+    collectChange: (_root, role, opts) => {
+      calls.push([role, opts]);
+      return Promise.resolve({ role, branch: `tumwater/${role}`, mainBranch: "main", state: "ready" as const, ahead: 0, behind: 0, commits: [], diff: "", dirtyFiles: [], uncommittedDiff: "", path: opts?.path });
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  return keys;
+}
+const stubView = (role: string, path: string) => ({ role, branch: `tumwater/${role}`, mainBranch: "main", state: "ready" as const, ahead: 0, behind: 0, commits: [], diff: "", dirtyFiles: [], uncommittedDiff: "", path });
+const settle = () => new Promise((r) => setImmediate(r));
+
+test("Ctrl+N on the Pending pane steps through each overlap's path-scoped change, then back", async () => {
+  const calls: [string, { path?: string } | undefined][] = [];
+  const keys = drillKeys([{ path: "src/a.ts", roles: ["feature", "feature-2"] }, { path: "src/b.ts", roles: ["feature", "qa"] }], calls);
+  await settle();
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await settle();
+  assert.equal(
+    keys.state().paneCache,
+    overlapDrillHeading(0, 2, "src/a.ts") + "\n\n" + renderRoleChanges({ mainBranch: "main", roles: [stubView("feature", "src/a.ts"), stubView("feature-2", "src/a.ts")] }),
+  );
+  assert.deepEqual(calls, [["feature", { path: "src/a.ts" }], ["feature-2", { path: "src/a.ts" }]]);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await settle();
+  assert.equal(
+    keys.state().paneCache,
+    overlapDrillHeading(1, 2, "src/b.ts") + "\n\n" + renderRoleChanges({ mainBranch: "main", roles: [stubView("feature", "src/b.ts"), stubView("qa", "src/b.ts")] }),
+  );
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().paneCache, before);
+});
+
+test("Ctrl+N on the Pending pane with no overlaps flashes and keeps the pane", async () => {
+  const keys = drillKeys([]);
+  await settle();
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().paneCache, before);
+  assert.equal(keys.state().flash, "no overlapping files to step through");
+});
+
+test("Ctrl+R on the Pending pane closes an open overlap drill-down", async () => {
+  const keys = drillKeys([{ path: "src/a.ts", roles: ["feature", "feature-2"] }]);
+  await settle();
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  await settle();
+  await settle();
+  assert.equal(keys.state().paneCache, before);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().paneCache ?? "", /^overlap 1\/1: src\/a\.ts/);
+});
+
+test("Ctrl+N returning to the base pane drops a drill-down still loading", async () => {
+  const keys = drillKeys([{ path: "src/a.ts", roles: ["feature", "feature-2"] }]);
+  await settle();
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // drill-down starts loading
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // back to base before it resolves
+  await settle();
+  await settle();
+  assert.equal(keys.state().paneCache, before);
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {

@@ -119,15 +119,17 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // mutual-exclusion guard so it reads on its own instead of leaning on the routing order.
     const ctx: TuiPaneCtx = { es };
     if (key.ctrl && key.name === "n") {
-      // Ctrl+N means three different things. The Health arm is routed first so its notify-test
+      // Ctrl+N means four different things. The Health arm is routed first so its notify-test
       // action is reachable on Health; the History trail arm second, which falls through
-      // (returns false) unless the History view is selected; the transcript pane's
-      // notes/change arm last. The order among them is NOT immaterial: the transcript arm
+      // (returns false) unless the History view is selected; the Pending overlap drill-down
+      // third, with the same fall-through; the transcript pane's notes/change arm last.
+      // The order among them is NOT immaterial: the transcript arm
       // consumes Ctrl+N whenever it is reached — it returns true with a render even off a
       // transcript view — so it must sit last, as the fallback, or it would swallow the key
       // before the Health or History arm ever saw it.
       if (health.handleKey?.(key, ctx)) return true;
       if (history.handleKey?.(key, ctx)) return true;
+      if (pending.handleKey?.(key, ctx)) return true;
       return transcript.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "g") {

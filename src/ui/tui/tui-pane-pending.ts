@@ -2,7 +2,7 @@ import { readMergeQueue } from "../../merge/merge-queue.js";
 import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
-import { renderChangeOverlaps, renderTeamChange } from "../../change/change-render.js";
+import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
 import type { ChangeOverlapsView } from "../../change/change-data.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
@@ -16,11 +16,16 @@ export function pendingOverlapsText(view: ChangeOverlapsView): string {
   return `overlapping files (${view.overlaps.length}):\n` + renderChangeOverlaps(view);
 }
 
+/** The heading over one overlap's drill-down: its place in the list and the path. */
+export function overlapDrillHeading(index: number, total: number, path: string): string {
+  return `overlap ${index + 1}/${total}: ${path} (Ctrl+N next)`;
+}
+
 /** The Pending pane (view roleIds.length + 5) of the TUI (src/ui/tui/tui.tsx): the durable
  * merge queue rendered up front plus the git-backed change roster the async collector appends
- * when it resolves. Split out of the pane-navigation monolith; its only key arm is the Ctrl+R
- * in-place refresh, and it has no render state of its own — aside from the enter half of the
- * Ctrl+T cycle. */
+ * when it resolves. Split out of the pane-navigation monolith; its key arms are the Ctrl+R
+ * in-place refresh and the Ctrl+N overlap drill-down, and it has no render state of its own —
+ * aside from the enter half of the Ctrl+T cycle. */
 export function createPendingPane(session: TuiPaneSession) {
   // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
   // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -35,20 +40,31 @@ export function createPendingPane(session: TuiPaneSession) {
   // and `GET /api/diff?overlaps=1` serve, and rendered through the CLI's renderChangeOverlaps.
   // The default collector degrades rather than throws, so the rejection arm only covers an
   // injected seam (or an unexpected throw).
+  // Ctrl+N steps through the overlapping files, painting each holder's change limited to that
+  // file (the `tumwater diff --role a,b --path <path>` view); `base` is the pane text to
+  // return to after the last one.
   let refreshGen = 0;
+  let base = "";
+  let lastOverlaps: ChangeOverlapsView | null = null;
+  let overlapIndex = -1;
+  let drillGen = 0;
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
     // is the latest request's — Ctrl+R held twice, or a refresh raced with a re-entry,
     // must not let an out-of-order older resolution overwrite the newer result.
     const gen = ++refreshGen;
+    overlapIndex = -1;
+    lastOverlaps = null;
+    ++drillGen;
     const queueView = readMergeQueue(session.root);
     const queueText = renderMergeQueue(queueView, session.now(), queueInFlight(session.root, queueView.entries, orchestratorAlive(session.root)));
-    session.paneCache = queueText;
+    session.paneCache = base = queueText;
     void Promise.all([session.collectPending(session.root), session.collectOverlaps(session.root)]).then(
       ([team, overlaps]) => {
         if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
         const block = pendingOverlapsText(overlaps);
-        session.paneCache = queueText + "\n\n" + renderTeamChange(team) + (block ? "\n\n" + block : "");
+        lastOverlaps = overlaps;
+        session.paneCache = base = queueText + "\n\n" + renderTeamChange(team) + (block ? "\n\n" + block : "");
         session.requestRender();
       },
       (err: unknown) => {
@@ -74,6 +90,42 @@ export function createPendingPane(session: TuiPaneSession) {
       refresh();
       session.paneScroll = 0;
       session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "n" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      const overlaps = lastOverlaps;
+      if (overlaps?.state !== "ready" || overlaps.overlaps.length === 0) {
+        session.flashMessage("no overlapping files to step through");
+        return true;
+      }
+      if (++overlapIndex >= overlaps.overlaps.length) {
+        overlapIndex = -1;
+        ++drillGen;
+        session.paneCache = base;
+        session.paneScroll = 0;
+        session.requestRender();
+        return true;
+      }
+      const { path, roles } = overlaps.overlaps[overlapIndex]!;
+      const heading = overlapDrillHeading(overlapIndex, overlaps.overlaps.length, path);
+      session.paneCache = heading + "\n\nloading…";
+      session.paneScroll = 0;
+      session.requestRender();
+      const gen = ++drillGen;
+      const refresh0 = refreshGen;
+      const current = (): boolean => gen === drillGen && refresh0 === refreshGen && session.view === session.roleIds.length + 5;
+      void Promise.all(roles.map((r) => session.collectChange(session.root, r, { path }))).then(
+        (views) => {
+          if (!current()) return;
+          session.paneCache = heading + "\n\n" + renderRoleChanges({ mainBranch: overlaps.mainBranch, roles: views });
+          session.requestRender();
+        },
+        (err: unknown) => {
+          if (!current()) return;
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
       return true;
     }
     return false;
