@@ -6,7 +6,7 @@
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { flagValue, parseGrepFlag, parseRoleListScope } from "./cli-args.js";
-import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -15,8 +15,8 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { collectTeamChanges, collectRoleChange, collectRoleChanges } from "../change/change-data.js";
-import { renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges } from "../change/change-data.js";
+import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { renderMergeQueue } from "../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
@@ -122,7 +122,8 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
   }
 }
 
-/** `tumwater diff`: one line per role holding pending work, or the full per-role view of each
+/** `tumwater diff`: one line per role holding pending work, the files two or more roles touch
+ * with `--overlaps`, or the full per-role view of each
  * role listed with `--role <id>[,<id>...]`. */
 export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
@@ -132,8 +133,14 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // command. Past the gate an absent worktree still degrades to a `no worktree for
   // <role>` line (exit 0), so the command answers in any initialized directory —
   // report's rationale.
-  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG]);
+  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG]);
   await requireReadyRepo(root);
+  if (args.includes("--overlaps")) {
+    if (args.includes("--role")) fail("diff --overlaps reads every role; drop --role");
+    if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
+    sayJsonOrRender(args, await collectChangeOverlaps(root), renderChangeOverlaps);
+    return;
+  }
   // Absent --role is the team-wide form: one line per role holding pending work
   // (parseRoleListScope returns null only for an absent flag — an empty or unknown piece
   // already failed above). One named role keeps the single per-role view; a list prints each

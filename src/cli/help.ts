@@ -179,6 +179,10 @@ Usage:
                                    \`git diff --stat\` summary instead; --json prints the
                                    collector's payload as machine-readable data; a comma list prints each listed
                                    role's view in that order, separated by a blank line (--json: {mainBranch, roles})
+  tumwater diff --overlaps [--json]
+                                   List each file two or more roles' pending changes touch
+                                   (committed ahead of main or uncommitted), one line per path
+                                   naming those roles; --json prints {mainBranch, state, overlaps}
   tumwater queue [--role <id>[,<id>...]] [--json]
                                    List the durable merge queue in execution order (oldest
                                    first): one line per waiting merge — position, role, run

@@ -288,3 +288,31 @@ test("diff --role list names an unknown piece", async () => {
   assert.equal(r.code, 1);
   assert.ok(r.stderr.includes("nope"));
 });
+
+test("diff --overlaps names each file two roles' pending changes touch", async () => {
+  const { repo } = await seededFeatureRepo();
+  const cleanWt = await ensureWorktree(repo, "clean", "main");
+  fs.writeFileSync(path.join(cleanWt, "widget.md"), "# other\n");
+  fs.writeFileSync(path.join(cleanWt, "solo.md"), "# solo\n");
+  const r = await cli(repo, "diff", "--overlaps");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "widget.md: feature, clean");
+  const json = await cli(repo, "diff", "--overlaps", "--json");
+  assert.deepEqual(JSON.parse(json.stdout), {
+    mainBranch: "main",
+    state: "ready",
+    overlaps: [{ path: "widget.md", roles: ["feature", "clean"] }],
+  });
+});
+
+test("diff --overlaps with no shared file says so, and rejects --role and --stat", async () => {
+  const { repo } = await seededFeatureRepo();
+  const r = await cli(repo, "diff", "--overlaps");
+  assert.equal(r.stdout.trim(), "no file is touched by two pending changes");
+  const role = await cli(repo, "diff", "--overlaps", "--role", "feature");
+  assert.notEqual(role.code, 0);
+  assert.ok(role.stderr.includes("drop --role"));
+  const stat = await cli(repo, "diff", "--overlaps", "--stat");
+  assert.notEqual(stat.code, 0);
+  assert.ok(stat.stderr.includes("drop --stat"));
+});

@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectRoleChange } from "../src/change/change-data.js";
-import { renderTeamChange, renderRoleChange } from "../src/change/change-render.js";
+import { collectRoleChange, fileOverlaps } from "../src/change/change-data.js";
+import { renderTeamChange, renderRoleChange, renderChangeOverlaps } from "../src/change/change-render.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -113,4 +113,26 @@ test("a lagging branch renders its behind count in the role header and the team 
     "feature: 1 commit ahead of main, 2 commits behind",
   );
   assert.ok(renderRoleChange({ ...base, behind: 0 }).includes("1 commit ahead of main\n"));
+});
+
+test("fileOverlaps keeps only paths two or more roles hold, each role once", () => {
+  assert.deepEqual(
+    fileOverlaps([
+      { role: "feature", files: ["b.md", "a.md", "a.md"] },
+      { role: "clean", files: ["a.md", "c.md"] },
+      { role: "bugfix", files: ["b.md", "a.md"] },
+    ]),
+    [
+      { path: "a.md", roles: ["feature", "clean", "bugfix"] },
+      { path: "b.md", roles: ["feature", "bugfix"] },
+    ],
+  );
+  assert.equal(
+    renderChangeOverlaps({ mainBranch: "main", state: "ready", overlaps: [] }),
+    "no file is touched by two pending changes",
+  );
+  assert.equal(
+    renderChangeOverlaps({ mainBranch: "main", state: "no-base", overlaps: [] }),
+    "main branch main does not exist",
+  );
 });

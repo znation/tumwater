@@ -2744,7 +2744,7 @@ and leave the file byte-identical".
 ## Role change view: every known role answers, degraded rather than failing, with a bounded patch
 
 `src/change/change-data.ts` collects what `tumwater diff`, `tumwater diff --role <id>` and the
-dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all.
+dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps` lists files held by two or more roles (`collectChangeOverlaps`).
 
 ### INV-AU1: a role query never fails on a degraded team
 
@@ -2800,6 +2800,17 @@ patch field rides the team view.
 instances after the catalog, each with its own change"; `test/change-data.test.ts` — "the team
 view keeps the counts and drops the patch fields"; `test/cli-diff.test.ts` — "team diff --json
 prints the roster: one entry per known role, no patch fields".
+
+### INV-AU5: an overlap names a path only when two or more roles hold it, each role once
+
+**Guarantee.** `fileOverlaps` keeps a path only when two or more distinct roles hold it; a role's
+duplicate path counts once and roles keep holdings order.
+
+**Binds.** `src/change/change-data.ts` (`fileOverlaps`, `collectChangeOverlaps`).
+
+**Pinned by.** `test/change-render.test.ts` — "fileOverlaps keeps only paths two or more roles hold,
+each role once"; `test/cli-diff.test.ts` — "diff --overlaps names each file two roles' pending
+changes touch".
 
 ## Pause markers: a pause stands until resumed or expired, a wrong-shaped marker never throws, and the role set reads in canonical ids
 

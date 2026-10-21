@@ -10,7 +10,7 @@
 import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { aheadOfMain, branchExists, countCommitsInRange, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { aheadOfMainDiff, changedFiles } from "../git/git-diff.js";
+import { aheadOfMainDiff, aheadOfMainFiles, changedFiles } from "../git/git-diff.js";
 import { branchName } from "../paths.js";
 import { isUsableWorktree } from "../git/worktree.js";
 import { roleWorktreeDir } from "../git/slots-state.js";
@@ -184,4 +184,52 @@ async function cappedWorkingDiff(wt: string): Promise<string> {
   return (
     `[uncommitted diff truncated: the full diff is ${full.length} bytes; showing --stat]\n\n` + stat
   );
+}
+
+/** One file two or more roles' pending changes touch, with the roles that hold it. */
+interface ChangeOverlap {
+  path: string;
+  roles: string[];
+}
+
+/** The `tumwater diff --overlaps` document. */
+export interface ChangeOverlapsView {
+  mainBranch: string;
+  state: "no-base" | "ready";
+  overlaps: ChangeOverlap[];
+}
+
+/** The paths two or more distinct roles hold: a role's duplicate path counts once, roles stay
+ * in holdings order, paths sort by plain `<` comparison. */
+export function fileOverlaps(holdings: { role: string; files: string[] }[]): ChangeOverlap[] {
+  const byPath = new Map<string, string[]>();
+  for (const { role, files } of holdings) {
+    for (const path of new Set(files)) {
+      const roles = byPath.get(path);
+      if (roles === undefined) byPath.set(path, [role]);
+      else roles.push(role);
+    }
+  }
+  return [...byPath.entries()]
+    .filter(([, roles]) => roles.length >= 2)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([path, roles]) => ({ path, roles }));
+}
+
+/** Collect the files two or more roles hold, committed ahead of main or uncommitted. Computes
+ * file names only — no patch — and skips a role with no usable checkout. */
+export async function collectChangeOverlaps(root: string): Promise<ChangeOverlapsView> {
+  const { config } = loadConfigSafe(root);
+  const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
+  if (!(await branchExists(root, mainBranch))) return { mainBranch, state: "no-base", overlaps: [] };
+  const held = await Promise.all(
+    knownRoleIdsCached(root).map(async (role) => {
+      const wt = await roleWorktreeDir(root, role);
+      if (wt === null || !(await isUsableWorktree(wt))) return null;
+      const committed = (await aheadOfMain(wt, mainBranch)) > 0 ? await aheadOfMainFiles(wt, mainBranch) : [];
+      return { role, files: [...committed, ...(await changedFiles(wt))] };
+    }),
+  );
+  const holdings = held.filter((h): h is { role: string; files: string[] } => h !== null);
+  return { mainBranch, state: "ready", overlaps: fileOverlaps(holdings) };
 }

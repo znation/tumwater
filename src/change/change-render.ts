@@ -4,7 +4,7 @@
  * collected view — no I/O, no clock reads. */
 
 import { plural } from "../text/phrases.js";
-import type { TeamChangeView, RoleChangeView, RoleChangesView } from "./change-data.js";
+import type { ChangeOverlapsView, TeamChangeView, RoleChangeView, RoleChangesView } from "./change-data.js";
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
  * of <main>` plus `, K commits behind` when the branch lags main, plus `, M uncommitted
@@ -62,4 +62,12 @@ export function renderRoleChanges(view: RoleChangesView): string {
     return `main branch ${view.mainBranch} does not exist`;
   }
   return view.roles.map(renderRoleChange).join("\n\n");
+}
+
+/** Render the overlaps view as the operator-facing text `tumwater diff --overlaps` prints:
+ * one `<path>: <role>, <role>` line per shared file. */
+export function renderChangeOverlaps(view: ChangeOverlapsView): string {
+  if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.overlaps.length === 0) return "no file is touched by two pending changes";
+  return view.overlaps.map((o) => `${o.path}: ${o.roles.join(", ")}`).join("\n");
 }

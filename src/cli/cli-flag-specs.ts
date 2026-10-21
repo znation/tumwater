@@ -307,6 +307,10 @@ export const KILL_ORPHANS_FLAG: FlagSpec = { names: ["--kill-orphans"] };
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
 
+/** The `--overlaps` flag spec, accepted by `diff`: list the files two or more roles' pending
+ * changes touch. Value-less, like STAT_FLAG. */
+export const OVERLAPS_FLAG: FlagSpec = { names: ["--overlaps"] };
+
 /** The `--patch` flag spec, accepted by `history <role> <n>`: append the run's commit patch.
  * Value-less, like STAT_FLAG. */
 export const PATCH_FLAG: FlagSpec = { names: ["--patch"] };
