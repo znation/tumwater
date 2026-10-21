@@ -224,6 +224,7 @@ test("the bash script completes summary groups after --by and tier names after r
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--model", ""], 4), [...MODEL_TIERS]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "--model", ""], 3), ["hf/m-a:deepinfra", "hf/m-b"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "--model", "hf/m-a"], 3), ["hf/m-a:deepinfra"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", "hf/m-b,hf/m-a"], 3), ["hf/m-b,hf/m-a:deepinfra"]);
 });
 
 test("the bash script completes pi thinking levels after --thinking", async () => {
@@ -256,19 +257,22 @@ test("the fish script names every command, subcommand, and flag from the spec", 
 test("the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3", () => {
   const lines = fishScriptLines();
   const flagLines = (name: string) => lines.filter((l) => (l + " ").includes(` -l ${name} `));
-  for (const l of flagLines("role")) assert.ok(l.includes("completion --roles"), l);
+  for (const l of flagLines("role")) assert.ok(l.includes("__fish_complete_list , __tumwater_roles"), l);
   for (const name of ["file", "attach", "notes-file", "instructions-file"]) {
     assert.ok(flagLines(name).length > 0, name);
     for (const l of flagLines(name)) assert.ok(l.includes("-r -F"), l);
   }
   assert.ok(flagLines("template").some((l) => templateIds().every((id) => l.includes(id))));
-  assert.ok(flagLines("result").some((l) => l.includes("problems")));
-  assert.ok(flagLines("type").some((l) => l.includes("merge_failed") && l.includes("run_start")));
+  assert.ok(flagLines("result").some((l) => l.includes("__fish_complete_list , __tumwater_results")));
+  assert.ok(flagLines("type").some((l) => l.includes("__fish_complete_list , __tumwater_types")));
+  assert.ok(lines.some((l) => l.startsWith("function __tumwater_results") && l.includes("problems")));
+  assert.ok(lines.some((l) => l.startsWith("function __tumwater_types") && l.includes("merge_failed") && l.includes("run_start")));
   assert.ok(flagLines("thinking").some((l) => [...new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"])].every((w) => l.includes(w))));
   assert.ok(flagLines("by").some((l) => l.includes("-a") && l.includes("role") && l.includes("model")));
   const modelLine = (cmd: string) => flagLines("model").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
   assert.ok(["small", "default", "strong"].every((t) => modelLine("role").includes(t)));
-  assert.ok(modelLine("history").includes("completion --models"));
+  assert.ok(modelLine("history").includes("__fish_complete_list , __tumwater_models"));
+  assert.ok(lines.some((l) => l.startsWith("function __tumwater_models") && l.includes("completion --models")));
   assert.ok(!modelLine("role").includes("completion --models"));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));
 });
@@ -277,6 +281,20 @@ const fishInstalled = await run("fish", ["--version"]).then(() => true, () => fa
 
 test("the fish script completes role ids as the first argument of role, history and revert", () => {
   assert.ok(completionScript("fish").includes("__fish_seen_subcommand_from role history revert; and test (__tumwater_argc) -eq 2"));
+});
+
+test("fish completes the item after the last comma of a --result list", { skip: !fishInstalled }, async () => {
+  const { stdout } = await run("fish", ["-c", `${completionScript("fish")}\ncomplete -C 'tumwater history --result merged,p'`]);
+  assert.equal(stdout.split("\n")[0]?.split("\t")[0], "merged,problems");
+});
+
+test("the bash script completes the item after the last comma of --role, --result and --type lists", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "qa,fe"], 3), ["qa,feature", "qa,feature-2"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "feature,feature-2,q"], 3), ["feature,feature-2,qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "merged,p"], 3), ["merged,problems"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "run_start,merge_f"], 3), ["run_start,merge_failed"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "qa,"], 3), ["qa,feature", "qa,feature-2", "qa,qa"]);
 });
 
 test("the fish script parses under fish when fish is installed", { skip: !fishInstalled }, async () => {

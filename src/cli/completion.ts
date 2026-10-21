@@ -162,6 +162,12 @@ function bashScript(help: string): string {
   });
   return [
     `# tumwater completion (generated from \`tumwater help\`)`,
+    `# Completes the item after the last comma of a comma-list value, keeping the items before it.`,
+    `_tumwater_list() {`,
+    `  local head=""`,
+    `  [[ "$2" == *,* ]] && head="\${2%,*},"`,
+    `  COMPREPLY=( $(compgen -P "$head" -W "$1" -- "\${2##*,}") )`,
+    `}`,
     `_tumwater() {`,
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
     `  local prev="\${COMP_WORDS[COMP_CWORD-1]}"`,
@@ -178,7 +184,7 @@ function bashScript(help: string): string {
     `    return 0`,
     `  fi`,
     `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ ${ROLE_POSITIONAL_COMMANDS.map((c) => `"\${COMP_WORDS[1]}" == ${c}`).join(" || ")} ]] && [[ "$cur" != -* ]]; }; then`,
-    `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
+    `    _tumwater_list "$(tumwater completion --roles 2>/dev/null)" "$cur"`,
     `    return 0`,
     `  fi`,
     `  case "$prev" in ${PATH_FLAGS.join("|")})`,
@@ -191,11 +197,11 @@ function bashScript(help: string): string {
     `    return 0`,
     `  fi`,
     `  if [ "$prev" = "--result" ]; then`,
-    `    COMPREPLY=( $(compgen -W "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}" -- "$cur") )`,
+    `    _tumwater_list "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}" "$cur"`,
     `    return 0`,
     `  fi`,
     `  if [ "$prev" = "--type" ]; then`,
-    `    COMPREPLY=( $(compgen -W "${EVENT_TYPE_CODES.join(" ")}" -- "$cur") )`,
+    `    _tumwater_list "${EVENT_TYPE_CODES.join(" ")}" "$cur"`,
     `    return 0`,
     `  fi`,
     `  if [ "$prev" = "--thinking" ]; then`,
@@ -211,8 +217,9 @@ function bashScript(help: string): string {
     `    return 0`,
     `  fi`,
     // bash splits at `:`; past a selector's colon `prev` is not --model, so nothing completes.
+    // A comma list, like --role, so it completes per item.
     `  if [ "$prev" = "--model" ] && [ "\${COMP_WORDS[1]}" = history ]; then`,
-    `    COMPREPLY=( $(compgen -W "$(tumwater completion --models 2>/dev/null)" -- "$cur") )`,
+    `    _tumwater_list "$(tumwater completion --models 2>/dev/null)" "$cur"`,
     `    return 0`,
     `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
@@ -233,18 +240,19 @@ function bashScript(help: string): string {
   ].join("\n");
 }
 
-/** The value suffix a fish flag line carries: what completes after the flag. */
+/** The value suffix a fish flag line carries: what completes after the flag. `--role`, `--result`
+ * and `--type` take comma lists, so they complete per item through `__fish_complete_list`. */
 function fishFlagValue(command: string, flag: string): string {
-  if (flag === "--role") return ` -x -a "(tumwater completion --roles 2>/dev/null)"`;
+  if (flag === "--role") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
   if (PATH_FLAGS.includes(flag)) return ` -r -F`;
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
-  if (flag === "--result") return ` -x -a "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}"`;
-  if (flag === "--type") return ` -x -a "${EVENT_TYPE_CODES.join(" ")}"`;
+  if (flag === "--result") return ` -x -a "(__fish_complete_list , __tumwater_results)"`;
+  if (flag === "--type") return ` -x -a "(__fish_complete_list , __tumwater_types)"`;
   if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
   if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
   // `role --model` completes the closed tier set; `history --model` completes the log's selectors.
   if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;
-  if (flag === "--model" && command === "history") return ` -x -a "(tumwater completion --models 2>/dev/null)"`;
+  if (flag === "--model" && command === "history") return ` -x -a "(__fish_complete_list , __tumwater_models)"`;
   return "";
 }
 
@@ -255,6 +263,10 @@ function fishScript(help: string): string {
     `complete -c tumwater -f`,
     `function __tumwater_argc; count (commandline -opc); end`,
     `function __tumwater_doctor_checks; printf '%s\\n' ${DOCTOR_CHECK_WORDS}; end`,
+    `function __tumwater_roles; tumwater completion --roles 2>/dev/null; end`,
+    `function __tumwater_results; printf '%s\\n' ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}; end`,
+    `function __tumwater_models; tumwater completion --models 2>/dev/null; end`,
+    `function __tumwater_types; printf '%s\\n' ${EVENT_TYPE_CODES.join(" ")}; end`,
     `complete -c tumwater -n __fish_use_subcommand -a "${spec.commands.join(" ")}"`,
   ];
   for (const command of spec.commands) {

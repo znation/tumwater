@@ -5,6 +5,53 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Shell completion past the comma: `--role a,<TAB>`, `--result merged,<TAB>` and `--type run_end,<TAB>` complete the next list item (planned 2026-10-20 by the plan role; independent of every eligible plan — the Backend/model split parts change test configs and src/config, and the TUI History model filter touches only src/ui/tui and docs/cli.md's TUI keys table; it shares src/cli/completion.ts with the in-flight "Shell completion for `history --model`" plan, see step 4) — done 2026-10-20
+
+**Goal.** `--role`, `--result` (history) and `--type` (logs) take comma lists (`parseRoleListFlag`, src/cli/cli-args.ts, and the help text for `history` and `logs` in src/cli/help.ts). Shell completion only completes the first item. In bash, `compgen -W … -- "$cur"` matches the whole word, so `history --role qa,fe<TAB>` offers nothing because no role id starts with `qa,fe`. In fish, the `-a` lists offer only bare words. After this change, the item after the last comma completes, and the items already typed stay in front of it: `qa,fe<TAB>` gives `qa,feature qa,feature-2`.
+
+**Approach.**
+1. src/cli/completion.ts `bashScript`: emit a helper function before `_tumwater() {`:
+   ```
+   _tumwater_list() {
+     local head=""
+     [[ "$2" == *,* ]] && head="${2%,*},"
+     COMPREPLY=( $(compgen -P "$head" -W "$1" -- "${2##*,}") )
+   }
+   ```
+   Give it a one-line `#` comment saying it completes the item after the last comma of a comma-list value and keeps the items before it as the prefix. bash's default `COMP_WORDBREAKS` does not contain `,`, so `cur` holds the whole list. zsh's bashcompinit `compgen` also accepts `-P` (checked in /usr/share/zsh/5.9/functions/bashcompinit). Then change three arms so they call `_tumwater_list "<words>" "$cur"` instead of setting `COMPREPLY=( $(compgen -W … -- "$cur") )`:
+   - the `--role` / role-positional arm, with words `$(tumwater completion --roles 2>/dev/null)`. The positional case never holds a comma, so it behaves as it does now.
+   - the `--result` arm.
+   - the `--type` arm.
+   Leave `--template`, `--thinking`, `--by` and `role --model` as they are, because they take one value.
+2. src/cli/completion.ts `fishScript`: next to `__tumwater_doctor_checks`, push three function lines:
+   - `function __tumwater_roles; tumwater completion --roles 2>/dev/null; end`
+   - `function __tumwater_results; printf '%s\n' <HISTORY_RESULT_FLAG_NAMES values>; end`
+   - `function __tumwater_types; printf '%s\n' <EVENT_TYPE_CODES>; end`
+   
+   Write each `printf` as a TS template string in the same way as the doctor-checks line. In `fishFlagValue`, return `` ` -x -a "(__fish_complete_list , __tumwater_roles)"` `` for `--role`, and the same with `__tumwater_results` and `__tumwater_types` for `--result` and `--type`. `__fish_complete_list` is fish's own helper in share/functions: it splits the token on the separator and prefixes each candidate. The role-positional `complete` line keeps `(tumwater completion --roles 2>/dev/null)` unchanged.
+3. Update the `EVENT_TYPE_CODES` doc comment, or add a short comment above the three call sites, to say these three flags take comma lists and so complete per item.
+4. `history --model` is also a comma list. If the "Shell completion for `history --model`" plan has merged when you start (`grep -n 'completion --models' src/cli/completion.ts` prints its arm), route its bash arm through `_tumwater_list "$(tumwater completion --models 2>/dev/null)" "$cur"`. Also give fish a `function __tumwater_models; tumwater completion --models 2>/dev/null; end` with `(__fish_complete_list , __tumwater_models)`, and add the matching assertions below. Then drop that plan's "Comma lists are not completed past the first item" remark wherever it was copied into a code comment. If that plan has not merged, skip this step.
+5. docs/cli.md, in the `tumwater completion bash|zsh|fish` paragraph: after "and check names after `doctor`", add "; a comma-list value (`--role`, `--result`, `--type`) completes its last item, keeping the items before it". Put it inside the parenthesis.
+
+**Files touched.** src/cli/completion.ts, docs/cli.md, test/completion.test.ts.
+
+**Acceptance criteria.**
+- New test "the bash script completes the item after the last comma of --role, --result and --type lists". It uses the existing `complete` helper, whose fake `tumwater` prints `feature feature-2 qa`:
+  - `["tumwater", "history", "--role", "qa,fe"]` at cword 3 gives `["qa,feature", "qa,feature-2"]`.
+  - `["tumwater", "logs", "--role", "feature,feature-2,q"]` gives `["feature,feature-2,qa"]`.
+  - `["tumwater", "history", "--result", "merged,p"]` gives `["merged,problems"]`.
+  - `["tumwater", "logs", "--type", "run_start,merge_f"]` gives `["run_start,merge_failed"]`.
+  - `["tumwater", "history", "--role", "qa,"]` gives the three ids, each prefixed `qa,`.
+- The existing bash tests "the bash script completes role ids after --role and for role/history/revert", "…result classes after their flags" and "…event-type codes after logs --type" pass without edits.
+- In the fish test "the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3":
+  - every `-l role` line includes `__fish_complete_list , __tumwater_roles`.
+  - a `-l result` line includes `__fish_complete_list , __tumwater_results`.
+  - a `-l type` line includes `__fish_complete_list , __tumwater_types`.
+  - the script has a `function __tumwater_results` line that includes `problems`, and a `function __tumwater_types` line that includes `merge_failed` and `run_start`. These replace the old `includes("problems")` and `includes("merge_failed")` checks on the flag lines.
+- New test, skipped with `{ skip: !fishInstalled }`: run `fish -c` on the script followed by `complete -C 'tumwater history --result merged,p'`. Its first tab-separated field is `merged,problems`.
+- "the fish script parses under fish when fish is installed" and "the zsh script wraps the bash script in bashcompinit" pass unchanged.
+- `npm run test:gate` passes.
+
 ### Backend/model split, part 4c/5: Move test configs off namespaced and prefix-routed model ids to an explicit `backend` (planned 2026-10-19 by user, split 2026-10-20 by the plan role from part 5/5 after the feature role's trial run; independent of every eligible plan — it changes only test files; part 4b/5 edits some of the same files for the `agent` key, a rebase either way; touches test/budget-gates.test.ts test/config-write.test.ts test/gui-endpoints.test.ts test/gui-client-boot.test.ts test/team-hold.test.ts test/team-polls.test.ts test/team-alerts.test.ts test/pi-models.test.ts test/role-view.test.ts test/doctor-model-checks.test.ts test/opencode-catalog.test.ts test/config-live.test.ts test/startup-gate.test.ts test/runner-pi-claude.test.ts test/doctor.test.ts and any further test file the probe below names; done 2026-10-20)
 
 **Goal.** Part 5/5 removes the two routing rules where the model id picks the backend. Both live in `routeModel` (src/config/model-selector.ts): a `claude/…` or `opencode/…` provider runs that backend (the `isBackendId(provider)` branch), and a bare `claude-…` id runs on claude (the `startsWith("claude-")` branch). 5/5 also removes the matching `isBackendId(provider)` branch in `seamKeyedFallbackProvider` (src/config/config-fallbacks.ts) and `seamAgent`'s `isBackendId(seam.provider)` fallback (model-selector.ts). Part 4/5 moved the `model: "claude/…"` literals. The trial run found these spellings still relied on:
