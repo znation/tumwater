@@ -5,6 +5,7 @@ import path from "node:path";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
+import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
@@ -734,6 +735,43 @@ test("handleRun serves one run's collector payload plus its pre-rendered text", 
   assert.deepEqual(d.events.map((e) => e.type), ["run_start", "review_verdict", "run_end"]);
   assert.match(d.text, /^clean run #3 — merged · 46s/);
   assert.match(d.text, /tidy up/);
+});
+
+test("handleRun ?last serves the newest run, narrowed by result and model", async () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: 1_000, source: "clean", type: "run_start", run: 3, model: "m-a" },
+    { ts: 2_000, source: "clean", type: "run_end", run: 3, result: "changed" },
+    { ts: 3_000, source: "clean", type: "run_start", run: 4, model: "m-b" },
+    { ts: 4_000, source: "clean", type: "run_end", run: 4, result: "error" },
+    { ts: 5_000, source: "feature", type: "run_end", run: 5, result: "no_change" },
+  ].map((e) => JSON.stringify(e)));
+  const runOf = async (query: string) => ((await serveRun(root, query)).data as { run: number }).run;
+  const newest = await serveRun(root, "?role=clean&last=1");
+  assert.equal(newest.captured.status, 200);
+  assert.equal((newest.data as { run: number }).run, 4);
+  assert.deepEqual(newest.data, (await serveRun(root, "?role=clean&run=4")).data);
+  assert.equal(await runOf("?role=clean&last=1&result=merged"), 3);
+  assert.equal(await runOf("?role=clean&last=1&result=changes"), 3);
+  assert.equal(await runOf("?role=clean&last=1&result=problems"), 4);
+  assert.equal(await runOf("?role=clean&last=1&model=m-a"), 3);
+  assert.equal(await runOf("?role=clean&last=1&result="), 4);
+  const miss = await serveRun(root, "?role=clean&last=1&model=m-b&result=merged");
+  assert.equal(miss.captured.status, 404);
+  assert.equal((miss.data as { error: string }).error, runNotFoundLastMessage("clean", ["changes"], ["m-b"]));
+  const bogus = await serveRun(root, "?role=clean&last=1&result=bogus");
+  assert.equal(bogus.captured.status, 400);
+  assert.match((bogus.data as { error: string }).error, /result must be one of/);
+  assert.match((bogus.data as { error: string }).error, /got "bogus"/);
+  for (const q of ["?role=clean&last=1&run=3", "?role=clean&run=3&result=changes", "?role=clean&run=3&model=m-a"]) {
+    assert.equal((await serveRun(root, q)).captured.status, 400, q);
+  }
+  const unknown = await serveRun(root, "?role=nope&last=1");
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role "nope"/);
+  const none = await serveRun(root, "?role=steward&last=1");
+  assert.equal(none.captured.status, 404);
+  assert.match((none.data as { error: string }).error, /no completed run for steward/);
 });
 
 test("handleRun's stat names a pinned commit that is not in the repository", async () => {

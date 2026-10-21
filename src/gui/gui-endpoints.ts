@@ -27,7 +27,7 @@ import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
-import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
+import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, parseHistoryResultClass, type HistoryResultClass, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -50,7 +50,8 @@ import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQue
 import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
-import { splitCommaListUnique } from "../text/text.js";
+import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
+import { newestRunNumber, runNotFoundLastMessage } from "../run/run-detail.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
  * pi log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also
@@ -431,12 +432,42 @@ function transcriptText(root: string, role: string, run: number, detail: RunDeta
  * run's prompt, the text `history --transcript --prompt` prints. A non-blank `grep` (with
  * `transcript`) keeps only the entries containing the text, case-insensitively, each under its
  * agent run's separator, the text `history --transcript --grep` prints, or its miss note. Reads
- * files directly, so it works whether or not the team is running. */
+ * files directly, so it works whether or not the team is running.
+ *
+ * A present `last` flag replaces `run` with the role's newest completed run, the one
+ * `tumwater history <role> --last` opens (newestRunNumber, shared): `result` (a comma list of
+ * outcome classes) and `model` (a comma list of selectors) narrow it to the newest run in those
+ * classes or on those models, an absent or empty value filtering nothing. `last` with `run`, and
+ * `result`/`model` without `last`, are 400s; a class that is not one is a 400 worded like the
+ * CLI's; no match answers 404 with runNotFoundLastMessage. The payload is the numbered form's,
+ * the resolved number in `run`. */
 export async function handleRun(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
-  const run = intQuery(q, res, "run", "positive");
-  if (run === null) return;
+  let run: number | null;
+  if (q.get("last") === null) {
+    if (q.get("result") !== null) return badRequest(res, "result needs last");
+    if (q.get("model") !== null) return badRequest(res, "model needs last");
+    run = intQuery(q, res, "run", "positive");
+    if (run === null) return;
+  } else {
+    if (q.get("run") !== null) return badRequest(res, "last cannot be combined with run (a number and the newest run are rival selectors)");
+    const classes: HistoryResultClass[] = [];
+    const names = Object.values(HISTORY_RESULT_FLAG_NAMES);
+    for (const piece of splitCommaList(q.get("result") ?? "")) {
+      const cls = parseHistoryResultClass(piece);
+      if (cls === null) return badRequest(res, `result must be one of ${names.join(", ")}${gotSuffix(piece)}${typoSuffix(piece, names)}`);
+      if (!classes.includes(cls)) classes.push(cls);
+    }
+    const models = splitCommaListUnique(q.get("model") ?? "");
+    const classFilter = classes.length ? classes : null;
+    const modelFilter = models.length ? models : null;
+    run = newestRunNumber(root, role as string, classFilter, modelFilter);
+    if (run === null) {
+      sendJson(res, 404, { error: runNotFoundLastMessage(role as string, classFilter, modelFilter) });
+      return;
+    }
+  }
   const detail = readRunDetail(root, role as string, run);
   if (detail === null) {
     sendJson(res, 404, { error: runNotFoundMessage(role as string, run) });

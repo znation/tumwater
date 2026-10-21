@@ -29,7 +29,7 @@ export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last [--result
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
  * the not-found wordings below (the numbered form's exported message and the --last form's
- * module-local sibling), so the trailing hedge cannot drift between them. */
+ * exported sibling), so the trailing hedge cannot drift between them. */
 function runNotFoundPhrase(role: string, what: string): string {
   return `no ${what} for ${role} in the scanned window (the retained log may have rotated past it)`;
 }
@@ -45,9 +45,9 @@ export function runNotFoundMessage(role: string, runNumber: number): string {
 
 /** The not-found wording for `tumwater history <role> --last`, sibling of runNotFoundMessage —
  * the same surfaces but naming what the last-form scan actually asked for: the newest
- * completed run, not a number the user supplied. Module-local: the GUI's /api/run 404 only
- * ever serves the numbered form, so this wording has no second consumer. */
-function runNotFoundLastMessage(
+ * completed run, not a number the user supplied. Two consumers: cmdRunDetail's stdout line and
+ * the GUI /api/run?last=1 404 error, so the CLI and the browser cannot word the miss apart. */
+export function runNotFoundLastMessage(
   role: string,
   classes: HistoryResultClass[] | null = null,
   models: string[] | null = null,
@@ -55,6 +55,25 @@ function runNotFoundLastMessage(
   const flagNames = classes?.map((c) => HISTORY_RESULT_FLAG_NAMES[c]).join(",");
   const what = `completed run${classes ? ` with result "${flagNames}"` : ""}${models ? ` on model "${models.join(",")}"` : ""}`;
   return runNotFoundPhrase(role, what);
+}
+
+/** The newest completed run's number for a role, or null when the scanned window holds none:
+ * the run `tumwater history <role> --last` opens and GET /api/run?last=1 serves. With neither
+ * filter it is readRunRows' newest row; with `classes` it is the newest row in those outcome
+ * classes, and with `models` the newest that started on one of those selectors. */
+export function newestRunNumber(
+  root: string,
+  role: string,
+  classes: HistoryResultClass[] | null,
+  models: string[] | null,
+): number | null {
+  const row =
+    classes || models
+      ? (models ? runRowsOnModels(readRunRows(root, HISTORY_MAX_RUNS, role), models) : readRunRows(root, HISTORY_MAX_RUNS, role)).find(
+          (r) => !classes || classes.includes(historyClass(r.result)),
+        )
+      : readRunRows(root, 1, role)[0];
+  return row?.run ?? null;
 }
 
 /** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
@@ -216,14 +235,7 @@ export async function cmdRunDetail(
   // no cap — the number selects, it does not size the scan) or the newest completed run's
   // number, read from readRunRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
-  const runNumber = last
-    ? ((classes || models
-        ? (models ? runRowsOnModels(readRunRows(root, HISTORY_MAX_RUNS, role), models) : readRunRows(root, HISTORY_MAX_RUNS, role)).find(
-            (r) => !classes || classes.includes(historyClass(r.result)),
-          )
-        : readRunRows(root, 1, role)[0]
-      )?.run ?? null)
-    : parseCountFlag("history <n>", positionals[1]);
+  const runNumber = last ? newestRunNumber(root, role, classes, models) : parseCountFlag("history <n>", positionals[1]);
   const detail = runNumber === null ? null : readRunDetail(root, role, runNumber);
   if (runNumber === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.

@@ -502,6 +502,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   Its search box (applied on Enter) reloads it through `GET /api/run?…&transcript=1&grep=<text>`, keeping
   only the entries containing the text, the text `tumwater history <role> <n> --transcript --grep`
   prints; toggling prompts clears it.
+  `GET /api/run?role=<id>&last=1` serves the role's newest completed run instead of a numbered one,
+  and `&result=<class>[,...]` / `&model=<selector>[,...]` narrow it to the newest run in those outcome
+  classes or on those models, the run `tumwater history <role> --last [--result] [--model]` opens
+  (`newestRunNumber`, shared).
   The Pending pane shows the durable merge queue above the pending-change roster, reading and
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed

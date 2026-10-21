@@ -340,6 +340,12 @@ test("gui /api/run serves one run's detail over the live route, 404 when the sca
     assert.deepEqual(d.events.map((e) => e.type), ["run_start", "run_end"]);
     assert.match(d.text, /^clean run #9 — merged · 46s/);
 
+    // `last` forwards through the live route: the newest clean run, and the newest unchanged one.
+    const newest = (await (await fetch(base + "/api/run?role=clean&last=1")).json()) as { run: number };
+    assert.equal(newest.run, 9);
+    const idle = (await (await fetch(base + "/api/run?role=clean&last=1&result=none")).json()) as { run: number };
+    assert.equal(idle.run, 7);
+
     // A run the scan does not hold → 404 (never a crash); a bad role and a non-count run →
     // the shared 400s.
     const missing = await fetch(base + "/api/run?role=clean&run=42");
