@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, inProgressMark, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, mergedPrerequisiteRanges, refusalNote, refusedEntryTitles, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, inProgressMark, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -503,9 +503,9 @@ test("waitingNote returns the note line without its bold markers, and null for a
   assert.equal(waitingNote("see Waiting for the next failure mid-line"), null);
 });
 
-test("refusedEntryTitles lists the refused plans then the refused bugs, and [] with no backlog files", () => {
+test("refusedEntries lists the refused plans then the refused bugs, and [] with no backlog files", () => {
   const empty = tmpdir();
-  assert.deepEqual(refusedEntryTitles(empty), []);
+  assert.deepEqual(refusedEntries(empty), []);
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
@@ -535,7 +535,10 @@ test("refusedEntryTitles lists the refused plans then the refused bugs, and [] w
       "_None._",
     ].join("\n"),
   );
-  assert.deepEqual(refusedEntryTitles(dir), ["Dead plan (planned 2026-10-03)", "Dead bug (reported 2026-10-02)"]);
+  assert.deepEqual(refusedEntries(dir), [
+    { file: "plans", index: 1, title: "Dead plan (planned 2026-10-03)" },
+    { file: "bugs", index: 1, title: "Dead bug (reported 2026-10-02)" },
+  ]);
 });
 
 test("plansReleasedBy lists only direct dependents of a cancelled part, by post-cancel position", () => {

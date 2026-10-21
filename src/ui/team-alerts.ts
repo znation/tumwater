@@ -9,6 +9,7 @@
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -137,7 +138,7 @@ export function teamAlerts(
   questions: readonly string[],
   roles: readonly AlertRole[],
   now: number,
-  refused: readonly string[] = [],
+  refused: readonly RefusedEntry[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -300,12 +301,15 @@ export function teamAlerts(
   }
   // Refused entries hold until a human decides; amber because the operator has to act.
   if (refused.length) {
+    const first = refused[0]!;
     out.push({
       key: "refused",
       tone: "amber",
       title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
-      detail: entryListDetail(refused) + " · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it",
-      actions: [{ label: "Open backlog", act: "backlog" }],
+      detail: `Refused ${first.file === "bugs" ? "bug" : "plan"}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      // The action lands the operator on the named entry: open the backlog card on the
+      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
+      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:

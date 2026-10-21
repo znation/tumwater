@@ -122,7 +122,14 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         d && typeof d.message === "string" ? d.message : "Reclaim requested");
     else if (act === "questions" || act === "queued" || act === "backlog") {
       if (activeView !== "team") location.hash = "team";
-      if (act !== "backlog") setBacklogTab(act);
+      if (act === "questions" || act === "queued") setBacklogTab(act);
+      else if (act === "backlog" && arg) {
+        // The refused banner's action names the entry it points at as file:index; open the
+        // card on that file's tab and land on the row, the way a .backloglink click does.
+        const [file, index] = arg.split(":");
+        setBacklogTab(file === "bugs" ? "bugs" : "plans");
+        toggleEntry(file, Number(index));
+      }
       $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (act === "answer") {
       const q = ((lastStatus && lastStatus.questions) || [])[Number(arg)];

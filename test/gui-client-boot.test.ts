@@ -179,6 +179,26 @@ test("answer-record posts the trimmed answer for the Nth question, and nothing w
   assert.deepEqual(flashes, ["Write an answer first"]);
 });
 
+test("the refused banner's backlog action opens the named file's tab and lands on its row", () => {
+  const calls: string[] = [];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      activeView: "team",
+      setBacklogTab: (t: string) => calls.push("tab " + t),
+      toggleEntry: (f: string, i: number) => calls.push("entry " + f + ":" + i),
+      $: () => ({ scrollIntoView: () => {} }),
+    },
+  );
+  // The banner's refused alert now carries `file:index`; the action must switch the backlog
+  // card to that file's tab and open the row there, rather than leave the card on its old tab.
+  scope.runAct("backlog", "bugs:1");
+  scope.runAct("backlog", "plans:0");
+  // No target (legacy/defensive) keeps the old behavior: open the card on its current tab.
+  scope.runAct("backlog", "");
+  assert.deepEqual(calls, ["tab bugs", "entry bugs:1", "tab plans", "entry plans:0"]);
+});
+
 test("entry-cancel arms on the first click and posts the cancel on the second", () => {
   const posts: unknown[] = [];
   let armed = false;

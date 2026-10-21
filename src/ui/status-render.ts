@@ -16,7 +16,7 @@ import { phaseTone, resultTone, type Tone } from "./tone.js";
 import { teamAlerts } from "./team-alerts.js";
 import type { TeamAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
-import { refusedEntryTitles } from "../backlog/backlog-eligibility.js";
+import { refusedEntries } from "../backlog/backlog-eligibility.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
@@ -488,7 +488,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
   // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
   // there would render twice in the TUI.
-  const alerts = teamAlerts(snap, openQuestions(root), roles, Date.now(), refusedEntryTitles(root)).filter((a) => a.key !== "stopped");
+  const alerts = teamAlerts(snap, openQuestions(root), roles, Date.now(), refusedEntries(root)).filter((a) => a.key !== "stopped");
   const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);
   const text = lines.map(plainText);
   return [...text.slice(0, 2), ...banner, ...text.slice(2)].join("\n");

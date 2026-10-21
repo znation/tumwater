@@ -1,7 +1,7 @@
 import { render as inkRender } from "ink";
 import { TuiApp, type TuiAppView } from "./tui-app.js";
 import { openQuestions } from "../../backlog/backlog.js";
-import { refusedEntryTitles } from "../../backlog/backlog-eligibility.js";
+import { refusedEntries } from "../../backlog/backlog-eligibility.js";
 import { snapshot } from "../../status/status-data.js";
 import { renderStatusSpans, type StatusLine } from "../status-render.js";
 import { teamAlerts } from "../team-alerts.js";
@@ -168,7 +168,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const view = s.view;
     // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
-    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntryTitles(root)), width);
+    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root)), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
     // Numbered previews of prompts queued for the director, between the table and the
     // activity pane: what will run next, in execution order. Each line consumes exactly

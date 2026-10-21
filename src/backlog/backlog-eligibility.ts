@@ -276,17 +276,31 @@ export function backlogMarks(root: string): { plans: string[]; bugs: string[] } 
   };
 }
 
-/** The verbatim titles of the planned plans, then the open bugs, whose hold is `"refused"`, in
- * file order: the entries that wait on an operator decision (the `refused` team alert's
- * input). Pairs backlogHolds' arrays with the entries the same readers return, like
+/** A refused entry the operator must release or cancel, with its backlog file and 0-based
+ * position so a surface can open exactly that row (the `refused` team alert's target). */
+export interface RefusedEntry {
+  file: "plans" | "bugs";
+  index: number;
+  title: string;
+}
+
+/** The planned plans, then the open bugs, whose hold is `"refused"`, in file order: the
+ * entries that wait on an operator decision (the `refused` team alert's input), each carrying
+ * the backlog file and its 0-based position so a surface opening the row can land on it.
+ * Pairs backlogHolds' arrays with the entries the same readers return, like
  * backlogInProgress. A missing file yields `[]`. */
-export function refusedEntryTitles(root: string): string[] {
+export function refusedEntries(root: string): RefusedEntry[] {
   const holds = backlogHolds(root);
-  const titlesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[]): string[] =>
-    entries.filter((_, i) => held[i] === "refused").map((e) => e.title);
+  const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): RefusedEntry[] => {
+    const out: RefusedEntry[] = [];
+    entries.forEach((e, i) => {
+      if (held[i] === "refused") out.push({ file, index: i, title: e.title });
+    });
+    return out;
+  };
   return [
-    ...titlesOf(plannedPlanEntries(root), holds.plans),
-    ...titlesOf(openBugEntries(root), holds.bugs),
+    ...entriesOf(plannedPlanEntries(root), holds.plans, "plans"),
+    ...entriesOf(openBugEntries(root), holds.bugs, "bugs"),
   ];
 }
 

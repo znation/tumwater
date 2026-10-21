@@ -444,15 +444,23 @@ test("images alert: a cached probe failure is amber, whatever the roles resolved
 
 test("refused entries raise a standing amber alert right after the questions alert", () => {
   const now = Date.now();
-  const one = teamAlerts(base, [], [], now, ["Split X (planned 2026-10-14 by plan)"]);
+  const one = teamAlerts(base, [], [], now, [{ file: "plans", index: 1, title: "Split X (planned 2026-10-14 by plan)" }]);
   assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["refused", "amber", "1 refused entry waits on your decision"]]);
-  assert.ok(one[0]!.detail.startsWith("Split X ·"));
+  assert.ok(one[0]!.detail.startsWith("Refused plan: Split X ·"));
   assert.ok(one[0]!.detail.includes("--release"));
-  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog" }]);
-  const two = teamAlerts(base, [], [], now, ["A (planned 2026-10-14)", "B (reported 2026-10-14)"]);
+  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:1" }]);
+  const two = teamAlerts(base, [], [], now, [
+    { file: "plans", index: 1, title: "A (planned 2026-10-14)" },
+    { file: "bugs", index: 0, title: "B (reported 2026-10-14)" },
+  ]);
   assert.equal(two[0]!.title, "2 refused entries wait on your decision");
   assert.ok(two[0]!.detail.includes("— and 1 more"));
-  const both = teamAlerts(base, ["Q? (asked 2026-10-14)"], [], now, ["A"]);
+  // The action lands on the first (named) refused entry: its file and 0-based row.
+  assert.equal(two[0]!.actions[0]?.arg, "plans:1");
+  const bug = teamAlerts(base, [], [], now, [{ file: "bugs", index: 3, title: "C (reported 2026-10-14)" }]);
+  assert.ok(bug[0]!.detail.startsWith("Refused bug: C ·"));
+  assert.equal(bug[0]!.actions[0]?.arg, "bugs:3");
+  const both = teamAlerts(base, ["Q? (asked 2026-10-14)"], [], now, [{ file: "bugs", index: 0, title: "A" }]);
   assert.deepEqual(both.map((a) => a.key), ["questions", "refused"]);
   assert.deepEqual(teamAlerts(base, [], [], now), []);
 });
