@@ -172,6 +172,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "queued" }), /Ctrl\+V top/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+E edit/);
   assert.match(hint({ kind: "queued" }), /Ctrl\+X cancel/);
+  assert.match(hint({ kind: "queued", grep: "x" }), /search: x/);
   // The Queued editor names its save/cancel keys, like the budget and role editors.
   assert.equal(
     plain(hintLine({ kind: "queued" }, { budget: false, rolePromptFor: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null }, 300)),

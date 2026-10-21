@@ -41,7 +41,7 @@ export type TuiView =
   | { kind: "failures"; scope: string | null; window: string | null }
   | { kind: "history"; since: string | null; result: string | null; model?: string | null; role: string | null; grep: string | null; trail: boolean; trailTranscript?: "off" | "plain" | "prompts"; trailPatch?: boolean; trailGrep?: string | null; summary?: "role" | "model" | null }
   | { kind: "pending" }
-  | { kind: "queued" }
+  | { kind: "queued"; grep?: string | null }
   | { kind: "health"; problems?: boolean }
   | { kind: "brief" };
 
@@ -107,7 +107,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+R", "refresh"], ["Ctrl+N", "overlaps"], ["Ctrl+G", "overlap role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+R", "re-run checks"], ["Ctrl+P", "re-probe models"], ["Ctrl+E", "reclaim disk"], ["Ctrl+N", "test notify"], ["Ctrl+K", "kill orphans"], ["Ctrl+X", "retire role"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+E", "edit brief"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+V", "top"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+E", "notify hook"], ["Ctrl+A", "model"], ["Ctrl+O", view.type ? `type: ${eventTypeLabel(view.type)}` : "type: all"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+P", "provider caps"], ["Ctrl+X", "agent backends"], ["Ctrl+T", "next view"], ["Ctrl+L", "fallback"], ["Ctrl+Y", "claude reserve"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+R", "restart"], ["Ctrl+D", "quit"]];
   // The mode branches above name their own keys and keep the line, so every remaining
   // view hint always shows the send affordance. This comment marks that ordering.

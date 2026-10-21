@@ -62,6 +62,9 @@ export interface TuiEditorsDeps {
   /** Apply a finished Backlog search on the pane (sets backlogGrep, clears the selection so the
    * next frame starts in list mode). */
   applyBacklogSearch(pattern: string | null): void;
+  /** Apply a finished Inbox search on the pane (sets queuedGrep, clears the row selection, and
+   * re-reads the filtered rows). */
+  applyQueuedSearch(pattern: string | null): void;
   /** Apply a finished Transcript search on the viewed role's pane (sets its pattern, resets the
    * scroll). */
   applyTranscriptSearch(pattern: string | null): void;

@@ -2693,6 +2693,70 @@ test("the Queued pane caches the CLI's rendered queue list on entry and drops it
   assert.equal(keys.state().paneCache, null, "leaving Queued drops the cache");
 });
 
+test("PgDn in a searched Inbox pane reaches the last row despite the search line", () => {
+  const root = makeRoot();
+  for (let i = 1; i <= 8; i++) enqueuePrompt(root, `director widget ${i}`);
+  const t = Date.now();
+  const { keys } = makeKeys(root, () => t);
+  keys.setLineBudgets(5, 4);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Inbox
+  keys.handleKey("/", { name: "/" });
+  for (const ch of "widget") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { name: "pagedown" });
+  const total = (keys.state().paneCache ?? "").split("\n").length;
+  assert.equal(keys.state().paneScroll, total - 4, "the window pages by the list budget (budget 5 less the search line)");
+});
+
+test("the `/` search filters the Inbox pane's queued prompts under their unfiltered numbers, clears, and persists across view cycling", () => {
+  const root = makeRoot();
+  enqueuePrompt(root, "director alpha");
+  enqueuePrompt(root, "director widget");
+  enqueueRolePrompt(root, "clean", "clean widget");
+  const t = Date.now();
+  const { keys } = makeKeys(root, () => t);
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Inbox
+  assert.equal(keys.state().view, 6);
+  assert.equal(keys.state().queuedGrep, null, "the Inbox pane opens unsearched");
+
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "", "an empty Inbox search opens blank");
+  for (const ch of "widget") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().queuedGrep, "widget");
+  assert.deepEqual(keys.state().queuedRows.map((r) => `${r.role}#${r.position}`), ["director#2", "clean#1"]);
+  assert.ok(keys.state().paneCache?.includes("2. director widget"));
+  assert.ok(!keys.state().paneCache?.includes("director alpha"));
+  assert.equal(keys.state().flash, 'search: "widget"');
+
+  // Ctrl+X on the first kept row cancels the director's #2 file; alpha stays queued.
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueued, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.deepEqual(
+    queuedListRows(root, null, listWideScope(root)).map((r) => r.text),
+    ["director alpha", "clean widget"],
+  );
+
+  keys.handleKey("/", { name: "/" });
+  assert.equal(keys.state().input, "widget", "re-opening pre-fills the applied pattern");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().queuedGrep, "widget", "Esc leaves the applied pattern");
+
+  for (let i = 0; i < 9; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // away and back
+  assert.equal(keys.state().view, 6);
+  assert.equal(keys.state().queuedGrep, "widget", "cycling keeps the applied pattern");
+  assert.deepEqual(keys.state().queuedRows.map((r) => r.text), ["clean widget"]);
+
+  keys.handleKey("/", { name: "/" });
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().queuedGrep, null, "an empty line clears the search");
+  assert.equal(keys.state().queuedRows.length, 2, "every remaining row shows again");
+});
+
 test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps the selection", () => {
   const root = makeRoot();
   enqueuePrompt(root, "director text");

@@ -527,7 +527,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   `tumwater prompt --cancel` uses, and `Ctrl+E` rewrites the selected one in place through the
   same `readQueuedPromptBody`/`editQueuedFile` pair the dashboard's Inbox tab Edit uses
   (`tumwater prompt --edit` at the CLI), carrying the entry's position, enqueue stamp,
-  send-later marker, and attached images over the rewrite; Esc returns to the list.
+  send-later marker, and attached images over the rewrite; Esc returns to the list. `/` keeps only
+  the queued prompts whose text contains the typed text, each under its unfiltered per-role number
+  (the `tumwater prompt --list --grep` filter); an empty line clears it.
   `Ctrl+F` on an unpaused team opens a one-line pause editor (`[duration] [reason]`, e.g.
   `2h deploy freeze`; empty pauses until resumed; Enter pauses, Esc cancels) and on a paused
   team resumes at once, through the same marker `tumwater pause --for/--reason`/`resume`

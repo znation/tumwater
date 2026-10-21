@@ -34,6 +34,8 @@ interface TuiPaneState {
    * row's full prompt under a cancel header instead of the numbered list. */
   selectedQueued: number | null;
   queuedRows: QueuedListRow[];
+  /** The Inbox pane's applied `/` search; the pane names it above the filtered list. */
+  queuedGrep?: string | null;
   paneCache: string | null;
   /** The notes view's rendered Markdown (roleInspectMarkdown), computed once on Ctrl+N
    * entry like paneCache; null when the live transcript is shown. */
@@ -267,9 +269,16 @@ export function paneBody(
         emptyNote: "(inbox empty)",
       };
     }
-    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
+    // An applied search names itself above the list; one that matched nothing says so instead
+    // of claiming the inbox is empty.
+    const searchLine = pane.grep ? [toneLine(`search: "${pane.grep}"`, width, "bold")] : [];
+    if (pane.grep && state.queuedRows.length === 0) {
+      return { body: [...searchLine, toneLine(`(no queued prompt matches "${pane.grep}")`, width)], emptyNote: "(inbox empty)" };
+    }
+    const listBudget = Math.max(1, eventBudget - searchLine.length);
+    const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, listBudget, width) : { lines: [] };
     return {
-      body: win.lines.map((l) => toneLine(l, width)),
+      body: [...searchLine, ...win.lines.map((l) => toneLine(l, width))],
       emptyNote: "(inbox empty)",
     };
   }

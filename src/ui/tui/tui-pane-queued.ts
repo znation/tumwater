@@ -1,4 +1,4 @@
-import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
+import { listWideScope, queuedListRows, queuedRowsMatching, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { movePromptToTop } from "../../inbox/inbox-top.js";
 import { moveEntrySelection } from "./tui-backlog.js";
@@ -21,6 +21,10 @@ export function createQueuedPane(
   // renderQueuedList string was built from, so a selection addresses a row's role/position
   // without re-reading the queue on every frame.
   let queuedRows: QueuedListRow[] = [];
+  // The Inbox pane's active `/` search, or null: keeps only the rows whose text contains it,
+  // each still under its unfiltered per-role position. Persists across Ctrl+T cycles, like
+  // backlogGrep.
+  let queuedGrep: string | null = null;
 
   // Re-read the Queued pane's rows and cached list after the queue changed (entry or cancel)
   // and clamp the row selection to the shortened queue — a selection past the new end lands
@@ -30,7 +34,8 @@ export function createQueuedPane(
   // its head. The one home of the queuedRows/paneCache pairing the Ctrl+T entry and the Ctrl+X
   // cancel share, so the pane's list and its selectable rows cannot drift.
   const refreshQueued = (): void => {
-    queuedRows = queuedListRows(session.root, null, listWideScope(session.root));
+    queuedRows = queuedRowsMatching(queuedListRows(session.root, null, listWideScope(session.root)), queuedGrep);
+    session.queuedSearchLines = queuedGrep ? 1 : 0;
     session.paneCache = renderQueuedList(queuedRows, session.now());
     selectedQueued = selectedQueued === null || queuedRows.length === 0
       ? null
@@ -157,8 +162,16 @@ export function createQueuedPane(
       selectedQueued = null;
     },
     refreshQueued,
-    state() {
-      return { selectedQueued, queuedRows };
+    applySearch(pattern: string | null): void {
+      // The `/` editor's Enter: sets the applied pattern, clears the row selection, and
+      // re-reads the rows so the list shows only the matches.
+      queuedGrep = pattern;
+      selectedQueued = null;
+      refreshQueued();
+      session.requestRender();
     },
-  } satisfies TuiPaneModule & { refreshQueued(): void };
+    state() {
+      return { selectedQueued, queuedRows, queuedGrep };
+    },
+  } satisfies TuiPaneModule & { refreshQueued(): void; applySearch(pattern: string | null): void };
 }

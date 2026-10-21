@@ -28,7 +28,7 @@ import {
 } from "./inbox-edit.js";
 import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
-import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
+import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, queuedRowsMatching, renderQueuedList } from "./inbox.js";
 import { durationLabel, parseRoleListFlag } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
@@ -184,8 +184,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     const listRoles = parseRoleListFlag(args, validIds as string[]);
     const allRows = queuedListRows(root, null, validIds as string[]);
     const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
-    const needle = parsed.grep?.toLowerCase() ?? null;
-    const prompts = needle === null ? scoped : scoped.filter((row) => row.text.toLowerCase().includes(needle));
+    const prompts = queuedRowsMatching(scoped, parsed.grep ?? null);
     if (parsed.json) {
       // An empty queue still prints the document, the history --json empty-rows precedent.
       sayJson({ prompts });

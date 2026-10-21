@@ -118,6 +118,8 @@ export interface TuiEditorSession {
   applyActivitySearch(pattern: string | null): void;
   /** Apply a finished Backlog search on the pane. */
   applyBacklogSearch(pattern: string | null): void;
+  /** Apply a finished Inbox search on the pane. */
+  applyQueuedSearch(pattern: string | null): void;
   /** Apply a finished Transcript search on the viewed role's pane. */
   applyTranscriptSearch(pattern: string | null): void;
   /** Flash a one-line notice on the prompt line. */
@@ -214,6 +216,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     applyHistorySearch: deps.applyHistorySearch,
     applyActivitySearch: deps.applyActivitySearch,
     applyBacklogSearch: deps.applyBacklogSearch,
+    applyQueuedSearch: deps.applyQueuedSearch,
     applyTranscriptSearch: deps.applyTranscriptSearch,
     flashMessage: deps.flashMessage,
     flashError: deps.flashError,

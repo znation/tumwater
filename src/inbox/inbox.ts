@@ -282,6 +282,15 @@ function queuedAgeSuffix(queuedAtMs: number | null, notBeforeMs: number | null, 
   return ` (queued ${humanAgo(queuedAtMs, now)})`;
 }
 
+/** Keep the rows whose prompt text contains `grep`, case-insensitively, each row still carrying
+ * its unfiltered per-role `position`. A null grep keeps every row. The one filter `prompt --list
+ * --grep` and the TUI Inbox pane's `/` search share. */
+export function queuedRowsMatching(rows: readonly QueuedListRow[], grep: string | null): QueuedListRow[] {
+  if (grep === null) return [...rows];
+  const needle = grep.toLowerCase();
+  return rows.filter((row) => row.text.toLowerCase().includes(needle));
+}
+
 /** Render the list-shaped queue view as the prose `prompt --list` prints and the TUI Queued
  * pane shows: consecutive rows grouped by role, one `<role>:` section per role holding
  * `"<position>. <text><queuedAgeSuffix>"` lines, sections joined by `\n`. Empty rows render

@@ -9,6 +9,7 @@ import path from "node:path";import {
   inboxSize,
   peekRolePrompt,
   queuedPrompts,
+  queuedRowsMatching,
   queuedRolePromptEntries,
   queuedRolePrompts,
 } from "../src/inbox/inbox.js";
@@ -484,4 +485,11 @@ test("every file-addressed queue function refuses a name failing queueFileNamePr
   for (const type of ["prompt_cancelled", "prompt_edited", "prompt_topped"] as const) {
     assert.deepEqual(eventsOfType(root, type), [], type);
   }
+});
+
+test("queuedRowsMatching keeps case-insensitive matches under their unfiltered positions", () => {
+  const row = (role: string, position: number, text: string) => ({ role, position, text } as Parameters<typeof queuedRowsMatching>[0][number]);
+  const rows = [row("director", 1, "Fix Widget"), row("director", 2, "other"), row("clean", 1, "widget two")];
+  assert.deepEqual(queuedRowsMatching(rows, "WIDGET").map((r) => `${r.role}#${r.position}`), ["director#1", "clean#1"]);
+  assert.deepEqual(queuedRowsMatching(rows, null), rows);
 });

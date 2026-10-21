@@ -129,6 +129,12 @@ test("an empty queued pane holds the no-prompts note, and a cached list windows 
   assert.equal(cached.emptyNote, "(inbox empty)");
 });
 
+test("a queued pane with a search names it, and says so when no prompt matches", () => {
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const none = paneBody({ kind: "queued", grep: "x" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
+  assert.deepEqual(none.body.map((l) => l.map((s) => s.text).join("")), ['search: "x"', '(no queued prompt matches "x")']);
+});
+
 test("the health pane holds the loading note while uncached and windows the cached report once set", () => {
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const empty = paneBody({ kind: "health" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });

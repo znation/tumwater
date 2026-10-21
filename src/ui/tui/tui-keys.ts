@@ -164,6 +164,8 @@ interface TuiKeysState {
   /** The Queued pane's cached rows — the same list renderQueuedList printed — so a selection
    * addresses a row's role/position without re-reading the queue each frame. */
   queuedRows: QueuedListRow[];
+  /** The Inbox pane's active free-text search (the `/` editor), or null when none. */
+  queuedGrep: string | null;
   paneCache: string | null;
   /** Whether the viewed role's pane shows its notes (Ctrl+N) instead of the transcript —
    * true only on a transcript view. */
@@ -351,6 +353,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     applyHistorySearch: panes.applyHistorySearch,
     applyActivitySearch: panes.applyActivitySearch,
     applyBacklogSearch: panes.applyBacklogSearch,
+    applyQueuedSearch: panes.applyQueuedSearch,
     applyTranscriptSearch: panes.applyTranscriptSearch,
     flashMessage,
     flashError,

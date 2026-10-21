@@ -144,6 +144,9 @@ export interface TuiPaneSession {
   /** An open backlog entry spends the pane's first line on its title, so its body pages by
    * one line less (entryBudget). */
   entryBudget: number;
+  /** Lines the Inbox pane spends above its list on an applied search (0 or 1): the list pages by
+   * that many fewer, as an open entry does by one. */
+  queuedSearchLines: number;
   /** The active Markdown/row pane's rendered body, computed once per activation. */
   paneCache: string | null;
   /** The armed backlog cancel (first Ctrl+X on a selected plan or bug), read by the second. */
@@ -195,6 +198,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     paneScroll: 0,
     eventBudget: 0,
     entryBudget: 0,
+    queuedSearchLines: 0,
     paneCache: null,
     armed: null,
     cancelArmed: null,

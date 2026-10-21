@@ -23,6 +23,8 @@ export interface TuiEditorCtx {
   activityGrep: string | null;
   /** The Backlog pane's active free-text search (the `/` editor's applied pattern). */
   backlogGrep: string | null;
+  /** The Inbox pane's active free-text search (the `/` editor's applied pattern). */
+  queuedGrep: string | null;
   /** The viewed role's live-transcript search (the `/` editor's applied pattern). */
   transcriptGrep: string | null;
   /** Whether the viewed role's pane shows its notes (Ctrl+N) instead of the live

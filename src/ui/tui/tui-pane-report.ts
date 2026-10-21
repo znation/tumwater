@@ -125,7 +125,10 @@ export function createReportPane(session: TuiPaneSession) {
       // view-index bound, the other text panes from History on): PgDn/PgUp page the cached
       // string, clamped at both ends. The total is derived from the cache, mirroring how entry
       // mode derives it from e.body; every other view ignores these keys as today.
-      session.paneScroll = pageMarkdownBody(session.paneScroll, session.paneCache, session.eventBudget, page);
+      const budget = session.view === session.roleIds.length + 6
+        ? Math.max(1, session.eventBudget - session.queuedSearchLines)
+        : session.eventBudget;
+      session.paneScroll = pageMarkdownBody(session.paneScroll, session.paneCache, budget, page);
       session.requestRender();
       return true;
     }
