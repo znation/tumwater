@@ -528,7 +528,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   pane live transcript → notes → change and back: the notes step shows the role's notes and next
   run's assembled prompt, and `Ctrl+X` pressed twice there clears the notes (as `tumwater role <id>
   --clear-notes` does) (the same two things the dashboard drawer shows; the tab strip reads
-  Notes and PgUp/PgDn page it), and the change step is the role's collected unmerged work —
+  Notes and PgUp/PgDn page it), and the change step is headed by the role's waiting merges under their whole-queue positions
+  when it has any (mirroring `tumwater queue --role <id>`), then the role's collected unmerged work —
   branch, commits ahead of main, the ahead-of-main patch, and its dirty files and uncommitted
   patch — the same `collectRoleChange`/`renderRoleChange` view `tumwater diff --role <id>` prints
   and the dashboard drawer's Pending change section shows (the tab strip reads Change, and the

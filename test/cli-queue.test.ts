@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
 import { enqueueMerge, type MergeEntry } from "../src/merge/merge-queue.js";
+import { scopeMergeQueue } from "../src/merge/merge-queue-render.js";
 import { mergeQueueDir, mergeStatePath, orchestratorStatePath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
@@ -137,4 +138,13 @@ test("queue --role rejects an unknown or empty role id", async () => {
   assert.notEqual(bad.code, 0);
   assert.match(bad.stderr, /nosuch/);
   assert.notEqual((await cli(repo, "queue", "--role", "")).code, 0);
+});
+
+test("scopeMergeQueue keeps the matching entries under their whole-queue positions", () => {
+  const whole = { entries: [entry("feature", "a".repeat(40)), entry("clean", "b".repeat(40)), entry("clean-2", "c".repeat(40))], unreadable: 1 };
+  const { view, scope } = scopeMergeQueue(whole, ["clean"], (r) => r === "clean");
+  assert.deepEqual(view.entries.map((e) => e.role), ["clean"]);
+  assert.deepEqual(scope.positions, [2]);
+  assert.equal(scope.total, 3);
+  assert.equal(view.unreadable, 1);
 });

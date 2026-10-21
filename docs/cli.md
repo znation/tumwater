@@ -86,6 +86,6 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+X` | Health | retire a disabled role's leftovers by role id (the terminal twin of `tumwater retire --role <id>` and the dashboard Settings card's Retire button) |
 | `Ctrl+R` | Transcript, Backlog, Pending, Health | send a prompt to that role; release the selected refused or waiting entry; refresh the merge queue and change roster on Pending / re-run the doctor checks on Health |
 | `Ctrl+P` / `Ctrl+W` / `Ctrl+A` / `Ctrl+V` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run / zero the role's counters |
-| `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; on notes, `Ctrl+X` pressed twice clears them and `Ctrl+E` replaces them from a file |
+| `Ctrl+N` | Transcript | cycle transcript, notes, and pending change (headed by the role's waiting merges); on notes, `Ctrl+X` pressed twice clears them and `Ctrl+E` replaces them from a file |
 | `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` / `/` | Backlog | cancel the selected entry / move it to the head of its section / edit its title (Ctrl+E again replaces title and body from a file) / file a new plan or bug / answer the selected question / filter the active entries by heading or body |
 | `Ctrl+V` / `Ctrl+E` / `Ctrl+X` | Inbox | move the selected queued prompt to the head of its role's queue / edit / cancel it |

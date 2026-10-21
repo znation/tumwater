@@ -1,6 +1,10 @@
 import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
 import { renderRoleChange } from "../../change/change-render.js";
+import { readMergeQueue } from "../../merge/merge-queue.js";
+import { renderMergeQueue, scopeMergeQueue } from "../../merge/merge-queue-render.js";
+import { orchestratorAlive } from "../../team/orchestrator-info.js";
+import { queueInFlight } from "../../status/status-polls.js";
 import { roleInspectMarkdown } from "./tui-pane.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
@@ -66,10 +70,22 @@ export function createTranscriptPane(session: TuiPaneSession) {
         changeMode = true;
         changeCache = null;
         const target = role;
+        // The role's waiting merges head the change, exact-matching this one runner id.
+        let queueText = "";
+        try {
+          const { view, scope } = scopeMergeQueue(readMergeQueue(session.root), [role], (r) => r === role);
+          if (view.entries.length > 0) {
+            const inFlight = queueInFlight(session.root, view.entries, orchestratorAlive(session.root));
+            queueText = renderMergeQueue(view, session.now(), inFlight, scope) + "\n\n";
+          }
+        } catch (err) {
+          queueText = "";
+          session.flashError(err);
+        }
         void session.collectChange(session.root, target).then(
           (change) => {
             if (!changeMode || session.roleIds[session.view - 1] !== target) return;
-            changeCache = renderRoleChange(change);
+            changeCache = queueText + renderRoleChange(change);
             session.requestRender();
           },
           (err: unknown) => {

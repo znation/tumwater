@@ -18,7 +18,7 @@ import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/bac
 import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
-import { renderMergeQueue } from "../merge/merge-queue-render.js";
+import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -176,19 +176,10 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // whole-queue positions; the in-flight marker is judged against the kept entries only, and
   // `unreadable` stays whole because an unreadable file has no role to attribute it to.
   const whole = readMergeQueue(root);
-  const positions: number[] = [];
-  const view = roles
-    ? {
-        ...whole,
-        entries: whole.entries.filter((e, i) => {
-          const kept = roles.includes(e.role) || roles.includes(baseRoleOf(e.role));
-          if (kept) positions.push(i + 1);
-          return kept;
-        }),
-      }
-    : whole;
+  const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roles.includes(r) || roles.includes(baseRoleOf(r))) : undefined;
+  const view = scoped ? scoped.view : whole;
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  const scope = roles ? { roles, positions, total: whole.entries.length } : undefined;
+  const scope = scoped?.scope;
   sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight, scope));
 }
 

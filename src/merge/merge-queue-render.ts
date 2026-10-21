@@ -40,6 +40,24 @@ export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorRev
   return note;
 }
 
+/** Narrows a whole-queue view to the entries whose role `keep` accepts, and returns the
+ * `scope` renderMergeQueue takes: the kept roles, each kept entry's 1-based place in the whole
+ * queue, and the whole queue's entry count. `unreadable` stays whole because an unreadable file
+ * has no role to attribute it to. */
+export function scopeMergeQueue(
+  whole: MergeQueueView,
+  roles: readonly string[],
+  keep: (role: string) => boolean,
+): { view: MergeQueueView; scope: { roles: readonly string[]; positions: number[]; total: number } } {
+  const positions: number[] = [];
+  const entries = whole.entries.filter((e, i) => {
+    const kept = keep(e.role);
+    if (kept) positions.push(i + 1);
+    return kept;
+  });
+  return { view: { ...whole, entries }, scope: { roles, positions, total: whole.entries.length } };
+}
+
 /** Render the queue as the text `tumwater queue` prints: a `merge queue (<depth>):` header then
  * one 1-based line per readable entry, oldest first, carrying the role, run number, short
  * pinned sha, age, and summary. An empty queue (no entries and nothing skipped) prints

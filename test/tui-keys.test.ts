@@ -4064,3 +4064,34 @@ test("the History model summary shows a run with no recorded start as (unknown)"
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.match(keys.state().paneCache ?? "", /^\(unknown\)/m);
 });
+
+test("Ctrl+N's change step heads the change with the viewed role's queued merges", async () => {
+  const root = makeRoot();
+  const view = {
+    role: "clean",
+    branch: "tumwater/clean",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 2,
+    behind: 0,
+    commits: [{ sha: "abc1234", subject: "add a thing" }],
+    diff: "",
+    dirtyFiles: ["a.ts"],
+    uncommittedDiff: "",
+  };
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "queued feature", enqueuedAt: 0 });
+  enqueueMerge(root, { role: "clean", sha: "b".repeat(40), run: 5, summary: "queued clean", enqueuedAt: 1 });
+  enqueueMerge(root, { role: "clean-2", sha: "c".repeat(40), run: 7, summary: "queued clean two", enqueuedAt: 2 });
+  const pending = Promise.resolve(view);
+  const keys = createTuiKeys({ root, quit: () => {}, requestRender: () => {}, now: () => 0, collectChange: () => pending });
+  keys.syncSnapshot(0, false, ["clean"], false);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await pending;
+  const text = keys.state().changeCache ?? "";
+  assert.ok(text.startsWith("merge queue (1 of 3, --role clean):\n  2. clean run #5"), text);
+  assert.ok(text.endsWith(renderRoleChange(view)));
+  assert.doesNotMatch(text, /clean-2 run/);
+  assert.doesNotMatch(text, /feature run #3/);
+});
