@@ -5,6 +5,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { startParentDeathWatch } from "../process/supervisor.js";
 import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { DIFF_PATH_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
@@ -104,12 +105,20 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
   return { id, rest };
 }
 
-/** `tumwater status`: the team snapshot as rendered text or as the JSON document GET
- * /api/status serves. */
-export async function cmdStatus(root: string, args: string[]): Promise<void> {
-  rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG]);
+/** `tumwater status [-f/--follow]`: the team snapshot as rendered text or as the JSON
+ * document GET /api/status serves. `-f/--follow` repaints the table every couple of seconds
+ * until Ctrl+C or the process that started it exits, so a backgrounded follow does not
+ * outlive its parent. */
+export async function cmdStatus(root: string, args: string[], seams: StatusFollowSeams = {}): Promise<void> {
+  rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, STATUS_FOLLOW_SPEC]);
+  const follow = args.includes("-f") || args.includes("--follow");
+  if (follow && args.includes("--json")) fail("status --json prints one document; -f/--follow repaints a live view — drop one of them");
   await requireReadyRepo(root);
   const scope = parseRoleListScope(root, args);
+  if (follow) {
+    await followStatus(root, scope, seams);
+    return;
+  }
   if (args.includes("--json")) {
     // Machine-readable team state — the document GET /api/status serves minus the
     // serving process's own `serverBuildSha`, printed with no server. A query, not a
@@ -120,6 +129,44 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
     const snap = snapshot(root);
     say(renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, process.stdout.isTTY ? process.stdout.columns : undefined, scope !== null));
   }
+}
+
+/** `status`'s follow flag, kept local (unannotated like the neighbouring local specs). */
+const STATUS_FOLLOW_SPEC = { names: ["-f", "--follow"] };
+/** The default repaint interval for `status -f` — a fixed cadence, no knob. */
+const STATUS_FOLLOW_INTERVAL_MS = 2000;
+
+/** Test seams for the status follow's repaint interval and parent-death watch, so a test can
+ * drive the repaint and its end without waiting on real seconds or a real TTY. */
+interface StatusFollowSeams {
+  ppid?: () => number;
+  intervalMs?: number;
+  tty?: boolean;
+}
+
+/** `tumwater status -f`'s live loop: render the table once, then repaint on an interval until
+ * Ctrl+C or the process that started this one is gone (the same parent-death rule `logs -f`
+ * uses). Repaints in place with the `watch` clear-screen shape on a TTY, and prints frames
+ * separated by a blank line when stdout is not a TTY so a piped follow stays readable. */
+async function followStatus(root: string, scope: string[] | null, seams: StatusFollowSeams): Promise<void> {
+  const tty = seams.tty ?? process.stdout.isTTY;
+  const interval = seams.intervalMs ?? STATUS_FOLLOW_INTERVAL_MS;
+  const frame = (): void => {
+    const snap = snapshot(root);
+    const text = renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, tty ? process.stdout.columns : undefined, scope !== null);
+    process.stdout.write(tty ? "\x1b[H\x1b[2J" + text + "\n" : text + "\n\n");
+  };
+  frame();
+  await new Promise<void>((resolve) => {
+    const timer = setInterval(frame, interval);
+    startParentDeathWatch(() => {
+      clearInterval(timer);
+      resolve();
+    }, {
+      ...(seams.ppid ? { ppid: seams.ppid } : {}),
+      ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
+    });
+  });
 }
 
 /** `tumwater diff`: one line per role holding pending work, the files two or more roles touch
