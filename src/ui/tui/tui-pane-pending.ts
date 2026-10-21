@@ -2,9 +2,19 @@ import { readMergeQueue } from "../../merge/merge-queue.js";
 import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
-import { renderTeamChange } from "../../change/change-render.js";
+import { renderChangeOverlaps, renderTeamChange } from "../../change/change-render.js";
+import type { ChangeOverlapsView } from "../../change/change-data.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
+
+/** The overlapping-files block under the roster: empty for a no-base view (the roster above
+ * already says the main branch is missing), else the CLI's renderChangeOverlaps under a
+ * "overlapping files (N):" heading shaped like the queue's. */
+export function pendingOverlapsText(view: ChangeOverlapsView): string {
+  if (view.state === "no-base") return "";
+  if (view.overlaps.length === 0) return renderChangeOverlaps(view);
+  return `overlapping files (${view.overlaps.length}):\n` + renderChangeOverlaps(view);
+}
 
 /** The Pending pane (view roleIds.length + 5) of the TUI (src/ui/tui/tui.tsx): the durable
  * merge queue rendered up front plus the git-backed change roster the async collector appends
@@ -21,6 +31,8 @@ export function createPendingPane(session: TuiPaneSession) {
   // Guard on the PENDING pane still being current — view === roleIds.length + 5 — not just
   // on the raw index: an operator who cycled away, or a roster change that shifted which
   // pane the same index names, must not have this resolution overwrite the pane now shown.
+  // The overlaps are read by the same collectChangeOverlaps that `tumwater diff --overlaps`
+  // and `GET /api/diff?overlaps=1` serve, and rendered through the CLI's renderChangeOverlaps.
   // The default collector degrades rather than throws, so the rejection arm only covers an
   // injected seam (or an unexpected throw).
   let refreshGen = 0;
@@ -32,10 +44,11 @@ export function createPendingPane(session: TuiPaneSession) {
     const queueView = readMergeQueue(session.root);
     const queueText = renderMergeQueue(queueView, session.now(), queueInFlight(session.root, queueView.entries, orchestratorAlive(session.root)));
     session.paneCache = queueText;
-    void session.collectPending(session.root).then(
-      (team) => {
+    void Promise.all([session.collectPending(session.root), session.collectOverlaps(session.root)]).then(
+      ([team, overlaps]) => {
         if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
-        session.paneCache = queueText + "\n\n" + renderTeamChange(team);
+        const block = pendingOverlapsText(overlaps);
+        session.paneCache = queueText + "\n\n" + renderTeamChange(team) + (block ? "\n\n" + block : "");
         session.requestRender();
       },
       (err: unknown) => {

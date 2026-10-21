@@ -1,6 +1,6 @@
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { runDetailStat } from "../../run/run-detail.js";
-import { collectTeamChanges, collectRoleChange, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
+import { collectTeamChanges, collectRoleChange, collectChangeOverlaps, type ChangeOverlapsView, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
@@ -30,6 +30,9 @@ interface TuiKeysDeps {
   /** The Pending pane's async collector; production uses change-data's collectTeamChanges.
    * Injectable so tests can resolve a fixed roster without git plumbing. */
   collectPending?(root: string): Promise<TeamChangeView>;
+  /** The Pending pane's overlapping-files collector; production uses change-data's
+   * collectChangeOverlaps. Injectable so tests need no git plumbing. */
+  collectOverlaps?(root: string): Promise<ChangeOverlapsView>;
   /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe
    * binaries or git. */
   runDoctor?(root: string): Promise<DoctorReport>;
@@ -252,6 +255,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectTeamChanges;
+  const collectOverlaps = deps.collectOverlaps ?? collectChangeOverlaps;
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
   const collectChange = deps.collectChange ?? collectRoleChange;
@@ -294,6 +298,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     flashError,
     commitBacklogEdit,
     collectPending,
+    collectOverlaps,
     runDoctor: runDoctorSeam,
     killOrphans: killOrphansSeam,
     collectChange,

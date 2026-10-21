@@ -496,6 +496,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
   label (`[merging 2m · reviewing]`, `[approved, waiting to merge]`) on an entry a running team
   is merging.
+  Below the roster it lists the files two or more roles' pending changes touch, through the same
+  `collectChangeOverlaps`/`renderChangeOverlaps` pair `tumwater diff --overlaps` prints.
   The Inbox pane lists every role's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
   per-role numbering, or the queued-age/send-later countdown suffix. Up/Down select a queued

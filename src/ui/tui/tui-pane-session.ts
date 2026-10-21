@@ -1,5 +1,5 @@
 import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
-import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
+import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
@@ -18,7 +18,7 @@ interface CancelTarget {
 }
 
 /** The seams `createTuiPanes` cannot own itself: the shell's flash pair and backlog commit, the
- * flat backlog list, the clock, and the four async collectors, each already resolved to its
+ * flat backlog list, the clock, and the five async collectors, each already resolved to its
  * default by createTuiKeys. */
 export interface TuiPanesDeps {
   root: string;
@@ -29,6 +29,7 @@ export interface TuiPanesDeps {
   flashError(err: unknown): void;
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
+  collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
@@ -155,6 +156,7 @@ export interface TuiPaneSession {
   flashError(err: unknown): void;
   commitBacklogEdit(file: string, subject: string): void;
   collectPending(root: string): Promise<TeamChangeView>;
+  collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
@@ -187,6 +189,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     flashError: deps.flashError,
     commitBacklogEdit: deps.commitBacklogEdit,
     collectPending: deps.collectPending,
+    collectOverlaps: deps.collectOverlaps,
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
     collectChange: deps.collectChange,

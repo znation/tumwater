@@ -2744,7 +2744,7 @@ and leave the file byte-identical".
 ## Role change view: every known role answers, degraded rather than failing, with a bounded patch
 
 `src/change/change-data.ts` collects what `tumwater diff`, `tumwater diff --role <id>` and the
-dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps` and the dashboard's `GET /api/diff?overlaps=1` list files held by two or more roles (`collectChangeOverlaps`).
+dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps`, the dashboard's `GET /api/diff?overlaps=1` and the TUI's Pending pane list files held by two or more roles (`collectChangeOverlaps`).
 
 ### INV-AU1: a role query never fails on a degraded team
 

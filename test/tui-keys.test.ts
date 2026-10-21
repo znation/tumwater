@@ -35,6 +35,7 @@ import { saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { setConfigKey } from "../src/config/config-write.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { pendingOverlapsText } from "../src/ui/tui/tui-pane-pending.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -2061,6 +2062,7 @@ test("the Pending pane caches the rendered team roster when collectPending resol
     quit: () => {},
     requestRender: () => (renders += 1),
     now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => pending,
   });
   keys.syncSnapshot(0, false, [], false);
@@ -2074,7 +2076,7 @@ test("the Pending pane caches the rendered team roster when collectPending resol
   const before = renders;
 
   resolvePending(team);
-  await pending;
+  await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
     "merge queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
@@ -2100,6 +2102,7 @@ test("the Pending pane renders the durable merge queue on entry, above the resol
     quit: () => {},
     requestRender: () => {},
     now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => pending,
   });
   keys.syncSnapshot(0, false, [], false);
@@ -2109,7 +2112,7 @@ test("the Pending pane renders the durable merge queue on entry, above the resol
   assert.equal(keys.state().paneCache, renderMergeQueue(readMergeQueue(root), 0));
 
   resolvePending(team);
-  await pending;
+  await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
     renderMergeQueue(readMergeQueue(root), 0) +
@@ -2128,6 +2131,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
     quit: () => {},
     requestRender: () => (renders += 1),
     now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => new Promise<typeof team>((resolve) => (resolveLate = resolve)),
   });
   keys.syncSnapshot(0, false, [], false);
@@ -2139,8 +2143,7 @@ test("a Pending collector resolution after the operator cycled away does not cac
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // cycle away to Activity before it resolves
   assert.equal(keys.state().view, 0);
   resolveLate(team);
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((r) => setImmediate(r));
   assert.equal(keys.state().paneCache, null, "a late resolution does not cache onto Activity");
 });
 
@@ -2153,6 +2156,7 @@ test("a Pending collector resolution after the roster size changed caches onto t
     quit: () => {},
     requestRender: () => {},
     now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => new Promise<typeof team>((resolve) => (resolveLate = resolve)),
   });
   keys.syncSnapshot(0, false, [], false);
@@ -2165,8 +2169,7 @@ test("a Pending collector resolution after the roster size changed caches onto t
   keys.syncSnapshot(0, false, ["feature"], false);
   assert.equal(keys.state().view, 6, "Pending keeps its selection when the roster grows");
   resolveLate(team);
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
     queueText + "\n\nno pending changes",
@@ -2189,6 +2192,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
     quit: () => {},
     requestRender: () => {},
     now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => {
       calls += 1;
       return Promise.resolve(calls === 1 ? teamA : teamB);
@@ -2198,8 +2202,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
   assert.equal(calls, 1, "entering Pending starts the collector once");
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
     "merge queue empty\n\nfeature: 2 commits ahead of main",
@@ -2208,8 +2211,7 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   // One Ctrl+R starts the collector a second time, and its resolution paints teamB's roster.
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(calls, 2, "a single Ctrl+R starts the collector a second time");
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((r) => setImmediate(r));
   assert.equal(
     keys.state().paneCache,
     "merge queue empty\n\nno pending changes",
@@ -2224,6 +2226,53 @@ test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-r
   assert.equal(keys.state().view, 0);
   keys.handleKey(undefined, { ctrl: true, name: "r" });
   assert.equal(calls, 2, "Ctrl+R off Pending does not re-read the collector");
+});
+
+test("the Pending pane lists overlapping files below the roster, through the CLI's renderChangeOverlaps", async () => {
+  const keys = createTuiKeys({
+    root: makeRoot(),
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () =>
+      Promise.resolve({
+        mainBranch: "main",
+        roles: [{ role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 1, behind: 0, commits: [], dirtyFiles: [] }],
+      }),
+    collectOverlaps: () =>
+      Promise.resolve({ mainBranch: "main", state: "ready" as const, overlaps: [{ path: "src/a.ts", roles: ["feature", "feature-2"] }] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  await new Promise((r) => setImmediate(r));
+  assert.equal(
+    keys.state().paneCache,
+    "merge queue empty\n\nfeature: 1 commit ahead of main\n\noverlapping files (1):\nsrc/a.ts: feature, feature-2",
+  );
+});
+
+test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {
+  assert.equal(
+    pendingOverlapsText({ mainBranch: "main", state: "ready", overlaps: [] }),
+    "no file is touched by two pending changes",
+  );
+  assert.equal(pendingOverlapsText({ mainBranch: "trunk", state: "no-base", overlaps: [] }), "");
+});
+
+test("a rejecting overlaps collector keeps the Pending queue and flashes the error", async () => {
+  const keys = createTuiKeys({
+    root: makeRoot(),
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.reject(new Error("boom")),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  await new Promise((r) => setImmediate(r));
+  assert.equal(keys.state().paneCache, "merge queue empty");
+  assert.equal(keys.state().flash, "error: boom");
 });
 
 test("Ctrl+N cycles transcript → notes → change and back, caching the collector's render", async () => {
