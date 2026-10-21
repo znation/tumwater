@@ -147,7 +147,8 @@ claimed entry. So instead of a second change per runner, a role gets more runner
   older green commit allows. A commit with no green full-check verdict is never deployed. This keeps
   the green-only redeploy rule once main can be red between merges.
 - **Part 6: `check.mergeCommand`.** A new check key names what must pass inside the merge lock.
-  Unset, nothing changes. Set (tumwater.json: `"mergeCommand": "npm run test:gate"`):
+  It defaults to `check.gateCommand` (see "Defaults"); `""` keeps the full check in the lock.
+  When it is in effect:
   - `verifyMerge` and the batch path run it instead of the full check, and skip it when the rebased
     tree is the tree the gate already verified;
   - its greens never seed main's verdict cache (the watch does that);
@@ -214,9 +215,25 @@ after merging. Without a gate command the wording is unchanged. This was 12% of 
 
 A new `review.afterMerge` list names roles whose changes merge once the gate passes, without a
 review first. The reviewer then reviews the merged commit (`C^..C`); a rejection reverts C through
-part 4's revert path and hands it back as a revision. It ships empty; tumwater.json lists `clean`,
-`dedupe` and `coverage`, the high-volume small-diff code roles (readme's changes are Markdown, which
-`review.exemptPaths` already skips). Every other role keeps review before merge.
+part 4's revert path and hands it back as a revision. It defaults to `clean`, `dedupe` and
+`coverage`, the high-volume small-diff code roles (see "Defaults"; readme's changes are Markdown,
+which `review.exemptPaths` already skips). Every other role keeps review before merge.
+
+## Defaults
+
+Decided 2026-10-21 by you. Parts 6 and 14 shipped both switches as opt-in keys, and tumwater.json is
+gitignored, so no team commit could turn them on: as of 2026-10-21 02:24 the merge lock still ran
+the full `npm test` (142–330 s per merge). Both become defaults instead:
+
+- **`check.mergeCommand` defaults to `check.gateCommand`.** A project that declared a cheaper gate
+  check merges on it, and its full check runs after the merge. A project with no gate command keeps
+  the full check in the lock, because tumwater cannot guess a cheaper check for an arbitrary
+  project. `"mergeCommand": ""` opts out and keeps the full check in the lock.
+- **`review.afterMerge` defaults to `["clean", "dedupe", "coverage"]`** for every project. `[]` opts
+  out, so every role is reviewed before it merges.
+
+A config that leaves either key out gets the default; tumwater never writes a default into the
+file.
 
 ## What stays
 
@@ -245,6 +262,8 @@ part 4's revert path and hands it back as a revision. It ships empty; tumwater.j
 - **D5: what tumwater cannot name, it does not excuse.** Known failures and quarantine work from
   parsed test titles (node:test's `✖` lines today); any other failure keeps today's fail-closed
   handling, so other projects lose nothing.
+- **D6: both switches are on by default** (decided 2026-10-21 by you; see "Defaults"), with an
+  explicit `""` or `[]` to opt out.
 
 ## Risks
 

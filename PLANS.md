@@ -6,6 +6,41 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Merge on `check.gateCommand` when `check.mergeCommand` is unset, and review clean, dedupe and coverage after merging by default (planned 2026-10-21 by user; design in plans/fast-merge.md "Defaults"; touches src/build/build-check-detect.ts src/config/config.ts src/config/config-validation.ts src/doctor/doctor-checks.ts docs/config.md docs/how-it-works.md DEVELOPMENT.md and their tests)
+
+**Goal.** Fast merge parts 6/14 and 14/14 shipped `check.mergeCommand` and `review.afterMerge` as opt-in keys. tumwater.json is gitignored, so no team commit could set them. On 2026-10-21 the merge lock still ran the full `npm test` on every code merge (142–330 s each, the latest at 02:24), and every role was still reviewed before merging. Make both on by default (decided 2026-10-21 by you): a project that declared `check.gateCommand` merges on it, and clean, dedupe and coverage are reviewed after merging, unless the config opts out. This repo's tumwater.json sets `gateCommand`, so both switches take effect here at the next redeploy.
+
+**Approach.**
+- `mergeCommandOf` (src/build/build-check-detect.ts ~148) is the one accessor every merge-path reader uses. Change only it:
+  - key absent → `gateCommandOf(config)`;
+  - a non-blank string → that string;
+  - a blank string (`""`) → undefined: the explicit opt-out, which keeps the full check in the lock even when a gate command is set.
+
+  Update its doc comment, and the comment at src/config/config-validation.ts (~361), to say so.
+- `review.afterMerge`: add `afterMerge: ["clean", "dedupe", "coverage"]` to `defaultConfig().review` (src/config/config.ts ~142). `overlayDefaults` already merges `review` key by key, so a config that omits the key inherits it, and `"afterMerge": []` opts out. The readers (src/review/review.ts ~350, src/review/post-merge-review.ts ~36) need no change.
+- Never write a default into tumwater.json. A config write through the existing writers (the TUI and dashboard editors, the director's config requests) leaves an absent `mergeCommand` or `afterMerge` absent. Check this against the writer INV-B3 binds (docs/invariants.md), and add a test if none covers it.
+- `tumwater doctor`'s `check` row (`checkBuildCheck`, src/doctor/doctor-checks.ts ~1010) says what the merge lock runs and where the full check runs. Examples: `npm test · merge lock runs npm run test:gate, full check after merging`, or `… full check in the merge lock`. When the after-merge list is non-empty, it also names those roles. On 2026-10-21 you could not tell from any surface whether these switches were on.
+- Docs:
+  - docs/config.md: the `check` row says `mergeCommand` defaults to `gateCommand` and that `""` keeps the full check in the lock. The `review` row's default gains `"afterMerge":["clean","dedupe","coverage"]`, and the row says `[]` opts out.
+  - docs/how-it-works.md (~73, ~231) and DEVELOPMENT.md (~40-42): the same defaults.
+- Tests that assumed the old defaults change only their fixture config, not their assertions:
+  - Merge tests that set `gateCommand` and expect the full check in the lock set `mergeCommand: ""`.
+  - Tests that expect clean, dedupe or coverage to be reviewed before merging set `afterMerge: []`.
+
+**Files touched.**
+- Source: src/build/build-check-detect.ts, src/config/config.ts, src/config/config-validation.ts (comment only), src/doctor/doctor-checks.ts.
+- Docs: docs/config.md, docs/how-it-works.md, DEVELOPMENT.md.
+- Tests: test/build-check-detect.test.ts, test/config-validation-check.test.ts, test/config-write.test.ts, test/post-merge-review.test.ts, the doctor tests for `checkBuildCheck`, and the fixture configs of merge and review tests that relied on the old defaults.
+
+**Acceptance criteria.**
+- With `check.gateCommand` set and no `mergeCommand`, `mergeCommandOf` returns the gate command. A fake merge runs it in the lock, not the full check, and the main watch runs the full check afterwards.
+- With `"mergeCommand": ""` and a gate command, the in-lock check is the full check, as before Fast merge part 6/14.
+- With neither key set, the full check runs in the lock, as today.
+- With no `review.afterMerge` in the file, a clean change merges with no `review_start` before its `merged` event, and gets an `afterMerge` review. With `"afterMerge": []`, it is reviewed before merging.
+- Writing an unrelated key through the config writer leaves both keys absent from the file.
+- doctor's `check` row names the in-lock command, where the full check runs, and the roles reviewed after merging.
+- `npm test` passes.
+
 ### Dashboard History gains a Newest failure button that opens the team's newest failing run, the `history --last --result problems` twin (planned 2026-10-20 by the plan role; independent of every eligible plan: the TUI Inbox `/` search plan and the TUI Transcript change step Ctrl+Y plan change only src/ui/tui, src/inbox and docs/cli.md's TUI keys table. This plan changes only src/ui/gui/gui-client-history.ts, test/gui-client-history.test.ts, docs/how-it-works.md and docs/cli.md's History row. Touches src/ui/gui/gui-client-history.ts test/gui-client-history.test.ts docs/how-it-works.md docs/cli.md)
 
 **Refused 2026-10-21 by feature: the finished plan kept being rejected for landing in the archive (PLANS-DONE.md) instead of PLANS.md's ## Done, the review chain hit its cap, and tumwater's rejection directs not to re-author this theme**
