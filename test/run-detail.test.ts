@@ -224,7 +224,7 @@ test("cmdRunDetail fails with the usage on a missing, unknown, or extra position
   await initProject(repo, "run arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdRunDetail(repo, ["nosuch", "3"], false));
@@ -304,7 +304,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last \[--result <class>\[,\.\.\.\]\] \[--model <selector>\[,\.\.\.\]\]\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -657,4 +657,74 @@ test("history --transcript --prompt shows the run's own prompt, and --prompt nee
   const viaCli = await cli(repo, "history", "bugfix", "2", "--transcript", "--prompt");
   assert.equal(viaCli.code, 0);
   assert.ok(viaCli.stdout.includes("asked-two"));
+});
+
+test("cmdRunDetail --last --model picks the newest run on the listed models", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last model");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 2, model: "a" }),
+    end({ ts: 2000, run: 2, result: "changed" }),
+    start({ ts: 3000, run: 5, model: "b" }),
+    end({ ts: 4000, run: 5, result: "error" }),
+    start({ ts: 5000, run: 7, model: "a" }),
+    end({ ts: 6000, run: 7, result: "no_change" }),
+    start({ ts: 7000, run: 9 }),
+    end({ ts: 8000, run: 9, result: "changed" }),
+  ]);
+  const out = async (argv: string[], opts: { last?: boolean; result?: string; model?: string } = {}, json = false) =>
+    (await expectOkAsync(() => cmdRunDetail(repo, argv, json, opts))).stdout;
+  const run7 = await out(["bugfix", "7"]);
+  assert.equal(await out(["bugfix"], { last: true, model: "a" }), run7);
+  assert.equal(await out(["bugfix"], { last: true, model: "b" }), await out(["bugfix", "5"]));
+  assert.equal(await out(["bugfix"], { last: true, model: "b,a" }), run7);
+  assert.equal(await out(["bugfix"], { last: true, model: "a", result: "merged" }), await out(["bugfix", "2"]));
+  assert.deepEqual(
+    JSON.parse(await out(["bugfix"], { last: true, model: "a" }, true)),
+    JSON.parse(await out(["bugfix", "7"], {}, true)),
+  );
+});
+
+test("--last --model with no matching run: not-found line at exit 0, null under --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last model miss");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 2, model: "b" }),
+    end({ ts: 2000, run: 2, result: "changed" }),
+  ]);
+  const miss = await expectOkAsync(() => cmdRunDetail(repo, ["bugfix"], false, { last: true, model: "zzz" }));
+  assert.match(miss.stdout, /^no completed run on model "zzz" for bugfix in the scanned window/);
+  const both = await expectOkAsync(() =>
+    cmdRunDetail(repo, ["bugfix"], false, { last: true, model: "b", result: "refused" }),
+  );
+  assert.match(both.stdout, /^no completed run with result "refused" on model "b" for bugfix/);
+  const json = await expectOkAsync(() => cmdRunDetail(repo, ["bugfix"], true, { last: true, model: "zzz" }));
+  assert.equal(JSON.parse(json.stdout), null);
+});
+
+test("--model needs --last and a selector", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run model guards");
+  assert.match(
+    await expectFailAsync(() => cmdRunDetail(repo, ["bugfix", "5"], false, { model: "a" })),
+    /--model needs --last/,
+  );
+  assert.match(
+    await expectFailAsync(() => cmdRunDetail(repo, ["bugfix"], false, { last: true, model: "," })),
+    /history --model needs a model selector/,
+  );
+});
+
+test("history <role> --last --model <selector> through the CLI is not read as a run number", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last model cli");
+  writeEvents(repo, [
+    start({ ts: 3000, run: 5, model: "b" }),
+    end({ ts: 4000, run: 5, result: "error" }),
+    start({ ts: 5000, run: 7, model: "a" }),
+    end({ ts: 6000, run: 7, result: "no_change" }),
+  ]);
+  const r = await cli(repo, "history", "bugfix", "--last", "--model", "b");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^bugfix run #5 /);
 });

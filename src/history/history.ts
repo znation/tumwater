@@ -10,6 +10,17 @@ import { eventsLogPath } from "../paths.js";
 import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 
+/** Parse a `--model` value: a comma list of model selectors, deduplicated in first-seen order.
+ * A missing, empty or all-commas value fails with HISTORY_MODEL_VALUE_ERROR; selectors have no
+ * closed vocabulary, so none is rejected as unknown. Shared by the listing and the one-run
+ * trail's `--last --model`. */
+export function parseHistoryModelList(raw: string | undefined): string[] {
+  if (raw === undefined || raw === "") fail(HISTORY_MODEL_VALUE_ERROR);
+  const pieces = splitCommaListUnique(raw);
+  if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
+  return pieces;
+}
+
 /** `tumwater history [--role <id>[,<id>...]] [-n N]`: one row per completed run, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `run_end` events src/run/run-finalize.ts already writes, so this
@@ -153,9 +164,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const modelRaw = flagValue(rest, "--model");
   let models: string[] | null = null;
   if (modelRaw !== null) {
-    if (modelRaw === undefined || modelRaw === "") fail(HISTORY_MODEL_VALUE_ERROR);
-    const pieces = splitCommaListUnique(modelRaw);
-    if (pieces.length === 0) fail(HISTORY_MODEL_VALUE_ERROR);
+    const pieces = parseHistoryModelList(modelRaw);
     models = pieces;
     rows = runRowsOnModels(rows, pieces);
   }

@@ -151,7 +151,7 @@ Usage:
                                    instead of the rows; with --json, ${SUMMARY_JSON_KEYS}
                                    --by model groups the summary by the model each run started on instead
                                    of by role; with --json, { models, total }
-  tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
+  tumwater history <role> [<n>] [--last [--result <class>[,...]] [--model <selector>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
                                    One run's full event trail — a summary header (result, or
                                    in flight, with duration, tokens and cost, and the commit)
                                    then every event of that run in time order; a run still in
@@ -161,6 +161,9 @@ Usage:
                                    one; --result <class>[,...] (with --last) picks the newest
                                    run in the listed outcome classes instead (the listing's
                                    --result classes; scans the role's last 200 runs);
+                                   --model <selector>[,...] (with --last) picks the newest
+                                   run that started on a listed model (the listing's --model
+                                   match; composes with --result);
                                    --stat appends the commit's per-file git show --stat
                                    summary; --patch appends the commit's full git show patch
                                    (after --stat's summary when both are given);

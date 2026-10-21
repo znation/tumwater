@@ -44,9 +44,9 @@ export function rejectRepeatFlag(seen: boolean, flag: string): void {
   if (seen) fail(`${flag} may only be given once`);
 }
 
-/** The shared body of parseGrepFlag and parseTypeFlag: the flag's value (null when absent)
- * alongside `rest`, the args with the value token removed, failing with `missingValueError`
- * when the flag is valueless or its value is empty. */
+/** The shared body of the `parse*Flag` helpers (grep, type, result, model): the flag's
+ * value (null when absent) alongside `rest`, the args with the value token removed, failing
+ * with `missingValueError` when the flag is valueless or its value is empty. */
 function takeValuedFlag(
   args: string[],
   flag: string,
@@ -94,6 +94,15 @@ export function parseTypeFlag(args: string[], missingValueError: string): { rest
  * (parseHistoryResultList); a valueless or empty value fails with `missingValueError`. */
 export function parseResultFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
   const { rest, value } = takeValuedFlag(args, "--result", missingValueError);
+  return { rest, raw: value };
+}
+
+/** Parse an optional `--model <selector>[,...]` flag for the history trail form: the raw value
+ * (null when absent) alongside `rest`, the args with the value token removed so a selector
+ * cannot be read as a positional. Validation belongs to the caller (parseHistoryModelList); a
+ * valueless or empty value fails with `missingValueError`. */
+export function parseModelFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
+  const { rest, value } = takeValuedFlag(args, "--model", missingValueError);
   return { rest, raw: value };
 }
 
