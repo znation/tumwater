@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
-import { test } from "node:test";
+import { test, type TestContext } from "node:test";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { realGitFromXcrun } from "../src/git/xcrun-git.js";
+import { pidAlive } from "../src/process/process.js";
+import { makeRunMarker, runMarkerEnv, sweepRunMarker } from "../src/process/run-marker.js";
 import { SUPERVISED_ENV, SUPERVISOR_PID_ENV } from "../src/process/supervisor.js";
 import { DASHBOARD_CHILD_ENV } from "../src/redeploy/self-reload.js";
+import { OWNER_PID_ENV } from "./helpers/exit-with-owner.js";
 import { readJson } from "./helpers/json-read.js";
+import { waitFor } from "./helpers/wait.js";
 import { coverageRowsFromDumps, formatCoverageTable } from "./coverage-table.js";
 import {
   buildNodeTestArgs,
@@ -26,7 +30,7 @@ import {
   timedOutFailure,
 } from "./test-runner.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
+import { armVictimKill, exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { withWedgedXcrun, xcrunProbeUnsupported } from "./helpers/wedged-xcrun.js";
 
 /** A temp dir standing in for dist/test, seeded with the given compiled file names. */
@@ -279,7 +283,7 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
   assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
 });
 
-test("suiteEnv drops every variable the harness resolves, so a team-started suite matches a hand-run one", () => {
+test("suiteEnv drops every variable the harness resolves but the run's mark, and makes the runner the suite's owner", () => {
   // BUGS.md 2026-09-28: resolveBackendBin prefers TUMWATER_PI_BIN to PATH, and a team's build
   // checks and pi tool calls inherit the operator's export, so every fake-pi test spawned the
   // binary it named instead of the shim the test had put on PATH. The same leak applies to the
@@ -296,17 +300,20 @@ test("suiteEnv drops every variable the harness resolves, so a team-started suit
     HOME: "/home/operator",
   };
   const scratch = tmpdir("suite-env-");
-  const env = suiteEnv(scratch, base);
+  const env = suiteEnv(scratch, base, 777);
   assert.equal("TUMWATER_PI_BIN" in env, false, "resolveBackendBin must fall through to the fakes on PATH");
   assert.equal(SUPERVISED_ENV in env, false, "a CLI child's `run` must take its supervisor half");
   assert.equal(SUPERVISOR_PID_ENV in env, false, "an inherited supervisor pid must not outlive the supervisor it named");
   assert.equal("TUMWATER_NOTES_PATH" in env, false, "a non-authoring run must not carry a note");
-  assert.equal("TUMWATER_RUN" in env, false, "a spawned run must start its marker from scratch");
   assert.equal(DASHBOARD_CHILD_ENV in env, false, "a reload must take the supervisor branch");
 
-  // Everything else rides through, NODE_OPTIONS included (it carries the harness's LaunchServices
-  // preload and the operator's own flags), alongside what the suite adds for git.
-  assert.equal(env.NODE_OPTIONS, "--max-old-space-size=4096");
+  // The run's mark rides through, so the run's exit sweep still reaches the suite it started.
+  assert.equal(env.TUMWATER_RUN, "4242-abcdef");
+  // The runner owns every node process in the suite: the owner preload follows the inherited
+  // NODE_OPTIONS (the harness's LaunchServices preload and the operator's own flags).
+  assert.equal(env[OWNER_PID_ENV], "777");
+  assert.match(env.NODE_OPTIONS ?? "", /^--max-old-space-size=4096 --import=file:\/\/\S+\/exit-with-owner\.js$/);
+  // Everything else rides through, alongside what the suite adds for git.
   assert.equal(env.HOME, "/home/operator");
   assert.equal(env.PATH, "/no/such/dir");
   assert.equal(env.GIT_TEMPLATE_DIR, path.join(scratch, "git-templates"));
@@ -318,6 +325,73 @@ test("suiteEnv drops every variable the harness resolves, so a team-started suit
   assert.equal(base.TUMWATER_NOTES_PATH, "/state/notes/feature.md");
   assert.equal(base.TUMWATER_RUN, "4242-abcdef");
   assert.equal(base[DASHBOARD_CHILD_ENV], "4242");
+});
+
+/** Start a stand-in for main() over one hung test file: a process that spawns node --test the way
+ * main() does (spawnSync under suiteEnv) and blocks in that call, with `env` as its own
+ * environment. Resolves once the file's worker is running, with the stand-in and the pids of node
+ * --test and that worker, each SIGKILLed after the test whatever happens. */
+async function startHungSuite(t: TestContext, env: NodeJS.ProcessEnv): Promise<{ runner: ChildProcess; suite: number[] }> {
+  const dir = tmpdir("hung-suite-");
+  const pidsFile = path.join(dir, "pids");
+  const hangFile = path.join(dir, "hang.test.mjs");
+  // The worker records its parent's pid (node --test) and its own, then never settles.
+  fs.writeFileSync(
+    hangFile,
+    [
+      `import { test } from "node:test";`,
+      `import fs from "node:fs";`,
+      `test("hangs", () => {`,
+      `  fs.writeFileSync(${JSON.stringify(pidsFile)}, process.ppid + " " + process.pid);`,
+      `  return new Promise(() => setInterval(() => {}, 60_000));`,
+      `});`,
+    ].join("\n"),
+  );
+  const standIn = [
+    `const { suiteEnv } = await import(${JSON.stringify(new URL("./test-runner.js", import.meta.url).href)});`,
+    `const { spawnSync } = await import("node:child_process");`,
+    `spawnSync(process.execPath, ["--test", ${JSON.stringify(hangFile)}], { stdio: "ignore", env: suiteEnv(${JSON.stringify(dir)}) });`,
+  ].join("\n");
+  const runner = spawn(process.execPath, ["--input-type=module", "-e", standIn], { stdio: "ignore", env });
+  armVictimKill(t, runner);
+  let suite: number[] = [];
+  t.after(() => {
+    for (const pid of suite) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // Already gone — the expected outcome.
+      }
+    }
+  });
+  const readPids = (): number[] => {
+    try {
+      return fs.readFileSync(pidsFile, "utf8").trim().split(" ").map(Number).filter((n) => n > 0);
+    } catch {
+      return [];
+    }
+  };
+  await waitFor(() => (suite = readPids()).length === 2, "the hung test file to start under node --test", 20_000);
+  return { runner, suite };
+}
+
+test("a runner killed with SIGTERM takes its node --test run down with it", async (t) => {
+  // 2026-10-21: an agent stopped hung suites with `kill $PID`. That killed only the runner, and
+  // node --test and its workers ran on at PPID 1 until the host could start no process at all.
+  const { runner, suite } = await startHungSuite(t, exitWithOwnerEnv(runnerEnv()));
+  assert.ok(suite.every(pidAlive), "node --test and its worker run while the runner lives");
+  process.kill(runner.pid as number, "SIGTERM");
+  await waitFor(() => !suite.some(pidAlive), "node --test and its worker to follow the killed runner out", 10_000);
+});
+
+test("a run's exit sweep reaches the node --test run of a suite started inside the run", async (t) => {
+  const marker = makeRunMarker();
+  const { suite } = await startHungSuite(t, exitWithOwnerEnv(runMarkerEnv(runnerEnv(), marker)));
+  // The runner, node --test and its worker all carry the run's mark. While suiteEnv dropped the
+  // mark, only the runner did, and the sweep left the suite running.
+  const signaled = await sweepRunMarker(marker);
+  assert.ok(signaled >= 3, `the sweep signals the runner, node --test and its worker (signaled ${signaled})`);
+  await waitFor(() => !suite.some(pidAlive), "the swept suite to exit", 15_000);
 });
 
 /** suiteEnv's macOS xcrun probe runs through a synchronous spawnSync, so a wedged xcrun would

@@ -2294,6 +2294,22 @@ counted as a leak. `runAgent` passes it the sweep's count and its killed flag.
 **Pinned by.** `test/run-marker.test.ts` — "leftoversSweptMessage words the sweep's count and stays
 silent for a killed or clean run".
 
+### INV-AL5: a suite the test runner starts keeps the run's mark, and its node processes exit once the runner is gone
+
+**Guarantee.** `suiteEnv` passes an inherited `TUMWATER_RUN` through to node --test, so a suite
+started inside a run carries that run's mark and the run's exit sweep reaches node --test and its
+workers. It also makes the runner the owner of every node process in the suite through the
+exit-with-owner preload, so when the runner dies, by SIGTERM or SIGKILL, node --test and its
+workers exit within the preload's poll. main() blocks in spawnSync, where no signal handler can
+forward a kill, so the preload is the only way the suite follows the runner out.
+
+**Binds.** `test/test-runner.ts` (`suiteEnv`) and `test/helpers/exit-with-owner.ts`.
+
+**Pinned by.** `test/test-runner.test.ts` — "suiteEnv drops every variable the harness resolves but
+the run's mark, and makes the runner the suite's owner", "a runner killed with SIGTERM takes its
+node --test run down with it" and "a run's exit sweep reaches the node --test run of a suite
+started inside the run".
+
 ## Process table: the parsers skip what does not fit, cwds fails loudly, and the marker and port reads never fail
 
 `src/process/process-table.ts` only reads the host's process table: it never spawns or signals a

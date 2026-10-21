@@ -14,7 +14,9 @@ npm run test:coverage [filter]             # the unit suite with node's coverage
 Tests fake pi with a shell shim on PATH, so they run offline. `test/test-runner.ts` keeps
 tumwater's own variables out of the suite (`TUMWATER_PI_BIN`, which outranks PATH, and the
 supervisor's marker), so a suite a team starts sees the same fakes as one run by hand. Drop any
-new variable tumwater honors there too. The e2e tier stays out of the gating suite because its
+new variable tumwater honors there too. It keeps a run's `TUMWATER_RUN` mark, so the run's exit
+sweep reaps a suite the run started, and it makes itself the owner of every node process in the
+suite, so killing the runner (`kill $PID`) stops node --test and its workers too. The e2e tier stays out of the gating suite because its
 wall-clock waits are not load-proof. Coverage runs go through the runner too (`npm run
 test:coverage`), never raw `node --test` or a tree compiled elsewhere — the fakes resolve their
 shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a

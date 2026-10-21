@@ -5,6 +5,16 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Killing the test runner (`kill $PID`) leaves node --test and its workers running, and the run's exit sweep cannot see them, so orphaned suites spun the host into being unable to start any process (found by operator session 2026-10-21 from the 14:14–16:02 wedge) — fixed 2026-10-21 by operator session
+
+- **Symptom:** from 14:14:55 to the 16:02 reboot, every spawn on the team's host failed with EAGAIN or ENOMEM. That included git in every role, agents' bash, launchd's user services and other sessions, and login took minutes. systemstats' coalition counters show the team's process tree going from about 2,000 process creations a second to about 51,000, flat for 1h47m, with only about 30 of its processes alive at a time. Node in that tree spent 61% of its CPU samples inside `posix_spawn`.
+- **Cause, part 1:** test/test-runner.ts's main() runs node --test through `spawnSync`, so a SIGTERM to the runner kills only the runner. Between 13:33 and 14:05, feature-2 stopped hung `cli-diff-follow` runs about 12 times with `node dist/test/test-runner.js … & sleep N; kill $PID`, and once killed `npm run test:gate` the same way. At 14:08 its own `ps` showed at least 8 orphaned slot-20 test workers. Each was stuck in an in-process `diff -f` that repaints every 5 ms and spawns git on every frame.
+- **Cause, part 2:** b52338e5f (2026-10-06) made `suiteEnv` delete `TUMWATER_RUN`. That hid everything a hand-run suite starts from the end-of-run `sweepRunMarker`, so feature-2's sweep at 14:11 signaled 3 processes and left the suite running.
+- **Fix:** `suiteEnv` keeps `TUMWATER_RUN` and makes the runner the owner of every node process in the suite through the exit-with-owner preload. Killing the runner now takes node --test and its workers down within 250 ms, SIGKILL included, and a run's exit sweep reaches a suite it started. Pinned by three tests in test/test-runner.test.ts and INV-AL5. Each new test fails with its half of the fix reverted.
+- **Not covered:** a killed `npm run test:gate` kills npm and its `sh`, not the runner, so that suite runs on until it finishes, hits its 30-minute ceiling, or the run's exit sweep reaps it. Shell processes (`sh`, `sleep`) are not reached by the preload, and macOS `ps -E` hides their environment from the sweep. Loops that retry a failing spawn every few milliseconds (`followView`, test shells pacing on `sleep`) still turn a spawn failure into a storm.
+
+**Validation gap:** no-observability — no process list from the wedge survived the reboot; the census came from decoding `/private/var/db/systemstats` coalition counters and microstackshots, and the orphans from feature-2's own `ps` output in its transcript.
+
 ### `a green gate and the reviewer run at the same time in a second slot` failed, then passed on the same tree (quarantined by tumwater 2026-10-21) — fixed 2026-10-21 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

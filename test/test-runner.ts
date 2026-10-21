@@ -6,6 +6,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { printCoverageTable } from "./coverage-table.js";
 import { buildDepGraph, selectAffected } from "./affected-tests.js";
+import { exitWithOwnerEnv } from "./fixtures/victim-fixture.js";
 import { findOnPath } from "../src/files/files.js";
 import { readJsonFile, writeJsonAtomic } from "../src/files/json-files.js";
 import { finiteNumber } from "../src/files/json-object.js";
@@ -295,8 +296,6 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * - TUMWATER_NOTES_PATH names the role's notes file the `tumwater-notes` command reads, so a
  *   non-authoring run that inherited a run's notes path would point that command at a file
  *   the run's own contract says it must not touch (test/runner-pi.test.ts pins the empty env line).
- * - TUMWATER_RUN names the outer run a nested run's stamp is appended to (run-marker.ts), so an
- *   inherited mark made a spawned run's sweep read the suite's own process tree.
  * - DASHBOARD_CHILD_ENV makes reexecSelf exit its restart code instead of supervising, so an
  *   inherited mark changed the reload tests' branch through the ambient environment.
  *
@@ -308,8 +307,26 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * default, that would put the host's model name into every row of a config without a `model`.
  * NODE_OPTIONS is kept: the LaunchServices preload the harness adds there only changes where
  * process.title is stored (the suite's assertions about it hold either way), and it carries the
- * operator's own Node flags. */
-export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+ * operator's own Node flags.
+ *
+ * Two things deliberately reach the suite, so it can never outlive whoever started it:
+ * - TUMWATER_RUN is kept. A suite a pi run starts carries that run's mark, and the run's exit
+ *   sweep (run-marker.ts) reaps whatever of it is still alive when the run ends. A nested run
+ *   inside the suite appends its own mark and sweeps only that, so the outer mark changes
+ *   nothing the tests see. Dropping it (2026-10-06) hid every orphaned suite from the sweep: on
+ *   2026-10-21 an agent stopped hung runs with `kill $PID`, which killed only this runner, and the
+ *   orphaned workers' 5 ms repaint loops kept the host unable to start processes for 1h47m.
+ * - `owner` (this runner) becomes the owner of every node process in the suite, through the
+ *   exit-with-owner preload (victim-fixture.ts's exitWithOwnerEnv). main() waits in spawnSync,
+ *   where no signal handler can run, so the runner cannot forward a SIGTERM to node --test. The
+ *   preload is the other half: once the runner is gone, however it died, node --test and its
+ *   workers exit within the preload's 250 ms poll. A test that starts its own child under
+ *   exitWithOwnerEnv takes over as that child's owner, so the chain still ends at this runner. */
+export function suiteEnv(
+  scratch: string,
+  base: NodeJS.ProcessEnv = process.env,
+  owner: number = process.pid,
+): NodeJS.ProcessEnv {
   const env = suiteGitEnv(base);
   delete env.TUMWATER_PI_BIN;
   delete env.TUMWATER_CLAUDE_BIN;
@@ -322,7 +339,6 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   delete env[SUPERVISED_ENV];
   delete env[SUPERVISOR_PID_ENV];
   delete env.TUMWATER_NOTES_PATH;
-  delete env.TUMWATER_RUN;
   delete env[DASHBOARD_CHILD_ENV];
   env.PI_CODING_AGENT_DIR = path.join(scratch, "pi-agent");
   const templates = path.join(scratch, "git-templates");
@@ -337,7 +353,7 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
       env.PATH = `${bin}${path.delimiter}${env.PATH ?? ""}`;
     }
   }
-  return env;
+  return exitWithOwnerEnv(env, owner);
 }
 
 /** Detect a `#name` filter that matched nothing, from the TAP side-channel the run wrote to
