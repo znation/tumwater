@@ -15,6 +15,7 @@
  * `agent_unknown_event` warning after the run. `cost_unknown` is recorded the same way when a
  * run produced no authoritative `run_cost`. */
 
+import { joinParts } from "../../text/text.js";
 import { canonicalUsageBlock, isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
 import type { BackendFailureKind } from "../../pi/pi-failure.js";
 import type { TumwaterKind } from "../../pi/pi-stream.js";
@@ -119,7 +120,7 @@ function classifyResult(result: Json): {
   const terminal = str(result.terminal_reason);
   if (terminal === "aborted_tools") return {};
   if (terminal === "error_max_budget_usd") return { kind: "budgetCapped" };
-  const text = [str(result.result), str(result.error)].filter(Boolean).join(" ");
+  const text = joinParts([str(result.result), str(result.error)], " ");
   if (/error_max_budget_usd/i.test(text)) return { kind: "budgetCapped" };
   const status = nonNegativeNumber(result.api_error_status, undefined);
   if (status === 429) return { kind: "transientRateLimit" };
@@ -218,7 +219,7 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
           const maxAttempts = nonNegativeNumber(event.max_retries, undefined);
           const status = nonNegativeNumber(event.error_status, undefined);
           const error = str(event.error) ?? "";
-          const errorMessage = [status !== undefined ? `status ${status}` : "", error].filter(Boolean).join(": ");
+          const errorMessage = joinParts([status !== undefined ? `status ${status}` : "", error], ": ");
           return [
             JSON.stringify({
               type: "auto_retry_start",

@@ -1,4 +1,4 @@
-import { truncate } from "../text/text.js";
+import { truncate, joinParts } from "../text/text.js";
 import { compactTokens } from "../text/format.js";
 import { modelLabel } from "../agent/backend-traits.js";
 import { labeledLine } from "../verdict/reply-contract.js";
@@ -90,13 +90,14 @@ export function mergeCommitBody(base: CommitBody | null, update: CommitBody | nu
 /** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is
  * empty. */
 export function formatCommitBody(body: CommitBody): string {
-  return [
-    body.why && `WHY: ${body.why}`,
-    body.risk && `RISK: ${body.risk}`,
-    body.verified && `VERIFIED: ${body.verified}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return joinParts(
+    [
+      body.why && `WHY: ${body.why}`,
+      body.risk && `RISK: ${body.risk}`,
+      body.verified && `VERIFIED: ${body.verified}`,
+    ],
+    "\n",
+  );
 }
 
 /** The harness-stamped trailer line of every run commit — truth from the run's counters, not

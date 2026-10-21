@@ -36,7 +36,7 @@ import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
-import { errorMessage } from "../text/text.js";
+import { errorMessage, joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
@@ -591,7 +591,7 @@ export async function checkTierModels(
   const routedText = routedNotes.length > 0 ? routedNotes.join("; ") : "";
   const base =
     fails.length === 0 && warns.length === 0
-      ? [pairs.size > 0 ? resolvedPi : "", routedText].filter(Boolean).join("; ")
+      ? joinParts([pairs.size > 0 ? resolvedPi : "", routedText])
       : found;
   if (fails.length > 0) return failOutcome(`${base}${ompNote}`);
   return (warns.length > 0 || ompVars.length > 0 ? warnOutcome : okOutcome)(`${base}${ompNote}`);
@@ -748,7 +748,7 @@ export async function checkImageInput(
     if (!declared) return okOutcome("no models declared — every model job uses pi's own default");
     const readsLine =
       readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
-    const details = [readsLine, ...reroutes].filter(Boolean).join("; ");
+    const details = joinParts([readsLine, ...reroutes]);
     if (failed.length > 0)
       return failOutcome(
         `${failed.join("; ")} — remove "image" from its input in pi's models.json or fix the endpoint, then run \`tumwater doctor --reprobe\``,

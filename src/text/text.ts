@@ -154,6 +154,19 @@ export function joinWithMore(items: readonly string[], max: number, sep = ", "):
   return items.length > max ? `${shown}${sep}+${items.length - max} more` : shown;
 }
 
+/** Join the non-empty entries of `parts` with `sep`, dropping empty strings and nullish or
+ * falsy entries — the shape of a message assembled from optional fragments (a doctor verdict
+ * line, a commit body, a provider/model token, an error note). Each call site previously
+ * wrote `[a, ...b].filter(Boolean).join(sep)` by hand; feeding a fragment that is unset (an
+ * `undefined`/`false` from a guard) is fine, no `cond ? x : ""` placeholder needed. Returns
+ * the empty string when nothing is non-empty. */
+export function joinParts(
+  parts: ReadonlyArray<string | undefined | null | false>,
+  sep = "; ",
+): string {
+  return parts.filter((p): p is string => Boolean(p)).join(sep);
+}
+
 /** Shorten `s` to at most `max` characters: unchanged when it fits, otherwise cut to
  * `max - 1`, drop any trailing space the cut may have left behind, and append an ellipsis.
  * The result is never longer than `max`. A cut that would split a surrogate pair (an astral

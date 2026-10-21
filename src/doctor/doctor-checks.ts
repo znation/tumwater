@@ -49,7 +49,7 @@ import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
-import { errorMessage, textOr } from "../text/text.js";
+import { errorMessage, textOr, joinParts } from "../text/text.js";
 import { lowerMedian, rankCountEntries } from "../collections.js";
 import { formatBytes, formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
@@ -859,11 +859,14 @@ export async function checkTumwaterPins(root: string): Promise<CheckOutcome> {
 function claimCounts(claims: Array<{ file: string }>): string {
   const bugs = claims.filter((c) => c.file === "BUGS.md").length;
   const plans = claims.length - bugs;
-  const parts = [
-    plans > 0 ? plural(plans, "claimed plan") : "",
-    bugs > 0 ? plural(bugs, "claimed bug") : "",
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(", ") : "no claimed plans or bugs";
+  const joined = joinParts(
+    [
+      plans > 0 ? plural(plans, "claimed plan") : "",
+      bugs > 0 ? plural(bugs, "claimed bug") : "",
+    ],
+    ", ",
+  );
+  return joined || "no claimed plans or bugs";
 }
 
 /** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):

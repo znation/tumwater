@@ -18,7 +18,7 @@ import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
 import { badRequest, OK_GONE, sendJson } from "./http-body.js";
-import { errorMessage, gotSuffix } from "../text/text.js";
+import { errorMessage, gotSuffix, joinParts } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -123,12 +123,13 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
     }
     notice = guidance.notice ?? "";
   }
-  const message = [
-    submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs),
-    notice,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const message = joinParts(
+    [
+      submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs),
+      notice,
+    ],
+    "\n",
+  );
   sendJson(res, 200, { ok: true, message });
 }
 

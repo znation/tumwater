@@ -1,3 +1,4 @@
+import { joinParts } from "../text/text.js";
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { clockHm, formatTimestamp, humanAgo, nextRunPhrase, secondsUntil } from "../text/datetime.js";
@@ -72,7 +73,7 @@ function inspectBodyLines(p: RoleViewPayload): string[] {
  * `model` alone when only the model is (the join simply drops unset halves) — shared by the
  * main line and the budget-fallback line, so the two render the same wiring the same way. */
 function modelPair(provider: string | undefined, model: string | undefined): string {
-  return [provider, model].filter(Boolean).join("/");
+  return joinParts([provider, model], "/");
 }
 
 /** The backend's own-default label when no model resolves: `<agent> default` — pi's
