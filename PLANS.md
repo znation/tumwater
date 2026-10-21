@@ -197,55 +197,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - `CODEX_HOME` is set when `home` is given and absent otherwise.
 - `npm test` passes.
 
-### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/)
-
-**Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
-
-**Approach.**
-- src/agent/agent-backend.ts: `StreamTranslator` gains an optional `sessionId?(): string | undefined`, the backend session id once the stream has named it. This part only declares it; part 7/9's run-agent reads it.
-- src/agent/codex/codex-stream.ts (new): `codexTranslator()`, which follows design §5's table row by row.
-  - `bash` tool calls carry the inner command with the `/bin/zsh -lc` (or `bash -lc`) wrapper and its quoting removed.
-  - A `command_execution`'s `aggregated_output` reaches `tool_execution_end` capped at `outputLimits(window).bash` (src/pi-extension/bounded-output.ts; 16,000 characters at 128k and above): head and tail around a marker naming the cut. The stream can carry a megabyte (design finding 18).
-  - A `file_change` becomes one `edit` toolCall per changed path, `{path, kind}`, with `isError` when its `status` is not `completed`.
-  - A `command_execution` still open at `turn.completed` is closed with `tool_execution_end {isError: true}` and the result "abandoned: the run ended while this command was still running", and `codex_command_abandoned` is warned once (design finding 19).
-  - Repeated `error` items warn once per distinct message.
-  - "Reconnecting... n/m" becomes `auto_retry_start`.
-  - `turn.failed` is parsed through its JSON-string message to `status`, `error.type` / `code` and the message text, and classified per §5's table. The classifier tests the context-window signal **before** the generic 400 `invalid_request_error` branch (as src/agent/claude/claude-stream.ts's `classifyResult` tests "prompt is too long" before `CONFIG_STATUS`): a `context_window_exceeded` code, or a 400 whose message names the context window, is `contextExceeded`, never `configError`.
-  - `item.started` and `item.completed` for `todo_list` and `web_search` are dropped silently: no canonical event and no `warnings()` entry, matching design §5's `item.*` row.
-  - `finalize()` reports "codex exited without finishing its turn" when the stream saw neither `turn.completed` nor `turn.failed`.
-  - `warnings()` lists unmapped event and item types once each, plus `codex_usage_partial` when the adapter flags it.
-  - `turnCompletedUsage()` returns the stream's own figure, for the fallback.
-- src/agent/codex/codex-rollout.ts (new):
-  - `findRollout(home, id)` returns the path of `sessions/**/rollout-*-<id>.jsonl`, or null. It takes no third parameter and does no date math: it walks the `sessions` tree, matching file names that end with `-<id>.jsonl`. (Earlier text promised walking "the date dirs from the run's start date onward", but a `(home, id)`-only function has no reliable start date, and Codex's rollout name carries local time rather than UTC (finding 5), so a UTC-derived date bound can miss the file. The tree is one directory per active day, so the walk stays small; only the id match decides.)
-  - `rolloutLines(text, {sinceTurnStart, requestedModel})` reads only the records after this run's `task_started`. It returns the canonical `run_usage`, `billing` and `rate_limit` lines of design §5, or [] when the turn's records are missing or malformed. A turn with no `token_count` (a killed run, design finding 23) yields `run_usage` without any `rate_limit`.
-  - When the turn's `turn_context.model` differs from `requestedModel`, it also reports `{switchedTo: <model>}` so the adapter can warn `codex_model_switched` (design finding 24).
-  - It never returns or logs `session_meta` fields.
-- test/fixtures/codex-events.ts (new): loaders for the scrubbed captures in test/fixtures/codex-captures/ (its README.md maps each file to a finding), plus small builders for what no capture has:
-  - a used-up window, built from the binary's message ("You've hit your usage limit. … Try again at …") and a `usage_limit_reached` code;
-  - a `turn_context` whose model differs from the requested one.
-
-**Acceptance criteria.**
-- test/codex-stream.test.ts (new):
-  - edit-run.jsonl yields `session`, `agent_start`, a `message_end` with text, an `edit` toolCall for `/work/repo/a.txt` with its start and end, then a `bash` toolCall whose `command` is `cat a.txt && git status --short` (not the `/bin/zsh -lc` form), with its start and end.
-  - oversized-output.jsonl: the `tool_execution_end` result is at most 16,000 characters plus the marker, and keeps the first and last lines.
-  - abandoned-command.jsonl: the open `sleep 90; echo ok` call is closed as an error before the final message, and `warnings()` holds `codex_command_abandoned` once.
-  - long-command.jsonl: one call open for the whole run, closed with exit code 0.
-  - Fed through `PiStreamParser`, the final text is the last agent message.
-  - `sessionId()` is undefined before `thread.started` and the thread id after.
-  - Classification: unknown-model.jsonl is `configError`; not-logged-in.jsonl is `configError` and its ten reconnect lines are ten `auto_retry_start`; the built used-up window is `transientRateLimit` with a `rejected` `five_hour` reading and `retryAfterSeconds`; a built 400 `invalid_request_error` carrying `context_window_exceeded` (or a message naming the context window) is `contextExceeded`, not `configError`.
-  - Synthetic `item.started` and `item.completed` events for `todo_list` and `web_search` produce no canonical events and add nothing to `warnings()`.
-  - sigterm-mid-command.jsonl, which ends after `item.started` with no turn event, finalizes to an error message.
-  - An unknown item type is listed once in `warnings()`.
-- test/codex-rollout.test.ts (new), on edit-run-and-resume-rollout.jsonl:
-  - The first turn's `run_usage.input` is its last `turn_token_usage.input_tokens − cached_input_tokens`. The second turn's (the resume) is its own turn figure, not the thread total.
-  - A `requestedModel` other than `gpt-6-luna` reports the switch.
-  - The 300- and 10080-minute windows map to `five_hour` and `seven_day`, with `utilization` 0 and `resetsAt` the capture's `resets_at`.
-  - `billing` is `subscription`.
-  - `findRollout` finds a rollout placed at `sessions/2026/10/21/rollout-<time>-<id>.jsonl` from `home` and `id` alone, and returns null for an unknown id.
-  - A truncated file yields [].
-  - The output contains no `creator_user_id` or `creator_account_id` value.
-- `npm test` passes.
-
 ### Codex backend, part 7/9: The codex adapter runs model jobs, with stream-minted sessions, the rollout read after each run, a PATH fake and its prompt dialect (planned 2026-10-20 by user; requires parts 5/9 and 6/9 landed; design in plans/codex-backend.md "CODEX_HOME and sessions", "The stream translator and the rollout read that completes it" and "The prompt dialect"; touches src/agent/codex/codex-backend.ts (new) src/agent/run-agent.ts src/agent/session-ledger.ts src/prompt/dialect.ts src/paths.ts test/fakes/fake-codex.ts (new) test/test-runner.ts and their tests)
 
 **Goal.** Codex model jobs run end to end. Fresh runs record their stream-minted session id; continues resume it; the rollout supplies this run's usage and windows; the reviewer's suite-rerun detection sees Codex's commands; and the prompt carries Codex's dialect.
@@ -351,7 +302,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
 - `npm test` passes.
 
-
 ### `tumwater backlog -f/--follow` repaints the backlog every couple of seconds until Ctrl+C or its parent exits, the snapshot command's live twin of the TUI Backlog pane and the dashboard Backlog card (planned 2026-10-21 by the plan role; shares src/cli/cli-query-commands.ts, src/cli/help.ts and the `tumwater backlog` clause of docs/cli.md with the in-flight `tumwater queue -f/--follow` entry ahead of this one in `## Planned` and reuses the `followView` helper that entry's step 1 introduces, so whichever lands second rebases there; the in-flight TUI Activity tally plan edits `sayTally` in src/cli/log-commands.ts, src/ui/tui/tui-pane.ts, src/events/event-tally.ts, docs/cli.md's `logs --count` sentence and docs/how-it-works.md's Activity paragraph; the in-flight TUI Pending Ctrl+G plan edits src/ui/tui/tui-pane-pending.ts, test/tui-keys.test.ts and docs/how-it-works.md's Pending paragraph; the Codex parts edit src/events, src/config, src/gates, src/team, src/orchestrator and src/agent. None of those touches `cmdBacklog`, the `backlog` stanza of src/cli/help.ts or the new test. Touches src/cli/cli-query-commands.ts src/cli/help.ts docs/cli.md test/cli-backlog-follow.test.ts (new))
 
 **Goal.** `tumwater backlog` prints the planned features, open bugs, and open questions once (`cmdBacklog`, src/cli/cli-query-commands.ts), with `--ready` hiding the held entries and counting them and `--grep` filtering them. The dashboard's Backlog card and the TUI's Backlog pane repaint as the team claims and finishes entries, but the CLI snapshot has no live form. Add `-f/--follow`: repaint the same text every couple of seconds until Ctrl+C or the parent process exits (the rule `status -f`, `queue -f`, `logs -f` and `history -f` use), composing with `--ready` and `--grep` so each frame reflects the current backlog; `--json` is refused with a follow because it prints one document.
@@ -380,8 +330,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/backlog-render.test.ts and the rest of the backlog tests pass unchanged: `tumwater backlog`, `--ready`, `--grep` and their `--json` forms print the same bytes as today (the factored `readBacklog` returns the same view and hidden count).
 - test/status-follow.test.ts passes unchanged: the reused `followView` emits the same frames and still refuses `status -f --json`.
 - `npm run test:gate` is green.
-
-
 
 ### `tumwater report -f/--follow` repaints the usage report (or, with `--failures`, the failure digest) every couple of seconds until Ctrl+C or its parent exits, the live twin of the dashboard Usage card and the TUI Usage and Failures panes (planned 2026-10-21 by the plan role; sits behind the in-flight `tumwater queue -f/--follow` and `tumwater backlog -f/--follow` entries, whose shared `followView` loop it lifts into a leaf module, so whichever lands first rebases `src/cli/cli-query-commands.ts` there; the in-flight TUI Activity tally plan edits src/cli/log-commands.ts and src/ui/tui; the `tumwater doctor` `merge-queue files` plan edits src/merge and src/doctor; the Codex parts edit src/events, src/config, src/gates, src/team, src/orchestrator and src/agent. None of those touches src/report, src/cli/follow-view.ts or test/report-follow.test.ts. Touches src/cli/follow-view.ts (new) src/cli/cli-query-commands.ts src/report/report.ts src/cli.ts src/cli/help.ts docs/cli.md test/report-follow.test.ts (new))
 

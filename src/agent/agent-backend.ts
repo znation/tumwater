@@ -78,6 +78,12 @@ export interface BackendBinConfig {
  * the identity. Stateful per run (the claude translator batches streaming assistant events). */
 export interface StreamTranslator {
   translate(line: string): string[];
+  /** The backend session id this run used, once the stream has named it — the id the run's
+   * ledger record and a later `exec resume` need (plans/codex-backend.md "The stream
+   * translator and the rollout read that completes it"). Undefined until the stream names it
+   * (codex's `thread.started`; a backend whose stream never names a session stays undefined).
+   * Optional: a translator that mints its session id ahead of the run (claude) omits it. */
+  sessionId?(): string | undefined;
   /** Native shapes this run could not map — plus any per-run degradation like a result-less
    * run's `cost_unknown` — each once and in first-seen order. The runner forwards each as an
    * `agent_unknown_event` warning after the run. Optional: a translator whose native stream IS

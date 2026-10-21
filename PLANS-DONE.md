@@ -5,6 +5,55 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/) — done 2026-10-21 by the feature role
+
+**Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
+
+**Approach.**
+- src/agent/agent-backend.ts: `StreamTranslator` gains an optional `sessionId?(): string | undefined`, the backend session id once the stream has named it. This part only declares it; part 7/9's run-agent reads it.
+- src/agent/codex/codex-stream.ts (new): `codexTranslator()`, which follows design §5's table row by row.
+  - `bash` tool calls carry the inner command with the `/bin/zsh -lc` (or `bash -lc`) wrapper and its quoting removed.
+  - A `command_execution`'s `aggregated_output` reaches `tool_execution_end` capped at `outputLimits(window).bash` (src/pi-extension/bounded-output.ts; 16,000 characters at 128k and above): head and tail around a marker naming the cut. The stream can carry a megabyte (design finding 18).
+  - A `file_change` becomes one `edit` toolCall per changed path, `{path, kind}`, with `isError` when its `status` is not `completed`.
+  - A `command_execution` still open at `turn.completed` is closed with `tool_execution_end {isError: true}` and the result "abandoned: the run ended while this command was still running", and `codex_command_abandoned` is warned once (design finding 19).
+  - Repeated `error` items warn once per distinct message.
+  - "Reconnecting... n/m" becomes `auto_retry_start`.
+  - `turn.failed` is parsed through its JSON-string message to `status`, `error.type` / `code` and the message text, and classified per §5's table. The classifier tests the context-window signal **before** the generic 400 `invalid_request_error` branch (as src/agent/claude/claude-stream.ts's `classifyResult` tests "prompt is too long" before `CONFIG_STATUS`): a `context_window_exceeded` code, or a 400 whose message names the context window, is `contextExceeded`, never `configError`.
+  - `item.started` and `item.completed` for `todo_list` and `web_search` are dropped silently: no canonical event and no `warnings()` entry, matching design §5's `item.*` row.
+  - `finalize()` reports "codex exited without finishing its turn" when the stream saw neither `turn.completed` nor `turn.failed`.
+  - `warnings()` lists unmapped event and item types once each, plus `codex_usage_partial` when the adapter flags it.
+  - `turnCompletedUsage()` returns the stream's own figure, for the fallback.
+- src/agent/codex/codex-rollout.ts (new):
+  - `findRollout(home, id)` returns the path of `sessions/**/rollout-*-<id>.jsonl`, or null. It takes no third parameter and does no date math: it walks the `sessions` tree, matching file names that end with `-<id>.jsonl`. (Earlier text promised walking "the date dirs from the run's start date onward", but a `(home, id)`-only function has no reliable start date, and Codex's rollout name carries local time rather than UTC (finding 5), so a UTC-derived date bound can miss the file. The tree is one directory per active day, so the walk stays small; only the id match decides.)
+  - `rolloutLines(text, {sinceTurnStart, requestedModel})` reads only the records after this run's `task_started`. It returns the canonical `run_usage`, `billing` and `rate_limit` lines of design §5, or [] when the turn's records are missing or malformed. A turn with no `token_count` (a killed run, design finding 23) yields `run_usage` without any `rate_limit`.
+  - When the turn's `turn_context.model` differs from `requestedModel`, it also reports `{switchedTo: <model>}` so the adapter can warn `codex_model_switched` (design finding 24).
+  - It never returns or logs `session_meta` fields.
+- test/fixtures/codex-events.ts (new): loaders for the scrubbed captures in test/fixtures/codex-captures/ (its README.md maps each file to a finding), plus small builders for what no capture has:
+  - a used-up window, built from the binary's message ("You've hit your usage limit. … Try again at …") and a `usage_limit_reached` code;
+  - a `turn_context` whose model differs from the requested one.
+
+**Acceptance criteria.**
+- test/codex-stream.test.ts (new):
+  - edit-run.jsonl yields `session`, `agent_start`, a `message_end` with text, an `edit` toolCall for `/work/repo/a.txt` with its start and end, then a `bash` toolCall whose `command` is `cat a.txt && git status --short` (not the `/bin/zsh -lc` form), with its start and end.
+  - oversized-output.jsonl: the `tool_execution_end` result is at most 16,000 characters plus the marker, and keeps the first and last lines.
+  - abandoned-command.jsonl: the open `sleep 90; echo ok` call is closed as an error before the final message, and `warnings()` holds `codex_command_abandoned` once.
+  - long-command.jsonl: one call open for the whole run, closed with exit code 0.
+  - Fed through `PiStreamParser`, the final text is the last agent message.
+  - `sessionId()` is undefined before `thread.started` and the thread id after.
+  - Classification: unknown-model.jsonl is `configError`; not-logged-in.jsonl is `configError` and its nine reconnect lines are nine `auto_retry_start`; the built used-up window is `transientRateLimit` with a `rejected` `five_hour` reading and `retryAfterSeconds`; a built 400 `invalid_request_error` carrying `context_window_exceeded` (or a message naming the context window) is `contextExceeded`, not `configError`.
+  - Synthetic `item.started` and `item.completed` events for `todo_list` and `web_search` produce no canonical events and add nothing to `warnings()`.
+  - sigterm-mid-command.jsonl, which ends after `item.started` with no turn event, finalizes to an error message.
+  - An unknown item type is listed once in `warnings()`.
+- test/codex-rollout.test.ts (new), on edit-run-and-resume-rollout.jsonl:
+  - The first turn's `run_usage.input` is its last `turn_token_usage.input_tokens − cached_input_tokens`. The second turn's (the resume) is its own turn figure, not the thread total.
+  - A `requestedModel` other than `gpt-6-luna` reports the switch.
+  - The 300- and 10080-minute windows map to `five_hour` and `seven_day`, with `utilization` 0 and `resetsAt` the capture's `resets_at`.
+  - `billing` is `subscription`.
+  - `findRollout` finds a rollout placed at `sessions/2026/10/21/rollout-<time>-<id>.jsonl` from `home` and `id` alone, and returns null for an unknown id.
+  - A truncated file yields [].
+  - The output contains no `creator_user_id` or `creator_account_id` value.
+- `npm test` passes.
+
 ### Fast merge guardrails, part 1/3: `tumwater doctor` and the selfcheck digest warn when main stays red over 30 minutes and when quarantine holds a test over 3 days or more than 10 tests (planned 2026-10-21 by user; design in plans/fast-merge.md "Guardrails" G1, G3 and "Where the warnings show"; touches src/baseline/main-guardrails.ts (new) src/doctor/doctor-holds.ts src/doctor/doctor-checks.ts src/run/selfcheck-digest.ts src/roles/role-catalog.ts docs/how-it-works.md and their tests) — done 2026-10-21 by the feature role
 
 **Goal.** Make two quiet failures of the post-merge machinery visible: main staying red while merges go on, and quarantine growing or keeping a test long enough to hide it. Today the "main's check" row only names roles the red-main gate holds, and since roles keep working on a red main with known failures, it reads "no role waiting on main's check" while main is red. Nothing reads quarantine.json's age or size.
