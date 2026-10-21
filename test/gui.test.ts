@@ -326,6 +326,12 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
     const promptAt = withPrompt.lines.findIndex((l) => l.includes("run prompt"));
     assert.ok(promptAt !== -1, "prompt=1 renders the run's prompt");
     assert.ok(promptAt < withPrompt.lines.indexOf("  did the thing"));
+    const grepped = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10&grep=THING");
+    assert.deepEqual(grepped.lines, ok.lines);
+    const none = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10&grep=nomatch");
+    assert.deepEqual(none, { lines: [] });
+    const blank = await getJson<{ lines: string[] }>(base, "/api/transcript?role=feature&n=10&grep=");
+    assert.deepEqual(blank.lines, ok.lines);
 
     // Validation: unknown role, missing role, and bad n all → 400. Each 400 names the
     // offending value (or says it is required) so a client can tell which input was bad.

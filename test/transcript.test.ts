@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
+import { createTranscriptFilter, createTranscriptRenderer, formatTranscript, readTranscript } from "../src/ui/transcript.js";
 import { piLogPath } from "../src/paths.js";
 import { expectedTimestamp } from "./helpers/oracles.js";
 import { writeLogLines, writeTurnLog } from "./fixtures/log-fixtures.js";
@@ -498,4 +498,22 @@ test("readTranscript includePrompts shows each run's prompt without leaking into
 
   // The two readers keep separate caches: a plain read after a prompts read still omits it.
   assert.ok(!joined(readTranscript(root, "feature")).includes("asked-one"));
+});
+
+test("createTranscriptFilter keeps matching entries under their run's separator, once per run", () => {
+  const filter = createTranscriptFilter("leak");
+  const kept = [
+    filter(["── run @ a ──", "  p1"]),
+    filter(["  on it"]),
+    filter(["  found the LEAK"]),
+    filter(["  LEAK again"]),
+    filter(["── run @ b ──", "  tidy"]),
+    filter(["  leak late"]),
+  ].filter((e) => e !== null);
+  assert.deepEqual(kept, [
+    ["── run @ a ──", "  found the LEAK"],
+    ["  LEAK again"],
+    ["── run @ b ──", "  leak late"],
+  ]);
+  assert.equal(filter([]), null);
 });

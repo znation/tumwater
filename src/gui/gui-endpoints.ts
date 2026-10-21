@@ -51,10 +51,13 @@ import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaListUnique } from "../text/text.js";
 import type http from "node:http";
-/** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one role's pi
- * log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also renders
- * each agent run's prompt, the text `logs --transcript <id> --prompt` prints. Unknown/missing role
- * or a bad n → 400.
+/** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
+ * pi log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also
+ * renders each agent run's prompt, the text `logs --transcript <id> --prompt` prints.
+ * Unknown/missing role
+ * or a bad n → 400. `grep` keeps only the entries containing the text, case-insensitively, each
+ * under its run's separator (the `logs --transcript <id> --grep` rule); `n` bounds the entries
+ * scanned.
  * User-defined roles are valid targets too — the GUI marks them with an asterisk, so clicking
  * one must open its transcript: ids validate through rejectBadRole. The 400 message lists
  * exactly the ids accepted. The query arrives pre-parsed — the server parses the target
@@ -65,7 +68,11 @@ export function handleTranscript(q: URLSearchParams, res: http.ServerResponse, r
   if (rejectBadRole(root, res, role)) return;
   const n = intQuery(q, res, "n", "positive", 50);
   if (n === null) return;
-  sendJson(res, 200, { lines: readTranscript(root, role as string, n, { includePrompts: q.get("prompt") !== null }) });
+  const grep = (q.get("grep") ?? "").trim().toLowerCase();
+  const includePrompts = q.get("prompt") !== null;
+  sendJson(res, 200, {
+    lines: readTranscript(root, role as string, n, { includePrompts, grep: grep === "" ? undefined : grep }),
+  });
 }
 
 /** The /api/backlog `file` values and the open-section reader each addresses — one table so

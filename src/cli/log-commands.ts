@@ -17,7 +17,7 @@ import { baseRoleOf } from "../roles/runner-ids.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { typoSuffix } from "../text/suggest.js";
 import { splitCommaList } from "../text/text.js";
-import { createTranscriptRenderer, isRunSeparatorLine } from "../ui/transcript.js";
+import { createTranscriptFilter, createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
 import { eventsLogPath, piLogPath } from "../paths.js";
 
@@ -331,25 +331,18 @@ async function cmdLogsTranscript(
   const file = piLogPath(root, role);
   const opts = { includePrompts: showPrompts };
 
-  let lastSeparator: string | null = null;
-  let separatorShown = false;
+  const filter = needle === null ? null : createTranscriptFilter(needle);
   let matched = 0;
   const printEntry = (lines: string[]) => {
     if (lines.length === 0) return;
-    const opens = isRunSeparatorLine(lines[0]!);
-    if (opens) {
-      lastSeparator = lines[0]!;
-      separatorShown = false;
-    }
-    if (needle === null) {
+    if (filter === null) {
       say(lines.join("\n"));
       return;
     }
-    if (!lines.some((l) => l.toLowerCase().includes(needle))) return;
-    if (!opens && lastSeparator !== null && !separatorShown) say(lastSeparator);
-    separatorShown = true;
+    const out = filter(lines);
+    if (out === null) return;
     matched++;
-    say(lines.join("\n"));
+    say(out.join("\n"));
   };
 
   // Initial window: the last `limit` entries of what is on disk. readTranscriptTail scans back

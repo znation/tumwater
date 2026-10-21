@@ -11,8 +11,29 @@ export type TranscriptEntry = string[];
 
 /** Whether `line` is the run separator `separatorLine` (in createTranscriptRenderer) builds, so
  * a reader can tell which entries open a run. */
-export function isRunSeparatorLine(line: string): boolean {
+function isRunSeparatorLine(line: string): boolean {
   return /^── .+ ──$/.test(line);
+}
+
+/** The transcript-search keep rule that `logs --transcript --grep` and `GET /api/transcript?grep=`
+ * share. `needle` is already lowercased. Feed entries oldest first: an entry with no line
+ * containing the needle yields null; a matching one yields its lines, prefixed by its run's
+ * separator the first time that run shows an entry (unless it opens with the separator itself). */
+export function createTranscriptFilter(needle: string): (entry: TranscriptEntry) => string[] | null {
+  let lastSeparator: string | null = null;
+  let separatorShown = false;
+  return (entry) => {
+    if (entry.length === 0) return null;
+    const opens = isRunSeparatorLine(entry[0]!);
+    if (opens) {
+      lastSeparator = entry[0]!;
+      separatorShown = false;
+    }
+    if (!entry.some((l) => l.toLowerCase().includes(needle))) return null;
+    const out = !opens && lastSeparator !== null && !separatorShown ? [lastSeparator, ...entry] : entry;
+    separatorShown = true;
+    return out;
+  };
 }
 
 const THINKING_MAX_CHARS = 80;
@@ -260,12 +281,15 @@ function feedEntries(value: TranscriptValue, line: string): void {
  * after parsing the current file once per observation (first poll or rotation) only bytes
  * appended since the previous call are read and parsed — observers that call this every
  * second (the TUI's transcript view, the GUI panel) stop rescanning up to 16MB of JSON per
- * role per poll. A torn trailing line is left unconsumed until its newline lands. */
+ * role per poll. A torn trailing line is left unconsumed until its newline lands.
+ *
+ * `opts.grep` (lowercased, non-empty) keeps only the entries containing it, via
+ * createTranscriptFilter; `limit` bounds the scanned entries, not the kept ones. */
 export function readTranscript(
   root: string,
   role: string,
   limit = 50,
-  opts: { includePrompts?: boolean } = {},
+  opts: { includePrompts?: boolean; grep?: string } = {},
 ): string[] {
   const includePrompts = opts.includePrompts === true;
   const cache = includePrompts ? promptTails : tails;
@@ -293,6 +317,11 @@ export function readTranscript(
   // take can be 0: a limit-1 request whose whole budget the pending separator consumes (or
   // any want of 0). entries.slice(-0) is entries.slice(0) — the whole ring — because -0 ===
   // 0, so a bare slice(-take) would return every kept entry instead of none; guard it.
-  const kept = take > 0 ? value.entries.slice(-take).flat() : [];
+  const scanned = take > 0 ? value.entries.slice(-take) : [];
+  if (opts.grep !== undefined) {
+    const filter = createTranscriptFilter(opts.grep);
+    return scanned.flatMap((e) => filter(e) ?? []);
+  }
+  const kept = scanned.flat();
   return [...kept, ...pending];
 }
