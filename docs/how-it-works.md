@@ -517,6 +517,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   `collectChangeOverlaps`/`renderChangeOverlaps` pair `tumwater diff --overlaps` prints.
   Ctrl+N steps through those files, showing each holding role's change limited to the file (the
   `tumwater diff --role <ids> --path <path>` view); the press after the last one returns to the pane.
+  Ctrl+G cycles the list through each holding role and back to all, keeping only the files that role holds (the `tumwater diff --overlaps --role <id>` view, through the same `scopeChangeOverlaps`); Ctrl+N then steps through only those files.
   The Inbox pane lists every role's queued prompts, reading through the same queue traversal
   and renderer `tumwater prompt --list` uses, so the two surfaces cannot drift on order,
   per-role numbering, or the queued-age/send-later countdown suffix. Up/Down select a queued

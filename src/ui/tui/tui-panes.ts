@@ -134,10 +134,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     if (key.ctrl && key.name === "g") {
       // Ctrl+G's scope arm is routed by view: Activity on 0, the History exact-role scope on
-      // N+4, and the report team/base-role scope everywhere else — the priority the original
-      // else-branch chain kept, so the report arm never steals the History view's slot.
+      // N+4, the Pending overlap scope on N+5, and the report team/base-role scope
+      // everywhere else — the priority the original else-branch chain kept, so the
+      // report arm never steals the History view's slot.
       if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
       if (session.view === session.roleIds.length + 4) return history.handleKey?.(key, ctx) ?? false;
+      if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
       return report.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "e") {

@@ -3,17 +3,30 @@ import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
-import type { ChangeOverlapsView } from "../../change/change-data.js";
+import { scopeChangeOverlaps, type ChangeOverlapsView } from "../../change/change-data.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The overlapping-files block under the roster: empty for a no-base view (the roster above
  * already says the main branch is missing), else the CLI's renderChangeOverlaps under a
  * "overlapping files (N):" heading shaped like the queue's. */
-export function pendingOverlapsText(view: ChangeOverlapsView): string {
+export function pendingOverlapsText(view: ChangeOverlapsView, scope?: string): string {
   if (view.state === "no-base") return "";
+  if (scope !== undefined) {
+    const narrowed = scopeChangeOverlaps(view, [scope]);
+    if (narrowed.overlaps.length === 0) return renderChangeOverlaps(narrowed, [scope]);
+    return `overlapping files held by ${scope} (${narrowed.overlaps.length}):\n` + renderChangeOverlaps(narrowed);
+  }
   if (view.overlaps.length === 0) return renderChangeOverlaps(view);
   return `overlapping files (${view.overlaps.length}):\n` + renderChangeOverlaps(view);
+}
+
+/** The distinct roles named across the overlaps, in first-seen order; empty for a no-base view. */
+export function overlapHolders(view: ChangeOverlapsView): string[] {
+  if (view.state === "no-base") return [];
+  const seen: string[] = [];
+  for (const o of view.overlaps) for (const r of o.roles) if (!seen.includes(r)) seen.push(r);
+  return seen;
 }
 
 /** The heading over one overlap's drill-down: its place in the list and the path. */
@@ -24,8 +37,8 @@ export function overlapDrillHeading(index: number, total: number, path: string):
 /** The Pending pane (view roleIds.length + 5) of the TUI (src/ui/tui/tui.tsx): the durable
  * merge queue rendered up front plus the git-backed change roster the async collector appends
  * when it resolves. Split out of the pane-navigation monolith; its key arms are the Ctrl+R
- * in-place refresh and the Ctrl+N overlap drill-down, and it has no render state of its own —
- * aside from the enter half of the Ctrl+T cycle. */
+ * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G overlap role scope, and it has
+ * no render state of its own — aside from the enter half of the Ctrl+T cycle. */
 export function createPendingPane(session: TuiPaneSession) {
   // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
   // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -42,12 +55,20 @@ export function createPendingPane(session: TuiPaneSession) {
   // injected seam (or an unexpected throw).
   // Ctrl+N steps through the overlapping files, painting each holder's change limited to that
   // file (the `tumwater diff --role a,b --path <path>` view); `base` is the pane text to
-  // return to after the last one.
+  // return to after the last one. Ctrl+G cycles overlapScope through each holding role and back
+  // to all (the `diff --overlaps --role <id>` view); Ctrl+N then steps through only the scoped
+  // files, and the scope survives a refresh.
   let refreshGen = 0;
   let base = "";
   let lastOverlaps: ChangeOverlapsView | null = null;
   let overlapIndex = -1;
   let drillGen = 0;
+  let overlapScope: string | null = null;
+  let head = "";
+  const compose = (): void => {
+    const block = lastOverlaps ? pendingOverlapsText(lastOverlaps, overlapScope ?? undefined) : "";
+    base = head + (block ? "\n\n" + block : "");
+  };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
     // is the latest request's — Ctrl+R held twice, or a refresh raced with a re-entry,
@@ -58,13 +79,15 @@ export function createPendingPane(session: TuiPaneSession) {
     ++drillGen;
     const queueView = readMergeQueue(session.root);
     const queueText = renderMergeQueue(queueView, session.now(), queueInFlight(session.root, queueView.entries, orchestratorAlive(session.root)));
-    session.paneCache = base = queueText;
+    head = queueText;
+    session.paneCache = base = head;
     void Promise.all([session.collectPending(session.root), session.collectOverlaps(session.root)]).then(
       ([team, overlaps]) => {
         if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
-        const block = pendingOverlapsText(overlaps);
         lastOverlaps = overlaps;
-        session.paneCache = base = queueText + "\n\n" + renderTeamChange(team) + (block ? "\n\n" + block : "");
+        head = queueText + "\n\n" + renderTeamChange(team);
+        compose();
+        session.paneCache = base;
         session.requestRender();
       },
       (err: unknown) => {
@@ -92,8 +115,27 @@ export function createPendingPane(session: TuiPaneSession) {
       session.requestRender();
       return true;
     }
+    if (key.ctrl && key.name === "g" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      const holders = lastOverlaps?.state === "ready" ? overlapHolders(lastOverlaps) : [];
+      if (holders.length === 0) {
+        overlapScope = null;
+        compose();
+        session.flashMessage("no overlapping files to scope");
+        return true;
+      }
+      const slots = [null, ...holders];
+      const at = overlapScope === null ? 0 : slots.indexOf(overlapScope);
+      overlapScope = slots[(at + 1) % slots.length] ?? null;
+      overlapIndex = -1;
+      ++drillGen;
+      compose();
+      session.paneCache = base;
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
     if (key.ctrl && key.name === "n" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
-      const overlaps = lastOverlaps;
+      const overlaps = lastOverlaps && overlapScope !== null ? scopeChangeOverlaps(lastOverlaps, [overlapScope]) : lastOverlaps;
       if (overlaps?.state !== "ready" || overlaps.overlaps.length === 0) {
         session.flashMessage("no overlapping files to step through");
         return true;

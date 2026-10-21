@@ -14,7 +14,7 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import type { previewRevert } from "../src/operator/revert.js";
-import { overlapDrillHeading } from "../src/ui/tui/tui-pane-pending.js";
+import { overlapDrillHeading, overlapHolders } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
@@ -2490,6 +2490,73 @@ test("Ctrl+N returning to the base pane drops a drill-down still loading", async
   await settle();
   await settle();
   assert.equal(keys.state().paneCache, before);
+});
+
+const scopeOverlaps = [{ path: "src/a.ts", roles: ["feature", "feature-2"] }, { path: "src/b.ts", roles: ["feature", "qa"] }];
+const ctrlG = (keys: ReturnType<typeof drillKeys>) => keys.handleKey(undefined, { ctrl: true, name: "g" });
+
+test("pendingOverlapsText narrows to one holding role", () => {
+  const view = { mainBranch: "main", state: "ready" as const, overlaps: scopeOverlaps };
+  assert.equal(pendingOverlapsText(view), "overlapping files (2):\nsrc/a.ts: feature, feature-2\nsrc/b.ts: feature, qa");
+  assert.equal(pendingOverlapsText(view, "qa"), "overlapping files held by qa (1):\nsrc/b.ts: feature, qa");
+  assert.equal(pendingOverlapsText(view, "bugfix"), "no file held by bugfix is touched by another pending change");
+  assert.equal(pendingOverlapsText({ mainBranch: "trunk", state: "no-base", overlaps: [] }, "qa"), "");
+});
+
+test("overlapHolders lists each holding role once in first-seen order", () => {
+  assert.deepEqual(overlapHolders({ mainBranch: "main", state: "ready", overlaps: scopeOverlaps }), ["feature", "feature-2", "qa"]);
+  assert.deepEqual(overlapHolders({ mainBranch: "trunk", state: "no-base", overlaps: [] }), []);
+});
+
+test("Ctrl+G on the Pending pane cycles the overlap scope through each holder and back", async () => {
+  const keys = drillKeys(scopeOverlaps);
+  await settle();
+  const before = keys.state().paneCache;
+  ctrlG(keys);
+  assert.ok(keys.state().paneCache!.endsWith("overlapping files held by feature (2):\nsrc/a.ts: feature, feature-2\nsrc/b.ts: feature, qa"));
+  ctrlG(keys);
+  assert.ok(keys.state().paneCache!.endsWith("held by feature-2 (1):\nsrc/a.ts: feature, feature-2"));
+  ctrlG(keys);
+  assert.ok(keys.state().paneCache!.endsWith("held by qa (1):\nsrc/b.ts: feature, qa"));
+  ctrlG(keys);
+  assert.equal(keys.state().paneCache, before);
+});
+
+test("Ctrl+N under a Pending overlap scope steps through only the scoped files", async () => {
+  const calls: [string, { path?: string } | undefined][] = [];
+  const keys = drillKeys(scopeOverlaps, calls);
+  await settle();
+  for (let i = 0; i < 3; i++) ctrlG(keys);
+  const scoped = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await settle();
+  assert.ok(keys.state().paneCache!.startsWith(overlapDrillHeading(0, 1, "src/b.ts")));
+  assert.deepEqual(calls, [["feature", { path: "src/b.ts" }], ["qa", { path: "src/b.ts" }]]);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().paneCache, scoped);
+});
+
+test("Ctrl+G on the Pending pane closes an open drill-down and survives Ctrl+R", async () => {
+  const keys = drillKeys(scopeOverlaps);
+  await settle();
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  ctrlG(keys);
+  const tail = "overlapping files held by feature (2):\nsrc/a.ts: feature, feature-2\nsrc/b.ts: feature, qa";
+  assert.ok(keys.state().paneCache!.endsWith(tail));
+  assert.ok(!keys.state().paneCache!.startsWith("overlap "));
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  await settle();
+  await settle();
+  assert.ok(keys.state().paneCache!.endsWith(tail));
+});
+
+test("Ctrl+G on the Pending pane with no overlaps flashes", async () => {
+  const keys = drillKeys([]);
+  await settle();
+  const before = keys.state().paneCache;
+  ctrlG(keys);
+  assert.equal(keys.state().paneCache, before);
+  assert.equal(keys.state().flash, "no overlapping files to scope");
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {
