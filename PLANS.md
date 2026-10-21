@@ -103,4 +103,40 @@ Out of scope, unchanged: the failure digest (`report --failures --since`), whose
 - `grep -n "transcriptgrep" src/ui/gui/gui-client-drawer.ts` prints the markup line and the listener line.
 - `npm run test:gate` passes.
 
+### Pending-change overlaps: `tumwater diff --overlaps` lists every file that two or more roles' pending changes touch (planned 2026-10-20 by the plan role; independent of every eligible plan; touches src/change/change-data.ts + src/change/change-render.ts + src/cli/cli-query-commands.ts + src/cli/cli-flag-specs.ts + src/cli/help.ts + docs/cli.md + docs/invariants.md + test/cli-diff.test.ts + test/change-render.test.ts)
+
+**Goal.** Ten feature instances work in parallel, and the event log for the day before planning showed 33 `conflict_handback` events (`tumwater logs --since 1d --count`). An operator has no direct way to see two pending changes colliding before the merge does. `tumwater diff` prints counts per role, and `diff --role a,b` prints whole patches the operator has to compare by eye. This plan adds `tumwater diff --overlaps [--json]`. It prints one line per repo-relative path that two or more roles hold, either committed ahead of main or uncommitted in the worktree. Each line names those roles. When planned, `grep -n "overlaps" src/cli/help.ts docs/cli.md src/change/*.ts` printed nothing, and PLANS.md/PLANS-DONE.md had no entry about pending-file overlaps. The dashboard's `GET /api/diff` (`handleDiff`, src/gui/gui-endpoints.ts) is out of scope and stays unchanged.
+
+**Approach.**
+1. src/change/change-data.ts: add the exported types `ChangeOverlap { path: string; roles: string[] }` and `ChangeOverlapsView { mainBranch: string; state: "no-base" | "ready"; overlaps: ChangeOverlap[] }`.
+   - Add a pure exported `fileOverlaps(holdings: { role: string; files: string[] }[]): ChangeOverlap[]`. It keeps each path that two or more distinct roles hold. A role's duplicate path counts once. Roles stay in holdings order. Paths are sorted by plain `<` string comparison.
+   - Add `collectChangeOverlaps(root)`. It resolves `mainBranch` once, the way `collectRoleChange` does (`loadConfigSafe` + `targetBranch(config?.baseBranch, await currentBranch(root))`). A missing base branch (`branchExists`) returns `{ mainBranch, state: "no-base", overlaps: [] }`.
+   - Otherwise, for each id from `knownRoleIdsCached(root)`, resolve the checkout with `roleWorktreeDir` + `isUsableWorktree`, skipping a role with none. Its files are `aheadOfMainFiles(wt, mainBranch)` (src/git/git-diff.ts, only when `aheadOfMain(wt, mainBranch) > 0`) plus `changedFiles(wt)`. Run the roles through `Promise.all` like `collectTeamChanges`, then return `{ mainBranch, state: "ready", overlaps: fileOverlaps(holdings) }`.
+   - `collectRoleChange` stays unchanged. Its patch computation is what this collector avoids.
+2. src/change/change-render.ts: add `renderChangeOverlaps(view: ChangeOverlapsView)`:
+   - `no-base` prints `main branch <mainBranch> does not exist`, the same line as the other views.
+   - No overlaps prints `no file is touched by two pending changes`.
+   - Otherwise it prints one line per overlap, `<path>: <role>, <role>`, with raw role ids, as `renderTeamChange` does.
+3. src/cli/cli-flag-specs.ts: add `export const OVERLAPS_FLAG: FlagSpec = { names: ["--overlaps"] };` beside `STAT_FLAG`, with a one-line doc comment in the siblings' style.
+4. src/cli/cli-query-commands.ts `cmdDiff`: add `OVERLAPS_FLAG` to the `rejectUnknownArgs("diff", …)` list. After `requireReadyRepo`, and before `parseRoleListScope`, check for `--overlaps`:
+   - With `--role` present, `fail("diff --overlaps reads every role; drop --role")`.
+   - With `--stat` present, `fail("diff --overlaps prints paths, not patches; drop --stat")`.
+   - Otherwise `sayJsonOrRender(args, await collectChangeOverlaps(root), renderChangeOverlaps)` and return.
+   - Update the function's doc comment to name the third form.
+5. src/cli/help.ts: add a stanza `tumwater diff --overlaps [--json]` after the `diff --role` stanza. It says the command lists each file two or more roles' pending changes touch (committed ahead of main or uncommitted), one line per path naming those roles, and that `--json` prints `{mainBranch, state, overlaps}`. Shell completion derives flags from help stanzas (`helpStanzas`, src/cli/completion.ts), so no completion edit is needed.
+6. docs/cli.md: in the "See a role's pending change" row, append that `tumwater diff --overlaps` lists each file two or more roles' pending changes touch, one line per path naming those roles (`--json`: `{mainBranch, state, overlaps}`).
+7. docs/invariants.md, section "Role change view: every known role answers, degraded rather than failing, with a bounded patch": add `### INV-AU5: an overlap names a path only when two or more roles hold it, each role once` after INV-AU4. Its **Binds** line is `src/change/change-data.ts` (`fileOverlaps`, `collectChangeOverlaps`). Its **Pinned by** line names the two tests below. Extend the section's opening sentence to name `tumwater diff --overlaps`. Before writing, check that `grep -n 'INV-AU5' docs/invariants.md` prints nothing (it printed nothing when planned).
+
+**Tests.**
+- test/change-render.test.ts: add "fileOverlaps keeps only paths two or more roles hold, each role once". Call `fileOverlaps([{ role: "feature", files: ["b.md", "a.md", "a.md"] }, { role: "clean", files: ["a.md", "c.md"] }, { role: "bugfix", files: ["b.md", "a.md"] }])` (import from `../src/change/change-data.js`). Assert a deep-equal result of `[{ path: "a.md", roles: ["feature", "clean", "bugfix"] }, { path: "b.md", roles: ["feature", "bugfix"] }]`. Also assert that `renderChangeOverlaps` on `{ mainBranch: "main", state: "ready", overlaps: [] }` returns `no file is touched by two pending changes`, and on `state: "no-base"` returns `main branch main does not exist`.
+- test/cli-diff.test.ts: add "diff --overlaps names each file two roles' pending changes touch". Use `seededFeatureRepo()`: feature commits widget.md. Then `const cleanWt = await ensureWorktree(repo, "clean", "main")`, write `widget.md` and `solo.md` there uncommitted, and run `cli(repo, "diff", "--overlaps")`. Assert exit 0 and that trimmed stdout equals `widget.md: feature, clean`, since `allRoleIds` orders feature before clean. Assert that `--json` parses to `{ mainBranch: "main", state: "ready", overlaps: [{ path: "widget.md", roles: ["feature", "clean"] }] }`.
+- test/cli-diff.test.ts: add "diff --overlaps with no shared file says so, and rejects --role and --stat". On a bare `seededFeatureRepo()`, stdout trimmed is `no file is touched by two pending changes`. `diff --overlaps --role feature` and `diff --overlaps --stat` each exit non-zero, with stderr containing `drop --role` and `drop --stat` respectively.
+
+**Acceptance.**
+- `tumwater diff --overlaps` prints exactly the shared paths with their roles, or the no-overlap line, exit 0. A missing baseline prints the shared degradation line.
+- The existing `diff`, `diff --role` and `diff --stat` tests in test/cli-diff.test.ts and test/change-data.test.ts pass unedited. `collectRoleChange` and `collectTeamChanges` are untouched (`git diff main -- src/change/change-data.ts` shows only additions).
+- `grep -n "overlaps" src/cli/help.ts docs/cli.md docs/invariants.md` shows the new stanza, row text and INV-AU5.
+- `npm run test:gate` passes.
+- Overlap: "Report window" (in flight) may add a flag spec to src/cli/cli-flag-specs.ts and a stanza to src/cli/help.ts. Those are different lines, so the overlap is at most a rebase.
+
 ## Done
