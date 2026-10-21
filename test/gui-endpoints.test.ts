@@ -190,7 +190,9 @@ test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", 
   assert.doesNotMatch(scoped.markdown, /bugfix/);
 
   const multi = (await serveReport(root, "?sinceMs=3600000&role=feature,steward")).data as { markdown: string };
-  assert.equal(multi.markdown, renderSinceReportMarkdown(collectReportSince(root, 3600000, ["feature", "steward"])));
+  // The "since <time>" stamp is read from the clock per call and can straddle a second boundary.
+  const stripSince = (md: string) => md.replace(/\(since [^)]*\)/, "(since)");
+  assert.equal(stripSince(multi.markdown), stripSince(renderSinceReportMarkdown(collectReportSince(root, 3600000, ["feature", "steward"]))));
   assert.equal((await serveReport(root, "?sinceMs=3600000&role=feature,bogus")).captured.status, 400);
 });
 
@@ -215,7 +217,8 @@ test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is
   assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the windowed digest");
 
   const multi = (await serveFailures(root, "?sinceMs=3600000&role=feature,steward")).data as { markdown: string };
-  assert.equal(multi.markdown, renderFailureMarkdown(collectFailureReportSince(root, 3600000, ["feature", "steward"])));
+  const stripSince = (md: string) => md.replace(/\(since [^)]*\)/, "(since)");
+  assert.equal(stripSince(multi.markdown), stripSince(renderFailureMarkdown(collectFailureReportSince(root, 3600000, ["feature", "steward"]))));
   assert.equal((await serveFailures(root, "?sinceMs=3600000&role=feature,bogus")).captured.status, 400);
 });
 

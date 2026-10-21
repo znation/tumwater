@@ -41,25 +41,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
-### `handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role` failed, then passed on the same tree (quarantined by tumwater 2026-10-20)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role (118.231209ms)
-AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-'role scope: merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted\n' +
-'\n' +
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/gui-endpoints.test.js:177:12)
-generatedMessage: true,
-code: 'ERR_ASSERTION',
-actual: "# tumwater usage report\n\nwindow: last 1h (since 2026-10-20 19:14:07)\nrole: feature,steward\n\n**Totals:** 10 output tokens · 1 runs · 0 commits · $0.00\nrole scope: merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted\n\n**Runs…
-expected: "# tumwater usage report\n\nwindow: last 1h (since 2026-10-20 19:14:08)\nrole: feature,steward\n\n**Totals:** 10 output tokens · 1 runs · 0 commits · $0.00\nrole scope: merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted\n\n**Ru…
-operator: 'strictEqual',
-diff: 'simple'
-}
-~~~~
-
 ## Fixed
 
 ## Verified
