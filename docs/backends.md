@@ -154,11 +154,14 @@ an inherited `CLAUDE_CONFIG_DIR`, never the other way.
 A tier entry, a role (`roles.<id>`), the review and a fallback step each take their own
 `backend` beside `model`, and that backend runs the id as written, whatever the top-level
 `backend` says: `{ "backend": "claude", "model": "claude-opus-5-5" }` runs on claude,
-`huggingface/…` ids stay on pi. The spellings `claude/<id>`, `opencode/<id>` and a bare `claude-…`
-id under pi still load, but are retiring: write the explicit form instead.
+`huggingface/…` ids stay on pi. A model id never names a backend: `claude/<id>`, `opencode/<id>`
+(under pi) and a bare `claude-…` id under pi fail the load, each message naming the edit — write
+`backend: "claude"` beside `model: "claude-opus-5-5"`, or `anthropic/claude-…` to keep a claude
+model on pi. A fallback step with no `backend` inherits its tier primary's backend (the tier
+entry's, else the top level's).
 Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
 default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
-per job; the director runs at the strong tier. The observability surfaces name the backend in the model id (`claude/claude-sonnet-5-5`
+per job; the director runs at the strong tier. The observability surfaces display the backend ahead of the model id (`claude/claude-sonnet-5-5`
 in `tumwater status`, the dashboards, and the event feed), and a job with no model at all reads
 `claude default`.
 

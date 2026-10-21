@@ -1048,9 +1048,9 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), before, "file unchanged after all refusals");
 
   // The director's model-triple writes are accepted (configForRole resolves roles.director.*).
-  r = await cli(repo, "role", "director", "--model", "claude-opus-4");
+  r = await cli(repo, "role", "director", "--model", "opus-4");
   assert.equal(r.code, 0);
-  assert.equal(config().roles.director.model, "claude-opus-4");
+  assert.equal(config().roles.director.model, "opus-4");
   r = await cli(repo, "role", "director", "--provider", "anthropic");
   assert.equal(r.code, 0);
   assert.equal(config().roles.director.provider, "anthropic");

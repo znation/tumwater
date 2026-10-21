@@ -291,12 +291,11 @@ export function seamFree(
  * absent, an opencode pair reads NOT free. */
 export function piPairFree(
   providers: Map<string, PiModelDef[]> | null,
-  provider: string | undefined,
-  model: string | undefined,
+  pair: { backend?: string; provider?: string; model?: string },
   account: ClaudeAccount | null = null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
-  return seamFree(providers, { provider, model }, account, catalog);
+  return seamFree(providers, { agent: pair.backend, provider: pair.provider, model: pair.model }, account, catalog);
 }
 
 /** The free fallback pair the budget gate would engage for the team, or null when none is
@@ -311,7 +310,7 @@ export function fallbackModelPair(
   catalog: OpencodeCatalogCache | null = null,
 ): FallbackModelConfig | null {
   const providers = readPiProviders(modelsPath);
-  return fallbackPair(config, (p) => piPairFree(providers, p.provider, p.model, account, catalog));
+  return fallbackPair(config, (p) => piPairFree(providers, p, account, catalog));
 }
 
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may

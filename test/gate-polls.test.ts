@@ -189,7 +189,9 @@ test("pollTeamGates: a used-up claude window moves claude roles to the fallback 
   const out = pollTeamGates(states, ctx);
   assert.equal(out.gate, "open");
   const cfgOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config;
-  assert.deepEqual(cfgOf(0).model, { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" });
+  // On a claude team the pi pair's entry names its backend, so claude cannot take its id.
+  const piEntry = { backend: "pi", model: "free/qwen-free" };
+  assert.deepEqual(cfgOf(0).model, { small: piEntry, default: piEntry, strong: piEntry });
   assert.deepEqual(cfgOf(1).model, cfgOf(0).model, "the director follows its tier to the fallback pair too");
   assert.equal((runners[0] as unknown as { budgetFallbackActive?: boolean }).budgetFallbackActive, false, "the cap flag stays off");
   const limited = readEvents(root, 100).filter((e) => e.type === "claude_window_limited");
@@ -226,7 +228,7 @@ test("pollTeamGates: a used-up window's demoted fallback holds the moved tier's 
   const config = paidFallbackConfig(10);
   config.provider = undefined;
   config.backend = "claude"; config.model = "claude-sonnet-5-5";
-  config.roles = { ...config.roles, bugfix: { enabled: true, model: "free/qwen-free" } };
+  config.roles = { ...config.roles, bugfix: { enabled: true, backend: "pi", model: "free/qwen-free" } };
   const ctx = {
     root,
     runners,

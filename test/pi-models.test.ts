@@ -283,11 +283,13 @@ test("a claude-routed selector is never free, even if models.json prices its nam
     false,
     "a claude-routed fallback is refused",
   );
-  // A non-agent provider under agent: claude still runs on pi and can be free.
+  // A tier entry that names backend pi under a claude team still runs on pi and can be free.
   const piRouted = writeModels();
   const mixed = teamAt("lm-studio", "qwen3.8-27b");
   mixed.backend = "claude";
-  assert.equal(teamModelsFree(mixed, piRouted), true, "a provider/id fallback runs on pi");
+  mixed.provider = undefined;
+  mixed.model = { default: { backend: "pi", model: "lm-studio/qwen3.8-27b" } };
+  assert.equal(teamModelsFree(mixed, piRouted), true, "an explicit pi entry runs on pi");
 });
 
 test("a subscription claude seam is free; API billing, overage, and an absent account keep today's refusal", () => {

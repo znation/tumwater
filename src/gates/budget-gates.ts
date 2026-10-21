@@ -159,9 +159,9 @@ interface BudgetGatePoll {
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
 }
 
-/** Is this fallback pair a claude one (the agent namespace in the pair's provider)? */
+/** Is this fallback pair a claude one (its `backend`)? */
 function pairIsClaude(p: FallbackModelConfig): boolean {
-  return p.provider === "claude";
+  return p.backend === "claude";
 }
 
 /** Can the account not take extra usage: some window is rejected, or the newest non-reset
@@ -174,7 +174,7 @@ function claudeOverageRefused(account: ClaudeAccount): boolean {
 }
 
 /** Does this model seam route to the claude backend? */
-export function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
+export function seamIsClaude(seam: { agent?: string }): boolean {
   return seamAgent(seam) === "claude";
 }
 
@@ -268,7 +268,7 @@ export function pollBudgetGate(
     if (account?.billing === "subscription" && pairIsClaude(p)) {
       // The first Claude model runs on the subscription only; a later one (extraUsage) may
       // spend extra usage within its cap while no window is rejected or refuses overage.
-      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p.provider, p.model, account, catalog);
+      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p, account, catalog);
       // Past the reserve this step would spend the reserved quota before reaching extra usage:
       // it waits until a reading shows the account already spending overage.
       if (windowOut?.reserve === true && !Object.values(account.windows).some((w) => w.isUsingOverage === true))
@@ -279,7 +279,7 @@ export function pollBudgetGate(
         (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
       );
     }
-    if (piPairFree(providers, p.provider, p.model, account, catalog)) return !(windowOut !== null && pairIsClaude(p));
+    if (piPairFree(providers, p, account, catalog)) return !(windowOut !== null && pairIsClaude(p));
     if (reached) return false;
     return (
       p.maxDailyCostUsd === undefined ||
@@ -457,9 +457,10 @@ export function pollBudgetGate(
       )
         view.review = {
           ...view.review,
+          backend: reviewPair.backend ?? "pi",
           provider: undefined,
           model: formatModelSelector({
-            provider: reviewPair.provider,
+            provider: reviewPair.backend === undefined ? reviewPair.provider : undefined,
             model: reviewPair.model ?? "",
             thinking: reviewPair.thinking,
           }),
@@ -507,7 +508,7 @@ export function pollBudgetGate(
     now,
     windowOut,
     account,
-    isPriced: (p) => !piPairFree(providers, p.provider, p.model, account, catalog),
+    isPriced: (p) => !piPairFree(providers, p, account, catalog),
   });
   return {
     gate,

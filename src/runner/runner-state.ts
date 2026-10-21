@@ -227,6 +227,8 @@ export interface RunnerState {
    * for a runner with no pending reroute, so older state files read unchanged. */
   imageReroute?: {
     tier: "small" | "default" | "strong";
+    /** The target's backend; absent in a state file older than the field. */
+    backend?: string;
     provider?: string;
     model?: string;
     thinking?: string;

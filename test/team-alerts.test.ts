@@ -53,7 +53,7 @@ test("a spent budget pauses the roles, or hands them to the free fallback", () =
   // A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's
   // provider IS the backend id, so it renders agent-qualified, never a bare model id.
   const claudeFallback = teamAlerts(
-    { ...spent, budget: { ...spent.budget, fallback: { provider: "claude", model: "claude-sonnet-5-5" } } },
+    { ...spent, budget: { ...spent.budget, fallback: { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" } } },
     [],
     [],
     Date.now(),

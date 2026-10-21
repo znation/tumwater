@@ -189,7 +189,7 @@ test("an opencode fallback pair reads free in the role view only when the cached
   writeOpencodeCache(dir); // the fixture prices the gateway free model free
   const withCache = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(withCache.fallbackFree, true, "a catalog-free opencode fallback reads free to the view");
-  assert.deepEqual(withCache.fallback, { provider: "opencode", model: "deepseek-v4.1-flash-free" });
+  assert.deepEqual(withCache.fallback, { backend: "opencode", provider: "opencode", model: "deepseek-v4.1-flash-free" });
 });
 
 test("a subscription claude fallback reads free in the role view", () => {
@@ -197,7 +197,7 @@ test("a subscription claude fallback reads free in the role view", () => {
   writeConfig(dir, { fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   writeClaudeAccount(dir, { billing: "subscription", observedAt: Date.now(), windows: {} });
   const p = rolePayload(dir, "bugfix", NO_MODELS);
-  assert.deepEqual(p.fallback, { provider: "claude", model: "claude-sonnet-5-5" });
+  assert.deepEqual(p.fallback, { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" });
   assert.equal(p.fallbackFree, true); // the account's subscription makes the claude pair free
 });
 

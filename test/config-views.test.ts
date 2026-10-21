@@ -262,7 +262,7 @@ test("teamModelLabel collapses agreeing tiers and lists differing ones", () => {
 });
 
 test("fallbackDisplayPair agent-qualifies a backend pair and keeps a pi pair bare", () => {
-  assert.equal(fallbackDisplayPair({ provider: "claude", model: "claude-sonnet-5-5" }, "pi default"), "claude/claude-sonnet-5-5");
+  assert.equal(fallbackDisplayPair({ backend: "claude", provider: "claude", model: "claude-sonnet-5-5" }, "pi default"), "claude/claude-sonnet-5-5");
   assert.equal(fallbackDisplayPair({ provider: "omlx", model: "local-free" }, "pi default"), "local-free");
   assert.equal(fallbackDisplayPair({ provider: "omlx" }, "pi default"), "omlx");
   assert.equal(fallbackDisplayPair(null, "pi default"), "pi default");
@@ -355,25 +355,14 @@ test("a map-form fallback engages its default entry until part 5/8 tiers it", ()
 test("a non-pi fallback pair is keyed by its backend, in both selector forms", () => {
   // PLANS.md "Mixed claude + pi fleets, part 2/4": the budget gate's handback matches the
   // run's seamHoldKey capture against the fallback pair, so a fallback that routes to a
-  // non-pi backend must carry that backend as its provider — a namespaced `claude/<id>` and
-  // a bare `<id>` on a claude team both read `claude`, so a run on either form is handed
-  // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
+  // non-pi backend must carry that backend as its provider and as its `backend` — an explicit
+  // step backend and a step that inherits the claude team's backend both read `claude`, so a
+  // run on either form is handed back. A pi pair keeps its own provider (and a bare pi
+  // selector keeps undefined).
   const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
-  assert.deepEqual(fallbackPair({ ...claude, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] }), {
-    provider: "claude",
-    model: "claude-sonnet-5-5",
-    extraUsage: true,
-  });
-  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), { // legacy spelling, retired in part 5/5
-    provider: "claude",
-    model: "claude-sonnet-5-5",
-    extraUsage: true,
-  });
-  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude-sonnet-5-5" }), {
-    provider: "claude",
-    model: "claude-sonnet-5-5",
-    extraUsage: true,
-  }, "a bare claude selector on a claude team keys claude too");
+  const want = { backend: "claude", provider: "claude", model: "claude-sonnet-5-5", extraUsage: true };
+  assert.deepEqual(fallbackPair({ ...claude, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] }), want);
+  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude-sonnet-5-5" }), want, "a step with no backend inherits the team's");
   const pi: TumwaterConfig = defaultConfig();
   pi.fallback = "omlx/qwen";
   assert.deepEqual(fallbackPair(pi), { provider: "omlx", model: "qwen" });
@@ -600,27 +589,26 @@ test("applyFallbackModel without a resolved map is unchanged", () => {
 
 // --- Agent routing (plans/agent-backends.md part 4b/7) ------------------------------------
 
-test("routeModel: a registered provider runs its agent; any other provider runs pi", () => {
-  // A provider naming an agent is a namespace, not a pi provider: that agent runs.
-  assert.deepEqual(routeModel("claude", "claude-opus-5-5", "pi", "strong"), { // legacy spelling, retired in part 5/5
-    agent: "claude",
+test("routeModel: the backend is the explicit one, else the config's; a model id never names it", () => {
+  // A provider named like a backend is just a pi provider under pi.
+  assert.deepEqual(routeModel("claude", "claude-opus-5-5", "pi", "strong"), {
+    agent: "pi",
     model: "claude-opus-5-5",
   });
-  // Any other provider/id keeps pi — the one backend with providers — even under a claude default.
-  assert.deepEqual(routeModel("omlx", "Qwen", "claude", "default"), { agent: "pi", model: "Qwen" });
-  // A bare id (no provider) runs the top-level agent.
+  // The config's backend takes any provider/id verbatim.
+  assert.deepEqual(routeModel("omlx", "Qwen", "claude", "default"), { agent: "claude", model: "omlx/Qwen" });
+  // A bare id (no provider) runs the top-level backend.
   assert.deepEqual(routeModel(undefined, "sonnet", "claude", "default"), { agent: "claude", model: "sonnet" });
   assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
-  // Rule 3a (plans/provider-concurrency.md): a bare id starting with `claude-` runs on claude,
-  // whatever the top-level agent says.
-  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong"), { // legacy spelling, retired in part 5/5
+  // A bare `claude-…` id no longer jumps to claude: the explicit backend decides.
+  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong"), {
+    agent: "pi",
+    model: "claude-opus-5-5",
+  });
+  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong", "claude"), {
     agent: "claude",
     model: "claude-opus-5-5",
   });
-  // A named provider still wins: `anthropic/claude-…` stays pi.
-  assert.equal(routeModel("anthropic", "claude-opus-5-5", "pi", "strong").agent, "pi");
-  // Bare aliases keep today's routing.
-  assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
   // No model at all: the backend's tier default, or none for pi.
   assert.deepEqual(routeModel(undefined, undefined, "claude", "small"), {
     agent: "claude",
@@ -652,10 +640,10 @@ test("agent: claude with no model runs each seam on its tier's claude default", 
   }
 });
 
-test("a provider/id selector routes its seam alone to that agent", () => {
+test("a review backend routes its seam alone to that agent", () => {
   const config: TumwaterConfig = defaultConfig();
   config.backend = "pi";
-  config.review = { ...config.review, model: "claude/claude-opus-5-5:high" }; // legacy spelling, retired in part 5/5
+  config.review = { ...config.review, backend: "claude", model: "claude-opus-5-5:high" };
   const review = reviewConfig(config);
   assert.equal(review.agent, "claude");
   assert.equal(review.model, "claude-opus-5-5");
@@ -669,10 +657,10 @@ test("a provider/id selector routes its seam alone to that agent", () => {
 test("a mixed fallback under agent: claude runs on pi while the primary stays claude", () => {
   const config: TumwaterConfig = defaultConfig();
   config.backend = "claude";
-  config.fallback = "omlx/Qwen3.8-27B-MLX";
+  config.fallback = { default: { backend: "pi", model: "omlx/Qwen3.8-27B-MLX" } };
   assert.equal(configForRole(config, "feature").agent, "claude");
   const fb = fallbackRoleConfig(config, "feature");
-  assert.equal(fb?.agent, "pi", "a non-agent provider runs on pi");
+  assert.equal(fb?.agent, "pi", "an explicit pi step runs on pi");
   assert.equal(fb?.provider, "omlx");
   assert.equal(fb?.model, "Qwen3.8-27B-MLX");
 });
@@ -807,7 +795,7 @@ test("a Claude step is marked extraUsage when a Claude model comes earlier in it
   const sonnet = { backend: "claude", model: "claude-sonnet-5-5" } as const;
   const haiku = { backend: "claude", model: "claude-haiku-5-5" } as const;
   assert.deepEqual(
-    chain({ ...claude, fallback: [sonnet, haiku, "omlx/qwen"] }),
+    chain({ ...claude, fallback: [sonnet, haiku, { backend: "pi", model: "omlx/qwen" }] }),
     [true, true, false],
     "a Claude primary makes every Claude step extra usage",
   );
@@ -821,10 +809,10 @@ test("a Claude step is marked extraUsage when a Claude model comes earlier in it
   assert.deepEqual(chain(mapped), [false, false, false], "each tier's chain marks by its own order, so a second chain's first Claude step is unmarked");
 });
 
-test("teamModelLabel does not double-prefix a namespaced model", () => {
+test("teamModelLabel qualifies a non-pi backend's model id once", () => {
   for (const [backend, model, want] of [
-    ["opencode", "opencode/deepseek-v4.1-flash-free", "opencode/deepseek-v4.1-flash-free"],
-    ["claude", "claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5"],
+    ["opencode", "deepseek-v4.1-flash-free", "opencode/deepseek-v4.1-flash-free"],
+    ["claude", "claude-sonnet-5-5", "claude/claude-sonnet-5-5"],
   ] as const) {
     const cfg: TumwaterConfig = defaultConfig();
     cfg.backend = backend;
@@ -834,8 +822,8 @@ test("teamModelLabel does not double-prefix a namespaced model", () => {
 });
 
 // Routing goldens: each shape's seamsInUse list (grouped by agent|provider|model|thinking),
-// recorded from the code BEFORE `backend` entries existed — the explicit-backend change must
-// not move any spelling that loaded before it.
+// recorded in the explicit-backend form: a model id never names a backend, so each shape
+// spells its backend with the `backend` key.
 const ROUTING_GOLDENS: Record<string, string[]> = {
   "string model": [
     "pi|anthropic|claude-sonnet-5-5|high <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
@@ -847,17 +835,17 @@ const ROUTING_GOLDENS: Record<string, string[]> = {
     "pi|qwenrunner|qwen3.8-27b|- <- 13:feature,bugfix,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
     "pi|huggingface|zai-org/GLM-5.3-Flash:together|low <- 4:plan,director,review,resolver"
   ],
-  "bare claude id under pi": [
+  "claude id under backend claude": [
     "claude|-|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
   ],
-  "claude namespace under pi": [
-    "claude|-|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+  "claude-named provider under pi": [
+    "pi|claude|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
   ],
-  "opencode namespace under pi": [
+  "gateway id under backend opencode": [
     "opencode|-|anthropic/claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
   ],
   "anthropic id under claude backend": [
-    "pi|anthropic|claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "claude|-|anthropic/claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
   ],
   "claude backend no model": [
     "claude|-|claude-sonnet-5-5|- <- 12:feature,bugfix,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
@@ -894,33 +882,34 @@ test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () 
     return c;
   };
   const review = mk({ model: "qwenrunner/qwen3.8-27b" });
-  review.review = { ...review.review, model: "opencode/anthropic/claude-sonnet-5-5" }; // legacy spelling, retired in part 5/5
+  review.review = { ...review.review, backend: "opencode", model: "anthropic/claude-sonnet-5-5" };
   const cases: Record<string, TumwaterConfig> = {
     "string model": mk({ model: "anthropic/claude-sonnet-5-5:high" }),
     "string model legacy provider": mk({ provider: "qwenrunner", model: "qwen3.8-27b" }),
     "map with tier entry and inherited default": mk({
       model: { default: "qwenrunner/qwen3.8-27b", strong: "huggingface/zai-org/GLM-5.3-Flash:together:low" },
     }),
-    "bare claude id under pi": mk({ model: "claude-opus-5-5" }), // legacy spelling, retired in part 5/5
-    "claude namespace under pi": mk({ model: "claude/claude-opus-5-5" }), // legacy spelling, retired in part 5/5
-    "opencode namespace under pi": mk({ model: "opencode/anthropic/claude-sonnet-5-5" }), // legacy spelling, retired in part 5/5
+    "claude id under backend claude": mk({ backend: "claude", model: "claude-opus-5-5" }),
+    "claude-named provider under pi": mk({ model: "claude/claude-opus-5-5" }),
+    "gateway id under backend opencode": mk({ backend: "opencode", model: "anthropic/claude-sonnet-5-5" }),
     "anthropic id under claude backend": mk({ backend: "claude", model: "anthropic/claude-sonnet-5-5" }),
     "claude backend no model": mk({ backend: "claude" }),
     "opencode backend no model": mk({ backend: "opencode" }),
     "role selector override": withRole({ model: "qwenrunner/qwen3.8-27b" }, "feature", {
-      model: "claude/claude-haiku-5-5", // legacy spelling, retired in part 5/5
+      backend: "claude",
+      model: "claude-haiku-5-5",
       thinking: "low",
     }),
     "role tier-name override": withRole(
-      // legacy spelling, retired in part 5/5
-      { model: { default: "qwenrunner/qwen3.8-27b", strong: "claude-opus-5-5" } },
+      { model: { default: "qwenrunner/qwen3.8-27b", strong: { backend: "claude", model: "claude-opus-5-5" } } },
       "feature",
       { model: "strong" },
     ),
     "review override": review,
     "fallback chain": mk({
-      model: "claude-sonnet-5-5", // legacy spelling, retired in part 5/5
-      fallback: ["qwenrunner/qwen3.8-27b", "claude/claude-haiku-5-5"], // legacy spelling, retired in part 5/5
+      backend: "claude",
+      model: "claude-sonnet-5-5",
+      fallback: [{ backend: "pi", model: "qwenrunner/qwen3.8-27b" }, "claude-haiku-5-5"],
     }),
   };
   for (const [name, config] of Object.entries(cases)) {
@@ -1027,21 +1016,37 @@ test("applyFallbackModel drops a paid backend pinned beside a tier-name role mod
   assert.equal(out.roles.feature?.backend, undefined, "the paid backend does not survive the cap");
 });
 
-test("an explicit fallback step backend resolves to the pair its namespace spelling does", () => {
+test("an explicit fallback step backend overrides the team's; a step with none inherits it", () => {
   const withFallback = (backend: "pi" | "claude", fallback: TumwaterConfig["fallback"]): TumwaterConfig => ({
     ...defaultConfig(),
     backend,
     fallback,
   });
   const pi = fallbackPair(withFallback("claude", [{ backend: "pi", model: "qwenrunner/qwen3.8-27b" }]));
-  assert.deepEqual(pi, fallbackPair(withFallback("claude", ["qwenrunner/qwen3.8-27b"])));
-  assert.equal(pi?.provider, "qwenrunner");
+  assert.deepEqual(pi, { provider: "qwenrunner", model: "qwen3.8-27b" });
+  const inherited = fallbackPair(withFallback("claude", ["qwenrunner/qwen3.8-27b"]));
+  assert.equal(inherited?.backend, "claude", "no step backend: the claude team's applies, the id verbatim");
+  assert.equal(inherited?.model, "qwenrunner/qwen3.8-27b");
   const explicit = fallbackPair(withFallback("pi", [{ backend: "claude", model: "claude-sonnet-5-5" }]));
-  assert.deepEqual(explicit, fallbackPair(withFallback("pi", ["claude/claude-sonnet-5-5"])));
+  assert.deepEqual(explicit, { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" });
   assert.equal(explicit && fallbackDisplayPair(explicit, "pi default"), "claude/claude-sonnet-5-5");
-  const capped = { backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 2 };
-  const a = tierChainSteps(withFallback("pi", [capped]))[0]?.pair;
-  const b = tierChainSteps(withFallback("pi", [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 2 }]))[0]?.pair; // legacy spelling, retired in part 5/5
-  assert.deepEqual(a, b);
-  assert.equal(a?.maxDailyCostUsd, 2);
+  const capped = tierChainSteps(withFallback("pi", [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 2 }]))[0]?.pair;
+  assert.equal(capped?.backend, "claude");
+  assert.equal(capped?.maxDailyCostUsd, 2);
+});
+
+test("the migrated operator config resolves claude for every primary seam and pi for the fallback", () => {
+  const config: TumwaterConfig = {
+    ...defaultConfig(),
+    backend: "claude",
+    model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" },
+    fallback: [{ backend: "pi", model: "qwenrunner/qwen3.8-27b" }],
+  };
+  const seams = seamsInUse(config);
+  const primary = seams.filter((s) => !s.label.startsWith("fallback:"));
+  assert.ok(primary.length > 0);
+  assert.ok(primary.every((s) => s.agent === "claude"), "every primary seam runs on claude");
+  const fallback = seams.filter((s) => s.label.startsWith("fallback:"));
+  assert.ok(fallback.length > 0);
+  assert.ok(fallback.every((s) => s.agent === "pi" && s.provider === "qwenrunner" && s.model === "qwen3.8-27b"));
 });

@@ -51,7 +51,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   const atNoon = () => statusPayload(repo, now.getTime()) as typeof payload;
   let payload = atNoon() as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the team cannot be verified as free.
-  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "enabled by default with no spend yet");
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, fallback: null, tiers: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
   // Today's spend is summed from the roles' persisted daily windows (a stale stamp reads $0).
@@ -70,7 +70,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   payload = atNoon() as typeof payload;
-  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "cap 0 disables the gate but keeps the data");
+  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, fallback: null, tiers: null }, "cap 0 disables the gate but keeps the data");
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
 
@@ -146,7 +146,7 @@ test("a disabled cap never pauses the team in the phase payload", async () => {
     budgetBadge: string;
     roles: Array<{ role: string; phase: string }>;
   };
-  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null });
+  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, fallback: null, tiers: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
   // No role reads waiting: budget spent — the gate is off by definition while the cap is 0.
   for (const l of payload.roles) {

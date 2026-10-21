@@ -45,7 +45,6 @@ const CONFIG_KEY_RENAMES: readonly ConfigKeyRename[] = [
   { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "top" },
   { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "role" },
   { from: "customLoops", to: "customRoles", scope: "top" },
-  { from: "agent", to: "backend", scope: "top" },
   { from: "agents", to: "backends", scope: "top" },
 ];
 

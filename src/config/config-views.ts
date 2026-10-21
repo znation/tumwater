@@ -6,7 +6,7 @@
  * this module one-way. No I/O and no caching — the persistence side (defaults, loading,
  * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts. */
 import { MODEL_TIERS, type BackendConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
-import { formatModelSelector, isBackendId, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
@@ -160,6 +160,23 @@ export function withModelOverrides(
     model: routed.model,
     thinking: o.thinking ?? ownSel?.thinking ?? topThinking ?? config.thinking,
     agent: routed.agent,
+  };
+}
+
+/** A fallback pair as withModelOverrides' overrides: always an explicit backend (a pi pair is pi
+ * even on a claude team), a non-pi pair dropping the seam-key provider (its model already
+ * carries the whole id), a pi pair keeping its provider. */
+export function pairOverrides(pair: FallbackModelConfig): {
+  provider?: string;
+  model?: string;
+  backend?: string;
+  thinking?: string;
+} {
+  return {
+    provider: pair.backend === undefined ? pair.provider : undefined,
+    model: pair.model,
+    backend: pair.backend ?? "pi",
+    thinking: pair.thinking,
   };
 }
 
@@ -354,7 +371,7 @@ export function seamHoldKey(
 
 /** The `modelPairName` a resolved seam's run is charged under (RunnerState.dayCostByPair): the
  * routed backend's id stands in for the provider on a non-pi seam, exactly as the fallback
- * pairs carry it (config-fallbacks.ts's seamKeyedFallbackProvider), so a run and the chain
+ * pairs carry it (config-fallbacks.ts's seamKeyedPairFields), so a run and the chain
  * step it ran on name one key. */
 export function seamPairName(
   cfg: Pick<ResolvedModelConfig, "agent" | "provider" | "model">,
@@ -414,20 +431,20 @@ export function teamModelLabel(config: TumwaterConfig): string | null {
 }
 
 /** One fallback pair rendered for display, agent-qualified (PLANS.md "Mixed claude + pi
- * fleets, part 3/4" gap 7): a pair routed to a non-pi backend — its `provider` is that
- * backend's id, per seamKeyedFallbackProvider, so `claude` — renders as `claude/claude-sonnet-5-5`,
+ * fleets, part 3/4" gap 7): a pair routed to a non-pi backend — its `backend`, per
+ * seamKeyedPairFields, so `claude` — renders as `claude/claude-sonnet-5-5`,
  * the same agent-qualified form every other surface carries; a pi pair keeps the bare model
  * byte-identical to before (the badge, the team alert and `tumwater role` all name the
  * model a pi fallback runs, never its provider). Falls back through the provider to the
  * caller's `<agent> default` label when both halves are absent. One home so the three display
  * surfaces cannot render one fallback two ways. */
 export function fallbackDisplayPair(
-  pair: { provider?: string; model?: string } | null,
+  pair: { backend?: string; provider?: string; model?: string } | null,
   backendDefault: string,
 ): string {
   const p = pair ?? {};
   if (p.model !== undefined)
-    return p.provider !== undefined && isBackendId(p.provider) ? `${p.provider}/${p.model}` : p.model;
+    return p.backend !== undefined && p.backend !== "pi" ? `${p.backend}/${p.model}` : p.model;
   if (p.provider !== undefined) return p.provider;
   return backendDefault;
 }

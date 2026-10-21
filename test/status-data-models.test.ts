@@ -140,8 +140,8 @@ test("snapshot carries the claude subscription window and classifies paying seam
   cfg.backend = "claude";
   delete (cfg as { provider?: unknown }).provider;
   delete (cfg as { model?: unknown }).model;
-  cfg.roles.clean!.provider = "paid";
-  cfg.roles.clean!.model = "gpt-x";
+  cfg.roles.clean!.backend = "pi";
+  cfg.roles.clean!.model = "paid/gpt-x";
   saveConfig(repo, cfg);
   snap = snapshot(repo, modelsFile);
   assert.ok(snap.claudeWindow, "the mixed team still shows the window");

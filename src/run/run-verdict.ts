@@ -199,6 +199,7 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
       const from = ctx.runModel ?? target.config.model ?? "the model";
       s.imageReroute = {
         tier: target.tier,
+        backend: target.config.agent ?? "pi",
         provider: target.config.provider,
         model: target.config.model,
         thinking: target.config.thinking,

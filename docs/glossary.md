@@ -152,7 +152,7 @@ Identifiers follow the glossary: fleet → team, loop → runner, tick → run, 
 | `tickTimeoutSeconds` | `runTimeoutSeconds` | yes; `tumwater doctor` names the rename |
 | `landBatchMax` | `mergeBatchMax` | yes; `tumwater doctor` names the rename |
 | `maintenancePerWorkLanding` | `maintenancePerWorkMerge` | yes; `tumwater doctor` names the rename |
-| `agent` | `backend` | yes; `tumwater doctor` names the rename |
+| `agent` | `backend` | no; a top-level `agent` key fails the load as an unknown key naming `backend` |
 | `agents` (and `agents.<id>.bin`/`.args`) | `backends` | yes; `tumwater doctor` names the rename |
 | `agentBin`, `piArgs` | `backends.pi.bin`, `backends.pi.args` | yes; `tumwater doctor` names the rename |
 
@@ -192,7 +192,7 @@ None of these keep the older name, except the dashboard hashes.
 | --- | --- | --- |
 | `/api/status` and `status --json`: `loops[]` | `roles[]` | no |
 | status rows: `ticks`, `lastTickEndedAt`, `lastLandedAt` | `runs`, `lastRunEndedAt`, `lastMergedAt` | no |
-| status payload: `landQueue` (entries' `tick`), `landingBadge`, `landQueueLabels`, `budget.agent` | `mergeQueue` (entries' `run`), `mergeBadge`, `mergeQueueLabels`, `budget.backend` | no |
+| status payload: `landQueue` (entries' `tick`), `landingBadge`, `landQueueLabels` | `mergeQueue` (entries' `run`), `mergeBadge`, `mergeQueueLabels` | no |
 | status `phase` value `landing` (and the other role-state labels) | `merging` (following the role-state labels) | no |
 | `history --json` rows: `loop`, `tick` | `role`, `run` | no |
 | `history --json` summary: `{loops:[{loop,ticks}]}` | `{roles:[{role,runs}]}` | no |

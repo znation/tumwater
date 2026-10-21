@@ -4149,19 +4149,19 @@ test("Ctrl+X edits a role's model override on its Transcript; instance writes th
 
   // Enter on a model id writes the viewed role's `roles.feature.model` key.
   keys.handleKey(undefined, { ctrl: true, name: "x" });
-  for (const ch of "claude-3-7-sonnet") keys.handleKey(ch, { name: ch });
+  for (const ch of "anthropic/claude-3-7-sonnet") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().roleModelMode, false, "a saved model leaves edit mode");
   assert.equal(keys.state().input, "pending draft", "Enter restores the saved draft");
-  assert.match(keys.state().flash!, /feature: model override set to claude-3-7-sonnet/);
-  assert.equal(modelOf("feature"), "claude-3-7-sonnet", "the override is written through setRoleModelFields");
+  assert.match(keys.state().flash!, /feature: model override set to anthropic\/claude-3-7-sonnet/);
+  assert.equal(modelOf("feature"), "anthropic/claude-3-7-sonnet", "the override is written through setRoleModelFields");
 
   // An instance id writes its base role's key — roles.feature, not roles.feature-2.
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → feature-2's transcript (view 2)
   assert.equal(keys.state().roleIds[keys.state().view - 1], "feature-2");
   keys.handleKey(undefined, { ctrl: true, name: "x" });
-  assert.equal(keys.state().input, "claude-3-7-sonnet", "an instance re-opening pre-fills its base role's override");
-  for (let i = 0; i < "claude-3-7-sonnet".length; i++) keys.handleKey(undefined, { name: "backspace" });
+  assert.equal(keys.state().input, "anthropic/claude-3-7-sonnet", "an instance re-opening pre-fills its base role's override");
+  for (let i = 0; i < "anthropic/claude-3-7-sonnet".length; i++) keys.handleKey(undefined, { name: "backspace" });
   for (const ch of "strong") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(modelOf("feature"), "strong", "an instance id writes its base role's key");

@@ -11,7 +11,6 @@ import { configForRole, resolvedBackendConfig } from "../config/config-views.js"
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
-import { isBackendId } from "../config/model-selector.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { modelLabel, usesPiModels } from "../agent/backend-traits.js";
 import { backendById } from "../agent/agent-backend.js";
@@ -143,7 +142,7 @@ export async function checkFallbackChain(
   for (const { tier, step, pair } of steps) {
     // A provider that names a backend other than pi (claude today; opencode from part 2) never
     // asks pi for a base URL or runs pi's price probe — only a pi step may.
-    const nonPiBackend = isBackendId(pair.provider) && pair.provider !== "pi";
+    const nonPiBackend = pair.backend !== undefined && pair.backend !== "pi";
     const base = !nonPiBackend && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
     const local = base !== null && isLocalUrl(base);
     const up = local ? await probe(`${base}/models`) : null;
@@ -157,7 +156,7 @@ export async function checkFallbackChain(
       verdict = `cap reached (${usd(spent)}/${usdCap(cap)})`;
     } else if (nonPiBackend) {
       verdict = `claude ${pair.extraUsage ? "extra usage" : (account?.billing ?? "billing unknown")}`;
-    } else if (piPairFree(providers, pair.provider, pair.model, account)) {
+    } else if (piPairFree(providers, pair, account)) {
       verdict = up ? "free · server up" : "free";
     } else {
       verdict = cap !== undefined ? `priced, ${usd(spent)}/${usdCap(cap)} today` : "priced, team cap only";
@@ -514,15 +513,6 @@ export async function checkTierModels(
     providers = new Map();
   const fails: string[] = [];
   const warns: string[] = [];
-  // Reserved agent ids: a pi provider whose name is an agent backend's id can never reach pi
-  // (the provider segment wins the routing), so its definitions are unreachable — warn.
-  if (providers) {
-    const reserved = [...providers.keys()].filter(isBackendId);
-    if (reserved.length > 0)
-      warns.push(
-        `pi's definitions (${modelsPath}) declare provider ${reserved.map((p) => `"${p}"`).join(", ")} — the name is reserved for an agent backend, so model ids under it never reach pi`,
-      );
-  }
   if (pairs.size > 0 && !providers)
     return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`);
   const readyProviders = new Set<string>();
@@ -660,16 +650,16 @@ export async function checkImageInput(
   // The tiers' fallback pairs: a reroute target must itself read images to help, and part 4's
   // fallback regime picks among these, so a text-only fallback team is a coverage gap here.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    piPairFree(providers, p.provider, p.model, accountNow),
+    piPairFree(providers, p, accountNow),
   );
   for (const tier of MODEL_TIERS) {
     const pair = resolved[tier].pair;
     if (pair?.model === undefined) continue;
-    // Fallback pairs are always pi (FallbackModelConfig has no agent), and the readers
-    // (seamImageInput, imageReroute) resolve a pi seam to the "pi" agent, so the cache key
-    // must carry "pi" — keying it `undefined` would write a verdict the readers never read.
-    const agent = "pi";
-    if (seamImageInput(pair, providers, undefined, listed) === true)
+    // The readers (seamImageInput, imageReroute) resolve a pair with no backend to the "pi"
+    // agent, so the cache key must carry "pi" — keying it `undefined` would write a verdict the
+    // readers never read.
+    const agent = pair.backend ?? "pi";
+    if (seamImageInput({ ...pair, agent }, providers, undefined, listed) === true)
       claimed.set(imageProbeKey(agent, pair.provider, pair.model), {
         agent,
         provider: pair.provider,

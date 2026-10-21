@@ -197,6 +197,7 @@ export async function runPhase(ctx: RunnerRunContext): Promise<RunOutcome> {
   if (s.imageReroute) {
     const r = s.imageReroute;
     cfg = withModelOverrides(ctx.config, r.tier, {
+      backend: r.backend,
       provider: r.provider,
       model: r.model,
       thinking: r.thinking,

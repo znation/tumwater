@@ -108,7 +108,7 @@ export function imageReroute(
   // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
   // price check), never a priced primary model — a reroute must not spend past the cap.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    piPairFree(providerMap, p.provider, p.model, account),
+    piPairFree(providerMap, p, account),
   );
   for (const t of candidates) {
     const pair = resolved[t].pair;

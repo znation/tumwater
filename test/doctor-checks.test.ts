@@ -207,7 +207,7 @@ test("checkBackendBinary checks the enabled seams' agents, not always pi", () =>
 
 test("checkBackendBinary joins each agent's verdict for a mixed pi and claude team", () => {
   const root = readyRepo();
-  writeConfig(root, { backend: "claude", roles: { coverage: { model: "pi/some-model" } } });
+  writeConfig(root, { backend: "claude", roles: { coverage: { backend: "pi", model: "omlx/some-model" } } });
 
   const both = checkBackendBinary(root, fakeBins("claude", "pi"));
   assert.equal(both.level, "ok");

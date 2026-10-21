@@ -47,12 +47,12 @@ test("budgetBadge names the fallback model only while it is carrying the team", 
   );
 });
 
-// A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's provider
-// IS the backend id (`claude`), so it renders agent-qualified — `claude/claude-sonnet-5-5` —
+// A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's `backend`
+// is `claude`, so it renders agent-qualified — `claude/claude-sonnet-5-5` —
 // the same form every other surface carries, never a bare `claude-sonnet-5-5`.
 test("budgetBadge agent-qualifies a claude fallback", () => {
   assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "claude", model: "claude-sonnet-5-5" }, tiers: null }),
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { backend: "claude", provider: "claude", model: "claude-sonnet-5-5" }, tiers: null }),
     " · budget: $50.00/$50 today · over-cap model: claude/claude-sonnet-5-5 (cost n/a)",
   );
 });
@@ -298,13 +298,7 @@ test("budgetBadge renders the subscription window in place of or beside the dail
   assert.equal(claudeWindowTone(undefined), undefined);
 });
 
-test("budgetBadge's backend-default fallback label follows the team agent", () => {
-  // Part 4f/7: an engaged fallback pair that names neither half reads `<agent> default`; a
-  // claude team says so, a pi team stays byte-identical to before.
-  assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {}, backend: "claude" }),
-    " · budget: $50.00/$50 today · over-cap model: claude default (cost n/a)",
-  );
+test("budgetBadge's fallback label with no pair halves is pi's default", () => {
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {} }),
     " · budget: $50.00/$50 today · over-cap model: pi default (cost n/a)",

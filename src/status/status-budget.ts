@@ -31,8 +31,7 @@ interface BudgetSlice {
     capUsd: number;
     capHitAt: number | null;
     free: boolean;
-    backend?: string;
-    fallback: { provider?: string; model?: string } | null;
+    fallback: { backend?: string; provider?: string; model?: string } | null;
     tiers?: Partial<Record<string, string>> | null;
   };
   claudeWindow:
@@ -69,7 +68,7 @@ function claudeWindowBlock(
   if (seams.length > 0) seams.push(resolverConfig(cfg));
   if (!seams.some((s) => s.agent === "claude")) return undefined;
   const priced = seams.some((s) => {
-    if (s.agent === undefined || s.agent === "pi") return !piPairFree(providers, s.provider, s.model, account, catalog);
+    if (s.agent === undefined || s.agent === "pi") return !seamFree(providers, s, account, catalog);
     // An opencode seam is subscription-paid only when the catalog prices it at zero (part
     // 6b/7); any other agent the account cannot bill is never subscription-paid.
     if (s.agent === "opencode") return !seamFree(providers, s, account, catalog);
@@ -119,7 +118,7 @@ export function collectBudget(
   const catalog = readOpencodeCache(root);
   const publishedDemotions = info?.fallbackDemotions ?? {};
   const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p.provider, p.model, account, catalog) && !(modelPairName(p) in publishedDemotions);
+    piPairFree(providers, p, account, catalog) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
   // The subscription usage window (part 6d/7): one account read per poll serves the block.
   const claudeWindow = claudeWindowBlock(cfg, providers, account, catalog);
@@ -149,7 +148,6 @@ export function collectBudget(
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
       free: teamModelsFree(cfg, modelsPath, account, catalog),
-      backend: cfg.backend ?? "pi",
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
       // must not be advertised as one that will save the team — and a demoted one is refused

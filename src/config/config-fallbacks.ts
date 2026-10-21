@@ -15,7 +15,7 @@ import {
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
-import { formatModelSelector, isBackendId, parseModelSelector, routeModel } from "./model-selector.js";
+import { formatModelSelector, parseModelSelector, routeModel } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -26,6 +26,7 @@ import {
   REVIEW_TIMEOUT_S,
   configForRole,
   isTierName,
+  pairOverrides,
   resolvedModelFields,
   resolverConfig,
   reviewConfig,
@@ -37,6 +38,29 @@ import {
   type ResolvedModelConfig,
 } from "./config-views.js";
 
+/** The resolved fields of one fallback step, keyed by the seam it routes to (PLANS.md "Mixed
+ * claude + pi fleets, part 2/4"): the backend is the step's own, else its tier primary's
+ * resolved backend (the tier entry's, else the top level's, else pi). A pair routed to a
+ * non-pi backend carries that backend as `backend` and its name as `provider` — the key the
+ * budget gate's handback (gate-polls.ts's runOnPair against the run's seamHoldKey capture,
+ * runner-run.ts's setRunPair) matches on — and the id passes to it as written (routeModel); a
+ * pi pair keeps its own provider (a bare pi selector keeps undefined). */
+function seamKeyedPairFields(
+  config: TumwaterConfig,
+  tier: ModelTier,
+  provider: string | undefined,
+  model: string | undefined,
+  thinking: string | undefined,
+  stepBackend?: string,
+): Pick<FallbackModelConfig, "provider" | "model" | "thinking" | "backend"> {
+  const backend = stepBackend ?? topTierBackend(config, tier) ?? config.backend ?? "pi";
+  const routed = model === undefined ? undefined : routeModel(provider, model, "pi", tier, backend);
+  return {
+    ...resolvedModelFields(backend !== "pi" ? backend : provider, routed?.model, thinking),
+    ...(backend !== "pi" ? { backend } : {}),
+  };
+}
+
 /** The resolved model fields of a pure `fallback` selector string: parsed as a pure selector
  * (no legacy provider in scope), with the ambient top-level thinking when the selector
  * carries none. fallbackPair's map and string branches and tierOwnChain share this
@@ -44,40 +68,11 @@ import {
 function fallbackSelectorFields(
   selector: string,
   config: TumwaterConfig,
+  tier: ModelTier,
   backend?: string,
-): Pick<FallbackModelConfig, "provider" | "model" | "thinking"> {
+): Pick<FallbackModelConfig, "provider" | "model" | "thinking" | "backend"> {
   const parsed = parseModelSelector(selector);
-  if (backend !== undefined) {
-    // An explicit step backend is the pair's agent and takes the id as written (routeModel);
-    // the provider keeps its seam-keyed meaning: pi's own provider, else the backend's name.
-    const routed = routeModel(parsed.provider, parsed.model, config.backend ?? "pi", "default", backend);
-    return resolvedModelFields(
-      backend !== "pi" ? backend : parsed.provider,
-      routed.model,
-      parsed.thinking ?? config.thinking,
-    );
-  }
-  return resolvedModelFields(
-    seamKeyedFallbackProvider(config, parsed.provider),
-    parsed.model,
-    parsed.thinking ?? config.thinking,
-  );
-}
-
-/** A fallback pair's provider keyed by the seam it routes to (PLANS.md "Mixed claude + pi
- * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
- * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
- * team both read `claude` — so the budget gate's handback (gate-polls.ts's runOnPair
- * against the run's seamHoldKey capture, runner-run.ts's setRunPair) matches a run on
- * either selector form. The same routing rule as routeModel: a provider naming an agent is
- * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
- * its own provider (a bare pi selector keeps undefined, exactly as before). */
-function seamKeyedFallbackProvider(
-  config: TumwaterConfig,
-  provider: string | undefined,
-): string | undefined {
-  const backend = provider === undefined ? config.backend : isBackendId(provider) ? provider : "pi";
-  return backend !== "pi" ? backend : provider;
+  return seamKeyedPairFields(config, tier, parsed.provider, parsed.model, parsed.thinking ?? config.thinking, backend);
 }
 
 /** The team-level fallback pair: the `default` tier's resolved pair under
@@ -108,10 +103,12 @@ function legacyFallbackPair(config: TumwaterConfig): FallbackModelConfig | null 
   // The top-level model is a selector too (parsed the same way withModelOverrides does), so a
   // fallback field that omits model borrows the parsed id, never the raw selector string.
   const topSel = topTierSelector(config, "default");
-  const provider = seamKeyedFallbackProvider(config, fbo.provider ?? topSel?.provider ?? config.provider);
+  const provider = fbo.provider ?? topSel?.provider ?? config.provider;
   const model = fbo.model ?? topSel?.model;
   const thinking = fbo.thinking ?? topSel?.thinking ?? config.thinking;
-  return resolvedModelFields(provider, model, thinking);
+  // The legacy object's own `provider` is a pi provider (claude takes none), so naming one
+  // keeps the pair on pi whatever the team's backend; without one it inherits like any step.
+  return seamKeyedPairFields(config, "default", provider, model, thinking, fbo.provider !== undefined ? "pi" : undefined);
 }
 
 /** One tier's budget-fallback resolution (plans/model-tiers.md "Budget fallback by tier"):
@@ -167,7 +164,7 @@ function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelCon
     const legacy = legacyFallbackPair(config);
     if (legacy === null) return [];
     const primaryClaude = withModelOverrides(config, tier, {}).agent === "claude";
-    return [legacy.provider === "claude" && primaryClaude ? { ...legacy, extraUsage: true } : legacy];
+    return [legacy.backend === "claude" && primaryClaude ? { ...legacy, extraUsage: true } : legacy];
   }
   if (raw === undefined || raw === "pause") return [];
   // A Claude step after an earlier Claude model — the tier's primary counts — may spend extra
@@ -178,9 +175,9 @@ function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelCon
     .map((s) => {
       const step: { backend?: string; model: string; maxDailyCostUsd?: number } =
         typeof s === "string" ? { model: s } : s;
-      const fields = fallbackSelectorFields(step.model, config, step.backend);
-      const extraUsage = fields.provider === "claude" && claudeSeen;
-      if (fields.provider === "claude") claudeSeen = true;
+      const fields = fallbackSelectorFields(step.model, config, tier, step.backend);
+      const extraUsage = fields.backend === "claude" && claudeSeen;
+      if (fields.backend === "claude") claudeSeen = true;
       return {
         ...fields,
         ...(step.maxDailyCostUsd !== undefined ? { maxDailyCostUsd: step.maxDailyCostUsd } : {}),
@@ -243,11 +240,7 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
   if (pair === null) return null;
   const rc = config.roles[baseRoleOf(role)];
   return {
-    ...withModelOverrides(config, tier, {
-      provider: pair.provider,
-      model: pair.model,
-      thinking: pair.thinking,
-    }),
+    ...withModelOverrides(config, tier, pairOverrides(pair)),
     minRunIntervalSeconds: rc?.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
   };
 }
@@ -295,7 +288,7 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
   for (const { tier, step, pair } of tierChainSteps(config)) {
     add(
       step === 0 ? `fallback:${tier}` : `fallback:${tier}#${step}`,
-      withModelOverrides(config, tier, { provider: pair.provider, model: pair.model, thinking: pair.thinking }),
+      withModelOverrides(config, tier, pairOverrides(pair)),
     );
   }
   return [...seams.values()];
@@ -454,14 +447,25 @@ export function applyFallbackModel(
   free?: (seam: { agent?: string; provider?: string; model?: string }) => boolean,
 ): TumwaterConfig {
   if (resolved) {
-    const selectorOf = (f: TierFallback) =>
-      f.pair
-        ? formatModelSelector({
-            provider: f.pair.provider,
-            model: f.pair.model ?? "",
-            thinking: f.pair.thinking,
-          })
-        : undefined;
+    // A pair's selector keeps pi's provider; a non-pi pair's model is already the whole id. On a
+    // team whose backend is not pi — or a pair routed off pi — the entry names the pair's
+    // backend, so the team's own backend cannot take a pi pair's id as its own.
+    const selectorOf = (f: TierFallback): string | ModelSelectorEntry | undefined => {
+      const pair = f.pair;
+      if (!pair) return undefined;
+      const selector = formatModelSelector({
+        provider: pair.backend === undefined ? pair.provider : undefined,
+        model: pair.model ?? "",
+        thinking: pair.backend === undefined ? pair.thinking : undefined,
+      });
+      if (pair.backend === undefined && (config.backend ?? "pi") === "pi")
+        return formatModelSelector({ provider: pair.provider, model: pair.model ?? "", thinking: pair.thinking });
+      return {
+        backend: pair.backend ?? "pi",
+        model: selector,
+        ...(pair.thinking !== undefined ? { thinking: pair.thinking } : {}),
+      };
+    };
     const model: Partial<Record<ModelTier, string | ModelSelectorEntry>> = {};
     const stepCaps: Record<string, number> = {};
     for (const tier of MODEL_TIERS) {
@@ -518,7 +522,8 @@ export function applyFallbackModel(
   if (!pair) return config;
   return {
     ...config,
-    provider: pair.provider,
+    ...(pair.backend !== undefined || config.backend !== undefined ? { backend: pair.backend ?? "pi" } : {}),
+    provider: pair.backend === undefined ? pair.provider : undefined,
     model: pair.model,
     thinking: pair.thinking,
     review: fallbackReview(config.review),

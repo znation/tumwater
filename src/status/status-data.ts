@@ -136,11 +136,7 @@ export interface StatusSnapshot {
      * to scripts through the snapshot's own serialization. */
     capHitAt: number | null;
     free: boolean;
-    /** The team's resolved backend (`agent` config, plans/agent-backends.md): the badge's
-     * `<agent> default` label when a fallback pair names neither a provider nor a model.
-     * Optional so literal budget blocks in the tests stand; fresh per poll like the pair. */
-    backend?: string;
-    fallback: { provider?: string; model?: string } | null;
+    fallback: { backend?: string; provider?: string; model?: string } | null;
     /** The per-tier fallback labels (part 7b/8): tier → `provider/model[ (from <tier>)]` —
      * non-null ONLY while the cap is reached and the tiers resolve to two or more distinct
      * pairs, the badge's tier-list state; a single fallback (the other tiers borrowing its

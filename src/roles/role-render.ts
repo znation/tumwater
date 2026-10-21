@@ -5,7 +5,6 @@ import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { isBackendId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one role — what `tumwater role <id>` prints, rendered as Markdown
@@ -108,9 +107,7 @@ function fallbackPairLabel(
   fb: { provider?: string; model?: string; backend?: string },
   backendDefault: string,
 ): string {
-  const agentBackend =
-    (fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined) ??
-    (fb.provider !== undefined && isBackendId(fb.provider) ? fb.provider : undefined);
+  const agentBackend = fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined;
   if (fb.model !== undefined) {
     if (agentBackend !== undefined) return `${agentBackend}/${fb.model}`;
     return fb.provider !== undefined ? `${fb.provider}/${fb.model}` : fb.model;

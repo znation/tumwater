@@ -54,7 +54,9 @@ export function checkKnownKeys(
   for (const key of Object.keys(obj)) {
     if (!known.includes(key))
       problems.push(
-        `unknown key "${key}" in ${where} (valid keys: ${known.join(", ")})${typoSuffix(key, known)}`,
+        `unknown key "${key}" in ${where} (valid keys: ${known.join(", ")})${typoSuffix(key, known)}${
+          key === "agent" ? ' — "agent" is retired, write "backend"' : ""
+        }`,
       );
   }
 }

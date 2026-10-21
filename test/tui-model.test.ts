@@ -89,12 +89,12 @@ test("Ctrl+A edits the team's model; a selector string and a tier map save, a nu
 
     // Saving the same model twice says so the second time and writes nothing.
     tui.key(undefined, "a", { ctrl: true });
-    for (const ch of "claude-opus-5-5") tui.key(ch, ch);
+    for (const ch of "anthropic/claude-opus-5-5") tui.key(ch, ch);
     tui.key(undefined, "return");
     const savedModel = fs.readFileSync(cfgPath, "utf8");
     tui.key(undefined, "a", { ctrl: true });
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /model is already claude-opus-5-5, so tumwater\.json was not written/);
+    assert.match(tui.lastFrame(), /model is already anthropic\/claude-opus-5-5, so tumwater\.json was not written/);
     assert.equal(fs.readFileSync(cfgPath, "utf8"), savedModel, "the same model is not rewritten");
     assert.equal(tui.lines().at(-1), "director › draft prompt");
   });

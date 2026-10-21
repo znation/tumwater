@@ -179,3 +179,63 @@ test("backend beside model: the id must fit the backend", () => {
     /review\.model "claude\/claude-opus-5-5" names the backend "claude" as its provider.*drop the "claude\/" namespace/,
   );
 });
+
+// The retired backend spellings (Backend/model split, part 5/5): a model id never names a
+// backend, so each old spelling fails the load with the edit that replaces it.
+test("a model id that names a backend fails, naming the backend key to write instead", () => {
+  assert.match(
+    validationError({ model: "claude/claude-opus-5-5" }),
+    /model "claude\/claude-opus-5-5" names the backend "claude" in its model id — write backend: "claude" beside model: "claude-opus-5-5"/,
+  );
+  assert.match(
+    validationError({ model: "opencode/deepseek-free" }),
+    /write backend: "opencode" beside model: "deepseek-free"/,
+  );
+  assert.match(
+    validationError({ model: "claude-sonnet-5-5" }),
+    /model "claude-sonnet-5-5" is a claude model id but the backend is pi — add backend: "claude" beside it, or write "anthropic\/claude-sonnet-5-5" to keep it on pi/,
+  );
+  // The same check reaches each place a selector is written.
+  assert.match(
+    validationError({ model: { strong: "claude/claude-opus-5-5" } }),
+    /model\.strong "claude\/claude-opus-5-5" names the backend "claude"/,
+  );
+  assert.match(
+    validationError({ roles: { feature: { model: "claude-opus-5-5" } } }),
+    /roles\.feature\.model "claude-opus-5-5" is a claude model id/,
+  );
+  assert.match(
+    validationError({ review: { model: "claude/claude-opus-5-5" } }),
+    /review\.model "claude\/claude-opus-5-5" names the backend "claude"/,
+  );
+  assert.match(
+    validationError({ fallback: ["qwenrunner/qwen3.8-27b", "claude/claude-haiku-5-5"] }),
+    /fallback\[1\] "claude\/claude-haiku-5-5" names the backend "claude"/,
+  );
+  // A provider/model id under a claude backend would run as a paid claude model: it fails the
+  // load, and a string fallback is checked against every tier's backend, not just the default's.
+  assert.match(
+    validationError({ backend: "claude", fallback: "qwenrunner/qwen3.8-27b" }),
+    /fallback "qwenrunner\/qwen3.8-27b" is a provider\/model id but the backend is claude.*add backend: "pi"/,
+  );
+  assert.match(
+    validationError({ model: { strong: { backend: "claude", model: "claude-opus-5-5" } }, fallback: "claude-sonnet-5-5" }),
+    /fallback "claude-sonnet-5-5" is a claude model id but the backend is pi/,
+  );
+  // A fallback step inherits its tier primary's backend, so the bare id passes under claude.
+  assert.doesNotThrow(() => validateConfig({ backend: "claude", fallback: "claude-haiku-5-5" }));
+  assert.match(validationError({ fallback: "claude-haiku-5-5" }), /fallback "claude-haiku-5-5" is a claude model id/);
+});
+
+test("the explicit backend form and its pi and opencode neighbours still validate", () => {
+  assert.doesNotThrow(() => validateConfig({ backend: "claude", model: "claude-sonnet-5-5" }));
+  assert.doesNotThrow(() => validateConfig({ backend: "claude", model: { strong: "claude-opus-5-5" } }));
+  assert.doesNotThrow(() => validateConfig({ model: "anthropic/claude-sonnet-5-5" }));
+  assert.doesNotThrow(() => validateConfig({ backend: "opencode", model: "opencode/deepseek-free" }));
+  assert.doesNotThrow(() =>
+    validateConfig({
+      backend: "claude",
+      fallback: [{ backend: "pi", model: "qwenrunner/qwen3.8-27b" }],
+    }),
+  );
+});

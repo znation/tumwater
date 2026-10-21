@@ -728,7 +728,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   walk(payload, "payload");
   assert.deepEqual(found, []);
   assert.ok(payload.mergeQueue.entries.length > 0 && payload.eventItems.length > 0 && payload.roles.length > 0);
-  assert.ok(!("agent" in payload.budget) && "backend" in payload.budget);
+  assert.ok(!("agent" in payload.budget));
   assert.ok(payload.eventItems.every((it) => !("loop" in it) && "source" in it));
   assert.ok(payload.mergeQueue.entries.every((e) => !("tick" in e) && "run" in e));
 });

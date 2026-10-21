@@ -47,22 +47,20 @@ export function parseModelSelector(s: string, legacyProvider?: string): ModelSel
   return thinking ? { ...base, thinking } : base;
 }
 
-/** True when `s` names a registered agent backend — the reserved selector provider namespace
- * (`claude/<id>` always runs on claude). Validation restricts the config's `agent` key to the
- * same ids; a `provider/id` selector's provider is checked here. */
+/** True when `s` names a registered agent backend. Validation restricts the config's `backend`
+ * key to these ids; a model id never names one. */
 export function isBackendId(s: string | undefined): s is BackendId {
   return s !== undefined && (BACKEND_IDS as readonly string[]).includes(s);
 }
 
 /** Resolve a seam's backend identity: its own `agent` when it carries one (configForRole,
- * reviewConfig and resolverConfig all do), else `provider` when it names an agent backend (a
- * `claude/<id>` selector runs on claude), else pi — the one backend with providers, the
- * default a selector routes to when neither an agent nor a reserved provider prefix names one.
+ * reviewConfig, resolverConfig and a fallback pair's `backend` all do), else pi — the one
+ * backend with providers.
  * The single home of the rule: the budget gate's claude check, pi's free-ness and
  * context-window lookups, and the image-input seam all read a seam's backend through it, so
  * no two sites can disagree on which backend a selector runs. */
-export function seamAgent(seam: { agent?: string; provider?: string }): string {
-  return seam.agent ?? (isBackendId(seam.provider) ? seam.provider : "pi");
+export function seamAgent(seam: { agent?: string }): string {
+  return seam.agent ?? "pi";
 }
 
 /** Each agent backend's per-tier default model, applied only when the config resolves no model
@@ -83,19 +81,11 @@ const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string
 };
 
 /** The backend and concrete model a resolved seam's provider/model pair routes to
- * (plans/agent-backends.md "Config"). The provider segment decides the backend: a provider
- * naming a registered backend id runs that backend (and its provider field is cleared, since it is
- * a namespace, not a pi provider); any other provider runs on pi, the one backend with
- * providers; no provider at all runs on the config's `agent`. When no model id survives the
- * resolution, the backend's tier default fills in (pi supplies none).
- *
- * Rule 3a (plans/provider-concurrency.md "Routing a bare Claude model id to claude"): a bare id
- * (no provider) that starts with `claude-` runs on claude, whatever `configBackend` says — the one
- * prefix where the model id decides the backend. A named provider still wins
- * (`anthropic/claude-…` stays pi); bare aliases (`sonnet`, `opus`) keep today's routing.
- *
- * An `explicitBackend` (a tier entry's, role's or review's `backend` key) overrides all of the
- * above: it is the agent, and the id reaches it verbatim (see the branch below). */
+ * (plans/agent-backends.md "Config"). The backend is the `explicitBackend` (a tier entry's,
+ * role's or review's `backend` key), else the config's `backend`, else pi — a model id never
+ * names one. pi keeps the parsed provider (the caller's); claude and opencode take the whole
+ * `provider/model` id with no provider, verbatim. When no model id survives the resolution, the
+ * backend's tier default fills in (pi supplies none). */
 export function routeModel(
   provider: string | undefined,
   model: string | undefined,
@@ -103,26 +93,10 @@ export function routeModel(
   tier: ModelTier,
   explicitBackend?: string,
 ): { agent: string; model?: string } {
-  if (explicitBackend !== undefined) {
-    // An explicit backend is the agent and the id passes to it as written: pi keeps the parsed
-    // provider (the caller's), the others take the whole `provider/model` id with no provider.
-    const whole =
-      model !== undefined && provider !== undefined && explicitBackend !== "pi"
-        ? `${provider}/${model}`
-        : model;
-    if (whole !== undefined) return { agent: explicitBackend, model: whole };
-    const def = BACKEND_DEFAULT_MODELS[explicitBackend as BackendId]?.[tier];
-    return def !== undefined ? { agent: explicitBackend, model: def } : { agent: explicitBackend };
-  }
-  const backend =
-    provider === undefined
-      ? model?.startsWith("claude-")
-        ? "claude"
-        : configBackend
-      : isBackendId(provider)
-        ? provider
-        : "pi";
-  if (model !== undefined) return { agent: backend, model };
+  const backend = explicitBackend ?? configBackend;
+  const whole =
+    model !== undefined && provider !== undefined && backend !== "pi" ? `${provider}/${model}` : model;
+  if (whole !== undefined) return { agent: backend, model: whole };
   const def = BACKEND_DEFAULT_MODELS[backend as BackendId]?.[tier];
   return def !== undefined ? { agent: backend, model: def } : { agent: backend };
 }

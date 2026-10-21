@@ -31,20 +31,20 @@ test("Ctrl+X edits the viewed role's model override; Enter saves a model id or t
 
     // Enter on a model id persists it to tumwater.json as roles.clean.model and returns to
     // prompt mode with the saved draft restored.
-    for (const ch of "claude-3-7-sonnet") tui.key(ch, ch);
+    for (const ch of "anthropic/claude-3-7-sonnet") tui.key(ch, ch);
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /clean: model override set to claude-3-7-sonnet/);
+    assert.match(tui.lastFrame(), /clean: model override set to anthropic\/claude-3-7-sonnet/);
     let cfg = readJson(cfgPath) as { roles?: Record<string, { model?: string }> };
-    assert.equal(cfg.roles?.clean?.model, "claude-3-7-sonnet");
+    assert.equal(cfg.roles?.clean?.model, "anthropic/claude-3-7-sonnet");
     assert.equal(tui.lines().at(-1), "director › draft prompt"); // previous prompt restored
 
     // Re-entering pre-fills the just-saved override.
     tui.key(undefined, "x", { ctrl: true });
     assert.match(tui.lastFrame(), /edit clean's model override/);
-    assert.equal(tui.lines().at(-1), "role model › claude-3-7-sonnet");
+    assert.equal(tui.lines().at(-1), "role model › anthropic/claude-3-7-sonnet");
 
     // Enter on a tier name (strong) writes that literal through the same setter.
-    for (let i = 0; i < "claude-3-7-sonnet".length; i++) tui.key(undefined, "backspace");
+    for (let i = 0; i < "anthropic/claude-3-7-sonnet".length; i++) tui.key(undefined, "backspace");
     for (const ch of "strong") tui.key(ch, ch);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), /clean: model override set to strong/);

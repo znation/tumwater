@@ -1,5 +1,6 @@
 import {
   BACKEND_IDS,
+  MODEL_TIERS,
   SELECTOR_ENTRY_KEYS,
   THINKING_LEVELS,
   BACKEND_KEYS,
@@ -56,6 +57,7 @@ import {
   checkEntryBackend,
   checkFallbackList,
   checkFallbackStep,
+  checkRetiredSelector,
   checkSelectorHalves,
   checkSelectorValue,
 } from "./config-selector-checks.js";
@@ -170,6 +172,22 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // or model half is reported separately (checkSelectorHalves).
   checkModelTriple(r, "", "tier-map");
   checkSelectorHalves(r, "", "model", r.provider, problems);
+  // The backend a selector with no `backend` of its own resolves to (retired-spelling checks).
+  const topBackend = typeof r.backend === "string" ? r.backend : "pi";
+  // The backend a tier's primary resolves to, which that tier's fallback steps inherit.
+  const tierBackend = (tier: string): string => {
+    // A tier left out of the map takes the `default` entry, as resolveTopTier does.
+    const e = isJsonObject(r.model) ? (r.model[tier] ?? r.model.default) : undefined;
+    return isJsonObject(e) && typeof e.backend === "string" ? e.backend : topBackend;
+  };
+  // A string or list `fallback` serves every tier, each inheriting its own tier's backend, so it
+  // is checked against each distinct one; the same message from two backends is reported once.
+  const eachTierBackend = (check: (backend: string, out: string[]) => void): void => {
+    const out: string[] = [];
+    for (const b of new Set(MODEL_TIERS.map(tierBackend))) check(b, out);
+    for (const m of new Set(out)) problems.push(m);
+  };
+  if (r.provider === undefined) checkRetiredSelector("model", r.model, topBackend, problems);
   // A map's entries are selector strings too, resolved by config-views' topTierSelector with
   // parseModelSelector; the keyed check above sees only the object, so each entry runs the
   // same empty-half check (the map form cannot coexist with a legacy provider, so it parses
@@ -178,6 +196,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     for (const [tier, sel] of Object.entries(r.model)) {
       if (!isJsonObject(sel)) {
         checkSelectorValue(`model.${tier}`, sel, undefined, problems);
+        checkRetiredSelector(`model.${tier}`, sel, topBackend, problems);
         continue;
       }
       // An object tier entry: the model written beside the backend that runs it.
@@ -189,6 +208,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         problems.push(`${at}.thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`);
       checkEntryBackend(sel, at, problems);
       checkSelectorValue(`${at}.model`, sel.model, undefined, problems);
+      checkRetiredSelector(`${at}.model`, sel.model, typeof sel.backend === "string" ? sel.backend : topBackend, problems);
     }
   // An empty baseBranch would silently fall back to the checked-out branch — the one value
   // the operator's explicit setting must never degrade to unannounced.
@@ -379,6 +399,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkModelTriple(o, "review.", "tier-name");
     checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
     checkEntryBackend(o, "review", problems);
+    if ((o.provider ?? r.provider) === undefined)
+      checkRetiredSelector("review.model", o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
     checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
   });
 
@@ -396,8 +418,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     if (isJsonObject(f)) {
       checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
       for (const [tier, v] of Object.entries(f)) {
-        if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems);
-        else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems);
+        if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems, tierBackend(tier));
+        else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems, tierBackend(tier));
         else if (!isNonBlankString(v))
           problems.push(
             `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
@@ -405,10 +427,13 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         else if (v !== "pause")
           // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
           // no legacy provider in scope); "pause" names no model and stays valid.
-          checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
+          {
+            checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
+            checkRetiredSelector(`fallback.${tier}`, v, tierBackend(tier), problems);
+          }
       }
     } else if (Array.isArray(f)) {
-      checkFallbackList("fallback", f, problems);
+      eachTierBackend((b, out) => checkFallbackList("fallback", f, out, b));
     } else if (!isNonBlankString(f)) {
       problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
     } else if (f === "pause") {
@@ -418,6 +443,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     } else {
       // A selector-string fallback still parses to halves: report an empty one.
       checkSelectorHalves({ fallback: f }, "", "fallback", undefined, problems);
+      eachTierBackend((b, out) => checkRetiredSelector("fallback", f, b, out));
     }
   }
   if ("fallback" in r && "fallbackModel" in r)
@@ -523,6 +549,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         checkModelTriple(o, `roles.${id}.`, "tier-name");
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkEntryBackend(o, `roles.${id}`, problems);
+        if ((o.provider ?? r.provider) === undefined)
+          checkRetiredSelector(`roles.${id}.model`, o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
         // Only feature and bugfix may split (src/roles/runner-ids.ts INSTANCE_ROLES); an

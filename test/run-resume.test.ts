@@ -436,8 +436,8 @@ test("the fallback view's routed agent drives the resume check", () => {
     withSession(root, "feature"); // a pi session file exists, so only the agent can refuse it
     withClaudeAuthor(root, fs.realpathSync(root));
     // The role's tier falls back to a pi pair; under a claude primary the fallback view still
-    // routes to pi (a pi provider name survives in a pi-routed view).
-    const config = { ...defaultConfig(), backend: "claude", fallback: "omlx/Qwen" };
+    // routes to pi (the step names its own backend).
+    const config = { ...defaultConfig(), backend: "claude", fallback: [{ backend: "pi", model: "omlx/Qwen" }] };
     const fb = fallbackRoleConfig(config, "feature");
     assert.equal(fb?.agent, "pi", "a pi fallback pair routes to pi under a claude primary");
     const p = plan(root, s, { agent: fb?.agent });

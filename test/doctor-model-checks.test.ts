@@ -357,22 +357,6 @@ test("checkTierModels skips pi's definitions for claude-routed models", async ()
   assert.equal(probed, 0, "a claude-routed config probes no pi provider");
 });
 
-// An agent id is reserved: a pi models.json provider of the same name can never be reached
-// through routing, so doctor warns rather than silently ignoring the definitions.
-test("checkTierModels warns when pi's definitions name a reserved agent id", async () => {
-  const dir = tmpdir("doctor-reserved-");
-  const file = path.join(dir, "models.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({ providers: { claude: { models: [{ id: "claude-x", cost: { input: 0, output: 0 } }] } } }),
-  );
-  const root = readyRepo();
-  writeConfig(root, { backend: "claude" });
-  const outcome = await checkTierModels(root, file, async () => "ready");
-  assert.equal(outcome.level, "warn");
-  assert.match(outcome.detail, /declare provider "claude" — the name is reserved for an agent backend/);
-});
-
 // opencode (part 2/7): a model routed to opencode is not a pi pair and must not consult (or
 // require) pi's definitions nor probe pi's auth; the routing note names OpenCode's CLI and the
 // design §2 caveat that a bare `opencode/…` id always means the OpenCode CLI, never pi's
@@ -392,22 +376,6 @@ test("checkTierModels notes opencode-routed models and the built-in opencode cav
     /pi's built-in `opencode` provider is not reachable from tumwater/,
   );
   assert.equal(probed, 0, "an opencode-routed config probes no pi provider");
-});
-
-test("checkTierModels warns when pi's definitions name the reserved opencode provider", async () => {
-  const dir = tmpdir("doctor-reserved-");
-  const file = path.join(dir, "models.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({ providers: { opencode: { models: [{ id: "deepseek-x" }] } } }),
-  );
-  const root = readyRepo();
-  // opencode declares no tier defaults, so name an explicit model to get past the
-  // "no models declared" early return and reach the reserved-provider warning.
-  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
-  const outcome = await checkTierModels(root, file, async () => "ready");
-  assert.equal(outcome.level, "warn");
-  assert.match(outcome.detail, /declare provider "opencode" — the name is reserved for an agent backend/);
 });
 
 // The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): with

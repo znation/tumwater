@@ -224,6 +224,7 @@ export class RoleRunner {
     if (this.state.imageReroute) {
       const r = this.state.imageReroute;
       return withModelOverrides(this.config, r.tier, {
+        backend: r.backend,
         provider: r.provider,
         model: r.model,
         thinking: r.thinking,

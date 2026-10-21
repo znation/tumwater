@@ -38,8 +38,8 @@ type FallbackChain = FallbackStep | FallbackStep[];
 
 /** The agent backends an `agent` value may name (plans/agent-backends.md "Config"). The
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
- * ids so validation rejects a typo'd backend at load time instead of falling back to pi. The
- * agent id doubles as the selector provider namespace: `claude/<id>` always routes to claude. */
+ * ids so validation rejects a typo'd backend at load time instead of falling back to pi. A
+ * model id never names a backend: the backend is the `backend` key's. */
 export const BACKEND_IDS = ["pi", "claude", "opencode"] as const;
 export type BackendId = (typeof BACKEND_IDS)[number];
 
@@ -151,6 +151,9 @@ interface ReviewConfig {
  * absence, or paid pair is refused and the team pauses as it did before, because a fallback
  * that can spend would defeat the cap it is meant to survive. */
 export interface FallbackModelConfig {
+  /** The non-pi backend the pair routes to (`claude`); absent for a pi pair. `provider` then
+   * carries the same id as the pair's seam key, never a pi provider. */
+  backend?: string;
   /** pi provider for fallback runs; falls back to the top-level value. */
   provider?: string;
   /** pi model for fallback runs; falls back to the top-level value. */
@@ -243,10 +246,10 @@ export interface TumwaterConfig {
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
   /** The agent backend for bare selectors and the no-model default (plans/agent-backends.md
-   * "Config"): `"pi"` (the default) or `"claude"`. A `provider/id` selector whose provider
-   * names a backend always runs that backend; any other provider runs on pi. Typed as a string
-   * so a test or later backend can register an id outside the schema's reserved BACKEND_IDS;
-   * validation still rejects an unknown id in a loaded file. */
+   * "Config"): `"pi"` (the default), `"claude"` or `"opencode"`. A tier entry's, role's or
+   * review's own `backend` outranks it; claude and opencode take the model id
+   * verbatim. Typed as a string so a test or later backend can register an id outside the
+   * schema's reserved BACKEND_IDS; validation still rejects an unknown id in a loaded file. */
   backend?: string;
   /** The branch the team merges into and bases every role worktree on — the resolved
    * "main". Omitted, the team targets whatever branch the primary checkout has checked

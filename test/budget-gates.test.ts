@@ -270,9 +270,9 @@ test("runOnPair matches only an in-flight run on the fallback pair", () => {
   assert.equal(runOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
   // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setRunPair now
   // keys the in-flight run by the seam that ran (seamHoldKey → "claude"), and the fallback
-  // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedFallbackProvider names the
-  // backend for both a `claude/<id>` and a bare `<id>` selector on a claude team) — so a
-  // claude fallback run IS handed back in both selector forms, and a run whose provider is
+  // pair is seam-keyed the same way (config-fallbacks.ts's seamKeyedPairFields names the
+  // backend for a bare `<id>` selector on a claude team) — so a
+  // claude fallback run IS handed back, and a run whose provider is
   // a different seam (a pi `omlx` author here) never matches and is not returned.
   const claude = { provider: "claude", model: "claude-sonnet-5-5" };
   assert.equal(runOnPair({ provider: "claude", model: "claude-sonnet-5-5" }, claude), true);
@@ -282,9 +282,9 @@ test("runOnPair matches only an in-flight run on the fallback pair", () => {
     "a run on a different seam is not handed back to the claude fallback",
   );
   // A bare-selector claude fallback never reaches runOnPair with provider undefined: the
-  // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedFallbackProvider),
-  // so both `claude/<id>` and a bare `<id>` on a claude team produce the `claude` pair above
-  // and both hand the run back through this same match.
+  // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedPairFields),
+  // so a bare `<id>` on a claude team produces the `claude` pair above
+  // and hands the run back through this same match.
 });
 
 test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {
@@ -358,11 +358,8 @@ test("a subscription claude fallback engages at the cap", () => {
 
   const p = poll(root, state, cfg, models, [spentRunnerState("feature", 10)]);
   assert.equal(p.gate, "fallback"); // the subscription fallback is free money, not refused
-  assert.deepEqual(p.roleConfig.model, {
-    small: "claude/claude-sonnet-5-5",
-    default: "claude/claude-sonnet-5-5",
-    strong: "claude/claude-sonnet-5-5",
-  });
+  const claudeEntry = { backend: "claude", model: "claude-sonnet-5-5" };
+  assert.deepEqual(p.roleConfig.model, { small: claudeEntry, default: claudeEntry, strong: claudeEntry });
   const events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
   assert.equal(events[0]!.provider, "claude");
@@ -627,7 +624,7 @@ test("a used-up claude window moves subscription claude roles to the fallback be
   cfg.provider = undefined;
   cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
-  cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
+  cfg.roles.plan = { enabled: true, backend: "pi", provider: "paid", model: "gpt-x" };
   cfg.roles.bugfix = { enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   const state = newBudgetGateState(cfg);
 
@@ -829,7 +826,7 @@ test("one gate state follows a priced step's spend across its own cap during a w
   cfg.provider = undefined;
   cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
-  cfg.fallback = [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallback = [{ backend: "pi", model: "paid/gpt-x", maxDailyCostUsd: 5 }, { backend: "pi", model: "free/qwen-free" }];
   cfg.fallbackModel = undefined;
   const state = newBudgetGateState(cfg);
   const at = (pairUsd: number) => {
@@ -860,7 +857,7 @@ test("a Claude step after the subscription primary spends extra usage within its
   const cfg = configWith(10);
   cfg.provider = undefined;
   cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
-  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 5 }, { backend: "pi", model: "free/qwen-free" }];
   cfg.fallbackModel = undefined;
   const account = (extra: Record<string, unknown>, resetsAt = Date.now() + 3_600_000) =>
     writeClaudeAccount(root, {
@@ -911,7 +908,7 @@ test("a reserve crossing moves the team's Claude tiers, skips the extra-usage st
   const cfg = configWith(10);
   cfg.provider = undefined;
   cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
-  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 10 }, "free/qwen-free"];
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 10 }, { backend: "pi", model: "free/qwen-free" }];
   cfg.fallbackModel = undefined;
   cfg.claudeWindowReserve = { seven_day: 0.8 };
   const account = (utilization: number, extra: Record<string, unknown> = {}) =>

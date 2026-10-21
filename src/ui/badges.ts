@@ -222,9 +222,8 @@ export function budgetBadge(
   // single-pair text byte-identical to the pre-tier badge. Off-gate the badge is byte-
   // identical to before either way.
   const tierEntries = fallbackTierEntries(budget.tiers);
-  // The backend-default label when the engaged pair names neither half: `<agent> default`
-  // (plans/agent-backends.md part 4f/7), `pi default` for a pi team as before.
-  const backendDefault = `${budget.backend && budget.backend !== "pi" ? budget.backend : "pi"} default`;
+  // The label when the engaged pair names neither half: pi's own default.
+  const backendDefault = "pi default";
   const fallback =
     teamBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
