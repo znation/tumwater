@@ -68,21 +68,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
   - Give `buildStageFixPrompt` the run's current closing block, and ask the fix-up to return that block with the fix added, not a new one describing this turn.
   - Test (test/run-stage*.test.ts): the reproduce case keeps the authoring subject, and its body gains `self-check: the finding is wrong`.
 
-### Role notes keep a hold belief after the hold is lifted: the plan role's notes still call the Codex backend series dead and say never to re-author parts 2b/9 and 6/9, which now carry Needs-replan notes the plan role must act on (found by operator session 2026-10-21 from .tumwater/state/notes/plan.md and the plan role's run 414 transcript)
-
-- **Symptom:** .tumwater/state/notes/plan.md (saved 02:37) holds two lines:
-  - "both Refused entries and the Codex series stay skipped";
-  - "Dashboard History Newest-failure and Codex 2b/9 carry Refused — never re-add or re-author them; the Codex theme is dead."
-  - Plan run 414 wrote them from the two bug-made Refused notes: on 2b/9, `3ae8b4626` at 02:12; on 6/9, `b9664a461` at 02:27. Its reasoning called the blocked parts "(dead theme)".
-  - At 02:40 `dcc20618b` turned both into Needs-replan notes, which the plan role's step 1 exists to act on. It hand-corrected feature-4's notes but not plan.md.
-  - Every later plan run gets that note in its prompt, so the role asked to rewrite 2b/9 and 6/9 is told by its own notes to skip them. The seven Codex parts behind them stay stalled.
-- **Reproduce:** `grep -n "theme is dead" .tumwater/state/notes/plan.md` finds the line, while `tumwater plan --list` shows 2b/9 and 6/9 as `[blocked: needs replan]`.
-- **Cause:** role notes are free text that the role rewrites each run from the previous note. They are injected verbatim as "yours, unverified — check against the code before relying on them" (src/prompt/prompt.ts:273, `roleNotesBlock`). A note's claims about backlog state (refused, blocked, abandoned, done) are never compared with the backlog. Neither a hand conversion nor `tumwater plan --release` touches role notes. So a belief outlives the hold it came from, and the role keeps copying it forward.
-- **Expected / fix sketch:**
-  1. Now (operator, outside git): replace those two lines in .tumwater/state/notes/plan.md with the correction feature-4's notes got: the series is not abandoned, and 2b/9 and 6/9 carry Needs-replan notes for the plan role.
-  2. `roleNotesBlock`'s caption names the backlog index above it as the current source of entry state.
-  3. The structural fix is the PLANS.md entry "A role's notes are shown beside the live backlog state of every entry and series they name". It makes the prompt state, every run, what is currently true of each entry the notes mention.
-
 ### A refusal can rest on another entry's refusal or on the role's own notes instead of on anything in the refused entry, so one refusal spreads across a series: feature-4 refused Codex part 6/9 as "orphaned code in a dead theme" (found by operator session 2026-10-21 from commit b9664a461)
 
 - **Symptom:** `b9664a461`'s Refused note on Codex part 6/9 gives two reasons:

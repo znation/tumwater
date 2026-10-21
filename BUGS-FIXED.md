@@ -5,6 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### Role notes keep a hold belief after the hold is lifted: the plan role's notes still call the Codex backend series dead and say never to re-author parts 2b/9 and 6/9, which now carry Needs-replan notes the plan role must act on (found by operator session 2026-10-21 from .tumwater/state/notes/plan.md and the plan role's run 414 transcript) — fixed 2026-10-21 by the bugfix role
+
+- **Symptom:** .tumwater/state/notes/plan.md (saved 02:37) holds two lines:
+  - "both Refused entries and the Codex series stay skipped";
+  - "Dashboard History Newest-failure and Codex 2b/9 carry Refused — never re-add or re-author them; the Codex theme is dead."
+  - Plan run 414 wrote them from the two bug-made Refused notes: on 2b/9, `3ae8b4626` at 02:12; on 6/9, `b9664a461` at 02:27. Its reasoning called the blocked parts "(dead theme)".
+  - At 02:40 `dcc20618b` turned both into Needs-replan notes, which the plan role's step 1 exists to act on. It hand-corrected feature-4's notes but not plan.md.
+  - Every later plan run gets that note in its prompt, so the role asked to rewrite 2b/9 and 6/9 is told by its own notes to skip them. The seven Codex parts behind them stay stalled.
+- **Reproduce:** `grep -n "theme is dead" .tumwater/state/notes/plan.md` finds the line, while `tumwater plan --list` shows 2b/9 and 6/9 as `[blocked: needs replan]`.
+- **Cause:** role notes are free text that the role rewrites each run from the previous note. They are injected verbatim as "yours, unverified — check against the code before relying on them" (src/prompt/prompt.ts:273, `roleNotesBlock`). A note's claims about backlog state (refused, blocked, abandoned, done) are never compared with the backlog. Neither a hand conversion nor `tumwater plan --release` touches role notes. So a belief outlives the hold it came from, and the role keeps copying it forward.
+- **Fixed:** `roleNotesBlock`'s caption now names the `<backlog-index>` block that rides above it as the live source of each entry's current state, and says a note's claim about an entry's backlog state is a snapshot of the past that the live backlog always overrides. A note that tells a role to skip or never re-author an entry no longer stands against the backlog showing it needs replan. The structural fix — showing each entry's live state beside the notes that name it — stays with the PLANS.md entry "A role's notes are shown beside the live backlog state of every entry and series they name".
+- **Validation gap:** none — the stale note was confirmed directly from the plan role's saved notes against the live backlog, and the caption fix is pinned by a new test asserting the prompt points at the backlog index above the notes.
+
 ### The phase cell reads "due — starts on the next poll" for runners the poll already declined and will decline again: the multi-instance cap, the maintenance allowance and the yield-scaled gap record no `skipReason` (found by operator session 2026-10-21 from the GUI's Due chip, `rolePhase` in src/ui/status-model.ts and `phaseInfo` in src/ui/gui/gui-client-model.ts) — fixed 2026-10-21 by the bugfix role
 
 - **Symptom:** a runner the scheduling poll turned away read the bare `due` phase cell (the GUI Due chip's "starts on the next poll"), but the poll had just declined it and will keep declining it every poll it stays due. Three decline paths recorded no `RunnerState.skipReason`: the concurrent-`instances` cap (a due multi-runner base past `configuredInstances` writers, orchestrator-scheduling.ts), the maintenance allowance's per-poll headroom (a due maintenance role past the `allowance - used` slots admitted this pass), and the yield-stretched min gap (a `yieldScaledRole` runner inside `minRunInterval × multiplier` — `scheduleAtMinInterval` writes `nextRunAt` at the plain gap, so it is already past while the stretched gap still holds it).

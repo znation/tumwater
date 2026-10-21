@@ -85,6 +85,34 @@ test("every role run is told to write a note, even the first one with none", () 
   assert.ok(!prompt.includes("<role-notes>"), "no note content block when there is no note");
 });
 
+test("the role-notes block names the <backlog-index> block above it as the live source of entry state", () => {
+  // BUGS.md 2026-10-21: a role note can keep a hold belief ("the theme is dead; never
+  // re-author 2b/9") long after the backlog turns the entry into Needs-replan, because the
+  // note's claims about backlog state are never checked against the live backlog. The caption
+  // must point the role at the <backlog-index> block that rides above it as the current truth.
+  const role = roleById("feature")!;
+  const notes = "Codex 2b/9 is dead — never re-add or re-author it.";
+  const prompt = buildRunPrompt({ role, notes, backlogIndex: "<backlog-index>\n2b/9: needs replan\n</backlog-index>" });
+  assert.match(prompt, /<backlog-index> block above is the live/);
+  assert.match(prompt, /overridden by the backlog/);
+  const indexPos = prompt.indexOf("<backlog-index>");
+  const notesPos = prompt.indexOf("<role-notes>");
+  assert.ok(indexPos !== -1 && notesPos !== -1 && indexPos < notesPos, "backlog index rides above the role notes");
+});
+
+test("an assigned run's role-notes caption points at the backlog itself, not a missing index block", () => {
+  // run-prompt.ts omits the <backlog-index> block for an assigned run (it hands the entry to
+  // the run directly) and for an empty backlog, while still carrying the notes. The caption
+  // must not point at a block that is absent; it falls back to the backlog/entry instead.
+  const role = roleById("feature")!;
+  const notes = "Codex 2b/9 is dead — never re-add or re-author it.";
+  const prompt = buildRunPrompt({ role, notes, assigned: true });
+  assert.ok(!prompt.includes("<backlog-index> block above is the live"), "caption must not point at an index block that the run does not carry");
+  assert.match(prompt, /the backlog is the live/);
+  assert.match(prompt, /overridden by the backlog/);
+  assert.match(prompt, /check the entry itself/);
+});
+
 test("the director prompt never carries the role-notes block or instruction", () => {
   const prompt = buildDirectorPrompt("do a thing");
   assert.ok(!prompt.includes("role-notes"), "no role-notes block");

@@ -270,9 +270,19 @@ function savedClause(savedDay?: string, today?: string): string {
  * Rides only when there is a non-empty note; the standing instruction to write one is always
  * present (roleNotesInstruction), so a role's FIRST run — with no note yet — still learns the
  * command exists and can seed the notes. */
-function roleNotesBlock(notes: string, savedDay?: string, today?: string): string {
+function roleNotesBlock(notes: string, hasBacklogIndex: boolean, savedDay?: string, today?: string): string {
+  const liveSource = hasBacklogIndex
+    ? `the <backlog-index> block above is the live
+source of what is currently true of each entry and series, so check it (and the entry itself) before acting on a
+note's say-so.`
+    : `the backlog is the live
+source of what is currently true of each entry and series, so check the entry itself (and, when this run carries
+one, its line in the backlog) before acting on a note's say-so.`;
   return `Notes your role wrote in earlier runs (${savedClause(savedDay, today)}yours, unverified — check against the code before
-relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
+relying on them). A claim they make about an entry's backlog state — refused, blocked, abandoned, needs-replan,
+done, behind another entry — is a snapshot of the past, not the present: ${liveSource}
+A note that tells you to skip or never re-author an entry is always overridden by the backlog.
+<role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
 /** The standing instruction that makes the notes seedable: every role run is told it may
@@ -397,7 +407,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
   if (backlogIndex) parts.push(backlogIndex);
-  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, notesSavedDay, day));
+  if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, Boolean(backlogIndex), notesSavedDay, day));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (flakyChecks) parts.push(flakyChecks.trim());
