@@ -18,8 +18,9 @@ import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
-import { readMergeQueue } from "../merge/merge-queue.js";
+import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
+import type { MergeInFlight } from "../merge/merge-slot.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -109,7 +110,7 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
  * document GET /api/status serves. `-f/--follow` repaints the table every couple of seconds
  * until Ctrl+C or the process that started it exits, so a backgrounded follow does not
  * outlive its parent. */
-export async function cmdStatus(root: string, args: string[], seams: StatusFollowSeams = {}): Promise<void> {
+export async function cmdStatus(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, STATUS_FOLLOW_SPEC]);
   const follow = args.includes("-f") || args.includes("--follow");
   if (follow && args.includes("--json")) fail("status --json prints one document; -f/--follow repaints a live view — drop one of them");
@@ -131,30 +132,29 @@ export async function cmdStatus(root: string, args: string[], seams: StatusFollo
   }
 }
 
-/** `status`'s follow flag, kept local (unannotated like the neighbouring local specs). */
+/** `status`'s and `queue`'s follow flags, kept local (unannotated like the neighbours). */
 const STATUS_FOLLOW_SPEC = { names: ["-f", "--follow"] };
-/** The default repaint interval for `status -f` — a fixed cadence, no knob. */
-const STATUS_FOLLOW_INTERVAL_MS = 2000;
+const QUEUE_FOLLOW_SPEC = { names: ["-f", "--follow"] };
+/** The default repaint interval for a follow view — a fixed cadence, no knob. */
+const FOLLOW_VIEW_INTERVAL_MS = 2000;
 
-/** Test seams for the status follow's repaint interval and parent-death watch, so a test can
+/** Test seams for a follow view's repaint interval and parent-death watch, so a test can
  * drive the repaint and its end without waiting on real seconds or a real TTY. */
-interface StatusFollowSeams {
+interface FollowViewSeams {
   ppid?: () => number;
   intervalMs?: number;
   tty?: boolean;
 }
 
-/** `tumwater status -f`'s live loop: render the table once, then repaint on an interval until
- * Ctrl+C or the process that started this one is gone (the same parent-death rule `logs -f`
- * uses). Repaints in place with the `watch` clear-screen shape on a TTY, and prints frames
+/** A follow view's live loop: render once, then repaint on an interval until Ctrl+C or the
+ * process that started this one is gone (the same parent-death rule `logs -f` uses).
+ * Repaints in place with the `watch` clear-screen shape on a TTY, and prints frames
  * separated by a blank line when stdout is not a TTY so a piped follow stays readable. */
-async function followStatus(root: string, scope: string[] | null, seams: StatusFollowSeams): Promise<void> {
+async function followView(frameText: () => string, seams: FollowViewSeams): Promise<void> {
   const tty = seams.tty ?? process.stdout.isTTY;
-  const interval = seams.intervalMs ?? STATUS_FOLLOW_INTERVAL_MS;
+  const interval = seams.intervalMs ?? FOLLOW_VIEW_INTERVAL_MS;
   const frame = (): void => {
-    const snap = snapshot(root);
-    const text = renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, tty ? process.stdout.columns : undefined, scope !== null);
-    process.stdout.write(tty ? "\x1b[H\x1b[2J" + text + "\n" : text + "\n\n");
+    process.stdout.write(tty ? "\x1b[H\x1b[2J" + frameText() + "\n" : frameText() + "\n\n");
   };
   frame();
   await new Promise<void>((resolve) => {
@@ -167,6 +167,12 @@ async function followStatus(root: string, scope: string[] | null, seams: StatusF
       ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
     });
   });
+}
+
+/** `tumwater status -f`'s live loop: the team snapshot repainted until the parent exits. */
+async function followStatus(root: string, scope: string[] | null, seams: FollowViewSeams): Promise<void> {
+  const tty = seams.tty ?? process.stdout.isTTY;
+  await followView(() => renderStatus(root, scope ? scopeSnapshotToRoles(snapshot(root), scope) : snapshot(root), tty ? process.stdout.columns : undefined, scope !== null), seams);
 }
 
 /** `tumwater diff`: one line per role holding pending work, the files two or more roles touch
@@ -226,29 +232,39 @@ function diffPathArg(args: string[]): string | undefined {
   return norm;
 }
 
-/** `tumwater queue`: the durable merge queue in execution order, as text or as the
- * `{entries, unreadable}` document. */
-export async function cmdQueue(root: string, args: string[]): Promise<void> {
+/** `tumwater queue [-f/--follow]`: the durable merge queue in execution order, as text or as
+ * the `{entries, unreadable}` document. `-f/--follow` repaints the queue every couple of
+ * seconds until Ctrl+C or the process that started it exits, so a backgrounded follow does
+ * not outlive its parent (the same rule `status -f` uses). */
+export async function cmdQueue(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // The repo half of requireReadyRepo gates: like every repo-bound query, a directory
   // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
   // as an empty queue (a `merge queue empty` line, exit 0), so no merge ever queued is
   // data, not an error.
-  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG]);
+  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG, QUEUE_FOLLOW_SPEC]);
   await requireReadyRepo(root);
   const roles = parseRoleListScope(root, args);
-  // The JSON branch prints the reader's own document — raw sha and numeric enqueuedAt, not
-  // the render's short sha and age — and the render is the collector's view with one clock
-  // read, so `tumwater queue` and `tumwater status --json`'s mergeQueue cannot drift.
-  // The in-flight marker rides along only while an orchestrator runs and the marker names a
-  // queued entry (queueInFlight) — status --json's mergeQueue.inFlight, so the two agree.
-  // --role keeps the listed roles' entries (a base id taking its instances too) under their
-  // whole-queue positions; the in-flight marker is judged against the kept entries only, and
+  const follow = args.includes("-f") || args.includes("--follow");
+  if (follow && args.includes("--json")) fail("queue --json prints one document; -f/--follow repaints a live view — drop one of them");
+  // Scoped read shared by the follow and the one-shot branches, so the render's age and the
+  // in-flight marker share one clock read and each frame re-reads the queue. --role keeps
+  // the listed roles' entries (a base id taking its instances too) under their whole-queue
+  // positions; the in-flight marker is judged against the kept entries only, and
   // `unreadable` stays whole because an unreadable file has no role to attribute it to.
-  const whole = readMergeQueue(root);
-  const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roleInScope(r, roles)) : undefined;
-  const view = scoped ? scoped.view : whole;
-  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  const scope = scoped?.scope;
+  const readQueue = (): { view: MergeQueueView; inFlight: MergeInFlight | undefined; scope: ReturnType<typeof scopeMergeQueue>["scope"] | undefined } => {
+    const whole = readMergeQueue(root);
+    const scoped = roles ? scopeMergeQueue(whole, roles, (r) => roleInScope(r, roles)) : undefined;
+    const view = scoped ? scoped.view : whole;
+    return { view, inFlight: queueInFlight(root, view.entries, orchestratorAlive(root)), scope: scoped?.scope };
+  };
+  if (follow) {
+    await followView(() => {
+      const { view, inFlight, scope } = readQueue();
+      return renderMergeQueue(view, Date.now(), inFlight, scope);
+    }, seams);
+    return;
+  }
+  const { view, inFlight, scope } = readQueue();
   sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight, scope));
 }
 
