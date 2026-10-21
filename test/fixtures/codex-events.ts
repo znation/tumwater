@@ -1,10 +1,12 @@
 /** Loaders and small builders for the codex translator and rollout reader
  * (plans/codex-backend.md, PLANS.md "Codex backend, part 6/9"). The real 0.163.0 captures in
  * test/fixtures/codex-captures/ (hand step H1, taken 2026-10-20) are read verbatim — its
- * README.md maps each file to its finding — while the builders synthesize the two shapes no
+ * README.md maps each file to its finding — while the builders synthesize the shapes no
  * capture holds: a used-up usage window (the binary's message + a `usage_limit_reached` code,
- * finding 11) and a rollout `turn_context` whose model differs from the requested one
- * (finding 24). Pure string shaping, the codex twin of test/fixtures/claude-events.ts. */
+ * finding 11), a context-window write, `usage_not_included`, a server failure, a reused
+ * refresh token, a per-day rate-limit reach, and a rollout `turn_context` whose model differs
+ * from the requested one (finding 24). Pure string shaping, the codex twin of
+ * test/fixtures/claude-events.ts. */
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -91,6 +93,46 @@ export function codexContextWindow400(opts: { code?: string; message?: string } 
     errorType: "invalid_request_error",
     code: opts.code !== undefined ? opts.code : "context_window_exceeded",
     errorMessage: opts.message ?? "The requested context window 258400 tokens was exceeded",
+  });
+}
+
+/** A `usage_not_included` turn.failed: the ChatGPT account's included usage ran out, a
+ * permanent config error the doctor names (never a transient retry). */
+export function codexUsageNotIncluded(): string {
+  return codexTurnFailed({
+    status: 403,
+    errorType: "server_error",
+    code: "usage_not_included",
+    errorMessage: "Your API key does not include usage. Add a payment method.",
+  });
+}
+
+/** A `turn.failed` carrying a server-side status from SERVER_STATUS (500/502/503/504/529):
+ * transient, so the runner retries rather than abandoning. */
+export function codexServerError(status: number): string {
+  return codexTurnFailed({ status, errorType: "server_error", errorMessage: "Server overloaded" });
+}
+
+/** A message naming a reused/invalidated refresh token — a permanent login config error the
+ * classifier's refresh-token arm catches. Type `invalid_grant` (not `invalid_request_error`),
+ * so the generic 400 arm cannot also yield the result and only the message arm can. */
+export function codexRefreshToken(): string {
+  return codexTurnFailed({
+    status: 400,
+    errorType: "invalid_grant",
+    errorMessage: "refresh_token_reused: the token was already used to start a new session",
+  });
+}
+
+/** A `rate_limit_exceeded` turn.failed naming a per-day window, so the classifier passes the
+ * named window through rather than falling back to the five-hour default. */
+export function codexRateLimitNamed(): string {
+  return codexTurnFailed({
+    status: 429,
+    errorType: "rate_limit_error",
+    code: "rate_limit_exceeded",
+    errorMessage: "Rate limit reached for model. Please retry later.",
+    rateLimitReachedType: "requests_per_day",
   });
 }
 

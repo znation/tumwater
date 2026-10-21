@@ -11,6 +11,10 @@ import {
   codexCaptures,
   codexContextWindow400,
   codexItem,
+  codexRateLimitNamed,
+  codexRefreshToken,
+  codexServerError,
+  codexUsageNotIncluded,
   codexUsedUpWindow,
 } from "./fixtures/codex-events.js";
 
@@ -163,6 +167,34 @@ test("a used-up usage window classifies as transientRateLimit with a rejected fi
     (parser.retryAfterSeconds ?? 0) > 590 && (parser.retryAfterSeconds ?? 0) <= 600,
     "retryAfterSeconds is derived from resets_at",
   );
+});
+
+test("usage_not_included is a permanent config error, never a transient retry", () => {
+  const { parser } = fold([codexUsageNotIncluded()]);
+  assert.equal(parser.configError, true, "a used-up account is a config error");
+  assert.equal(parser.transientRateLimit, false, "it is not a rate limit");
+  assert.equal(parser.transientBackend, false, "it is not a server error");
+});
+
+test("a server-status turn.failed is a transientBackend that the runner retries", () => {
+  const { parser } = fold([codexServerError(503)]);
+  assert.equal(parser.transientBackend, true, "503 is a transient backend failure");
+  assert.equal(parser.backendFailureKind, "server");
+  assert.equal(parser.configError, false);
+});
+
+test("a reused refresh token is a permanent login config error", () => {
+  const { parser } = fold([codexRefreshToken()]);
+  assert.equal(parser.configError, true, "invalidated login is a config error");
+  assert.equal(parser.transientBackend, false, "it is not transient");
+});
+
+test("a rate_limit_exceeded naming a per-day window passes the named window through", () => {
+  const { parser } = fold([codexRateLimitNamed()]);
+  assert.equal(parser.transientRateLimit, true);
+  const window = parser.rateWindows.find((w) => w.type === "requests_per_day");
+  assert.equal(window?.status, "rejected", "the named window is rejected");
+  assert.equal(parser.rateWindows.some((w) => w.type === "five_hour"), false, "no fallback to the default five-hour window");
 });
 
 test("a 400 invalid_request_error naming the context window is contextExceeded, not configError", () => {
