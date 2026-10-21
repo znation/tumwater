@@ -1052,11 +1052,18 @@ test("a green gate and the reviewer run at the same time in a second slot", asyn
   const gateSpan = path.join(dir, "gate-span");
   const reviewSpan = path.join(dir, "review-span");
   const now = "node -e 'console.log(Date.now())'";
-  const { root, wt } = await gateBuildFixture(
-    "buildcheck-tool --ok",
-    `#!/bin/sh\n${now} >> '${gateSpan}'\nsleep 1\n${now} >> '${gateSpan}'\nexit 0\n`,
-  );
-  await withPi(`${now} >> '${reviewSpan}'\nsleep 1\n${now} >> '${reviewSpan}'\n${reviewerStub()}`, async () => {
+  // Rendezvous, not a wall-clock race: each side writes its start marker and then blocks until
+  // the other's marker appears, so a loaded host that delays one side's startup cannot make two
+  // concurrently-running processes read as sequential (the flake this fixed). A genuine regression
+  // to a sequential architecture leaves the earlier side waiting out its bounded loop and fails
+  // deterministically below (a gate that saw no reviewer exits 1, so the gate rejects).
+  const rendezvous = (other: string) =>
+    `i=0\nwhile [ ! -s '${other}' ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done\n[ -s '${other}' ] || exit 1`;
+  const gateScript =
+    `#!/bin/sh\n${now} >> '${gateSpan}'\n${rendezvous(reviewSpan)}\nsleep 0.2\n${now} >> '${gateSpan}'\nexit 0\n`;
+  const { root, wt } = await gateBuildFixture("buildcheck-tool --ok", gateScript);
+  const reviewScript = `${now} >> '${reviewSpan}'\n${rendezvous(gateSpan)}\nsleep 0.2\n${now} >> '${reviewSpan}'\n${reviewerStub()}`;
+  await withPi(reviewScript, async () => {
     const { result } = await reviewGate(root, wt, checkSlot(root, 3));
     assert.equal(result.decision, "approved");
     assert.equal(result.verifiedHead, await headOf(wt, "HEAD"), "the green gate verifies the head");

@@ -51,25 +51,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Considered and excluded:** the maintenance allowance's admission (src/orchestrator/orchestrator-scheduling.ts:453) also calls `noteSkip(..., undefined)`, but its headroom is recomputed from in-flight roles every pass (`maintenanceQuotaOverLine` at :259-262 owns the "used has reached the allowance" case, which already reads `waiting: maintenance allowance used …` through `maintenanceQuotaHold`), so a role declined only by the one-poll reservation is normally admitted on the next pass and the label's promise holds there. Left alone rather than adding a third state for a promise that keeps itself.
 - **Out of scope, deliberately:** the 2 s poll and the start latency it costs stay as they are — this entry makes the label tell the truth, it does not add a wake mechanism. The multiplier/clock split stays too, since `yieldMultiplierSuffix`'s own comment already declares a `now`-due cell at ×N to be "a role waiting out its gap, not a broken clock"; only the phase cell contradicts it.
 
-### `a green gate and the reviewer run at the same time in a second slot` failed, then passed on the same tree (quarantined by tumwater 2026-10-21)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ a green gate and the reviewer run at the same time in a second slot (9687.828417ms)
-AssertionError [ERR_ASSERTION]: the gate (1792602178614-1792602181619) and the reviewer (1792602175285-1792602178523) overlap
-at file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/review-precheck.test.js:882:16
-at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/fakes/fake-pi.js:95:16)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/review-precheck.test.js:875:5)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: false,
-expected: true,
-operator: '==',
-diff: 'simple'
-}
-~~~~
-
 ## Fixed
 
 ## Verified

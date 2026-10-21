@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a green gate and the reviewer run at the same time in a second slot` failed, then passed on the same tree (quarantined by tumwater 2026-10-21) — fixed 2026-10-21 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+The gate and the reviewer each ran their own `node -e 'console.log(Date.now())'` start/end markers into a shared file, and the test asserted real-wall-clock overlap of the two independently-scheduled child processes. Under a loaded host the gate's build-check startup — detect → probe → spawn — is delayed past the end of the reviewer's run, so the two one-second sleeps never overlapped and the assertion failed; a re-run on the same tree scheduled them to overlap, so it passed (the quarantine). The fix (`test/review-precheck.test.ts`) trades the wall-clock race for a rendezvous: each side writes its start marker and then blocks until the other's marker appears, so the concurrency is proven by coordination, not by racing the clock. A genuine regression to a sequential architecture now leaves the earlier side waiting out its bounded loop and fails deterministically.
+
+~~~~
+✖ a green gate and the reviewer run at the same time in a second slot (9687.828417ms)
+AssertionError [ERR_ASSERTION]: the gate (1792602178614-1792602181619) and the reviewer (1792602175285-1792602178523) overlap
+at file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/review-precheck.test.js:882:16
+at async withPi (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/fakes/fake-pi.js:95:16)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/review-precheck.test.js:875:5)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
+**Validation gap:** none — the quarantined failure already named the non-overlapping spans, and I reproduced the same assertion deterministically by giving the gate's check a 3.5 s head start, then watched the rendezvous fix absorb that same delay, so nothing was missing to confirm it.
+
 ### A refusal can rest on another entry's refusal or on the role's own notes instead of on anything in the refused entry, so one refusal spreads across a series: feature-4 refused Codex part 6/9 as "orphaned code in a dead theme" (found by operator session 2026-10-21 from commit b9664a461) — fixed 2026-10-21 by the bugfix role
 
 - **Symptom:** `b9664a461`'s Refused note on Codex part 6/9 gives two reasons:
