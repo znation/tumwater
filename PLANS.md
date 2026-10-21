@@ -164,6 +164,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/)
 
+**Refused 2026-10-21 by feature: re-authoring the Codex backend theme is directed not to happen — the feature run's refusal of part 2b/9 ("the purpose is abandoned pending a fresh theme") and this role's notes both record part 6/9 as abandoned; no Codex source exists (src/agent/codex/ is empty), and this translator/rollout reader has no consumer until part 7/9 lands behind unimplemented parts 4/9 and 5/9, so it would be orphaned code in a dead theme**
+
 **Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
 
 **Approach.**
