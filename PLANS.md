@@ -60,50 +60,61 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Same file, extend the whole-blob `historyFetchScope` harness (or a sibling) to also return `histNewest`, and assert `fetchHistory(false)` resets a previously set `histNewest` to null. (The harness runs the served blob with injected `getJson`/`renderHistory`; set `histNewest = { state: "error", message: "x" }` through returned state, then `await scope.fetchHistory(false)`.)
 - The existing History tests pass unchanged: the drill-down toggle/caching tests, `histDetailCardHtml`, `fetchHistory`, and the toolbar/search persistence tests. `npm run test:gate` is green.
 
-### Codex backend, part 2/9: Budget gates, holds, the reserve and the window events read each subscription backend's own account (planned 2026-10-20 by user; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/team/team-polls.ts src/orchestrator/orchestrator.ts src/pi/pi-models.ts src/agent/image-input.ts src/status/status-data.ts src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
+### Codex backend, part 2a/9: The free-ness callers pass a per-backend account lookup (planned 2026-10-21 by the plan role; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/pi/pi-models.ts src/agent/image-input.ts src/gates/budget-gates.ts src/status/status-budget.ts src/roles/role-view.ts src/doctor/doctor-model-checks.ts and their tests)
 
-**Needs review 2026-10-21 by feature: too large for one run** — the account→accounts lookup threading (src/pi/pi-models.ts seamFree/piPairFree/teamModelsFree/fallbackModelFree/fallbackModelPair and image-input) reaches doctor-model-checks, status-budget, role-view, fallback-breaker, config-fallbacks and config-views too, and the claude_window_*/claudeWindowReserve rename also spans the TUI reserve editors (tui-editor-claude-reserve, tui-editors), GUI settings and config-editable-keys; the per-backend windowOut/gate-state maps are a core budget-gate state-machine refactor on top of all that.
-
-**Goal.** Every window decision (moving a job down its chain, the director's move, the handback, the team hold, the reserve, and the once-per-window events) works for any backend that reports a subscription. Today each is keyed to claude by `pairIsClaude` / `seamIsClaude` (src/gates/budget-gates.ts), the hold observation's `provider: "claude"` (src/team/team-polls.ts `claudeWindowObservation`), one `windowOut` value, the `claude_window_*` event names and the `claudeWindowReserve` key. There is no behavior change for a claude-only or pi-only team.
+**Goal.** Every free-ness predicate takes one `account: ClaudeAccount | null`. Part 1/9 already made the store per backend (`readAccount(root, backend)` in src/agent/subscription-account.ts) but left the five exported pi-models predicates on one account, so a later part cannot judge a second backend without another signature sweep. This part converts them to `accounts: (backend: string) => SubscriptionAccount | null` and builds the lookup where they are called. No behavior change: `accounts("claude")` returns the same account, and no caller asks for another backend yet. This is the mechanical half the feature role split out of part 2/9, one theme applied everywhere it holds.
 
 **Approach.**
-- Accounts are passed as a lookup, not one value. `seamFree`, `piPairFree`, `fallbackModelPair`, `fallbackModelFree`, `teamModelsFree` (src/pi/pi-models.ts) and the two image-input callers (src/agent/image-input.ts) take `accounts: (backend: string) => SubscriptionAccount | null` in place of `account: ClaudeAccount | null`. Callers build it from `readAccount(root, id)`, once per poll.
-- src/gates/budget-gates.ts:
-  - `seamIsClaude` / `pairIsClaude` become `subscriptionBackendOf(seam | pair)`. It returns the backend id when that backend's account bills a subscription, else null.
-  - `windowOut` and `directorWindowOut` become maps keyed by that backend id.
-  - The window move, `windowTiers`, `windowResumed`, the moved tiers and `chainInfo`'s `"window"` / `"reserve"` reasons each read the job's own backend.
-  - The `extraUsage` position rule and the `"overage"` reason stay claude-only (`backend === "claude"`): overage is a claude concept.
-- src/gates/gate-polls.ts:
-  - The gate state's `claudeWindowWarned` / `claudeWindowReserved` become per-backend maps. A persisted old state reads as `{ claude: … }`.
-  - The window handback (`budget_handback`, reason `window`) gains `backend`.
-  - `windowMovedRoles` uses `subscriptionBackendOf`.
-  - The poll reads each subscription backend in use (`backendsInUse(config)`).
-- src/team/team-polls.ts: `claudeWindowObservation` becomes `windowObservation(backend, account)` with `role` and `provider` set to that backend. The `subscription-window` hold kind (src/team/team-hold.ts) is unchanged, and `seamHoldKey` already keys a non-pi backend by its id.
-- Events (src/events/events.ts, event-labels.ts, event-format.ts):
-  - `claude_window_{warning,reserved,limited,reset}` become `subscription_window_{warning,reserved,limited,reset}`, each with a `backend` field.
-  - src/events/event-legacy.ts's `normalizeLegacyEvent` maps each old name to the new one with `backend: "claude"`.
-  - The labels read "<Label> window …", from the backend's label ("Claude", later "Codex").
-  - `loggedWindowKeys` (src/orchestrator/orchestrator.ts) keys by backend and type.
-  - src/events/notify.ts pages on the new names.
-- Config:
-  - `BackendConfig` gains `windowReserve?: Record<string, number>`, allowed for claude now and for codex in part 4/9. It has the same validation as `claudeWindowReserve`: each fraction above 0 and at most 1.
-  - `claudeWindowReserve` stays as the older spelling. It is read as `backends.claude.windowReserve` when that is unset, and setting both is a load error that names both.
-  - src/config/config-views.ts exposes `windowReserveFor(config, backend)`.
-  - The TUI and GUI reserve editors keep editing the claude value through it. Their labels are part 3/9.
+- src/pi/pi-models.ts: `seamFree(providers, seam, accounts = () => null, catalog = null)`, and the same lookup in place of `account` in `piPairFree`, `fallbackModelPair`, `fallbackModelFree` and `teamModelsFree`. `seamFree`'s claude arm becomes the generic subscription arm — `const account = accounts(seamAgent(seam)); if (account?.billing === "subscription") return !accountUsesOverage(account);` ahead of the unchanged `pi` and `opencode` arms and the NOT-free default.
+- src/gates/budget-gates.ts: `pollBudgetGate` builds `const accounts = (backend: string) => readAccount(root, backend)` once per poll and threads it into `seamFree`/`piPairFree` and `chainInfo`'s `isPriced`; keep the existing `account` value for the claude-only window and overage logic.
+- The other callers pass the lookup derived from the one account they hold: `const accounts = (b: string) => (b === "claude" ? account : null)` in src/status/status-budget.ts, src/roles/role-view.ts and src/doctor/doctor-model-checks.ts; src/agent/image-input.ts's `piPairFree` call does the same.
+- Leave `claudeWindowUsedUp`, `extraUsage`/`claudeOverageRefused`, `claudeWindowBlock` and every display on claude; they are not free-ness lookups (part 2c/9 and part 3/9 own them).
+
+**Acceptance criteria.**
+- The existing tests pass with only the argument updated where they pass an account: test/pi-models.test.ts, test/image-input.test.ts, test/budget-gates.test.ts, test/status-budget.test.ts, test/role-view.test.ts and test/doctor-model-checks.test.ts.
+- A new test calls `seamFree(providers, { agent: "claude" }, (b) => (b === "claude" ? subscriptionAccount : null))` and sees free, and with an API-billed account sees not free — the predicate reads the lookup, not a captured value.
+- `grep -n 'account: ClaudeAccount | null' src/pi/pi-models.ts` prints nothing.
+- `npm test` passes.
+
+### Codex backend, part 2b/9: Window events are `subscription_window_*` with a `backend`, and the reserve is `backends.<id>.windowReserve` (planned 2026-10-21 by the plan role; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/team/team-polls.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
+
+**Goal.** The four window events are named for claude and carry no backend, and the only reserve key is the top-level `claudeWindowReserve`. Rename them to `subscription_window_{warning,reserved,limited,reset}`, each with a `backend: string` field ("claude" today), and let `backends.<id>.windowReserve` hold a reserve while `claudeWindowReserve` keeps working as claude's older spelling. `windowReserveFor(config, backend)` reads both. No behavior change for a claude-only team. The TUI and GUI reserve editors and `config-editable-keys` are deliberately untouched — `claudeWindowReserve` stays a valid editable key and those editors keep writing it, so this rename does not span them.
+
+**Approach.**
+- src/events/events.ts: rename the union members (keeping their payload comments) and add `backend: string` to each. src/events/event-labels.ts and src/events/event-format.ts label from that backend ("Claude" now). src/events/event-legacy.ts's `normalizeLegacyEvent` maps each old `claude_window_*` name to its new one with `backend: "claude"`. src/events/notify.ts pages on the new names.
+- Emitters add `backend: "claude"` and use the new names: src/team/team-polls.ts (`claude_window_limited`/`_reset`, `pollClaudeWindowReserve`'s `claude_window_reserved`, `pollClaudeWindowWarning`'s `claude_window_warning`) and src/gates/gate-polls.ts. `loggedWindowKeys` (src/team/team-polls.ts) takes the `backend` beside the type and keys by `backend:type:resetsAt`; src/orchestrator/orchestrator.ts reads both per backend.
+- Config: `BackendConfig` (src/config/config-schema.ts) gains `windowReserve?: Record<string, number>` and `CLAUDE_AGENT_KEYS` gains `"windowReserve"` — claude only now (part 4/9 adds it for codex), so pi and opencode still refuse it as an unknown key. src/config/config-validation.ts validates it with the same `0 < f <= 1` rule as `claudeWindowReserve`; setting both `claudeWindowReserve` and `backends.claude.windowReserve` is a load error naming both. src/config/config-views.ts exports `windowReserveFor(config, backend)`: `backends[backend].windowReserve`, else `claudeWindowReserve` when `backend === "claude"`, else undefined.
 - docs/config.md: `backends.<id>.windowReserve`, with `claudeWindowReserve` as its claude-only older spelling.
 
 **Acceptance criteria.**
-- The existing tests pass with only their event-name expectations updated: test/budget-gates.test.ts, test/budget-chain-info.test.ts, test/gate-polls.test.ts, test/team-polls.test.ts, test/notify.test.ts, test/event-format-team.test.ts and test/orchestrator-budget.e2e.test.ts.
-- A test registers a fake subscription backend `sub` whose account reports a rejected `five_hour` window. Then:
-  - its jobs move to their fallback;
-  - a hold keyed `sub` is placed;
-  - `subscription_window_limited {backend: "sub"}` is logged once;
-  - claude jobs, and claude's account, are untouched.
-- `normalizeLegacyEvent({type: "claude_window_limited", …})` gives `subscription_window_limited` with `backend: "claude"`. `tumwater logs --type claude_window_limited` still finds old lines.
-- `backends.claude.windowReserve: { "seven_day": 0.8 }` behaves exactly as `claudeWindowReserve` did. Both set is a load error. `backends.pi.windowReserve` is refused as an unknown key.
+- test/notify.test.ts, test/event-format-team.test.ts, test/gate-polls.test.ts and test/team-polls.test.ts pass with the new names and the added `backend`.
+- `normalizeLegacyEvent({ type: "claude_window_limited", … })` yields `subscription_window_limited` with `backend: "claude"`; `tumwater logs --type claude_window_limited` still finds old lines.
+- `backends.claude.windowReserve: { "seven_day": 0.8 }` behaves exactly as `claudeWindowReserve` did; both set is a load error; `backends.pi.windowReserve` is refused as an unknown key.
+- `windowReserveFor` reads the nested claude key, falls back to `claudeWindowReserve`, and returns undefined for a backend with neither.
 - `npm test` passes.
 
-### Codex backend, part 3/9: Window displays name each subscription backend (planned 2026-10-20 by user; requires part 2/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/status/status-budget.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-operator.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts src/roles/role-view.ts src/roles/role-render.ts src/report/report-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts docs/backends.md and their tests)
+### Codex backend, part 2c/9: Budget gates, holds, the reserve and the window moves read each subscription backend's own account (planned 2026-10-21 by the plan role; requires parts 2a/9 and 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/team/team-polls.ts src/orchestrator/orchestrator.ts and their tests)
+
+**Goal.** Every window decision — a job moving down its chain, the director's move, the handback, the reserve and the subscription-window hold — works for any backend that reports a subscription. Today each is keyed to claude by `pairIsClaude`/`seamIsClaude` (src/gates/budget-gates.ts), the observation's `provider: "claude"` (src/team/team-polls.ts `claudeWindowObservation`) and one `windowOut` (src/gates/budget-gates.ts). With part 2a/9 (the account lookup) and part 2b/9 (the event `backend` and `windowReserveFor`) landed, no signature or event work is left. This is the state-machine half the feature role split out of part 2/9. No behavior change for a claude-only or pi-only team.
+
+**Approach.**
+- src/gates/budget-gates.ts:
+  - `pairIsClaude` / `seamIsClaude` become `subscriptionBackendOf(pair | seam, accounts)`: the backend id whose account bills a subscription, else null.
+  - `windowOut` and `directorWindowOut` become maps keyed by that backend id, and `windowMove` is "any entry stands and a fallback pair exists". The availability test, the pinned-role and reviewer rescue, `windowTiers`/`movedTiers` and `directorMoved` each read the job's or seam's own backend.
+  - `chainInfo`'s `windowOut`/`account` parameters become the maps and the lookup, so its `"window"`/`"reserve"` reasons come from the step's backend. The `extraUsage` position rule and the `"overage"` reason stay claude-only.
+- src/gates/gate-polls.ts: `claudeWindowWarned`/`claudeWindowReserved` become per-backend maps (a persisted old state reads `{ claude: … }`); `windowMovedRoles` uses `subscriptionBackendOf`; the poll reads each backend in `backendsInUse(config)` with `readAccount`, calls the reserve and warning polls per backend with `windowReserveFor(liveConfig, backend)`, and the window handback (`budget_handback`, reason `window`) gains `backend`.
+- src/team/team-polls.ts: `claudeWindowObservation(account, now, reserve)` becomes `windowObservation(backend, account, now, reserve)` with `role` and `provider` set to `backend`; `pollTeamHold` receives one observation per subscription backend in use and stamps the limited event's `backend`. The `subscription-window` hold kind and `seamHoldKey` already key a non-pi backend by its id.
+- src/orchestrator/orchestrator.ts: the `loggedWindowKeys` reads are per backend (part 2b/9 already keyed them).
+- Replace the direct `liveConfig.claudeWindowReserve` reads in src/gates/budget-gates.ts, src/gates/gate-polls.ts and src/team/team-polls.ts with `windowReserveFor(liveConfig, backend)`.
+
+**Acceptance criteria.**
+- The existing tests pass with only their event-name/`backend` and account-shape expectations updated: test/budget-gates.test.ts, test/budget-chain-info.test.ts, test/gate-polls.test.ts, test/team-polls.test.ts, test/notify.test.ts, test/event-format-team.test.ts and test/orchestrator-budget.e2e.test.ts.
+- A test registers a fake subscription backend `sub` whose account reports a rejected `five_hour` window. Then its jobs move to their fallback; a hold keyed `sub` is placed; `subscription_window_limited { backend: "sub" }` is logged once; claude jobs, and claude's account, are untouched.
+- A test with claude's account rejected and `sub`'s healthy moves only claude's jobs, and the reverse moves only `sub`'s — one window per backend, not one shared window.
+- `grep -n 'seamIsClaude\|pairIsClaude' src` prints nothing, and no `claudeWindowReserve` read remains in src/gates or src/team.
+- `npm test` passes.
+
+### Codex backend, part 3/9: Window displays name each subscription backend (planned 2026-10-20 by user; requires part 2c/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/status/status-budget.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-operator.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts src/roles/role-view.ts src/roles/role-render.ts src/report/report-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts docs/backends.md and their tests)
 
 **Goal.** Show each subscription backend's windows under that backend's name, so a team with Claude and Codex both on subscriptions shows both. Today every surface prints one `claudeWindow` block labelled "Claude 5h": `claudeWindowBlock` (src/status/status-budget.ts), `claudeWindowBadge` (src/ui/badges.ts), the GUI tile (src/ui/gui/gui-client-operator.ts), the role view's billing line and "Claude window used up" (src/roles/role-render.ts), the report's "claude subscription, API-equivalent" line (src/report/report-render.ts), and doctor's "claude window" row (src/doctor/doctor-holds.ts `checkClaudeWindow`). A claude-only team's output is unchanged, apart from the JSON key added below.
 
@@ -125,7 +136,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - doctor prints a "sub window" row.
 - `npm test` passes.
 
-### Codex backend, part 4/9: `codex` becomes a backend id, with `backends.codex`, tier defaults, the effort mapping, reserved flags and traits (planned 2026-10-20 by user; requires part 2/9 landed; design in plans/codex-backend.md "Config and routing" and "CODEX_HOME and sessions"; touches src/config/config-schema.ts src/config/model-selector.ts src/config/config-validation.ts src/agent/backend-traits.ts src/agent/codex/codex-args.ts (new) src/doctor/doctor-model-checks.ts docs/config.md and their tests)
+### Codex backend, part 4/9: `codex` becomes a backend id, with `backends.codex`, tier defaults, the effort mapping, reserved flags and traits (planned 2026-10-20 by user; requires part 2c/9 landed; design in plans/codex-backend.md "Config and routing" and "CODEX_HOME and sessions"; touches src/config/config-schema.ts src/config/model-selector.ts src/config/config-validation.ts src/agent/backend-traits.ts src/agent/codex/codex-args.ts (new) src/doctor/doctor-model-checks.ts docs/config.md and their tests)
 
 **Goal.** Make `codex` a valid backend wherever config is read: `backend: "codex"` beside a `model`, a top-level `backend: "codex"`, and `backends.codex` with `bin`, `args`, `configDir` and `windowReserve`. There is no adapter yet (part 7/9). The startup gate's existing rule ("backend X is configured but this build has no adapter for it") refuses a team that routes a job to codex until then.
 

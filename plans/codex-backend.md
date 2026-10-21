@@ -627,12 +627,17 @@ Only what differs from plans/agent-backends.md §10:
 
 1. The subscription account is per backend: the store, `PiRunResult.agent`, and the two writers.
    No behavior change.
-2. Gates, holds, the reserve and the window events are per backend. Requires part 1. No behavior
-   change for claude.
+2. Gates, holds, the reserve and the window events are per backend. Split into three parts, each
+   independently mergeable and behavior-neutral for claude (PLANS.md): 2a threads the
+   `accounts: (backend) => SubscriptionAccount | null` lookup through the free-ness predicates and
+   their callers; 2b renames the window events to `subscription_window_*` with a `backend` field
+   and adds `backends.<id>.windowReserve` with `windowReserveFor`; 2c makes the budget gate, the
+   holds, the reserve and the window moves read each backend's own account. 2a and 2b require
+   part 1; 2c requires both.
 3. The window display is per backend: badge, GUI, status JSON, role view, report, doctor.
-   Requires part 2.
+   Requires part 2c.
 4. The `codex` backend id, `backends.codex` (`configDir` → `CODEX_HOME`, `windowReserve`), tier
-   defaults, the effort mapping, reserved flags and traits. Requires part 2.
+   defaults, the effort mapping, reserved flags and traits. Requires part 2c.
 5. The invocation and environment: pure argv and env builders. Requires part 4.
 6. The stream translator and the rollout reader, with fixtures from the H1 captures. Independent
    of parts 1–5.
@@ -642,7 +647,7 @@ Only what differs from plans/agent-backends.md §10:
    refusal, the context window and image input. Requires parts 3 and 7.
 9. Doctor, session retention, docs and the opt-in `smoke:codex` live check. Requires part 8.
 
-Parts 1 and 6 can start at once and run side by side.
+Parts 1, 2a, 2b and 6 can start at once and run side by side.
 
 ## Decisions (confirmed 2026-10-20 by user)
 
