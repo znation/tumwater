@@ -5,6 +5,55 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Dashboard Activity past windows: "◀ Earlier" and "Later ▶" buttons on the Activity card step a Last hour / 6 hours / day window back one window length at a time through `GET /api/logs?sinceMs=&untilMs=` (planned 2026-10-20 by the plan role; independent of every eligible plan. It touches src/ui/gui/gui-client-feed.ts, src/ui/gui/gui-page.ts, test/gui-client-team.test.ts and docs/how-it-works.md's Activity sentence. "TUI History past windows" touches only TUI files, their tests, docs/cli.md and docs/how-it-works.md's History sentence; done 2026-10-20)
+
+**Goal.** `handleLogs` (src/gui/gui-endpoints.ts) already serves a bounded past window, `?sinceMs=S&untilMs=U` validated by `untilMsQuery` (src/gui/gui-args.ts). The Activity card's `#feedwindow` select (PLANS-DONE.md "Dashboard Activity window picker") only asks for trailing windows. So "the last hour" can never become "the hour before that", although the History, Usage and Failures views all step this way. This plan gives the Activity card the same ◀ Earlier / Later ▶ buttons, the twin of `tumwater logs --since --until`.
+
+**Behavior, decided** (all logic in src/ui/gui/gui-client-feed.ts, inside the `// activity:start` / `// activity:end` region):
+- State: `let feedStep = 0;` beside `feedWindow`. It is view state and is not persisted, like History's `histStep`, so a reload returns to the trailing window. Its comment says: how many window lengths back the window ends.
+- Helpers beside `FEED_WINDOWS`:
+  - `const FEED_MAX_MS = 604_800_000;` mirrors the server's `LOGS_SINCE_MAX_MS` (src/events/event-window.ts). A comment says the two must agree, and a test pins it.
+  - `feedCanStepEarlier(windowMs, step)` returns true exactly when `windowMs` is non-zero and `(step + 2) * windowMs <= FEED_MAX_MS`. So Last day steps back at most 6 times, 6 hours 27 times and Last hour 167 times. It takes the number (`Number(feedWindow)`).
+  - `feedSpan(ms)`: "1 hour"/"N hours", or "1 day"/"N days" for a whole number of days. It uses the same rule as `histSpan` (src/ui/gui/gui-client-history.ts). That helper lives in another region, which `feedScope` does not load, so the feed keeps its own copy.
+  - `feedWindowPhrase()`: at step 0 it returns the window's FEED_WINDOWS phrase ("the last hour"). Otherwise it returns `"between " + feedSpan((feedStep + 1) * w) + " and " + feedSpan(feedStep * w) + " ago"`, where `w = Number(feedWindow)`. This is the History view's wording.
+- `feedLogsQuery()`: when `feedWindow` is set and `feedStep > 0`, the first params are `"sinceMs=" + (feedStep + 1) * w` and `"untilMs=" + feedStep * w`, followed by grep and role in their current order. In every other case the URL is exactly what it is today.
+- renderFeed:
+  - The re-arm key becomes `feedRole + "\u0000" + feedText + "\u0000" + feedWindow + "\u0000" + feedStep`, so a step change re-arms `searchFeed()` the way a window change does.
+  - The live-window refetch branch also requires `feedStep === 0`. A stepped window ends in the past, so a new event can never fall inside it, and polls never refetch it.
+  - The two windowed empty states use `feedWindowPhrase()` in place of `windowPhrase`. So a stepped empty window reads "No events between 2 hours and 1 hour ago", and with a filter set it reads "No events match this filter between 2 hours and 1 hour ago". Build each head as `"No events " + (feedStep ? "" : "in ") + phrase` and `"No events match this filter " + (feedStep ? "" : "in ") + phrase`, so step 0 keeps today's exact wording.
+  - When `feedStep > 0` and `feedResults !== null`, paint `"<li class='empty muted feed-note'>Showing events " + feedWindowPhrase() + ".</li>"` first in the panel, ahead of the sparse note.
+  - At the end of renderFeed, set the controls: `$("feedstep").style.display = feedWindow ? "" : "none"`, `$("feedearlier").disabled = !feedCanStepEarlier(Number(feedWindow), feedStep)`, and `$("feedlater").disabled = feedStep === 0`.
+- Listeners, registered at load next to the `#feedwindow` one:
+  - A `click` listener on `$("feedearlier")` does `feedStep += 1` only when `feedCanStepEarlier(Number(feedWindow), feedStep)`.
+  - A `click` listener on `$("feedlater")` does `feedStep = Math.max(0, feedStep - 1)`.
+  - Each then calls `renderFeed(lastStatus)` when `lastStatus` is set.
+  - The `#feedwindow` change listener and `clearFeedFilter()` set `feedStep = 0`. The Role picker, Search box, Notable/All choice and type chips keep the step.
+- Update the region's head comment and the module doc comment with one clause each: on a window, ◀ Earlier / Later ▶ step it back by its own length through `?sinceMs=&untilMs=`, the twin of `tumwater logs --since --until`.
+
+**Page.** In src/ui/gui/gui-page.ts, directly after the `#feedwindow` `<label>`, add `<span id="feedstep" style="display:none"><button type="button" class="btn btn-sm" id="feedearlier">◀ Earlier</button><button type="button" class="btn btn-sm" id="feedlater">Later ▶</button></span>`.
+
+**Docs.** In docs/how-it-works.md, after the sentence ending "…the twin of `tumwater logs --since`, refreshing when a new event arrives.", add this sentence: its ◀ Earlier / Later ▶ buttons step that window back by its own length through `/api/logs?sinceMs=&untilMs=`, the twin of `logs --since --until`, and a stepped window does not refresh.
+
+**Tests** (test/gui-client-team.test.ts):
+- `feedScope`'s default stub element gains `style: { display: "" }` and `disabled: false`, so renderFeed can set the controls. Tests fire the buttons through its existing `fire(id, type, ev)` helper (`fire("feedearlier", "click", {})`).
+- "the Activity step buttons walk a window back with untilMs and Later returns": recalled `feed-window` 3600000, with `getJson` recording paths and `lastStatus` a payload.
+  - After `renderFeed` + `feedSettle()`, the calls are `["/api/logs?sinceMs=3600000"]`, `els.feedstep.style.display === ""`, `els.feedlater.disabled === true` and `els.feedearlier.disabled === false`.
+  - Fire `feedearlier:click` and settle. The last call is `/api/logs?sinceMs=7200000&untilMs=3600000`, `els.feedlater.disabled === false`, and the panel matches /Showing events between 2 hours and 1 hour ago/.
+  - Fire `feedlater:click` and settle. The last call is `/api/logs?sinceMs=3600000` again.
+- "a stepped window composes with Role and Search": recalled window 86400000, role qa, grep boom. One Earlier click gives the last call `/api/logs?sinceMs=172800000&untilMs=86400000&grep=boom&role=qa`.
+- "a stepped window never refetches on a new event": window 1h, step 1 (after an Earlier click, settled). Render a payload whose last eventItems ts is newer, then `sleep(10)`. The call count is unchanged.
+- "a window change and Clear filter reset the step": after one Earlier click, firing `feedwindow:change` with `target.value` "21600000" gives the last call `/api/logs?sinceMs=21600000`. After another Earlier click, `scope.clearFeedFilter()` leaves `els.feedstep.style.display === "none"`, and a later Earlier click is ignored because `feedCanStepEarlier(0, …)` is false (no new call after settling).
+- "Earlier stops at the server's logs cap": import `LOGS_SINCE_MAX_MS` from `../src/events/event-window.js`. With window 86400000, fire Earlier 6 times, settling after each. The last call is `/api/logs?sinceMs=604800000&untilMs=518400000` and `els.feedearlier.disabled === true`. A seventh click issues no new call. Add `"FEED_MAX_MS"` to `feedScope`'s exported names and assert it equals `LOGS_SINCE_MAX_MS`.
+- "a stepped empty window names its bounds": window 1h, step 1, getJson answering `{ events: [], covered: true, note: "" }`. The panel matches /No events between 2 hours and 1 hour ago/.
+- Extend "the Activity filter persists its choices and the page ships the controls in the card head": the card head matches `/id="feedearlier"/` and `/id="feedlater"/`, and `GUI_CLIENT_FEED_JS` does not match `/store\("feed-step"/`.
+- Every existing Activity feed test passes unchanged. That includes "a windowed feed refetches only when a new event arrives" and every no-window query URL.
+
+**Acceptance criteria.**
+- With a window chosen, the Activity card head shows ◀ Earlier / Later ▶. Earlier fetches `/api/logs?sinceMs=(k+1)·len&untilMs=k·len[&grep=][&role=]` and paints that slice under a "Showing events between X and Y ago." note. Later steps back toward the trailing window and is disabled at step 0. Earlier is disabled once the next window's `sinceMs` would pass the server's 7-day cap. With Recent, the buttons are hidden.
+- A window change or Clear filter resets the step. Role, Search, Notable/All and type chips keep it. The step is never persisted. A stepped window never refetches on a status poll.
+- At step 0, every request URL and render matches today's.
+- No server file changes. `npm run test:gate` passes.
+
 ### TUI History past windows: `Ctrl+P` with the run trail off steps the History pane's trailing window back one window length at a time, wrapping to the trailing window after the 7-day cap, the terminal twin of the dashboard History ◀ Earlier buttons and `tumwater history --since --until` (planned 2026-10-20 by the plan role; independent of every eligible plan: it touches only TUI files, their tests and the TUI key docs, while "Dashboard Activity window picker" and "Dashboard Usage and Failures past windows" touch src/ui/gui/ files) — done 2026-10-20
 
 **Goal.** `readRunRowsSince(root, sinceMs, role, untilMs)` (src/history/history-data.ts) already serves a bounded past window. `tumwater history --since 2d --until 1d` and the dashboard History view's ◀ Earlier / Later ▶ buttons (PLANS-DONE.md "Dashboard History past windows") use it. The TUI History pane's Ctrl+S window cycle (`HISTORY_WINDOWS`, src/ui/tui/tui-pane-session.ts) only offers trailing windows, so the terminal can never show "yesterday". This plan adds a step that moves the pane's window back by its own length, one press at a time.

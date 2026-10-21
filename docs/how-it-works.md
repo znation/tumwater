@@ -432,7 +432,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   recent slice through `/api/logs` (well past the events a status poll carries), persisted like
   the Notable/All choice. A Window picker (last hour / 6 hours / day) shows that trailing
   window's events through `/api/logs?sinceMs=`, the twin of `tumwater logs --since`, refreshing
-  when a new event arrives. The Inbox tab lists each queued prompt and how long it
+  when a new event arrives. Its ◀ Earlier / Later ▶ buttons step that window back by its own length through
+  `/api/logs?sinceMs=&untilMs=`, the twin of `logs --since --until`, and a stepped window does not
+  refresh. The Inbox tab lists each queued prompt and how long it
   has waited, and each row can be edited in place — Edit loads the prompt's body, Save replaces it
   through the same path `tumwater prompt --edit` uses — and can be moved to the front of its role's
   queue, the same reorder `tumwater prompt --top` makes, addressed by the row's queue file; an open question's Answer button opens its

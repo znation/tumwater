@@ -108,6 +108,7 @@ export const GUI_PAGE = `<!doctype html>
           </div>
           <label><span class="sr-only">Role</span><select class="field" id="feedrole"><option value="">All roles</option></select></label>
           <label><span class="sr-only">Window</span><select class="field" id="feedwindow"></select></label>
+          <span id="feedstep" style="display:none"><button type="button" class="btn btn-sm" id="feedearlier">◀ Earlier</button><button type="button" class="btn btn-sm" id="feedlater">Later ▶</button></span>
           <label><span class="sr-only">Search</span><input class="field" id="feedgrep" type="search" placeholder="Search activity…" autocomplete="off"></label>
         </header>
         <ol id="feed" class="feed"></ol>

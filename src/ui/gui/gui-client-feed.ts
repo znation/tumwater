@@ -1,6 +1,8 @@
 /** The dashboard's Activity card, browser-side: the notable/all feed with its Role picker,
  * text box, Window select and tally chips, and the /api/logs search (debounced for a filter,
- * trailing-window for the Window select) that reaches past the carried window.
+ * trailing-window for the Window select) that reaches past the carried window. On a window,
+ * ◀ Earlier / Later ▶ step it back by its own length through ?sinceMs=&untilMs=, the twin of
+ * 'tumwater logs --since --until'.
  * renderFeed repaints it from each /api/status poll (renderTeam in
  * gui-client-team.ts calls it). Split out of gui-client-team.ts; spliced into gui-client.ts's
  * script right after the backlog card, reaching its helpers through that concatenation. */
@@ -12,12 +14,33 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   // role/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed), while the tally
   // chips select one exact event type the way 'tumwater logs --type <type>' does. A Window
   // select (Last hour / 6 hours / day) serves that trailing window through /api/logs?sinceMs=,
-  // the twin of 'tumwater logs --since'. All persist like the Notable/All choice, so a reload
-  // keeps the operator's scope.
+  // the twin of 'tumwater logs --since'; on a window, ◀ Earlier / Later ▶ step it back by its
+  // own length through /api/logs?sinceMs=&untilMs=, the twin of 'tumwater logs --since --until'.
+  // All persist like the Notable/All choice, so a reload keeps the operator's scope.
   const FEED_WINDOWS = [["", "Recent", ""], ["3600000", "Last hour", "the last hour"], ["21600000", "Last 6 hours", "the last 6 hours"], ["86400000", "Last day", "the last day"]];
   const FEED_MAX_ROWS = 500;
   const feedWindowOf = (v) => FEED_WINDOWS.some((w) => w[0] === v) ? v : "";
   let feedWindow = feedWindowOf(recall("feed-window") || "");
+  // How many window lengths back the window ends; view state, never persisted.
+  let feedStep = 0;
+  // Mirrors the server's LOGS_SINCE_MAX_MS (src/events/event-window.ts); the two must agree.
+  const FEED_MAX_MS = 604_800_000;
+  // Whether the window can step one more length back: the next earlier window's sinceMs must
+  // stay within the server's cap.
+  const feedCanStepEarlier = (windowMs, step) => windowMs !== 0 && (step + 2) * windowMs <= FEED_MAX_MS;
+  // "1 hour"/"N hours", or "1 day"/"N days" for a whole number of days (histSpan's rule; that
+  // helper lives in another region this scope does not load).
+  function feedSpan(ms) {
+    const d = ms % 86_400_000 === 0;
+    const n = d ? ms / 86_400_000 : ms / 3_600_000;
+    return n + (d ? " day" : " hour") + (n === 1 ? "" : "s");
+  }
+  function feedWindowPhrase() {
+    const w = Number(feedWindow);
+    return feedStep
+      ? "between " + feedSpan((feedStep + 1) * w) + " and " + feedSpan(feedStep * w) + " ago"
+      : (FEED_WINDOWS.find((x) => x[0] === feedWindow) || [])[2];
+  }
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
   let feedRole = recall("feed-role") || "";
   let feedType = recall("feed-type") || "";
@@ -44,7 +67,9 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   // narrowing on the rows in hand, like the Role picker, not a query narrowing.
   function feedLogsQuery() {
     const params = [];
-    if (feedWindow) params.push("sinceMs=" + feedWindow);
+    if (feedWindow && feedStep) {
+      params.push("sinceMs=" + (feedStep + 1) * Number(feedWindow), "untilMs=" + feedStep * Number(feedWindow));
+    } else if (feedWindow) params.push("sinceMs=" + feedWindow);
     if (feedText) params.push("grep=" + encodeURIComponent(feedText));
     if (feedRole) params.push("role=" + encodeURIComponent(feedRole));
     return "/api/logs?" + params.join("&");
@@ -111,14 +136,14 @@ export const GUI_CLIENT_FEED_JS = String.raw`
     syncFeedRoles(d);
     // Re-arm the debounced server search whenever the filter changed since the last paint (so a
     // recalled filter searches once at load, and no poll refetches an unchanged one).
-    const key = feedRole + "\u0000" + feedText + "\u0000" + feedWindow;
+    const key = feedRole + "\u0000" + feedText + "\u0000" + feedWindow + "\u0000" + feedStep;
     const evs = d.eventItems || [];
     const tail = evs.length ? evs[evs.length - 1].ts : 0;
     if (key !== feedQueryKey) {
       feedQueryKey = key;
       feedTailTs = tail;
       searchFeed();
-    } else if (feedWindow && feedResults !== null && tail !== feedTailTs) {
+    } else if (feedWindow && feedStep === 0 && feedResults !== null && tail !== feedTailTs) {
       // A window is live: a new event refetches at once and leaves the old slice painted.
       feedTailTs = tail;
       void fetchFeedSearch(++feedSeq);
@@ -142,10 +167,11 @@ export const GUI_CLIENT_FEED_JS = String.raw`
     const preType = feedError ? [] : serverRows !== null ? serverRows : local;
     const shown = feedType ? preType.filter((it) => it.type === feedType) : preType;
     const capped = shown.slice(0, FEED_MAX_ROWS);
-    const windowPhrase = (FEED_WINDOWS.find((w) => w[0] === feedWindow) || [])[2];
+    const windowPhrase = feedWindowPhrase();
+    const inWord = feedStep ? "" : "in ";
     markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.roles || []).map((l) => l.role));
-    paintPanel("feed", (feedNote && feedResults !== null ? "<li class='empty muted feed-note'>" + esc(feedNote) + "</li>" : "") + (preType.length ? tallyChips(preType, feedType) : "") + (shown.length
+    paintPanel("feed", (feedStep && feedResults !== null ? "<li class='empty muted feed-note'>Showing events " + windowPhrase + ".</li>" : "") + (feedNote && feedResults !== null ? "<li class='empty muted feed-note'>" + esc(feedNote) + "</li>" : "") + (preType.length ? tallyChips(preType, feedType) : "") + (shown.length
       ? capped.map((it) => {
         const kind = eventKind(it);
         const tone = it.type === "run_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
@@ -159,8 +185,8 @@ export const GUI_CLIENT_FEED_JS = String.raw`
       }).join("") + (shown.length > FEED_MAX_ROWS ? "<li class='empty muted'>Showing the newest " + FEED_MAX_ROWS + " of " + shown.length + " events — narrow the window or add a filter.</li>" : "")
       : feedResults !== null && feedWindow
         ? (feedRole || feedText || feedType
-          ? emptyFeedRow("No events match this filter in " + windowPhrase, "Widen the Search or Role picker, clear the type chip, or pick a longer window. ")
-          : emptyFeedRow("No events in " + windowPhrase, "Pick a longer window to look further back. "))
+          ? emptyFeedRow("No events match this filter " + inWord + windowPhrase, "Widen the Search or Role picker, clear the type chip, or pick a longer window. ")
+          : emptyFeedRow("No events " + inWord + windowPhrase, "Pick a longer window to look further back. "))
       : feedResults !== null
         ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Role picker, or clear the type chip, to look further back. ")
         : feedError
@@ -169,6 +195,9 @@ export const GUI_CLIENT_FEED_JS = String.raw`
             ? emptyFeedRow("No recent events match this filter", "Clear the Role, Search, or type chip to see the recent feed again. ")
             : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
               (items.length ? "Merges, failures, and questions show up here. All events has every run start and check." : "Events appear here as the roles work.") + "</li>"));
+    $("feedstep").style.display = feedWindow ? "" : "none";
+    $("feedearlier").disabled = !feedCanStepEarlier(Number(feedWindow), feedStep);
+    $("feedlater").disabled = feedStep === 0;
   }
   // The single state change both the chip click and Clear filter use: select a type (stored so
   // a reload keeps the scope), or clear it by passing "".
@@ -182,6 +211,7 @@ export const GUI_CLIENT_FEED_JS = String.raw`
     feedText = "";
     feedType = "";
     feedWindow = "";
+    feedStep = 0;
     store("feed-window", "");
     store("feed-role", "");
     store("feed-grep", "");
@@ -207,7 +237,16 @@ export const GUI_CLIENT_FEED_JS = String.raw`
   $("feedwindow").value = feedWindow;
   $("feedwindow").addEventListener("change", (ev) => {
     feedWindow = feedWindowOf(ev.target.value);
+    feedStep = 0;
     store("feed-window", feedWindow);
+    if (lastStatus) renderFeed(lastStatus);
+  });
+  $("feedearlier").addEventListener("click", () => {
+    if (feedCanStepEarlier(Number(feedWindow), feedStep)) feedStep += 1;
+    if (lastStatus) renderFeed(lastStatus);
+  });
+  $("feedlater").addEventListener("click", () => {
+    feedStep = Math.max(0, feedStep - 1);
     if (lastStatus) renderFeed(lastStatus);
   });
   // The box's value is restored once at load and otherwise left untouched: renderFeed repaints

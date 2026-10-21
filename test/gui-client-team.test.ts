@@ -5,6 +5,7 @@ import { GUI_CLIENT_BACKLOG_JS } from "../src/ui/gui/gui-client-backlog.js";
 import { GUI_CLIENT_FEED_JS } from "../src/ui/gui/gui-client-feed.js";
 import { GUI_PAGE } from "../src/ui/gui/gui-page.js";
 import { sleep } from "./helpers/wait.js";
+import { LOGS_SINCE_MAX_MS } from "../src/events/event-window.js";
 
 // The dashboard's team-view backlog panel (src/ui/gui/gui-client-backlog.ts's marked backlog
 // region), exercised the way the page runs it: the shared view-model region supplies
@@ -299,14 +300,14 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
   const panels: Record<string, string> = {};
   const stores: Record<string, string> = {};
   const listeners: Record<string, ((ev: unknown) => void)[]> = {};
-  const els: Record<string, { value: string; innerHTML: string; children: unknown[]; addEventListener: (type: string, fn: (ev: unknown) => void) => void }> = {};
+  const els: Record<string, { value: string; innerHTML: string; children: unknown[]; style: { display: string }; disabled: boolean; addEventListener: (type: string, fn: (ev: unknown) => void) => void }> = {};
   const $ = (id: string) => (els[id] ||= {
-    value: "", innerHTML: "", children: [],
+    value: "", innerHTML: "", children: [], style: { display: "" }, disabled: false,
     addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
   });
-  const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void; setFeedType(type: string): void }>(
+  const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void; setFeedType(type: string): void; FEED_MAX_MS: number }>(
     ["format", "labels", "view-model", "click-delegate", "activity", "report-role"],
-    ["renderFeed", "clearFeedFilter", "setFeedType"],
+    ["renderFeed", "clearFeedFilter", "setFeedType", "FEED_MAX_MS"],
     {
       recall: (key: string) => recalled[key] ?? null,
       store: (key: string, value: string) => { stores[key] = String(value); },
@@ -771,6 +772,84 @@ test("the Activity filter persists its choices and the page ships the controls i
   assert.match(head, /id="feedrole"/);
   assert.match(head, /id="feedgrep"/);
   assert.match(head, /id="feedwindow"/);
+  assert.match(head, /id="feedearlier"/);
+  assert.match(head, /id="feedlater"/);
+  assert.doesNotMatch(GUI_CLIENT_FEED_JS, /store\("feed-step"/);
+});
+
+// The step-button tests: getJson records each path and answers an empty slice.
+function stepScope(recalled: Record<string, string>, answer: object = { events: [] }) {
+  const paths: string[] = [];
+  const payload = { roles: [{ role: "qa" }], eventItems: [{ ts: 10, source: "qa", type: "merged", message: "carried" }] };
+  const made = feedScope(recalled, { getJson: async (path: string) => { paths.push(path); return answer; }, lastStatus: payload });
+  made.scope.renderFeed(payload);
+  return { ...made, paths, payload, click: async (id: string) => { made.fire(id, "click", {}); await feedSettle(); } };
+}
+
+test("the Activity step buttons walk a window back with untilMs and Later returns", async () => {
+  const { panels, els, paths, click } = stepScope({ "feed-window": "3600000" }, { events: [{ ts: 1, source: "qa", type: "merged", message: "old" }] });
+  await feedSettle();
+  assert.deepEqual(paths, ["/api/logs?sinceMs=3600000"]);
+  assert.equal(els["feedstep"]?.style.display, "");
+  assert.equal(els["feedlater"]?.disabled, true);
+  assert.equal(els["feedearlier"]?.disabled, false);
+  await click("feedearlier");
+  assert.equal(paths[paths.length - 1], "/api/logs?sinceMs=7200000&untilMs=3600000");
+  assert.equal(els["feedlater"]?.disabled, false);
+  assert.match(panels["feed"] ?? "", /Showing events between 2 hours and 1 hour ago/);
+  await click("feedlater");
+  assert.equal(paths[paths.length - 1], "/api/logs?sinceMs=3600000");
+});
+
+test("a stepped window composes with Role and Search", async () => {
+  const { paths, click } = stepScope({ "feed-window": "86400000", "feed-role": "qa", "feed-grep": "boom" });
+  await feedSettle();
+  await click("feedearlier");
+  assert.equal(paths[paths.length - 1], "/api/logs?sinceMs=172800000&untilMs=86400000&grep=boom&role=qa");
+});
+
+test("a stepped window never refetches on a new event", async () => {
+  const { scope, paths, click } = stepScope({ "feed-window": "3600000" });
+  await feedSettle();
+  await click("feedearlier");
+  const n = paths.length;
+  scope.renderFeed({ roles: [], eventItems: [{ ts: 99, source: "qa", type: "merged", message: "newer" }] });
+  await sleep(10);
+  assert.equal(paths.length, n);
+});
+
+test("a window change and Clear filter reset the step", async () => {
+  const { scope, els, paths, click, fire } = stepScope({ "feed-window": "3600000" });
+  await feedSettle();
+  await click("feedearlier");
+  fire("feedwindow", "change", { target: { value: "21600000" } });
+  await feedSettle();
+  assert.equal(paths[paths.length - 1], "/api/logs?sinceMs=21600000");
+  await click("feedearlier");
+  const n = paths.length;
+  scope.clearFeedFilter();
+  assert.equal(els["feedstep"]?.style.display, "none");
+  await click("feedearlier");
+  assert.equal(paths.length, n);
+});
+
+test("Earlier stops at the server's logs cap", async () => {
+  const { scope, els, paths, click } = stepScope({ "feed-window": "86400000" });
+  assert.equal(scope.FEED_MAX_MS, LOGS_SINCE_MAX_MS);
+  await feedSettle();
+  for (let i = 0; i < 6; i++) await click("feedearlier");
+  assert.equal(paths[paths.length - 1], "/api/logs?sinceMs=604800000&untilMs=518400000");
+  assert.equal(els["feedearlier"]?.disabled, true);
+  const n = paths.length;
+  await click("feedearlier");
+  assert.equal(paths.length, n);
+});
+
+test("a stepped empty window names its bounds", async () => {
+  const { panels, click } = stepScope({ "feed-window": "3600000" }, { events: [], covered: true, note: "" });
+  await feedSettle();
+  await click("feedearlier");
+  assert.match(panels["feed"] ?? "", /No events between 2 hours and 1 hour ago/);
 });
 
 test("the Plans and Bugs tabs offer a New form that survives polls and drops on a tab switch", () => {
@@ -1075,8 +1154,10 @@ test("the feed paints at most FEED_MAX_ROWS rows and says so", async () => {
 test("Clear filter resets the window", () => {
   const payload = { roles: [], eventItems: [] };
   const { scope, stores, els } = feedScope({ "feed-window": "3600000", "feed-grep": "x" }, { lastStatus: payload });
-  els["feedwindow"] = { ...(els["feedwindow"] ?? { innerHTML: "", children: [], addEventListener: () => {} }), value: "3600000" };
+  const box = els["feedwindow"];
+  assert.ok(box);
+  box.value = "3600000";
   scope.clearFeedFilter();
   assert.equal(stores["feed-window"], "");
-  assert.equal(els["feedwindow"].value, "");
+  assert.equal(box.value, "");
 });
