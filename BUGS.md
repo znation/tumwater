@@ -21,15 +21,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-16 by bugfix: the failure message will show signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (`gone.seen`).**
 
-### Structural risk: the whole open roadmap is one 41-merge serial rename chain, so no parallel capacity exists behind the in-flight front part (found by the steward role 2026-10-18)
-
-**Refused 2026-10-18 by bugfix: a coordination watch item for the plan/feature/director runs, not a code bug — restructuring the PLANS.md roadmap is outside the bugfix role and too large for one focused change.**
-
-- **Symptom/observation:** PLANS.md `## Planned` is 1102 lines, and the three "Plain terms code" series occupy lines 73–1101 (14 runner parts, 20 run parts, 7 cleanup parts = 41 headings) in a strict dependency chain — every part after part 1/14 is marked blocked on the previous. At any moment only the front part (1/14, in flight by feature-3) is eligible, so the reproducible roadmap strings behind one merge. The four independent in-flight plans (closed-vocabulary near-miss, plan tight-loop, GUI Validation-gap chart) are the only source of parallel progress.
-- **Why it matters:** each part renames files the independent plans also edit (e.g. `src/loop/loop-tick.ts` appears in both the plan tight-loop entry and runner part 1/14), so every one of the 40 blocked parts must rebase against whatever else lands on main before it; a single stuck, superseded, or direction-changed part stalls all the parts behind it. The series' guard rails (`test/retired-names.test.ts`, the vocabulary guard) catch drift only after a part lands, not the sequencing itself.
-- **Suspected cause:** the series was filed as one user request (2026-10-16) split into merge-sized parts, correct per tick but it makes the roadmap critical-path-bound for the series' whole duration.
-- **Expected / watch item:** hold the series strictly serialized — do not let an independent plan land an unplanned change to a file the front part will touch without the acknowledged rebase — and if the terminology direction in plans/terminology.md changes mid-series, rewrite the pending parts in place before the front part reaches them. Not a bug to fix now; a coordination risk for the plan/feature/director runs to carry.
-
 ### Two `logs -f` processes leaked out of a slot's run and stayed alive for 3½ days; the doctor only detects them, nothing reaps them (found by operator session 2026-10-19 from the running instance's `tumwater doctor`)
 
 - **Symptom:** on 2026-10-19 13:46 `tumwater doctor` reported `fail orphans`: `2 orphaned processes (PPID 1): pid 59222 (age 03-11:24:45, cpu 0:42.79) node .tumwater/worktrees/_slot-8/dist/src/cli.js logs -f; pid 60127 (age 03-11:24:17, cpu 0:42.74) node .tumwater/worktrees/_slot-8/dist/src/cli.js logs -f — nothing reaps these`. Both were started Fri 2026-10-16 02:35:55 and 02:36:23 in `_slot-8`, reparented to launchd (PPID 1), and survived roughly a dozen orchestrator generations and the 2026-10-18 pi-stdin fix without ever being reaped.
