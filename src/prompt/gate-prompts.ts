@@ -5,6 +5,7 @@ import type { BuildCheck } from "../build/build-check-detect.js";
 import type { ConflictedFile } from "../merge/merge-git.js";
 import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
+import { FINISHED_ARCHIVES } from "../backlog/backlog-md.js";
 
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
  * roles' authoring runs (those live in prompt.ts): conflict resolution after a rebase
@@ -18,6 +19,23 @@ import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
  * none: one home so a revision round's note and the next rejection's note cannot disagree on
  * how an empty objection list reads. */
 export const NO_REASONS = "(no reasons recorded)";
+
+/** Check 4's note on how a finished entry reads in the diff. The author pastes it under the live
+ * file's finished section, and the commit-time sweep (src/backlog/backlog-archive.ts) moves it
+ * to the top of the archive before the gate builds the diff. So a correct change shows the
+ * entry leaving PLANS.md or BUGS.md for PLANS-DONE.md or BUGS-FIXED.md. A reviewer that did
+ * not know this rejected such changes as misfiled. One change spent all four rounds asking for
+ * the entry under PLANS.md's `## Done`, a move the author cannot make stick (2026-10-21).
+ * Built from FINISHED_ARCHIVES so the names cannot drift from the sweep's. */
+const ARCHIVE_SWEEP_SENTENCE = (() => {
+  const sections = FINISHED_ARCHIVES.map((a) => `${a.file}'s \`## ${a.section}\``).join(" or ");
+  const archives = FINISHED_ARCHIVES.map((a) => a.archive).join(" or ");
+  return `A finished entry reaches this diff already archived: the author pastes it under
+   ${sections}, and tumwater's commit-time sweep moves it
+   from there to the top of ${archives}, leaving that heading empty. An
+   entry that leaves the live file for its archive, closing stamp added, is the expected update,
+   not a filing error.`;
+})();
 
 /** The conflict intent every conflict prompt carries: this branch's own commit message and the
  * main commits that touched a conflicted file since the merge-base. One named shape so the
@@ -277,6 +295,7 @@ Check, in this order:
    direction is not itself a defect. Reject only if the change is incoherent or incomplete for
    its stated purpose, or leaves the existing entry stale and contradictory (updating the entry
    in place is the author's duty).
+   ${ARCHIVE_SWEEP_SENTENCE}
 5. Does anything violate a principle above, or grow complexity the WHY does not justify?
 Reject only for concrete, verifiable defects you can name; when the change is correct, complete
 for its stated purpose, and within the principles, taste alone is not a rejection.

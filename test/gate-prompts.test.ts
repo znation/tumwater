@@ -15,6 +15,7 @@ import {
 import { parseVerdict } from "../src/review/review-verdict.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 import { TEST_RUNNER_RULE } from "../src/prompt/prompt.js";
+import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // The conflict prompt drives pi's one-shot merge-conflict resolution run. Its contract is
@@ -306,6 +307,20 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   // A scratch copy under temp is allowed (reviewers measure there); the worktree stays untouched.
   assert.match(prompt, /a scratch copy under the system temp directory is fine/);
   assert.match(prompt, /Do not edit any file in the worktree/);
+});
+
+// The commit-time sweep moves a finished entry into its archive before the gate builds the diff,
+// so a correct change shows it leaving PLANS.md or BUGS.md. A reviewer that did not know this
+// spent all four rounds of one change on "the diff lands it in PLANS-DONE.md (the archive)"
+// (2026-10-21). Check 4 says the move is expected and names every live file and archive.
+test("buildReviewPrompt's check 4 says the archive move of a finished entry is expected", () => {
+  const prompt = oneLine(buildReviewPrompt("diff body"));
+  assert.match(prompt, /A finished entry reaches this diff already archived/);
+  for (const a of FINISHED_ARCHIVES) {
+    assert.ok(prompt.includes(`${a.file}'s \`## ${a.section}\``), `names ${a.file}'s ${a.section}`);
+    assert.ok(prompt.includes(a.archive), `names ${a.archive}`);
+  }
+  assert.match(prompt, /is the expected update, not a filing error\. 5\. Does anything violate/);
 });
 
 test("buildReviewPrompt always says tumwater is running the project's check", () => {
