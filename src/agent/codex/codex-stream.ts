@@ -347,38 +347,37 @@ export function codexTranslator(opts: { contextWindow?: unknown; cwd?: string } 
         if (itemType === "file_change") {
           const changes = Array.isArray(item.changes) ? item.changes.filter((c): c is Json => typeof c === "object" && c !== null) : [];
           const id = typeof item.id === "string" ? item.id : "";
-          if (started) {
-            const content: Json[] = changes.map((c, i) => ({
-              type: "toolCall",
-              id: `${id}-${i}`,
-              name: "edit",
-              arguments: {
-                path: typeof c.path === "string" ? c.path : undefined,
-                kind: typeof c.kind === "string" ? c.kind : undefined,
-              },
-            }));
-            if (content.length > 0) {
-              out.push(JSON.stringify({ type: "message_end", message: { role: "assistant", content } }));
-              for (let i = 0; i < content.length; i++) {
-                const callId = `${id}-${i}`;
-                openCalls.set(callId, "file_change");
-                out.push(
-                  JSON.stringify({
-                    type: "tool_execution_start",
-                    toolCallId: callId,
-                    toolName: "edit",
-                    args: (content[i] as Json).arguments,
-                  }),
-                );
-              }
-            }
-          } else {
+          if (!started) {
             const isError = typeof item.status === "string" && item.status !== "completed";
             for (let i = 0; i < changes.length; i++) {
               const callId = `${id}-${i}`;
               openCalls.delete(callId);
               out.push(JSON.stringify({ type: "tool_execution_end", toolCallId: callId, isError }));
             }
+            return out;
+          }
+          const content: Json[] = changes.map((c, i) => ({
+            type: "toolCall",
+            id: `${id}-${i}`,
+            name: "edit",
+            arguments: {
+              path: typeof c.path === "string" ? c.path : undefined,
+              kind: typeof c.kind === "string" ? c.kind : undefined,
+            },
+          }));
+          if (content.length === 0) return out; // no changes to mirror, nothing else to emit
+          out.push(JSON.stringify({ type: "message_end", message: { role: "assistant", content } }));
+          for (let i = 0; i < content.length; i++) {
+            const callId = `${id}-${i}`;
+            openCalls.set(callId, "file_change");
+            out.push(
+              JSON.stringify({
+                type: "tool_execution_start",
+                toolCallId: callId,
+                toolName: "edit",
+                args: (content[i] as Json).arguments,
+              }),
+            );
           }
           return out;
         }
