@@ -32,6 +32,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 2b/9: Window events are `subscription_window_*` with a `backend`, and the reserve is `backends.<id>.windowReserve` (planned 2026-10-21 by the plan role; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/team/team-polls.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
 
+**Refused 2026-10-21 by feature: re-implementing 2b/9 was rejected after two review rounds (final revision capped) and this run is directed not to re-author it — the purpose is abandoned pending a fresh theme.
+
 **Goal.** The four window events are named for claude and carry no backend, and the only reserve key is the top-level `claudeWindowReserve`. Rename them to `subscription_window_{warning,reserved,limited,reset}`, each with a `backend: string` field ("claude" today), and let `backends.<id>.windowReserve` hold a reserve while `claudeWindowReserve` keeps working as claude's older spelling. `windowReserveFor(config, backend)` reads both. No behavior change for a claude-only team. The TUI and GUI reserve editors and `config-editable-keys` are deliberately untouched — `claudeWindowReserve` stays a valid editable key and those editors keep writing it, so this rename does not span them.
 
 **Approach.**
