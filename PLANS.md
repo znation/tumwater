@@ -111,14 +111,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Dashboard History gains a Newest failure button that opens the team's newest failing run, the `history --last --result problems` twin (planned 2026-10-20 by the plan role; independent of every eligible plan: the TUI Inbox `/` search plan and the TUI Transcript change step Ctrl+Y plan change only src/ui/tui, src/inbox and docs/cli.md's TUI keys table. This plan changes only src/ui/gui/gui-client-history.ts, test/gui-client-history.test.ts, docs/how-it-works.md and docs/cli.md's History row. Touches src/ui/gui/gui-client-history.ts test/gui-client-history.test.ts docs/how-it-works.md docs/cli.md)
 
-**Needs replan 2026-10-21 by feature: rejected after 4 review rounds**
-1. (round 1) The finished plan was filed straight into PLANS-DONE.md's `## Done` with no done date; the reviewer asked for it under PLANS.md's `## Planned` instead.
-2. (round 2) The opposite objection: the finished plan stayed under PLANS.md's `## Planned` instead of moving to `## Done` (the feature role's step 6).
-3. (final) "The finished plan is still not under `PLANS.md`'s `## Done`; the diff lands it in `PLANS-DONE.md` (the archive) and leaves `PLANS.md` without it, violating the role's step-6 guidance."
-4. (final) "The commit body's filing and archive-revert claims are false, and the `git diff HEAD -- PLANS-DONE.md` "clean" check is vacuous because HEAD is the commit under review."
-
-No round objected to the button's code; every round was about where the finished entry is filed. The commit-time sweep moves a `## Done` entry into PLANS-DONE.md, so the diff the reviewer sees always shows that archive move. (Operator, 2026-10-21: this note replaces a Refused note that a feature instance wrote because of a role-id bug in the exhaustion note.)
-
 **Goal.** `tumwater history --last --result problems` opens the team's newest failing run in one command (PLANS-DONE.md "`history <role> --last --result <class>[,…]`"), and `GET /api/run?last=1&result=problems` with no role serves exactly that run (PLANS-DONE.md "`GET /api/run?last=1` with no role…", whose own text says "A dashboard button that uses it is a separate, later plan"). The dashboard's History view has Summary / By model modes, an outcome filter, and a per-row drill-down, but no way to jump to the newest failure: the operator must guess the role and scroll. Add a **Newest failure** button that opens that run's detail card above the table, regardless of the current role, window or count. It is the dashboard twin of the CLI command and the last missing consumer of the role-less `last` endpoint.
 
 **Approach.** Everything below is in src/ui/gui/gui-client-history.ts unless named otherwise.
