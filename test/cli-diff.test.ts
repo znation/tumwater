@@ -305,13 +305,35 @@ test("diff --overlaps names each file two roles' pending changes touch", async (
   });
 });
 
-test("diff --overlaps with no shared file says so, and rejects --role and --stat", async () => {
+test("diff --overlaps --role keeps the listed roles' shared files", async () => {
+  const { repo } = await seededFeatureRepo();
+  const cleanWt = await ensureWorktree(repo, "clean", "main");
+  fs.writeFileSync(path.join(cleanWt, "widget.md"), "# other\n");
+  fs.writeFileSync(path.join(cleanWt, "solo.md"), "# solo\n");
+  const bugWt = await ensureWorktree(repo, "bugfix", "main");
+  fs.writeFileSync(path.join(bugWt, "solo.md"), "# solo2\n");
+  const out = async (...a: string[]) => (await cli(repo, "diff", "--overlaps", ...a)).stdout.trim();
+  assert.equal(await out(), "solo.md: bugfix, clean\nwidget.md: feature, clean");
+  assert.equal(await out("--role", "feature"), "widget.md: feature, clean");
+  assert.equal(await out("--role", "bugfix"), "solo.md: bugfix, clean");
+  assert.equal(await out("--role", "feature,bugfix"), "solo.md: bugfix, clean\nwidget.md: feature, clean");
+  assert.deepEqual(JSON.parse(await out("--role", "feature", "--json")), {
+    mainBranch: "main",
+    state: "ready",
+    overlaps: [{ path: "widget.md", roles: ["feature", "clean"] }],
+  });
+});
+
+test("diff --overlaps with no shared file says so, and rejects --stat", async () => {
   const { repo } = await seededFeatureRepo();
   const r = await cli(repo, "diff", "--overlaps");
   assert.equal(r.stdout.trim(), "no file is touched by two pending changes");
   const role = await cli(repo, "diff", "--overlaps", "--role", "feature");
-  assert.notEqual(role.code, 0);
-  assert.ok(role.stderr.includes("drop --role"));
+  assert.equal(role.code, 0);
+  assert.equal(role.stdout.trim(), "no file held by feature is touched by another pending change");
+  const nope = await cli(repo, "diff", "--overlaps", "--role", "nope");
+  assert.notEqual(nope.code, 0);
+  assert.ok(nope.stderr.includes("nope"));
   const stat = await cli(repo, "diff", "--overlaps", "--stat");
   assert.notEqual(stat.code, 0);
   assert.ok(stat.stderr.includes("drop --stat"));

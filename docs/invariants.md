@@ -2744,7 +2744,7 @@ and leave the file byte-identical".
 ## Role change view: every known role answers, degraded rather than failing, with a bounded patch
 
 `src/change/change-data.ts` collects what `tumwater diff`, `tumwater diff --role <id>` and the
-dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps`, the dashboard's `GET /api/diff?overlaps=1` and the TUI's Pending pane list files held by two or more roles (`collectChangeOverlaps`). `diff --role <id> --path <path>` scopes `collectRoleChange` to one file or directory through a literal pathspec, and so does the dashboard's `GET /api/diff?role=<id>&path=<path>`, both normalising the path through `normalizeDiffPath`.
+dashboard's diff endpoint show: `collectRoleChange` for one role, `collectTeamChanges` for all. `tumwater diff --overlaps`, the dashboard's `GET /api/diff?overlaps=1` and the TUI's Pending pane list files held by two or more roles (`collectChangeOverlaps`); `diff --overlaps --role <ids>` filters the computed overlaps to entries naming a listed role (`scopeChangeOverlaps`). `diff --role <id> --path <path>` scopes `collectRoleChange` to one file or directory through a literal pathspec, and so does the dashboard's `GET /api/diff?role=<id>&path=<path>`, both normalising the path through `normalizeDiffPath`.
 
 ### INV-AU1: a role query never fails on a degraded team
 
@@ -2806,11 +2806,13 @@ prints the roster: one entry per known role, no patch fields".
 **Guarantee.** `fileOverlaps` keeps a path only when two or more distinct roles hold it; a role's
 duplicate path counts once and roles keep holdings order.
 
-**Binds.** `src/change/change-data.ts` (`fileOverlaps`, `collectChangeOverlaps`).
+**Binds.** `src/change/change-data.ts` (`fileOverlaps`, `collectChangeOverlaps`, `scopeChangeOverlaps`).
 
 **Pinned by.** `test/change-render.test.ts` — "fileOverlaps keeps only paths two or more roles hold,
 each role once"; `test/cli-diff.test.ts` — "diff --overlaps names each file two roles' pending
-changes touch".
+changes touch"; `test/change-render.test.ts` — "scopeChangeOverlaps keeps entries naming a listed
+role, each with every holder"; `test/cli-diff.test.ts` — "diff --overlaps --role keeps the listed
+roles' shared files".
 
 ## Pause markers: a pause stands until resumed or expired, a wrong-shaped marker never throws, and the role set reads in canonical ids
 

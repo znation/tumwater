@@ -69,9 +69,13 @@ export function renderRoleChanges(view: RoleChangesView): string {
 }
 
 /** Render the overlaps view as the operator-facing text `tumwater diff --overlaps` prints:
- * one `<path>: <role>, <role>` line per shared file. */
-export function renderChangeOverlaps(view: ChangeOverlapsView): string {
+ * one `<path>: <role>, <role>` line per shared file. `scope` is the `--role` list the view was
+ * narrowed to; it only changes the empty-list wording. */
+export function renderChangeOverlaps(view: ChangeOverlapsView, scope?: string[]): string {
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.overlaps.length === 0 && scope !== undefined) {
+    return `no file held by ${scope.join(", ")} is touched by another pending change`;
+  }
   if (view.overlaps.length === 0) return "no file is touched by two pending changes";
   return view.overlaps.map((o) => `${o.path}: ${o.roles.join(", ")}`).join("\n");
 }

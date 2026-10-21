@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectRoleChange, fileOverlaps } from "../src/change/change-data.js";
+import { collectRoleChange, fileOverlaps, scopeChangeOverlaps } from "../src/change/change-data.js";
 import { renderTeamChange, renderRoleChange, renderChangeOverlaps } from "../src/change/change-render.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -135,4 +135,22 @@ test("fileOverlaps keeps only paths two or more roles hold, each role once", () 
     renderChangeOverlaps({ mainBranch: "main", state: "no-base", overlaps: [] }),
     "main branch main does not exist",
   );
+});
+
+test("scopeChangeOverlaps keeps entries naming a listed role, each with every holder", () => {
+  const view = {
+    mainBranch: "main",
+    state: "ready" as const,
+    overlaps: [
+      { path: "a.md", roles: ["feature", "clean", "bugfix"] },
+      { path: "b.md", roles: ["clean", "bugfix"] },
+    ],
+  };
+  assert.deepEqual(scopeChangeOverlaps(view, ["feature"]).overlaps, [view.overlaps[0]]);
+  assert.deepEqual(scopeChangeOverlaps(view, ["bugfix"]).overlaps, view.overlaps);
+  const none = scopeChangeOverlaps(view, ["qa"]);
+  assert.deepEqual(none.overlaps, []);
+  assert.equal(renderChangeOverlaps(none, ["qa"]), "no file held by qa is touched by another pending change");
+  const noBase = { mainBranch: "main", state: "no-base" as const, overlaps: [] };
+  assert.equal(renderChangeOverlaps(scopeChangeOverlaps(noBase, ["qa"]), ["qa"]), "main branch main does not exist");
 });

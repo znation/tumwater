@@ -248,6 +248,11 @@ export function fileOverlaps(holdings: { role: string; files: string[] }[]): Cha
     .map(([path, roles]) => ({ path, roles }));
 }
 
+/** Keep only the overlaps naming a listed role; each kept entry still names every holder. */
+export function scopeChangeOverlaps(view: ChangeOverlapsView, roles: string[]): ChangeOverlapsView {
+  return { ...view, overlaps: view.overlaps.filter((o) => o.roles.some((r) => roles.includes(r))) };
+}
+
 /** Collect the files two or more roles hold, committed ahead of main or uncommitted. Computes
  * file names only — no patch — and skips a role with no usable checkout. */
 export async function collectChangeOverlaps(root: string): Promise<ChangeOverlapsView> {
