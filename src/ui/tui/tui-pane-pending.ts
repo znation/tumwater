@@ -1,5 +1,5 @@
-import { readMergeQueue } from "../../merge/merge-queue.js";
-import { renderMergeQueue } from "../../merge/merge-queue-render.js";
+import { readMergeQueue, type MergeQueueView } from "../../merge/merge-queue.js";
+import { renderMergeQueue, scopeMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
@@ -29,6 +29,15 @@ export function overlapHolders(view: ChangeOverlapsView): string[] {
   return seen;
 }
 
+/** The distinct roles named across the merge queue, in first-seen (queue) order; empty for an
+ * empty queue. The queue's own roles lead the pane's Ctrl+G scope cycle, before the overlap
+ * holders — the queue scope is the `tumwater queue --role <id>` twin. */
+export function mergeQueueRoles(view: MergeQueueView): string[] {
+  const seen: string[] = [];
+  for (const e of view.entries) if (!seen.includes(e.role)) seen.push(e.role);
+  return seen;
+}
+
 /** The heading over one overlap's drill-down: its place in the list and the path. */
 export function overlapDrillHeading(index: number, total: number, path: string): string {
   return `overlap ${index + 1}/${total}: ${path} (Ctrl+N next)`;
@@ -37,8 +46,9 @@ export function overlapDrillHeading(index: number, total: number, path: string):
 /** The Pending pane (view roleIds.length + 5) of the TUI (src/ui/tui/tui.tsx): the durable
  * merge queue rendered up front plus the git-backed change roster the async collector appends
  * when it resolves. Split out of the pane-navigation monolith; its key arms are the Ctrl+R
- * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G overlap role scope, and it has
- * no render state of its own — aside from the enter half of the Ctrl+T cycle. */
+ * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G role scope (narrowing the
+ * merge queue as well as the overlapping files), and it has no render state of its own —
+ * aside from the enter half of the Ctrl+T cycle. */
 export function createPendingPane(session: TuiPaneSession) {
   // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
   // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -55,19 +65,30 @@ export function createPendingPane(session: TuiPaneSession) {
   // injected seam (or an unexpected throw).
   // Ctrl+N steps through the overlapping files, painting each holder's change limited to that
   // file (the `tumwater diff --role a,b --path <path>` view); `base` is the pane text to
-  // return to after the last one. Ctrl+G cycles overlapScope through each holding role and back
-  // to all (the `diff --overlaps --role <id>` view); Ctrl+N then steps through only the scoped
-  // files, and the scope survives a refresh.
+  // return to after the last one. Ctrl+G cycles roleScope through each role the queue and the
+  // overlaps name and back to all (the `queue --role <id>` and `diff --overlaps --role <id>`
+  // twins, one scope covering both surfaces); Ctrl+N then steps through only the scoped files,
+  // and the scope survives a refresh. The queue's roles lead the cycle, the overlap holders
+  // that are not also queued follow, and each kept merge holds its whole-queue position.
   let refreshGen = 0;
   let base = "";
   let lastOverlaps: ChangeOverlapsView | null = null;
+  let lastQueue: MergeQueueView | null = null;
+  let rosterText = "";
   let overlapIndex = -1;
   let drillGen = 0;
-  let overlapScope: string | null = null;
+  let roleScope: string | null = null;
   let head = "";
   const compose = (): void => {
-    const block = lastOverlaps ? pendingOverlapsText(lastOverlaps, overlapScope ?? undefined) : "";
+    const block = lastOverlaps ? pendingOverlapsText(lastOverlaps, roleScope ?? undefined) : "";
     base = head + (block ? "\n\n" + block : "");
+  };
+  const queueHead = (): string => {
+    if (lastQueue === null) return "";
+    const inFlight = queueInFlight(session.root, lastQueue.entries, orchestratorAlive(session.root));
+    if (roleScope === null) return renderMergeQueue(lastQueue, session.now(), inFlight);
+    const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
+    return renderMergeQueue(view, session.now(), inFlight, scope);
   };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
@@ -77,15 +98,17 @@ export function createPendingPane(session: TuiPaneSession) {
     overlapIndex = -1;
     lastOverlaps = null;
     ++drillGen;
-    const queueView = readMergeQueue(session.root);
-    const queueText = renderMergeQueue(queueView, session.now(), queueInFlight(session.root, queueView.entries, orchestratorAlive(session.root)));
+    lastQueue = readMergeQueue(session.root);
+    rosterText = "";
+    const queueText = queueHead();
     head = queueText;
     session.paneCache = base = head;
     void Promise.all([session.collectPending(session.root), session.collectOverlaps(session.root)]).then(
       ([team, overlaps]) => {
         if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
         lastOverlaps = overlaps;
-        head = queueText + "\n\n" + renderTeamChange(team);
+        rosterText = "\n\n" + renderTeamChange(team);
+        head = queueHead() + rosterText;
         compose();
         session.paneCache = base;
         session.requestRender();
@@ -116,18 +139,23 @@ export function createPendingPane(session: TuiPaneSession) {
       return true;
     }
     if (key.ctrl && key.name === "g" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      const queueRoles = lastQueue ? mergeQueueRoles(lastQueue) : [];
       const holders = lastOverlaps?.state === "ready" ? overlapHolders(lastOverlaps) : [];
-      if (holders.length === 0) {
-        overlapScope = null;
+      const roles = [...queueRoles, ...holders.filter((h) => !queueRoles.includes(h))];
+      if (roles.length === 0) {
+        roleScope = null;
+        head = queueHead() + rosterText;
         compose();
-        session.flashMessage("no overlapping files to scope");
+        session.paneCache = base;
+        session.flashMessage("no queued merges or overlapping files to scope");
         return true;
       }
-      const slots = [null, ...holders];
-      const at = overlapScope === null ? 0 : slots.indexOf(overlapScope);
-      overlapScope = slots[(at + 1) % slots.length] ?? null;
+      const slots = [null, ...roles];
+      const at = roleScope === null ? 0 : slots.indexOf(roleScope);
+      roleScope = slots[(at + 1) % slots.length] ?? null;
       overlapIndex = -1;
       ++drillGen;
+      head = queueHead() + rosterText;
       compose();
       session.paneCache = base;
       session.paneScroll = 0;
@@ -135,7 +163,7 @@ export function createPendingPane(session: TuiPaneSession) {
       return true;
     }
     if (key.ctrl && key.name === "n" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
-      const overlaps = lastOverlaps && overlapScope !== null ? scopeChangeOverlaps(lastOverlaps, [overlapScope]) : lastOverlaps;
+      const overlaps = lastOverlaps && roleScope !== null ? scopeChangeOverlaps(lastOverlaps, [roleScope]) : lastOverlaps;
       if (overlaps?.state !== "ready" || overlaps.overlaps.length === 0) {
         session.flashMessage("no overlapping files to step through");
         return true;

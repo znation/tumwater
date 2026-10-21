@@ -14,11 +14,11 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import type { previewRevert } from "../src/operator/revert.js";
-import { overlapDrillHeading, overlapHolders } from "../src/ui/tui/tui-pane-pending.js";
+import { overlapDrillHeading, overlapHolders, mergeQueueRoles } from "../src/ui/tui/tui-pane-pending.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
-import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
+import { enqueueMerge, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
@@ -2550,13 +2550,88 @@ test("Ctrl+G on the Pending pane closes an open drill-down and survives Ctrl+R",
   assert.ok(keys.state().paneCache!.endsWith(tail));
 });
 
-test("Ctrl+G on the Pending pane with no overlaps flashes", async () => {
+test("Ctrl+G on the Pending pane with empty queue and no overlaps flashes", async () => {
   const keys = drillKeys([]);
   await settle();
   const before = keys.state().paneCache;
   ctrlG(keys);
   assert.equal(keys.state().paneCache, before);
-  assert.equal(keys.state().flash, "no overlapping files to scope");
+  assert.equal(keys.state().flash, "no queued merges or overlapping files to scope");
+});
+
+test("mergeQueueRoles lists each queued role once in queue order", () => {
+  const view: MergeQueueView = {
+    entries: [
+      { role: "feature", sha: "a".repeat(40), run: 1, summary: "", enqueuedAt: 0 },
+      { role: "clean", sha: "b".repeat(40), run: 1, summary: "", enqueuedAt: 1 },
+      { role: "feature", sha: "c".repeat(40), run: 2, summary: "", enqueuedAt: 2 },
+    ],
+    unreadable: 0,
+  };
+  assert.deepEqual(mergeQueueRoles(view), ["feature", "clean"]);
+  assert.deepEqual(mergeQueueRoles({ entries: [], unreadable: 0 }), []);
+});
+
+test("Ctrl+G on the Pending pane narrows the merge queue to each queued role under its whole-queue position", async () => {
+  const root = makeRoot();
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 1, summary: "feature first", enqueuedAt: 0 });
+  enqueueMerge(root, { role: "feature-2", sha: "b".repeat(40), run: 2, summary: "feature2 second", enqueuedAt: 1 });
+  enqueueMerge(root, { role: "clean", sha: "c".repeat(40), run: 3, summary: "clean third", enqueuedAt: 2 });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  assert.ok(cache().startsWith("merge queue (3):"), "the unscoped queue lists all three entries");
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (1 of 3, --role feature):"), "the first scope is the first queued role");
+  assert.ok(cache().includes(" 1. feature run #1 "), "the scoped view keeps the first entry under its whole-queue position");
+  assert.ok(!cache().includes(" 2. "), "the other entries' lines are dropped");
+  assert.ok(!cache().includes(" 3. "));
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (1 of 3, --role feature-2):"), "the second scope is the second queued role");
+  assert.ok(cache().includes(" 2. feature #2 run #2 "), "feature-2 keeps its position 2");
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (1 of 3, --role clean):"), "the third scope is the third queued role");
+  assert.ok(cache().includes(" 3. clean run #3 "), "clean keeps its position 3");
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (3):"), "the fourth press returns to the whole queue");
+  assert.ok(cache().includes(" 1. feature run #1 "));
+});
+
+test("the Pending pane's Ctrl+G scope filters the queue and the overlapping files from one cycle set", async () => {
+  const root = makeRoot();
+  enqueueMerge(root, { role: "clean", sha: "a".repeat(40), run: 1, summary: "clean run", enqueuedAt: 0 });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "ready" as const, overlaps: [{ path: "src/a.ts", roles: ["feature", "clean"] }] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (1 of 1, --role clean):"), "the queue role (clean) scopes the queue first");
+  assert.ok(cache().includes("overlapping files held by clean (1):\nsrc/a.ts: feature, clean"));
+  ctrlG(keys);
+  assert.ok(cache().startsWith("no queued merges for feature (merge queue holds 1)"), "a holder with no queued merge keeps its queue block under the whole depth");
+  assert.ok(cache().includes("overlapping files held by feature (1):\nsrc/a.ts: feature, clean"));
+  ctrlG(keys);
+  assert.ok(cache().startsWith("merge queue (1):"), "the third press returns to the whole queue");
+  assert.ok(cache().includes("overlapping files (1):\nsrc/a.ts: feature, clean"), "and to all overlaps");
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {
