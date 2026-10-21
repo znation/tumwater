@@ -186,6 +186,9 @@ test("the hint line says what the keys do in each view and mode", () => {
   // The History pane names its outcome class in the Ctrl+O hint, "all" or the active class.
   assert.match(hint({ kind: "history", since: null, result: "problems", role: null, grep: null, trail: false }), /Ctrl\+O result: problems/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+O result: all/);
+  // The History pane names its model filter in the Ctrl+X hint, "all" or the active model.
+  assert.match(hint({ kind: "history", since: null, result: null, model: "m-a", role: null, grep: null, trail: false }), /Ctrl\+X model: m-a/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+X model: all/);
   // The History pane names its exact-role scope in the Ctrl+G hint, the raw id or the team.
   assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: team/);

@@ -4400,3 +4400,76 @@ test("historyWindowBounds steps a trailing window back by its own length", () =>
   assert.deepEqual(historyWindowBounds(86_400_000, 2), { sinceMs: 259_200_000, untilMs: 172_800_000 });
   assert.deepEqual(historyWindowBounds(null, 3), { sinceMs: null, untilMs: null });
 });
+
+const seedModelRuns = (root: string): void =>
+  writeEvents(root, [
+    { ts: 1_699_999_990_000, loop: "feature", type: "run_start", run: 1, model: "m-a" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_050_000, loop: "qa", type: "run_start", run: 1, model: "m-b" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", run: 1, result: "no_change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_070_000, loop: "clean", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+
+test("Ctrl+X on History cycles the model filter through each model and back to all", () => {
+  const root = makeRoot();
+  seedModelRuns(root);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  assert.equal(keys.state().historyModel, null);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /model:/);
+  assert.match(keys.state().paneCache ?? "", /clean #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().historyModel, "m-a");
+  assert.match(keys.state().paneCache ?? "", /^model: m-a\n/);
+  assert.match(keys.state().paneCache ?? "", /feature #1/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /qa #1/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /clean #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().historyModel, "m-b");
+  assert.match(keys.state().paneCache ?? "", /qa #1/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
+
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().historyModel, null);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /model:/);
+  assert.match(keys.state().paneCache ?? "", /clean #1/);
+});
+
+test("Ctrl+X on History flashes when no row in the view ran on a model", () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_070_000, loop: "clean", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().historyModel, null);
+  assert.match(keys.state().flash ?? "", /no runs with a model in this view/);
+});
+
+test("Ctrl+X on Activity still opens the backends editor and leaves the History model filter unset", () => {
+  const root = makeRoot();
+  seedModelRuns(root);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().backendsMode, true);
+  assert.equal(keys.state().historyModel, null);
+});
+
+test("a History model filter that a later Ctrl+O empties blames the model", () => {
+  const root = makeRoot();
+  seedModelRuns(root);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // m-a: feature #1 (changed)
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // merged: feature #1 passes both
+  keys.handleKey(undefined, { ctrl: true, name: "o" }); // none: the class keeps qa/none rows, m-a removes them
+  assert.equal(keys.state().historyResult, "none");
+  assert.match(keys.state().paneCache ?? "", /no runs on model "m-a"/);
+});

@@ -216,6 +216,9 @@ interface TuiKeysState {
    * filtered active entries under the pane's `search:` header. */
   backlogGrep: string | null;
   transcriptGrep: string | null;
+  /** The History pane's session model filter (Ctrl+X), or null for every model; named in the
+   * pane's `model:` header and in the hint line. */
+  historyModel: string | null;
   /** The History pane's session Summary toggle (Ctrl+Y): null shows the per-run row list, "role"
    * the per-role tally (`history --summary`), "model" the per-model one (`--by model`); named in
    * the hint line. */

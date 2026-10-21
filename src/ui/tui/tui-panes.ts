@@ -160,9 +160,11 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return history.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "x") {
-      // The armed-clear Ctrl+X arms: the transcript notes first, then the queued cancel,
-      // then the backlog cancel — each returns false when its view/selection does not apply.
+      // The armed-clear Ctrl+X arms: the transcript notes first, then the History model filter,
+      // then the queued cancel, then the backlog cancel — each returns false when its
+      // view/selection does not apply.
       if (transcript.handleKey?.(key, ctx)) return true;
+      if (history.handleKey?.(key, ctx)) return true;
       if (queued.handleKey?.(key, ctx)) return true;
       return backlog.handleKey?.(key, ctx) ?? false;
     }
@@ -272,6 +274,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       historyStep: hist.historyStep,
       historyResult: hist.historyResult,
       historyGrep: hist.historyGrep,
+      historyModel: hist.historyModel,
       historySummary: hist.historySummary,
       trailMode: hist.trailMode,
       trailIndex: hist.trailIndex,

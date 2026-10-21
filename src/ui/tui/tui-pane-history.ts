@@ -9,6 +9,7 @@ import {
   summarizeRunRows,
   summarizeRunRowsByModel,
   runRowsMatchingGrep,
+  runRowsOnModels,
   type HistoryResultClass,
   type HistorySummaryGroup,
   type RunRow,
@@ -53,6 +54,9 @@ export function createHistoryPane(
   // The History pane's session outcome filter (Ctrl+O), a HISTORY_RESULTS class or null for no
   // filter. Session-only like the window; the next Ctrl+T into History computes with it.
   let historyResult: HistoryResultClass | null = null;
+  // The History pane's session model filter (Ctrl+X), a model id the pane's rows ran on or null
+  // for every model. Session-only like the result; the next Ctrl+T into History computes with it.
+  let historyModel: string | null = null;
   // The History pane's session exact-role scope (Ctrl+G), a raw roster id or null for the
   // team's full read. Session-only like the window/result; syncSnapshot clears it when the
   // roster drops the id. The raw ids, not scopeCycle's base roles: History filters by exact
@@ -93,7 +97,9 @@ export function createHistoryPane(
   /** The pane's row selection: scope, then window, then search, then outcome class — the order
    * `tumwater history` applies them. Returns the raw read's coverage flag, the count after the
    * search (so an empty body can blame the filter that emptied the set: `afterGrep > 0` means
-   * rows matched the pattern and the class then removed them) and the class-filtered rows. The
+   * rows matched the pattern and the class then removed them), the count after the class
+   * (`afterResult > 0` means rows passed it and the model then removed them) and the rows after
+   * the model filter, applied last like the CLI's `--model`. The
    * search applies history-data.ts's shared run-grep rule (runRowsMatchingGrep), the same one
    * the CLI and the dashboard use, so the surfaces cannot disagree. `limit` bounds a windowless
    * read; a window reads through readRunRowsSince. */
@@ -102,16 +108,18 @@ export function createHistoryPane(
     resultClass: HistoryResultClass | null,
     role: string | null,
     grep: string | null,
+    model: string | null,
     limit: number,
     step: number,
-  ): { covered: boolean; afterGrep: number; filtered: RunRow[] } => {
+  ): { covered: boolean; afterGrep: number; afterResult: number; filtered: RunRow[] } => {
     const bounds = historyWindowBounds(sinceMs, step);
     const { rows, covered } = bounds.sinceMs === null
       ? { rows: readRunRows(session.root, limit, role), covered: true }
       : readRunRowsSince(session.root, bounds.sinceMs, role, bounds.untilMs);
     const grepped = grep === null ? rows : runRowsMatchingGrep(rows, grep);
-    const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
-    return { covered, afterGrep: grepped.length, filtered };
+    const classed = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
+    const filtered = model === null ? classed : runRowsOnModels(classed, [model]);
+    return { covered, afterGrep: grepped.length, afterResult: classed.length, filtered };
   };
 
   /** The History pane's body for one trailing window, one outcome class, one exact-role scope,
@@ -136,14 +144,16 @@ export function createHistoryPane(
     resultClass: HistoryResultClass | null,
     role: string | null,
     grep: string | null,
+    model: string | null,
     summary: HistorySummaryGroup | null,
     step: number,
   ): string => {
-    const { covered, afterGrep, filtered } = selectPaneRows(
+    const { covered, afterGrep, afterResult, filtered } = selectPaneRows(
       sinceMs,
       resultClass,
       role,
       grep,
+      model,
       HISTORY_DEFAULT_RUNS,
       step,
     );
@@ -171,6 +181,7 @@ export function createHistoryPane(
           ? ["window: between " + durationLabel((step + 1) * sinceMs) + " and " + durationLabel(step * sinceMs) + " ago"]
           : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
       ...(resultLabel === null ? [] : ["result: " + resultLabel]),
+      ...(model === null ? [] : ["model: " + model]),
       ...(grep === null ? [] : ["search: " + grep]),
     ].join("\n");
     if (!body) {
@@ -181,6 +192,7 @@ export function createHistoryPane(
       // empty read with neither filter returns "" so the pane keeps its own note, and an
       // role-only empty read returns "" too (the CLI's empty-state wording does not name --role),
       // so the pane never grows a lone `role:` header.
+      if (model !== null && afterResult > 0) return header + "\nno runs on model \"" + model + "\"";
       if (resultClass !== null && afterGrep > 0) {
         return header + "\nno runs with result \"" + resultLabel + "\"";
       }
@@ -248,9 +260,9 @@ export function createHistoryPane(
   const loadTrail = (onEmpty: (() => void) | null, index = 0): boolean => {
     trailGen++;
     try {
-      const unfiltered = historyWindow === null && historyResult === null && historyGrep === null;
+      const unfiltered = historyWindow === null && historyResult === null && historyGrep === null && historyModel === null;
       const limit = unfiltered ? index + 1 : HISTORY_MAX_RUNS;
-      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, limit, historyStep).filtered[index];
+      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, historyModel, limit, historyStep).filtered[index];
       if (row === undefined) {
         if (onEmpty !== null) onEmpty();
         return false;
@@ -287,7 +299,7 @@ export function createHistoryPane(
    * roster sync share). */
   const recompute = (): boolean => {
     if (session.view !== session.roleIds.length + 4) return false;
-    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary, historyStep);
+    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historyModel, historySummary, historyStep);
     session.paneScroll = 0;
     return true;
   };
@@ -306,7 +318,7 @@ export function createHistoryPane(
     }
     historyGrep = pattern;
     if (trailMode) refreshTrail();
-    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary, historyStep);
+    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historyModel, historySummary, historyStep);
     session.paneScroll = 0;
   };
 
@@ -337,7 +349,7 @@ export function createHistoryPane(
         // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
         // none flashes (loadTrail's onEmpty) and leaves the rows; one holding a run turns
         // the trail on (a log holding none is the only path that does not).
-        const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null;
+        const filtered = historyWindow !== null || historyResult !== null || historyGrep !== null || historyModel !== null;
         const empty = filtered ? "no completed runs match the pane's filters" : "no completed runs to inspect";
         if (loadTrail(() => session.flashMessage(empty))) trailMode = true;
       }
@@ -440,6 +452,24 @@ export function createHistoryPane(
       session.requestRender();
       return true;
     }
+    if (key.ctrl && key.name === "x" && promptLineFree(ctx.es)) {
+      // Ctrl+X advances the History pane's model filter — all, each model the pane's rows ran on
+      // (in the Ctrl+Y by-model table's order), all — the twin of `tumwater history --model`.
+      // False off the History view so the other Ctrl+X arms keep their keys.
+      if (session.view !== session.roleIds.length + 4) return false;
+      const rows = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, null, HISTORY_DEFAULT_RUNS, historyStep).filtered;
+      const list = summarizeRunRowsByModel(rows).models.flatMap((m) => (m.model === null ? [] : [m.model]));
+      if (list.length === 0 && historyModel === null) {
+        session.flashMessage("no runs with a model in this view");
+        return true;
+      }
+      const i = list.indexOf(historyModel ?? "");
+      historyModel = i + 1 < list.length ? list[i + 1]! : null;
+      if (trailMode) refreshTrail();
+      recompute();
+      session.requestRender();
+      return true;
+    }
     if (key.ctrl && key.name === "y" && promptLineFree(ctx.es)) {
       // Ctrl+Y cycles the History pane's views — rows, per-role Summary, per-model Summary,
       // rows (mnemonic: summar**Y**) — the same tallies `tumwater history --summary [--by model]`
@@ -497,6 +527,7 @@ export function createHistoryPane(
         historyStep,
         historyResult: cycleLabel(HISTORY_RESULTS, historyResult),
         historyGrep,
+        historyModel,
         historySummary,
         trailMode,
         trailIndex,
