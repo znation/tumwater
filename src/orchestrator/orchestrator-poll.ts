@@ -15,7 +15,7 @@ import { launchDueRuns } from "./orchestrator-launch.js";
 import type { RoleRunner } from "../runner/runner.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
-import { requeueMainRedPin } from "../merge/merge-slot.js";
+import { requeueMainRedPin } from "../merge/merge-requeue.js";
 import { drainMergeQueue, settleAbortedApproved } from "../merge/merge-drain.js";
 import { abortableMerges, mergeTasks, type MergePipeline } from "../merge/merge-pipeline.js";
 import { TUMWATER_SOURCE, type HarnessEventInput } from "../events/events.js";

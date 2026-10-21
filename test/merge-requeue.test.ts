@@ -9,7 +9,7 @@ import { newMergePipeline, settleMergeOutcome } from "../src/merge/merge-pipelin
 import { drainVerify } from "../src/merge/merge-verify.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
 import { defaultConfig } from "../src/config/config.js";
-import { MAIN_RED_VERDICT_WAIT_MS, requeueMainRedPin } from "../src/merge/merge-slot.js";
+import { MAIN_RED_VERDICT_WAIT_MS, requeueMainRedPin } from "../src/merge/merge-requeue.js";
 import { enqueueMerge, headMerge, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { MERGE_CONFLICT_LIMIT } from "../src/runner/leftover.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";

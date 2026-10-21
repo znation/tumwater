@@ -3942,7 +3942,7 @@ again" and "a sibling held by an unclaimed mid-entry runner records claim-hold, 
 **Guarantee.** `requeueMainRedPin` never throws: a failed state save still re-queues the change, and a
 failed queue write warns and leaves the kept pin to the role's leftover recovery.
 
-**Binds.** `src/merge/merge-slot.ts` (`requeueMainRedPin`).
+**Binds.** `src/merge/merge-requeue.ts` (`requeueMainRedPin`).
 
 **Pinned by.** `test/merge-requeue.test.ts` — "a main_red re-queue whose state save fails still queues
 the change", "a main_red re-queue whose queue write fails warns instead of throwing" and "a main_red
