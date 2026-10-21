@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
 import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
-import { DIFF_PATH_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { DIFF_PATH_FLAG, FOLLOW_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -111,7 +111,7 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
  * until Ctrl+C or the process that started it exits, so a backgrounded follow does not
  * outlive its parent. */
 export async function cmdStatus(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
-  rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, STATUS_FOLLOW_SPEC]);
+  rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
   const follow = args.includes("-f") || args.includes("--follow");
   if (follow && args.includes("--json")) fail("status --json prints one document; -f/--follow repaints a live view — drop one of them");
   await requireReadyRepo(root);
@@ -132,9 +132,6 @@ export async function cmdStatus(root: string, args: string[], seams: FollowViewS
   }
 }
 
-/** `status`'s and `queue`'s follow flags, kept local (unannotated like the neighbours). */
-const STATUS_FOLLOW_SPEC = { names: ["-f", "--follow"] };
-const QUEUE_FOLLOW_SPEC = { names: ["-f", "--follow"] };
 /** The default repaint interval for a follow view — a fixed cadence, no knob. */
 const FOLLOW_VIEW_INTERVAL_MS = 2000;
 
@@ -241,7 +238,7 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
   // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
   // as an empty queue (a `merge queue empty` line, exit 0), so no merge ever queued is
   // data, not an error.
-  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG, QUEUE_FOLLOW_SPEC]);
+  rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
   await requireReadyRepo(root);
   const roles = parseRoleListScope(root, args);
   const follow = args.includes("-f") || args.includes("--follow");

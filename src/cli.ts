@@ -38,6 +38,7 @@ import {
   typeFlagSpec,
   DRY_RUN_FLAG,
   FORCE_FLAG,
+  FOLLOW_FLAG,
   STOP_CANCEL_FLAG,
   STOP_IN_FLAG,
   REPROBE_FLAG,
@@ -236,7 +237,7 @@ async function main(): Promise<void> {
     case "logs": {
       const { cmdLogs, GREP_VALUE_ERROR, TYPE_VALUE_ERROR } = await import("./cli/log-commands.js");
       rejectUnknownArgs("logs", args, [
-        { names: ["-f", "--follow"] },
+        FOLLOW_FLAG,
         N_FLAG,
         sinceFlagSpec("logs --since"),
         untilFlagSpec("logs --until"),
@@ -265,7 +266,7 @@ async function main(): Promise<void> {
       }
       rejectUnknownArgs("history", args, [
         N_FLAG,
-        { names: ["-f", "--follow"] },
+        FOLLOW_FLAG,
         sinceFlagSpec("history --since"),
         untilFlagSpec("history --until"),
         grepFlagSpec(HISTORY_GREP_VALUE_ERROR),

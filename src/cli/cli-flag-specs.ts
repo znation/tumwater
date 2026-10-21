@@ -287,6 +287,15 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `-f/--follow` flag spec, shared by every command with a live repaint (logs, history,
+ * status, and queue — each snapshot command's `-f/--follow` twin): one definition of the
+ * flag's spelling, beside ROLE_FLAG and JSON_FLAG, so the gate's accepted vocabulary cannot
+ * drift apart. It takes no value, like JSON_FLAG; each body still detects the flag for
+ * itself — an `includes("-f") || includes("--follow")` one-liner over its own arg array
+ * (`args` for status and queue, `rest` for logs and history) — and renders its own live
+ * view, so only the gate's accepted spelling is centralized here. */
+export const FOLLOW_FLAG: FlagSpec = { names: ["-f", "--follow"] };
+
 /** The `--ready` flag spec, accepted by `backlog`: keep only the entries no hold keeps from
  * being picked. Value-less, like STAT_FLAG. */
 export const READY_FLAG: FlagSpec = { names: ["--ready"] };
