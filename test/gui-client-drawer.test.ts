@@ -58,7 +58,7 @@ interface DrawerScope {
  * regions, with `inject` bound as free variables, and hand back the names asked for. */
 function drawerScope(names: string[], inject: Record<string, unknown>): DrawerScope {
   const keys = Object.keys(inject);
-  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS, GUI_CLIENT_DRAWER_CONFIG_JS,
+  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), clientRegion("view-model"), clientRegion("pending-table"), GUI_CLIENT_DRAWER_JS, GUI_CLIENT_DRAWER_CONFIG_JS,
     `return { ${names.join(", ")} };`].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => DrawerScope;
   return run(...keys.map((k) => inject[k]));
@@ -1155,4 +1155,29 @@ test("the drawer's Show prompts toggle swaps the transcript between plain and pr
   t.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(t.paintedFor("transcript"), /prompt-line/);
+});
+
+test("the role drawer lists the role's waiting merges between Last result and the stats", async () => {
+  const now = Date.now();
+  const status = {
+    ...workingStatus(),
+    mergeQueue: { depth: 2, entries: [
+      { role: "bugfix", sha: "aaaaaaaa11", run: 1, summary: "other", enqueuedAt: now },
+      { role: "clean", sha: "bbbbbbbb22", run: 5, summary: "drawer queue", enqueuedAt: now },
+    ] },
+    mergeQueueLabels: ["", ""],
+  };
+  const t = openDrawer(["toggleRole"], { status });
+  t.scope.toggleRole("clean");
+  await flush();
+  const meta = t.paintedFor("drawermeta");
+  assert.match(meta, /<h3>Merge queue<\/h3>/);
+  assert.match(meta, /2\. clean run #5 · bbbbbbbb · .* · drawer queue/);
+  assert.doesNotMatch(meta, /other/);
+  assert.ok(meta.indexOf("Last result") < meta.indexOf("Merge queue") && meta.indexOf("Merge queue") < meta.indexOf("Commits"));
+
+  const plain = openDrawer(["toggleRole"], { status: workingStatus() });
+  plain.scope.toggleRole("clean");
+  await flush();
+  assert.doesNotMatch(plain.paintedFor("drawermeta"), /Merge queue/);
 });

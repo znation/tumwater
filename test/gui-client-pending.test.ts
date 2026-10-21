@@ -163,3 +163,25 @@ test("pendingQueueHtml escapes role and summary markup", () => {
   assert.match(html, /r&lt;script&gt;/);
   assert.match(html, /&lt;img&gt;/);
 });
+
+test("drawerQueueHtml lists only the role's queued merges under their whole-queue positions and labels", () => {
+  const { drawerQueueHtml } = clientScope<{ drawerQueueHtml(q: unknown, role: string, now: number, labels?: unknown): string }>(
+    ["format", "labels", "pending-table"],
+    ["drawerQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const e = (role: string, summary = "s") => ({ role, sha: "abcdef1234567890", run: 3, summary, enqueuedAt: now });
+  const q = { depth: 3, entries: [e("feature-2"), e("bugfix"), e("feature-2")] };
+  const html = drawerQueueHtml(q, "feature-2", now, ["", "", "merging 1m"]);
+  assert.match(html, /1\. feature #2 run #/);
+  assert.match(html, /3\. feature #2 run #/);
+  assert.doesNotMatch(html, /bugfix/);
+  assert.doesNotMatch(html, /2\. /);
+  assert.match(html, /3\. [^\n]*\[merging 1m\]/);
+  assert.ok(html.includes("2 of 3 waiting"));
+  assert.equal(drawerQueueHtml(q, "clean", now, []), "");
+  assert.equal(drawerQueueHtml({ depth: 0 }, "feature-2", now), "");
+  assert.equal(drawerQueueHtml(null, "feature-2", now), "");
+  assert.equal(drawerQueueHtml({ entries: "nope" }, "feature-2", now), "");
+  assert.match(drawerQueueHtml({ depth: 1, entries: [e("clean", "<b>x</b>")] }, "clean", now), /&lt;b&gt;x&lt;\/b&gt;/);
+});

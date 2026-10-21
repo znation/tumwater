@@ -184,7 +184,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         }).join("") + "</ul>"
         : "<p class='muted'>No completed runs in the log yet.</p>";
     paintPanel("draweractions", actions);
-    paintPanel("drawermeta", now + last + stats +
+    const queued = drawerQueueHtml(d.mergeQueue, l.role, Date.now(), d.mergeQueueLabels);
+    paintPanel("drawermeta", now + last + queued + stats +
       "<section><div class='sec-head'><h3>Recent runs</h3></div>" + runs + "</section>" + drawerChangeSection());
     // The notes/prompt live in their own panel, outside drawermeta: the poll rewrites
     // drawermeta whenever its countdown or run-age text changes, and an innerHTML rewrite

@@ -46,6 +46,33 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-role'>Role</th><th>Branch</th>" +
       "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
+  // One queued merge's line: the 1-based whole-queue position, role, run, short sha, age, an
+  // optional merge label, and summary. Shared by the Merge queue card and the role drawer so
+  // the two cannot drift; a malformed entry renders stand-ins rather than undefined/NaN.
+  function queueEntryLineHtml(e, position, now, label) {
+    const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
+    const run = Number.isFinite(e.run) ? e.run : "?";
+    const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
+    return "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
+      " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
+      " ago" + (label && typeof label === "string" ? " · [" + esc(label) + "]" : "") +
+      note +
+      " · " + esc(e.summary || "—") + "</div>";
+  }
+  // The role drawer's Merge queue section: only this role's waiting merges, each under its
+  // whole-queue position (labels run parallel to the whole queue). "" when it has none.
+  function drawerQueueHtml(mergeQueue, role, now, labels) {
+    const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
+    let kept = 0;
+    const lines = entries.map((e, i) => {
+      if (!e || e.role !== role) return "";
+      kept++;
+      return queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined);
+    }).join("");
+    if (!kept) return "";
+    return "<section><div class='sec-head'><h3>Merge queue</h3><span class='muted' style='font-size:13px'>" +
+      esc(kept + " of " + entries.length + " waiting") + "</span></div><div style='padding:4px 0'>" + lines + "</div></section>";
+  }
   // The Merge queue card's body: every queued merge in execution order (oldest first), one
   // line each mirroring tumwater queue's renderMergeQueue — 1-based position, role, run,
   // short sha, age, summary — so the page and the CLI cannot drift. Painted from the status
@@ -62,16 +89,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     } else if (entries.length === 0) {
       body = "<div class='empty'>merge queue: " + esc(depth) + " waiting</div>";
     } else {
-      body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => {
-        const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
-        const run = Number.isFinite(e.run) ? e.run : "?";
-        const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
-        return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role ? roleLabel(e.role) : "?") +
-          " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
-          " ago" + (Array.isArray(labels) && labels[i] && typeof labels[i] === "string" ? " · [" + esc(labels[i]) + "]" : "") +
-          note +
-          " · " + esc(e.summary || "—") + "</div>";
-      }).join("") + "</div>";
+      body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) =>
+        queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined)).join("") + "</div>";
     }
     return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
   }
