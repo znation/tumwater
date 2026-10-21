@@ -20,7 +20,7 @@ import { selfcheckDigest } from "./selfcheck-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
-import { pathTokens } from "./stage-path-checks.js";
+import { pathTokens } from "../text/text.js";
 import { isDirectory, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
 import { appendPromptNote } from "../text/format.js";

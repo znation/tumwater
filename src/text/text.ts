@@ -252,3 +252,13 @@ export function parseNonNegativeInt(raw: string): number | null {
 export function tooLongMessage(subject: string, n: number, max: number, tail: string): string {
   return `${subject} is ${n} chars — shorten it to at most ${max}: ${tail}`;
 }
+
+/** Each distinct path-shaped token in `text`, in first-appearance order: at least one slash and
+ * a final `.<ext>` segment. Scanned inside the text (not whitespace-split) so surrounding
+ * backticks, brackets, and sentence punctuation fall away with the match. Shared by the staging
+ * self-check's added-nonexistent-path finding (run/stage-path-checks.ts) and run-prompt's
+ * role-note missing-path scan (run/run-prompt.ts), so the two agree on what reads as a path. */
+export function pathTokens(text: string): string[] {
+  const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
+  return [...new Set([...text.matchAll(tokenRe)].map((m) => m[0]))];
+}

@@ -15,6 +15,7 @@ import { gitTry } from "../git/git-run.js";
 import { readTextOrNull } from "../files/files.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { moreSuffix } from "../text/phrases.js";
+import { pathTokens } from "../text/text.js";
 
 /** How many `file:line` hits a single stale-reference finding lists before it stops. */
 const MAX_STALE_HITS = 10;
@@ -501,14 +502,6 @@ function standalonePathIndexes(line: string, needle: string): number[] {
     found.push(i);
   }
   return found;
-}
-
-/** Each distinct path-shaped token in `text`, in first-appearance order: at least one slash and
- * a final `.<ext>` segment. Scanned inside the text (not whitespace-split) so surrounding
- * backticks, brackets, and sentence punctuation fall away with the match. */
-export function pathTokens(text: string): string[] {
-  const tokenRe = /[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9]+/g;
-  return [...new Set([...text.matchAll(tokenRe)].map((m) => m[0]))];
 }
 
 /** (b) Nonexistent paths: every path-shaped token on an added diff line whose first segment is

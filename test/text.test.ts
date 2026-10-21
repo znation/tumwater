@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, squash, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
+import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, pathTokens, squash, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -174,3 +174,11 @@ test("stripTerminalControls removes ESC/C0/C1/DEL and keeps only newline and tab
 
 // (describeToolCall and backendKindPhrase moved with their module to test/phrases.test.ts;
 // suggestClosest, didYouMean, and typoSuffix moved with theirs to test/suggest.test.ts)
+
+// pathTokens moved with its function from run/stage-path-checks.ts to text.ts (the shared text
+// layer run-prompt.ts and the staging self-check both import, so neither reaches into the other).
+test("pathTokens returns each distinct path-shaped token in order", () => {
+  assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);
+  assert.deepEqual(pathTokens("plain words"), []);
+  assert.deepEqual(pathTokens("README.md"), []);
+});

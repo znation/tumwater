@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { FINISHED_ARCHIVES } from "../src/backlog/backlog-md.js";
 import { stageCheckFindings } from "../src/run/stage-check.js";
-import { declaredNames, pathTokens } from "../src/run/stage-path-checks.js";
+import { declaredNames } from "../src/run/stage-path-checks.js";
 import {
   finishedDuplicateFindings,
   heldMovedFinding,
@@ -562,12 +562,6 @@ test("an uncommitted file holding a secret env value is a finding", async () => 
   } finally {
     delete process.env.TUMWATER_TEST_FAKE_TOKEN;
   }
-});
-
-test("pathTokens returns each distinct path-shaped token in order", () => {
-  assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);
-  assert.deepEqual(pathTokens("plain words"), []);
-  assert.deepEqual(pathTokens("README.md"), []);
 });
 
 const DEP_BASE = `# Plans
