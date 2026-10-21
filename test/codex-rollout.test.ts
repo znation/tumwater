@@ -52,6 +52,58 @@ test("the two usage windows map to five_hour and seven_day with the capture's re
   assert.equal(sevenDay.resetsAt, 1793142293);
 });
 
+// Build a single-turn rollout whose token_count carries the given rate_limits (and an
+// optional rate_limit_reached_type), so windowStatus's non-allowed branches are pinned.
+function rolloutWith(rateLimits: Record<string, unknown>, reached: string | null): Array<Record<string, unknown>> {
+  const text = [
+    JSON.stringify({ type: "event_msg", payload: { type: "task_started", turn_id: FIRST } }),
+    JSON.stringify({
+      type: "token_usage_record",
+      payload: { turn_id: FIRST, turn_token_usage: { input_tokens: 1000, cached_input_tokens: 300, cache_write_input_tokens: 0, output_tokens: 40 } },
+    }),
+    JSON.stringify({
+      type: "event_msg",
+      payload: { type: "token_count", rate_limits: { ...rateLimits, rate_limit_reached_type: reached } },
+    }),
+  ].join("\n");
+  return read(rolloutLines(text, { sinceTurnStart: FIRST, requestedModel: "gpt-6-luna" }));
+}
+
+test("a window at or past 90% reports allowed_warning, one the account hit outright reports rejected", () => {
+  // seven_day sits well below 100% but is named by rate_limit_reached_type, so its
+  // rejection can only come from the reached-type arm, never from the utilization arm.
+  const windows = rolloutWith(
+    {
+      plan_type: "plus",
+      primary: { used_percent: 95, window_minutes: 300, resets_at: 1792555493 },
+      secondary: { used_percent: 50, window_minutes: 10080, resets_at: 1793142293 },
+    },
+    "seven_day",
+  ).filter((e) => e.type === "rate_limit");
+  assert.equal(windows.length, 2);
+  const fiveHour = windows.find((w) => w.rateLimitType === "five_hour")!;
+  const sevenDay = windows.find((w) => w.rateLimitType === "seven_day")!;
+  assert.equal(fiveHour.status, "allowed_warning", "95% utilization warns");
+  assert.equal(fiveHour.utilization, 0.95);
+  assert.equal(sevenDay.status, "rejected", "a window the account hit outright is rejected");
+});
+
+test("a fully-used window is rejected even without rate_limit_reached_type", () => {
+  const windows = rolloutWith(
+    {
+      plan_type: "plus",
+      primary: { used_percent: 0, window_minutes: 300, resets_at: 1792555493 },
+      secondary: { used_percent: 100, window_minutes: 10080, resets_at: 1793142293 },
+    },
+    null,
+  ).filter((e) => e.type === "rate_limit");
+  const fiveHour = windows.find((w) => w.rateLimitType === "five_hour")!;
+  const sevenDay = windows.find((w) => w.rateLimitType === "seven_day")!;
+  assert.equal(fiveHour.status, "allowed", "a 0% window stays allowed");
+  assert.equal(sevenDay.status, "rejected", "100% utilization rejects even without a reached type");
+  assert.equal(sevenDay.utilization, 1);
+});
+
 test("billing is subscription from the plus plan_type", () => {
   const lines = read(rolloutLines(FIXTURE, { sinceTurnStart: FIRST, requestedModel: "gpt-6-luna" }));
   assert.deepEqual(lines.find((e) => e.type === "billing"), { type: "billing", billing: "subscription" });
