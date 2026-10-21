@@ -437,7 +437,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   drawer, whose Record answer form writes the decision to QUESTIONS.md as `tumwater questions
   answer` does. Clicking a role opens its details — its notes and next run's prompt included — and
   its live transcript (`#role/<name>` links straight to it). A "Show prompts" button re-reads it through
-  `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. Its History, Usage, Failures, and
+  `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. The role drawer's search box sends that `&grep=`. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Pending view also paints the merge queue as a card mirroring `tumwater
   queue`, and shows a role's full unmerged patch in its drawer, which also lists that role's waiting merges

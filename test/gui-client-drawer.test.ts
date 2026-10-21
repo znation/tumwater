@@ -44,6 +44,7 @@ interface DrawerScope {
   loadDrawerRole(role: string): Promise<void>;
   toggleRole(role: string): void;
   toggleTranscriptPrompts(): void;
+  setTranscriptGrep(value: string): void;
   toggleEntry(file: string, index: number): void;
   renderRoleDrawer(d: object): void;
   drawerChangeHtml(view: unknown): string;
@@ -1180,4 +1181,45 @@ test("the role drawer lists the role's waiting merges between Last result and th
   plain.scope.toggleRole("clean");
   await flush();
   assert.doesNotMatch(plain.paintedFor("drawermeta"), /Merge queue/);
+});
+
+test("the transcript search box narrows the live transcript through &grep and resets per role", async () => {
+  const t = openDrawer(["toggleRole", "setTranscriptGrep"], {
+    status: workingStatus(),
+    responses: {
+      "/api/transcript?role=clean&n=200&grep=Leak": { lines: ["── run", "  found the Leak"] },
+    },
+  });
+  t.scope.toggleRole("clean");
+  await flush();
+  t.scope.setTranscriptGrep("  Leak ");
+  await flush();
+  assert.ok(t.jsonCalls.some((p) => p.endsWith("&grep=Leak")));
+  assert.match(t.paintedFor("transcript"), /found the Leak/);
+
+  t.scope.setTranscriptGrep("");
+  await flush();
+  assert.equal(t.jsonCalls.at(-1)?.includes("&grep"), false);
+
+  t.scope.setTranscriptGrep("Leak");
+  t.scope.toggleRole("clean");
+  t.scope.toggleRole("clean");
+  await flush();
+  assert.equal(t.jsonCalls.at(-1)?.includes("&grep"), false);
+});
+
+test("a transcript search with no match says so", async () => {
+  const t = openDrawer(["toggleRole", "setTranscriptGrep"], {
+    status: workingStatus(),
+    responses: { "/api/transcript?role=clean&n=200&grep=nomatch": { lines: [] } },
+  });
+  t.scope.toggleRole("clean");
+  await flush();
+  t.scope.setTranscriptGrep("nomatch");
+  await flush();
+  assert.match(t.paintedFor("transcript"), /No transcript entries match .*nomatch/);
+  t.scope.setTranscriptGrep("<b>");
+  await flush();
+  assert.match(t.paintedFor("transcript"), /&lt;b&gt;/);
+  assert.doesNotMatch(t.paintedFor("transcript"), /<b>/);
 });

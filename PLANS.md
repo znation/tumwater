@@ -26,30 +26,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `backend: "claude"` with no `model` still resolves claude's three tier defaults and `CLAUDE_GATED_MODELS` still lists exactly those three.
 - `BudgetSlice` has no `backend` field; `npm test` passes.
 
-### Transcript search in the dashboard, part 2/2: the role drawer's Live transcript gets a search box that narrows it through `GET /api/transcript?…&grep=` (planned 2026-10-20 by the plan role; "requires part 1/2 landed"; touches src/ui/gui/gui-client-drawer.ts + docs/how-it-works.md + test/gui-client-drawer.test.ts)
-
-**Goal.** Part 1/2 ("Transcript search in the dashboard, part 1/2") gives `GET /api/transcript` a `grep` parameter. This part gives the drawer's "Live transcript" section (`openRole`, src/ui/gui/gui-client-drawer.ts) a search box beside "Show prompts". While the box holds text, the panel shows only the matching entries, each under its run's separator. That is the dashboard twin of `tumwater logs --transcript <id> --grep <text>`.
-
-**Approach.**
-1. src/ui/gui/gui-client-drawer.ts:
-   - Beside `let transcriptPrompts = false;`, add `let transcriptGrep = "";`, and reset it to `""` in `openRole` where `transcriptPrompts` is reset.
-   - In `openRole`'s sec-head markup, put `<input type='search' id='transcriptgrep' class='input-sm' placeholder='Search transcript' aria-label='Search transcript' style='margin-left:auto'>` before the Show prompts button, and move the button's `margin-left:auto` to `margin-left:8px`. Before naming `input-sm`, check that it exists with `grep -rn 'input-sm' src/ui/gui`. When it is absent, reuse the class the `feedgrep` box uses (`grep -rn "feedgrep" src/ui/gui`). The markup is written only by `openRole`, so the 1 s poll never rewrites the box or wipes typing.
-   - `refreshTranscript`: capture `const grep = transcriptGrep;` beside `prompts`. Append `(grep ? "&grep=" + encodeURIComponent(grep) : "")` to the URL. Drop a stale answer with `|| transcriptGrep !== grep` beside the `transcriptPrompts !== prompts` check. When `lines` is empty and `grep` is set, paint `<span class='muted'>No transcript entries match “` + esc(grep) + `”.</span>` instead of the "No transcript yet" text.
-   - Add `function setTranscriptGrep(value) { transcriptGrep = String(value ?? "").trim(); refreshTranscript(true); }`.
-   - Beside the drawer's existing `click` listener, register `$("drawer").addEventListener("input", (ev) => { if (ev.target && ev.target.id === "transcriptgrep") setTranscriptGrep(ev.target.value); });`.
-   - Update the file's header comment, which describes the transcript and its "Show prompts" button, to mention the search box and `&grep=`.
-2. docs/how-it-works.md: in the dashboard paragraph that part 1/2 edited, say that the drawer's search box sends that `&grep=`.
-
-**Files.** src/ui/gui/gui-client-drawer.ts, docs/how-it-works.md, test/gui-client-drawer.test.ts.
-
-**Acceptance criteria.** New tests in test/gui-client-drawer.test.ts, using `openDrawer`, `workingStatus`, and the env's `jsonCalls` and `responses`:
-- "the transcript search box narrows the live transcript through &grep and resets per role": after `toggleRole("clean")`, call `setTranscriptGrep("  Leak ")` and await the fetch. `jsonCalls` then holds a path ending `&grep=Leak`, and the `transcript` panel paints the response's lines. `setTranscriptGrep("")` fetches a path without `&grep`. Opening another role (or closing and reopening "clean") fetches without `&grep`.
-- "a transcript search with no match says so": a `responses` entry for the `&grep=nomatch` path returning `{ lines: [] }` paints a panel containing `No transcript entries match` and `nomatch`, escaped (also check `setTranscriptGrep("<b>")` paints `&lt;b&gt;`).
-- The existing tests "the role drawer paints a working role's actions, metrics, runs, and transcript with the real formatters" and "transcriptHtml classifies run separators, tool calls, thinking, and warnings, escaping each line" pass unchanged.
-- `grep -n "transcriptgrep" src/ui/gui/gui-client-drawer.ts` prints the markup line and the listener line.
-- `npm run test:gate` passes.
-
-
 ### The TUI's change step lists the viewed role's waiting merges above its change, the terminal twin of `tumwater queue --role <id>` and the dashboard drawer's Merge queue section (planned 2026-10-20 by the plan role; independent of every eligible Planned entry. "Pending-change overlaps" edits `cmdDiff` in src/cli/cli-query-commands.ts and this plan edits `cmdQueue` in the same file, so whichever lands second rebases. No other Planned entry touches src/merge/merge-queue-render.ts or src/ui/tui/tui-pane-transcript.ts. Touches src/merge/merge-queue-render.ts + src/cli/cli-query-commands.ts + src/ui/tui/tui-pane-transcript.ts + docs/how-it-works.md + docs/cli.md + test/cli-queue.test.ts + test/tui-keys.test.ts)
 
 **Goal.** `tumwater queue --role <id>` and the dashboard role drawer (`drawerQueueHtml`, src/ui/gui/gui-client-pending.ts) both show one role's waiting merges, each under its whole-queue position. The TUI does not. Its per-role pane cycles live transcript → notes → change with Ctrl+N (`createTranscriptPane`, src/ui/tui/tui-pane-transcript.ts). The change step shows only `renderRoleChange`, the role's branch, commits and diff. An operator looking at `clean`'s change cannot see that the change is already queued at position 4. This plan prepends the role's queue lines to that step. When planned, `grep -rn "scopeMergeQueue" src test PLANS.md PLANS-DONE.md` printed nothing, and src/ui/tui/tui-pane-transcript.ts did not import from src/merge.
