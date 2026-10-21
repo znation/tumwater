@@ -654,3 +654,52 @@ test("prompt --file - reads the prompt from stdin", async () => {
   // The queue layer's pre-existing trim (inbox-submit.ts) strips the trailing newline.
   assert.equal(dequeuePrompt(repo), "hi from stdin");
 });
+
+test("prompt --list --grep keeps matching prompts under their unfiltered numbers", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt list grep");
+  submitPrompt(repo, "director task");
+  submitRolePrompt(repo, "qa", "qa one");
+  submitRolePrompt(repo, "qa", "Deploy the qa fix");
+  submitRolePrompt(repo, "readme", "docs deploy note");
+
+  let r = await cli(repo, "prompt", "--list", "--grep", "deploy");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /qa:/);
+  assert.match(r.stdout, /^2\. Deploy the qa fix/m);
+  assert.match(r.stdout, /readme:/);
+  assert.match(r.stdout, /^1\. docs deploy note/m);
+  assert.ok(!r.stdout.includes("director task") && !r.stdout.includes("qa one"));
+
+  r = await cli(repo, "prompt", "--list", "--grep", "DEPLOY", "--role", "qa");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^2\. Deploy the qa fix/m);
+  assert.ok(!r.stdout.includes("docs deploy note"));
+
+  r = await cli(repo, "prompt", "--list", "--grep", "deploy", "--json");
+  assert.equal(r.code, 0);
+  const rows = (JSON.parse(r.stdout) as { prompts: { role: string; position: number }[] }).prompts;
+  assert.deepEqual(rows.map((p) => [p.role, p.position]), [["readme", 1], ["qa", 2]]);
+
+  r = await cli(repo, "prompt", "--list", "--grep", "nothing-here");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^no queued prompt matches "nothing-here"$/m);
+});
+
+test("prompt --list --grep rejects a missing value, a repeat, and non-list modes", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt grep reject");
+  let r = await cli(repo, "prompt", "--list", "--grep");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--grep needs text/);
+  r = await cli(repo, "prompt", "--list", "--grep", "a", "--grep", "b");
+  assert.equal(r.code, 1);
+  for (const args of [["--grep", "x", "hello"], ["--cancel", "1", "--grep", "x"]]) {
+    r = await cli(repo, "prompt", ...args);
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--grep only applies to --list/);
+  }
+  assert.equal(inboxSize(repo), 0);
+  r = await cli(repo, "prompt", "--list", "--grep=x");
+  assert.equal(r.code, 1);
+});

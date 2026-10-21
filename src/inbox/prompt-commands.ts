@@ -183,10 +183,16 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // numbering stay what `--cancel <n> --role <id>` takes.
     const listRoles = parseRoleListFlag(args, validIds as string[]);
     const allRows = queuedListRows(root, null, validIds as string[]);
-    const prompts = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
+    const scoped = listRoles === null ? allRows : allRows.filter((row) => listRoles.includes(row.role));
+    const needle = parsed.grep?.toLowerCase() ?? null;
+    const prompts = needle === null ? scoped : scoped.filter((row) => row.text.toLowerCase().includes(needle));
     if (parsed.json) {
       // An empty queue still prints the document, the history --json empty-rows precedent.
       sayJson({ prompts });
+      return;
+    }
+    if (prompts.length === 0 && scoped.length > 0) {
+      say(`no queued prompt matches "${parsed.grep}"`);
       return;
     }
     if (prompts.length === 0) {

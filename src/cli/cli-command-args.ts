@@ -238,7 +238,7 @@ export function parseInitArgs(args: string[]): {
  * machine-readable render of the same listing. */
 type PromptArgs =
   | { mode: "enqueue"; role: string | null; text: string; atDelayMs: number | null; attachPaths: string[] }
-  | { mode: "list"; role: string | null; json: boolean }
+  | { mode: "list"; role: string | null; json: boolean; grep: string | null }
   | { mode: "cancel"; role: string | null; position: number }
   | { mode: "edit"; role: string | null; position: number; text: string | null; attachPaths: string[] }
   | { mode: "top"; role: string | null; position: number };
@@ -276,12 +276,13 @@ const PROMPT_FLAG_SPECS: readonly FlagSpec[] = [
   { names: ["--file"], value: true, valueName: "<path>" },
   { names: ["--at"], value: true, valueName: "<duration>" },
   { names: ["--attach"], value: true, valueName: "<path>" },
+  { names: ["--grep"], value: true, valueName: "<text>" },
 ];
 
 /** `tumwater prompt` argument handling, following parseInitArgs' pattern. Like init's,
  * positionals are free-form prompt content — but a double-dash token must be a real flag
- * (`--role <id>`, `--list`, `--json`, `--cancel <n>`, `--edit <n>`, `--top <n>`, `--file <path>`,
- * `--at <duration>`), or
+ * (`--role <id>`, `--list`, `--json`, `--grep <text>`, `--cancel <n>`, `--edit <n>`,
+ * `--top <n>`, `--file <path>`, `--at <duration>`), or
  * it would be baked into the queued prompt (the same class of bug parseInitArgs fixed: today
  * `tumwater prompt --foo text` enqueues "--foo text"). Single-dash positionals remain prompt
  * content. `--list`, `--cancel`, `--edit` and `--top` are mutually exclusive and may
@@ -303,6 +304,7 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   const topFlag = args.indexOf("--top");
   const fileFlag = args.indexOf("--file");
   const atFlag = args.indexOf("--at");
+  const grepFlag = args.indexOf("--grep");
   // --attach is repeatable: every occurrence claims itself and its value token, like --role's
   // single pair, so the pairs ride out of the prompt text in every mode.
   const attachFlags = args.flatMap((a, i) => (a === "--attach" ? [i] : []));
@@ -326,6 +328,12 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // --json is list-only: in enqueue or cancel mode it must never silently ride along as
   // prompt text (or beside a state change), so it is refused before either branch runs.
   if (jsonFlags.length > 0 && listFlag < 0) fail("--json only applies to --list");
+  if (grepFlag >= 0 && listFlag < 0) fail("--grep only applies to --list");
+  const grepRaw = grepFlag >= 0 ? args[grepFlag + 1] : undefined;
+  if (grepFlag >= 0 && (!grepRaw || grepRaw.startsWith("--"))) {
+    fail("--grep needs text (usage: tumwater prompt --list --grep <text>)");
+  }
+  const grepClaim = grepFlag >= 0 ? [grepFlag, grepFlag + 1] : [];
 
   // The queue-only flags --file and --at have nothing to mean in the read-only and destructive
   // modes (--list and --cancel): --file is the file-shaped twin of free-form text (--edit
@@ -362,8 +370,8 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   }
 
   if (listFlag >= 0) {
-    failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim);
-    return { mode: "list", role, json: jsonFlags.length > 0 };
+    failStrayArg(args, "with --list there is no prompt text", listFlag, ...jsonFlags, ...roleClaim, ...grepClaim);
+    return { mode: "list", role, json: jsonFlags.length > 0, grep: grepRaw ?? null };
   }
 
   if (cancelFlag >= 0) {
