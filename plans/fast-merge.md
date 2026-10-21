@@ -322,3 +322,85 @@ Re-measure with the method above after parts 2, 6 and 9.
 | 12/14 The review runs alongside the gate check | 5 | 11 |
 | 13/14 The run prompt names the gate command for verification | 6 | — |
 | 14/14 Listed maintenance roles merge after the gate and are reviewed after merging | 7 | 4, 6 |
+
+## Guardrails
+
+Added 2026-10-21 · requested by user · series "Fast merge guardrails", parts 1/3–3/3 in PLANS.md.
+
+The gates this series replaced failed loudly: a red gate stopped merges. The machinery that runs
+after the merge can fail quietly while merges go on: main stays red, a revert blames the wrong
+commit, or quarantine grows and hides real failures. Four permanent warnings make that visible.
+They extend existing doctor rows and add no row and no config key. Measuring the series' effect
+before and after is a one-off job done by hand, not part of this.
+
+**G1. A red main that lasts** ("main's check" row).
+
+- Evidence, over the last 24 h: `main_check` events that ran the check (`durationMs` > 0) and
+  `main_red_hold` events. A `main_check` with `durationMs` 0 (a cached or inherited verdict) is
+  ignored: on 2026-10-20, 1645a5c0 had both a `main_red_hold` and a cached green.
+- Main is red when the newest of those is red (a failed `main_check` or a `main_red_hold`). It has
+  been red since the first red after the newest passing `main_check`. A pass that names
+  `quarantined` tests is still a pass.
+- Warn when that is more than 30 minutes ago, e.g. "main has had no passing full check for 47 min:
+  red since 1645a5c0 at 00:07 — <first failing test>". A window with reds and no pass reads "for
+  more than 24 h".
+- While the merge lock runs the full check (the live team on 2026-10-21, before "Defaults"
+  lands), every merge seeds main's verdicts with its in-lock green, so the watch seldom runs the
+  check itself: 2 of the 706 `main_check` events since 2026-10-20 ran it. The warning then lasts
+  until the next run that does, even once main is green. Once the lock runs the gate command
+  ("Defaults"), the watch runs the check on every code merge's tip.
+
+**G2. Reverts** ("main's check" row).
+
+- A `main_revert` in the last 24 h looks false when either holds:
+  - its failure did not reproduce: a test it names has been quarantined since the revert
+    (quarantine.json `lastSeen` at or after it, or a later `main_check`'s `quarantined` list);
+  - its change came back unchanged and main stayed green: a later `merged` event carries the
+    culprit's patch-id, and the first `main_check` after that merge which ran the check passed.
+- So that the second test is a read of the event log, `main_revert` gains `patchId` (the
+  culprit's) and `merged` gains `patchId` (the merged commit's), on the single and the batch merge
+  path alike. Both come from `patchId` (src/git/git.ts): `-U0`, so re-applying the same diff onto a
+  moved main keeps the id. An event without `patchId` (an older build) matches nothing.
+- Warn also when more than 5 `main_revert` events fall in the last 24 h, reverts after a
+  post-merge review included.
+- The detail names each false-looking revert (culprit sha and which test failed) and the count
+  when over the limit.
+
+**G3. Quarantine** ("flaky checks" row).
+
+- Warn when a test in `.tumwater/state/quarantine.json` has `firstSeen` more than 3 days ago, or
+  when the file lists more than 10 tests. A test leaves quarantine only when its BUGS.md entry
+  leaves `## Open`, so an old entry is a failure the team has stopped seeing.
+- The detail names the oldest tests with their age and BUGS.md heading, or "not filed" when `bug`
+  is empty: an unfiled test never leaves quarantine.
+- The row's existing flake count over the last 24 h stays as it is.
+
+**G4. Event log retention** ("event log" row).
+
+- events.jsonl rotates at a fixed 16 MB (`EVENTS_MAX_BYTES`, src/events/events.ts, not
+  `logMaxBytes`) and keeps one generation, events.jsonl.1, which the next rotation deletes. The
+  first rotation, on 2026-10-20, moved 2026-08-20 → 2026-10-20 into events.jsonl.1, this series'
+  measurement window included. At that day's 2.2 MB, the next rotation comes in about a week.
+- Keep 5 archived generations (`EVENTS_KEEP` beside `EVENTS_MAX_BYTES`, a constant, not a config
+  key): at most 96 MB with the live file, about six weeks at 2.2 MB a day. Rotation drops `.5`,
+  shifts `.4`→`.5` … `.1`→`.2`, then moves the live file to `.1`. `rotateIfLarge`
+  (src/files/files.ts) takes the count, default 1, so role pi logs keep one generation as today.
+- The windowed reader (readWindowEvents, src/events/event-window.ts) continues into `.2`…`.5`
+  only while the window is not yet covered. The readability check (eventLogState) still reads the
+  live file and `.1`. The tail follower drains from `.1`, which stays the newest archive.
+- The row's ok detail adds how far back the kept history reaches (the oldest generation's first
+  event), and the report header's rotation phrase (eventsRotationLabel) says how many are kept.
+
+**Where the warnings show.** G1–G3 live in one module, src/baseline/main-guardrails.ts, read
+synchronously from the event log and quarantine.json, so every surface words them the same:
+
+- `tumwater doctor`, the TUI Health pane and the dashboard's doctor view, through the rows above;
+- the selfcheck role's digest (src/run/selfcheck-digest.ts), which ends with a
+  `## Fast merge guardrails` section listing the warnings that fire (none: no section). The
+  role's charter says each line there is tumwater's own response failing.
+
+| Part | Guardrails | Requires |
+| --- | --- | --- |
+| 1/3 Doctor warns when main stays red and when quarantine ages or grows | G1, G3 | — |
+| 2/3 Doctor warns on a revert that looks false and on more than 5 reverts a day | G2 | 1 |
+| 3/3 The event log keeps five rotated generations | G4 | — |
