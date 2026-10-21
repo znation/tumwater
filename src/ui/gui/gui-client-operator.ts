@@ -92,6 +92,12 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (hours < 24) return "resets in " + hours + "h " + (minutes % 60) + "m";
     return "resets in " + Math.floor(hours / 24) + "d " + (hours % 24) + "h";
   }
+  // A window's consumed fraction as a whole-number percent, the same shape as node-side
+  // utilizationPct - the browser script keeps its inline copy, so the text percentage and
+  // the meter width share this one home instead of each rounding w.utilization by hand.
+  function windowPct(w) {
+    return Math.round(w.utilization * 100);
+  }
   function chainMoved(chain) {
     return Object.values(chain || {}).some((t) => t.reason === "window" || t.reason === "reserve");
   }
@@ -107,7 +113,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function windowLine(w, cw, chain) {
     const parts = ["Claude " + windowLabel(w.type)];
     const word = windowWord(w.status);
-    parts.push(typeof w.utilization === "number" ? Math.round(w.utilization * 100) + "%" : word === "ok" ? "ok · usage not reported" : word);
+    parts.push(typeof w.utilization === "number" ? windowPct(w) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
     if (w.status === "rejected" && cw.heldUntil != null) parts.push((chainMoved(chain) ? "on fallback until " : "held until ") + windowClock(cw.heldUntil));
     else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
@@ -130,7 +136,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     return shortestFirst.map((w) => {
       const line = "<span class='side-card-value window-line" + windowLineTone(w) + "'>" + esc(windowLine(w, cw, chain)) + "</span>";
       if (typeof w.utilization !== "number") return line;
-      const pct = Math.min(100, Math.round(w.utilization * 100));
+      const pct = Math.min(100, windowPct(w));
       return line + meterBar(windowLineTone(w), pct);
     }).join("") + chainLinesHtml(chain);
   }
