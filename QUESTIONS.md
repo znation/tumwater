@@ -6,7 +6,35 @@ director). Loops never block on their own questions; they check here at the star
 
 ## Open
 
-_None yet._
+### Release the stale refusal on the "Newest failure" dashboard plan? (asked by director 2026-10-21)
+
+PLANS.md `## Planned` holds "Dashboard History gains a Newest failure button that opens the
+team's newest failing run, the `history --last --result problems` twin" under **Refused
+2026-10-21 by feature: the finished plan kept being rejected for landing in the archive
+(PLANS-DONE.md) instead of PLANS.md's ## Done, the review chain hit its cap, and tumwater's
+rejection directs not to re-author this theme**. That objection is stale. The review chain's
+rejections were three backlog-file bugs, all filed from this plan's chain and since fixed on
+main: the commit-time archive sweep moving a finished plan out of the gate's view (BUGS-FIXED.md
+"The commit-time archive sweep moves a finished plan into PLANS-DONE.md after the self-check and
+before the commit…", fixed 2026-10-21); the backlog-structure gate's archive message naming the
+wrong repair (BUGS-FIXED.md "The backlog-structure gate tells an author whose finished plan is
+already archived to 'file it under `## Planned` in PLANS.md instead'…", fixed 2026-10-21); and
+the closing-stamp wording that made a finished plan read "— fixed" where the reader needs "—
+done" (BUGS-FIXED.md "Every role's prompt says a closing date reads '— fixed YYYY-MM-DD by the
+<role> role'…", fixed 2026-10-21). The "PLANS vs PLANS-DONE" the note names was the visible
+symptom of those bugs, not a fault of the plan; the refusal's cause no longer exists. The
+refusal discarded the run's implementation — `handleRefusal` (src/verdict/refusal.ts) commits
+only the markdown note and resets the worktree — so the plan must be re-implemented, not
+resumed. Its text is intact and it is independent of every eligible plan.
+
+- **Option A (recommended):** `tumwater plan --release <position>` (the first planned plan
+today) — lifts the note and wakes the feature loop, which implements the plan as written.
+- **Option B:** `tumwater plan --cancel <position>` if the button is no longer wanted.
+- **Option C:** leave it refused. Every feature loop skips it and the gap stands.
+
+Recommendation: A. The plan is the last consumer of the role-less `GET /api/run?last=1`
+endpoint and a small, self-contained UI change; the only reason it was parked was a set of
+backlog-file bugs that were fixed the day it was refused.
 
 ## Answered
 
