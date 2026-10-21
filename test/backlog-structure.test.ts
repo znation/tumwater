@@ -427,6 +427,27 @@ test("backlogStructureReason rejects a head that files a new plan directly under
   assert.match(reason!, /file it under "## Planned"/);
 });
 
+test("backlogStructureReason tells an archived finished plan to add a done date, not move back under ## Planned", async () => {
+  // The finished-plan-in-the-archive shape: a kept `— fixed` stamp (no `done` token) leaves the
+  // plan in PLANS-DONE.md with no done date, and telling its author to "file it under ## Planned"
+  // is the opposite of the fix — the entry is finished and archived and must keep its done date.
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### Older plan (planned 2026-09-01)\n",
+    "## Planned\n\n### Older plan (planned 2026-09-01)\n",
+  );
+  fs.writeFileSync(
+    path.join(wt, "PLANS-DONE.md"),
+    "# Plans (done)\n\n## Done\n\n### Feature B (planned 2026-09-26) — fixed 2026-09-27 by the feature role\n\n**Goal.** Merged.\n",
+  );
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "head archive");
+  const reason = await backlogStructureReason(wt, "main", ["PLANS-DONE.md"]);
+  assert.match(reason!, /^PLANS-DONE\.md files "Feature B/);
+  assert.match(reason!, /add \`done YYYY-MM-DD\` to its "### " heading/);
+  assert.doesNotMatch(reason!, /file it under "## Planned"/);
+});
+
 test("backlogStructureReason passes the same new plan filed under ## Planned", async () => {
   const wt = await structureFixture(
     "PLANS.md",

@@ -312,11 +312,18 @@ export async function backlogStructureReason(
         (e) => e.section === "Done" && !baseKeys.has(planHeadingKey(e.title)),
       );
       if (newcomer)
-        return (
-          `${file} files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
-          `written into the done section is invisible to every Planned reader; file it under ` +
-          `"## Planned"${file === "PLANS.md" ? "" : " in PLANS.md"} instead`
-        );
+        // The fault and its fix differ by file: in PLANS.md a NEW plan (the base never carried
+        // it in any section) was pasted under ## Done unfinished and belongs under ## Planned;
+        // in the archive the same heading is a finished plan the commit-time sweep already moved
+        // here, whose only fault is a missing `done YYYY-MM-DD` token — telling its author to
+        // "file it under ## Planned" is the opposite of the fix and wastes a revision.
+        return file === PLANS_ARCHIVE
+          ? `${file} files "${newcomer.title}" directly under "## Done" with no done date — the ` +
+            `entry is finished and archived, so the only fix is to add \`done YYYY-MM-DD\` to its ` +
+            `"### " heading; do not move it back under "## Planned"`
+          : `${file} files "${newcomer.title}" directly under "## Done" with no done date — a plan ` +
+            `written into the done section is invisible to every Planned reader; file it under ` +
+            `"## Planned" instead`;
     }
     // A new headingless record cannot hide in a Fixed entry's body: reject a head whose
     // multi-block entries the base did not carry (an existing one never blocks unrelated

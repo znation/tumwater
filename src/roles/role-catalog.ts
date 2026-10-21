@@ -275,7 +275,8 @@ scratch analysis scripts — that is a different, much larger task.`,
 this run's ONE task: move each listed entry to the section its heading's dates say it belongs in
 (cut and paste, under the existing \`## \` heading — never add, remove, or rename a \`## \`
 heading), leave its text verbatim, and change nothing else. An entry listed under PLANS-DONE.md's
-\`## Done\` with no done date goes back under PLANS.md's \`## Planned\`.
+\`## Done\` with no done date is already finished and archived there: keep it in place and only add the
+missing \`done YYYY-MM-DD\` to its \`### \` heading — never move it back under PLANS.md's \`## Planned\`.
 
 Otherwise, pick ONE kind of uncleanliness — dead code, misleading names, commented-out blocks,
 overly clever constructs, missing or wrong doc comments on public surfaces, inconsistent

@@ -384,10 +384,12 @@ test("the structure check rejects a new plan with no done date filed into PLANS-
     path.join(root, "PLANS-DONE.md"),
     `${archiveTemplate(PLANS)}\n### Brand new (planned 2026-10-18)\n\nX.\n\n### Open plan (planned 2026-10-01, done 2026-10-18)\n\nBody.\n`,
   );
-  assert.match(
-    (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
-    /PLANS-DONE\.md files "Brand new \(planned 2026-10-18\)" directly under "## Done" with no done date.*"## Planned" in PLANS\.md/,
-  );
+  const reason = (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "";
+  assert.match(reason, /PLANS-DONE\.md files "Brand new \(planned 2026-10-18\)" directly under "## Done" with no done date/);
+  // The archived-entry fault is a missing done token only — the fix must name adding it and not
+  // send the author back to ## Planned (BUGS.md 2026-10-21).
+  assert.match(reason, /the only fix is to add \`done YYYY-MM-DD\` to its "### " heading/);
+  assert.doesNotMatch(reason, /file it under "## Planned"/, "the archive form must not send the author back to ## Planned");
 });
 
 test("archiveFinishedOnMain restores the checkout when a file write fails, and archives on the next call", async () => {
