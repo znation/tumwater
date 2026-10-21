@@ -43,7 +43,13 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Dashboard History gains a Newest failure button that opens the team's newest failing run, the `history --last --result problems` twin (planned 2026-10-20 by the plan role; independent of every eligible plan: the TUI Inbox `/` search plan and the TUI Transcript change step Ctrl+Y plan change only src/ui/tui, src/inbox and docs/cli.md's TUI keys table. This plan changes only src/ui/gui/gui-client-history.ts, test/gui-client-history.test.ts, docs/how-it-works.md and docs/cli.md's History row. Touches src/ui/gui/gui-client-history.ts test/gui-client-history.test.ts docs/how-it-works.md docs/cli.md)
 
-**Refused 2026-10-21 by feature: the finished plan kept being rejected for landing in the archive (PLANS-DONE.md) instead of PLANS.md's ## Done, the review chain hit its cap, and tumwater's rejection directs not to re-author this theme**
+**Needs replan 2026-10-21 by feature: rejected after 4 review rounds**
+1. (round 1) The finished plan was filed straight into PLANS-DONE.md's `## Done` with no done date; the reviewer asked for it under PLANS.md's `## Planned` instead.
+2. (round 2) The opposite objection: the finished plan stayed under PLANS.md's `## Planned` instead of moving to `## Done` (the feature role's step 6).
+3. (final) "The finished plan is still not under `PLANS.md`'s `## Done`; the diff lands it in `PLANS-DONE.md` (the archive) and leaves `PLANS.md` without it, violating the role's step-6 guidance."
+4. (final) "The commit body's filing and archive-revert claims are false, and the `git diff HEAD -- PLANS-DONE.md` "clean" check is vacuous because HEAD is the commit under review."
+
+No round objected to the button's code; every round was about where the finished entry is filed. The commit-time sweep moves a `## Done` entry into PLANS-DONE.md, so the diff the reviewer sees always shows that archive move. (Operator, 2026-10-21: this note replaces a Refused note that a feature instance wrote because of a role-id bug in the exhaustion note.)
 
 **Goal.** `tumwater history --last --result problems` opens the team's newest failing run in one command (PLANS-DONE.md "`history <role> --last --result <class>[,…]`"), and `GET /api/run?last=1&result=problems` with no role serves exactly that run (PLANS-DONE.md "`GET /api/run?last=1` with no role…", whose own text says "A dashboard button that uses it is a separate, later plan"). The dashboard's History view has Summary / By model modes, an outcome filter, and a per-row drill-down, but no way to jump to the newest failure: the operator must guess the role and scroll. Add a **Newest failure** button that opens that run's detail card above the table, regardless of the current role, window or count. It is the dashboard twin of the CLI command and the last missing consumer of the role-less `last` endpoint.
 
@@ -67,7 +73,15 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 2b/9: Window events are `subscription_window_*` with a `backend`, and the reserve is `backends.<id>.windowReserve` (planned 2026-10-21 by the plan role; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/team/team-polls.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
 
-**Refused 2026-10-21 by feature: re-implementing 2b/9 was rejected after two review rounds (final revision capped) and this run is directed not to re-author it — the purpose is abandoned pending a fresh theme.
+**Needs replan 2026-10-21 by feature: rejected after 4 review rounds**
+1. (round 1) "`backends.claude.windowReserve` / `windowReserveFor` is dead code at runtime — no production caller (`gate-polls.ts:507,524`, `budget-gates.ts:262` still read `claudeWindowReserve`) — while validation forbids the working key alongside it and docs present the new key as current."
+2. (round 1) "`loggedWindowKeys` ignores the event's `backend` when filtering/keying, so it is not actually per-backend as part 2c assumes, and a foreign backend's window can suppress claude's restart re-announce once a second backend exists."
+3. (round 1) "The reserve/warning emitters take a `backend` but hardcode `backend: "claude"` on the event; incomplete plumbing that 2c must redo."
+4. (round 2) docs/backends.md and docs/config.md describe `claudeWindowReserve` in a sentence fragment that drops the subject naming it as the older spelling: "The older top-level spelling of `backends.claude.windowReserve`, which may be set instead (not both)."
+5. (round 3) "The new "both reserve spellings is a load error" rule is not enforced on the write path, so a supported `config set` can leave an unloadable `tumwater.json`" (`writeConfigMutation`, src/config/config-write.ts:84).
+6. (rounds 2–4) The commit message described a PLANS.md doc-reference audit ("No change — the 10 cited PLANS.md references all remain accurate") instead of the diff. A stage-check finding about PLANS.md references after the entry's archive move set off these rounds; the finding was not about this plan.
+
+(Operator, 2026-10-21: this note replaces a Refused note that a feature instance wrote because of a role-id bug in the exhaustion note.)
 
 **Goal.** The four window events are named for claude and carry no backend, and the only reserve key is the top-level `claudeWindowReserve`. Rename them to `subscription_window_{warning,reserved,limited,reset}`, each with a `backend: string` field ("claude" today), and let `backends.<id>.windowReserve` hold a reserve while `claudeWindowReserve` keeps working as claude's older spelling. `windowReserveFor(config, backend)` reads both. No behavior change for a claude-only team. The TUI and GUI reserve editors and `config-editable-keys` are deliberately untouched — `claudeWindowReserve` stays a valid editable key and those editors keep writing it, so this rename does not span them.
 
@@ -199,7 +213,15 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/)
 
-**Refused 2026-10-21 by feature: re-authoring the Codex backend theme is directed not to happen — the feature run's refusal of part 2b/9 ("the purpose is abandoned pending a fresh theme") and this role's notes both record part 6/9 as abandoned; no Codex source exists (src/agent/codex/ is empty), and this translator/rollout reader has no consumer until part 7/9 lands behind unimplemented parts 4/9 and 5/9, so it would be orphaned code in a dead theme**
+**Needs replan 2026-10-21 by feature: rejected after 4 review rounds**
+1. (round 1) "Context-window failures are classified as `configError` when they carry the structured 400 `invalid_request_error` shape, because the config branch precedes the `contextExceeded` branch; design §5 and the claude classifier both require context to win. Untested."
+2. (round 1) "`item.started` of `todo_list`/`web_search` emits an "unmapped item" warning instead of being dropped silently, contradicting design §5's `item.*` row; untested."
+3. (round 1) "`findRollout` walks all of `sessions` rather than the promised start-date-bounded date dirs, and has no test."
+4. (round 2) `findRollout` derives the `sessions/<YYYY>/<MM>/<DD>` directory from UTC date parts, but Codex's tree uses the local date (plans/codex-backend.md finding 5 and the captures).
+5. (round 2) The archived entry records `findRollout(home, id)` walking "the date dirs from the run's start date onward", but the code took a third `startDate` parameter: with it, it read only that one day, and without it, every date dir.
+6. (rounds 2–4) The commit message described a PLANS.md doc-reference audit ("no file was changed this run") instead of the diff. A stage-check finding about PLANS.md references after the entry's archive move set off these rounds; the finding was not about this plan.
+
+The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of parts 1/9–5/9). (Operator, 2026-10-21: this note replaces a Refused note that a feature instance wrote because of a role-id bug in the exhaustion note. That note cited part 2b/9's refusal, not this part's own objections.)
 
 **Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
 
