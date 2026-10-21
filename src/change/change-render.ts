@@ -24,14 +24,26 @@ function workSummary(
   );
 }
 
+/** The one-line phrase a change view prints when the resolved main branch is absent — shared
+ * by the roster, the per-role view, the list of roles, and the overlaps view so the operator
+ * wording the tests pin cannot drift between them (the workSummary precedent). */
+function mainMissingPhrase(mainBranch: string): string {
+  return `main branch ${mainBranch} does not exist`;
+}
+
+/** True when a team-wide roster is all no-base (every role found the same missing main branch)
+ * and holds at least one role, so it opens with the single baseline phrase instead of a column
+ * of per-role "does not exist" lines. */
+function allRolesNoBase(roles: readonly { state: string }[]): boolean {
+  return roles.length > 0 && roles.every((r) => r.state === "no-base");
+}
+
 /** Render the roster as the operator-facing text `tumwater diff` (no --role) prints: one
  * line per role that holds pending work, in roster order; roles with no worktree and roles
  * holding nothing are skipped. Every entry no-base means the baseline itself is gone — the
  * per-role view's line says so, team-wide, exit 0 like every other degraded case. */
 export function renderTeamChange(view: TeamChangeView): string {
-  if (view.roles.length > 0 && view.roles.every((r) => r.state === "no-base")) {
-    return `main branch ${view.mainBranch} does not exist`;
-  }
+  if (allRolesNoBase(view.roles)) return mainMissingPhrase(view.mainBranch);
   const lines = view.roles
     .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
     .map((r) => `${r.role}: ${workSummary(r.ahead, r.behind, view.mainBranch, r.dirtyFiles)}`);
@@ -41,7 +53,7 @@ export function renderTeamChange(view: TeamChangeView): string {
 /** Render the view as the operator-facing text `tumwater diff --role <id>` prints. */
 export function renderRoleChange(view: RoleChangeView): string {
   if (view.state === "absent") return `no worktree for ${view.role}`;
-  if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.state === "no-base") return mainMissingPhrase(view.mainBranch);
   if (view.path !== undefined && view.commits.length === 0 && view.dirtyFiles.length === 0) {
     return `no pending change to ${view.path} for ${view.role}`;
   }
@@ -62,9 +74,7 @@ export function renderRoleChange(view: RoleChangeView): string {
 /** Render several roles' views in the listed order, a blank line apart; every block opens with
  * its role's name, so the blank line separates them. */
 export function renderRoleChanges(view: RoleChangesView): string {
-  if (view.roles.length > 0 && view.roles.every((r) => r.state === "no-base")) {
-    return `main branch ${view.mainBranch} does not exist`;
-  }
+  if (allRolesNoBase(view.roles)) return mainMissingPhrase(view.mainBranch);
   return view.roles.map(renderRoleChange).join("\n\n");
 }
 
@@ -73,7 +83,7 @@ export function renderRoleChanges(view: RoleChangesView): string {
  * narrowed to and `path` the `--path` it was narrowed to; they only change the empty-list
  * wording. */
 export function renderChangeOverlaps(view: ChangeOverlapsView, scope?: string[], path?: string): string {
-  if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.state === "no-base") return mainMissingPhrase(view.mainBranch);
   if (view.overlaps.length === 0 && path !== undefined) {
     return scope !== undefined
       ? `no file under ${path} held by ${scope.join(", ")} is touched by another pending change`
