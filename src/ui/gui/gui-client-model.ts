@@ -49,6 +49,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p === "waiting: daily cap spent") return { key: "cap", label: "Waiting", tone: "amber", live: false, detail: "daily cap" };
     if (p === "waiting: low disk") return { key: "disk", label: "Waiting", tone: "amber", live: false, detail: "low disk" };
     if (p === "waiting: bootstrap") return { key: "bootstrap", label: "Waiting", tone: "amber", live: false, detail: "bootstrap" };
+    if (p.startsWith("waiting: maintenance allowance spent")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance allowance spent this poll" };
     if (p.startsWith("waiting: maintenance allowance used")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance " + after(35) };
     if (p.startsWith("sleeping")) return { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
     if (p.startsWith("idle: ")) return { key: "idle", label: "Idle", tone: "gray", live: false, detail: p.slice(6) };

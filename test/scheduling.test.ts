@@ -82,6 +82,7 @@ test("yield scaling stretches a quiet search role's gap — including the main-m
   r.state.lastMainHead = "old";
   r.state.recentOutcomes = "n".repeat(16);
   assert.equal(isEligible(r, now, "abc", 0).run, false, "held inside the stretched gap");
+  assert.equal(isEligible(r, now, "abc", 0).skip, "yield-gap", "a due runner held in the stretched gap records the yield-gap skip");
   assert.equal(isEligible(r, now, "new", 0).run, false, "a main move does not cut the stretch");
   // Past the stretched gap the wake fires again.
   r.state.lastRunEndedAt = now - (4 * gap + 1);

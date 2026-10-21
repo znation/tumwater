@@ -343,7 +343,7 @@ export async function pollRunnerReasons(
     // The role's OWN queue decides inbox due-ness: the director counts its historical
     // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
     // queued prompt makes its role due by itself, no wake marker needed (isEligible).
-    const { run, reason } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
+    const { run, reason, skip } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
       once: once.active,
       planBacklogOpen: !planBacklogFull,
       // A pin at the conflict cap whose lineage is not yet handed back is owed an authoring run
@@ -362,7 +362,10 @@ export async function pollRunnerReasons(
       // Once mode: idle and not due — settleSkipped records the skip reason (the caller's
       // summary reports it).
       if (once.active && !runner.state.running) once.settleSkipped(runner);
-      noteSkip(root, runner, undefined);
+      // Thread a gate-specific skip through (e.g. the yield-stretched gap) so a runner the
+      // poll declined and will keep declining does not read as "due — starts on the next
+      // poll"; stays undefined for every ordinary not-due path.
+      noteSkip(root, runner, skip);
       continue;
     }
     // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT merge never
@@ -384,7 +387,7 @@ export async function pollRunnerReasons(
     const writingBase = baseRoleOf(runner.role);
     if (claimGroups.has(writingBase) && !runner.state.running) {
       if ((writing.get(writingBase) ?? 0) >= configuredInstances(runner.config, runner.role)) {
-        noteSkip(root, runner, undefined);
+        noteSkip(root, runner, "instances-full");
         continue;
       }
     }
@@ -450,7 +453,7 @@ export async function pollRunnerReasons(
     // spends no slot: it is an explicit operator request, not idle maintenance.
     if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !hasDemand(runner)) {
       if (maintenanceQuotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) {
-        noteSkip(root, runner, undefined);
+        noteSkip(root, runner, "maintenance-due-cap");
         continue;
       }
       maintenanceQuotaAdmitted++;

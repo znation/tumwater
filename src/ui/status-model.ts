@@ -7,6 +7,7 @@ import { heldByMainRed } from "../status/status-polls.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { readLiveProgress, type LiveProgress } from "./progress-data.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
+import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { humanSeconds, humanUntil, secondsUntil } from "../text/datetime.js";
 import {
   duration,
@@ -279,6 +280,15 @@ export function rolePhase(
         break;
       case "deferred-plans-full":
         cell = "deferred (plans full)";
+        break;
+      case "instances-full":
+        cell = `idle: every ${baseRoleOf(s.role)} instance is busy`;
+        break;
+      case "maintenance-due-cap":
+        cell = "waiting: maintenance allowance spent this poll";
+        break;
+      case "yield-gap":
+        cell = `idle: waiting out its yield gap ×${yieldMultiplierFor(s)}`;
         break;
       default:
         cell = "due";

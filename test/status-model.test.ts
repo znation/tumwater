@@ -900,6 +900,12 @@ test("rolePhase names the scheduling poll's skip for a due, idle role", () => {
   assert.equal(rolePhase(due("clean", { skipReason: "deferred-backlog" }), true), "deferred (backlog open)");
   assert.equal(rolePhase(due("clean", { skipReason: "deferred-no-work" }), true), "deferred (no new work)");
   assert.equal(rolePhase(due("plan", { skipReason: "deferred-plans-full" }), true), "deferred (plans full)");
+  // A runner the poll declined and will keep declining never reads the bare "due — starts
+  // on the next poll": the multi-instance cap, the maintenance headroom and the
+  // yield-stretched gap each record a skipReason the cell names.
+  assert.equal(rolePhase(due("feature-2", { skipReason: "instances-full" }), true), "idle: every feature instance is busy");
+  assert.equal(rolePhase(due("clean", { skipReason: "maintenance-due-cap" }), true), "waiting: maintenance allowance spent this poll");
+  assert.equal(rolePhase(due("clean", { skipReason: "yield-gap", recentOutcomes: "n".repeat(16) }), true), "idle: waiting out its yield gap ×4");
   assert.equal(rolePhase(due("clean", {}), true), "due");
   assert.match(rolePhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
   assert.match(rolePhase(due("clean", { skipReason: "claim-hold", running: true, lastRunStartedAt: Date.now() - 90_000 }), true), /^working/);

@@ -328,8 +328,22 @@ export interface RunnerState {
   revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
 }
 
-/** Why a due runner was skipped by the scheduling poll (RunnerState.skipReason). */
-export type SkipReason = "no-free-entry" | "claim-hold" | "deferred-backlog" | "deferred-no-work" | "deferred-plans-full";
+/** Why a due runner was skipped by the scheduling poll (RunnerState.skipReason): either a
+ * backlog turn-away (no-free-entry / claim-hold), a need-based deferral (deferred-*), or a
+ * gate that declined a runner the poll will keep declining every poll it stays due — the
+ * concurrent-instances cap (instances-full), the maintenance allowance's per-poll headroom
+ * (maintenance-due-cap), or the yield-stretched min gap (yield-gap). Every skip the poll can
+ * record maps to a phase cell, so a declined runner never reads the misleading "due — starts
+ * on the next poll" the bare no-reason fallback renders. */
+export type SkipReason =
+  | "no-free-entry"
+  | "claim-hold"
+  | "deferred-backlog"
+  | "deferred-no-work"
+  | "deferred-plans-full"
+  | "instances-full"
+  | "maintenance-due-cap"
+  | "yield-gap";
 
 export const SKIP_REASONS: readonly string[] = [
   "no-free-entry",
@@ -337,6 +351,9 @@ export const SKIP_REASONS: readonly string[] = [
   "deferred-backlog",
   "deferred-no-work",
   "deferred-plans-full",
+  "instances-full",
+  "maintenance-due-cap",
+  "yield-gap",
 ];
 
 /** A new RunnerState for one role, before its first run. */

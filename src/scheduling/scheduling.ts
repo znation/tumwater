@@ -9,7 +9,7 @@
  * module only reads RoleRunner through its public fields and imports no runtime from it. */
 
 import type { RoleRunner } from "../runner/runner.js";
-import { freshlyWoken, hasOutstandingWork, type RunnerState } from "../runner/runner-state.js";
+import { freshlyWoken, hasOutstandingWork, type RunnerState, type SkipReason } from "../runner/runner-state.js";
 import { scheduleConfigForRole } from "../config/config-views.js";
 import {
   BUGFIX_ROLE,
@@ -55,7 +55,7 @@ export function isEligible(
   mainHead: string,
   inboxCount: number,
   opts: EligibilityOptions = {},
-): { run: boolean; reason?: string } {
+): { run: boolean; reason?: string; skip?: SkipReason } {
   const s = runner.state;
   // A role disabled in tumwater.json stops running immediately (live-reload); re-enabling
   // resumes within one poll cycle because the runner and its persisted state survive.
@@ -120,7 +120,13 @@ export function isEligible(
   // wait out the remaining slow clock it ran inside — a queued prompt carries its own
   // due-ness in the inbox check above, so it never depends on this stamp surviving.
   const woken = freshlyWoken(s);
-  if (sinceLast < minGap && !woken) return { run: false };
+  if (sinceLast < minGap && !woken) {
+    // Held inside the stretched gap: the runner is not due this poll (a schedule clock with
+    // the plain gap, or a main move under the multiplier, would otherwise admit it). Report
+    // the yield-scaled hold so the phase cell reads "waiting out its gap" instead of the
+    // bare "due — starts on the next poll" of the no-reason fallback (RunnerState.skipReason).
+    return mult > 1 ? { run: false, skip: "yield-gap" } : { run: false };
+  }
   // Once mode's clock override, second half: a raised backoffSeconds means nextRunAt is a
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
   // productive run scheduled, and the explicit round demand overrides it.

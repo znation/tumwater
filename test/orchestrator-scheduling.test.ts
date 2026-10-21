@@ -641,6 +641,9 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   const firstReasons = await pollRunnerReasons(first);
   assert.equal(firstReasons.has(runners[0]!), true, "the first due role takes the open slot");
   assert.equal(firstReasons.has(runners[1]!), false, "the second waits its turn");
+  // The per-poll headroom declined the second due maintenance role with a skipReason, so the
+  // phase cell names the allowance instead of reading the bare "due — starts on the next poll".
+  assert.equal(runners[1]!.state.skipReason, "maintenance-due-cap");
 
   // The first run ends without merge (so the merged count, and the allowance, are unchanged).
   // Its backoff now makes it not due; the second takes the slot on the next poll — one run,
@@ -932,6 +935,11 @@ test("running runners count against instances, and admissions in one poll count 
   assert.equal(reasons.has(feature2), true, "the lowest-index free runner takes the open place");
   assert.equal(reasons.has(feature3), false);
   assert.equal(reasons.has(feature4), false);
+  // The concurrent-instances cap declines the surplus due runners with a skipReason, so the
+  // phase cell names the cap instead of claiming they start on the next poll.
+  assert.equal(feature3.state.skipReason, "instances-full");
+  assert.equal(loadRunnerState(root, "feature-3").skipReason, "instances-full");
+  assert.equal(feature4.state.skipReason, "instances-full");
 });
 
 test("a runner with a revision is admitted before a free runner when one place is open", async () => {
