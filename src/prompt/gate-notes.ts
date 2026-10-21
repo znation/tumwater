@@ -1,5 +1,6 @@
 import { shortSha } from "../text/format.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { numberedList } from "../text/markdown.js";
 import { SUMMARY_BLOCK, NOTHING_TO_DO } from "../verdict/reply-contract.js";
@@ -40,11 +41,14 @@ export function buildRejectedReviewNote(review: {
   // from the same objections is what restarted the round and produced the long rejection
   // runs this note exists to end. The markdown-only replan note merges review-exempt, but a
   // merged change clears the standing rejection (clearSupersededRejection, run-apply.ts), so
-  // the instruction does not re-inject once the note has merged.
+  // the instruction does not re-inject once the note has merged. `role` is the runner id, so
+  // feature's instances (`feature-2`, …) are matched through their base role: matched bare,
+  // they got the plan-less wording while their claim kept the same entry assigned, and
+  // resolved the contradiction by refusing the plan (three Refused notes on 2026-10-21).
   let finality = "";
   if (review.exhausted) {
     finality =
-      role === "feature"
+      role !== undefined && baseRoleOf(role) === "feature"
         ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and merge that markdown-only change and nothing else so the plan role can rewrite the plan. Otherwise, redo the change against current main.`
         : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notes, then take a different theme on this run: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }

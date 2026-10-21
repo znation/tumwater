@@ -55,6 +55,21 @@ test("an exhausted feature rejection tells feature to replan, not re-author", ()
   assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix").includes(NEEDS_REPLAN_NOTE));
 });
 
+// The caller passes the runner id. A feature instance holds a claim that keeps the same entry
+// assigned, so the plan-less "take a different theme" wording left it nothing to do but refuse
+// the plan, and the plan role never saw the objections (three Refused notes on 2026-10-21).
+test("an exhausted rejection on a feature instance tells it to replan, like bare feature", () => {
+  for (const id of ["feature-2", "feature-10"]) {
+    const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, id);
+    assert.ok(note.includes(NEEDS_REPLAN_NOTE), `${id} names the replan note`);
+    assert.doesNotMatch(note, /different theme/, `${id} is not sent to its notes`);
+  }
+  // A bugfix instance is still plan-less, and an id that only resembles an instance is not one.
+  for (const id of ["bugfix-2", "feature-1"]) {
+    assert.ok(!buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, id).includes(NEEDS_REPLAN_NOTE), id);
+  }
+});
+
 // A plan-less role has no entry to replan, so its exhaustion note must not invite it to
 // re-author: the same purpose re-derived from the same objections is the role this note ends.
 test("an exhausted plan-less rejection records the purpose in the notes instead of re-authoring", () => {

@@ -444,6 +444,25 @@ test("an exhausted feature rejection carries the replan instruction on the next 
   assert.match(result.prompt, /do not re-author it/);
 });
 
+// A feature instance keeps its claim through an exhausted chain, so its next prompt carries the
+// same <assigned-entry> beside the rejection. With the plan-less wording ("take a different
+// theme") the only way out the assignment offered was a Refused note (2026-10-21).
+test("a feature instance's exhausted rejection carries the replan instruction beside its claim", () => {
+  const dir = root();
+  const title = "Plan X";
+  fs.writeFileSync(path.join(dir, "PLANS.md"), `# Plans\n## Planned\n### ${title}\nbody\n## Done\n`);
+  const result = promptFor(dir, "feature-2", {
+    state: {
+      lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true },
+      claim: { file: "PLANS.md", key: entryKey(title), title, at: 1, source: "assigned" },
+    },
+  });
+  assert.ok(result);
+  assert.match(result.prompt, /<assigned-entry>/);
+  assert.match(result.prompt, /append \*\*Needs replan/);
+  assert.doesNotMatch(result.prompt, /take a different theme/);
+});
+
 // Feature is told to merge a markdown-only Needs-replan note when a change exhausts its revision
 // rounds. That merge is review-exempt, so it records no verdict; the merge fold clears the
 // standing rejection instead (clearSupersededRejection, run-apply.ts). This pins that the
