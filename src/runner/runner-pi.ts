@@ -12,7 +12,7 @@ import { observeOpencodeRun, opencodeModelKey } from "../agent/opencode/opencode
 import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
 import { loadRunnerState } from "./runner-state-load.js";
 import { baseRoleOf, runnerIds } from "../roles/runner-ids.js";
-import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
+import { buildStageFixPrompt, type StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { piModelsPath } from "../pi/pi-models.js";
@@ -550,17 +550,19 @@ export class RunnerPi {
   }
 
   /** Ask the run's own pi session (--continue) to fix the pre-queue self-check's findings:
-   * one bounded turn, folded into the run's usage like every other agent run. Null when there is no
+   * one bounded turn, folded into the run's usage like every other agent run. `change` is the
+   * change's description so far, shown so the turn does not restate it. Null when there is no
    * session to continue — the caller then warns and lets the gate judge. The agent run is returned
    * even when it failed so the caller can honor a shutdown abort. */
   async requestStageFix(
     wt: string,
     findings: string[],
+    change: StagedDescription,
     config?: ResolvedModelConfig,
   ): Promise<PiRunResult | null> {
     return this.requestFollowUp(
       wt,
-      buildStageFixPrompt(findings),
+      buildStageFixPrompt(findings, change),
       "stagefix",
       RunnerPi.STAGE_FIX_TIMEOUT_S,
       config,

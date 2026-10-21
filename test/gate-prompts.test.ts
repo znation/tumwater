@@ -425,8 +425,11 @@ test("buildConflictPrompt points a backlog conflict at its section headings' lin
 // The pre-queue self-check's fix-up prompt (PLANS.md "Pre-queue self-check, part 1/2"): one bounded
 // turn on the author's own session to fix the deterministic faults the merge gate would reject,
 // before the change commits. The fake pi ignores prompt text, so its contract is pinned here.
-test("buildStageFixPrompt lists every finding, forbids git state changes, and asks for the closing block", () => {
-  const p = buildStageFixPrompt(["first fault", "second fault"]);
+test("buildStageFixPrompt lists every finding, forbids git state changes, and asks for this turn's RISK/VERIFIED", () => {
+  const p = buildStageFixPrompt(["first fault", "second fault"], {
+    summary: "add the feature",
+    body: "WHY: original why\nRISK: original risk",
+  });
   assert.match(p, /1\. first fault/);
   assert.match(p, /2\. second fault/);
   assert.match(p, /merge gate or its review is likely to reject/);
@@ -434,7 +437,18 @@ test("buildStageFixPrompt lists every finding, forbids git state changes, and as
   // sweep a rename through the backlog's history (2026-10-18).
   assert.doesNotMatch(p, /deterministically/);
   assert.match(p, /no add, commit, reset, checkout/);
-  assert.match(p, /SUMMARY:/);
-  assert.match(p, /RISK:/);
-  assert.match(p, /closing block again/);
+  // The change's description is shown to be kept, not restated: asked for "the closing block
+  // again", authors described the fix-up turn and it became a feature's subject
+  // (BUGS.md 2026-10-21).
+  assert.match(p, /\n {2}SUMMARY: add the feature\n {2}WHY: original why\n {2}RISK: original risk\n/);
+  assert.match(p, /Do not rewrite it to describe this turn/);
+  assert.doesNotMatch(p, /closing block again/);
+  assert.doesNotMatch(p, /SUMMARY: </, "a named change is not asked for a new SUMMARY");
+  assert.match(p, /\n {2}RISK: <[^\n]*\n {2}VERIFIED: <[^\n]*$/);
+});
+
+test("buildStageFixPrompt asks for a whole-change SUMMARY when the subject was derived from paths", () => {
+  const p = buildStageFixPrompt(["a fault"], { summary: null, body: "" });
+  assert.match(p, /\n {2}SUMMARY: <[^\n]*whole change, not of this turn/);
+  assert.doesNotMatch(p, /description stays/, "no empty description block");
 });

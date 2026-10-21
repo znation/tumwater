@@ -11,7 +11,7 @@ import {
   commitSubject,
   formatCommitBody,
   hasFrictionTrailer,
-  mergeCommitBody,
+  appendSelfCheckNotes,
   parseCommitMetadata,
 } from "../src/git/commit-message.js";
 
@@ -108,22 +108,31 @@ test("formatCommitBody orders WHY, RISK, VERIFIED and skips missing fields", () 
   assert.equal(formatCommitBody({}), "");
 });
 
-test("mergeCommitBody overrides only the fields the update restates", () => {
+test("appendSelfCheckNotes adds a fix-up's RISK/VERIFIED after the change's own and drops its WHY", () => {
   const base = { why: "original why", risk: "original risk", verified: "original verified" };
-  // A follow-up that restates one field must not drop the authoring run's other fields.
-  assert.deepEqual(mergeCommitBody(base, { why: "revised why" }), {
-    why: "revised why",
-    risk: "original risk",
-    verified: "original verified",
+  // The fix-up turn answers the self-check's findings, not the change, so it never replaces the
+  // change's description (BUGS.md 2026-10-21).
+  assert.deepEqual(
+    appendSelfCheckNotes(base, { why: "No change", risk: "the finding is wrong", verified: "read the file" }),
+    {
+      why: "original why",
+      risk: "original risk (self-check: the finding is wrong)",
+      verified: "original verified (self-check: read the file)",
+    },
+  );
+  // A reply with one line notes only that field; one with neither leaves the base untouched.
+  assert.deepEqual(appendSelfCheckNotes(base, { risk: "fixed the link" }), {
+    ...base,
+    risk: "original risk (self-check: fixed the link)",
   });
-  // An update with no fields at all leaves the base untouched; a null base passes through.
-  assert.deepEqual(mergeCommitBody(base, null), base);
-  assert.deepEqual(mergeCommitBody(null, { risk: "only risk" }), {
-    why: undefined,
-    risk: "only risk",
+  assert.deepEqual(appendSelfCheckNotes(base, { why: "only why" }), base);
+  assert.deepEqual(appendSelfCheckNotes(base, null), base);
+  // With no authoring line the note stands alone; a null base passes through.
+  assert.deepEqual(appendSelfCheckNotes(null, { risk: "only risk" }), {
+    risk: "self-check: only risk",
     verified: undefined,
   });
-  assert.equal(mergeCommitBody(null, null), null);
+  assert.equal(appendSelfCheckNotes(null, null), null);
 });
 
 test("commitTrailer compacts context at 10k and below", () => {

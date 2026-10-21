@@ -73,18 +73,17 @@ export function extractCommitBody(finalText: string): CommitBody | null {
   return body.why || body.risk || body.verified ? body : null;
 }
 
-/** Merge a follow-up reply's body over the run's original body, field by field: a follow-up that
- * restates only some of WHY/RISK/VERIFIED overrides those fields and leaves the others intact. A
- * wholesale replacement would silently drop the fields a partial reply did not restate, losing the
- * authoring run's recorded reasoning; returns `base` unchanged when `update` carries no field. */
-export function mergeCommitBody(base: CommitBody | null, update: CommitBody | null): CommitBody | null {
-  if (!update) return base;
-  const merged: CommitBody = {
-    why: update.why ?? base?.why,
-    risk: update.risk ?? base?.risk,
-    verified: update.verified ?? base?.verified,
-  };
-  return merged.why || merged.risk || merged.verified ? merged : null;
+/** Add the pre-queue self-check fix-up turn's RISK and VERIFIED lines to the run's body, each
+ * after the authoring run's own line as `(self-check: …)`. The fix-up turn answers the
+ * self-check's findings, not the change. When its lines replaced the authoring run's, the commit
+ * described that answer over the whole diff ("No code changed" on a full feature), and review
+ * rejected it as claims-vs-diff (BUGS.md 2026-10-21). Its WHY is dropped for the same reason.
+ * Returns `base` unchanged when the reply has neither line. */
+export function appendSelfCheckNotes(base: CommitBody | null, fixUp: CommitBody | null): CommitBody | null {
+  if (!fixUp?.risk && !fixUp?.verified) return base;
+  const note = (own: string | undefined, added: string | undefined): string | undefined =>
+    added === undefined ? own : own === undefined ? `self-check: ${added}` : `${own} (self-check: ${added})`;
+  return { ...base, risk: note(base?.risk, fixUp.risk), verified: note(base?.verified, fixUp.verified) };
 }
 
 /** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is

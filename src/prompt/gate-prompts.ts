@@ -4,7 +4,8 @@ import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
 import type { ConflictedFile } from "../merge/merge-git.js";
 import { numberedList } from "../text/markdown.js";
-import { SUMMARY_BLOCK, VERDICT_ENDING } from "../verdict/reply-contract.js";
+import { VERDICT_ENDING } from "../verdict/reply-contract.js";
+import { joinParts } from "../text/text.js";
 import { FINISHED_ARCHIVES } from "../backlog/backlog-md.js";
 
 /** Prompts for the merge gate's pi runs — the runs the merge/review pipeline starts, not the
@@ -367,10 +368,27 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
  * author sweep a rename through the backlog's history (2026-10-18). The session still holds
  * everything the run did, so the author fixes the faults before the change commits and queues —
  * the gate keeps its final say, and the fix costs one bounded turn instead of a rejection cycle.
- * A finding the author believes is wrong is answered in RISK rather than forced away; the reply
- * re-states the closing block because the harness re-derives the commit message from it.
- * Carries the run prompt's no-git rule (the harness commits). */
-export function buildStageFixPrompt(findings: string[]): string {
+ * A finding the author believes is wrong is answered in RISK rather than forced away.
+ * The prompt shows the change's description as the harness holds it and asks only for this
+ * turn's RISK and VERIFIED, which the harness appends to that description. Asked for "the
+ * closing block again", authors described the turn itself ("No change — the finding is wrong"),
+ * and that became the subject of a whole feature (BUGS.md 2026-10-21). A change whose subject
+ * was derived from its paths (`change.summary` null) is also asked for a SUMMARY of the whole
+ * change. Carries the run prompt's no-git rule (the harness commits). */
+export function buildStageFixPrompt(findings: string[], change: StagedDescription): string {
+  const current = joinParts([change.summary !== null && `SUMMARY: ${change.summary}`, change.body], "\n");
+  const description =
+    current === ""
+      ? ""
+      : `Your change's description stays as your closing block gave it, and review checks it against
+the whole diff:
+${current.replace(/^/gm, "  ")}
+Do not rewrite it to describe this turn.
+`;
+  const summaryLine =
+    change.summary === null
+      ? "  SUMMARY: <imperative one-line description of the whole change, not of this turn, at most 72 characters>\n"
+      : "";
   return `Your change is about to commit, but tumwater's pre-queue self-check found problems the
 merge gate or its review is likely to reject:
 ${numberedList(findings)}
@@ -378,8 +396,18 @@ Fix each one in the worktree now with the smallest edit that resolves it, and ke
 as it is. When a finding is wrong, say why in your RISK line instead of forcing a change that
 does not help. Do not run any git command that changes state (no add, commit, reset, checkout) —
 tumwater commits for you.
-When done, reply with ONLY the closing block again — no tool calls, no other text, one line each:
-${SUMMARY_BLOCK}`;
+${description}When done, reply with ONLY these lines about this turn — no tool calls, no other text, one line
+each. tumwater adds them to the change's RISK and VERIFIED lines, marked as the self-check's:
+${summaryLine}  RISK: <for each finding, what you fixed, or why it is wrong and you left it>
+  VERIFIED: <what you ran or read to check this turn's fixes — write none when nothing was run>`;
+}
+
+/** The change's description when the pre-queue self-check runs: the authoring run's SUMMARY
+ * (null when the subject was derived from the changed paths) and its formatted WHY/RISK/VERIFIED
+ * lines ("" when it wrote none). */
+export interface StagedDescription {
+  summary: string | null;
+  body: string;
 }
 
 /** The note appended to a role's run prompt when a change was handed back to it with the

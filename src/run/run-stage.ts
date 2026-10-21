@@ -12,9 +12,10 @@ import {
   summaryOverCap,
   fallbackSummary,
   formatCommitBody,
-  mergeCommitBody,
+  appendSelfCheckNotes,
   stampedSubject,
 } from "../git/commit-message.js";
+import type { StagedDescription } from "../prompt/gate-prompts.js";
 import { logEventBestEffort } from "../events/events.js";
 import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
@@ -100,8 +101,9 @@ interface RunStageContext {
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
   /** The merge gate's deterministic backlog checks over the uncommitted change. */
   stageCheck(wt: string): Promise<string[]>;
-  /** One bounded follow-up turn in the still-open session, to fix the self-check's findings. */
-  requestStageFix(wt: string, findings: string[]): Promise<PiRunResult | null>;
+  /** One bounded follow-up turn in the still-open session, to fix the self-check's findings;
+   * `change` is the change's description so far, which the turn is told to leave alone. */
+  requestStageFix(wt: string, findings: string[], change: StagedDescription): Promise<PiRunResult | null>;
   /** Pin the commit by the role's merge ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   /** Finalize an aborted follow-up run through the role (requeue + worktree reset). */
@@ -155,6 +157,8 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   // only if that too yields nothing is the subject derived from the changed paths.
   let summary = extractSummary(ctx.finalText);
   let body = extractCommitBody(ctx.finalText);
+  // True when no reply named the change, so the subject below is derived from its paths.
+  let summaryDerived = false;
   if (summary === null) {
     const base = await headOf(ctx.wt, "HEAD");
     const followUp = await ctx.requestSummary(ctx.wt);
@@ -164,7 +168,10 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
       summary = extractSummary(followUp.finalText);
       body = body ?? extractCommitBody(followUp.finalText);
     }
-    if (summary === null) summary = fallbackSummary(await changedFiles(ctx.wt), ctx.role, s.runs);
+    if (summary === null) {
+      summary = fallbackSummary(await changedFiles(ctx.wt), ctx.role, s.runs);
+      summaryDerived = true;
+    }
     ctx.warn(
       `reply had no SUMMARY line — ` +
         (followUp && extractSummary(followUp.finalText) !== null
@@ -242,14 +249,19 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
   if (findings.length > 0) {
     const before = findings.length;
     const fixBase = await headOf(ctx.wt, "HEAD");
-    const fixUp = await ctx.requestStageFix(ctx.wt, findings);
+    const fixUp = await ctx.requestStageFix(ctx.wt, findings, {
+      summary: summaryDerived ? null : summary,
+      body: body ? formatCommitBody(body) : "",
+    });
     await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
     if (fixUp?.aborted) return ctx.finishAbortedRun();
     if (fixUp) {
-      summary = extractSummary(fixUp.finalText) ?? summary;
-      // Field-by-field: a fix-up reply need only restate the fields it changed, so the
-      // authoring run's other WHY/RISK/VERIFIED lines survive it.
-      body = mergeCommitBody(body, extractCommitBody(fixUp.finalText));
+      // The fix-up reply answers the findings, not the change, so it never replaces the
+      // change's description (BUGS.md 2026-10-21): its SUMMARY is taken only over a subject
+      // derived from the paths, and its RISK/VERIFIED are appended as self-check notes.
+      const fixSummary = summaryDerived ? extractSummary(fixUp.finalText) : null;
+      if (fixSummary !== null) summary = fixSummary;
+      body = appendSelfCheckNotes(body, extractCommitBody(fixUp.finalText));
     }
     // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
     // in the worktree there is nothing to commit or queue: end the run no_change here instead

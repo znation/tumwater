@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A self-check fix-up turn replaces the run's commit message with a description of the fix-up alone, so a finished feature queues as "No change — …" and review rejects it as claims-vs-diff (found by operator session 2026-10-21 from the 10-20/21 `review_rejected` and `merge_queued` events) — fixed 2026-10-21 by operator session
+
+- **Symptom:** from 2026-10-20 21:41 to 10-21 02:18, 15 review rejections made the same objection. The commit's SUMMARY/WHY/RISK/VERIFIED described a no-edit investigation or a one-line placeholder removal, while its diff was a whole feature. The features were the TUI Transcript Ctrl+Y diffstat toggle (11 files), the TUI Activity tally, `status -f/--follow`, and Codex backend part 2b/9.
+  - Commit `78b77e162` (feature-2 #554, Codex 2b/9 revision 1) is titled "Repoint no PLANS.md references; verified all 10 are generic and none name the moved entry", with "RISK: No code or doc changed", over the full 2b/9 diff.
+  - Runs queued under fix-up summaries: "No change — the self-check finding is contradicted by the file and the run rules." (feature-2, 10-20 21:33); "Keep all ten PLANS.md references unchanged — the self-check over-flagged them" (feature-3, 10-21 02:31); "No change — both self-check findings are incorrect on verified inspection" (bugfix-3, 02:35).
+  - Three of Codex 2b/9's rejections were this objection. They helped exhaust its revision chain, which set off the 10-21 refusals (see the role-notes entry below).
+- **Reproduce:** a fake-pi authoring run that edits a file and ends with a normal closing block. Stub the stage check to return one finding, and have the fix-up turn reply `SUMMARY: No change — the finding is wrong` / `RISK: No code changed`. The commit subject is then the fix-up's, and its RISK line replaces the authoring run's.
+- **Cause:** src/run/run-stage.ts:245-251 sets `summary = extractSummary(fixUp.finalText) ?? summary` and `body = mergeCommitBody(body, extractCommitBody(fixUp.finalText))`. So the fix-up's SUMMARY always replaces the authoring run's, and each WHY/RISK/VERIFIED line it writes replaces that field. `buildStageFixPrompt` (src/prompt/gate-prompts.ts:373) asks for "ONLY the closing block again" and says to explain a wrong finding "in your RISK line". A model that rightly makes no edit therefore writes a closing block about that decision.
+  - The 10-20 trigger was the moved-source check flagging every archived plan (fixed in 03e5cbcb7).
+  - The `_None yet._` placeholder finding, and any other finding the author judges wrong, still take the same path.
+- **Expected / fix sketch:** a fix-up turn amends the change's description and never replaces it.
+  - Keep the authoring run's SUMMARY and WHY.
+  - Append the fix-up's RISK and VERIFIED lines to the authoring run's, prefixed `self-check:`, instead of replacing them.
+  - Take the fix-up's SUMMARY only when the authoring run produced none.
+  - Give `buildStageFixPrompt` the run's current closing block, and ask the fix-up to return that block with the fix added, not a new one describing this turn.
+  - Test (test/run-stage*.test.ts): the reproduce case keeps the authoring subject, and its body gains `self-check: the finding is wrong`.
+- **Fixed:** the fix-up reply no longer replaces the change's description. run-stage.ts keeps the authoring run's SUMMARY and WHY, and `appendSelfCheckNotes` (src/git/commit-message.ts) adds the fix-up's RISK and VERIFIED after the authoring run's own lines as `(self-check: …)`. The fix-up's SUMMARY is taken only over a subject derived from the changed paths. `buildStageFixPrompt` now shows the change's current SUMMARY/WHY/RISK/VERIFIED, says not to rewrite it to describe this turn, and asks only for this turn's RISK and VERIFIED (plus a whole-change SUMMARY when the subject was derived). Revision runs take the same path, which covers feature-3's 03:57 "Left the 10 doc references unchanged" queue of fast-merge guardrails part 1/3. Pinned by test/run-stage.test.ts (the reproduce case keeps "add the feature" as the subject, queue entry and `merge_queued` summary, and its body reads `RISK: original risk (self-check: No code changed)`), test/commit-message.test.ts and test/gate-prompts.test.ts.
+- **Validation gap:** none — the reproduce case runs through the real stage step with a stubbed fix-up reply, and it fails on the old rule with the fix-up's "No change — the finding is wrong" as the queued summary.
+
 ### A Homebrew node upgrade while the team runs leaves `process.execPath` naming a deleted binary: the notes shim has failed 150 times since, and the supervisor's next respawn (a self-redeploy) and the dashboard reload spawn that same missing file (found by operator session 2026-10-21 from .tumwater/bin/tumwater-notes and the plan role's notes) — fixed 2026-10-21 by the bugfix role
 
 - **Symptom:** at 02:31 on 2026-10-21 Homebrew replaced node 26.11.1 with 26.12.0 and removed `/opt/homebrew/Cellar/node/26.11.1`.

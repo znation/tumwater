@@ -801,7 +801,7 @@ export async function handlePiResultPhase(
     warn: (message) => ctx.warn(message),
     requestSummary: (w, n) => ctx.pi.requestSummary(w, cfg, n),
     stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.config.review.exemptPaths, ctx.role),
-    requestStageFix: (w, findings) => ctx.pi.requestStageFix(w, findings, cfg),
+    requestStageFix: (w, findings, change) => ctx.pi.requestStageFix(w, findings, change, cfg),
     pinAndReset: (w, sha) => ctx.pinAndReset(w, sha),
     finishAbortedRun: () => ctx.finishAbortedRun(userPrompt, wt),
   });

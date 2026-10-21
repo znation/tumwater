@@ -16,6 +16,7 @@ import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
+import type { StagedDescription } from "../src/prompt/gate-prompts.js";
 import type { RunnerState } from "../src/runner/runner-state.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { truncate } from "../src/text/text.js";
@@ -68,7 +69,7 @@ interface CtxCalls {
   summaryRequests: string[];
   summaryOverLengths: (number | undefined)[];
   stageChecks: string[];
-  stageFixRequests: { wt: string; findings: string[] }[];
+  stageFixRequests: { wt: string; findings: string[]; change?: StagedDescription }[];
   pins: { wt: string; sha: string }[];
   abortedFinalized: number;
 }
@@ -139,8 +140,8 @@ function buildCtx(
       const result = results[Math.min(calls.stageChecks.length - 1, results.length - 1)] ?? [];
       return result;
     },
-    requestStageFix: async (fixWt: string, findings: string[]) => {
-      calls.stageFixRequests.push({ wt: fixWt, findings });
+    requestStageFix: async (fixWt: string, findings: string[], change: StagedDescription) => {
+      calls.stageFixRequests.push({ wt: fixWt, findings, change });
       if (over.stageFixDrops) {
         fs.rmSync(path.join(fixWt, "feature.ts"), { force: true });
       }
@@ -769,23 +770,63 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
   assert.equal(queuedMerges(root)[0]!.summary, "add the feature");
 });
 
-test("a partial fix-up body keeps the fields it did not restate", async () => {
+test("a self-check fix-up reply never becomes the change's summary; its RISK/VERIFIED are appended", async () => {
+  // BUGS.md 2026-10-21: the fix-up turn's closing block replaced the change's, so a finished
+  // feature queued as "No change — the finding is wrong" and review rejected it as claims-vs-diff.
   const { root, wt } = await setup();
   const state: RunnerState = freshRunnerState("improve");
-  const { ctx } = makeCtx(root, wt, state, {
+  const { ctx, calls } = makeCtx(root, wt, state, {
     finalText:
       "SUMMARY: add the feature\nWHY: original why\nRISK: original risk\nVERIFIED: original verified\n",
-    stageChecks: [["a finding"], []],
-    stageFix: okPi({ finalText: "WHY: revised why\n" }),
+    stageChecks: [["a finding"], ["a finding"]],
+    stageFix: okPi({
+      finalText:
+        "SUMMARY: No change — the finding is wrong\nWHY: the self-check over-flagged it\n" +
+        "RISK: No code changed\nVERIFIED: read the cited lines\n",
+    }),
   });
 
   const outcome = await stageRunMerge(ctx);
 
   assert.equal(outcome.result, "queued");
+  assert.equal(outcome.summary, "add the feature");
+  // The fix-up turn was shown the description it must leave alone.
+  assert.deepEqual(calls.stageFixRequests[0]!.change, {
+    summary: "add the feature",
+    body: "WHY: original why\nRISK: original risk\nVERIFIED: original verified",
+  });
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
+  const expectedBody =
+    "WHY: original why\n" +
+    "RISK: original risk (self-check: No code changed)\n" +
+    "VERIFIED: original verified (self-check: read the cited lines)";
   const body = sh(wt, "git", "log", "-1", "--format=%b");
-  assert.match(body, /WHY: revised why/);
-  assert.match(body, /RISK: original risk/, "the authoring run's RISK survives a partial reply");
-  assert.match(body, /VERIFIED: original verified/, "the authoring run's VERIFIED survives too");
+  assert.ok(body.startsWith(`${expectedBody}\n`), body);
+  // The queue entry carries what the reviewer checks against the diff; the event, what the
+  // feed shows.
+  const queued = queuedMerges(root)[0]!;
+  assert.equal(queued.summary, "add the feature");
+  assert.equal(queued.body, expectedBody);
+  const event = readEvents(root, 50).find((e) => e.type === "merge_queued");
+  assert.equal(event?.summary, "add the feature");
+});
+
+test("a fix-up SUMMARY replaces only a subject derived from the changed paths", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    finalText: "WHY: original why\n",
+    followUp: null,
+    stageChecks: [["a finding"], []],
+    stageFix: okPi({ finalText: "SUMMARY: add the feature flag\nRISK: fixed the link\n" }),
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.deepEqual(calls.stageFixRequests[0]!.change, { summary: null, body: "WHY: original why" });
+  assert.equal(queuedMerges(root)[0]!.summary, "add the feature flag");
+  assert.equal(queuedMerges(root)[0]!.body, "WHY: original why\nRISK: self-check: fixed the link");
 });
 
 test("a finding the follow-up leaves unfixed still queues, with the still-open warning", async () => {

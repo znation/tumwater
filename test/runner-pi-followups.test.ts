@@ -209,7 +209,7 @@ test("requestStageFix returns null when the role has no resumable session", asyn
   const restore = recordingFakePi(args);
   try {
     const { runnerPi } = makeHost(root);
-    const result = await runnerPi.requestStageFix(root, ["task id is missing"]);
+    const result = await runnerPi.requestStageFix(root, ["task id is missing"], { summary: "add x", body: "" });
     assert.equal(result, null);
     assert.ok(!fs.existsSync(args), "no pi run is spawned when there is no session to continue");
   } finally {
@@ -227,10 +227,11 @@ test("requestStageFix resumes the run's session with the findings and folds its 
     fs.mkdirSync(sessionDir(root, "feature"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(root, "feature"), "session.jsonl"), "{}\n");
     const { runnerPi, usage } = makeHost(root);
-    const result = await runnerPi.requestStageFix(root, [
-      "task id is missing",
-      "stray file in the diff",
-    ]);
+    const result = await runnerPi.requestStageFix(
+      root,
+      ["task id is missing", "stray file in the diff"],
+      { summary: "add the task id check", body: "WHY: ids were missing" },
+    );
     assert.ok(result, "a resumable session produces an agent run");
     assert.equal(result!.ok, true);
     assert.match(result!.finalText, /addressed both faults/);
@@ -243,7 +244,8 @@ test("requestStageFix resumes the run's session with the findings and folds its 
     assert.ok(!recorded.includes('-n '), "the fix-up never re-names the session");
     assert.match(recorded, /task id is missing/, "the first finding is in the prompt");
     assert.match(recorded, /stray file in the diff/, "the second finding is in the prompt");
-    assert.match(recorded, /closing block again/, "the agent run asks for the closing block again");
+    assert.match(recorded, /SUMMARY: add the task id check/, "the prompt shows the change's description");
+    assert.match(recorded, /Do not rewrite it to describe this turn/, "and asks the turn to leave it alone");
   } finally {
     restore();
   }
