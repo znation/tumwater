@@ -8,6 +8,7 @@ import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsLogPath } from "../paths.js";
 import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
+import { trimToLast } from "../collections.js";
 import { typoSuffix } from "../text/suggest.js";
 
 /** Parse a `--model` value: a comma list of model selectors, deduplicated in first-seen order.
@@ -262,7 +263,7 @@ async function followHistory(
       const e = parseEventLine(line);
       if (!e) continue;
       buffer.push(e);
-      if (buffer.length > HISTORY_FOLLOW_BUFFER_EVENTS) buffer.splice(0, buffer.length - HISTORY_FOLLOW_BUFFER_EVENTS);
+      trimToLast(buffer, HISTORY_FOLLOW_BUFFER_EVENTS);
       if (e.type !== "run_end") continue;
       const row = runRows(buffer, 1, role)[0];
       if (!row) continue;

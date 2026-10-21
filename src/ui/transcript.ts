@@ -3,6 +3,7 @@ import { statRoleLog, type TailState, withTail } from "../files/tail.js";
 import { collapseWhitespace, squash, textOr, truncate } from "../text/text.js";
 import { describeToolCall } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { trimToLast } from "../collections.js";
 
 /** A rendered transcript entry: the lines for one assistant turn (optionally prefixed by its run's
  * separator) or a lone retry warning / run separator. Exported because transcript-tail.ts types its
@@ -271,7 +272,7 @@ function feedEntries(value: TranscriptValue, line: string): void {
   const entry = value.renderer.feed(line);
   if (entry.length === 0) return;
   value.entries.push(entry);
-  if (value.entries.length > MAX_ENTRIES) value.entries.splice(0, value.entries.length - MAX_ENTRIES);
+  trimToLast(value.entries, MAX_ENTRIES);
 }
 
 /** Rendered transcript lines for the last `limit` entries of a role's pi log, oldest first.

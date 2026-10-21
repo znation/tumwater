@@ -85,6 +85,20 @@ export function memoSetLru<K, V>(cache: Map<K, V>, key: K, value: V, max: number
   cache.set(key, value);
 }
 
+/** Trim `arr` in place so it holds at most `max` elements, keeping only the newest (last) `max`
+ * and dropping the whole overflow from the front in one splice — the single home of the
+ * "keep the newest capped buffer" discipline that src/ui/transcript.ts's feedEntries and
+ * src/history/history.ts's `logs --follow` buffer both hand-rolled before, so those sites
+ * cannot drift on how an over-cap buffer is drained. Batch appends may overflow by more than
+ * one at a time, so the whole excess is dropped rather than a single element; an `arr` already
+ * at or under `max` is untouched. Mutates `arr` in place and returns nothing. (Deliberately
+ * unlike the per-element ring drains of src/scheduling/backoff.ts and src/orchestrator/
+ * orchestrator-launch.ts, which shift one entry at a time as they push — each is a different
+ * shape and keeps its own copy.) */
+export function trimToLast<T>(arr: T[], max: number): void {
+  if (arr.length > max) arr.splice(0, arr.length - max);
+}
+
 /** One deterministic ranking rule: count descending, then key ascending, so equal counts always
  * order the same way. These two helpers are the single home of that rule; every surface that
  * ranks counters by count calls one of them rather than re-implementing the comparator —
