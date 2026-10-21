@@ -51,6 +51,52 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Considered and excluded:** the maintenance allowance's admission (src/orchestrator/orchestrator-scheduling.ts:453) also calls `noteSkip(..., undefined)`, but its headroom is recomputed from in-flight roles every pass (`maintenanceQuotaOverLine` at :259-262 owns the "used has reached the allowance" case, which already reads `waiting: maintenance allowance used …` through `maintenanceQuotaHold`), so a role declined only by the one-poll reservation is normally admitted on the next pass and the label's promise holds there. Left alone rather than adding a third state for a promise that keeps itself.
 - **Out of scope, deliberately:** the 2 s poll and the start latency it costs stay as they are — this entry makes the label tell the truth, it does not add a wake mechanism. The multiplier/clock split stays too, since `yieldMultiplierSuffix`'s own comment already declares a `now`-due cell at ×N to be "a role waiting out its gap, not a broken clock"; only the phase cell contradicts it.
 
+### A self-check fix-up turn replaces the run's commit message with a description of the fix-up alone, so a finished feature queues as "No change — …" and review rejects it as claims-vs-diff (found by operator session 2026-10-21 from the 10-20/21 `review_rejected` and `merge_queued` events)
+
+- **Symptom:** from 2026-10-20 21:41 to 10-21 02:18, 15 review rejections made the same objection. The commit's SUMMARY/WHY/RISK/VERIFIED described a no-edit investigation or a one-line placeholder removal, while its diff was a whole feature. The features were the TUI Transcript Ctrl+Y diffstat toggle (11 files), the TUI Activity tally, `status -f/--follow`, and Codex backend part 2b/9.
+  - Commit `78b77e162` (feature-2 #554, Codex 2b/9 revision 1) is titled "Repoint no PLANS.md references; verified all 10 are generic and none name the moved entry", with "RISK: No code or doc changed", over the full 2b/9 diff.
+  - Runs queued under fix-up summaries: "No change — the self-check finding is contradicted by the file and the run rules." (feature-2, 10-20 21:33); "Keep all ten PLANS.md references unchanged — the self-check over-flagged them" (feature-3, 10-21 02:31); "No change — both self-check findings are incorrect on verified inspection" (bugfix-3, 02:35).
+  - Three of Codex 2b/9's rejections were this objection. They helped exhaust its revision chain, which set off the 10-21 refusals (see the role-notes entry below).
+- **Reproduce:** a fake-pi authoring run that edits a file and ends with a normal closing block. Stub the stage check to return one finding, and have the fix-up turn reply `SUMMARY: No change — the finding is wrong` / `RISK: No code changed`. The commit subject is then the fix-up's, and its RISK line replaces the authoring run's.
+- **Cause:** src/run/run-stage.ts:245-251 sets `summary = extractSummary(fixUp.finalText) ?? summary` and `body = mergeCommitBody(body, extractCommitBody(fixUp.finalText))`. So the fix-up's SUMMARY always replaces the authoring run's, and each WHY/RISK/VERIFIED line it writes replaces that field. `buildStageFixPrompt` (src/prompt/gate-prompts.ts:373) asks for "ONLY the closing block again" and says to explain a wrong finding "in your RISK line". A model that rightly makes no edit therefore writes a closing block about that decision.
+  - The 10-20 trigger was the moved-source check flagging every archived plan (fixed in 03e5cbcb7).
+  - The `_None yet._` placeholder finding, and any other finding the author judges wrong, still take the same path.
+- **Expected / fix sketch:** a fix-up turn amends the change's description and never replaces it.
+  - Keep the authoring run's SUMMARY and WHY.
+  - Append the fix-up's RISK and VERIFIED lines to the authoring run's, prefixed `self-check:`, instead of replacing them.
+  - Take the fix-up's SUMMARY only when the authoring run produced none.
+  - Give `buildStageFixPrompt` the run's current closing block, and ask the fix-up to return that block with the fix added, not a new one describing this turn.
+  - Test (test/run-stage*.test.ts): the reproduce case keeps the authoring subject, and its body gains `self-check: the finding is wrong`.
+
+### Role notes keep a hold belief after the hold is lifted: the plan role's notes still call the Codex backend series dead and say never to re-author parts 2b/9 and 6/9, which now carry Needs-replan notes the plan role must act on (found by operator session 2026-10-21 from .tumwater/state/notes/plan.md and the plan role's run 414 transcript)
+
+- **Symptom:** .tumwater/state/notes/plan.md (saved 02:37) holds two lines:
+  - "both Refused entries and the Codex series stay skipped";
+  - "Dashboard History Newest-failure and Codex 2b/9 carry Refused — never re-add or re-author them; the Codex theme is dead."
+  - Plan run 414 wrote them from the two bug-made Refused notes: on 2b/9, `3ae8b4626` at 02:12; on 6/9, `b9664a461` at 02:27. Its reasoning called the blocked parts "(dead theme)".
+  - At 02:40 `dcc20618b` turned both into Needs-replan notes, which the plan role's step 1 exists to act on. It hand-corrected feature-4's notes but not plan.md.
+  - Every later plan run gets that note in its prompt, so the role asked to rewrite 2b/9 and 6/9 is told by its own notes to skip them. The seven Codex parts behind them stay stalled.
+- **Reproduce:** `grep -n "theme is dead" .tumwater/state/notes/plan.md` finds the line, while `tumwater plan --list` shows 2b/9 and 6/9 as `[blocked: needs replan]`.
+- **Cause:** role notes are free text that the role rewrites each run from the previous note. They are injected verbatim as "yours, unverified — check against the code before relying on them" (src/prompt/prompt.ts:273, `roleNotesBlock`). A note's claims about backlog state (refused, blocked, abandoned, done) are never compared with the backlog. Neither a hand conversion nor `tumwater plan --release` touches role notes. So a belief outlives the hold it came from, and the role keeps copying it forward.
+- **Expected / fix sketch:**
+  1. Now (operator, outside git): replace those two lines in .tumwater/state/notes/plan.md with the correction feature-4's notes got: the series is not abandoned, and 2b/9 and 6/9 carry Needs-replan notes for the plan role.
+  2. `roleNotesBlock`'s caption names the backlog index above it as the current source of entry state.
+  3. The structural fix is the PLANS.md entry "A role's notes are shown beside the live backlog state of every entry and series they name". It makes the prompt state, every run, what is currently true of each entry the notes mention.
+
+### A refusal can rest on another entry's refusal or on the role's own notes instead of on anything in the refused entry, so one refusal spreads across a series: feature-4 refused Codex part 6/9 as "orphaned code in a dead theme" (found by operator session 2026-10-21 from commit b9664a461)
+
+- **Symptom:** `b9664a461`'s Refused note on Codex part 6/9 gives two reasons:
+  - "the feature run's refusal of part 2b/9 ("the purpose is abandoned pending a fresh theme") and this role's notes both record part 6/9 as abandoned";
+  - "no Codex source exists … this translator/rollout reader has no consumer until part 7/9 lands".
+
+  Neither objects to 6/9 itself. Its heading says it is independent of parts 1/9–5/9, and its design pairs it with part 7/9's adapter on purpose. `dcc20618b`'s message records the same: 6/9's refusal "cited 2b/9's refusal rather than any objection of its own". The trigger, feature instances getting the plan-less exhaustion note, is fixed in `2416b9937`. The spread itself has no guard.
+- **Reproduce:** `git show b9664a461 -- PLANS.md`.
+- **Cause:** the refusal rule in the run prompt allows refusing "a task that would harm the project (it violates PRINCIPLES.md, grows complexity without justification, or keeps fighting back)" (src/prompt/prompt.ts:218-224), with any one-line reason. Nothing separates "this entry is unfit" from "another entry was refused" or "my notes say the theme is dead". A Refused note holds its entry, and every part that requires it, until a human clears it, so an ungrounded refusal is expensive.
+- **Expected / fix sketch:**
+  - The refusal rule says the reason must name what in this entry makes it harmful. Another entry's hold, or the role's own notes, is never a reason; skip that entry instead.
+  - The pre-queue self-check (src/run/stage-backlog-checks.ts, beside `waitingNoteFinding`) flags a newly added Refused note whose reason quotes another entry's Refused or Needs note, or names a different series part as its ground. The finding: "this refusal cites <other entry>'s hold, not a problem with this entry: implement this entry or pick another, but do not refuse it".
+  - Tests in test/stage-check*.test.ts: the `b9664a461` note is flagged; a refusal naming only this entry's own conflict with PRINCIPLES.md is not.
+
 ## Fixed
 
 ## Verified
