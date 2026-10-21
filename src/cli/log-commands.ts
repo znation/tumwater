@@ -6,7 +6,8 @@ import {
   readEventsSince,
   SPARSE_WINDOW_NOTE,
 } from "../events/event-window.js";
-import { compareCodeUnits, increment, sortByValueDesc } from "../collections.js";
+import { compareCodeUnits, increment } from "../collections.js";
+import { eventTypeTally } from "../events/event-tally.js";
 import { eventRole, parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
@@ -45,15 +46,17 @@ function sayEventLine(e: HarnessEvent, json: boolean): void {
  * In `--json` mode it emits one compact object mapping `type → count` with keys sorted, the
  * machine-readable twin of the prose tally. */
 function sayTally(events: HarnessEvent[], json: boolean): void {
-  const counts = new Map<string, number>();
-  for (const e of events) increment(counts, e.type);
   if (json) {
+    // The machine-readable twin keeps its own alphabetical key sort; the prose tally uses the
+    // shared eventTypeTally ordering.
+    const counts = new Map<string, number>();
+    for (const e of events) increment(counts, e.type);
     const obj: Record<string, number> = {};
     for (const [type] of [...counts.entries()].sort((a, b) => compareCodeUnits(a[0], b[0]))) obj[type] = counts.get(type)!;
     sayJsonLine(obj);
     return;
   }
-  for (const [type, n] of sortByValueDesc([...counts.entries()]))
+  for (const [type, n] of eventTypeTally(events))
     say(`${n} × ${eventTypeLabel(type)} (${type})`);
 }
 

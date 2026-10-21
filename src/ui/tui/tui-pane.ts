@@ -10,6 +10,8 @@ import type { StatusLine } from "../status-render.js";
 import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
 import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
+import { eventTypeLabel } from "../../events/event-labels.js";
+import { eventTypeTally } from "../../events/event-tally.js";
 import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, browsableBacklogEntries, isOpenBacklogLabel, planListLines } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
@@ -294,13 +296,29 @@ export function paneBody(
   // The Activity pane loads a fixed tail once per read, narrows it by the active role scope
   // and text search, and windows it: null follows the live tail (the newest eventBudget
   // events), a stored offset pages back through the loaded events. Both clamp to
-  // [0, events.length - eventBudget]. An active filter that matched nothing names the filter
-  // instead of claiming the log is empty.
-  const events = activityEvents(root, pane.role, pane.grep, pane.type);
-  const maxStart = Math.max(0, events.length - eventBudget);
+  // [0, events.length - rows]. An active filter that matched nothing names the filter
+  // instead of claiming the log is empty. One dim tally line above the feed, built from the
+  // type-unfiltered rows, counts every type the Ctrl+O cycle offers (so none is hidden while
+  // a type is selected); it takes one line of the body budget, so the feed then fills the rest.
+  const preType = activityEvents(root, pane.role, pane.grep, null);
+  const events = pane.type === null ? preType : activityEvents(root, pane.role, pane.grep, pane.type);
+  const tallyLine =
+    events.length === 0
+      ? []
+      : [
+          toneLine(
+            eventTypeTally(preType)
+              .map(([type, n]) => `${n} × ${eventTypeLabel(type)} (${type})`)
+              .join(" · "),
+            width,
+            "dim",
+          ),
+        ];
+  const rows = Math.max(1, eventBudget - tallyLine.length);
+  const maxStart = Math.max(0, events.length - rows);
   const start = state.activityScroll === null ? maxStart : Math.min(state.activityScroll, maxStart);
   return {
-    body: events.slice(start, start + eventBudget).map((e) => toneLine(formatEvent(e), width, eventTone(e))),
+    body: [...tallyLine, ...events.slice(start, start + rows).map((e) => toneLine(formatEvent(e), width, eventTone(e)))],
     emptyNote:
       pane.role === null && pane.grep === null && pane.type === null
         ? "(no events yet)"

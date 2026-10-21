@@ -624,7 +624,8 @@ test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and bu
 
 test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   const root = makeRoot();
-  // 20 events; the 5-line budget leaves a 15-event page window.
+  // 20 events; the 5-line budget leaves a 16-event page window — the feed shows rows =
+  // eventBudget − 1 = 4 events under its tally line, so each page steps by 4.
   writeEvents(
     root,
     Array.from({ length: 20 }, (_, i) => ({
@@ -641,20 +642,22 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
   assert.equal(keys.state().activityScroll, null, "Activity follows the live tail by default");
 
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 10, "PgUp pauses follow and pages back one budget");
+  assert.equal(keys.state().activityScroll, 12, "PgUp pauses follow and pages back one page");
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { name: "pageup" });
   assert.equal(keys.state().activityScroll, 0, "PgUp clamps at the oldest loaded event");
 
   keys.handleKey(undefined, { name: "pagedown" });
-  assert.equal(keys.state().activityScroll, 5, "PgDn advances one budget");
+  assert.equal(keys.state().activityScroll, 4, "PgDn advances one page");
   keys.handleKey(undefined, { name: "pagedown" });
-  assert.equal(keys.state().activityScroll, 10);
+  assert.equal(keys.state().activityScroll, 8);
+  keys.handleKey(undefined, { name: "pagedown" });
+  assert.equal(keys.state().activityScroll, 12);
   keys.handleKey(undefined, { name: "pagedown" });
   assert.equal(keys.state().activityScroll, null, "reaching the tail re-enables follow");
 
   // Cycling away and back starts at the live tail again.
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 10);
+  assert.equal(keys.state().activityScroll, 12);
   for (let i = 0; i < 9; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(keys.state().view, 0, "nine cycles with no roles wrap back to Activity");
   assert.equal(keys.state().activityScroll, null, "re-entering Activity follows the live tail");
@@ -688,14 +691,15 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   assert.equal(keys.state().activityRole, null, "Activity opens team-wide");
 
   // The unfiltered total is 24 and each role's own is 12, so PgUp's clamped offset proves
-  // which filtered list the handler paged over (24 − 5 = 19 vs 12 − 5 = 7).
+  // which filtered list the handler paged over (24 − 4 = 20 vs 12 − 4 = 8): the feed shows
+  // rows = eventBudget − 1 = 4 events under its tally line, so each page steps by 4 too.
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 14, "the team-wide read pages over all 24 events");
+  assert.equal(keys.state().activityScroll, 16, "the team-wide read pages over all 24 events");
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().activityRole, "feature", "the first Ctrl+G scopes to the first raw roster id");
   assert.equal(keys.state().activityScroll, null, "a filter change resets the pane to the live tail");
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 2, "paging now clamps over feature's 12 events only");
+  assert.equal(keys.state().activityScroll, 4, "paging now clamps over feature's 12 events only");
 
   keys.handleKey(undefined, { ctrl: true, name: "g" });
   assert.equal(keys.state().activityRole, "clean", "the cycle walks each raw roster id in turn");
@@ -725,15 +729,16 @@ test("Ctrl+O on the Activity view cycles the present event types and filters the
   assert.equal(keys.state().activityType, null, "Activity opens on every type");
 
   // The unfiltered total is 36 and each type's own is 12, so PgUp's clamped offset proves
-  // which filtered list the handler paged over (36 − 5 = 31 → pages back to 26 vs 12 − 5 = 7
-  // → back to 2).
+  // which filtered list the handler paged over (36 − 4 = 32 → pages back to 28 vs 12 − 4 = 8
+  // → back to 4): the feed shows rows = eventBudget − 1 = 4 events under its tally line, so
+  // each page steps by 4 too.
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 26, "every-type read pages over all 36 events");
+  assert.equal(keys.state().activityScroll, 28, "every-type read pages over all 36 events");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, "run_end", "the first Ctrl+O selects the first present type in the sorted cycle");
   assert.equal(keys.state().activityScroll, null, "a type change resets the pane to the live tail");
   keys.handleKey(undefined, { name: "pageup" });
-  assert.equal(keys.state().activityScroll, 2, "paging now clamps over run_end's 12 events only");
+  assert.equal(keys.state().activityScroll, 4, "paging now clamps over run_end's 12 events only");
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().activityType, "run_start", "the cycle walks each present type in turn");
   keys.handleKey(undefined, { ctrl: true, name: "o" });

@@ -71,14 +71,18 @@ export function createActivityPane(
     if (page !== null && session.view === 0) {
       // The Activity pane keeps the live tail by default; PgUp pauses follow and pages back
       // through the loaded event tail, PgDn returns toward it and re-enables follow once the
-      // window reaches the tail. Both directions clamp to [0, total - eventBudget], and a log
-      // with eventBudget or fewer events stays on the tail. The read is the pane's own fixed
-      // tail term (and active role/text filter), so it hits readEvents' stat cache rather than
-      // rescanning the log.
+      // window reaches the tail. Both directions clamp to [0, total - rows], and a log with
+      // rows or fewer events stays on the tail. `rows` is the feed's window height — one body
+      // line short of eventBudget while the tally line is drawn (its paneBody twin, the
+      // `rows = Math.max(1, eventBudget - tallyLine.length)` in tui-pane.ts) — so each page
+      // advances exactly as far as the feed displays and no event is skipped or unreachable
+      // while paging. The read is the pane's own fixed tail term (and active role/text
+      // filter), so it hits readEvents' stat cache rather than rescanning the log.
       const total = activityEvents(session.root, activityRole, activityGrep, activityType).length;
-      const maxStart = Math.max(0, total - session.eventBudget);
+      const rows = total === 0 ? session.eventBudget : Math.max(1, session.eventBudget - 1);
+      const maxStart = Math.max(0, total - rows);
       const current = activityScroll ?? maxStart;
-      const next = stepEntryScroll(current, total, session.eventBudget, page);
+      const next = stepEntryScroll(current, total, rows, page);
       activityScroll = next >= maxStart ? null : next;
       session.requestRender();
       return true;

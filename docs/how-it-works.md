@@ -466,7 +466,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   `/` on an empty prompt line opens a free-text search over the same loaded tail. Both filters
   match through the rules `tumwater logs --grep` and the dashboard Activity view use — `eventRole`
   for the role and `eventMatchesGrep`'s case-insensitive type-plus-rendered-line haystack for the
-  text — and the hint line names the active scope and pattern.
+  text — and the hint line names the active scope and pattern. Above the feed a dim tally line
+  counts each present event type most-frequent first with ties in type-name order; `Ctrl+O`
+  selects one of the types it counts.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
   same collector and sparse-window note `tumwater history --since` uses.
   With the trail off, `Ctrl+P` steps that window back by its own length through the same
