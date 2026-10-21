@@ -25,7 +25,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
-import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -151,8 +151,18 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
  * `parseRoleFlag` accepts on the CLI, including disabled and user-defined roles. The
  * collectors degrade absent worktrees and missing base branches to their `state` instead of
  * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
- * it works whether or not the team is running. */
+ * it works whether or not the team is running. `?overlaps=1` serves collectChangeOverlaps
+ * (exactly `tumwater diff --overlaps --json`'s `{ mainBranch, state, overlaps }`); with `role` it
+ * is a 400. */
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
+  if (q.get("overlaps") !== null) {
+    if (q.get("role") !== null) {
+      badRequest(res, "overlaps reads every role; drop role");
+      return;
+    }
+    sendJson(res, 200, await collectChangeOverlaps(root));
+    return;
+  }
   const role = q.get("role");
   if (role === null) {
     sendJson(res, 200, await collectTeamChanges(root));

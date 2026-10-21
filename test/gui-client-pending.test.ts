@@ -185,3 +185,27 @@ test("drawerQueueHtml lists only the role's queued merges under their whole-queu
   assert.equal(drawerQueueHtml({ entries: "nope" }, "feature-2", now), "");
   assert.match(drawerQueueHtml({ depth: 1, entries: [e("clean", "<b>x</b>")] }, "clean", now), /&lt;b&gt;x&lt;\/b&gt;/);
 });
+
+test("pendingOverlapsHtml lists each shared path with its roles, and states no-base, empty, and malformed documents", () => {
+  const { pendingOverlapsHtml } = clientScope<{ pendingOverlapsHtml(view: unknown): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingOverlapsHtml"],
+  );
+  const html = pendingOverlapsHtml({ mainBranch: "main", state: "ready", overlaps: [
+    { path: "src/a.ts", roles: ["feature", "feature-2"] },
+    { path: "<b>.md", roles: ["qa"] },
+  ] });
+  assert.match(html, /Overlapping files/);
+  assert.match(html, /src\/a\.ts: feature, feature #2/);
+  assert.match(html, /&lt;b&gt;\.md/);
+  assert.ok(!html.includes("<b>"), "paths are escaped");
+  assert.match(pendingOverlapsHtml({ mainBranch: "trunk", state: "no-base", overlaps: [] }), /Main branch trunk does not exist/);
+  for (const view of [{ mainBranch: "main", state: "ready", overlaps: [] }, null, undefined, { overlaps: "x" }]) {
+    const out = pendingOverlapsHtml(view);
+    assert.match(out, /No file is touched by two pending changes/);
+    assert.doesNotMatch(out, /undefined|NaN/);
+  }
+  const bad = pendingOverlapsHtml({ state: "ready", overlaps: [{ roles: null }] });
+  assert.match(bad, /\?:/);
+  assert.doesNotMatch(bad, /undefined|null/);
+});

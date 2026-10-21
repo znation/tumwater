@@ -440,7 +440,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. The role drawer's search box sends that `&grep=`. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Pending view also paints the merge queue as a card mirroring `tumwater
-  queue`, and shows a role's full unmerged patch in its drawer, which also lists that role's waiting merges
+  queue`, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
+  `tumwater diff --overlaps` (`GET /api/diff?overlaps=1`), and shows a role's full unmerged patch in its drawer, which also lists that role's waiting merges
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater

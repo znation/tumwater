@@ -3,9 +3,11 @@
  * roster shows each role's branch, state, commits ahead of main with their subjects, and its
  * uncommitted-file count; a row opens that role's drawer, whose Pending change section fetches
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
- * Refresh button is pressed — never on a timer of its own. Spliced into gui-client.ts's
+ * Refresh button is pressed — never on a timer of its own. It also paints the overlapping-files
+ * card from `/api/diff?overlaps=1`. Spliced into gui-client.ts's
  * script, reaching its helpers (esc, getJson, icon, errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
+  let pendingOverlaps = null;
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -94,6 +96,24 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
   }
+  // The Overlapping files card: one "path: role, role" line per file two or more pending changes
+  // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps.
+  function pendingOverlapsHtml(view) {
+    const ok = view && typeof view === "object";
+    let body;
+    if (ok && view.state === "no-base") {
+      body = "<div class='empty'>Main branch " + esc(view.mainBranch) + " does not exist</div>";
+    } else if (!ok || !Array.isArray(view.overlaps) || view.overlaps.length === 0) {
+      body = "<div class='empty'>No file is touched by two pending changes</div>";
+    } else {
+      body = "<div style='padding:10px 16px 12px'>" + view.overlaps.map((o) => {
+        const roles = o && Array.isArray(o.roles) ? o.roles : [];
+        const path = o && typeof o.path === "string" ? o.path : "?";
+        return "<div class='mono clamp1' style='padding:3px 0'>" + esc(path) + ": " + esc(roles.map(roleLabel).join(", ")) + "</div>";
+      }).join("") + "</div>";
+    }
+    return "<div class='card-head'><h2>Overlapping files</h2></div>" + body;
+  }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
   // its own (the entries ride /api/status, unlike the roster's /api/diff).
@@ -106,13 +126,27 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every role's unmerged change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
       "<div class='toolbar'><button type='button' class='btn btn-sm' id='pendingrefresh'>" + icon("refresh") + "Refresh</button></div></div>" +
       "<div class='card' id='pendingqueue'><div class='empty'>Loading…</div></div>" +
+      "<div class='card' id='pendingoverlaps'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
   }
   // Load the team-wide change roster. Called when the view opens and by the Refresh button;
   // no timer of its own, and the roster only changes when a role merges or edits its worktree.
+  // Load the overlapping-files card on its own, so neither read can blank the other's card.
+  async function fetchPendingOverlaps() {
+    try {
+      pendingOverlaps = await getJson("/api/diff?overlaps=1");
+    } catch (err) {
+      const card = $("pendingoverlaps");
+      if (card) card.innerHTML = errorPanel("Overlaps unavailable", err);
+      return;
+    }
+    const card = $("pendingoverlaps");
+    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps);
+  }
   async function fetchPending() {
     buildPendingView();
+    fetchPendingOverlaps();
     try {
       pendingTeam = await getJson("/api/diff");
     } catch (err) {
