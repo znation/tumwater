@@ -66,6 +66,25 @@ interface RunVerdictContext {
   finishAbortedRun(): Promise<RunOutcome>;
 }
 
+/** End a run as an abort that arms a resume, the arming the subscription-rejected and
+ * budget-capped arms share: the lease release reads `resumePending` as soon as the run
+ * returns (runOnceInLeasePhase), before applyRunOutcome runs, so without this the slot is
+ * detached and the kept worktree/session edits are lost. Filed here so that arming's timing
+ * invariant cannot drift between the two arms (the error-dirty arm arming itself inline). */
+function abortWithResume(
+  s: RunnerState,
+  ctx: RunVerdictContext,
+  pi: PiRunResult,
+  lastError: string,
+  result: "error" | "aborted",
+  resumeCause: "rate-limit" | "budget-capped",
+): RunOutcome {
+  s.lastError = pi.errorMessage ?? lastError;
+  s.resumePending = true;
+  ctx.pending.requeueForResume(s, ctx.userPrompt);
+  return { result, resumeCause };
+}
+
 /** Classify what the finished run left behind; null means the run is fulfillable and staging
  * should take over. Never throws: every branch returns an outcome, recording what went wrong
  * in `state.lastError` or a warning event. */
@@ -138,14 +157,10 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   // signal (subscriptionWindowRejected), so a pi 429, an API-billed run, or an overage
   // window keeps the paths below.
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && subscriptionWindowRejected(pi)) {
-    s.lastError = pi.errorMessage ?? "claude subscription usage window rejected";
-    // Arm the resume here rather than in applyRunOutcome: the lease release reads
-    // `resumePending` as soon as the run returns (runOnceInLeasePhase), before
-    // applyRunOutcome runs, so without this the slot is detached and the edits above are
-    // lost. This is the same inline arming the error-dirty arm below does.
-    s.resumePending = true;
-    ctx.pending.requeueForResume(s, ctx.userPrompt);
-    return { result: "error", resumeCause: "rate-limit" };
+    // The rejection is a hold, not a run failure: arm the resume (the arming the lease
+    // release reads as soon as the run returns, before applyRunOutcome) so the kept worktree
+    // and session survive the wait. This is the same arming the budget-capped arm below does.
+    return abortWithResume(s, ctx, pi, "claude subscription usage window rejected", "error", "rate-limit");
   }
 
   // An API-billed claude run cut off at its per-run `--max-budget-usd` cap is a budget
@@ -155,13 +170,9 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   // run from overshooting the daily cap. `aborted` is the budget-handback result
   // (src/runner/runner-recovery.ts) and schedules the resume promptly.
   if (!pi.ok && ctx.role !== DIRECTOR_ROLE && pi.budgetCapped) {
-    s.lastError = pi.errorMessage ?? "claude per-run budget cap reached";
-    // Arm the resume here rather than in applyRunOutcome: the lease release reads
-    // `resumePending` as soon as the run returns (runOnceInLeasePhase), before
-    // applyRunOutcome runs, so without this the slot is detached and the edits are lost.
-    s.resumePending = true;
-    ctx.pending.requeueForResume(s, ctx.userPrompt);
-    return { result: "aborted", resumeCause: "budget-capped" };
+    // The per-run cap is a handback, not a failure: arm the resume (shared with the
+    // subscription-rejected arm above) so the next run hands off over the kept worktree.
+    return abortWithResume(s, ctx, pi, "claude per-run budget cap reached", "aborted", "budget-capped");
   }
 
   // A run the runner killed the moment its agent read an image its model cannot see
