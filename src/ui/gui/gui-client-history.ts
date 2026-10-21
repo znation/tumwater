@@ -38,6 +38,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       HIST_COUNTS.map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
       histWindowOptions() + "</select></label>" +
       "<span id='histstep' style='display:none'><button type='button' class='btn btn-sm' id='histearlier'>◀ Earlier</button><button type='button' class='btn btn-sm' id='histlater'>Later ▶</button></span>" +
+      "<button type='button' class='btn btn-sm' id='histnewest'>Newest failure</button>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
       "</div></div><div class='card' id='histbody'><div class='empty'>Loading…</div></div>")) return;
     $("histcount").value = HIST_WINDOWS[histSinceKey] ? histSinceKey : String(histCount);
@@ -91,6 +92,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       fetchHistory();
     });
     $("histrefresh").addEventListener("click", () => fetchHistory());
+    $("histnewest").addEventListener("click", () => openHistNewest());
     // The drill-down's details toggle: the button alone expands or collapses (the row's own
     // click still opens the drawer — gui-client-boot's data-open handler skips clicks on a
     // data-rundetail button).
@@ -138,6 +140,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       const el = ev.target instanceof Element ? ev.target.closest("input[data-hist-transcript-grep]") : null;
       if (el) searchHistTranscript(el.dataset.histTranscriptGrep, el.value);
     });
+    // The pinned newest-failure card's × closes it.
+    $("histbody").addEventListener("click", (ev) => {
+      const b = ev.target instanceof Element ? ev.target.closest("button[data-hist-newest-close]") : null;
+      if (!b) return;
+      closeHistNewest();
+    });
   }
   // history-detail:start
   // Run drill-down state: one open card at a time, keyed "role#run", with each key's cache
@@ -159,6 +167,47 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   let histDetailOpen = "";
   function histDetailKey(role, run) {
     return role + "#" + run;
+  }
+  // The pinned newest-failure card: the Newest failure toolbar button opens the team's newest
+  // failing run (GET /api/run?last=1&result=problems, no role — the role-less last endpoint)
+  // as a card above the table, regardless of the current role, window or count, and its ×
+  // closes it. histNewest is { state: loading | ok | error, key?, message? }; the ok entry's
+  // key is the run's real "role#run", whose card lives in histDetails like any row's so its
+  // patch/transcript/revert buttons work, and a refresh or role/window/count change drops it
+  // together with the drill-down cache (fetchHistory resets it).
+  let histNewest = null;
+  async function openHistNewest() {
+    histNewest = { state: "loading" };
+    renderHistory();
+    try {
+      const d = await getJson("/api/run?last=1&result=problems");
+      // Name the endpoint and the run it answered for: a 200 without a text or role field is a
+      // server too old (or too new) for this dashboard's client, not a lost run.
+      if (!d || typeof d.text !== "string" || typeof d.role !== "string")
+        throw new Error(
+          "/api/run answered the newest failing run without a text field — the running tumwater may not match this dashboard",
+        );
+      const key = histDetailKey(d.role, d.run);
+      histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
+      histNewest = { state: "ok", key };
+    } catch (err) {
+      histNewest = { state: "error", message: err && err.message ? err.message : "Newest failure unavailable" };
+    }
+    renderHistory();
+  }
+  function closeHistNewest() {
+    histNewest = null;
+    renderHistory();
+  }
+  // The pinned card's markup; empty when no newest card is open. The ok card reuses the shared
+  // histDetailCardHtml, so its patch/transcript/revert buttons and their sub-states behave as
+  // they do for a row card.
+  function histNewestHtml() {
+    if (!histNewest) return "";
+    if (histNewest.state === "loading") return "<div class='empty'>Loading newest failure…</div>";
+    if (histNewest.state === "error") return "<div class='empty'><strong>Newest failure unavailable</strong>" + esc(histNewest.message) + "</div>";
+    return "<div class='hist-newest'><div class='hist-detail-head mono'>Newest failure of any role <button type='button' class='btn btn-sm' data-hist-newest-close='1' title='Close'>×</button></div>" +
+      histDetailCardHtml(histDetails.get(histNewest.key), histNewest.key) + "</div>";
   }
   // The expanded card's markup from its cache entry. The state is checked explicitly, in
   // loading → error → ok order, so a placeholder can never fall into the fetched path and
@@ -432,6 +481,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       // refetches.
       histDetails.clear();
       histDetailOpen = "";
+      histNewest = null;
     } catch (err) {
       $("histbody").innerHTML = errorPanel("History unavailable", err);
       return;
@@ -607,7 +657,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       : histMode === "models" && histModelSummary && hasRows
       ? histModelSummaryHtml(histModelSummary)
       : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey, histModel, histStep);
-    body.innerHTML = historyNoteHtml(histNote) + historyStepHtml(histSinceKey, histStep) + bodyHtml;
+    body.innerHTML = historyNoteHtml(histNote) + historyStepHtml(histSinceKey, histStep) + histNewestHtml() + bodyHtml;
     const stepEl = $("histstep");
     if (stepEl) {
       stepEl.style.display = HIST_WINDOWS[histSinceKey] ? "" : "none";

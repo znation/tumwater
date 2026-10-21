@@ -85,9 +85,13 @@ test("the History toolbar carries the search field, recalled and persisted", () 
  * everything it reaches, then hand back fetchHistory. The DOM- and status-touching paths return
  * early (buildOnce false, $ undefined), so only the /api/history request is observable. */
 function historyFetchScope(recallGrep: string | null, paths: string[]) {
-  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory };"].join("\n");
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistNewest: () => histNewest, setHistNewest: (v) => { histNewest = v; } };"].join("\n");
   const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
-  const run = new Function(...keys, code) as (...args: unknown[]) => { fetchHistory(throttled?: boolean): Promise<void> };
+  const run = new Function(...keys, code) as (...args: unknown[]) => {
+    fetchHistory(throttled?: boolean): Promise<void>;
+    getHistNewest(): unknown;
+    setHistNewest(v: unknown): void;
+  };
   return run(
     (key: string) => (key === "hist-grep" ? recallGrep : null),
     () => {},
@@ -111,6 +115,16 @@ test("fetchHistory appends the encoded grep only when a pattern is set", async (
   const searched: string[] = [];
   await historyFetchScope("sorted imports", searched).fetchHistory(false);
   assert.deepEqual(searched, ["/api/history?n=50&grep=sorted%20imports&summary=1"]);
+});
+
+test("fetchHistory drops a pinned Newest failure card on a refresh", async () => {
+  // A refresh (or a role/window/count change) reruns the whole fetch path, which resets the
+  // pinned card together with the drill-down cache, like the row cards.
+  const scope = historyFetchScope(null, []);
+  assert.equal(scope.getHistNewest(), null, "the fresh scope starts with no pinned card");
+  scope.setHistNewest({ state: "error", message: "x" });
+  await scope.fetchHistory(false);
+  assert.equal(scope.getHistNewest(), null, "a refresh drops the pinned card with the drill-down cache");
 });
 
 test("historyQuery picks the count or trailing-window shape and composes the role", () => {
@@ -812,4 +826,77 @@ test("historyTableHtml's empty stepped window names its bounds", () => {
 
 test("the History toolbar holds the step buttons inside #histstep", () => {
   assert.match(GUI_CLIENT_HISTORY_JS, /id='histstep'[^>]*><button[^>]*id='histearlier'[\s\S]*?id='histlater'/);
+});
+
+test("the History toolbar carries a Newest failure button wired to openHistNewest", () => {
+  const toolbar = GUI_CLIENT_HISTORY_JS.slice(
+    GUI_CLIENT_HISTORY_JS.indexOf("class='toolbar'"),
+    GUI_CLIENT_HISTORY_JS.indexOf("<div class='card' id='histbody'>"),
+  );
+  assert.match(toolbar, /id='histnewest'>Newest failure<\/button>/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /id='histnewest'[\s\S]*?openHistNewest/, "the button wires its click to openHistNewest");
+});
+
+test("the Newest failure button loads the newest failing run as a pinned card", async () => {
+  const calls: string[] = [];
+  // clientScope hands back a snapshot of `let histNewest` (it is reassigned, not mutated like
+  // the Map), so this scope returns a live getter instead.
+  const code = [ESC_LINE, ...HISTORY_REGIONS.map(clientRegion), "\nreturn { histNewest: () => histNewest, histDetails, openHistNewest, closeHistNewest, histNewestHtml };"].join("\n");
+  const run = new Function("icon", "getJson", "renderHistory", code) as (...a: unknown[]) => {
+    histNewest(): { state: string; key?: string; message?: string } | null;
+    histDetails: Map<string, { state: string; text?: string }>;
+    openHistNewest(): Promise<void>;
+    closeHistNewest(): void;
+    histNewestHtml(): string;
+  };
+  const scope = run(iconStub, (path: string) => {
+    calls.push(path);
+    return Promise.resolve({ role: "clean", run: 9, text: "clean run #9 — problems · 46s\nevent one", stat: " a.ts | 2 +-", revertSha: null, hasCommit: true });
+  }, () => {});
+
+  assert.equal(scope.histNewestHtml(), "", "no pinned card before the button is pressed");
+
+  const p = scope.openHistNewest();
+  assert.equal(scope.histNewest()?.state, "loading", "the loading entry is set synchronously");
+  assert.match(scope.histNewestHtml(), /Loading newest failure/);
+
+  await sleep(0);
+  await p;
+  assert.deepEqual(calls, ["/api/run?last=1&result=problems"], "the role-less `last` endpoint is asked");
+  assert.equal(scope.histNewest()?.state, "ok");
+  assert.equal(scope.histDetails.get("clean#9")?.state, "ok", "the run's card is cached under its real key");
+  const html = scope.histNewestHtml();
+  assert.match(html, /Newest failure of any role/);
+  assert.match(html, /event one/);
+  assert.match(html, /hist-detail-stat/);
+  assert.match(html, /a\.ts \| 2 \+-/);
+  assert.match(html, /data-hist-patch='clean#9'/, "the card's own patch button keys the run");
+  assert.match(html, /data-hist-newest-close='1'/);
+
+  scope.closeHistNewest();
+  assert.equal(scope.histNewest(), null);
+  assert.equal(scope.histNewestHtml(), "");
+});
+
+test("a Newest failure miss renders the server's message instead of a stuck loading state", async () => {
+  // Same live-getter scope shape as the success test above.
+  const code = [ESC_LINE, ...HISTORY_REGIONS.map(clientRegion), "\nreturn { histNewest: () => histNewest, openHistNewest, histNewestHtml };"].join("\n");
+  const run = new Function("icon", "getJson", "renderHistory", code) as (...a: unknown[]) => {
+    histNewest(): { state: string; message?: string } | null;
+    openHistNewest(): Promise<void>;
+    histNewestHtml(): string;
+  };
+  const scope = run(
+    iconStub,
+    () => Promise.reject(new Error('no completed run with result "problems" in the scanned window (the retained log may have rotated past it)')),
+    () => {},
+  );
+  const p = scope.openHistNewest();
+  await sleep(0);
+  await p;
+  assert.equal(scope.histNewest()?.state, "error");
+  const html = scope.histNewestHtml();
+  assert.match(html, /Newest failure unavailable/);
+  assert.match(html, /the retained log may have rotated past it/, "the server's message is shown, escaped");
+  assert.doesNotMatch(html, /Loading newest failure/);
 });

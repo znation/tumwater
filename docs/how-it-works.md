@@ -512,6 +512,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   any role, the run bare `tumwater history --last` opens, with the same `result`/`model` narrowing.
   `GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes, after `grep`
   and before `model`, the rows `tumwater history --result` lists.
+  A Newest failure button opens the newest failing run of any role through `GET /api/run?last=1&result=problems`, the run `tumwater history --last --result problems` opens, as a card above the table.
   The Pending pane shows the durable merge queue above the pending-change roster, reading and
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
