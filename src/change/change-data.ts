@@ -50,6 +50,9 @@ export interface RoleChangeView {
    * appear ("" unless state is "ready"). Untracked paths have no diff content — they show
    * in dirtyFiles only. Under `--stat` this holds the stat summary. */
   uncommittedDiff: string;
+  /** The repo-relative path the view is limited to; present only under `--path`, so the
+   * unscoped JSON (`diff --json`, the dashboard's /api/diff) is unchanged. */
+  path?: string;
 }
 
 /** The change one role holds as the team-wide view carries it: the RoleChangeView fields
@@ -99,7 +102,7 @@ export interface RoleChangesView {
 }
 
 /** Collect each listed role's full change view, entries in the caller's order. */
-export async function collectRoleChanges(root: string, roles: string[], opts: { stat?: boolean } = {}): Promise<RoleChangesView> {
+export async function collectRoleChanges(root: string, roles: string[], opts: { stat?: boolean; path?: string } = {}): Promise<RoleChangesView> {
   const views = await Promise.all(roles.map((role) => collectRoleChange(root, role, opts)));
   return { mainBranch: views[0]?.mainBranch ?? "main", roles: views };
 }
@@ -114,7 +117,7 @@ const DIFF_MAX_BYTES = 200_000;
 export async function collectRoleChange(
   root: string,
   role: string,
-  opts: { stat?: boolean } = {},
+  opts: { stat?: boolean; path?: string } = {},
 ): Promise<RoleChangeView> {
   const branch = branchName(role);
   const { config } = loadConfigSafe(root);
@@ -139,22 +142,34 @@ export async function collectRoleChange(
   if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
   const ahead = await aheadOfMain(wt, mainBranch);
   const behind = await countCommitsInRange(wt, `HEAD..${mainBranch}`);
-  const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`));
+  // Under opts.path every git call below is limited to that path through a literal pathspec.
+  const spec = opts.path === undefined ? [] : ["--", `:(literal)${opts.path}`];
+  const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`, ...spec));
   // Under opts.stat both halves hold the uncapped `git diff --stat` summary (one line per file).
   const diff =
-    ahead === 0
+    commits.length === 0
       ? ""
       : opts.stat
-        ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`)) ?? "")
-        : await aheadOfMainDiff(wt, mainBranch);
-  const dirtyFiles = await changedFiles(wt);
+        ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`, ...spec)) ?? "")
+        : await aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec);
+  const dirtyFiles = (await changedFiles(wt)).filter((f) => inPath(f, opts.path));
   const uncommittedDiff =
     dirtyFiles.length === 0
       ? ""
       : opts.stat
-        ? ((await gitTry(wt, "diff", "--stat", "HEAD")) ?? "")
-        : await cappedWorkingDiff(wt);
-  return { ...empty, state: "ready", ahead, behind, commits, diff, dirtyFiles, uncommittedDiff };
+        ? ((await gitTry(wt, "diff", "--stat", "HEAD", ...spec)) ?? "")
+        : await cappedWorkingDiff(wt, spec);
+  return {
+    ...empty,
+    state: "ready",
+    ahead,
+    behind,
+    commits,
+    diff,
+    dirtyFiles,
+    uncommittedDiff,
+    ...(opts.path === undefined ? {} : { path: opts.path }),
+  };
 }
 
 /** Parse `git log --oneline` output into {sha, subject} pairs — sha up to the first space,
@@ -171,16 +186,23 @@ function parseOnelineLog(out: string | null): RoleChangeCommit[] {
     });
 }
 
+/** Whether a porcelain path lies under the `--path` scope (always true without one): the path
+ * itself, a file below it, or an untracked-directory entry (trailing `/`) that contains it. */
+function inPath(f: string, path: string | undefined): boolean {
+  if (path === undefined) return true;
+  return f === path || f.startsWith(path + "/") || (f.endsWith("/") && path.startsWith(f));
+}
+
 /** The worktree's uncommitted tracked-change patch, capped at DIFF_MAX_BYTES like
  * aheadOfMainDiff: over the cap, a truncation note plus the --stat summary — bounded
  * output that still names every changed file. `git diff HEAD` covers staged and unstaged
  * tracked edits in one patch (plain `git diff` would show unstaged only, dropping a staged
  * edit the dirtyFiles list already counts); untracked paths have no diff content anywhere,
  * so they appear in the file list alone. */
-async function cappedWorkingDiff(wt: string): Promise<string> {
-  const full = (await gitTry(wt, "diff", "HEAD")) ?? "";
+async function cappedWorkingDiff(wt: string, spec: string[] = []): Promise<string> {
+  const full = (await gitTry(wt, "diff", "HEAD", ...spec)) ?? "";
   if (full.length <= DIFF_MAX_BYTES) return full;
-  const stat = (await gitTry(wt, "diff", "--stat", "HEAD")) ?? "";
+  const stat = (await gitTry(wt, "diff", "--stat", "HEAD", ...spec)) ?? "";
   return (
     `[uncommitted diff truncated: the full diff is ${full.length} bytes; showing --stat]\n\n` + stat
   );

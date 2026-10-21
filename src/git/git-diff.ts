@@ -148,15 +148,16 @@ export async function aheadOfMainDiff(
   wt: string,
   mainBranch: string,
   maxBytes = 200_000,
+  pathspec: string[] = [],
 ): Promise<string> {
   const range = `${mainBranch}...HEAD`;
-  const full = (await gitTry(wt, "diff", range)) ?? "";
+  const full = (await gitTry(wt, "diff", range, ...pathspec)) ?? "";
   if (full.length <= maxBytes) return full;
   // Over the cap: rank files by change size and include the largest while budget allows.
   const ranked = splitDiffByFile(full).sort((a, b) => b.length - a.length);
   let out =
     `[diff truncated: the full ahead-of-main diff is ${full.length} bytes; ` +
-    `showing --stat plus the largest files]\n\n` + ((await gitTry(wt, "diff", "--stat", range)) ?? "") + "\n";
+    `showing --stat plus the largest files]\n\n` + ((await gitTry(wt, "diff", "--stat", range, ...pathspec)) ?? "") + "\n";
   for (const d of ranked) {
     // Account for the surrounding newlines in the budget check so the output never exceeds maxBytes
     // even when a section ends exactly on the boundary.

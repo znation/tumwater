@@ -42,9 +42,13 @@ export function renderTeamChange(view: TeamChangeView): string {
 export function renderRoleChange(view: RoleChangeView): string {
   if (view.state === "absent") return `no worktree for ${view.role}`;
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.path !== undefined && view.commits.length === 0 && view.dirtyFiles.length === 0) {
+    return `no pending change to ${view.path} for ${view.role}`;
+  }
   if (view.ahead === 0 && view.dirtyFiles.length === 0) return `no pending change for ${view.role}`;
   const lines = [
-    `${view.role}: ${view.branch}, ${workSummary(view.ahead, view.behind, view.mainBranch, view.dirtyFiles)}`,
+    `${view.role}: ${view.branch}, ${workSummary(view.ahead, view.behind, view.mainBranch, view.dirtyFiles)}` +
+      (view.path === undefined ? "" : `; limited to ${view.path}`),
   ];
   for (const c of view.commits) lines.push(`${c.sha} ${c.subject}`);
   if (view.diff) lines.push("", view.diff.trimEnd());

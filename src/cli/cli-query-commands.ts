@@ -4,9 +4,10 @@
  * surfaces. Each command owns its argument gate, ready-repo gating decision, and output shape,
  * with the wording and gating order moved verbatim from main()'s cases. */
 
+import { isAbsolute } from "node:path";
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { flagValue, parseGrepFlag, parseRoleListScope } from "./cli-args.js";
-import { JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
+import { DIFF_PATH_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -133,11 +134,13 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // command. Past the gate an absent worktree still degrades to a `no worktree for
   // <role>` line (exit 0), so the command answers in any initialized directory —
   // report's rationale.
-  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG]);
+  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG, DIFF_PATH_FLAG]);
   await requireReadyRepo(root);
+  rejectRepeatFlag(args.filter((a) => a === "--path").length > 1, "--path");
   if (args.includes("--overlaps")) {
     if (args.includes("--role")) fail("diff --overlaps reads every role; drop --role");
     if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
+    if (args.includes("--path")) fail("diff --overlaps reads every file; drop --path");
     sayJsonOrRender(args, await collectChangeOverlaps(root), renderChangeOverlaps);
     return;
   }
@@ -146,15 +149,28 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // already failed above). One named role keeps the single per-role view; a list prints each
   // listed role's view in order.
   const roles = parseRoleListScope(root, args);
+  const path = roles === null ? undefined : diffPathArg(args);
   if (roles === null) {
     if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
+    if (args.includes("--path")) fail("diff --path needs --role <id> (the team roster prints no patch)");
     sayJsonOrRender(args, await collectTeamChanges(root), renderTeamChange);
   } else if (roles.length === 1) {
-    const change = await collectRoleChange(root, roles[0]!, { stat: args.includes("--stat") });
+    const change = await collectRoleChange(root, roles[0]!, { stat: args.includes("--stat"), path });
     sayJsonOrRender(args, change, renderRoleChange);
   } else {
-    sayJsonOrRender(args, await collectRoleChanges(root, roles, { stat: args.includes("--stat") }), renderRoleChanges);
+    sayJsonOrRender(args, await collectRoleChanges(root, roles, { stat: args.includes("--stat"), path }), renderRoleChanges);
   }
+}
+
+/** The normalised `--path` value of `diff --role` (undefined when absent): leading `./` pieces
+ * and trailing `/` characters stripped, failing on an empty, absolute or `..`-bearing result. */
+function diffPathArg(args: string[]): string | undefined {
+  const raw = flagValue(args, "--path");
+  if (raw === null || raw === undefined) return undefined;
+  const norm = raw.replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+  const bad = norm === "" || norm === "." || isAbsolute(norm) || norm.split("/").includes("..");
+  if (bad) fail("diff --path takes a repo-relative path such as src/cli.ts (as diff --overlaps prints it)");
+  return norm;
 }
 
 /** `tumwater queue`: the durable merge queue in execution order, as text or as the

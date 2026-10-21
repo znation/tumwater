@@ -122,7 +122,7 @@ export function completionConfigKeys(root: string): string[] {
 const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
 
 /** Flags whose value is a file path: completion offers file names after them. */
-const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file"];
+const PATH_FLAGS = ["--file", "--attach", "--notes-file", "--instructions-file", "--path"];
 
 /** The event-type codes `logs --type` filters by: the keys of the labels map, so a new event
  * type completes the moment it gains a label. Sorted for a stable, alphabetical offer of a

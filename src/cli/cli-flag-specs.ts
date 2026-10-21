@@ -311,6 +311,18 @@ export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
  * changes touch. Value-less, like STAT_FLAG. */
 export const OVERLAPS_FLAG: FlagSpec = { names: ["--overlaps"] };
 
+/** The missing-value wording for DIFF_PATH_FLAG. */
+const DIFF_PATH_VALUE_ERROR = "diff --path needs a path (e.g. `--path src/cli.ts`)";
+
+/** The `--path` flag spec, accepted by `diff --role`: keep only the part of each role's view
+ * under one repo-relative file or directory. Valued, unlike OVERLAPS_FLAG. */
+export const DIFF_PATH_FLAG: FlagSpec = {
+  names: ["--path"],
+  value: true,
+  valueName: "<path>",
+  missingValue: DIFF_PATH_VALUE_ERROR,
+};
+
 /** The `--patch` flag spec, accepted by `history <role> <n>`: append the run's commit patch.
  * Value-less, like STAT_FLAG. */
 export const PATCH_FLAG: FlagSpec = { names: ["--patch"] };

@@ -316,3 +316,78 @@ test("diff --overlaps with no shared file says so, and rejects --role and --stat
   assert.notEqual(stat.code, 0);
   assert.ok(stat.stderr.includes("drop --stat"));
 });
+
+/** seededFeatureRepo plus a second commit `add gadget.md` and an uncommitted edit to both files. */
+async function scopedRepo(): Promise<{ repo: string; wt: string }> {
+  const { repo, wt } = await seededFeatureRepo();
+  fs.writeFileSync(path.join(wt, "gadget.md"), "# gadget\n");
+  commitIn(wt, "add gadget.md");
+  fs.appendFileSync(path.join(wt, "widget.md"), "more widget\n");
+  fs.appendFileSync(path.join(wt, "gadget.md"), "more gadget\n");
+  return { repo, wt };
+}
+
+test("diff --path limits the view to one file's commits, patch and uncommitted edits", async () => {
+  const { repo } = await scopedRepo();
+  const r = await cli(repo, "diff", "--role", "feature", "--path", "widget.md");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.split("\n")[0]!.endsWith("; limited to widget.md"));
+  assert.ok(r.stdout.includes("add widget.md"));
+  assert.ok(!r.stdout.includes("add gadget.md"));
+  assert.ok(r.stdout.includes("+# widget"));
+  assert.ok(r.stdout.includes("uncommitted (1 file): widget.md"));
+  assert.ok(!r.stdout.includes("gadget.md"));
+  const dotted = await cli(repo, "diff", "--role", "feature", "--path", "./widget.md");
+  assert.equal(dotted.stdout, r.stdout);
+});
+
+test("diff --path accepts a directory", async () => {
+  const { repo, wt } = await scopedRepo();
+  fs.mkdirSync(path.join(wt, "docs"));
+  fs.writeFileSync(path.join(wt, "docs", "a.md"), "# a doc\n");
+  commitIn(wt, "add docs/a.md");
+  const r = await cli(repo, "diff", "--role", "feature", "--path", "docs/");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("+# a doc"));
+  assert.ok(!r.stdout.includes("widget.md"));
+});
+
+test("diff --path with nothing pending prints one line", async () => {
+  const { repo } = await scopedRepo();
+  const r = await cli(repo, "diff", "--role", "feature", "--path", "nothing.md");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "no pending change to nothing.md for feature");
+});
+
+test("diff --path composes with --stat, --json and a comma list", async () => {
+  const { repo } = await scopedRepo();
+  const stat = await cli(repo, "diff", "--role", "feature", "--path", "widget.md", "--stat");
+  assert.ok(stat.stdout.includes("widget.md |"));
+  assert.ok(!stat.stdout.includes("gadget.md |"));
+  const json = JSON.parse((await cli(repo, "diff", "--role", "feature", "--path", "widget.md", "--json")).stdout);
+  assert.equal(json.path, "widget.md");
+  assert.deepEqual(json.dirtyFiles, ["widget.md"]);
+  assert.equal(json.commits.length, 1);
+  const plain = JSON.parse((await cli(repo, "diff", "--role", "feature", "--json")).stdout);
+  assert.ok(!("path" in plain));
+  const list = await cli(repo, "diff", "--role", "feature,bugfix", "--path", "widget.md");
+  assert.equal(list.code, 0);
+  assert.ok(list.stdout.includes("feature: ") && list.stdout.includes("bugfix"));
+});
+
+test("diff --path rejects misuse with its wording", async () => {
+  const { repo } = await scopedRepo();
+  const bad = async (msg: string, ...args: string[]): Promise<void> => {
+    const r = await cli(repo, "diff", ...args);
+    assert.notEqual(r.code, 0, args.join(" "));
+    assert.ok((r.stderr + r.stdout).includes(msg), `${args.join(" ")}: ${r.stderr}${r.stdout}`);
+  };
+  await bad("diff --path needs --role <id>", "--path", "widget.md");
+  await bad("diff --overlaps reads every file; drop --path", "--overlaps", "--path", "widget.md");
+  const rel = "diff --path takes a repo-relative path";
+  await bad(rel, "--role", "feature", "--path", "/abs/x");
+  await bad(rel, "--role", "feature", "--path", "../x");
+  await bad(rel, "--role", "feature", "--path", ".");
+  await bad("diff --path needs a path", "--role", "feature", "--path");
+  await bad("--path may only be given once", "--role", "feature", "--path", "a", "--path", "b");
+});
