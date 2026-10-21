@@ -404,7 +404,10 @@ role's runs besides the repo itself. A run sees the note when one exists, along 
 by running `tumwater-notes write` on every backend; the director, whose work is your prompt rather
 than a recurring search, has no notes. You can clear or replace a note with
 `tumwater role <id> --clear-notes` or `--notes-file <path>`; a run in progress at that moment may
-still overwrite it through its own `tumwater-notes` call.
+still overwrite it through its own `tumwater-notes` call. When a note names an entry or series of
+the backlog, the run prompt also shows the current backlog state of each thing the note names
+(PLANS.md and BUGS.md as of that run), right after the note, so the live state wins where the two
+disagree — a note cannot keep telling a role to skip an entry the operator has since lifted.
 
 ## Configuration
 

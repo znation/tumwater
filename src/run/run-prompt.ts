@@ -13,6 +13,8 @@ import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildMergedPrerequisitesNote, buildRejectedReviewNote, buildWaitingPartsNote } from "../prompt/gate-notes.js";
 import { eligibleEntries, mergedPrerequisiteRanges, waitingPartRanges } from "../backlog/backlog-eligibility.js";
+import { notesBacklogBlock } from "../prompt/notes-backlog.js";
+import { donePlans, openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { detectBuildCheck, gateCommandOf } from "../build/build-check-detect.js";
 import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
@@ -198,6 +200,18 @@ export function assembleRunPrompt(
     // run can weigh how stale they are.
     const savedStat = notes === undefined ? null : statOrNull(roleNotesPath(root, role));
     const notesSavedDay = savedStat ? dayKey(savedStat.mtimeMs) : undefined;
+    // The live state of each entry and series the notes name, so a stale note cannot keep a hold
+    // the backlog has lifted (notes-backlog.ts). The three readers are already stat-cached. A
+    // note naming nothing live yields undefined and no block — the common case, since most notes
+    // are about the code, not the backlog.
+    const notesBacklog =
+      notes === undefined || notes.trim() === ""
+        ? undefined
+        : notesBacklogBlock(notes, {
+            planned: plannedPlanEntries(root),
+            openBugs: openBugEntries(root),
+            donePlanTitles: donePlans(root),
+          });
     // The plan charter's stop threshold is derived from config (plans/parallel-work-
     // instances.md "…keeping the plan role ahead", part 5c/7). The catalog text stays a
     // config-free description of the rule; this note supplies the concrete eligible-plan count
@@ -223,6 +237,7 @@ export function assembleRunPrompt(
       backlogIndex: assigned ? undefined : backlogIndex,
       notes,
       notesSavedDay,
+      notesBacklog,
       planTargetNote,
       flakyChecks,
       extraInstructions: config.roles[base]?.instructions,

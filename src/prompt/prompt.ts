@@ -326,6 +326,10 @@ interface RunPromptInput {
   /** The note file's mtime as a local YYYY-MM-DD (read by run-prompt.ts). Omitted: the notes
    * heading carries no age. */
   notesSavedDay?: string;
+  /** The live backlog state of each entry and series the notes name (notes-backlog.ts), rendered
+   * right after the notes block so the backlog cannot keep a hold the notes believe in and the
+   * notes cannot keep a hold the backlog has lifted. Omitted: the notes name nothing live. */
+  notesBacklog?: string;
   extraInstructions?: string;
   /** The plan charter's stop target, rendered right after the charter's task text. The catalog
    * text is config-free, so the concrete eligible-plan count (`planBacklogTarget`) is supplied
@@ -391,7 +395,7 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildRunPrompt(input: RunPromptInput): string {
-  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
+  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -410,6 +414,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (backlogStructure) parts.push(backlogStructure);
   if (backlogIndex) parts.push(backlogIndex);
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, Boolean(backlogIndex), notesSavedDay, day));
+  if (notesBacklog) parts.push(notesBacklog);
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (flakyChecks) parts.push(flakyChecks.trim());

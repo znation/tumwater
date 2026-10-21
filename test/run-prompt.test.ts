@@ -258,6 +258,41 @@ test("an over-long role note is truncated into the prompt with a visible marker"
   assert.ok(!overCap.prompt.includes(tail), "text past the bound is not injected");
 });
 
+test("a run whose notes name a planned part gets the live backlog block; the director has none", () => {
+  const dir = root();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Codex backend, part 2b/9: b (planned 2026-10-01)",
+      "**Needs replan 2026-10-21 by plan: rewrite**",
+      "### Codex backend, part 2c/9: c (planned 2026-10-01; requires Codex backend 2b/9 landed)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const notes = roleNotesPath(dir, "coverage");
+  writeFileDeep(notes, "Codex 2b/9 carry Refused — never re-add or re-author them; the Codex theme is dead\n");
+  const withNote = promptFor(dir, "coverage");
+  assert.ok(withNote);
+  const notesEnd = withNote.prompt.indexOf("</role-notes>");
+  const backlogIdx = withNote.prompt.indexOf("What the backlog says now");
+  assert.ok(notesEnd >= 0 && backlogIdx > notesEnd, "the backlog block follows the live notes");
+  assert.match(withNote.prompt, /- Codex backend, part 2b\/9 — needs replan \(the plan role rewrites it\)/);
+
+  // A run whose notes name nothing from the backlog gets no block.
+  fs.writeFileSync(notes, "where things live, what was ruled out\n");
+  assert.ok(!promptFor(dir, "coverage")!.prompt.includes("What the backlog says now"));
+
+  // The director never carries notes, so it never carries the block either.
+  enqueuePrompt(dir, "what should we build next");
+  const director = promptFor(dir, DIRECTOR_ROLE);
+  assert.ok(director);
+  assert.ok(!director.prompt.includes("What the backlog says now"), "director carries no backlog block");
+});
+
 test("a director prompt carries the same <backlog-index> block", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");

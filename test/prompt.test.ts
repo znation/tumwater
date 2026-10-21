@@ -77,6 +77,25 @@ test("the role-notes heading says when the notes were last saved", () => {
   assert.match(none, /today is 2026-10-16|2026-10-16/i, "the date line uses the same day");
 });
 
+test("the notes block is followed by the live backlog state block when one is supplied", () => {
+  const role = roleById("feature")!;
+  const backlogBlock = `What the backlog says now about entries your notes name (PLANS.md and BUGS.md as of this run; where your notes disagree, this is current):\n- Codex backend, part 2b/9 — needs replan (the plan role rewrites it)`;
+  const prompt = buildRunPrompt({ role, notes: "Codex 2b/9 carry Refused", notesBacklog: backlogBlock });
+  const notesEnd = prompt.indexOf("</role-notes>");
+  const backlogIdx = prompt.indexOf("What the backlog says now");
+  assert.ok(notesEnd >= 0, "the notes block is present");
+  assert.ok(backlogIdx > notesEnd, "the backlog block follows the notes block");
+  assert.ok(prompt.includes("- Codex backend, part 2b/9 — needs replan"), "the live state block renders");
+  assert.match(prompt, /overridden by the backlog/, "the point of the live state block still holds");
+});
+
+test("without a notesBacklog block the prompt carries the live-source caption but no extra text", () => {
+  const role = roleById("feature")!;
+  const prompt = buildRunPrompt({ role, notes: "n" });
+  assert.match(prompt, /the backlog is the live/);
+  assert.ok(!prompt.includes("What the backlog says now"), "no backlog block without one supplied");
+});
+
 test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildRunPrompt({ role });
