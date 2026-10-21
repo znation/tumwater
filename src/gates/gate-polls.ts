@@ -40,7 +40,7 @@ import {
   sampleFreeBytes,
   type DiskGateState,
 } from "./disk-gate.js";
-import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../team/team-polls.js";
+import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, windowObservation, type HoldInputs } from "../team/team-polls.js";
 import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { ReclaimController } from "../team/reclaim.js";
 import { standingHolds, type TeamHold } from "../team/team-hold.js";
@@ -496,14 +496,16 @@ export function pollTeamGates(
   // memory but never reading as held — and the permit-time closures read the LATEST poll's map
   // there, so a waiter granted its permit after a later poll sees that poll's world.
   const claudeAccount = readClaudeAccount(root, now);
+  const claudeWindow = windowObservation("claude", claudeAccount, now, windowReserveFor(liveConfig, "claude"));
   states.teamHold = pollTeamHold(
     root,
     states.teamHold,
     holdInputs(runners),
     now,
-    claudeAccount,
+    // The one subscription backend in use today is claude (part 2e passes one observation per
+    // backend); when its account implies no hold, no window observation joins the step.
+    claudeWindow === null ? [] : [claudeWindow],
     windowTiers,
-    windowReserveFor(liveConfig, "claude"),
   );
   // The standings hold, published for observers (PLANS.md 2026-10-17 "the dashboards and
   // `tumwater status` name a standing provider failure hold"): `standingHolds` turns the holds
@@ -519,6 +521,7 @@ export function pollTeamGates(
     states.claudeWindowReserved,
     claudeAccount,
     now,
+    "claude",
     windowReserveFor(liveConfig, "claude"),
   );
   // The subscription usage window's warning is observational (the hold above is the gate): the
@@ -528,6 +531,7 @@ export function pollTeamGates(
     states.claudeWindowWarned,
     claudeAccount,
     now,
+    "claude",
   );
 
   // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' run streaks

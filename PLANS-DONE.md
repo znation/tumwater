@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 2d/9: The hold observation and the reserve and warning polls name each subscription backend (planned 2026-10-21 by the plan role; requires part 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/team/team-polls.ts src/gates/gate-polls.ts src/doctor/doctor-holds.ts test/team-polls.test.ts test/notify.test.ts test/event-format-team.test.ts) — done 2026-10-21 by the feature role
+
+**Goal.** The three window emitters that still hardcode claude take the backend id and stamp it: the hold observation, the reserve and warning polls, and the `subscription_window_limited`/`reset` events `pollTeamHold` writes. No behavior change for a claude-only team. This is independent of part 2c/9 (it touches different functions); both edit src/gates/gate-polls.ts in disjoint hunks, so whichever lands second rebases there.
+
+**Approach.**
+- `claudeWindowObservation(account, now, reserve)` becomes `windowObservation(backend, account, now, reserve)`, with `role` and `provider` both `backend`. Update the call in `pollTeamHold` (claude only here) and the read in src/doctor/doctor-holds.ts (`windowObservation("claude", account, now)`; part 3/9 later generalizes the doctor row).
+- `logWindowEventOnce` gains a `backend` parameter and stamps it on the event; its `backend:type:resetsAt` key already read `ev.backend`, so nothing else changes. `pollClaudeWindowReserve(…, backend)` and `pollClaudeWindowWarning(…, backend)` pass it through and stop hardcoding `backend: "claude"`.
+- `pollTeamHold`'s `account`/`reserve` params become `observations: readonly HoldObservation[] = []` (part 2e passes one per subscription backend); it steps the reducer with `[...holdObservations(runners), ...observations]` and stamps `backend: provider` on the `subscription_window_limited`/`reset` events from the observation that opened the hold. `windowTiers` is unchanged.
+- src/gates/gate-polls.ts's one call site builds `[windowObservation("claude", claudeAccount, now, reserve)]` and passes `"claude"` to the reserve/warning polls — the claude-only path part 2e generalizes.
+- src/orchestrator/orchestrator.ts already seeds `loggedWindowKeys` with backend-qualified keys (part 2b/9); no change.
+
+**Acceptance criteria.**
+- The team-polls, notify and event-format tests pass with the new signatures and a `backend` on each window event; a claude-only event renders the same text.
+- A test holds a `sub` account (rejected window): `windowObservation("sub", account, now)` returns `role`/`provider` `"sub"`, and `pollTeamHold(…, [observation])` holds provider `sub` and logs `subscription_window_limited { backend: "sub" }` (and `…_reset` when it lifts), leaving claude's hold untouched.
+- `pollClaudeWindowReserve`/`pollClaudeWindowWarning` with `"sub"` log `subscription_window_reserved`/`subscription_window_warning { backend: "sub" }` and keep `sub:type:resetsAt` keys that do not collide with claude's.
+- `npm test` passes.
+
 ### Fast merge guardrails, part 2/3: `tumwater doctor` and the selfcheck digest warn on a revert that looks false and on more than 5 reverts a day (planned 2026-10-21 by user; requires part 1/3 landed; design in plans/fast-merge.md "Guardrails" G2; touches src/baseline/main-guardrails.ts src/baseline/main-revert.ts src/merge/merge-to-main.ts src/merge/merge-stack.ts src/events/events.ts src/doctor/doctor-holds.ts docs/how-it-works.md and their tests) — done 2026-10-21 by the feature role
 
 **Goal.** Make a misfiring revert visible. Today a `main_revert` that blamed a flaky test, or that removed a change which later merged again unchanged with main green, leaves no trace beyond the event, and a burst of reverts reads the same as one.

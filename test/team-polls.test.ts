@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
-import { pollTeamHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, loggedWindowKeys, type HoldInputs } from "../src/team/team-polls.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type TeamHold, type HoldObservation } from "../src/team/team-hold.js";
+import { pollTeamHold, windowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, loggedWindowKeys, type HoldInputs } from "../src/team/team-polls.js";
 import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { logEvent } from "../src/events/events.js";
@@ -24,6 +24,18 @@ function holdEvents(root: string) {
 
 function runner(role: string, inputs: Partial<HoldInputs> = {}): HoldInputs {
   return { role, ...inputs };
+}
+
+/** The filtered, non-null subscription-window observations one backend's account implies: an
+ * account that holds nothing contributes none, so the hold poll steps with only real holds. */
+function windowObs(
+  backend: string,
+  acct: ClaudeAccount | null,
+  now: number,
+  reserve?: Record<string, number>,
+): HoldObservation[] {
+  const o = windowObservation(backend, acct, now, reserve);
+  return o === null ? [] : [o];
 }
 
 /** Step the poll from a single-provider prev (the default team's shape) and read that
@@ -322,25 +334,30 @@ function windowEvents(root: string) {
   );
 }
 
-test("claudeWindowObservation: a rejected subscription window holds; API billing, overage, and a past reset do not", () => {
-  assert.equal(claudeWindowObservation(null, T0), null, "no account is today's behavior");
-  const obs = claudeWindowObservation(account(), T0)!;
+test("windowObservation: a rejected subscription window holds; API billing, overage, and a past reset do not", () => {
+  assert.equal(windowObservation("claude", null, T0), null, "no account is today's behavior");
+  const obs = windowObservation("claude", account(), T0)!;
+  assert.equal(obs.role, "claude");
   assert.equal(obs.provider, "claude");
   assert.equal(obs.kind, "subscription-window");
   assert.equal(obs.windowType, "five_hour");
   assert.equal(obs.resetsAt, T0 + 3_600_000);
   // Over the API, the subscription window is not the throttle; an overage window is paid
   // overflow (never a hold); a window already reset holds nothing.
-  assert.equal(claudeWindowObservation(account({ billing: "api" }), T0), null);
+  assert.equal(windowObservation("claude", account({ billing: "api" }), T0), null);
   assert.equal(
-    claudeWindowObservation(account({}, { status: "rejected", resetsAt: T0 + 3_600_000, isUsingOverage: true }), T0),
+    windowObservation("claude", account({}, { status: "rejected", resetsAt: T0 + 3_600_000, isUsingOverage: true }), T0),
     null,
   );
-  assert.equal(claudeWindowObservation(account({}, { status: "rejected", resetsAt: T0 - 1 }), T0), null);
+  assert.equal(windowObservation("claude", account({}, { status: "rejected", resetsAt: T0 - 1 }), T0), null);
   // The furthest reset among several rejected windows is the deadline the team waits out.
   const twoWindow = account();
   twoWindow.windows.seven_day = { status: "rejected", resetsAt: T0 + 7_200_000, observedAt: T0 };
-  assert.equal(claudeWindowObservation(twoWindow, T0)!.resetsAt, T0 + 7_200_000);
+  assert.equal(windowObservation("claude", twoWindow, T0)!.resetsAt, T0 + 7_200_000);
+  // The backend id rides the observation: a non-claude backend keys its own hold.
+  const sub = windowObservation("sub", account(), T0)!;
+  assert.equal(sub.role, "sub");
+  assert.equal(sub.provider, "sub");
 });
 
 test("pollTeamHold holds provider claude until resetsAt and logs subscription_window_limited once, reset once", () => {
@@ -348,7 +365,7 @@ test("pollTeamHold holds provider claude until resetsAt and logs subscription_wi
   const resetsAt = T0 + 3_600_000;
   const acct = account({}, { status: "rejected", resetsAt });
   // A pi seam and an API claude seam share this poll; the subscription hold gates only claude.
-  const holds = pollTeamHold(root, new Map(), [runner("feature", { provider: "openai" })], T0, acct);
+  const holds = pollTeamHold(root, new Map(), [runner("feature", { provider: "openai" })], T0, windowObs("claude", acct, T0));
   assert.notEqual(holds.get("claude")!.until, null);
   assert.equal(holds.get("claude")!.until, resetsAt);
   assert.equal(holds.get("claude")!.kind, "subscription-window");
@@ -361,18 +378,18 @@ test("pollTeamHold holds provider claude until resetsAt and logs subscription_wi
   assert.equal(events[0]!.backend, "claude");
 
   // Many polls across the one window: held, silent, and still standing.
-  const mid = pollTeamHold(root, holds, [], resetsAt - 1_000, acct);
+  const mid = pollTeamHold(root, holds, [], resetsAt - 1_000, windowObs("claude", acct, resetsAt - 1_000));
   assert.equal(mid.get("claude")!.until, resetsAt);
   assert.equal(windowEvents(root).length, 1, "no repeat while held");
 
   // Over the API no hold is placed at all.
   const api = tmpdir("tumwater-team-polls-");
-  const apiHolds = pollTeamHold(api, new Map(), [], T0, account({ billing: "api" }));
+  const apiHolds = pollTeamHold(api, new Map(), [], T0, windowObs("claude", account({ billing: "api" }), T0));
   assert.equal(apiHolds.get("claude")?.until ?? null, null, "API-billed claude seams run");
   assert.equal(windowEvents(api).length, 0);
 
   // At resetsAt the hold lifts by itself and the reset is logged once.
-  const open = pollTeamHold(root, mid, [], resetsAt, acct);
+  const open = pollTeamHold(root, mid, [], resetsAt, windowObs("claude", acct, resetsAt));
   assert.equal(open.get("claude")!.until, null);
   events = windowEvents(root);
   assert.equal(events.filter((e) => e.type === "subscription_window_reset").length, 1);
@@ -383,7 +400,7 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
   const acct = account({}, { status: "allowed_warning", resetsAt });
-  const key = pollClaudeWindowWarning(root, new Set(), acct, T0);
+  const key = pollClaudeWindowWarning(root, new Set(), acct, T0, "claude");
   assert.ok(key.has(`claude:five_hour:${resetsAt}`));
   const warnings = () => readEvents(root).filter((e) => e.type === "subscription_window_warning");
   assert.equal(warnings().length, 1);
@@ -391,20 +408,20 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   assert.equal(warnings()[0]!.resetsAt, resetsAt);
   assert.ok(!("utilization" in warnings()[0]!), "no reading, no utilization key");
   // The same window on later polls is not re-announced…
-  assert.equal(pollClaudeWindowWarning(root, key, acct, T0 + 1_000), key);
+  assert.equal(pollClaudeWindowWarning(root, key, acct, T0 + 1_000, "claude"), key);
   assert.equal(warnings().length, 1, "once per window, not per poll");
   // …while the next window's warning is its own crossing.
   const next = account({}, { status: "allowed_warning", resetsAt: resetsAt + 3_600_000 });
-  const nextKey = pollClaudeWindowWarning(root, key, next, T0 + 1_000);
+  const nextKey = pollClaudeWindowWarning(root, key, next, T0 + 1_000, "claude");
   assert.ok(nextKey.has(`claude:five_hour:${resetsAt + 3_600_000}`));
   assert.equal(warnings().length, 2);
   // A reading with utilization rides on the event.
   const filled = tmpdir("tumwater-team-polls-");
-  pollClaudeWindowWarning(filled, new Set(), account({}, { status: "allowed_warning", resetsAt, utilization: 0.82 } as never), T0);
+  pollClaudeWindowWarning(filled, new Set(), account({}, { status: "allowed_warning", resetsAt, utilization: 0.82 } as never), T0, "claude");
   assert.equal(readEvents(filled).find((e) => e.type === "subscription_window_warning")!.utilization, 0.82);
   // API billing and no account warn nothing.
   const api = tmpdir("tumwater-team-polls-");
-  assert.equal(pollClaudeWindowWarning(api, new Set(), account({ billing: "api" }), T0).size, 0);
+  assert.equal(pollClaudeWindowWarning(api, new Set(), account({ billing: "api" }), T0, "claude").size, 0);
   assert.equal(windowEvents(api).length, 0);
 });
 
@@ -415,9 +432,9 @@ test("a window that warns alongside another is logged once, however the other wi
   const win = (status: string, resetsAt: number) => ({ status, resetsAt, observedAt: T0 });
   const acct = (windows: ClaudeAccount["windows"]): ClaudeAccount => ({ billing: "subscription", observedAt: T0, windows });
   let set: ReadonlySet<string> = new Set();
-  set = pollClaudeWindowWarning(root, set, acct({ seven_day: win("allowed_warning", sevenReset) }), T0);
-  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed_warning", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 1_000);
-  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 2_000);
+  set = pollClaudeWindowWarning(root, set, acct({ seven_day: win("allowed_warning", sevenReset) }), T0, "claude");
+  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed_warning", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 1_000, "claude");
+  set = pollClaudeWindowWarning(root, set, acct({ five_hour: win("allowed", fiveReset), seven_day: win("allowed_warning", sevenReset) }), T0 + 2_000, "claude");
   const warned = readEvents(root).filter((e) => e.type === "subscription_window_warning").map((e) => e.windowType);
   assert.deepEqual(warned.sort(), ["five_hour", "seven_day"]);
 });
@@ -425,9 +442,9 @@ test("a window that warns alongside another is logged once, however the other wi
 test("a window key leaves the returned set once its resetsAt has passed", () => {
   const root = tmpdir("tumwater-team-polls-");
   const resetsAt = T0 + 3_600_000;
-  const set = pollClaudeWindowWarning(root, new Set(), account({}, { status: "allowed_warning", resetsAt }), T0);
+  const set = pollClaudeWindowWarning(root, new Set(), account({}, { status: "allowed_warning", resetsAt }), T0, "claude");
   assert.ok(set.has(`claude:five_hour:${resetsAt}`));
-  const later = pollClaudeWindowWarning(root, set, account({}, { status: "allowed" }), resetsAt);
+  const later = pollClaudeWindowWarning(root, set, account({}, { status: "allowed" }), resetsAt, "claude");
   assert.equal(later.has(`claude:five_hour:${resetsAt}`), false);
 });
 
@@ -446,7 +463,7 @@ test("loggedWindowKeys reads the still-open warned windows from the log, so a re
     observedAt: now,
     windows: { seven_day: { status: "allowed_warning", resetsAt: now + 3_600_000, observedAt: now } },
   };
-  pollClaudeWindowWarning(root, keys, acct, now);
+  pollClaudeWindowWarning(root, keys, acct, now, "claude");
   assert.equal(readEvents(root).filter((e) => e.type === "subscription_window_warning").length, 3, "no new event");
 });
 
@@ -475,7 +492,7 @@ test("loggedWindowKeys keys by backend: two backends' same window keep their own
 
 test("pollTeamHold stamps the window move's tiers on subscription_window_limited", () => {
   const root = tmpdir("team-polls-");
-  pollTeamHold(root, new Map(), [], T0, account(), { default: "free/qwen-free" });
+  pollTeamHold(root, new Map(), [], T0, windowObs("claude", account(), T0), { default: "free/qwen-free" });
   const limited = windowEvents(root).filter((e) => e.type === "subscription_window_limited");
   assert.equal(limited.length, 1);
   assert.deepEqual(limited[0]!.tiers, { default: "free/qwen-free" });
@@ -486,18 +503,18 @@ test("a reserve crossing holds claude but not the director, and logs subscriptio
   const resetsAt = T0 + 3_600_000;
   const reserve = { five_hour: 0.8 };
   const acct = account({}, { status: "allowed", resetsAt, utilization: 0.85 } as never);
-  const obs = claudeWindowObservation(acct, T0, reserve)!;
+  const obs = windowObservation("claude", acct, T0, reserve)!;
   assert.equal(obs.reserve, true);
-  assert.equal(claudeWindowObservation(acct, T0), null, "without a reserve nothing holds");
-  assert.equal(claudeWindowObservation(account({}, { status: "allowed", resetsAt, utilization: 0.75 } as never), T0, reserve), null);
-  const holds = pollTeamHold(root, new Map(), [], T0, acct, {}, reserve);
+  assert.equal(windowObservation("claude", acct, T0), null, "without a reserve nothing holds");
+  assert.equal(windowObservation("claude", account({}, { status: "allowed", resetsAt, utilization: 0.75 } as never), T0, reserve), null);
+  const holds = pollTeamHold(root, new Map(), [], T0, windowObs("claude", acct, T0, reserve));
   assert.deepEqual([...heldProviders(holds)], ["claude"], "subscription claude jobs wait");
   assert.equal(holds.get("claude")!.until, resetsAt);
   assert.equal(windowHeldProviders(holds).size, 0, "the director is not held on a reserve");
   assert.equal(windowEvents(root).filter((e) => e.type === "subscription_window_limited").length, 0);
-  const key = pollClaudeWindowReserve(root, new Set(), acct, T0, reserve);
+  const key = pollClaudeWindowReserve(root, new Set(), acct, T0, "claude", reserve);
   assert.ok(key.has(`claude:five_hour:${resetsAt}`));
-  assert.equal(pollClaudeWindowReserve(root, key, acct, T0 + 1_000, reserve), key);
+  assert.equal(pollClaudeWindowReserve(root, key, acct, T0 + 1_000, "claude", reserve), key);
   const logged = readEvents(root).filter((e) => e.type === "subscription_window_reserved");
   assert.equal(logged.length, 1);
   assert.deepEqual(
@@ -505,12 +522,67 @@ test("a reserve crossing holds claude but not the director, and logs subscriptio
     { w: "five_hour", u: 0.85, r: 0.8, at: resetsAt, b: "claude" },
   );
   // A rejected window still holds the director.
-  const rejected = pollTeamHold(root, new Map(), [], T0, account(), {}, reserve);
+  const rejected = pollTeamHold(root, new Map(), [], T0, windowObs("claude", account(), T0, reserve));
   assert.deepEqual([...windowHeldProviders(rejected)], ["claude"]);
   // A standing reserve hold that hardens into a rejected window logs the limit.
   const root2 = tmpdir("tumwater-team-polls-");
-  const reserved = pollTeamHold(root2, new Map(), [], T0, acct, {}, reserve);
-  const hardened = pollTeamHold(root2, reserved, [], T0 + 1_000, account(), {}, reserve);
+  const reserved = pollTeamHold(root2, new Map(), [], T0, windowObs("claude", acct, T0, reserve));
+  const hardened = pollTeamHold(root2, reserved, [], T0 + 1_000, windowObs("claude", account(), T0 + 1_000, reserve));
   assert.deepEqual([...windowHeldProviders(hardened)], ["claude"]);
   assert.equal(windowEvents(root2).filter((e) => e.type === "subscription_window_limited").length, 1);
+});
+
+test("a sub backend holds its own provider and logs subscription_window_limited/reset with backend sub, leaving claude untouched", () => {
+  const root = tmpdir("tumwater-team-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const subAcct = account({}, { status: "rejected", resetsAt });
+  const subObs = windowObservation("sub", subAcct, T0)!;
+  assert.equal(subObs.role, "sub");
+  assert.equal(subObs.provider, "sub");
+  // claude's own rejected window still holds claude alone.
+  const claudeObs = windowObs("claude", account(), T0);
+  const holds = pollTeamHold(root, new Map(), [], T0, [subObs, ...claudeObs]);
+  assert.equal(holds.get("sub")!.until, resetsAt);
+  assert.equal(holds.get("sub")!.kind, "subscription-window");
+  assert.equal(holds.get("claude")!.until, resetsAt, "claude's own hold is untouched");
+  assert.deepEqual([...heldProviders(holds)].sort(), ["claude", "sub"]);
+  let events = windowEvents(root);
+  const subLimited = events.find((e) => e.type === "subscription_window_limited" && e.backend === "sub");
+  assert.ok(subLimited, "a sub limited event is logged");
+  assert.equal(subLimited!.windowType, "five_hour");
+  assert.deepEqual(
+    events.filter((e) => e.type === "subscription_window_limited").map((e) => e.backend).sort(),
+    ["claude", "sub"],
+    "each backend's rejection logs its own backend",
+  );
+  // At resetsAt sub lifts and logs its own reset; claude's still stands on its own deadline.
+  const lifted = pollTeamHold(root, holds, [], resetsAt, [...windowObs("sub", subAcct, resetsAt), ...claudeObs]);
+  assert.equal(lifted.get("sub")!.until, null);
+  events = windowEvents(root);
+  const subReset = events.find((e) => e.type === "subscription_window_reset" && e.backend === "sub");
+  assert.ok(subReset, "sub logs its own reset when it lifts");
+});
+
+test("pollClaudeWindowReserve and pollClaudeWindowWarning with a sub backend keep backend sub and do not collide with claude", () => {
+  const root = tmpdir("tumwater-team-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const reserve = { five_hour: 0.8 };
+  const subAcct = account({}, { status: "allowed", resetsAt, utilization: 0.85 } as never);
+  const key = pollClaudeWindowReserve(root, new Set(), subAcct, T0, "sub", reserve);
+  assert.ok(key.has(`sub:five_hour:${resetsAt}`));
+  const reserved = readEvents(root).filter((e) => e.type === "subscription_window_reserved");
+  assert.equal(reserved.length, 1);
+  assert.equal(reserved[0]!.backend, "sub");
+  assert.equal(reserved[0]!.windowType, "five_hour");
+  // The same window at the same reset on claude keeps a separate key, and a later poll does
+  // not re-log sub's crossing.
+  assert.equal(pollClaudeWindowReserve(root, key, subAcct, T0 + 1_000, "sub", reserve), key, "no re-log");
+  // Warning: sub's allowed_warning logs backend sub, keeping its own key.
+  const warnAcct = account({}, { status: "allowed_warning", resetsAt });
+  const warnKey = pollClaudeWindowWarning(root, new Set(), warnAcct, T0, "sub");
+  assert.ok(warnKey.has(`sub:five_hour:${resetsAt}`));
+  const warnings = readEvents(root).filter((e) => e.type === "subscription_window_warning");
+  assert.equal(warnings.length, 1);
+  assert.equal(warnings[0]!.backend, "sub");
+  assert.equal(warnings[0]!.windowType, "five_hour");
 });

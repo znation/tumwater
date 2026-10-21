@@ -19,7 +19,7 @@ import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from
 import { DAY_MS, HOUR_MS, humanUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
-import { claudeWindowObservation } from "../team/team-polls.js";
+import { windowObservation } from "../team/team-polls.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -155,11 +155,11 @@ export function checkMaintenanceQuota(
 }
 
 /** The `claude window` check: whether a rejected subscription window holds the subscription claude
- * seams. Read-only and built on claudeWindowObservation, the verdict the scheduler's team hold
- * uses, so it cannot disagree with the hold. A hold is a warn because it stops every subscription
- * claude seam until the window resets; otherwise the most constrained window's state is reported
- * as ok (a rejected window spending overage reads `rejected` here: overage spends, it does not
- * hold). API-billed claude never holds. */
+ * seams. Read-only and built on windowObservation (the claude backend's own), the verdict the
+ * scheduler's team hold uses, so it cannot disagree with the hold. A hold is a warn because it
+ * stops every subscription claude seam until the window resets; otherwise the most constrained
+ * window's state is reported as ok (a rejected window spending overage reads `rejected` here:
+ * overage spends, it does not hold). API-billed claude never holds. */
 export function checkClaudeWindow(
   root: string,
   now: number = Date.now(),
@@ -168,7 +168,7 @@ export function checkClaudeWindow(
 ): CheckOutcome {
   const account = readClaudeAccount(root, now);
   if (account?.billing !== "subscription") return okOutcome("no subscription window reported");
-  const held = claudeWindowObservation(account, now);
+  const held = windowObservation("claude", account, now);
   if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
     const label = claudeWindowLabel(held.windowType);
     const resets = humanUntil(held.resetsAt, now);

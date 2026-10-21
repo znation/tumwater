@@ -77,7 +77,7 @@ export function subscriptionWindowRejected(
  * has reached its type's fraction counts too, and comes back with `reserve: true`; a rejected
  * or overage window outranks a reserve one, so the flag is set only when no window is used up
  * for real. The budget gate's window move (pollBudgetGate) reads the default; the team hold
- * (claudeWindowObservation) passes `includeOverage: false`, because overage never holds a
+ * (windowObservation) passes `includeOverage: false`, because overage never holds a
  * seam. Only subscription billing produces one; a missing account reads null. */
 export function windowUsedUp(
   account: SubscriptionAccount | null,

@@ -294,7 +294,7 @@ Everything that reads a subscription window reads one claude account today. A su
   - the budget gate's `pairIsClaude` / `seamIsClaude` and its single `windowOut`
     (src/gates/budget-gates.ts);
   - the hold observation's provider `"claude"` (src/team/team-polls.ts
-    `claudeWindowObservation`);
+    `windowObservation`);
   - the `claude_window_*` events, the `claudeWindowReserve` key, and the "Claude 5h" labels in
     the badge, the GUI, the role view and the report;
   - doctor's "claude window" row.
