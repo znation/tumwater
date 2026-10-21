@@ -83,4 +83,46 @@ Out of scope: shell completion of `--model` after a trail form (src/cli/completi
 - The usage regexes in this file that match `RUN_DETAIL_USAGE` are updated to the new string. The existing `--last` and `--last --result` cases, and test/history*.test.ts's `--model` cases, pass unchanged.
 - `npm run test:gate` passes.
 
+### Dashboard Health card "Re-probe models" button: `POST /api/doctor-reprobe` runs the doctor with every claimed image-input model re-probed and answers the report, the dashboard twin of `tumwater doctor --reprobe` (planned 2026-10-20 by the plan role; independent of every eligible plan: the Backend/model split part changes src/config and test configs, `diff --path` changes cmdDiff and src/change, `prompt --list --grep` changes the prompt parser and src/inbox, `history --last --model` changes src/run/run-detail.ts and the history CLI, and the comma-list completion plan changes src/cli/completion.ts. This one touches only the GUI doctor path and docs/backends.md)
+
+**Goal.** The image-input check's failure tells the operator to fix the endpoint and then run `tumwater doctor --reprobe`. The dashboard's Settings → Health card runs the same checks through `GET /api/doctor`, but `handleDoctor` (src/gui/gui-endpoints.ts) always passes `probeImages` `"never"`, so the card only shows the cached verdicts. That is deliberate: a refresh or Re-run must never spend a model call. As a result, an operator working in the dashboard has to go to a terminal to clear a stale or failed probe verdict. Add an explicit, separate action that spends the probe on purpose: a "Re-probe models" button on the Health card. It POSTs to a new `/api/doctor-reprobe`, which runs `runDoctor` with `probeImages` `"all"` (what `--reprobe` passes) and answers the same `DoctorReport`, and the card paints that report. `GET /api/doctor`, Re-run and the TUI Health tab keep `"never"`.
+
+**Approach.**
+1. src/gui/gui-operator-commands.ts: beside `handleKillOrphans`, add
+   `export async function handleDoctorReprobe(req, res, root, run: (root: string, probeImages: "all") => Promise<DoctorReport> = (r, p) => runDoctor(r, undefined, undefined, p))`.
+   - Open with `const body = await readPostBody(req, res, "{}"); if (!body) return;`, the same body discipline as `/api/kill-orphans`.
+   - Then `sendJson(res, 200, await run(root, "all"))`. A throw reaches the server's outer 500, as with `handleDoctor`.
+   - The seam takes the probe mode so a test can pin that the handler asks for `"all"` without spawning a probe.
+   - Import `runDoctor` from `../doctor/doctor.js` and `type DoctorReport` from `../doctor/doctor-checks.js` (the imports gui-endpoints.ts uses).
+   - Doc comment: the dashboard Health card's Re-probe models button, the twin of `tumwater doctor --reprobe`. It is a POST because it spends one model call per claimed pi image-input model and rewrites `.tumwater/state/image-probes.json`. GET `/api/doctor` stays probe-free.
+2. src/gui/gui-endpoint-commands.ts: add `handleDoctorReprobe` to the `export { … } from "./gui-operator-commands.js"` list. src/gui/gui-server.ts: import it beside `handleKillOrphans` and register `"POST /api/doctor-reprobe": (req, res) => handleDoctorReprobe(req, res, root)` next to `"POST /api/kill-orphans"`.
+3. src/gui/gui-endpoints.ts: in `handleDoctor`'s doc comment, add one sentence saying it never probes (`"never"`) and that the explicit re-probe is `POST /api/doctor-reprobe`.
+4. src/ui/gui/gui-client-settings.ts:
+   - In the `#doctorcard` header row, after the Re-run button, add `<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>`.
+   - Beside `fetchDoctor`, add `let doctorReprobing = false;` and `async function reprobeDoctorClick()`. It returns at once while `doctorReprobing` is set (no second POST while one is in flight). Otherwise it sets the flag, calls `buildSettingsView()`, shows `Re-probing…` in `#doctorbody` (the `Checking…` empty-panel shape), and calls `showFlash("Re-probing image-input models…")`. Then it runs `const report = await postJson("/api/doctor-reprobe", {})`, sets `lastDoctor = report` and paints `renderDoctorReport(report, doctorProblems)`. On a throw it paints `errorPanel("Health checks could not run", err, "empty")` and calls `showFlash("error: " + clientErrorMessage(err))`. A `finally` clears the flag.
+   - The Problems only checkbox keeps working on the re-probed report, because it repaints from `lastDoctor`.
+   - Extend the file-head comment's Health check sentence with the new button.
+5. src/ui/gui/gui-client-boot.ts: next to the `doctor-kill-orphans` click arm, add `if (clickClosest(ev, "button[data-action='doctor-reprobe']")) { ev.preventDefault(); reprobeDoctorClick(); }`.
+6. docs/backends.md, the image-probe paragraph: change "The TUI Health tab and the dashboard never probe (a refresh must not spend a model call)" so that both still never probe on a refresh, and add that the dashboard Health card's Re-probe models button forces every probe, as `--reprobe` does. docs/cli.md, the Audit row: after "both reading cached image-probe verdicts only so a refresh never spends a model call", add "; the Health card's Re-probe models button re-probes every one, like `--reprobe`". The row is one long line, so edit it with python.
+
+Out of scope: a TUI Health tab key for re-probing (its Ctrl keys R/E/N/K are taken; a later plan can pick one), and running only the image-input check (`only`). The button re-runs the full report, as `doctor --reprobe` does.
+
+**Files touched.** src/gui/gui-operator-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/gui/gui-endpoints.ts (doc comment only), src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts, docs/backends.md, docs/cli.md, test/gui-endpoints.test.ts, test/gui-client-settings.test.ts.
+
+**Acceptance criteria.**
+- New test in test/gui-endpoints.test.ts, "handleDoctorReprobe answers the run's DoctorReport and asks for every probe". Through `captureJson` and `fakeReq("{}")`, with an injected `run` that records its arguments and returns a fixed report:
+  - `captured.status` is 200 and `data` deepEquals the report;
+  - the seam received the root and `"all"`.
+  - A second case with `fakeReq("not json")` has `captured.status` 400 and never calls the seam.
+- The existing "handleDoctor answers the run's DoctorReport and passes it the root" passes unchanged.
+- New test in test/gui-client-settings.test.ts, "reprobeDoctorClick posts /api/doctor-reprobe and paints the returned report". Add `reprobeDoctorClick(): Promise<void>` to `SettingsFns` and to `settingsScope`'s name list. Inject `postJson` returning `{ checks: [{ level: "fail", name: "image input", detail: "x" }] }`, a `$` returning one shared body object, `getJson` counting calls, and `showFlash`. Assert:
+  - one post to `/api/doctor-reprobe` with body `{}`;
+  - the body's innerHTML contains `image input`;
+  - `getJson` was not called (the card paints the POST's report and does not re-run GET);
+  - the flashes start with `Re-probing image-input models…`.
+- Same file, "reprobeDoctorClick ignores a click while one is in flight": `postJson` returns a promise the test resolves later. Two calls before resolving make exactly one post.
+- Same file, a rejection case: `postJson` throws `new Error("boom")`. The body shows the `Health checks could not run` panel, a flash starts with `error: `, and a later click posts again (the flag was cleared).
+- The existing `renderSettings`/Health card markup tests and "killOrphansClick arms on the first click and posts /api/kill-orphans on the second" pass unchanged. If a markup test counts the card's buttons, update it for the new button and say so.
+- `npm run test:gate` passes.
+
 ## Done
