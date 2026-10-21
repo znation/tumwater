@@ -158,7 +158,8 @@ Usage:
                                    flight shows its events so far; a run waiting to merge
                                    shows its merge verdict once the merge finishes; --last
                                    shows the role's newest finished run instead of numbering
-                                   one; --result <class>[,...] (with --last) picks the newest
+                                   one (with no <role>, the newest finished run of any
+                                   role); --result <class>[,...] (with --last) picks the newest
                                    run in the listed outcome classes instead (the listing's
                                    --result classes; scans the role's last 200 runs);
                                    --model <selector>[,...] (with --last) picks the newest

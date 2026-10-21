@@ -7,7 +7,7 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
-import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass } from "../history/history-data.js";
+import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "../history/history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "../history/history.js";
 import { readRunDetail, type RunDetail } from "./run-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
@@ -48,32 +48,40 @@ export function runNotFoundMessage(role: string, runNumber: number): string {
  * completed run, not a number the user supplied. Two consumers: cmdRunDetail's stdout line and
  * the GUI /api/run?last=1 404 error, so the CLI and the browser cannot word the miss apart. */
 export function runNotFoundLastMessage(
-  role: string,
+  role: string | null,
   classes: HistoryResultClass[] | null = null,
   models: string[] | null = null,
 ): string {
   const flagNames = classes?.map((c) => HISTORY_RESULT_FLAG_NAMES[c]).join(",");
   const what = `completed run${classes ? ` with result "${flagNames}"` : ""}${models ? ` on model "${models.join(",")}"` : ""}`;
-  return runNotFoundPhrase(role, what);
+  return runNotFoundPhrase(role ?? "any role", what);
+}
+
+/** The newest completed run's row for a role (`null` for every role), or null when the scanned
+ * window holds none: the run `tumwater history <role> --last` opens, and bare `history --last`
+ * with no role. With neither filter it is readRunRows' newest row; with `classes` it is the
+ * newest row in those outcome classes, and with `models` the newest that started on one of those
+ * selectors. */
+function newestRunRow(
+  root: string,
+  role: string | null,
+  classes: HistoryResultClass[] | null,
+  models: string[] | null,
+): RunRow | null {
+  if (!classes && !models) return readRunRows(root, 1, role)[0] ?? null;
+  const rows = models ? runRowsOnModels(readRunRows(root, HISTORY_MAX_RUNS, role), models) : readRunRows(root, HISTORY_MAX_RUNS, role);
+  return rows.find((r) => !classes || classes.includes(historyClass(r.result))) ?? null;
 }
 
 /** The newest completed run's number for a role, or null when the scanned window holds none:
- * the run `tumwater history <role> --last` opens and GET /api/run?last=1 serves. With neither
- * filter it is readRunRows' newest row; with `classes` it is the newest row in those outcome
- * classes, and with `models` the newest that started on one of those selectors. */
+ * the run GET /api/run?last=1 serves; newestRunRow's number. */
 export function newestRunNumber(
   root: string,
   role: string,
   classes: HistoryResultClass[] | null,
   models: string[] | null,
 ): number | null {
-  const row =
-    classes || models
-      ? (models ? runRowsOnModels(readRunRows(root, HISTORY_MAX_RUNS, role), models) : readRunRows(root, HISTORY_MAX_RUNS, role)).find(
-          (r) => !classes || classes.includes(historyClass(r.result)),
-        )
-      : readRunRows(root, 1, role)[0];
-  return row?.run ?? null;
+  return newestRunRow(root, role, classes, models)?.run ?? null;
 }
 
 /** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
@@ -183,7 +191,9 @@ export function runTranscriptLines(
  * --last, `--result <class>[,...]` picks the newest run in the listed outcome classes instead
  * (the listing's classes, scanning up to HISTORY_MAX_RUNS runs); it needs --last. `--model
  * <selector>[,...]` with --last keeps only runs that started on a listed model (the listing's
- * exact match) and composes with --result; it needs --last too. */
+ * exact match) and composes with --result; it needs --last too. With --last and no role, the
+ * newest run of any role is opened (newestRunRow with a null role) and renders as its
+ * role's form. */
 export async function cmdRunDetail(
   root: string,
   positionals: string[],
@@ -203,7 +213,8 @@ export async function cmdRunDetail(
   // --json and --last are admitted), so anything left over that does not fit the chosen form
   // is a mistake. The role is checked first, so a typo is named whatever the count; then
   // --last takes exactly one positional (<role>) and the numeric path exactly two (<role> <n>).
-  const role = canonicalRoleId(positionals[0] ?? "");
+  const bare = last && positionals.length === 0;
+  let role = canonicalRoleId(positionals[0] ?? "");
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
   // built-ins plus user-defined roles, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared
@@ -213,7 +224,7 @@ export async function cmdRunDetail(
     if (!ids.includes(role)) fail(`${unknownRoleMessage(role, ids)} (usage: ${RUN_DETAIL_USAGE})`);
   }
   const arity = last ? 1 : 2;
-  if (positionals.length !== arity) {
+  if (positionals.length !== arity && !bare) {
     if (positionals.length === 1) {
       fail(
         `history ${role} needs a run number or --last — \`tumwater history --role ${role}\` lists its runs (usage: ${RUN_DETAIL_USAGE})`,
@@ -235,12 +246,20 @@ export async function cmdRunDetail(
   // no cap — the number selects, it does not size the scan) or the newest completed run's
   // number, read from readRunRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
-  const runNumber = last ? newestRunNumber(root, role, classes, models) : parseCountFlag("history <n>", positionals[1]);
+  let runNumber: number | null;
+  if (bare) {
+    // `history --last` with no role: the newest completed run of any role; its role is the row's.
+    const row = newestRunRow(root, null, classes, models);
+    if (row !== null) role = row.role;
+    runNumber = row?.run ?? null;
+  } else {
+    runNumber = last ? newestRunNumber(root, role, classes, models) : parseCountFlag("history <n>", positionals[1]);
+  }
   const detail = runNumber === null ? null : readRunDetail(root, role, runNumber);
   if (runNumber === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.
     if (json) sayJson(null);
-    else say(runNotFoundLastMessage(role, classes, models));
+    else say(runNotFoundLastMessage(bare ? null : role, classes, models));
     return;
   }
   if (detail === null) {

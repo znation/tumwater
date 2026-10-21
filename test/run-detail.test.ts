@@ -358,6 +358,44 @@ test("cmdRunDetail --last --result picks the newest run in the listed classes", 
   );
 });
 
+test("cmdRunDetail --last with no role opens the newest run of any role, narrowed by result and model", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run last any role");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 2 }),
+    end({ ts: 2000, run: 2, result: "changed" }),
+    start({ ts: 3000, run: 4, loop: "feature" }), // retired-name-ok: legacy event field in a fixture
+    end({ ts: 4000, run: 4, loop: "feature", result: "error" }), // retired-name-ok: legacy event field in a fixture
+    start({ ts: 5000, run: 5 }),
+    end({ ts: 6000, run: 5, result: "no_change" }),
+  ]);
+  const out = async (argv: string[], opts: { last?: boolean; result?: string } = {}, json = false) =>
+    (await expectOkAsync(() => cmdRunDetail(repo, argv, json, opts))).stdout;
+  assert.equal(await out([], { last: true }), await out(["bugfix", "5"]));
+  assert.equal(await out([], { last: true, result: "problems" }), await out(["feature", "4"]));
+  assert.equal(await out([], { last: true, result: "merged" }), await out(["bugfix", "2"]));
+  assert.deepEqual(JSON.parse(await out([], { last: true }, true)), JSON.parse(await out(["bugfix", "5"], {}, true)));
+  const miss = await out([], { last: true, result: "refused" });
+  assert.match(miss, /^no completed run with result "refused" for any role in the scanned window/);
+  assert.equal(JSON.parse(await out([], { last: true, result: "refused" }, true)), null);
+  const bare = await expectFailAsync(() => cmdRunDetail(repo, [], false));
+  assert.match(bare, /usage: tumwater history <role>/);
+});
+
+test("history --last with no role through the CLI opens the newest run of any role", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "run cli any role");
+  writeEvents(repo, [
+    start({ ts: 3000, run: 4, loop: "feature" }), // retired-name-ok: legacy event field in a fixture
+    end({ ts: 4000, run: 4, loop: "feature", result: "error" }), // retired-name-ok: legacy event field in a fixture
+    start({ ts: 5000, run: 5 }),
+    end({ ts: 6000, run: 5, result: "no_change" }),
+  ]);
+  const r = await cli(repo, "history", "--last", "--result", "problems");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^feature run #4 /);
+});
+
 test("--last --result with no matching run: not-found line at exit 0, null under --json", async () => {
   const repo = makeRepo();
   await initProject(repo, "run last result miss");

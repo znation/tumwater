@@ -74,7 +74,7 @@ async function runTrailCommand(root: string, args: string[]): Promise<void> {
   const { rest: unmodeled, raw: model } = parseModelFlag(unresulted, HISTORY_MODEL_VALUE_ERROR);
   const { positionals, rest } = peelPositionals(unmodeled);
   rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG, PATCH_FLAG, TRANSCRIPT_FLAG, PROMPT_FLAG, { names: ["--grep"] }, { names: ["--result"] }, { names: ["--model"] }]);
-  if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${RUN_DETAIL_USAGE}`);
+  if ((positionals.length < 1 && !rest.includes("--last")) || positionals.length > 2) fail(`usage: ${RUN_DETAIL_USAGE}`);
   await requireReadyRepo(root);
   await cmdRunDetail(root, positionals, rest.includes("--json"), {
     last: rest.includes("--last"),

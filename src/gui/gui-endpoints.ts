@@ -484,7 +484,7 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
     const modelFilter = models.length ? models : null;
     run = newestRunNumber(root, role as string, classFilter, modelFilter);
     if (run === null) {
-      sendJson(res, 404, { error: runNotFoundLastMessage(role as string, classFilter, modelFilter) });
+      sendJson(res, 404, { error: runNotFoundLastMessage(role, classFilter, modelFilter) });
       return;
     }
   }

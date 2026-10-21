@@ -62,13 +62,14 @@ export function parseDoctorChecks(positionals: string[]): DoctorCheckName[] | un
 const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--until", "--grep", "--result", "--role", "--model", "--by"];
 
 /** True when `history`'s args are the one-run trail form (`history <role> <n>`, `history
- * <role> --last`): a token that is neither a flag nor the value of a listing-form valued flag.
- * A valued flag's value is skipped by position, so `--grep -x` stays a listing. */
+ * <role> --last`, bare `history --last`): `--last`, or a token that is neither a flag nor the
+ * value of a listing-form valued flag. A valued flag's value is skipped by position, so
+ * `--grep -x` stays a listing. */
 export function historyTrailForm(args: string[]): boolean {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
     if (HISTORY_LISTING_VALUED_FLAGS.includes(arg)) i++;
-    else if (!arg.startsWith("-")) return true;
+    else if (!arg.startsWith("-") || arg === "--last") return true;
   }
   return false;
 }
