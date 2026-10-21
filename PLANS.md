@@ -87,4 +87,32 @@ Behavior, decided:
 - Requests without `untilMs` answer exactly as before: the existing handleReport and handleHistory tests pass unchanged.
 - `npm run test:gate` passes.
 
+### Dashboard event-log window: `GET /api/logs?sinceMs=` serves the event feed of a trailing time window, the twin of `tumwater logs --since <duration>` (planned 2026-10-20 by the plan role; independent of every eligible plan. Touches src/gui/gui-endpoints.ts `handleLogs` + test/gui-endpoints.test.ts. "Dashboard API window end" edits `handleReport`/`handleHistory` in the same file and src/gui/gui-args.ts; this plan edits neither of those functions nor gui-args.ts)
+
+**Goal.** `tumwater logs --since 2h` (`cmdLogs`, src/cli/log-commands.ts) prints every event of a time window through `readEventsSince` (src/events/event-window.ts), with the sparse-window note when the log does not reach back that far. The dashboard's event search, `handleLogs` (src/gui/gui-endpoints.ts), only knows `?n=` — the newest N events, clamped to `LOGS_SEARCH_MAX_EVENTS` — so "which events matched `land` in the last 6h" cannot be asked of the server, and a busy log's 6h can exceed any count. `/api/history` already has the window shape (`?sinceMs=`, `sinceMsQuery`, `LOGS_SINCE_MAX_MS`, `covered`/`note`); `/api/logs` gets the same one.
+
+Behavior, decided:
+- `?sinceMs=S` answers `{ events, covered, note }`: `events` are `readEventsSince(root, S).events` filtered by the existing `role` and `grep` rules, oldest-first as `eventFeedItem` objects; `covered` is `readEventsSince`'s `covered`; `note` is `SPARSE_WINDOW_NOTE` when `covered` is false, else `""` — the `/api/history` window shape.
+- `sinceMs` with `n` is a 400 with `handleHistory`'s wording: `"sinceMs cannot be combined with n (a count and a window are rival shapes)"` (the CLI's "-n and --since are rival shapes").
+- `sinceMs` parses through `sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) => \`sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})\`)` — the same call `handleHistory` makes, so the cap and wording match `logs --since`/`history --since`.
+- No row cap in the window branch: `logs --since` prints the whole window, and `LOGS_SINCE_MAX_MS` already bounds its span.
+- Without `sinceMs`, the response is unchanged (`{ events }`, n-scanned).
+- No dashboard client change (src/ui/gui/gui-client-feed.ts keeps calling `?n=`); a window picker for the feed is a later plan. `untilMs` on this endpoint is also a later plan, once "Dashboard API window end" has landed `untilMsQuery`.
+
+**Approach.** src/gui/gui-endpoints.ts:
+1. Import `readEventsSince` from ../events/event-window.js (extend an existing event-window import line) and `sinceMsQuery` from ./gui-args.js if not already imported (`handleHistory` uses it, so it is; verify with grep). `humanSeconds` is already in scope (used by `handleHistory`).
+2. In `handleLogs`, read `role`, `grep` and `needle` first, and build `const keep = (e: HarnessEvent) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle));` (import the `HarnessEvent` type if it is not in scope). Then, before the `n` parse: `if (q.get("sinceMs") !== null) { if (q.get("n") !== null) { badRequest(...); return; } const sinceMs = sinceMsQuery(...); if (sinceMs === null) return; const { events, covered } = readEventsSince(root, sinceMs); sendJson(res, 200, { events: events.filter(keep).map(eventFeedItem), covered, note: covered ? "" : SPARSE_WINDOW_NOTE }); return; }`. The existing n branch then filters with `keep`, unchanged in behavior.
+3. Update the doc comment's first line to `GET /api/logs?n=N|sinceMs=S[&grep=<text>][&role=<id>]` and add a sentence describing the window branch (readEventsSince, the rival-shape 400, the LOGS_SINCE_MAX_MS cap, covered/note as /api/history's window answers).
+
+**Tests** (test/gui-endpoints.test.ts, using `serveLogs` and `writeEvents`):
+- New "handleLogs ?sinceMs serves the trailing window's events, composing grep and role". Seed with `ts: Date.now() - …`: a feature `run_end` summary "landed old" at now−3h, a feature `run_end` summary "landed new" at now−30min, a bugfix `run_end` summary "landed other" at now−20min. `?sinceMs=3600000` → status 200, two events (the 30min and 20min ones, oldest-first), `covered === true`, `note === ""`. `?sinceMs=3600000&role=feature` → only the 30min one. `?sinceMs=3600000&grep=other` → only the bugfix one. Assert on each item's `ts` (`eventFeedItem` returns `{ ts, source, type, result?, message }`).
+- New "handleLogs refuses sinceMs with n, a malformed sinceMs, and one over the cap". `?sinceMs=3600000&n=5` → 400 matching /rival shapes/; `?sinceMs=abc` and `?sinceMs=0` → 400; `?sinceMs=${LOGS_SINCE_MAX_MS + 1}` → 400 matching /capped at/ (import `LOGS_SINCE_MAX_MS` from ../src/events/event-window.js if the file does not already).
+- The existing handleLogs tests pass unchanged (the n branch still answers `{ events }` only).
+
+**Acceptance criteria.**
+- `/api/logs?sinceMs=S[&role=][&grep=]` answers `{ events, covered, note }` holding exactly the role/grep-matching events with `ts >= now − S`, oldest-first as feed items.
+- `sinceMs` with `n`, a non-positive or malformed `sinceMs`, or one above `LOGS_SINCE_MAX_MS` is a 400.
+- Requests without `sinceMs` answer as before; the existing `handleLogs` tests pass unchanged.
+- `npm run test:gate` passes.
+
 ## Done
