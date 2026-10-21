@@ -1800,6 +1800,11 @@ test("handleDiff with ?overlaps serves collectChangeOverlaps's document, scoped 
   assert.equal(both.captured.status, 200);
   assert.deepEqual(both.data, scopeChangeOverlaps(await collectChangeOverlaps(root), ["feature", "bugfix"]));
   assert.deepEqual((both.data as unknown as { overlaps: { path: string }[] }).overlaps.map((o) => o.path), ["notes.txt", "solo.md"]);
+  const byPath = await serveDiff(root, "?overlaps=1&path=notes.txt");
+  assert.equal(byPath.captured.status, 200);
+  assert.deepEqual((byPath.data as unknown as { overlaps: unknown }).overlaps, [{ path: "notes.txt", roles: ["feature", "qa"] }]);
+  const none = await serveDiff(root, "?overlaps=1&role=bugfix&path=notes.txt");
+  assert.deepEqual((none.data as unknown as { overlaps: unknown }).overlaps, []);
   const ghost = await serveDiff(root, "?overlaps=1&role=ghost");
   assert.equal(ghost.captured.status, 400);
   assert.match((ghost.data as { error: string }).error, /unknown role "ghost"/);
@@ -1837,7 +1842,7 @@ test("handleDiff with ?role&path serves the path-scoped view, matching collectRo
   assert.deepEqual(md.dirtyFiles, []);
 });
 
-test("handleDiff refuses path without role, with overlaps, and outside the repo", async () => {
+test("handleDiff refuses path without role and outside the repo", async () => {
   const root = makeRepo();
   await initProject(root, "gui diff path refusals");
   await ensureWorktree(root, "feature", "main");
@@ -1847,7 +1852,7 @@ test("handleDiff refuses path without role, with overlaps, and outside the repo"
     return (r.data as { error: string }).error;
   };
   assert.match(await err("?path=notes.txt"), /path needs role/);
-  assert.match(await err("?overlaps=1&path=notes.txt"), /overlaps reads every file; drop path/);
+  assert.match(await err("?overlaps=1&path=..%2Fx"), /repo-relative path/);
   for (const bad of ["../x", "/etc", "."]) {
     assert.match(await err("?role=feature&path=" + encodeURIComponent(bad)), /repo-relative path/);
   }

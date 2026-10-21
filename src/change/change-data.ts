@@ -253,6 +253,12 @@ export function scopeChangeOverlaps(view: ChangeOverlapsView, roles: string[]): 
   return { ...view, overlaps: view.overlaps.filter((o) => o.roles.some((r) => roles.includes(r))) };
 }
 
+/** Keep only the overlaps at or under `path` (normalized), by the `inPath` rule
+ * `diff --role --path` uses. */
+export function scopeChangeOverlapsToPath(view: ChangeOverlapsView, path: string): ChangeOverlapsView {
+  return { ...view, overlaps: view.overlaps.filter((o) => inPath(o.path, path)) };
+}
+
 /** Collect the files two or more roles hold, committed ahead of main or uncommitted. Computes
  * file names only — no patch — and skips a role with no usable checkout. */
 export async function collectChangeOverlaps(root: string): Promise<ChangeOverlapsView> {

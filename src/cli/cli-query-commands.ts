@@ -15,7 +15,7 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
+import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
@@ -123,8 +123,8 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
 }
 
 /** `tumwater diff`: one line per role holding pending work, the files two or more roles touch
- * with `--overlaps` (`--role` keeps those a listed role holds), or the full per-role view of each
- * role listed with `--role <id>[,<id>...]`. */
+ * with `--overlaps` (`--role` keeps those a listed role holds, `--path` those at or under it),
+ * or the full per-role view of each role listed with `--role <id>[,<id>...]`. */
 export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
   // (no git, not a repository, no tumwater.json, no commits) has no team to ask about,
@@ -138,12 +138,17 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   rejectRepeatFlag(args.filter((a) => a === "--path").length > 1, "--path");
   if (args.includes("--overlaps")) {
     if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
-    if (args.includes("--path")) fail("diff --overlaps reads every file; drop --path");
     // Overlaps are computed across every role; --role only filters which entries print.
     const scope = parseRoleListScope(root, args);
-    const view = await collectChangeOverlaps(root);
-    if (scope === null) sayJsonOrRender(args, view, renderChangeOverlaps);
-    else sayJsonOrRender(args, scopeChangeOverlaps(view, scope), (v) => renderChangeOverlaps(v, scope));
+    const path = diffPathArg(args);
+    let view = await collectChangeOverlaps(root);
+    if (scope === null && path === undefined) {
+      sayJsonOrRender(args, view, renderChangeOverlaps);
+      return;
+    }
+    if (scope !== null) view = scopeChangeOverlaps(view, scope);
+    if (path !== undefined) view = scopeChangeOverlapsToPath(view, path);
+    sayJsonOrRender(args, view, (v) => renderChangeOverlaps(v, scope ?? undefined, path));
     return;
   }
   // Absent --role is the team-wide form: one line per role holding pending work

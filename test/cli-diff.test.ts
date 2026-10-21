@@ -397,6 +397,40 @@ test("diff --path composes with --stat, --json and a comma list", async () => {
   assert.ok(list.stdout.includes("feature: ") && list.stdout.includes("bugfix"));
 });
 
+test("diff --overlaps --path keeps the shared files at or under the path", async () => {
+  const { repo, wt } = await seededFeatureRepo();
+  fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(wt, "docs/b.md"), "f\n");
+  commitIn(wt, "feature docs/b.md");
+  const cleanWt = await ensureWorktree(repo, "clean", "main");
+  const bugWt = await ensureWorktree(repo, "bugfix", "main");
+  fs.mkdirSync(path.join(cleanWt, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(cleanWt, "widget.md"), "# c\n");
+  fs.writeFileSync(path.join(cleanWt, "docs/a.md"), "c\n");
+  commitIn(cleanWt, "clean work");
+  fs.mkdirSync(path.join(bugWt, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(bugWt, "docs/a.md"), "b\n");
+  fs.writeFileSync(path.join(bugWt, "docs/b.md"), "b\n");
+  commitIn(bugWt, "bugfix work");
+  const out = async (...a: string[]): Promise<string> => (await cli(repo, "diff", "--overlaps", ...a)).stdout.trim();
+  const docs = "docs/a.md: bugfix, clean\ndocs/b.md: feature, bugfix";
+  assert.equal(await out("--path", "docs"), docs);
+  assert.equal(await out("--path", "docs/a.md"), "docs/a.md: bugfix, clean");
+  assert.equal(await out("--path", "./docs/"), docs);
+  assert.equal(await out("--path", "widget.md", "--role", "bugfix"),
+    "no file under widget.md held by bugfix is touched by another pending change");
+  assert.equal(await out("--path", "src"), "no file under src is touched by two pending changes");
+  const json = JSON.parse(await out("--path", "docs", "--json"));
+  assert.deepEqual(json, {
+    mainBranch: "main",
+    state: "ready",
+    overlaps: [
+      { path: "docs/a.md", roles: ["bugfix", "clean"] },
+      { path: "docs/b.md", roles: ["feature", "bugfix"] },
+    ],
+  });
+});
+
 test("diff --path rejects misuse with its wording", async () => {
   const { repo } = await scopedRepo();
   const bad = async (msg: string, ...args: string[]): Promise<void> => {
@@ -405,7 +439,8 @@ test("diff --path rejects misuse with its wording", async () => {
     assert.ok((r.stderr + r.stdout).includes(msg), `${args.join(" ")}: ${r.stderr}${r.stdout}`);
   };
   await bad("diff --path needs --role <id>", "--path", "widget.md");
-  await bad("diff --overlaps reads every file; drop --path", "--overlaps", "--path", "widget.md");
+  await bad("diff --path takes a repo-relative path", "--overlaps", "--path", "../x");
+  await bad("diff --overlaps prints paths, not patches", "--overlaps", "--stat");
   const rel = "diff --path takes a repo-relative path";
   await bad(rel, "--role", "feature", "--path", "/abs/x");
   await bad(rel, "--role", "feature", "--path", "../x");

@@ -70,9 +70,15 @@ export function renderRoleChanges(view: RoleChangesView): string {
 
 /** Render the overlaps view as the operator-facing text `tumwater diff --overlaps` prints:
  * one `<path>: <role>, <role>` line per shared file. `scope` is the `--role` list the view was
- * narrowed to; it only changes the empty-list wording. */
-export function renderChangeOverlaps(view: ChangeOverlapsView, scope?: string[]): string {
+ * narrowed to and `path` the `--path` it was narrowed to; they only change the empty-list
+ * wording. */
+export function renderChangeOverlaps(view: ChangeOverlapsView, scope?: string[], path?: string): string {
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
+  if (view.overlaps.length === 0 && path !== undefined) {
+    return scope !== undefined
+      ? `no file under ${path} held by ${scope.join(", ")} is touched by another pending change`
+      : `no file under ${path} is touched by two pending changes`;
+  }
   if (view.overlaps.length === 0 && scope !== undefined) {
     return `no file held by ${scope.join(", ")} is touched by another pending change`;
   }
