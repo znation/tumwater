@@ -219,6 +219,32 @@ test("handleFailures serves the windowed digest as { markdown } when ?sinceMs is
   assert.equal((await serveFailures(root, "?sinceMs=3600000&role=feature,bogus")).captured.status, 400);
 });
 
+test("handleFailures' ?untilMs ends the since window that long ago", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    JSON.stringify({ ts: now - 30 * 60_000, loop: "bugfix", type: "run_end", run: 1, result: "error", error: "recent boom" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: now - 3 * 3600_000, loop: "feature", type: "run_end", run: 1, result: "error", error: "old boom" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const ok = await serveFailures(root, "?sinceMs=14400000&untilMs=3600000");
+  assert.equal(ok.captured.status, 200);
+  const md = (ok.data as { markdown: string }).markdown;
+  assert.match(md, /window: 4h to 1h ago/);
+  assert.match(md, /feature/);
+  assert.doesNotMatch(md, /bugfix/);
+  const cases: [string, RegExp][] = [
+    ["?untilMs=3600000", /requires sinceMs/],
+    ["?days=7&untilMs=3600000", /requires sinceMs/],
+    ["?sinceMs=3600000&untilMs=3600000", /must be shorter than sinceMs/],
+    ["?sinceMs=3600000&untilMs=abc", /untilMs/],
+  ];
+  for (const [query, err] of cases) {
+    const bad = await serveFailures(root, query);
+    assert.equal(bad.captured.status, 400, query);
+    assert.match(JSON.stringify(bad.data), err, query);
+  }
+});
+
 // ---- POST /api/restart: the build-stale alert's refresh button ----
 // handleRestart reads a request body (the shared readJsonObject front half), so a fake req is
 // an EventEmitter that emits the body then ends — the same shape readBody's callbacks expect.
@@ -446,6 +472,36 @@ test("handleLogs ?sinceMs serves the trailing window's events, composing grep an
   assert.deepEqual((feature.data as Answer).events.map((e) => e.ts), [now - 30 * 60_000]);
   const other = await serveLogs(root, "?sinceMs=3600000&grep=other");
   assert.deepEqual((other.data as Answer).events.map((e) => e.ts), [now - 20 * 60_000]);
+});
+
+test("handleLogs' ?untilMs drops the window's newer events", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 3 * 3600_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "landed old" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed", summary: "landed new" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60_000, loop: "bugfix", type: "run_end", run: 1, result: "changed", summary: "landed other" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 5 * 60_000, loop: "bugfix", type: "run_end", run: 2, result: "changed", summary: "landed newest" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  interface Answer { events: { ts: number }[]; covered: boolean; note: string }
+  const all = await serveLogs(root, "?sinceMs=3600000&untilMs=600000");
+  const answer = all.data as Answer;
+  assert.equal(all.captured.status, 200);
+  assert.deepEqual(answer.events.map((e) => e.ts), [now - 30 * 60_000, now - 20 * 60_000]);
+  assert.equal(answer.covered, true);
+  assert.equal(answer.note, "");
+  const bugfix = await serveLogs(root, "?sinceMs=3600000&untilMs=600000&role=bugfix");
+  assert.deepEqual((bugfix.data as Answer).events.map((e) => e.ts), [now - 20 * 60_000]);
+  const cases: [string, RegExp][] = [
+    ["?untilMs=600000", /requires sinceMs/],
+    ["?n=5&untilMs=600000", /requires sinceMs/],
+    ["?sinceMs=600000&untilMs=600000", /must be shorter than sinceMs/],
+  ];
+  for (const [query, err] of cases) {
+    const bad = await serveLogs(root, query);
+    assert.equal(bad.captured.status, 400, query);
+    assert.match(JSON.stringify(bad.data), err, query);
+  }
 });
 
 test("handleLogs refuses sinceMs with n, a malformed sinceMs, and one over the cap", async () => {

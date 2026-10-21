@@ -235,7 +235,7 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
 }
 
 /** Handle GET /api/failures?days=N[&role=<id>[,<id>...]] or
- * /api/failures?sinceMs=<ms>[&role=<id>[,<id>...]]: the
+ * /api/failures?sinceMs=<ms>[&untilMs=<ms>][&role=<id>[,<id>...]]: the
  * same bounded Markdown failure digest the selfcheck role feeds on and `tumwater report
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
@@ -246,8 +246,10 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
 export function handleFailures(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const scope = reportScope(q, res, root);
   if (scope === null) return;
+  const untilMs = untilMsQuery(q, res, scope.sinceMs);
+  if (untilMs === null) return;
   if (scope.sinceMs !== undefined) {
-    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.roles)) });
+    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.roles, untilMs)) });
     return;
   }
   sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)) });
@@ -327,15 +329,15 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
 const LOGS_SEARCH_EVENTS = 500;
 const LOGS_SEARCH_MAX_EVENTS = 5000;
 
-/** Handle GET /api/logs?n=N|sinceMs=S[&grep=<text>][&role=<id>]: a slice of the raw event log
- * scanned from its newest end, filtered with the CLI's own rules and shaped as the activity feed's
- * items. `n` is optional (absent → LOGS_SEARCH_EVENTS) and clamps to [1, LOGS_SEARCH_MAX_EVENTS]
- * after intQuery's non-negative parse (an explicit count that does not parse is a 400, the
- * handleHistory discipline); it bounds the scanned tail, so a matching event older than the
- * last n events is absent — the same scan-then-filter rule `tumwater logs -n N --grep` applies.
- * grep (absent or empty filters nothing) matches through eventMatchesGrep, and role is a
- * filter, not a target: an id with no events legitimately yields an empty list, so it does not
- * validate through rejectBadRole (the handleHistory rule). The matched events answer
+/** Handle GET /api/logs?n=N|sinceMs=S[&untilMs=U][&grep=<text>][&role=<id>]: a slice of the raw
+ * event log scanned from its newest end, filtered with the CLI's own rules and shaped as the
+ * activity feed's items. `n` is optional (absent → LOGS_SEARCH_EVENTS) and clamps to [1,
+ * LOGS_SEARCH_MAX_EVENTS] after intQuery's non-negative parse (an explicit count that does not
+ * parse is a 400, the handleHistory discipline); it bounds the scanned tail, so a matching event
+ * older than the last n events is absent — the same scan-then-filter rule `tumwater logs -n N
+ * --grep` applies. grep (absent or empty filters nothing) matches through eventMatchesGrep, and
+ * role is a filter, not a target: an id with no events legitimately yields an empty list, so it
+ * does not validate through rejectBadRole (the handleHistory rule). The matched events answer
  * oldest-first as eventFeedItem objects — the same shape the status payload's eventItems carry.
  * Reads the tail through readEvents' stat-keyed cache (no covered byte end, unlike the CLI's
  * follow), so a dashboard search that repeats on an unchanged log — the debounced filter fires
@@ -344,7 +346,8 @@ const LOGS_SEARCH_MAX_EVENTS = 5000;
  * `logs --since` reader) as { events, covered, note }, the /api/history window shape: sinceMs
  * with n is a 400 (rival shapes), sinceMs parses and is capped through sinceMsQuery at
  * LOGS_SINCE_MAX_MS, the window is not row-capped, and note is SPARSE_WINDOW_NOTE when the log
- * does not reach back that far.
+ * does not reach back that far; untilMs (untilMsQuery) drops the events newer than now −
+ * untilMs, and without sinceMs it is a 400.
  * Reads files directly, so it works whether or not the team is running. */
 export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const role = q.get("role") || null; // "" and absent both read all roles
@@ -360,7 +363,10 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
     const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
       `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
     if (sinceMs === null) return;
-    const { events, covered } = readEventsSince(root, sinceMs);
+    const untilMs = untilMsQuery(q, res, sinceMs);
+    if (untilMs === null) return;
+    const { cutoff, events: windowEvents, covered } = readEventsSince(root, sinceMs);
+    const events = untilMs === undefined ? windowEvents : windowEvents.filter((e) => e.ts < cutoff + sinceMs - untilMs);
     sendJson(res, 200, {
       events: events.filter(keep).map(eventFeedItem),
       covered,
@@ -368,6 +374,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
     });
     return;
   }
+  if (untilMsQuery(q, res, undefined) === null) return; // a count has no window end to move
   const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
   if (parsed === null) return;
   const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);

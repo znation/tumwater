@@ -176,10 +176,10 @@ export function sinceMsQuery(
   return sinceMs;
 }
 
-/** Parse the report and history endpoints' optional `?untilMs=` window end — how long ago a
- * `sinceMs` window stops, the twin of the CLI's `--until`. Absent → undefined (the window ends
- * now). Present without a `sinceMs` → 400 (the CLI's "--until requires --since"), so the
- * count and day shapes never ignore it silently; otherwise the value rides intQuery's
+/** Parse the report, failures, history and logs endpoints' optional `?untilMs=` window end — how
+ * long ago a `sinceMs` window stops, the twin of the CLI's `--until`. Absent → undefined (the
+ * window ends now). Present without a `sinceMs` → 400 (the CLI's "--until requires --since"),
+ * so the count and day shapes never ignore it silently; otherwise the value rides intQuery's
  * positive-integer rule, and one not shorter than `sinceMs` is a 400 (the CLI's "must be
  * shorter than --since"; sinceMs is already capped, so this bounds untilMs too). Returns the
  * parsed length, undefined when absent, or null once the 400 is sent. */
