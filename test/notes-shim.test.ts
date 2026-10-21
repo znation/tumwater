@@ -40,6 +40,25 @@ test("a second call with unchanged content leaves the shim's mtime alone", () =>
   assert.equal(fs.statSync(shim).mtimeMs, before, "identical content is not rewritten");
 });
 
+test("a shim runs even when its recorded node binary was deleted (a node upgrade under the running team)", () => {
+  const root = tmpdir();
+  const notesPath = path.join(root, "feature.md");
+  fs.writeFileSync(notesPath, "still there\n");
+  // The old keg an upgrade removed: `process.execPath` names a file that no longer exists.
+  const deadNode = path.join(root, "Cellar", "node", "0.0.0", "bin", "node");
+  assert.equal(fs.existsSync(deadNode), false, "the fake deleted binary is gone");
+
+  const dir = ensureNotesShim(root, deadNode);
+  const shim = path.join(dir, NOTES_SHIM_NAME);
+  assert.match(fs.readFileSync(shim, "utf8"), /\] \|\| n=node/, "the shim falls back to PATH's node");
+  const res = spawnSync(shim, ["show"], {
+    env: { ...process.env, TUMWATER_NOTES_PATH: notesPath },
+    encoding: "utf8",
+  });
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout, "still there\n", "the fallback node runs the notes cli");
+});
+
 test("a different dist path rewrites the shim", () => {
   const root = tmpdir();
   const dir = ensureNotesShim(root);

@@ -9,6 +9,7 @@ import {
   checkBuild,
   checkBuildCheck,
   checkDurationPhrase,
+  checkExecPath,
   checkClaudeTranscripts,
   checkDiskSpace,
   checkFunes,
@@ -97,6 +98,16 @@ test("checkGitBinary resolves git from the given PATH and fails with the shared 
 
   const missing = checkGitBinary("");
   assert.deepEqual(missing, { level: "fail", detail: GIT_MISSING_MESSAGE });
+});
+
+test("checkExecPath warns when the running team's node binary no longer exists", () => {
+  const live = checkExecPath(process.execPath);
+  assert.equal(live.level, "ok");
+
+  const dead = path.join(tmpdir("doctor-dead-node-"), "bin", "node");
+  const warned = checkExecPath(dead);
+  assert.equal(warned.level, "warn");
+  assert.match(warned.detail, /node was upgraded under it/);
 });
 
 test("checkBackendBinary resolves the default pi from the given PATH and fails with the install hint when absent", () => {

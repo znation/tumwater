@@ -25,6 +25,7 @@ import {
   ONCE_FAILED_EXIT_CODE,
 } from "../src/process/supervisor.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { liveNodeBin } from "../src/process/node-bin.js";
 
 // The respawn loop behind `tumwater start` (src/process/supervisor.ts), driven with a scripted
 // child so the policy is pinned without spawning processes: respawn on the restart code, exit with
@@ -349,13 +350,35 @@ test("spawnStartChild without a script path fails fast with code 1 and spawns no
 test("spawnStartChild resolves with code 1 when the child cannot be spawned", async () => {
   const dir = tmpdir();
   const originalExecPath = process.execPath;
+  const originalPath = process.env.PATH;
   try {
-    // A spawn that never reaches a live process (here: an execPath that does not exist) emits
-    // 'error' instead of 'exit'. The promise must settle — one left pending would freeze
-    // `tumwater start` before its first run, with nothing on screen to explain it.
+    // A spawn that never reaches a live process emits 'error' instead of 'exit'. The promise
+    // must settle — one left pending would freeze `tumwater start` before its first run. A
+    // missing execPath alone no longer errors: the deleted-node fallback (liveNodeBin)
+    // respawns PATH's node instead, so an empty PATH drives the error — neither the recorded
+    // binary nor the fallback resolves.
     process.execPath = path.join(dir, "missing-node-binary");
+    process.env.PATH = path.join(dir, "empty-path");
     const exit = await within(spawnStartChild(new AbortController().signal), 15_000);
     assert.deepEqual(exit, { code: 1, signal: null }, "a failed spawn reads as failure, not success");
+  } finally {
+    process.execPath = originalExecPath;
+    process.env.PATH = originalPath;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("spawnStartChild falls back to PATH's node when the recorded execPath is deleted", async () => {
+  const dir = tmpdir();
+  const originalExecPath = process.execPath;
+  try {
+    await withArgv1(probeScript(dir, null, "process.exit(0);\n"), async () => {
+      // The old keg an upgrade removed while the team stays up: `process.execPath` names a
+      // file that no longer exists, so liveNodeBin spawns PATH's node instead.
+      process.execPath = path.join(dir, "missing-node-binary");
+      const exit = await within(spawnStartChild(new AbortController().signal), 15_000);
+      assert.deepEqual(exit, { code: 0, signal: null }, "the deleted execPath falls back to PATH's node");
+    });
   } finally {
     process.execPath = originalExecPath;
     fs.rmSync(dir, { recursive: true, force: true });
@@ -575,4 +598,11 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     } catch { /* the grandchild never started or is already gone */ }
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("liveNodeBin returns execPath while it exists, else falls back to PATH's node (an upgrade deleted the keg)", () => {
+  assert.equal(liveNodeBin(process.execPath), process.execPath, "a live execPath is used as-is");
+  const deadNode = path.join(tmpdir(), "deleted-keg", "bin", "node");
+  assert.equal(fs.existsSync(deadNode), false, "the fake deleted binary is gone");
+  assert.equal(liveNodeBin(deadNode), "node", "a deleted execPath falls back to PATH's node");
 });

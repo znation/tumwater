@@ -3,6 +3,7 @@ import { TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
+import { liveNodeBin } from "./node-bin.js";
 
 /** The respawn loop behind `tumwater start`. The command runs as two processes: this supervisor
  * (the one the operator started, holding the terminal) and a child that runs the orchestrator.
@@ -292,7 +293,7 @@ function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS
       resolve({ code: 1, signal: null });
       return;
     }
-    const child = spawn(process.execPath, [script, ...commandArgs], {
+    const child = spawn(liveNodeBin(), [script, ...commandArgs], {
       stdio,
       env: childEnv(env),
     });

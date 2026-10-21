@@ -4,6 +4,7 @@ import { type BuildInfo, isSelfHosted, readBuildInfo } from "../build/build-info
 import { RESTART_EXIT_CODE } from "./redeploy-policy.js";
 import { childEnv } from "../process/process.js";
 import { startParentDeathWatch } from "../process/supervisor.js";
+import { liveNodeBin } from "../process/node-bin.js";
 
 /** Auto-reload for the user-launched dashboards (`tumwater tui`, `tumwater gui`).
  *
@@ -101,7 +102,7 @@ export function reexecSelf(spawnImpl: ReloadSpawn = spawn): void {
     stdio: "inherit" as const,
     env: childEnv({ [DASHBOARD_CHILD_ENV]: String(process.pid) }),
   };
-  const startChild = (): ReloadChild => spawnImpl(process.execPath, process.argv.slice(1), options);
+  const startChild = (): ReloadChild => spawnImpl(liveNodeBin(), process.argv.slice(1), options);
   const supervise = (): void => {
     const child = startChild();
     child.on("exit", (code) => {

@@ -24,10 +24,16 @@ export const NOTES_SHIM_NAME = "tumwater-notes";
  * The shim is written atomically with mode 0755, only when its content differs from what is
  * already there (a redeploy that changes `<dist>` rewrites it). Never throws: a failure to
  * write is the caller's to absorb — run-agent logs one warning and runs without the shim. */
-export function ensureNotesShim(root: string): string {
+export function ensureNotesShim(root: string, execPath: string = process.execPath): string {
   const dir = notesShimDir(root);
   const target = path.join(dir, NOTES_SHIM_NAME);
-  const content = `#!/bin/sh\nexec "${process.execPath}" "${path.join(distDir(), "src", "notes-cli.js")}" "$@"\n`;
+  // Prefer the recorded node binary, falling back to `node` on PATH when it is gone — a
+  // Homebrew node upgrade under the running team deletes the old keg while the team keeps
+  // running on it, so `process.execPath` names a file that no longer exists (BUGS.md
+  // 2026-10-21). The `[ -x "$n" ]` check answers at run time, so a shim written long ago
+  // still survives an upgrade, and the running orchestrator's repeated rewrites stop
+  // restoring the broken path.
+  const content = `#!/bin/sh\nn="${execPath}"; [ -x "$n" ] || n=node; exec "$n" "${path.join(distDir(), "src", "notes-cli.js")}" "$@"\n`;
   const needsWrite = readTextOrNull(target) !== content; // absent or unreadable — write it
   if (needsWrite) {
     writeTextAtomic(target, content);

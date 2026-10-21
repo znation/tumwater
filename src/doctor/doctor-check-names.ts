@@ -5,6 +5,7 @@
  * are the two conditional rows (a named one whose check returns null leaves no row). */
 export const DOCTOR_CHECK_NAMES = [
   "node",
+  "node binary",
   "git binary",
   "repo",
   "init",

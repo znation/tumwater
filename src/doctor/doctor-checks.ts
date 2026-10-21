@@ -138,6 +138,19 @@ export function checkGitBinary(pathEnv: string = envPath()): CheckOutcome {
   return okOutcome(found);
 }
 
+/** The running team's own node binary is still on disk — a Homebrew node upgrade under the
+ * team deletes the old keg while the team keeps running on it, leaving `process.execPath`
+ * naming a file that no longer exists (BUGS.md 2026-10-21). Every harness spawn that does not
+ * fall back to PATH's `node` errors until the operator restarts the team on the new node, so
+ * doctor surfaces it as a warn. Takes an explicit path so tests exercise the missing branch
+ * without touching this process. */
+export function checkExecPath(execPath: string = process.execPath): CheckOutcome {
+  if (fs.existsSync(execPath)) return okOutcome(execPath);
+  return warnOutcome(
+    `the running team's node binary ${execPath} no longer exists — node was upgraded under it; restart the team on the new node`,
+  );
+}
+
 /** Repo ready — the git/git.ts predicates in requireReadyRepo's order, so doctor and the
  * readiness gate cannot drift: not a git repo → no commits yet → detached HEAD. Reports the
  * resolved toplevel (not the cwd — doctor must say where .tumwater/ lives) and the branch the

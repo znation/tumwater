@@ -19,6 +19,7 @@ import {
   checkBuild,
   checkBuildCheck,
   checkClaudeTranscripts,
+  checkExecPath,
   checkFunes,
   checkGitBinary,
   checkConfigKeyNames,
@@ -107,6 +108,7 @@ export async function runDoctor(
     run: () => CheckOutcome | null | Promise<CheckOutcome | null>;
   }> = [
     { name: "node", run: () => checkNodeVersion() },
+    { name: "node binary", run: () => checkExecPath() },
     { name: "git binary", run: () => checkGitBinary(pathEnv) },
     { name: "repo", run: () => checkRepo(root, config) },
     { name: "init", run: () => checkInit(root) },

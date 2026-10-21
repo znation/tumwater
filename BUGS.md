@@ -82,25 +82,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
   - The pre-queue self-check (src/run/stage-backlog-checks.ts, beside `waitingNoteFinding`) flags a newly added Refused note whose reason quotes another entry's Refused or Needs note, or names a different series part as its ground. The finding: "this refusal cites <other entry>'s hold, not a problem with this entry: implement this entry or pick another, but do not refuse it".
   - Tests in test/stage-check*.test.ts: the `b9664a461` note is flagged; a refusal naming only this entry's own conflict with PRINCIPLES.md is not.
 
-### A Homebrew node upgrade while the team runs leaves `process.execPath` naming a deleted binary: the notes shim has failed 150 times since, and the supervisor's next respawn (a self-redeploy) and the dashboard reload spawn that same missing file (found by operator session 2026-10-21 from .tumwater/bin/tumwater-notes and the plan role's notes)
-
-- **Symptom:** at 02:31 on 2026-10-21 Homebrew replaced node 26.11.1 with 26.12.0 and removed `/opt/homebrew/Cellar/node/26.11.1`.
-  - The supervisor (`node dist/src/cli.js run --gui`, started 10-20 23:57) and its `run` and `gui` children (started 01:56) still run on the deleted binary.
-  - `.tumwater/bin/tumwater-notes` reads `exec "/opt/homebrew/Cellar/node/26.11.1/bin/node" ".../notes-cli.js" "$@"`.
-  - Since the upgrade, 13 role logs hold 150 `26.11.1/bin/node: No such file or directory` results from `tumwater-notes write`. Roles that saved a note found the workaround themselves: the plan role's notes tell its next run to call `/opt/homebrew/bin/node …/notes-cli.js write` directly. The rest lose their note or spend turns on retries.
-- **Reproduce:** `cat .tumwater/bin/tumwater-notes` and `ls /opt/homebrew/Cellar/node/` on the live host. Offline: make a node at a temporary path, start a run under it, delete that node, and run the shim.
-- **Cause:** three spawns embed or exec `process.execPath`, which is the running process's resolved, versioned node path, so it outlives an upgrade only until the old keg is removed:
-  - `ensureNotesShim` (src/agent/notes-shim.ts:30) writes it into the shim. The shim is rewritten only when its content differs, and a running orchestrator keeps producing the same stale content, so the broken path is restored on every run.
-  - `spawnSupervised` (src/process/supervisor.ts:295) respawns the generation after `RESTART_EXIT_CODE`, so the next self-redeploy fails to start its new generation. A `build_stale` was already logged at 02:02.
-  - `reexecSelf` (src/redeploy/self-reload.ts:104) restarts the dashboard.
-  - `compileStaged` (src/build/build-stage.ts:121) already handles the same failure: it falls back to tsc's shebang, which resolves a live node through PATH (BUGS-FIXED.md, the 2026-09-29 `tsc exited ENOENT` cluster). The other three never got that fallback.
-- **Expected / fix sketch:**
-  - The shim prefers the recorded binary, but falls back to `node` on PATH when it is not executable: `n="<execPath>"; [ -x "$n" ] || n=node; exec "$n" "<dist>/src/notes-cli.js" "$@"`.
-  - `spawnSupervised` and `reexecSelf` use `process.execPath` while it exists, and otherwise the first `node` on PATH. The spawn error names both paths.
-  - Doctor warns when `process.execPath` of the running team no longer exists ("node was upgraded under the running team; restart it").
-  - Tests: the shim runs with its recorded node deleted, and a supervisor test respawns after its execPath is gone.
-  - Until it is fixed, an operator restart of the team on the new node clears all three.
-
 ## Fixed
 
 ## Verified
