@@ -55,25 +55,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/doctor-holds.test.ts: the "main's check" row carries a revert phrase.
 - `npm test` passes.
 
-### Fast merge guardrails, part 3/3: The event log keeps five rotated generations instead of one (planned 2026-10-21 by user; independent of parts 1/3 and 2/3, sharing src/doctor/doctor-checks.ts with part 1/3 and src/events/events.ts with part 2/3 at other functions; design in plans/fast-merge.md "Guardrails" G4; touches src/files/files.ts src/events/events.ts src/paths.ts src/events/event-window.ts src/doctor/doctor-checks.ts docs/config.md and their tests)
-
-**Goal.** Stop losing history at every rotation. events.jsonl rotates at 16 MB into events.jsonl.1 and the next rotation deletes it. The first rotation, on 2026-10-20, put 2026-08-20 → 2026-10-20 into events.jsonl.1; the next, about a week later, deletes it. The guardrails' 24 h windows do not need more, but every by-hand audit of the team does.
-
-**Approach.**
-- src/files/files.ts: `rotateIfLarge(file, maxBytes, keep = 1)`. Over the size it removes `<file>.<keep>`, renames `.<k-1>` → `.<k>` from oldest to newest, then the file to `.1`. Missing generations are skipped. With `keep` 1 it behaves as today, so role pi logs (src/agent/run-agent.ts) are unchanged.
-- src/events/events.ts: `EVENTS_KEEP = 5` beside `EVENTS_MAX_BYTES`, passed by `logEvent`. `eventsRotationLabel()` reads "rotated at 16 MB, 5 kept".
-- src/paths.ts: `eventsArchivePath(root, generation = 1)`; its comment no longer says one archive.
-- src/events/event-window.ts: `readWindowEvents` continues into `.2`…`.5` while no file read so far covers the window, prepending each older file's events. `coversFullWindow` follows the same rule. `eventLogState` still reads the live file and `.1`.
-- src/doctor/doctor-checks.ts `checkEventLog`: the ok detail adds "history from <date>, <n> files", from the first complete line of the oldest generation present.
-- docs/config.md: the `logMaxBytes` row covers role logs only and says the event log rotates at a fixed 16 MiB and keeps five generations.
-
-**Acceptance criteria.**
-- test/files.test.ts: with `file`, `.1` and `.2` present and `keep` 3, a rotation leaves the old `.1` at `.2`, the old `.2` at `.3` and the file at `.1`; with `.3` present too, the old `.3` is gone; `keep` 1 replaces `.1` as today.
-- test/event-window.test.ts: a window reaching past `.1` reads `.2`'s in-window events first, oldest-first overall; `coversFullWindow` is true when `.2` reaches before the window; a missing `.2` reads as nothing.
-- test/events.test.ts: the rotation label names 5 kept; report header tests follow.
-- test/doctor-checks.test.ts: `checkEventLog`'s ok detail names the oldest generation's first day and the file count.
-- `npm test` passes.
-
 ### Merge on `check.gateCommand` when `check.mergeCommand` is unset, and review clean, dedupe and coverage after merging by default (planned 2026-10-21 by user; design in plans/fast-merge.md "Defaults"; touches src/build/build-check-detect.ts src/config/config.ts src/config/config-validation.ts src/doctor/doctor-checks.ts docs/config.md docs/how-it-works.md DEVELOPMENT.md and their tests)
 
 **Goal.** Fast merge parts 6/14 and 14/14 shipped `check.mergeCommand` and `review.afterMerge` as opt-in keys. tumwater.json is gitignored, so no team commit could set them. On 2026-10-21 the merge lock still ran the full `npm test` on every code merge (142–330 s each, the latest at 02:24), and every role was still reviewed before merging. Make both on by default (decided 2026-10-21 by you): a project that declared `check.gateCommand` merges on it, and clean, dedupe and coverage are reviewed after merging, unless the config opts out. This repo's tumwater.json sets `gateCommand`, so both switches take effect here at the next redeploy.

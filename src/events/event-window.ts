@@ -2,6 +2,7 @@ import type { Stats } from "node:fs";
 import { dayAt, dayKey, humanSeconds, DAY_MS } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
+import { EVENTS_KEEP } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
 import { statOrNull } from "../files/files.js";
 import { readTailTextWithEnd } from "../files/tail.js";
@@ -242,28 +243,36 @@ function scanEventsFile(file: string, fromKey: string): ScannedFile {
   return { events, coversFullWindow, end, logState: classifyLogFile(text, st) };
 }
 
-/** Events whose local day is on or after `fromKey`, read from the live log and — when the live
- * log alone does not cover the window — its one archived generation (events.jsonl.1, written by
- * rotation). Each file is scanned with bounded I/O (scanEventsFile) and the archive's in-window
- * events are strictly older than the live file's, so prepending them keeps the oldest-first
- * ordering every consumer assumes; the concatenation needs no dedup because rotation moves the
- * whole file, so the two files share no lines. `coversFullWindow` is true when either file's
- * oldest retained event predates the window, which keeps the rotation note honest in both
- * directions: it vanishes once the archive completes the window and still appears when even the
- * archive starts inside it. A window the live file provably covers never touches the archive,
+/** Events whose local day is on or after `fromKey`, read from the live log and, when the
+ * live log alone does not cover the window, its archived generations (events.jsonl.1 …
+ * `.EVENTS_KEEP`, each written by rotation — the newest archive `.1` first, then `.2` …
+ * `.5` only while the window is not yet covered, per G4). Each file is scanned with bounded
+ * I/O (scanEventsFile) and every archive's in-window events are strictly older than the live
+ * file's, so prepending them oldest-archive-first keeps the oldest-first ordering every
+ * consumer assumes; the concatenation needs no dedup because rotation moves whole files, so
+ * the files share no lines. `coversFullWindow` is true when any read file's oldest retained
+ * event predates the window, which keeps the rotation note honest in both directions: it
+ * vanishes once an archive completes the window and still appears when even the newest
+ * archive starts inside it. A window the live file provably covers never touches an archive,
  * and a missing or empty archive (the normal case) reads as nothing, so the no-rotation
  * behavior is unchanged. */
 export function readWindowEvents(root: string, fromKey: string): EventWindow {
   const live = scanEventsFile(eventsLogPath(root), fromKey);
   if (live.coversFullWindow)
     return { events: live.events, coversFullWindow: true, liveEnd: live.end, logState: live.logState };
-  const archive = scanEventsFile(eventsArchivePath(root), fromKey);
-  return {
-    events: [...archive.events, ...live.events],
-    coversFullWindow: archive.coversFullWindow || live.coversFullWindow,
-    liveEnd: live.end,
-    logState: combineLogState(live.logState, archive.logState),
-  };
+  const archived: ScannedFile[] = [];
+  let covered: boolean = live.coversFullWindow;
+  for (let gen = 1; gen <= EVENTS_KEEP && !covered; gen++) {
+    const archive = scanEventsFile(eventsArchivePath(root, gen), fromKey);
+    archived.push(archive);
+    covered = archive.coversFullWindow;
+  }
+  const events: HarnessEvent[] = [];
+  for (let i = archived.length - 1; i >= 0; i--) events.push(...archived[i]!.events);
+  events.push(...live.events);
+  let logState = live.logState;
+  for (const a of archived) logState = combineLogState(logState, a.logState);
+  return { events, coversFullWindow: covered, liveEnd: live.end, logState };
 }
 
 /** The event feed's read outcome for a one-shot caller that needs no window — `doctor`'s

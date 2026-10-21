@@ -185,10 +185,23 @@ export function findOnPath(name: string, pathEnv: string = envPath()): string | 
 }
 
 /** Keep an append-only log bounded: over `maxBytes` it is renamed to `<file>.1`
- * (replacing any previous rotation) and a fresh file starts. Returns true if rotated. */
-export function rotateIfLarge(file: string, maxBytes: number): boolean {
+ * (replacing any previous rotation) and a fresh file starts. Returns true if rotated.
+ * `keep` is how many archived generations to retain: over the size it drops `<file>.<keep>`,
+ * shifts `<file>.<k-1>` → `<file>.<k>` from oldest to newest (missing generations skipped),
+ * then moves the live file to `<file>.1`. With `keep` 1 it behaves as before, replacing the
+ * previous `.1`; role pi logs pass the default, the harness event log keeps five generations
+ * (EVENTS_KEEP). */
+export function rotateIfLarge(file: string, maxBytes: number, keep = 1): boolean {
   try {
     if (fs.statSync(file).size <= maxBytes) return false;
+    if (keep >= 1) {
+      // Drop the oldest generation first so a shift down cannot collide with it.
+      fs.rmSync(file + "." + keep, { force: true });
+      for (let gen = keep - 1; gen >= 1; gen--) {
+        const from = file + "." + gen;
+        if (fs.existsSync(from)) fs.renameSync(from, file + "." + (gen + 1));
+      }
+    }
     fs.renameSync(file, file + ".1");
     return true;
   } catch {

@@ -46,6 +46,7 @@ import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
+import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
 import { withReadOnlyDir } from "./helpers/fs-faults.js";
@@ -447,6 +448,21 @@ test("checkEventLog passes an absent log, fails an unreadable one, and passes a 
   const good = makeRepo();
   writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "run_end" }]); // retired-name-ok: legacy event field in a fixture
   assert.equal(checkEventLog(good).level, "ok");
+});
+
+test("checkEventLog's ok detail names the oldest generation's first day and the file count", () => {
+  const root = makeRepo();
+  // Live file plus two rotated generations: the oldest (.2) names how far back history reaches.
+  writeEvents(root, [{ ts: tsDaysAgo(1), loop: "feature", type: "run_end" }]); // retired-name-ok: legacy event field in a fixture
+  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), [
+    { ts: tsDaysAgo(3), loop: "feature", type: "run_end" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.2"), [
+    { ts: tsDaysAgo(7), loop: "feature", type: "run_end" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const out = checkEventLog(root);
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, new RegExp(`history from ${dayKey(tsDaysAgo(7))}, 3 files`));
 });
 
 test("checkDiskSpace fails below the floor, warns in the reclaim band, passes above it, and warns when unmeasurable", () => {

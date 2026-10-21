@@ -24,6 +24,12 @@ function writeArchive(root: string, lines: string[]): void {
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), lines);
 }
 
+/** Write one rotated event-log generation (events.jsonl.<gen>) beside the fixture root's live
+ * log, so a test can stage the multi-generation G4 layout without hand-rolling the path. */
+function writeArchiveGen(root: string, gen: number, lines: string[]): void {
+  writeLogLines(path.join(root, ".tumwater", "log", `events.jsonl.${gen}`), lines);
+}
+
 /** The live log's covered end for these newline-terminated fixture logs — the byte size the
  * scan read through, which `readWindowEvents` reports as `liveEnd` (0 for a missing log). */
 function liveEndOf(root: string): number {
@@ -315,6 +321,42 @@ test("the archive follows the live file's skip policy, and a covered window neve
     [1, 2],
   );
   assert.equal(spanned.coversFullWindow, false);
+});
+
+test("a window reaching past .1 reads .2's in-window events first, oldest-first overall", () => {
+  const root = tmpdir();
+  writeArchiveGen(root, 2, [eventLine(tsDaysAgo(4), { run: 1 })]);
+  writeArchiveGen(root, 1, [eventLine(tsDaysAgo(3), { run: 2 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(1), { run: 3 })]);
+  const { events } = readWindowEvents(root, dayKey(tsDaysAgo(5)));
+  assert.deepEqual(
+    events.map((e) => e.run),
+    [1, 2, 3],
+    ".2 (oldest) read first, then .1, then the live file, so the whole is oldest-first",
+  );
+});
+
+test("coversFullWindow is true when .2 reaches before the window", () => {
+  const root = tmpdir();
+  writeArchiveGen(root, 2, [eventLine(tsDaysAgo(6), { run: 1 })]);
+  writeArchiveGen(root, 1, [eventLine(tsDaysAgo(3), { run: 2 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(1), { run: 3 })]);
+  const window = readWindowEvents(root, dayKey(tsDaysAgo(5)));
+  assert.equal(window.coversFullWindow, true, ".2's day-6 event predates the window's first day");
+  assert.deepEqual(
+    window.events.map((e) => e.run),
+    [2, 3],
+    ".2's pre-window event is dropped (coverage only), .1 and live contribute in-window events",
+  );
+});
+
+test("a missing .2 reads as nothing", () => {
+  const root = tmpdir();
+  writeArchiveGen(root, 1, [eventLine(tsDaysAgo(3), { run: 1 })]); // .1 only; .2 absent
+  writeEvents(root, [eventLine(tsDaysAgo(1), { run: 2 })]);
+  const window = readWindowEvents(root, dayKey(tsDaysAgo(5)));
+  assert.deepEqual(window.events.map((e) => e.run), [1, 2], "a missing .2 adds no events");
+  assert.equal(window.coversFullWindow, false);
 });
 
 // readEventsSince is the duration-shaped window read `logs --since` and `history --since`

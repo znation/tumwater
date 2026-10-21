@@ -292,13 +292,13 @@ export function eventsLogPath(root: string): string {
   return path.join(tumwaterDir(root), "log", EVENTS_LOG_BASENAME);
 }
 
-/** The event log's one archived generation (src/files/files.ts rotateIfLarge renames the grown log
- * to events.jsonl.1); the windowed readers continue into it when the live log ends inside the
- * window (event-window.ts). One archive, by design: the rotation note tells the truth about
- * coverage either way, and the archive path belongs beside eventsLogPath so the pair cannot
- * drift apart. */
-export function eventsArchivePath(root: string): string {
-  return eventsLogPath(root) + ".1";
+/** An archived generation of the event log (src/files/files.ts rotateIfLarge renames the grown
+ * log to events.jsonl.1 and shifts older generations down, up to EVENTS_KEEP of them); the
+ * windowed readers continue into them when the live log ends inside the window (event-window.ts).
+ * `generation` defaults to 1, the newest archive. The path lives beside eventsLogPath so the
+ * pair cannot drift apart. */
+export function eventsArchivePath(root: string, generation = 1): string {
+  return eventsLogPath(root) + "." + generation;
 }
 
 /** A role's raw pi transcript log (.tumwater/log/<role>.pi.jsonl); tailed by the GUI/TUI. */

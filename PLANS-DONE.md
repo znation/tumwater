@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Fast merge guardrails, part 3/3: The event log keeps five rotated generations instead of one (planned 2026-10-21 by user; independent of parts 1/3 and 2/3, sharing src/doctor/doctor-checks.ts with part 1/3 and src/events/events.ts with part 2/3 at other functions; design in plans/fast-merge.md "Guardrails" G4; touches src/files/files.ts src/events/events.ts src/paths.ts src/events/event-window.ts src/doctor/doctor-checks.ts docs/config.md and their tests) — done 2026-10-21 by the feature role
+
+**Goal.** Stop losing history at every rotation. events.jsonl rotates at 16 MB into events.jsonl.1 and the next rotation deletes it. The first rotation, on 2026-10-20, put 2026-08-20 → 2026-10-20 into events.jsonl.1; the next, about a week later, deletes it. The guardrails' 24 h windows do not need more, but every by-hand audit of the team does.
+
+**Approach.**
+- src/files/files.ts: `rotateIfLarge(file, maxBytes, keep = 1)`. Over the size it removes `<file>.<keep>`, renames `.<k-1>` → `.<k>` from oldest to newest, then the file to `.1`. Missing generations are skipped. With `keep` 1 it behaves as today, so role pi logs (src/agent/run-agent.ts) are unchanged.
+- src/events/events.ts: `EVENTS_KEEP = 5` beside `EVENTS_MAX_BYTES`, passed by `logEvent`. `eventsRotationLabel()` reads "rotated at 16 MB, 5 kept".
+- src/paths.ts: `eventsArchivePath(root, generation = 1)`; its comment no longer says one archive.
+- src/events/event-window.ts: `readWindowEvents` continues into `.2`…`.5` while no file read so far covers the window, prepending each older file's events. `coversFullWindow` follows the same rule. `eventLogState` still reads the live file and `.1`.
+- src/doctor/doctor-checks.ts `checkEventLog`: the ok detail adds "history from <date>, <n> files", from the first complete line of the oldest generation present.
+- docs/config.md: the `logMaxBytes` row covers role logs only and says the event log rotates at a fixed 16 MiB and keeps five generations.
+
+**Acceptance criteria.**
+- test/files.test.ts: with `file`, `.1` and `.2` present and `keep` 3, a rotation leaves the old `.1` at `.2`, the old `.2` at `.3` and the file at `.1`; with `.3` present too, the old `.3` is gone; `keep` 1 replaces `.1` as today.
+- test/event-window.test.ts: a window reaching past `.1` reads `.2`'s in-window events first, oldest-first overall; `coversFullWindow` is true when `.2` reaches before the window; a missing `.2` reads as nothing.
+- test/events.test.ts: the rotation label names 5 kept; report header tests follow.
+- test/doctor-checks.test.ts: `checkEventLog`'s ok detail names the oldest generation's first day and the file count.
+- `npm test` passes.
+
 ### README and every GitHub release open with a token-consumption warning, so nobody enables the team without knowing it burns tokens continuously (planned 2026-10-21 by the director role; independent of every eligible plan: the three in-flight follow-mode/doctor plans edit src/cli, src/ui/tui, src/merge and src/doctor; the Codex series edits src/events, src/config, src/gates, src/team, src/orchestrator and src/agent, and its part 9/9 README change is the Backends paragraph, not the top of the file. None touches test/packaging.test.ts or .github/workflows/release.yml. Touches README.md .github/workflows/release.yml test/packaging.test.ts) — done 2026-10-21 by the feature role
 
 > Note: the acceptance criterion pins `/### ⚠️ …/` in raw README, so the README blockquote uses `> ### ⚠️`; release.yml keeps the approach copy's `> ## ⚠️` (its test pins only the billion figure and `--notes`).

@@ -16,7 +16,7 @@ import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { type BuildInfo, type BuildStatus, buildStaleness, isSelfHosted, readBuildInfo, STALE_INPUTS_LABEL } from "../build/build-info.js";
-import { dirEntryNames, envPath, findOnPath, readTextOrNull, subdirectoryNames, treeBytes } from "../files/files.js";
+import { dirEntryNames, envPath, findOnPath, readTextOrNull, statOrNull, subdirectoryNames, treeBytes } from "../files/files.js";
 import { readJsonFile } from "../files/json-files.js";
 import { PACKAGE_JSON, belowNodeFloor, packageEnginesNode } from "../version.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -47,14 +47,15 @@ import { resolvedBackendConfig } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
+import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsArchivePath, eventsLogPath, mergeLockDir, owningTeamRoot, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
-import { DAY_MS } from "../text/datetime.js";
+import { DAY_MS, dayKey } from "../text/datetime.js";
 import { errorMessage, textOr, joinParts } from "../text/text.js";
 import { lowerMedian, rankCountEntries } from "../collections.js";
 import { formatBytes, formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, eventsSince, readEventsSince, type EventLogState } from "../events/event-window.js";
+import { EVENTS_KEEP } from "../events/events.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
@@ -562,7 +563,52 @@ export function checkEventLog(root: string): CheckOutcome {
   if (state === "unreadable")
     return failOutcome(`unreadable: ${eventsLogPath(root)} — the team's event feed cannot be read`);
   if (state === "empty") return okOutcome("no events yet");
-  return okOutcome(`readable: ${eventsLogPath(root)}`);
+  const history = eventLogHistoryPhrase(root);
+  return okOutcome(history ? `readable: ${eventsLogPath(root)} — ${history}` : `readable: ${eventsLogPath(root)}`);
+}
+
+/** The `history from <date>, <n> files` phrase for checkEventLog's ok detail (G4): the first
+ * complete line of the oldest event-log generation present names how far back the kept history
+ * reaches, and the count is how many generations (live file plus archives) exist. Undefined
+ * when no generation parses an event, so a readable-but-shapeless log still reads as readable. */
+function eventLogHistoryPhrase(root: string): string | undefined {
+  const present: string[] = [];
+  const livePath = eventsLogPath(root);
+  if (statOrNull(livePath)) present.push(livePath);
+  for (let gen = 1; gen <= EVENTS_KEEP; gen++) {
+    const archive = eventsArchivePath(root, gen);
+    if (statOrNull(archive)) present.push(archive);
+  }
+  if (present.length === 0) return undefined;
+  const oldest = present[present.length - 1]!;
+  const ev = firstEventLine(oldest);
+  if (!ev || typeof ev.ts !== "number") return undefined;
+  const noun = plural(present.length, "file", "files");
+  return `history from ${dayKey(ev.ts)}, ${noun}`;
+}
+
+/** Parse the first complete line of an append-only JSONL `file`, or null when it is unreadable
+ * or does not parse. Reads only the first chunk — the event log is up to 16 MB a generation,
+ * and a doctor pre-flight should not slurp the oldest archive just to name its first day. */
+function firstEventLine(file: string): HarnessEvent | null {
+  try {
+    const fd = fs.openSync(file, "r");
+    try {
+      const buf = Buffer.alloc(4096);
+      const n = fs.readSync(fd, buf, 0, buf.length, 0);
+      const line = buf.toString("utf8", 0, n).split("\n")[0] ?? "";
+      if (!line) return null;
+      try {
+        return JSON.parse(line) as HarnessEvent;
+      } catch {
+        return null;
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
 }
 
 /** Disk floor (plans/disk-floor.md, parts 1/4 and 2/4) — is there room on the volume the

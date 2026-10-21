@@ -29,6 +29,34 @@ test("rotateIfLarge rotates once over the cap and replaces the previous rotation
   assert.equal(rotateIfLarge(path.join(dir, "missing"), 50), false);
 });
 
+test("rotateIfLarge shifts generations down and drops the one past keep", () => {
+  const dir = tmpdir();
+  const file = path.join(dir, "log.jsonl");
+  fs.writeFileSync(file, "a".repeat(100));
+  fs.writeFileSync(file + ".1", "b".repeat(10));
+  fs.writeFileSync(file + ".2", "c".repeat(10));
+  assert.equal(rotateIfLarge(file, 50, 3), true);
+  assert.equal(fs.readFileSync(file + ".1", "utf8"), "a".repeat(100), "live file moved to .1");
+  assert.equal(fs.readFileSync(file + ".2", "utf8"), "b".repeat(10), "old .1 shifted to .2");
+  assert.equal(fs.readFileSync(file + ".3", "utf8"), "c".repeat(10), "old .2 shifted to .3");
+
+  // A .3 present when the next rotation runs is dropped, never leaving a fourth generation.
+  fs.writeFileSync(file, "d".repeat(90));
+  assert.equal(rotateIfLarge(file, 50, 3), true);
+  assert.equal(fs.readFileSync(file + ".1", "utf8"), "d".repeat(90));
+  assert.equal(fs.readFileSync(file + ".2", "utf8"), "a".repeat(100), "old .1 shifted to .2");
+  assert.equal(fs.readFileSync(file + ".3", "utf8"), "b".repeat(10), "old .2 shifted to .3, old .3 dropped");
+  assert.ok(!fs.existsSync(file + ".4"), "nothing beyond keep");
+
+  // keep 1 replaces .1 as today.
+  const single = path.join(dir, "single.jsonl");
+  fs.writeFileSync(single, "x".repeat(100));
+  fs.writeFileSync(single + ".1", "oldoldold");
+  assert.equal(rotateIfLarge(single, 50, 1), true);
+  assert.equal(fs.readFileSync(single + ".1", "utf8"), "x".repeat(100), "keep 1 replaced .1");
+  assert.ok(!fs.existsSync(single + ".2"), "keep 1 leaves no second generation");
+});
+
 test("pruneOldFiles removes only files older than the retention window", () => {
   const dir = tmpdir();
   fs.mkdirSync(path.join(dir, "role"), { recursive: true });

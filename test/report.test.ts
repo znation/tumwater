@@ -32,7 +32,7 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
 
   assert.equal(lines[0], "# tumwater usage report");
   assert.equal(lines[1], "");
-  assert.equal(lines[2], `Window: ${from} → ${to} (3 days) · source: events.jsonl (rotated at 16 MB)`);
+  assert.equal(lines[2], `Window: ${from} → ${to} (3 days) · source: events.jsonl (rotated at 16 MB, 5 kept)`);
   assert.equal(lines[3], "");
   assert.equal(
     lines[4],
@@ -345,7 +345,7 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
     totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
-  assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB\)$/m);
+  assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB, 5 kept\)$/m);
 });
 
 test("renderReportMarkdown shows no bars for an all-zero window and min width 1 above zero", () => {

@@ -19,11 +19,17 @@ export function subscribeEvents(listener: EventListener): () => void {
  * because the report headers name the threshold — a fact only this module owns. */
 export const EVENTS_MAX_BYTES = 16 * 1024 * 1024;
 
+/** How many rotated event-log generations rotateIfLarge retains (plans/fast-merge.md
+ * "Guardrails" G4): at most 96 MB with the live file, about six weeks at the series' daily
+ * rate, so a by-hand audit of the team still sees months. A constant, not a config key, like
+ * EVENTS_MAX_BYTES. */
+export const EVENTS_KEEP = 5;
+
 /** The rotation phrase the report headers render — `eventsRotationLabel()` rather than a
- * hardcoded "rotated at 16 MB" copy, so changing EVENTS_MAX_BYTES updates the header with it
- * instead of leaving every report claiming a size the log no longer rotates at. */
+ * hardcoded "rotated at 16 MB" copy, so changing EVENTS_MAX_BYTES or EVENTS_KEEP updates the
+ * header with it instead of leaving every report claiming a rotation the log no longer does. */
 export function eventsRotationLabel(): string {
-  return `rotated at ${EVENTS_MAX_BYTES / (1024 * 1024)} MB`;
+  return `rotated at ${EVENTS_MAX_BYTES / (1024 * 1024)} MB, ${EVENTS_KEEP} kept`;
 }
 
 /** One line in .tumwater/log/events.jsonl: what logEvent appends (a HarnessEventInput plus
@@ -166,7 +172,7 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
   const full = normalizeLegacyEvent({ ts: Date.now(), ...event }) as HarnessEvent;
   const file = eventsLogPath(root);
   ensureParentDir(file);
-  rotateIfLarge(file, EVENTS_MAX_BYTES);
+  rotateIfLarge(file, EVENTS_MAX_BYTES, EVENTS_KEEP);
   appendEventLine(file, JSON.stringify(full) + "\n");
   for (const listener of listeners) listener(full);
   return full;
