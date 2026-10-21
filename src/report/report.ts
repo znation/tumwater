@@ -6,17 +6,22 @@ import { collectReport, collectReportSince } from "./report-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render.js";
-import { say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
-import { failRivalShapes, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { fail, say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
-/** `tumwater report [--days <n>] [--failures] [--since <duration>]`: parse the flags and
+/** `tumwater report [--days <n>] [--failures] [--since <duration>]
+ * [--until <duration>]`: parse the flags and
  * print. Unknown-args rejection and the no-ready-repo-gate decision stay in cli.ts's case,
  * like every other command's. */
 export async function cmdReport(root: string, args: string[]): Promise<void> {
   // --since is handled before the day-shape reads: it is a rival shape (totals over a
   // trailing window vs a series over whole days), not a modifier of either.
   const ms = parseSinceFlag(args, "report --since", REPORT_SINCE_MAX_MS);
+  const untilMs = parseSinceFlag(args, "report --until", REPORT_SINCE_MAX_MS, "--until");
+  if (untilMs !== null && ms === null) fail("report --until requires --since");
+  if (untilMs !== null && ms !== null && untilMs >= ms)
+    fail(`report --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(ms)})`);
   // --role scopes both report shapes: the usage report (day and --since) and the failure
   // digest, whose day and --since collectors take the same optional list of base roles.
   const role = parseRoleListScope(root, args);
@@ -27,6 +32,8 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     // through the existing --json / render choice.
     if (args.includes("--days"))
       failRivalShapes("report --since", "--days", "--days counts whole local days; --since totals a trailing window");
+    if (untilMs !== null && args.includes("--failures"))
+      fail("report --until does not apply to --failures: the digest compares its window against the equal-length window before it");
     if (args.includes("--failures")) {
       const digest = collectFailureReportSince(root, ms, role ?? undefined);
       if (args.includes("--json")) sayJson(digest);
@@ -35,7 +42,7 @@ export async function cmdReport(root: string, args: string[]): Promise<void> {
     }
     // --json swaps the renderer for the collector's own payload, exactly as status --json
     // does: bounds and cap checks above are shared, only the printing differs.
-    const since = collectReportSince(root, ms, role ?? undefined);
+    const since = collectReportSince(root, ms, role ?? undefined, untilMs ?? undefined);
     sayJsonOrRender(args, since, renderSinceReportMarkdown);
     return;
   }

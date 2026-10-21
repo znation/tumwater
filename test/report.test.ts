@@ -1486,3 +1486,51 @@ test("report --role rejects an unknown id and an empty list in a comma list", as
   assert.notEqual(empty.code, 0);
   assert.match(empty.out, /--role needs a role id/);
 });
+
+function seedWindowEvents(root: string): void {
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 999 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(3 * HOUR), loop: "feature", type: "run_end", run: 2, result: "changed", tokens: 555, costUsd: 0.25 }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(HOUR / 2), loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 777 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+}
+
+test("report --since --until totals only the events between the two edges", async () => {
+  const root = makeRepo();
+  seedWindowEvents(root);
+  const md = await runCli(root, "report", "--since", "6h", "--until", "1h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /window: 6h to 1h ago \(since .*, until .*\)/);
+  assert.match(md.out, /555 output tokens/);
+  assert.doesNotMatch(md.out, /777|999/);
+  const json = JSON.parse((await runCli(root, "report", "--since", "6h", "--until", "1h", "--json")).out);
+  assert.equal(json.untilMs, HOUR);
+  assert.equal(typeof json.toIso, "string");
+  assert.equal(json.totals.tokensOut, 555);
+  const open = JSON.parse((await runCli(root, "report", "--since", "6h", "--json")).out);
+  assert.ok(!("untilMs" in open) && !("toIso" in open), "an unbounded window omits the until keys");
+});
+
+test("collectReportSince with untilMs drops events at or after the window end", () => {
+  const root = makeRepo();
+  seedWindowEvents(root);
+  assert.equal(collectReportSince(root, 6 * HOUR, undefined, HOUR).totals.tokensOut, 555);
+  assert.equal(collectReportSince(root, 6 * HOUR).totals.tokensOut, 1332);
+});
+
+test("report --until is refused without --since, when not shorter, and with --failures", async () => {
+  const root = makeRepo();
+  const cases: Array<[string[], RegExp]> = [
+    [["--until", "1h"], /report --until requires --since/],
+    [["--since", "1h", "--until", "2h"], /report --until \(.*\) must be shorter than --since/],
+    [["--since", "1h", "--until", "1h"], /report --until \(.*\) must be shorter than --since/],
+    [["--since", "6h", "--until", "1h", "--failures"], /report --until does not apply to --failures/],
+    [["--since", "6h", "--until"], /report --until needs a value/],
+  ];
+  for (const [flags, re] of cases) {
+    const r = await runCli(root, "report", ...flags);
+    assert.notEqual(r.code, 0, flags.join(" "));
+    assert.match(r.out, re, flags.join(" "));
+  }
+  assert.match((await runCli(root, "help", "report")).out, /--until <duration>/);
+});

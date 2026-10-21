@@ -9,7 +9,7 @@ import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-
 import { addTo, rankCountEntries, sortByValueDesc } from "../collections.js";
 import { compactTokens, usd } from "../text/format.js";
 import { durationLabel } from "../cli/cli-args.js";
-import { monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
+import { boundedWindowLine, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { shortSpanPhrase } from "../text/phrases.js";
@@ -138,7 +138,11 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   const lines: string[] = [];
   lines.push("# tumwater usage report");
   lines.push("");
-  lines.push(sinceWindowLine(durationLabel(data.sinceMs), data.fromIso));
+  lines.push(
+    data.untilMs !== undefined && data.toIso !== undefined
+      ? boundedWindowLine(durationLabel(data.sinceMs), durationLabel(data.untilMs), data.fromIso, data.toIso)
+      : sinceWindowLine(durationLabel(data.sinceMs), data.fromIso),
+  );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;

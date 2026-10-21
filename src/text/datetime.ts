@@ -207,3 +207,9 @@ export function reportWindow(from: string, to: string, days: number, rotation: s
 export function sinceWindowLine(duration: string, fromIso: string): string {
   return `window: last ${duration} (since ${formatTimestamp(new Date(fromIso).getTime())})`;
 }
+
+/** The bounded sibling of `sinceWindowLine`: the window line for a `--since`/`--until` span that
+ * ends before now. */
+export function boundedWindowLine(since: string, until: string, fromIso: string, toIso: string): string {
+  return `window: ${since} to ${until} ago (since ${formatTimestamp(new Date(fromIso).getTime())}, until ${formatTimestamp(new Date(toIso).getTime())})`;
+}

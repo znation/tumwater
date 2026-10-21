@@ -252,8 +252,8 @@ export function sinceFlagSpec(label: string): FlagSpec {
   };
 }
 
-/** The `--until <duration>` flag spec of `logs` and `history`: ends the `--since` window that
- * long ago. `label` names the command with the flag (e.g. "logs --until"). */
+/** The `--until <duration>` flag spec of `logs`, `history` and `report`: ends the `--since`
+ * window that long ago. `label` names the command with the flag (e.g. "logs --until"). */
 export function untilFlagSpec(label: string): FlagSpec {
   return {
     names: ["--until"],

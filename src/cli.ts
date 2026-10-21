@@ -177,6 +177,7 @@ async function main(): Promise<void> {
         },
         { names: ["--failures"] },
         sinceFlagSpec("report --since"),
+        untilFlagSpec("report --until"),
         JSON_FLAG,
         ROLE_FLAG,
       ]);

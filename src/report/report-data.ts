@@ -191,6 +191,8 @@ export interface ReportData {
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
+  untilMs?: number; // the --until bound; absent when the window ends now
+  toIso?: string; // ISO string of the window end; set only with untilMs
   role?: string; // the scoped base roles, comma-joined; set by the role-scoped collector; absent on the team report
   totals: ReportTotals;
   runsByRole: Record<string, number>;
@@ -255,14 +257,22 @@ export interface SinceReport {
   coversFullWindow: boolean;
 }
 
-/** Aggregate team usage over the trailing `sinceMs` window ending now, from the event log
- * only (run_end/merged — see SinceReport for why the backlog files are not read). Kept a
+/** Aggregate team usage over the trailing `sinceMs` window ending now (or `untilMs` ago, which
+ * drops events at or after that end; `coversFullWindow` still judges the far edge
+ * only), from the event log only (run_end/merged — see SinceReport for why the backlog files
+ * are not read). Kept a
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
-export function collectReportSince(root: string, sinceMs: number, role?: string | readonly string[]): SinceReport {
+export function collectReportSince(
+  root: string,
+  sinceMs: number,
+  role?: string | readonly string[],
+  untilMs?: number,
+): SinceReport {
   assertReportSinceMs(sinceMs);
   const now = Date.now();
   const cutoff = now - sinceMs;
+  const end = untilMs === undefined ? now : now - untilMs;
   // The window key is the cutoff's local calendar day, from the shared dayKey helper
   // eventDayKey buckets events with, so the read's day keys cannot disagree with the ts
   // filter below; the day-keyed read may include earlier hours of that day, which the ts
@@ -302,7 +312,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string 
     deferredByReason: {},
   };
   for (const ev of raw.events) {
-    if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
+    if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now || (untilMs !== undefined && ev.ts >= end)) continue;
     foldUsageEvent(acc, ev);
   }
   // The empty-window branch of the shared proof matters here: with no retained events nothing
@@ -353,6 +363,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string 
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
+    ...(untilMs === undefined ? {} : { untilMs, toIso: new Date(end).toISOString() }),
     ...(bases === undefined ? {} : { role: bases.join(",") }),
     totals: scopedTotals,
     runsByRole: scopedByRole(acc.runsByRole, bases),
