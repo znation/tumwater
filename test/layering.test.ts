@@ -24,6 +24,7 @@ const COMMAND_LAYER = new Set([
   "cli/cli-query-commands.ts",
   "cli/log-commands.ts",
   "run/run-detail.ts",
+  "run/run-detail-render.ts",
   "gui/gui-server.ts",
   "gui/gui-endpoints.ts",
 ]);

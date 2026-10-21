@@ -5,7 +5,7 @@ import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "
 import { stampedRole, stampedSubject } from "../git/commit-message.js";
 import { shortSha } from "../text/format.js";
 import type { RunDetail } from "../run/run-detail-data.js";
-import { runMergedSha } from "../run/run-detail.js";
+import { runMergedSha } from "../run/run-detail-data.js";
 
 /** `tumwater revert <sha>`: undo one merged change on main, committing the inverse as
  * `tumwater(operator): Revert <short sha>` on the primary checkout. Mirrors

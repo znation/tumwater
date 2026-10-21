@@ -1,24 +1,17 @@
-/** Rendering + command half of `tumwater history <role> <n>`: one completed run's full event
- * block printed as a short summary header followed by the run's events through the shared
- * formatEvent. The payload itself is collected by run-detail-data.ts (the collector-in-core
- * convention beside history-data.ts / history.ts), so the CLI and the GUI History drill-down
- * serve the same payload; this module renders it for the terminal. Read-only over the event
- * log, stdout only. */
+/** Command half of `tumwater history <role> <n>` and its `--last` / `--stat` / `--patch` /
+ * `--transcript` forms: the read-only command body that resolves which run to open, validates
+ * it, and prints the rendered trail (or the not-found line). The payload is collected by
+ * run-detail-data.ts (runCommitSha / runMergedSha beside it) and rendered by
+ * run-detail-render.ts, so the CLI, the TUI's History drill-down, and the GUI's /api/run serve
+ * the same text. Read-only over the event log, stdout only. */
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { parseCountFlag } from "../cli/cli-args.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, historyClass, readRunRows, runRowsOnModels, type HistoryResultClass, type RunRow } from "../history/history-data.js";
 import { parseHistoryModelList, parseHistoryResultList } from "../history/history.js";
-import { readRunDetail, type RunDetail } from "./run-detail-data.js";
-import { formatEvent } from "../events/event-format.js";
-import { eventTypeLabel } from "../events/event-labels.js";
-import { roleLabel } from "../roles/role-labels.js";
+import { readRunDetail } from "./run-detail-data.js";
+import { runDetailPatch, runDetailStat, renderRunDetail, runTranscriptLines } from "./run-detail-render.js";
 import { unknownRoleMessage } from "../roles/roles.js";
-import { shortSpanPhrase } from "../text/phrases.js";
-import { shortSha } from "../text/format.js";
-import { piLogPath } from "../paths.js";
-import { readRunTranscript } from "../ui/transcript-run.js";
-import { gitTry } from "../git/git-run.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The run command's synopsis, word for word what cli.ts's dispatcher gate and cmdRunDetail's own
@@ -84,99 +77,6 @@ function newestRunNumber(
   return newestRunRow(root, role, classes, models)?.run ?? null;
 }
 
-/** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
- * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
-export function runCommitSha(d: RunDetail): string | null {
-  const queued = d.events.find(
-    (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
-  );
-  return queued === undefined ? null : (queued.commit as string);
-}
-
-/** The sha a run's change merged under on main: the `merged` sha when the merge logged one, else
- * the pinned commit — a no-op fast-forward logs no `merged` event, so its pinned commit is what
- * merged. Null when the run pinned no commit. */
-export function runMergedSha(d: RunDetail): string | null {
-  return d.mergedSha ?? runCommitSha(d);
-}
-
-/** The `git show --stat` summary or full `--patch` of a run's pinned commit. The sha is the
- * authored commit the run pinned: a merge that rebased gives main a different sha with the
- * same changes, so this describes what the run changed. */
-async function runCommitShow(root: string, sha: string | null, what: "--stat" | "--patch"): Promise<string> {
-  if (sha === null) return "(no commit: this run sent nothing to merge)";
-  const out = await gitTry(root, "show", what, "--format=", sha);
-  if (out === null) return `(commit ${shortSha(sha)} is not in this repository)`;
-  return out.trimEnd();
-}
-
-/** The pinned commit's stat text for a run, shared by `run --stat` and GET /api/run so both
- * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)"
- * texts. */
-export function runDetailStat(root: string, d: RunDetail): Promise<string> {
-  return runCommitShow(root, runCommitSha(d), "--stat");
-}
-
-/** The pinned commit's full patch for a run, for `history --patch`. Like runDetailStat it
- * shows the commit the run pinned (runCommitSha), not the `merged as` sha, so the stat and
- * the patch describe the same commit; the placeholder texts are the stat's. GET /api/run is its
- * second caller (the dashboard's "Show patch" button). */
-export function runDetailPatch(root: string, d: RunDetail): Promise<string> {
-  return runCommitShow(root, runCommitSha(d), "--patch");
-}
-
-/** The human view of a RunDetail: one summary line — result (or the in-flight/unpaired
- * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`merge_done`
- * event carries one — then each event through formatEvent, the shared renderer `logs` and the
- * TUI use, so the trail reads exactly like the feed it came from. A queued run whose merge
- * has finished shows that verdict in the header and ends with the merge's outcome line; a
- * leftover-recovery run's verdict is the failed attempt it re-queued (resolveQueuedResult),
- * logged before the run began, so that outcome line leads the trail instead — the trail stays
- * in time order. */
-export function renderRunDetail(d: RunDetail): string {
-  const summary: string[] = [];
-  if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
-  else summary.push(d.result ? eventTypeLabel(d.result) : "?");
-  if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
-  if (d.usage !== "") summary.push(d.usage);
-  const sha = runCommitSha(d);
-  let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
-  if (sha !== null) header += ` · commit ${shortSha(sha)}`;
-  if (d.mergedSha !== null && d.mergedSha !== sha) header += ` · merged as ${shortSha(d.mergedSha)}`;
-  const trail = d.events.map(formatEvent);
-  if (d.merge !== null) {
-    const first = d.events[0];
-    if (first !== undefined && d.merge.ts < first.ts) trail.unshift(formatEvent(d.merge));
-    else trail.push(formatEvent(d.merge));
-  }
-  return [header, ...trail].join("\n");
-}
-
-/** The transcript block of `--transcript`: the rendered lines of the agent runs that started in the
- * run's window, or `found: []` plus the `note` the text view prints in their place. The
- * dashboard's `/api/run?transcript` serves the same text. */
-export function runTranscriptLines(
-  root: string,
-  role: string,
-  runNumber: number,
-  detail: RunDetail,
-  opts: { includePrompts?: boolean; grep?: string } = {},
-): { found: string[]; note: string } {
-  if (detail.startTs === null) {
-    return { found: [], note: `(no transcript: run ${runNumber}'s start rotated out of the event log)` };
-  }
-  return {
-    found: readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs, {
-      includePrompts: opts.includePrompts,
-      grep: opts.grep?.toLowerCase(),
-    }),
-    note:
-      opts.grep !== undefined
-        ? `(no transcript entries matching "${opts.grep}" in ${role} run ${runNumber})`
-        : `(no transcript for ${role} run ${runNumber}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
-  };
-}
-
 /** `tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch]
  * [--transcript [--prompt] [--grep <text>]] [--json]`: print one completed
  * run's full event trail. Read-only: stdout only, no state file created — a run the
@@ -186,8 +86,8 @@ export function runTranscriptLines(
  * that every exit-0 output is parseable, never prose. `tumwater history <role> --last` resolves
  * the role's newest completed run in the scanned window and prints its trail exactly as the
  * numbered form would — the summary header and event rendering are shared, only the number's
- * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and a
- * numeric <n> are rivals: exactly one positional under --last, exactly two without. With
+ * provenance differs (readRunRows' newest-first scan, not the user's argument). --last and
+ * a numeric <n> are rivals: exactly one positional under --last, exactly two without. With
  * --last, `--result <class>[,...]` picks the newest run in the listed outcome classes instead
  * (the listing's classes, scanning up to HISTORY_MAX_RUNS runs); it needs --last. `--model
  * <selector>[,...]` with --last keeps only runs that started on a listed model (the listing's

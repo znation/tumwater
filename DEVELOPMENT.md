@@ -201,7 +201,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
   renderer. Imported only by each other and the command layer that drives it — the `cli.ts`
   dispatcher, the read-only command bodies in `src/cli/`, `src/run/run-detail.ts` (the `tick`/`history`
-  command body that prints a run's transcript), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
+  command body, whose transcript it renders via `src/run/run-detail-render.ts`), and the dashboard transport in `src/gui/`; `test/layering.test.ts` pins that importer set.
 - `src/history/history.ts`, `src/run/run-detail.ts`, `src/report/report.ts`: the `history`,
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
   `src/run/run-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,

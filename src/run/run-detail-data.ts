@@ -5,8 +5,10 @@
  * (`run-detail.ts`) and the GUI History drill-down (`src/gui/gui-endpoints.ts`) cannot
  * drift on what one run's block contains.
  * Every datum rides the events the harness already writes, so this is a distillation of the
- * existing record, not a new one. The rendering half — the summary header, formatEvent, the
- * CLI command — lives in run-detail.ts. */
+ * existing record, not a new one. The derived shas a run's block names (runCommitSha /
+ * runMergedSha) live here beside the payload they describe; the rendering half — the summary
+ * header, formatEvent, the stat/patch and transcript text — lives in run-detail-render.ts,
+ * and the CLI command in run-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
 import { bucketMergeEvents, resolveQueuedResult } from "../history/history-queued.js";
 import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
@@ -47,6 +49,22 @@ export interface RunDetail {
    * pinned commit when the merge rebased. Null for every other run, and when the event rotated
    * out or the merge was a no-op fast-forward (which logs none). */
   mergedSha: string | null;
+}
+
+/** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
+ * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
+export function runCommitSha(d: RunDetail): string | null {
+  const queued = d.events.find(
+    (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
+  );
+  return queued === undefined ? null : (queued.commit as string);
+}
+
+/** The sha a run's change merged under on main: the `merged` sha when the merge logged one, else
+ * the pinned commit — a no-op fast-forward logs no `merged` event, so its pinned commit is what
+ * merged. Null when the run pinned no commit. */
+export function runMergedSha(d: RunDetail): string | null {
+  return d.mergedSha ?? runCommitSha(d);
 }
 
 /** The event block of `role`'s run `n`, or null when the scanned window holds no such run.

@@ -26,7 +26,7 @@ import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
 import { abortRequestPath, branchName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readRunDetail } from "../src/run/run-detail-data.js";
-import { renderRunDetail, runTranscriptLines } from "../src/run/run-detail.js";
+import { renderRunDetail, runTranscriptLines } from "../src/run/run-detail-render.js";
 import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";

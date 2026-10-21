@@ -35,13 +35,11 @@ import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readRunDetail, type RunDetail } from "../run/run-detail-data.js";
 import {
   renderRunDetail,
-  runCommitSha,
   runDetailPatch,
   runDetailStat,
-  runMergedSha,
-  runNotFoundMessage,
   runTranscriptLines,
-} from "../run/run-detail.js";
+} from "../run/run-detail-render.js";
+import { runCommitSha, runMergedSha } from "../run/run-detail-data.js";
 import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -52,7 +50,7 @@ import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
-import { newestRunRow, runNotFoundLastMessage } from "../run/run-detail.js";
+import { newestRunRow, runNotFoundLastMessage, runNotFoundMessage } from "../run/run-detail.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
  * pi log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also

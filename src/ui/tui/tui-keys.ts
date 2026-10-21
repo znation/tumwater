@@ -1,5 +1,5 @@
 import type { RunDetail } from "../../run/run-detail-data.js";
-import { runDetailPatch, runDetailStat } from "../../run/run-detail.js";
+import { runDetailPatch, runDetailStat } from "../../run/run-detail-render.js";
 import { collectTeamChanges, collectRoleChange, collectChangeOverlaps, type ChangeOverlapsView, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
