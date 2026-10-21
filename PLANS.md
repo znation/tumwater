@@ -29,6 +29,9 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Merge on `check.gateCommand` when `check.mergeCommand` is unset, and review clean, dedupe and coverage after merging by default (planned 2026-10-21 by user; design in plans/fast-merge.md "Defaults"; touches src/build/build-check-detect.ts src/config/config.ts src/config/config-validation.ts src/doctor/doctor-checks.ts docs/config.md docs/how-it-works.md DEVELOPMENT.md and their tests)
 
+**Needs replan 2026-10-21 by feature: rejected after 2 review rounds**
+ 1. (prior 1) `docs/how-it-works.md:71` still asserts the pre-change rule ("The full check then still runs once per merge, over the batch or the single change, and a failing result there blocks the merge"), now false because a gate command alone supplies the in-lock command and the full check runs after merging, not in the lock.
+
 **Goal.** Fast merge parts 6/14 and 14/14 shipped `check.mergeCommand` and `review.afterMerge` as opt-in keys. tumwater.json is gitignored, so no team commit could set them. On 2026-10-21 the merge lock still ran the full `npm test` on every code merge (142–330 s each, the latest at 02:24), and every role was still reviewed before merging. Make both on by default (decided 2026-10-21 by you): a project that declared `check.gateCommand` merges on it, and clean, dedupe and coverage are reviewed after merging, unless the config opts out. This repo's tumwater.json sets `gateCommand`, so both switches take effect here at the next redeploy.
 
 **Approach.**
