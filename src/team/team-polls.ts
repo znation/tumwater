@@ -95,7 +95,8 @@ export function pollTeamHold(
       // once per failure storm. It names the window type and the deadline the hold lifts at.
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
-        type: "claude_window_limited",
+        type: "subscription_window_limited",
+        backend: "claude",
         ...providerFields,
         windowType: window?.windowType,
         resetsAt: pNext.until,
@@ -112,7 +113,7 @@ export function pollTeamHold(
       limitedEvent();
     } else if (pPrev.until === null && pNext.until !== null) {
       if (pNext.kind === "subscription-window" && pNext.reserve === true) {
-        // A reserve crossing logs claude_window_reserved (pollClaudeWindowReserve), not this.
+        // A reserve crossing logs subscription_window_reserved (pollClaudeWindowReserve), not this.
       } else if (pNext.kind === "subscription-window") {
         limitedEvent();
       } else {
@@ -128,7 +129,7 @@ export function pollTeamHold(
       }
     } else if (pPrev.until !== null && pNext.until === null) {
       if (pNext.kind === "subscription-window") {
-        logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "claude_window_reset", ...providerFields });
+        logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "subscription_window_reset", backend: "claude", ...providerFields });
       } else {
         // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
         // the lift must be able to name what actually ended too — "429 hold lifted" after a
@@ -175,18 +176,20 @@ export function claudeWindowObservation(
  * within this span of the event log. */
 const CLAUDE_WINDOW_LOOKBACK_MS = 7 * DAY_MS;
 
-/** The `windowType:resetsAt` keys of the still-open windows whose `type` event is already in the
- * event log, so a restart does not re-announce a window that is still open. Events without a
- * numeric `resetsAt` cannot name their window and are skipped. */
+/** The `backend:windowType:resetsAt` keys of the still-open windows whose `type` event is already
+ * in the event log, so a restart does not re-announce a window that is still open. Keyed by the
+ * event's own `backend` (falling back to `"claude"` for an event written before the window
+ * events carried one), so two backends' windows of the same type and reset instant keep their
+ * own keys. Events without a numeric `resetsAt` cannot name their window and are skipped. */
 export function loggedWindowKeys(
   root: string,
-  type: "claude_window_warning" | "claude_window_reserved",
+  type: "subscription_window_warning" | "subscription_window_reserved",
   now: number,
 ): ReadonlySet<string> {
   const keys = new Set<string>();
   for (const e of eventsSince(root, CLAUDE_WINDOW_LOOKBACK_MS, now, (ev) => ev.type === type)) {
     if (typeof e.windowType === "string" && typeof e.resetsAt === "number" && e.resetsAt > now) {
-      keys.add(`${e.windowType}:${e.resetsAt}`);
+      keys.add(`${typeof e.backend === "string" ? e.backend : "claude"}:${e.windowType}:${e.resetsAt}`);
     }
   }
   return keys;
@@ -194,12 +197,12 @@ export function loggedWindowKeys(
 
 /** Log each subscription-window event once per window key. The reserve and the warning polls
  * (below) both walk every window of the account and log one event for each that crosses its mark
- * this poll, deduplicated by the `type:resetsAt` key so many polls across one window log once (a
- * later window's crossing is its own key). They differ only in WHICH window marks (the reserve
- * fraction vs the `allowed_warning` status) and the event's payload, so the traversal, the "reset
- * instant already past" skip, the key build, the key dedup, and the returned-set contract live
- * here and each caller supplies the mark-and-payload predicate (`eventFor` returns the event to
- * log, or null to skip that window). The returned set drops keys whose reset instant has passed,
+ * this poll, deduplicated by the `backend:type:resetsAt` key so many polls across one window log
+ * once (a later window's crossing is its own key). They differ only in WHICH window marks (the
+ * reserve fraction vs the `allowed_warning` status) and the event's payload, so the traversal, the
+ * "reset instant already past" skip, the key build, the key dedup, and the returned-set contract
+ * live here and each caller supplies the mark-and-payload predicate (`eventFor` returns the event
+ * to log, or null to skip that window). The returned set drops keys whose reset instant has passed,
  * and is `logged` itself when nothing was added or dropped. */
 function logWindowEventOnce(
   root: string,
@@ -219,7 +222,10 @@ function logWindowEventOnce(
     if (ev === null) continue;
     // A window whose reset instant is in the past (or unreadable) no longer marks a crossing.
     if (typeof w.resetsAt === "number" && w.resetsAt <= now) continue;
-    const key = `${type}:${w.resetsAt ?? ""}`;
+    // Keyed by the event's own backend (the `backend:windowType:resetsAt` shape loggedWindowKeys
+    // seeds), so a different backend's identical window keeps its own key.
+    const backend = typeof ev.backend === "string" ? ev.backend : "claude";
+    const key = `${backend}:${type}:${w.resetsAt ?? ""}`;
     if ((next ?? logged).has(key)) continue;
     logEventBestEffort(root, ev);
     (next ??= new Set(logged)).add(key);
@@ -228,9 +234,10 @@ function logWindowEventOnce(
 }
 
 
-/** One poll of the reserve crossing: each window at or past its `claudeWindowReserve` fraction
- * logs `claude_window_reserved` once per window key (`type:resetsAt`, kept in `logged`), so
- * several windows crossing in one poll each log their own event. Returns the keys to keep. */
+/** One poll of the reserve crossing: each window at or past its windowReserve fraction (read
+ * through `windowReserveFor(config, "claude")`) logs `subscription_window_reserved` once per
+ * window key (`backend:type:resetsAt`, kept in `logged`), so several windows crossing in one
+ * poll each log their own event. Returns the keys to keep. */
 export function pollClaudeWindowReserve(
   root: string,
   logged: ReadonlySet<string>,
@@ -244,7 +251,8 @@ export function pollClaudeWindowReserve(
     if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number") return null;
     return {
       source: TUMWATER_SOURCE,
-      type: "claude_window_reserved",
+      type: "subscription_window_reserved",
+      backend: "claude",
       windowType: type,
       utilization: w.utilization,
       reserve: fraction,
@@ -254,9 +262,10 @@ export function pollClaudeWindowReserve(
 }
 
 /** One poll of the subscription-window warning: each `allowed_warning` window logs
- * `claude_window_warning` once per window key (`type:resetsAt`, kept in `logged`; carrying the
- * window's utilization when the account reported one), so many polls across one window warn once
- * and several windows warning in one poll each log their own event. Returns the keys to keep. */
+ * `subscription_window_warning` once per window key (`backend:type:resetsAt`, kept in `logged`;
+ * carrying the window's utilization when the account reported one), so many polls across one
+ * window warn once and several windows warning in one poll each log their own event. Returns
+ * the keys to keep. */
 export function pollClaudeWindowWarning(
   root: string,
   logged: ReadonlySet<string>,
@@ -267,7 +276,8 @@ export function pollClaudeWindowWarning(
     if (w.status !== "allowed_warning") return null;
     return {
       source: TUMWATER_SOURCE,
-      type: "claude_window_warning",
+      type: "subscription_window_warning",
+      backend: "claude",
       windowType: type,
       ...(typeof w.utilization === "number" ? { utilization: w.utilization } : {}),
       ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),

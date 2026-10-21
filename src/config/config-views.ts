@@ -47,6 +47,22 @@ export function resolvedBackendConfig(
   return { bin: entry?.bin ?? config.agentBin, args: (entry?.args ?? config.piArgs ?? []).slice() };
 }
 
+/** A backend's subscription-window reserve (plans/codex-backend.md part 2b/9): the nested
+ * `backends[backend].windowReserve` when the backend has one, else the top-level
+ * `claudeWindowReserve` for claude (its older spelling), else undefined. The two spellings are
+ * mutually exclusive in a loaded file (validateConfig rejects one holding both), so the
+ * fallback only ever answers for a config written before the rename. Pure: it never writes a
+ * spelling back into the file. */
+export function windowReserveFor(
+  config: { backends?: Record<string, BackendConfig>; claudeWindowReserve?: Record<string, number> },
+  backend: string,
+): Record<string, number> | undefined {
+  const nested = config.backends?.[backend]?.windowReserve;
+  if (nested !== undefined) return nested;
+  if (backend === "claude") return config.claudeWindowReserve;
+  return undefined;
+}
+
 /** True when `s` names one of the three tiers — the form `roles.<id>.model` /
  * `review.model` may take to point at that tier of the top-level `model` map. */
 export function isTierName(s: string | undefined): s is ModelTier {

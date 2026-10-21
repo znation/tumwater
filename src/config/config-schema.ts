@@ -508,6 +508,12 @@ export interface BackendConfig {
    * own auth land in a directory of the team's own (a leading `~` expands; must be absolute after
    * expansion — validateConfig checks). Unset uses claude's default lookup. */
   configDir?: string;
+  /** Per-window-type share of the subscription window the team leaves for you (the nested
+   * spelling of `claudeWindowReserve`, plans/codex-backend.md part 2b/9): a map from window
+   * type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. Only `backends.claude` accepts
+   * the key today (CLAUDE_AGENT_KEYS); a file may set it or the top-level `claudeWindowReserve`,
+   * not both (validateConfig rejects a file with both). */
+  windowReserve?: Record<string, number>;
 }
 
 /** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
@@ -515,9 +521,10 @@ export interface BackendConfig {
  * `configDir` is claude-only (CLAUDE_AGENT_KEYS), so it is not silently inert on pi/opencode. */
 export const BACKEND_KEYS = ["bin", "args"];
 
-/** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`,
- * the one per-backend field only the claude adapter reads. */
-export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir"];
+/** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`
+ * and `windowReserve`, the per-backend fields only the claude adapter reads (part 4/9 opens
+ * `windowReserve` for codex too). */
+export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir", "windowReserve"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];

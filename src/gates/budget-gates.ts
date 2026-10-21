@@ -34,7 +34,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { enabledRoleIds } from "../config/config.js";
 import { formatModelSelector, seamAgent } from "../config/model-selector.js";
-import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
+import { configForRole, isTierName, reviewConfig, roleSeamTier, windowReserveFor, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { readAccount } from "../agent/subscription-account.js";
@@ -264,9 +264,10 @@ export function pollBudgetGate(
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
   // A used-up subscription window (claudeWindowUsedUp, the rule the team hold reads too): while
   // it stands a subscription claude pair is no fallback — it would meet the same window.
-  // `claudeWindowReserve` makes a window past its fraction count as used up for the team; the
-  // director's own reading (directorWindowOut) ignores it, as it runs the operator's prompts.
-  const windowOut = claudeWindowUsedUp(account, now, true, liveConfig.claudeWindowReserve);
+  // `windowReserveFor(config, "claude")` makes a window past its fraction count as used up for
+  // the team; the director's own reading (directorWindowOut) ignores it, as it runs the
+  // operator's prompts.
+  const windowOut = claudeWindowUsedUp(account, now, true, windowReserveFor(liveConfig, "claude"));
   const directorWindowOut = claudeWindowUsedUp(account, now);
   // A priced step (one pi does not price at zero, or claude on API billing) is usable only
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap

@@ -3480,8 +3480,8 @@ resetsAt, whatever the role count", "a standing reserve hold is re-evaluated: a 
 replaces it, a vanished one drops it" and "standingHolds names each standing provider hold and skips
 lifted and subscription-window ones"; `test/orchestrator-scheduling.test.ts` — "a subscription-window
 hold stops the director too, while a 429-storm hold still exempts it"; `test/team-polls.test.ts` —
-"a reserve crossing holds claude but not the director, and logs claude_window_reserved once per
-window".
+"a reserve crossing holds claude but not the director, and logs subscription_window_reserved once
+per window".
 
 ## Flake quarantine: a test that failed then passed on one tree is quarantined until its filed bug leaves ## Open, and a possibly truncated list never counts
 

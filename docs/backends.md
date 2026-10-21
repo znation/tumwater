@@ -199,11 +199,13 @@ spending extra usage up to the team cap. On API billing every Claude step is pri
 does not matter. The team hold still reads only a rejected window; overage never holds.
 
 **Reserve.** The team and you share one claude.ai account, so a team that uses up the weekly
-window leaves your own sessions on extra usage or locked out. `"claudeWindowReserve": { "seven_day": 0.8 }`
-(window type → fraction, above 0 and at most 1; absent by default) counts a window as used up
-for the team once its utilization reaches that fraction, until the window resets: subscription
-Claude jobs move down their chain, or wait when there is nowhere to go, and `claude_window_reserved`
-is logged once per window. The director is exempt, since it runs your own prompts. A later
+window leaves your own sessions on extra usage or locked out. `"backends.claude.windowReserve": { "seven_day": 0.8 }`
+(window type → fraction, above 0 and at most 1; absent by default — the older top-level
+`"claudeWindowReserve"` is its other spelling, and either may be set, but not both) counts a
+window as used up for the team once its utilization reaches that fraction, until the window
+resets: subscription Claude jobs move down their chain, or wait when there is nowhere to go,
+and `subscription_window_reserved` is logged once per window. The director is exempt, since it
+runs your own prompts. A later
 Claude model in a chain (the extra-usage step) waits too past the reserve, until a reading shows
 `isUsingOverage`. The team learns its utilization one run late: readings come only from runs.
 

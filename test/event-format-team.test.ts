@@ -443,7 +443,7 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
   const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
   const clock = formatTime(new Date(resetsAt));
   const warning = formatEvent({
-    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt,
+    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt,
   } as never);
   assert.match(
     warning,
@@ -451,7 +451,7 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     `warning line: ${warning}`,
   );
   const filled = formatEvent({
-    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt, utilization: 0.82,
+    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt, utilization: 0.82,
   } as never);
   assert.match(
     filled,
@@ -459,12 +459,12 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     `filled warning line: ${filled}`,
   );
   const bad = formatEvent({
-    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt, utilization: "x",
+    ts: 0, source: "tumwater", type: "subscription_window_warning", backend: "claude", windowType: "five_hour", resetsAt, utilization: "x",
   } as never);
   assert.match(bad, /near its limit, resets/);
   assert.ok(!bad.includes("NaN"), `bad line: ${bad}`);
   const limited = formatEvent({
-    ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour", resetsAt,
+    ts: 0, source: "tumwater", type: "subscription_window_limited", backend: "claude", windowType: "five_hour", resetsAt,
   } as never);
   assert.match(
     limited,
@@ -472,17 +472,17 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     `limited line: ${limited}`,
   );
   assert.ok(!limited.includes("warning"), "a routine hold is not a warning");
-  const reset = formatEvent({ ts: 0, source: "tumwater", type: "claude_window_reset" } as never);
+  const reset = formatEvent({ ts: 0, source: "tumwater", type: "subscription_window_reset", backend: "claude" } as never);
   assert.match(reset, /tumwater\s+claude subscription window reset — claude model jobs run again/, `reset line: ${reset}`);
 
   // A torn limited line with no resetsAt drops the clause instead of rendering NaN.
-  const torn = formatEvent({ ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour" } as never);
+  const torn = formatEvent({ ts: 0, source: "tumwater", type: "subscription_window_limited", backend: "claude", windowType: "five_hour" } as never);
   assert.ok(!torn.includes("resets"), `torn limited line: ${torn}`);
 });
 
-test("claude_window_limited with tiers says the work moves; budget_handback reason window names the window", () => {
+test("subscription_window_limited with tiers says the work moves; budget_handback reason window names the window", () => {
   const moved = formatEvent({
-    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour", // retired-name-ok: legacy event field in a fixture
+    ts: 0, loop: "harness", type: "subscription_window_limited", backend: "claude", windowType: "five_hour", // retired-name-ok: legacy event field in a fixture
     tiers: { default: "free/qwen-free", strong: "free/qwen-free" },
   } as never);
   assert.match(moved, /claude model jobs move to /);
@@ -505,8 +505,8 @@ test("fallback_switched renders each changed tier's destination and reason", () 
 test("formatEvent renders the reserve crossing with utilization, reserve and reset", () => {
   const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
   const line = formatEvent({
-    ts: 0, source: "tumwater", type: "claude_window_reserved", windowType: "seven_day", utilization: 0.85, reserve: 0.8, resetsAt,
+    ts: 0, source: "tumwater", type: "subscription_window_reserved", backend: "claude", windowType: "seven_day", utilization: 0.85, reserve: 0.8, resetsAt,
   } as never);
   assert.match(line, new RegExp(`seven_day at 85%, past its 80% reserve, resets ${formatTime(new Date(resetsAt))} — the team leaves it to you \\(director keeps running\\)`));
-  assert.match(formatEvent({ ts: 0, source: "tumwater", type: "claude_window_reserved" } as never), /at \?, past its \? reserve —/);
+  assert.match(formatEvent({ ts: 0, source: "tumwater", type: "subscription_window_reserved", backend: "claude" } as never), /at \?, past its \? reserve —/);
 });

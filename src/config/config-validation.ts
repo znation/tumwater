@@ -256,6 +256,20 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
             problems.push(
               `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
             );
+        // The nested reserve spelling (part 2b/9): the same 0 < f ≤ 1 rule the top-level
+        // `claudeWindowReserve` map gets, so a bad entry can never silently no-op a reserve.
+        if (entry.windowReserve !== undefined) {
+          const wr = entry.windowReserve;
+          if (!isJsonObject(wr)) {
+            problems.push(`${prefix}.windowReserve must be an object mapping window types to fractions (got ${show(wr)})`);
+          } else {
+            for (const [type, value] of Object.entries(wr)) {
+              if (type.trim() === "") problems.push(`${prefix}.windowReserve.<empty> — a window type must not be empty`);
+              else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
+                problems.push(`${prefix}.windowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
+            }
+          }
+        }
       }
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
       checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
@@ -652,6 +666,18 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       }
     }
   }
+  // The reserve's two spellings are mutually exclusive (plans/codex-backend.md part 2b/9): the
+  // nested key is the current one; `claudeWindowReserve` is kept as claude's older spelling. A
+  // file holding both is ambiguous about which drives the window, so it is rejected naming both.
+  if (
+    r.claudeWindowReserve !== undefined &&
+    isJsonObject(r.backends) &&
+    isJsonObject(r.backends.claude) &&
+    r.backends.claude.windowReserve !== undefined
+  )
+    problems.push(
+      "claudeWindowReserve and backends.claude.windowReserve set the same value — keep one (backends.claude.windowReserve is the current spelling; claudeWindowReserve is its old name)",
+    );
 
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the

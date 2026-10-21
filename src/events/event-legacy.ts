@@ -26,6 +26,12 @@ const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
   landed: "merge_done", // vocabulary-ok: legacy event name read from old logs
   land_failed: "merge_failed", // vocabulary-ok: legacy event name read from old logs
   // retired-name-ok:end
+  // retired-name-ok:start old subscription-window event names
+  claude_window_reserved: "subscription_window_reserved", // vocabulary-ok: legacy event name read from old logs
+  claude_window_warning: "subscription_window_warning", // vocabulary-ok: legacy event name read from old logs
+  claude_window_limited: "subscription_window_limited", // vocabulary-ok: legacy event name read from old logs
+  claude_window_reset: "subscription_window_reset", // vocabulary-ok: legacy event name read from old logs
+  // retired-name-ok:end
 };
 
 /** A field rewrite applied after the type rename. Each guards on the JS type it expects. */
@@ -113,6 +119,25 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
       const e = ev as Record<string, unknown>;
       if (typeof e.source === "string") e.source = canonicalRoleId(e.source);
       if (typeof e.role === "string") e.role = canonicalRoleId(e.role);
+    },
+  },
+  {
+    // The four subscription-window events now name their backend (plans/codex-backend.md part
+    // 2b/9). The old claude_window_* names map (above) to subscription_window_* with no
+    // backend, so a line written before the rename gets `backend: "claude"` here; a current
+    // line written with its own backend is left alone. Kept permanently: a still-running old
+    // supervisor and old rotated logs keep writing the old names without a backend.
+    name: "subscription-window-backend",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (
+        e.type === "subscription_window_reserved" ||
+        e.type === "subscription_window_warning" ||
+        e.type === "subscription_window_limited" ||
+        e.type === "subscription_window_reset"
+      ) {
+        if (typeof e.backend !== "string") e.backend = "claude";
+      }
     },
   },
 ];

@@ -929,3 +929,31 @@ test("a reserve crossing moves the team's Claude tiers, skips the extra-usage st
   account(0.85, { isUsingOverage: true });
   assert.equal(run().priceResolved.default.pair?.model, "claude-sonnet-5-5", "overage reported: the extra-usage step runs");
 });
+
+test("the nested backends.claude.windowReserve is live: it drives the same reserve move as claudeWindowReserve", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
+  cfg.fallback = [{ backend: "claude", model: "claude-sonnet-5-5", maxDailyCostUsd: 10 }, { backend: "pi", model: "free/qwen-free" }];
+  cfg.fallbackModel = undefined;
+  // The nested spelling only — no top-level claudeWindowReserve (windowReserveFor reads it).
+  cfg.backends = { claude: { windowReserve: { seven_day: 0.8 } } };
+  cfg.claudeWindowReserve = undefined;
+  const account = (utilization: number) =>
+    writeClaudeAccount(root, {
+      billing: "subscription",
+      observedAt: Date.now(),
+      windows: { seven_day: { status: "allowed", utilization, resetsAt: Date.now() + 3_600_000, observedAt: Date.now() } },
+    });
+  const run = () => poll(root, newBudgetGateState(cfg), cfg, models);
+
+  account(0.75);
+  assert.equal(run().windowOut, null, "under the nested reserve nothing moves");
+  account(0.85);
+  const p = run();
+  assert.equal(p.windowOut?.reserve, true, "the nested reserve counts the window used up");
+  assert.equal(p.priceResolved.default.pair?.model, "qwen-free");
+  assert.equal(p.directorConfig, cfg, "the director stays on Claude");
+});

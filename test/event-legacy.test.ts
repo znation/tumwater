@@ -99,6 +99,20 @@ test("normalizeLegacyEvent renames the restart drain fields and keeps new ones",
   assert.deepEqual(normalizeLegacyEvent({ ...current }), current);
 });
 
+test("normalizeLegacyEvent maps the old claude_window_* names to subscription_window_* with backend claude", () => {
+  for (const [old, name] of [
+    ["claude_window_reserved", "subscription_window_reserved"],
+    ["claude_window_warning", "subscription_window_warning"],
+    ["claude_window_limited", "subscription_window_limited"],
+    ["claude_window_reset", "subscription_window_reset"],
+  ] as const) { // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
+    assert.deepEqual(normalizeLegacyEvent({ type: old } as never), { type: name, backend: "claude" });
+    assert.equal(canonicalEventType(old), name); // vocabulary-ok: legacy event name read from old logs // retired-name-ok: legacy name
+  }
+  const current = { type: "subscription_window_reserved", backend: "codex" };
+  assert.deepEqual(normalizeLegacyEvent({ ...current }), current);
+});
+
 test("normalizeLegacyEvent moves loop to source and maps harness to tumwater", () => {
   assert.deepEqual(normalizeLegacyEvent({ type: "wake", loop: "feature" }), { type: "wake", source: "feature" }); // retired-name-ok: legacy field, read permanently
   assert.deepEqual(normalizeLegacyEvent({ type: "warning", loop: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs // retired-name-ok: legacy field, read permanently

@@ -117,7 +117,7 @@ type ParsedConfigKey =
   | { kind: "map"; map: (typeof DOTTED_MAP_KEYS)[number]; role: string }
   | { kind: "tier"; map: "model"; tier: ModelTier }
   | { kind: "role"; id: string; field: string }
-  | { kind: "agent"; id: string; field: "bin" | "args" }
+  | { kind: "agent"; id: string; field: "bin" | "args" | "configDir" | "windowReserve" }
   | { kind: "section"; section: keyof typeof DOTTED_SECTION_FIELDS; field: string }
   | { kind: "error"; error: string };
 
@@ -143,7 +143,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
     // write a key nothing reads, so it is refused everywhere but claude.
     const validKeys = second === "claude" ? CLAUDE_AGENT_KEYS : BACKEND_KEYS;
     if ((validKeys as readonly string[]).includes(third))
-      return { kind: "agent", id: second, field: third as "bin" | "args" };
+      return { kind: "agent", id: second, field: third as "bin" | "args" | "configDir" | "windowReserve" };
     return {
       kind: "error",
       error: `unknown backend field "${third}" for backends.${second} (valid fields: ${validKeys.join(", ")})${typoSuffix(third, validKeys)}`,

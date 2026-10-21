@@ -53,7 +53,7 @@ import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { configForRole, roleSeamTier } from "../config/config-views.js";
+import { configForRole, roleSeamTier, windowReserveFor } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget
@@ -92,10 +92,10 @@ export interface TeamGateStates {
   disk: DiskGateState;
   teamHold: ReadonlyMap<string | undefined, TeamHold>;
   /** The subscription usage window's once-per-window warning memory (team/team-polls.ts
-   * pollClaudeWindowWarning): the `type:resetsAt` keys whose `claude_window_warning` was
+   * pollClaudeWindowWarning): the `type:resetsAt` keys whose `subscription_window_warning` was
    * logged for a still-open window. The hold itself rides `teamHold`. */
   claudeWindowWarned: ReadonlySet<string>;
-  /** The `type:resetsAt` keys whose `claude_window_reserved` was logged
+  /** The `type:resetsAt` keys whose `subscription_window_reserved` was logged
    * (pollClaudeWindowReserve). */
   claudeWindowReserved: ReadonlySet<string>;
   errorStorm: ErrorStorm;
@@ -503,7 +503,7 @@ export function pollTeamGates(
     now,
     claudeAccount,
     windowTiers,
-    liveConfig.claudeWindowReserve,
+    windowReserveFor(liveConfig, "claude"),
   );
   // The standings hold, published for observers (PLANS.md 2026-10-17 "the dashboards and
   // `tumwater status` name a standing provider failure hold"): `standingHolds` turns the holds
@@ -519,7 +519,7 @@ export function pollTeamGates(
     states.claudeWindowReserved,
     claudeAccount,
     now,
-    liveConfig.claudeWindowReserve,
+    windowReserveFor(liveConfig, "claude"),
   );
   // The subscription usage window's warning is observational (the hold above is the gate): the
   // first allowed_warning logs once per window, and the memory lives beside the holds map.

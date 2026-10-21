@@ -110,6 +110,14 @@ function providerScope(e: HarnessEvent): string {
   return typeof e.provider === "string" ? "that provider" : "every provider";
 }
 
+/** A subscription-window event's backend, rendered as the id the event names ("claude", or a
+ * later backend's own id), falling back to "claude" for an event written before the window
+ * events carried a `backend`. A claude-only team's lines read exactly as the older
+ * `claude_window_*` lines did. */
+function backendLabel(e: HarnessEvent): string {
+  return typeof e.backend === "string" && e.backend !== "" ? e.backend : "claude";
+}
+
 /** The provider/model pair a fallback-ish line names, as "provider/model", defaulting each
  * half when the event omits it (a bare pi run carries neither). Shared by the budget_fallback
  * and model_fallback lines so the pair's shape and defaults cannot drift between them. */
@@ -459,34 +467,34 @@ export function eventMessage(e: HarnessEvent): string {
         return `backend recovered (${backendKindPhrase(e.kind)})${providerAt(e)} — roles on ${providerScope(e)} run again`;
       return `provider limit lifted${providerAt(e)} — roles on ${providerScope(e)} run again`;
     }
-    case "claude_window_warning": {
+    case "subscription_window_warning": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
       // telling us the window is filling, not failing. It names the window and when it resets.
       const used = finiteNumber(e.utilization, null);
       const fill = used === null ? "" : ` (at ${claudeUtilizationPct(used)}% used)`;
-      return `claude subscription window ${textOr(e.windowType)} near its limit${fill}${windowResetPhrase(e)} — subscription claude model jobs keep running`;
+      return `${backendLabel(e)} subscription window ${textOr(e.windowType)} near its limit${fill}${windowResetPhrase(e)} — subscription ${backendLabel(e)} model jobs keep running`;
     }
-    case "claude_window_reserved": {
+    case "subscription_window_reserved": {
       const used = finiteNumber(e.utilization, null);
       const line = finiteNumber(e.reserve, null);
       const pct = (f: number | null) => (f === null ? "?" : `${claudeUtilizationPct(f)}%`);
-      return `claude subscription window ${textOr(e.windowType)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
+      return `${backendLabel(e)} subscription window ${textOr(e.windowType)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
     }
-    case "claude_window_limited":
+    case "subscription_window_limited":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
       // harness handling the account's own throttle. Names the window, the reset, and which
-      // seams stop, so the operator knows why claude held and what keeps running.
+      // seams stop, so the operator knows why the backend held and what keeps running.
       // With a fallback the work moves rather than waits: `tiers` names where each moved tier's
       // work went (the budget poll's window move), the director and any tier with no fallback
       // still wait.
       {
         const moved = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
         if (moved.length > 0)
-          return `claude subscription window ${textOr(e.windowType)} rejected — claude model jobs move to ${moved.join(", ")}${windowResetPhrase(e)} (director keeps waiting)`;
+          return `${backendLabel(e)} subscription window ${textOr(e.windowType)} rejected — ${backendLabel(e)} model jobs move to ${moved.join(", ")}${windowResetPhrase(e)} (director keeps waiting)`;
       }
-      return `waiting: claude subscription window ${textOr(e.windowType)} rejected — claude model jobs wait${windowResetPhrase(e)} (director keeps running)`;
-    case "claude_window_reset":
-      return `claude subscription window reset — claude model jobs run again`;
+      return `waiting: ${backendLabel(e)} subscription window ${textOr(e.windowType)} rejected — ${backendLabel(e)} model jobs wait${windowResetPhrase(e)} (director keeps running)`;
+    case "subscription_window_reset":
+      return `${backendLabel(e)} subscription window reset — ${backendLabel(e)} model jobs run again`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;

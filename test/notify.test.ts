@@ -46,8 +46,8 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "budget_warning",
       "role_cap_warning",
       "budget_paused",
-      "claude_window_warning",
-      "claude_window_limited",
+      "subscription_window_warning",
+      "subscription_window_limited",
       "role_streak_paused",
       "role_cap_paused",
       "disk_low",
@@ -64,7 +64,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
     "a resume is good news; the paused page is the actionable one",
   );
   assert.ok(
-    !(NOTIFY_EVENT_TYPES as readonly string[]).includes("claude_window_reset"),
+    !(NOTIFY_EVENT_TYPES as readonly string[]).includes("subscription_window_reset"),
     "a window lift is good news; the limited page is the actionable one",
   );
   assert.equal(NOTIFY_MIN_GAP_MS, 60_000);
@@ -145,16 +145,16 @@ test("claude window events each spawn the notify command with the rendered line"
   notifier.update({ notify: recorderCommand(out) });
   try {
     const resetsAt = Date.now() + 3_600_000;
-    const event = logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_limited", windowType: "five_hour", resetsAt });
+    const event = logEvent(root, { source: TUMWATER_SOURCE, type: "subscription_window_limited", windowType: "five_hour", resetsAt, backend: "claude" });
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
-    assert.equal(line.type, "claude_window_limited");
+    assert.equal(line.type, "subscription_window_limited");
     assert.equal(line.source, "tumwater");
     assert.equal(line.message, formatEvent(event));
     // A different type is not suppressed by the limited page's throttle slot.
-    logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_warning", windowType: "five_hour", resetsAt });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "subscription_window_warning", windowType: "five_hour", resetsAt, backend: "claude" });
     await waitFor(() => recordedLines(out).length === 2, "a second recorded line");
-    assert.equal(parseLine(recordedLines(out)[1] ?? "").type, "claude_window_warning");
+    assert.equal(parseLine(recordedLines(out)[1] ?? "").type, "subscription_window_warning");
   } finally {
     notifier.dispose();
   }
@@ -169,7 +169,7 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
     logEvent(root, { source: "feature", type: "run_end", run: 1, result: "no_change" });
     logEvent(root, { source: TUMWATER_SOURCE, type: "warning", message: "not page-worthy" });
     logEvent(root, { source: "feature", type: "merge_done" });
-    logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_reset", windowType: "five_hour" });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "subscription_window_reset", windowType: "five_hour", backend: "claude" });
     await sleep(400);
     assert.equal(recordedLines(out).length, 0, "off-allowlist events must spawn nothing");
     // Empty string means off — the same disabled state as an absent key.

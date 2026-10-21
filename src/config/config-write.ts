@@ -246,6 +246,12 @@ export function setConfigKey(
           if (parsed.field === "bin") delete nextRecord.agentBin;
           else delete nextRecord.piArgs;
         }
+        // Setting the nested claude reserve drops the top-level spelling, so the file can never
+        // hold both (validateConfig rejects a file that does, mirroring the agentBin/piArgs pair).
+        if (parsed.id === "claude" && parsed.field === "windowReserve") {
+          const nextRecord = next as unknown as Record<string, unknown>;
+          delete nextRecord.claudeWindowReserve;
+        }
         return preservingFileRoles(root, next);
       }
       // Base the merge on the FILE's own roles, not the loaded (catalog-merged) map: an
@@ -336,6 +342,18 @@ export function setConfigKey(
       delete entry[key === "agentBin" ? "bin" : "args"];
       if (Object.keys(entry).length === 0) delete backends.pi;
       else backends.pi = entry;
+      return { ...next, backends: backends };
+    }
+    // Writers keep one spelling: setting the top-level `claudeWindowReserve` drops the nested
+    // `backends.claude.windowReserve`, so a supported `config set` never writes the rejected pair
+    // (validateConfig still refuses a hand-edited file holding both).
+    if (key === "claudeWindowReserve") {
+      const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
+      const backends = { ...(record.backends ?? {}) };
+      const entry = { ...(backends.claude ?? {}) };
+      delete entry.windowReserve;
+      if (Object.keys(entry).length === 0) delete backends.claude;
+      else backends.claude = entry;
       return { ...next, backends: backends };
     }
     return next;
