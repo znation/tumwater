@@ -164,10 +164,16 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
  * (exactly `tumwater diff --overlaps --json`'s `{ mainBranch, state, overlaps }`); with `role` (a
  * comma-separated list, each id validated) it keeps the files a listed role holds, exactly
  * `tumwater diff --overlaps --role <ids> --json`; `&path=<path>` keeps the files at or under that
- * path, exactly `tumwater diff --overlaps --path <path> --json`. */
+ * path, exactly `tumwater diff --overlaps --path <path> --json`. `?role=<id>&stat=1` serves both
+ * halves as the `git diff --stat` summary, exactly `tumwater diff --role <id> --stat --json`. */
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const rawPath = q.get("path");
+  const stat = q.get("stat") !== null;
   if (q.get("overlaps") !== null) {
+    if (stat) {
+      badRequest(res, "overlaps lists paths, not patches; drop stat");
+      return;
+    }
     const opath = rawPath === null ? undefined : normalizeDiffPath(rawPath);
     if (opath === null) {
       badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
@@ -183,6 +189,10 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   }
   const role = q.get("role");
   if (role === null) {
+    if (stat) {
+      badRequest(res, "stat needs role (the team roster carries no patch)");
+      return;
+    }
     if (rawPath !== null) {
       badRequest(res, "path needs role (the team roster carries no patch)");
       return;
@@ -196,7 +206,7 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
     badRequest(res, "path takes a repo-relative path such as src/cli.ts (as overlaps lists it)");
     return;
   }
-  sendJson(res, 200, await collectRoleChange(root, role, path === undefined ? {} : { path }));
+  sendJson(res, 200, await collectRoleChange(root, role, { ...(path === undefined ? {} : { path }), ...(stat ? { stat: true } : {}) }));
 }
 
 /** Parse the `?role=` comma-separated list (each id trimmed, deduplicated, and validated by

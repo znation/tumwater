@@ -5,6 +5,43 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `GET /api/diff?role=<id>&stat=1` serves the role's diffstat instead of its full patch, and the dashboard drawer's Pending change section gets a Stat only toggle: the twin of `tumwater diff --role <id> --stat` (planned 2026-10-20 by the plan role; independent of every eligible plan: none of them touch `handleDiff` in src/gui/gui-endpoints.ts or src/ui/gui/gui-client-drawer.ts — the Inbox Search plan edits only `handleBacklogMatch` in gui-endpoints.ts) — done 2026-10-20 by the feature role
+
+**Goal.** `tumwater diff --role <id> --stat` prints a role's unmerged change as one `git diff --stat` line per file. The dashboard has no twin. `handleDiff` ignores `stat`, so the role drawer's Pending change section always fetches and paints the full patch. A large pending change then fills the drawer when the operator only wants to know which files it touches.
+
+**Approach.**
+1. src/gui/gui-endpoints.ts `handleDiff`. Read `const stat = q.get("stat") !== null;`, the same presence test `overlaps` uses.
+   - In the `?overlaps` branch, when `stat` is set, send `badRequest(res, "overlaps lists paths, not patches; drop stat")` before collecting. This mirrors `cmdDiff`'s `diff --overlaps prints paths, not patches; drop --stat`.
+   - In the team branch (`role === null`), when `stat` is set, send `badRequest(res, "stat needs role (the team roster carries no patch)")`. This sits beside the existing `path needs role` refusal and runs before it.
+   - In the role branch, pass `{ ...(path === undefined ? {} : { path }), ...(stat ? { stat: true } : {}) }` to `collectRoleChange`. With `stat` absent, the call matches today's call, so the existing tests' `deepEqual` against `collectRoleChange(root, "feature")` still holds. `stat` combines with `path`, exactly as `diff --role <id> --stat --path <path> --json` does.
+   - Extend the doc comment: `&stat=1` serves both halves as the `git diff --stat` summary, exactly `tumwater diff --role <id> --stat --json`.
+2. src/ui/gui/gui-client-drawer.ts.
+   - Add `let drawerChangeStat = false;` beside `drawerChange`. In `openRole`, reset it to false next to the existing `transcriptPrompts = false;`, so each drawer opens on the full patch as the transcript opens with prompts hidden. It is not stored.
+   - `loadDrawerChange(role)` fetches `"/api/diff?" + (drawerChangeStat ? "stat=1&" : "") + "role="`, because `loadDrawerSection` appends the encoded role. With the toggle off, the URL stays `/api/diff?role=<id>`.
+   - `drawerChangeSection()`: the `sec-head` div gets a `<button type='button' class='btn btn-sm' data-change-stat>` after the `<h3>`. Its label is `Stat only` when `drawerChangeStat` is false and `Full patch` when it is true.
+   - `drawerChangeHtml` is unchanged. Under stat the `diff` and `uncommittedDiff` fields hold the stat text, which `diffPre` paints.
+   - Add `function toggleDrawerChangeStat()`: flip `drawerChangeStat`, then call `loadDrawerChange(openRoleId())`. `loadDrawerSection` already ignores a null role and drops a stale answer.
+   - In the `$("drawer")` click listener, before the `button.rowaction` lookup, add `if (clickClosest(ev, "button[data-change-stat]")) { toggleDrawerChangeStat(); return; }`.
+3. Docs.
+   - docs/how-it-works.md, Pending view paragraph: change "shows a role's full unmerged patch in its drawer" to "shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`)".
+   - docs/invariants.md, the change-data.ts paragraph that names `collectRoleChange`: add that `GET /api/diff?role=<id>&stat=1` serves `collectRoleChange(…, { stat: true })`.
+
+**Files touched.** src/gui/gui-endpoints.ts, src/ui/gui/gui-client-drawer.ts, docs/how-it-works.md, docs/invariants.md, test/gui-endpoints.test.ts, test/gui-client-drawer.test.ts.
+
+**Acceptance criteria.**
+- New test "handleDiff with ?role&stat serves the diffstat view, matching collectRoleChange with stat" in test/gui-endpoints.test.ts, built like "handleDiff with ?role&path serves the path-scoped view…". Feature commits `feature.md` plus an edit to `notes.txt`, then appends uncommitted text to `notes.txt`.
+  - `?role=feature&stat=1` answers 200 and deep-equals `collectRoleChange(root, "feature", { stat: true })`.
+  - Its `diff` matches `/feature\.md \| /` and does not contain `diff --git`. Its `uncommittedDiff` matches `/notes\.txt \| /`.
+  - `?role=feature&stat=1&path=notes.txt` deep-equals `collectRoleChange(root, "feature", { stat: true, path: "notes.txt" })`, and its `diff` does not contain `feature.md`.
+- New test "handleDiff refuses stat without role and with overlaps". `?stat=1` answers 400 with an error matching `/stat needs role/`. `?overlaps=1&stat=1` answers 400 with an error matching `/drop stat/`.
+- The existing handleDiff tests pass unchanged.
+- New test in test/gui-client-drawer.test.ts, modeled on "the role drawer for a role the team no longer has…". Its responses serve `/api/diff?role=gone` (a full patch `diff --git a/x b/x`) and `/api/diff?stat=1&role=gone` (diff ` x | 1 +`).
+  - After `toggleRole("gone")` and `flush()`, `drawermeta` contains `data-change-stat`, the label `Stat only` and the full patch.
+  - Clicking `button[data-change-stat]`, or calling `toggleDrawerChangeStat()` if the harness cannot dispatch the click, then `flush()`, repaints `drawermeta` with ` x | 1 +`, the label `Full patch`, and no `diff --git`.
+  - A second toggle restores the full patch and `Stat only`.
+  - Toggling back to stat and then calling `toggleRole("gone")` twice (close, reopen) fetches `/api/diff?role=gone` again and shows `Stat only`.
+- `npm run test:gate` passes.
+
 ### The dashboard Inbox tab's Search matches each queued message's full text, not only its 80-character preview, through `GET /api/backlog-match`'s new `queued` key: the dashboard twin of `tumwater prompt --list --grep` (planned 2026-10-20 by the plan role; no dependency on any Planned entry: the TUI Inbox `/` search entry edits src/inbox/inbox.ts, src/inbox/prompt-commands.ts and src/ui/tui, the Folder picker entry the Pending card, `history --last` src/run/run-detail.ts and src/cli, and part 5/5 config loading — none touches handleBacklogMatch or the Backlog card's Inbox rows; touches src/gui/gui-endpoints.ts src/ui/gui/gui-client-backlog.ts test/gui.test.ts test/gui-client-team.test.ts; done 2026-10-20)
 
 **Goal.** The Backlog card's Search box filters Inbox rows by `q.preview + " " + q.role` only (`renderBacklog`'s `hit` in src/ui/gui/gui-client-backlog.ts). `q.preview` is `promptPreview`, which truncates at `PROMPT_PREVIEW_MAX` (80 chars, src/inbox/inbox.ts). So a word past the 80th character of a queued message never matches on the dashboard, while `tumwater prompt --list --grep` (cmdPrompt, src/inbox/prompt-commands.ts) matches the full text. The Plans/Bugs/Questions tabs already search entry bodies through `/api/backlog-match`; the Inbox tab should do the same.

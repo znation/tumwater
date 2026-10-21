@@ -13,6 +13,7 @@
 export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "role", role } | { kind: "entry", file, index } while open
   let drawerRuns = null; // the open role's recent history rows (null until fetched)
   let drawerRunsAt = 0;
+  let drawerChangeStat = false;
   let drawerChange = null; // the open role's unmerged change: { role, state: "loading"|"ok"|"error", view, message }
   let drawerRole = null; // the open role's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
@@ -63,6 +64,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function openRole(role) {
     drawer = { kind: "role", role };
     transcriptPrompts = false;
+    drawerChangeStat = false;
     transcriptGrep = "";
     const hash = "#role/" + encodeURIComponent(role);
     if (location.hash !== hash) history.replaceState(null, "", hash);
@@ -230,7 +232,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (!c || c.state === "loading") body = "<p class='muted'>Loading…</p>";
     else if (c.state === "error") body = "<p class='muted'>" + esc(c.message || "Pending change unavailable") + "</p>";
     else body = drawerChangeHtml(c.view);
-    return "<section><div class='sec-head'><h3>Pending change</h3></div>" + body + "</section>";
+    return "<section><div class='sec-head'><h3>Pending change</h3>" +
+      "<button type='button' class='btn btn-sm' data-change-stat style='margin-left:auto'>" + (drawerChangeStat ? "Full patch" : "Stat only") + "</button></div>" + body + "</section>";
   }
   // Fetch one drawer section's payload once when the drawer opens, storing it in the
   // caller's state cell. A stale answer (the drawer moved to another role) is dropped;
@@ -252,7 +255,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   // The open role's unmerged change, as /api/diff?role serves it.
   function loadDrawerChange(role) {
-    return loadDrawerSection(role, "/api/diff?role=", "Pending change unavailable", (v) => { drawerChange = v; });
+    return loadDrawerSection(role, "/api/diff?" + (drawerChangeStat ? "stat=1&" : "") + "role=", "Pending change unavailable", (v) => { drawerChange = v; });
+  }
+
+  function toggleDrawerChangeStat() {
+    drawerChangeStat = !drawerChangeStat;
+    return loadDrawerChange(openRoleId());
   }
 
   // The open role's notes and next-run prompt, as /api/role serves them (rolePayload):
@@ -468,6 +476,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   $("drawer").addEventListener("click", (ev) => {
     if (clickClosest(ev, "button[data-transcript-prompts]")) {
       toggleTranscriptPrompts();
+      return;
+    }
+    if (clickClosest(ev, "button[data-change-stat]")) {
+      toggleDrawerChangeStat();
       return;
     }
     const b = clickClosest(ev, "button.rowaction");

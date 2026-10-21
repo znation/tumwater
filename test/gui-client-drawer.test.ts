@@ -26,6 +26,7 @@ interface FakeEl {
 
 interface DrawerScope {
   openRoleId(): string | null;
+  toggleDrawerChangeStat(): void;
   openEntryKey(): string | null;
   startNoteEdit(role: string, text: string): void;
   stopNoteEdit(): void;
@@ -209,6 +210,38 @@ test("the role drawer for a role the team no longer has says so, paints no actio
   assert.match(meta, /tumwater\/gone/);
   assert.match(meta, /deadbee unlanded/);
   assert.match(meta, /<pre class='mono diff'>diff --git a\/x b\/x/);
+});
+
+test("the drawer's Pending change section toggles between the full patch and the diffstat, and reopens on the full patch", async () => {
+  const change = (diff: string) => ({ state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff, dirtyFiles: [] });
+  const t = openDrawer(["toggleRole", "toggleDrawerChangeStat"], {
+    status: { roles: [] },
+    responses: { "/api/diff?role=gone": change("diff --git a/x b/x\n"), "/api/diff?stat=1&role=gone": change(" x | 1 +\n") },
+  });
+  t.scope.toggleRole("gone");
+  await flush();
+  let meta = t.paintedFor("drawermeta");
+  assert.match(meta, /data-change-stat/);
+  assert.match(meta, />Stat only</);
+  assert.match(meta, /diff --git a\/x b\/x/);
+  t.scope.toggleDrawerChangeStat();
+  await flush();
+  meta = t.paintedFor("drawermeta");
+  assert.match(meta, / x \| 1 \+/);
+  assert.match(meta, />Full patch</);
+  assert.doesNotMatch(meta, /diff --git/);
+  t.scope.toggleDrawerChangeStat();
+  await flush();
+  meta = t.paintedFor("drawermeta");
+  assert.match(meta, /diff --git a\/x b\/x/);
+  assert.match(meta, />Stat only</);
+  t.scope.toggleDrawerChangeStat();
+  await flush();
+  t.scope.toggleRole("gone");
+  t.scope.toggleRole("gone");
+  await flush();
+  assert.equal(t.jsonCalls.filter((c) => c.startsWith("/api/diff")).pop(), "/api/diff?role=gone");
+  assert.match(t.paintedFor("drawermeta"), />Stat only</);
 });
 
 test("an idle role's drawer offers Wake later…, and its open chooser lists one button per duration", () => {

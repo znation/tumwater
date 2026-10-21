@@ -1873,6 +1873,41 @@ test("handleDiff with ?role&path serves the path-scoped view, matching collectRo
   assert.deepEqual(md.dirtyFiles, []);
 });
 
+test("handleDiff with ?role&stat serves the diffstat view, matching collectRoleChange with stat", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff stat");
+  fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
+  commitIn(root, "seed notes.txt");
+  const feature = await ensureWorktree(root, "feature", "main");
+  fs.writeFileSync(path.join(feature, "feature.md"), "work\n");
+  fs.appendFileSync(path.join(feature, "notes.txt"), "feature\n");
+  commitIn(feature, "feature work");
+  fs.appendFileSync(path.join(feature, "notes.txt"), "more\n");
+
+  const ok = await serveDiff(root, "?role=feature&stat=1");
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, await collectRoleChange(root, "feature", { stat: true }));
+  const doc = ok.data as unknown as { diff: string; uncommittedDiff: string };
+  assert.match(doc.diff, /feature\.md \| /);
+  assert.ok(!doc.diff.includes("diff --git"));
+  assert.match(doc.uncommittedDiff, /notes\.txt \| /);
+  const scoped = await serveDiff(root, "?role=feature&stat=1&path=notes.txt");
+  assert.deepEqual(scoped.data, await collectRoleChange(root, "feature", { stat: true, path: "notes.txt" }));
+  assert.ok(!(scoped.data as unknown as { diff: string }).diff.includes("feature.md"));
+});
+
+test("handleDiff refuses stat without role and with overlaps", async () => {
+  const root = makeRepo();
+  await initProject(root, "gui diff stat refusals");
+  await ensureWorktree(root, "feature", "main");
+  const noRole = await serveDiff(root, "?stat=1");
+  assert.equal(noRole.captured.status, 400);
+  assert.match((noRole.data as { error: string }).error, /stat needs role/);
+  const overlaps = await serveDiff(root, "?overlaps=1&stat=1");
+  assert.equal(overlaps.captured.status, 400);
+  assert.match((overlaps.data as { error: string }).error, /drop stat/);
+});
+
 test("handleDiff refuses path without role and outside the repo", async () => {
   const root = makeRepo();
   await initProject(root, "gui diff path refusals");
