@@ -28,8 +28,9 @@ import { humanSeconds } from "../text/datetime.js";
 import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
-import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../events/event-window.js";
 import { eventRole, readEvents } from "../events/event-read.js";
+import type { HarnessEvent } from "../events/events.js";
 import { eventFeedItem, eventMatchesGrep } from "../events/event-format.js";
 import { readRunDetail, type RunDetail } from "../run/run-detail-data.js";
 import {
@@ -326,8 +327,8 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
 const LOGS_SEARCH_EVENTS = 500;
 const LOGS_SEARCH_MAX_EVENTS = 5000;
 
-/** Handle GET /api/logs?n=N[&grep=<text>][&role=<id>]: a slice of the raw event log scanned
- * from its newest end, filtered with the CLI's own rules and shaped as the activity feed's
+/** Handle GET /api/logs?n=N|sinceMs=S[&grep=<text>][&role=<id>]: a slice of the raw event log
+ * scanned from its newest end, filtered with the CLI's own rules and shaped as the activity feed's
  * items. `n` is optional (absent → LOGS_SEARCH_EVENTS) and clamps to [1, LOGS_SEARCH_MAX_EVENTS]
  * after intQuery's non-negative parse (an explicit count that does not parse is a 400, the
  * handleHistory discipline); it bounds the scanned tail, so a matching event older than the
@@ -339,19 +340,38 @@ const LOGS_SEARCH_MAX_EVENTS = 5000;
  * Reads the tail through readEvents' stat-keyed cache (no covered byte end, unlike the CLI's
  * follow), so a dashboard search that repeats on an unchanged log — the debounced filter fires
  * one per filter change — costs one stat instead of re-reading and re-parsing the scanned tail.
+ * With `sinceMs` instead of `n` it serves the trailing window's events (readEventsSince, the
+ * `logs --since` reader) as { events, covered, note }, the /api/history window shape: sinceMs
+ * with n is a 400 (rival shapes), sinceMs parses and is capped through sinceMsQuery at
+ * LOGS_SINCE_MAX_MS, the window is not row-capped, and note is SPARSE_WINDOW_NOTE when the log
+ * does not reach back that far.
  * Reads files directly, so it works whether or not the team is running. */
 export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: string): void {
-  const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
-  if (parsed === null) return;
-  const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);
   const role = q.get("role") || null; // "" and absent both read all roles
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   const needle = grep === null ? null : grep.toLowerCase();
-  const events = readEvents(root, n);
-  const matched = events.filter(
-    (e) => (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle)),
-  );
-  sendJson(res, 200, { events: matched.map(eventFeedItem) });
+  const keep = (e: HarnessEvent): boolean =>
+    (role === null || eventRole(e) === role) && (needle === null || eventMatchesGrep(e, needle));
+  if (q.get("sinceMs") !== null) {
+    if (q.get("n") !== null) {
+      badRequest(res, "sinceMs cannot be combined with n (a count and a window are rival shapes)");
+      return;
+    }
+    const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>
+      `sinceMs is capped at ${humanSeconds(LOGS_SINCE_MAX_MS / 1000)} (got ${ms})`);
+    if (sinceMs === null) return;
+    const { events, covered } = readEventsSince(root, sinceMs);
+    sendJson(res, 200, {
+      events: events.filter(keep).map(eventFeedItem),
+      covered,
+      note: covered ? "" : SPARSE_WINDOW_NOTE,
+    });
+    return;
+  }
+  const parsed = intQuery(q, res, "n", "non-negative", LOGS_SEARCH_EVENTS);
+  if (parsed === null) return;
+  const n = clampCount(parsed, LOGS_SEARCH_MAX_EVENTS);
+  sendJson(res, 200, { events: readEvents(root, n).filter(keep).map(eventFeedItem) });
 }
 
 /** handleRun's `transcript` text: the run's transcript lines joined, else the miss note. */

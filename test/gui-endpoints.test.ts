@@ -19,6 +19,7 @@ import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { queuedFiles, queuedRolePromptRecords } from "../src/inbox/inbox.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
+import { LOGS_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -424,6 +425,40 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
   const none = await serveLogs(root, "?role=ghost");
   assert.equal(none.captured.status, 200);
   assert.deepEqual((none.data as { events: unknown[] }).events, []);
+});
+
+test("handleLogs ?sinceMs serves the trailing window's events, composing grep and role", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  writeEvents(root, [
+    { ts: now - 3 * 3600_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "landed old" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed", summary: "landed new" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 20 * 60_000, loop: "bugfix", type: "run_end", run: 1, result: "changed", summary: "landed other" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  interface Answer { events: { ts: number }[]; covered: boolean; note: string }
+  const all = await serveLogs(root, "?sinceMs=3600000");
+  const answer = all.data as Answer;
+  assert.equal(all.captured.status, 200);
+  assert.deepEqual(answer.events.map((e) => e.ts), [now - 30 * 60_000, now - 20 * 60_000]);
+  assert.equal(answer.covered, true);
+  assert.equal(answer.note, "");
+  const feature = await serveLogs(root, "?sinceMs=3600000&role=feature");
+  assert.deepEqual((feature.data as Answer).events.map((e) => e.ts), [now - 30 * 60_000]);
+  const other = await serveLogs(root, "?sinceMs=3600000&grep=other");
+  assert.deepEqual((other.data as Answer).events.map((e) => e.ts), [now - 20 * 60_000]);
+});
+
+test("handleLogs refuses sinceMs with n, a malformed sinceMs, and one over the cap", async () => {
+  const root = tmpdir();
+  writeEvents(root, []);
+  const rival = await serveLogs(root, "?sinceMs=3600000&n=5");
+  assert.equal(rival.captured.status, 400);
+  assert.match(JSON.stringify(rival.data), /rival shapes/);
+  assert.equal((await serveLogs(root, "?sinceMs=abc")).captured.status, 400);
+  assert.equal((await serveLogs(root, "?sinceMs=0")).captured.status, 400);
+  const over = await serveLogs(root, `?sinceMs=${LOGS_SINCE_MAX_MS + 1}`);
+  assert.equal(over.captured.status, 400);
+  assert.match(JSON.stringify(over.data), /capped at/);
 });
 
 test("handleLogs bounds the scanned tail by n, defaults it, and rejects a bad n", async () => {
