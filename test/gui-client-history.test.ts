@@ -695,3 +695,69 @@ test("the drill-down's Show prompts button reloads the transcript with prompts a
   await toggleHistTranscriptPrompts("clean#9");
   assert.equal(urls.length, before + 1);
 });
+
+test("the open transcript's search box narrows it through &grep, drops a stale answer, and clears on the prompts toggle", async () => {
+  const urls: string[] = [];
+  let fail = false;
+  let deferred: Promise<unknown> | null = null;
+  const scope = clientScope<{
+    histDetails: Map<string, Record<string, unknown>>;
+    histDetailCardHtml(entry: unknown, key: string): string;
+    toggleHistTranscript(key: string): Promise<void>;
+    toggleHistTranscriptPrompts(key: string): Promise<void>;
+    searchHistTranscript(key: string, value: string): Promise<void>;
+  }>(
+    HISTORY_REGIONS,
+    ["histDetails", "histDetailCardHtml", "toggleHistTranscript", "toggleHistTranscriptPrompts", "searchHistTranscript"],
+    {
+      icon: iconStub,
+      renderHistory: () => {},
+      getJson: (url: string) => {
+        urls.push(url);
+        if (fail && url.includes("&grep=")) return Promise.reject(new Error("boom"));
+        if (deferred && url.endsWith("&grep=a")) return deferred;
+        const grep = /&grep=([^&]*)$/.exec(url);
+        const transcript = grep ? (grep[1] === "b" ? "b-hit" : "only < match") : url.endsWith("&prompt=1") ? "prompted" : "plain";
+        return Promise.resolve({ transcript });
+      },
+    },
+  );
+  const { histDetails, histDetailCardHtml, toggleHistTranscript, toggleHistTranscriptPrompts, searchHistTranscript } = scope;
+  const card = () => histDetailCardHtml(histDetails.get("clean#9"), "clean#9");
+
+  histDetails.set("clean#9", { state: "ok", text: "h" });
+  assert.doesNotMatch(card(), /data-hist-transcript-grep/);
+  await toggleHistTranscript("clean#9");
+  assert.match(card(), /data-hist-transcript-grep='clean#9'[^>]*value=''/);
+
+  await searchHistTranscript("clean#9", "  Boom ");
+  assert.match(urls.at(-1)!, /&transcript=1&grep=Boom$/);
+  assert.match(card(), /hist-detail-transcript'>only &lt; match</);
+  assert.match(card(), /value='Boom'/);
+
+  const fetched = urls.length;
+  await searchHistTranscript("clean#9", "");
+  assert.equal(urls.length, fetched, "a blank value does not fetch");
+  assert.match(card(), />plain</);
+
+  await toggleHistTranscriptPrompts("clean#9");
+  await searchHistTranscript("clean#9", "x");
+  assert.match(urls.at(-1)!, /&transcript=1&prompt=1&grep=x$/);
+  await toggleHistTranscriptPrompts("clean#9");
+  assert.match(card(), />plain</);
+  assert.match(card(), /value=''/);
+
+  // A stale answer (superseded by a newer search) is dropped.
+  let release: (v: unknown) => void = () => {};
+  deferred = new Promise((r) => (release = r));
+  const slow = searchHistTranscript("clean#9", "a");
+  await searchHistTranscript("clean#9", "b");
+  release({ transcript: "a-hit" });
+  await slow;
+  assert.match(card(), /b-hit/);
+  assert.doesNotMatch(card(), /a-hit/);
+
+  fail = true;
+  await searchHistTranscript("clean#9", "z");
+  assert.match(card(), /<div class='err'>boom<\/div>/);
+});

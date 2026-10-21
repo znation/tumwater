@@ -121,6 +121,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       if (!b) return;
       toggleHistTranscriptPrompts(b.dataset.histTranscriptPrompts);
     });
+    // The open transcript's search box (applied on Enter or blur: the card re-renders each change).
+    $("histbody").addEventListener("change", (ev) => {
+      const el = ev.target instanceof Element ? ev.target.closest("input[data-hist-transcript-grep]") : null;
+      if (el) searchHistTranscript(el.dataset.histTranscriptGrep, el.value);
+    });
   }
   // history-detail:start
   // Run drill-down state: one open card at a time, keyed "role#run", with each key's cache
@@ -131,7 +136,9 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
   // { state: loading | ok | error, text?, message?, open? }, transcript the Show transcript
   // button's sub-state, shaped like patch's (shown on every ok card, commit or not), with
   // optional { prompts?, promptText?, promptsLoading?, promptsError? } for the Show prompts
-  // button (the transcript reloaded with each run's prompt), revertSha
+  // button (the transcript reloaded with each run's prompt) and { grep?, grepText?, grepLoading?,
+  // grepError? } for the search box (the server-filtered text while set, cleared by the prompts
+  // toggle), revertSha
   // is the full sha of the change on main (null when none), revert the revert button's
   // sub-state { state: previewing | preview | reverting | done | error, preview?, message? }.
   // Cached until the view refetches (fetchHistory clears the map), so collapsing and
@@ -239,7 +246,10 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       out += " <button type='button' class='btn btn-sm' data-hist-transcript-prompts='" + esc(key) + "'>" + (t.prompts ? "Hide prompts" : "Show prompts") + "</button>";
       if (t.promptsLoading) out += " <span class='muted'>Loading prompts…</span>";
       if (t.promptsError) out += "<div class='err'>" + esc(t.promptsError) + "</div>";
-      out += "<pre class='mono hist-detail-transcript'>" + esc(t.prompts ? t.promptText : t.text) + "</pre>";
+      out += " <input type='search' class='field' data-hist-transcript-grep='" + esc(key) + "' placeholder='Search transcript' aria-label='Search transcript' autocomplete='off' value='" + esc(t.grep || "") + "'>";
+      if (t.grepLoading) out += " <span class='muted'>Searching transcript…</span>";
+      if (t.grepError) out += "<div class='err'>" + esc(t.grepError) + "</div>";
+      out += "<pre class='mono hist-detail-transcript'>" + esc(t.grep && typeof t.grepText === "string" ? t.grepText : t.prompts ? t.promptText : t.text) + "</pre>";
     }
     return out;
   }
@@ -267,12 +277,51 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
     }
     renderHistory();
   }
+  function clearHistTranscriptGrep(t) {
+    delete t.grep;
+    delete t.grepText;
+    delete t.grepLoading;
+    delete t.grepError;
+  }
+  // Narrow the open transcript to the entries containing value, server-side (&grep=); blank clears.
+  async function searchHistTranscript(key, value) {
+    const entry = histDetails.get(key);
+    if (!entry || entry.state !== "ok") return;
+    const t = entry.transcript;
+    if (!t || t.state !== "ok" || !t.open) return;
+    const grep = String(value ?? "").trim();
+    if (grep === "") {
+      clearHistTranscriptGrep(t);
+      renderHistory();
+      return;
+    }
+    t.grep = grep;
+    t.grepLoading = true;
+    delete t.grepText;
+    delete t.grepError;
+    renderHistory();
+    const at = key.lastIndexOf("#");
+    try {
+      const d = await getJson(
+        "/api/run?role=" + encodeURIComponent(key.slice(0, at)) + "&run=" + encodeURIComponent(key.slice(at + 1)) + "&transcript=1" + (t.prompts ? "&prompt=1" : "") + "&grep=" + encodeURIComponent(grep),
+      );
+      if (entry.transcript !== t || t.grep !== grep) return;
+      if (!d || typeof d.transcript !== "string") throw new Error("/api/run answered without a transcript field");
+      t.grepText = d.transcript;
+    } catch (err) {
+      if (entry.transcript !== t || t.grep !== grep) return;
+      t.grepError = err && err.message ? err.message : "the search failed";
+    }
+    delete t.grepLoading;
+    renderHistory();
+  }
   // Toggle the open transcript between plain and with-prompts; the prompts text is fetched once.
   async function toggleHistTranscriptPrompts(key) {
     const entry = histDetails.get(key);
     if (!entry || entry.state !== "ok") return;
     const t = entry.transcript;
     if (!t || t.state !== "ok" || !t.open || t.promptsLoading) return;
+    clearHistTranscriptGrep(t);
     if (typeof t.promptText === "string") {
       t.prompts = !t.prompts;
       renderHistory();

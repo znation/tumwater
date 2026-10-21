@@ -349,8 +349,11 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
 }
 
 /** handleRun's `transcript` text: the run's transcript lines joined, else the miss note. */
-function transcriptText(root: string, role: string, run: number, detail: RunDetail, includePrompts: boolean): string {
-  const { found, note } = runTranscriptLines(root, role, run, detail, { includePrompts });
+function transcriptText(root: string, role: string, run: number, detail: RunDetail,
+  includePrompts: boolean,
+  grep: string | undefined,
+): string {
+  const { found, note } = runTranscriptLines(root, role, run, detail, { includePrompts, grep });
   return found.length > 0 ? found.join("\n") : note;
 }
 /** Handle GET /api/run?role=<id>&run=N: one run's full event trail — readRunDetail's
@@ -371,8 +374,10 @@ function transcriptText(root: string, role: string, run: number, detail: RunDeta
  * value, so the default expand costs no extra `git show`. `transcript`, likewise flag-gated, is
  * the text `history --transcript` prints (runTranscriptLines: the found lines joined, else its
  * note), so the default expand reads no pi log; a present `prompt` flag also renders each agent
- * run's prompt, the text `history --transcript --prompt` prints. Reads files directly, so
- * it works whether or not the team is running. */
+ * run's prompt, the text `history --transcript --prompt` prints. A non-blank `grep` (with
+ * `transcript`) keeps only the entries containing the text, case-insensitively, each under its
+ * agent run's separator, the text `history --transcript --grep` prints, or its miss note. Reads
+ * files directly, so it works whether or not the team is running. */
 export async function handleRun(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
@@ -383,6 +388,7 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
     sendJson(res, 404, { error: runNotFoundMessage(role as string, run) });
     return;
   }
+  const grep = (q.get("grep") ?? "").trim();
   const mergedAs = runMergedSha(detail);
   const target = mergedAs === null ? null : await resolveRevertTarget(root, mergedAs);
   sendJson(res, 200, {
@@ -392,7 +398,7 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
     revertSha: target?.ok ? target.full : null,
     hasCommit: runCommitSha(detail) !== null,
     ...(q.get("patch") !== null ? { patch: await runDetailPatch(root, detail) } : {}),
-    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, run, detail, q.get("prompt") !== null) } : {}),
+    ...(q.get("transcript") !== null ? { transcript: transcriptText(root, role as string, run, detail, q.get("prompt") !== null, grep === "" ? undefined : grep) } : {}),
   });
 }
 /** Handle GET /api/role?role=<id>: one role's inspection payload — rolePayload's object,
