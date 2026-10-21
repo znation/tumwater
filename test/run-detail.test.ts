@@ -224,7 +224,7 @@ test("cmdRunDetail fails with the usage on a missing, unknown, or extra position
   await initProject(repo, "run arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\]\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdRunDetail(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdRunDetail(repo, ["nosuch", "3"], false));
@@ -304,7 +304,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--patch\] \[--transcript \[--prompt\] \[--grep <text>\]\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -518,6 +518,50 @@ test("history --transcript appends only the run's own agent runs, composes with 
   assert.match(last, /no transcript for bugfix run 3/);
   const both = (await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "2"], false, { stat: true, transcript: true }))).stdout;
   assert.ok(both.indexOf("(no commit") < both.indexOf("said-two"));
+});
+
+test("history --transcript --grep keeps the run's matching entries, notes a miss, and needs --transcript", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history grep smoke");
+  writeEvents(repo, [
+    start({ ts: 1000, run: 1 }),
+    end({ ts: 2000, run: 1 }),
+    start({ ts: 3000, run: 2 }),
+    end({ ts: 4000, run: 2 }),
+  ]);
+  const msg = (ts: number, text: string) => ({
+    type: "message_end",
+    message: { role: "assistant", content: [{ type: "text", text }], timestamp: ts },
+  });
+  writeLogLines(piLogPath(repo, "bugfix"), [
+    { type: "tumwater_run", kind: "author", agent: "pi", ts: 1500 },
+    { type: "agent_start" },
+    msg(1500, "beta-one"),
+    { type: "tumwater_run", kind: "author", agent: "pi", ts: 3500 },
+    { type: "agent_start" },
+    msg(3500, "alpha-two"),
+    msg(3600, "beta-two"),
+  ]);
+  const out = (await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "2"], false, { transcript: true, grep: "BETA" }))).stdout;
+  assert.match(out, /beta-two/);
+  assert.match(out, /^── .+ ──$/m);
+  assert.doesNotMatch(out, /alpha-two|beta-one/);
+  const json = JSON.parse((await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "2"], true, { transcript: true, grep: "BETA" }))).stdout);
+  assert.ok(json.transcript.join("\n").includes("beta-two"));
+  assert.ok(!json.transcript.join("\n").includes("alpha-two"));
+  const miss = (await expectOkAsync(() => cmdRunDetail(repo, ["bugfix", "2"], false, { transcript: true, grep: "nope" }))).stdout;
+  assert.match(miss, /\(no transcript entries matching "nope" in bugfix run 2\)/);
+  assert.match(await expectFailAsync(() => cmdRunDetail(repo, ["bugfix", "2"], false, { grep: "beta" })), /history --grep needs --transcript/);
+  const viaCli = await cli(repo, "history", "bugfix", "2", "--transcript", "--grep", "beta");
+  assert.equal(viaCli.code, 0, viaCli.stderr);
+  assert.match(viaCli.stdout, /beta-two/);
+  assert.doesNotMatch(viaCli.stdout, /alpha-two/);
+  const bare = await cli(repo, "history", "bugfix", "2", "--transcript", "--grep");
+  assert.notEqual(bare.code, 0);
+  assert.match(bare.stderr, /history --grep needs a pattern/);
+  const twice = await cli(repo, "history", "bugfix", "2", "--transcript", "--grep", "a", "--grep", "b");
+  assert.notEqual(twice.code, 0);
+  assert.match(twice.stderr, /--grep may only be given once/);
 });
 
 test("history --transcript --prompt shows the run's own prompt, and --prompt needs --transcript", async () => {

@@ -23,7 +23,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 /** The run command's synopsis, word for word what cli.ts's dispatcher gate and cmdRunDetail's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]] [--json]";
+export const RUN_DETAIL_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the role,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -126,19 +126,25 @@ export function runTranscriptLines(
   role: string,
   runNumber: number,
   detail: RunDetail,
-  opts: { includePrompts?: boolean } = {},
+  opts: { includePrompts?: boolean; grep?: string } = {},
 ): { found: string[]; note: string } {
   if (detail.startTs === null) {
     return { found: [], note: `(no transcript: run ${runNumber}'s start rotated out of the event log)` };
   }
   return {
-    found: readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs, opts),
-    note: `(no transcript for ${role} run ${runNumber}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
+    found: readRunTranscript(piLogPath(root, role), detail.startTs, detail.endTs, {
+      includePrompts: opts.includePrompts,
+      grep: opts.grep?.toLowerCase(),
+    }),
+    note:
+      opts.grep !== undefined
+        ? `(no transcript entries matching "${opts.grep}" in ${role} run ${runNumber})`
+        : `(no transcript for ${role} run ${runNumber}: rotated out of .tumwater/log/${role}.pi.jsonl, or the run started no agent)`,
   };
 }
 
-/** `tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]]
- * [--json]`: print one completed
+/** `tumwater history <role> [<n>] [--last] [--stat] [--patch]
+ * [--transcript [--prompt] [--grep <text>]] [--json]`: print one completed
  * run's full event trail. Read-only: stdout only, no state file created — a run the
  * scan cannot find prints a not-found line and exits 0 (history's empty-output convention:
  * an absent record is an answer, not a failure), and under --json it prints the JSON document
@@ -152,12 +158,13 @@ export async function cmdRunDetail(
   root: string,
   positionals: string[],
   json: boolean,
-  { last = false, stat = false, patch = false, transcript = false, prompt = false }: {
+  { last = false, stat = false, patch = false, transcript = false, prompt = false, grep = null }: {
     last?: boolean;
     stat?: boolean;
     patch?: boolean;
     transcript?: boolean;
     prompt?: boolean;
+    grep?: string | null;
   } = {},
 ): Promise<void> {
   // Positional arity by form: cli.ts has already peeled the flags off and gated them (only
@@ -186,6 +193,7 @@ export async function cmdRunDetail(
     fail(`usage: ${RUN_DETAIL_USAGE}`);
   }
   if (prompt && !transcript) fail(`history --prompt needs --transcript (usage: ${RUN_DETAIL_USAGE})`);
+  if (grep !== null && !transcript) fail(`history --grep needs --transcript on a one-run trail (usage: ${RUN_DETAIL_USAGE})`);
   // The run number: either the user's positive integer (the numbered path, through the
   // shared count parser — a non-positive or non-numeric n fails naming the shape; there is
   // no cap — the number selects, it does not size the scan) or the newest completed run's
@@ -215,7 +223,9 @@ export async function cmdRunDetail(
   const footer: { stat?: string; patch?: string } = {};
   if (stat) footer.stat = await runDetailStat(root, detail);
   if (patch) footer.patch = await runDetailPatch(root, detail);
-  const transcriptLines = transcript ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: prompt }) : null;
+  const transcriptLines = transcript
+    ? runTranscriptLines(root, role, runNumber, detail, { includePrompts: prompt, grep: grep ?? undefined })
+    : null;
   if (json) {
     sayJson({ ...detail, ...footer, ...(transcriptLines === null ? {} : { transcript: transcriptLines.found }) });
   } else {

@@ -150,7 +150,7 @@ Usage:
                                    instead of the rows; with --json, ${SUMMARY_JSON_KEYS}
                                    --by model groups the summary by the model each run started on instead
                                    of by role; with --json, { models, total }
-  tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt]] [--json]
+  tumwater history <role> [<n>] [--last] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]
                                    One run's full event trail — a summary header (result, or
                                    in flight, with duration, tokens and cost, and the commit)
                                    then every event of that run in time order; a run still in
@@ -164,6 +164,9 @@ Usage:
                                    runs that started in that run's window;
                                    --prompt (with --transcript) also shows each run's exact
                                    prompt text;
+                                   --grep <text> (with --transcript) keeps only the transcript
+                                   entries containing the text, case-insensitively, under their
+                                   run's separator (like logs --transcript --grep);
                                    --json prints the collector's payload
   tumwater diff [--json]           One line per role holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles

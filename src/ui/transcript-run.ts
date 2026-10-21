@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { formatTranscript } from "./transcript.js";
+import { createTranscriptFilter, formatTranscript } from "./transcript.js";
 import { parsePiEventLine } from "../pi/pi-event-line.js";
 
 /** One past run's agent transcript for `tumwater history <role> <n> --transcript`: the raw pi
@@ -24,12 +24,13 @@ function segmentStart(lines: string[]): number | null {
 
 /** Rendered lines of every agent run in `file` (+ ".1", oldest first) whose start is within
  * [fromTs, toTs] (toTs null = open-ended). A missing file contributes nothing. `includePrompts`
- * renders each run's prompt (`--prompt`). */
+ * renders each run's prompt (`--prompt`). `grep` (already lowercased) keeps only the entries
+ * containing it, through the filter `logs --transcript --grep` uses. */
 export function readRunTranscript(
   file: string,
   fromTs: number,
   toTs: number | null,
-  opts: { includePrompts?: boolean } = {},
+  opts: { includePrompts?: boolean; grep?: string } = {},
 ): string[] {
   const kept: string[] = [];
   for (const f of [file + ".1", file]) {
@@ -50,5 +51,8 @@ export function readRunTranscript(
       if (start !== null && start >= fromTs && start <= (toTs ?? Infinity)) kept.push(...seg);
     }
   }
-  return formatTranscript(kept, opts).flat();
+  const entries = formatTranscript(kept, opts);
+  if (opts.grep === undefined) return entries.flat();
+  const keep = createTranscriptFilter(opts.grep);
+  return entries.flatMap((e) => keep(e) ?? []);
 }

@@ -55,3 +55,22 @@ test("a missing file yields nothing and a labeled marker renders its separator",
   assert.match(join(readRunTranscript(f, 0, null)), /── review/);
   assert.ok(fs.existsSync(f));
 });
+
+test("readRunTranscript with grep keeps only matching entries, under their run's separator", () => {
+  const f = path.join(tmpdir(), "g.pi.jsonl");
+  const msg = (text: string) => ({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text }] } });
+  writeLogLines(f, [
+    { type: "tumwater_run", kind: "author", agent: "pi", ts: 1000 },
+    { type: "agent_start" },
+    { type: "message_end", message: { role: "user", content: [{ type: "text", text: "go" }], timestamp: 1000 } },
+    msg("alpha-one"),
+    msg("beta-one"),
+  ]);
+  const hit = readRunTranscript(f, 0, null, { grep: "beta" });
+  assert.match(join(hit), /beta-one/);
+  assert.doesNotMatch(join(hit), /alpha-one/);
+  assert.match(hit[0]!, /^── .+ ──$/);
+  const all = join(readRunTranscript(f, 0, null));
+  assert.match(all, /alpha-one/);
+  assert.match(all, /beta-one/);
+});
