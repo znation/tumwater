@@ -136,6 +136,25 @@ export function codexRateLimitNamed(): string {
   });
 }
 
+/** A `turn.failed` whose inner JSON carries status 401 (finding 11's shape): an absent or
+ * invalid login, a permanent config error the doctor names. not-logged-in.jsonl's own 401
+ * rides a plain top-level message, so it never reaches the classifier's 401 arm; only an
+ * inner-JSON 401 does. */
+export function codexStatus401(): string {
+  return codexTurnFailed({
+    status: 401,
+    errorType: "invalid_request_error",
+    errorMessage: "Missing bearer or basic authentication in header",
+  });
+}
+
+/** A `turn.failed` whose inner JSON matches none of the classifier's arms — not a context
+ * window, a rate limit, a usage limit, a server status, a login, nor a 401/400. It must
+ * fall through `classifyTurnFailed` unclassified, never mislabeled config, rate or server. */
+export function codexUnclassified(status = 418): string {
+  return codexTurnFailed({ status, errorType: "server_error", errorMessage: "unexpected permanent hiccup" });
+}
+
 /** A single rollout `turn_context` record naming the model that actually ran — for a synthetic
  * rollout that switches models mid-thread (finding 24). */
 export function codexTurnContext(model: string): string {

@@ -14,6 +14,8 @@ import {
   codexRateLimitNamed,
   codexRefreshToken,
   codexServerError,
+  codexStatus401,
+  codexUnclassified,
   codexUsageNotIncluded,
   codexUsedUpWindow,
 } from "./fixtures/codex-events.js";
@@ -187,6 +189,35 @@ test("a reused refresh token is a permanent login config error", () => {
   const { parser } = fold([codexRefreshToken()]);
   assert.equal(parser.configError, true, "invalidated login is a config error");
   assert.equal(parser.transientBackend, false, "it is not transient");
+});
+
+test("an inner-JSON 401 is a permanent login config error, never transient", () => {
+  const { parser } = fold([codexStatus401()]);
+  assert.equal(parser.configError, true, "a missing/invalid login is a config error");
+  assert.equal(parser.transientBackend, false, "it is not a server error");
+  assert.equal(parser.transientRateLimit, false, "it is not a rate limit");
+});
+
+test("a turn.failed matching no classifier arm stays unclassified", () => {
+  const { parser } = fold([codexUnclassified()]);
+  assert.equal(parser.configError, false, "an unknown error is not mislabeled a config error");
+  assert.equal(parser.transientBackend, false, "not a transient server error");
+  assert.equal(parser.transientRateLimit, false, "not a rate limit");
+});
+
+test("thread.started without a thread id warns once and names no session", () => {
+  const translator = codexTranslator();
+  assert.deepEqual(translator.translate(JSON.stringify({ type: "thread.started" })), [], "no canonical event");
+  translator.translate(JSON.stringify({ type: "thread.started" })); // duplicate
+  assert.equal(translator.sessionId(), undefined, "no session without a thread id");
+  assert.deepEqual(translator.warnings(), ["thread.started"], "the missing-id thread is warned exactly once");
+});
+
+test("an unknown top-level event is ignored and warned once per type", () => {
+  const translator = codexTranslator();
+  translator.translate(JSON.stringify({ type: "response.created", id: "r1" }));
+  translator.translate(JSON.stringify({ type: "response.created", id: "r2" })); // duplicate type
+  assert.deepEqual(translator.warnings(), ["response.created"], "an unknown top-level event is warned once");
 });
 
 test("a rate_limit_exceeded naming a per-day window passes the named window through", () => {
