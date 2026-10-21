@@ -208,6 +208,26 @@ test("archiveNewFinishedEntries writes the move in a worktree against its merge-
   assert.deepEqual(await archiveNewFinishedEntries(root, "main"), [], "a second sweep finds nothing new");
 });
 
+test("the commit-time sweep leaves a Done plan with no done date in PLANS.md instead of archiving a form the gate rejects", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans(""), "seed plans");
+  sh(root, "git", "checkout", "-q", "-b", "work");
+  // An author pastes a finished plan whose `### ` heading lacks the `done YYYY-MM-DD` stamp. The
+  // gate's part 4/4 rule rejects that entry's archived form, and the author may not edit
+  // PLANS-DONE.md, so the sweep must leave it in PLANS.md — the file the stage self-check, the
+  // fix-up turn and the gate all name (BUGS.md 2026-10-21).
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans("### Brand new (planned 2026-10-18)\n\nBody.\n"));
+  const moved = await archiveNewFinishedEntries(root, "main");
+  assert.deepEqual(moved, [], "a Done plan without a done date is not archived");
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false, "the archive is not created");
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### Brand new \(planned 2026-10-18\)/);
+  // The gate still names PLANS.md, the file the author can fix.
+  assert.match(
+    (await backlogStructureReason(root, "main", ["PLANS.md", "PLANS-DONE.md"])) ?? "",
+    /^PLANS\.md files "Brand new \(planned 2026-10-18\)"/,
+  );
+});
+
 test("readers list the live section's finished entries first, then the archive's", () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "PLANS.md"), plans("### Live (planned 2026-10-01, done 2026-10-18)\n\nL.\n"));

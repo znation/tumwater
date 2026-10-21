@@ -683,7 +683,10 @@ archive`) and at team start. Each rule below is the pure `archiveFinishedText`'s
 **Guarantee.** `archiveFinishedText` with a `baseKeys` selection moves only the finished-section
 entries whose heading key (`archiveKey`) the change's merge-base did not hold. They go above the
 archive's existing entries, in their live order. Entries the base already held stay in the live
-section. A `_None yet._` placeholder and the next section's heading are left in place.
+section, and — for PLANS.md — so does a `## Done` entry whose heading carries `(planned …)` but no
+`done YYYY-MM-DD` (parked by `archiveNewFinishedEntries` so the review gate names PLANS.md, the file
+the author can fix, instead of the archive it may not edit). A `_None yet._` placeholder and the
+next section's heading are left in place.
 `archiveNewFinishedEntries` computes the base from the worktree's merge-base with main.
 
 **Binds.** `src/backlog/backlog-archive.ts` (`archiveFinishedText`, `archiveNewFinishedEntries`),
@@ -692,8 +695,9 @@ section. A `_None yet._` placeholder and the next section's heading are left in 
 **Pinned by.** `test/backlog-archive.test.ts` — "the commit-time sweep moves only the entries the
 change added, newest first, into a new archive", "the sweep prepends to an existing archive and
 leaves entries the base already had", "the sweep keeps a placeholder in the live section and a
-following section's heading intact" and "archiveNewFinishedEntries writes the move in a worktree
-against its merge-base".
+following section's heading intact", "archiveNewFinishedEntries writes the move in a worktree
+against its merge-base" and "the commit-time sweep leaves a Done plan with no done date in PLANS.md
+instead of archiving a form the gate rejects".
 
 ### INV-O2: an entry the archive already holds is never archived twice
 

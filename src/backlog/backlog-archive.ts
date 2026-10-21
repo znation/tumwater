@@ -32,7 +32,7 @@ import { mergeLockDir } from "../paths.js";
 import { plural } from "../text/phrases.js";
 import { collapseWhitespace, errorFirstLine, errorMessage } from "../text/text.js";
 import { FINISHED_ARCHIVES, fenceTracker, fencedHeadingTitle, parseEntryDetails, type FinishedArchive } from "./backlog-md.js";
-import { actionableEntryRanges, type ActionableEntryRange } from "./backlog-structure.js";
+import { actionableEntryRanges, strandedPlanEntries, type ActionableEntryRange } from "./backlog-structure.js";
 import { appendBugEntryLocked } from "./backlog-write.js";
 import { formatDate } from "../text/datetime.js";
 
@@ -115,7 +115,9 @@ interface ArchiveMove {
 /** Which part of the live finished section moves: the entries whose keys the change's base did
  * not hold there (`baseKeys`, the commit-time sweep), or the whole body after the newest `keep`
  * entries (the bulk archive; `keep` 0 moves everything). */
-type ArchiveSelection = { baseKeys: ReadonlySet<string> } | { keep: number };
+type ArchiveSelection =
+  | { baseKeys: ReadonlySet<string>; park?: ReadonlySet<string> }
+  | { keep: number };
 
 /** An entry's text for the already-archived comparison: its lines without the blank lines around
  * them, each without trailing whitespace. */
@@ -186,7 +188,7 @@ export function archiveFinishedText(
   const selected =
     "keep" in select
       ? entries.slice(Math.max(0, select.keep))
-      : entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)));
+      : entries.filter((e) => !select.baseKeys.has(archiveKey(e.title)) && !(select.park?.has(archiveKey(e.title)) ?? false));
   if (!("keep" in select) && selected.length === 0) return null;
   const archiveText = archiveMd ?? archiveTemplate(spec);
   const archiveLines = archiveText.split("\n");
@@ -266,7 +268,28 @@ export async function archiveNewFinishedEntries(wt: string, mainBranch: string):
     if (live === null) continue;
     const base = await fileContentAt(wt, baseRev, spec.file);
     const baseKeys = new Set(actionableEntryRanges(base, spec.section).map((e) => archiveKey(e.title)));
-    const move = archiveFinishedText(live, readTextIfExists(path.join(wt, spec.archive)), spec, { baseKeys });
+    // The gate's new-plan-under-Done rule (backlog-structure.ts part 4/4) rejects a PLANS.md
+    // ### entry under ## Done that carries `(planned …)` but no `done YYYY-MM-DD`; archiving such
+    // an entry would name only PLANS-DONE.md — a file the role may not edit — for a fault the
+    // gate judges against its archive form. Park those stranded entries in the live file instead,
+    // so the stage self-check, the fix-up turn and the gate all name PLANS.md and the author can
+    // fix the missing done stamp (BUGS.md 2026-10-21).
+    const park = new Set(
+      (spec.file === "PLANS.md" ? strandedPlanEntries(live) : [])
+        .filter((s) => s.section === spec.section)
+        .map((s) => archiveKey(s.title)),
+    );
+    const move = archiveFinishedText(live, readTextIfExists(path.join(wt, spec.archive)), spec, {
+      baseKeys,
+      park,
+    });
+    if (park.size > 0) {
+      warnEventBestEffort(
+        wt,
+        TUMWATER_SOURCE,
+        `the commit-time sweep left ${plural(park.size, "Done plan without a done date", "Done plans without a done date")} in ${spec.file} instead of archiving: the review gate would reject the archived form; add the missing done date to its heading`,
+      );
+    }
     if (move === null) continue;
     writeMove(wt, spec, move);
     out.push({ file: spec.file, archive: spec.archive, titles: move.titles, dropped: move.dropped });
