@@ -267,16 +267,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/)
 
-**Needs replan 2026-10-21 by feature: rejected after 4 review rounds**
-1. (round 1) "Context-window failures are classified as `configError` when they carry the structured 400 `invalid_request_error` shape, because the config branch precedes the `contextExceeded` branch; design §5 and the claude classifier both require context to win. Untested."
-2. (round 1) "`item.started` of `todo_list`/`web_search` emits an "unmapped item" warning instead of being dropped silently, contradicting design §5's `item.*` row; untested."
-3. (round 1) "`findRollout` walks all of `sessions` rather than the promised start-date-bounded date dirs, and has no test."
-4. (round 2) `findRollout` derives the `sessions/<YYYY>/<MM>/<DD>` directory from UTC date parts, but Codex's tree uses the local date (plans/codex-backend.md finding 5 and the captures).
-5. (round 2) The archived entry records `findRollout(home, id)` walking "the date dirs from the run's start date onward", but the code took a third `startDate` parameter: with it, it read only that one day, and without it, every date dir.
-6. (rounds 2–4) The commit message described a PLANS.md doc-reference audit ("no file was changed this run") instead of the diff. A stage-check finding about PLANS.md references after the entry's archive move set off these rounds; the finding was not about this plan.
-
-The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of parts 1/9–5/9). (Operator, 2026-10-21: this note replaces a Refused note that a feature instance wrote because of a role-id bug in the exhaustion note. That note cited part 2b/9's refusal, not this part's own objections.)
-
 **Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
 
 **Approach.**
@@ -288,12 +278,13 @@ The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of p
   - A `command_execution` still open at `turn.completed` is closed with `tool_execution_end {isError: true}` and the result "abandoned: the run ended while this command was still running", and `codex_command_abandoned` is warned once (design finding 19).
   - Repeated `error` items warn once per distinct message.
   - "Reconnecting... n/m" becomes `auto_retry_start`.
-  - `turn.failed` is parsed through its JSON-string message to `status` and `error.type` / `code`, and classified per §5's table.
+  - `turn.failed` is parsed through its JSON-string message to `status`, `error.type` / `code` and the message text, and classified per §5's table. The classifier tests the context-window signal **before** the generic 400 `invalid_request_error` branch (as src/agent/claude/claude-stream.ts's `classifyResult` tests "prompt is too long" before `CONFIG_STATUS`): a `context_window_exceeded` code, or a 400 whose message names the context window, is `contextExceeded`, never `configError`.
+  - `item.started` and `item.completed` for `todo_list` and `web_search` are dropped silently: no canonical event and no `warnings()` entry, matching design §5's `item.*` row.
   - `finalize()` reports "codex exited without finishing its turn" when the stream saw neither `turn.completed` nor `turn.failed`.
   - `warnings()` lists unmapped event and item types once each, plus `codex_usage_partial` when the adapter flags it.
   - `turnCompletedUsage()` returns the stream's own figure, for the fallback.
 - src/agent/codex/codex-rollout.ts (new):
-  - `findRollout(home, id)` returns the path of `sessions/**/rollout-*-<id>.jsonl`, or null. It walks only the date dirs from the run's start date onward.
+  - `findRollout(home, id)` returns the path of `sessions/**/rollout-*-<id>.jsonl`, or null. It takes no third parameter and does no date math: it walks the `sessions` tree, matching file names that end with `-<id>.jsonl`. (Earlier text promised walking "the date dirs from the run's start date onward", but a `(home, id)`-only function has no reliable start date, and Codex's rollout name carries local time rather than UTC (finding 5), so a UTC-derived date bound can miss the file. The tree is one directory per active day, so the walk stays small; only the id match decides.)
   - `rolloutLines(text, {sinceTurnStart, requestedModel})` reads only the records after this run's `task_started`. It returns the canonical `run_usage`, `billing` and `rate_limit` lines of design §5, or [] when the turn's records are missing or malformed. A turn with no `token_count` (a killed run, design finding 23) yields `run_usage` without any `rate_limit`.
   - When the turn's `turn_context.model` differs from `requestedModel`, it also reports `{switchedTo: <model>}` so the adapter can warn `codex_model_switched` (design finding 24).
   - It never returns or logs `session_meta` fields.
@@ -309,7 +300,8 @@ The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of p
   - long-command.jsonl: one call open for the whole run, closed with exit code 0.
   - Fed through `PiStreamParser`, the final text is the last agent message.
   - `sessionId()` is undefined before `thread.started` and the thread id after.
-  - Classification: unknown-model.jsonl is `configError`; not-logged-in.jsonl is `configError` and its ten reconnect lines are ten `auto_retry_start`; the built used-up window is `transientRateLimit` with a `rejected` `five_hour` reading and `retryAfterSeconds`.
+  - Classification: unknown-model.jsonl is `configError`; not-logged-in.jsonl is `configError` and its ten reconnect lines are ten `auto_retry_start`; the built used-up window is `transientRateLimit` with a `rejected` `five_hour` reading and `retryAfterSeconds`; a built 400 `invalid_request_error` carrying `context_window_exceeded` (or a message naming the context window) is `contextExceeded`, not `configError`.
+  - Synthetic `item.started` and `item.completed` events for `todo_list` and `web_search` produce no canonical events and add nothing to `warnings()`.
   - sigterm-mid-command.jsonl, which ends after `item.started` with no turn event, finalizes to an error message.
   - An unknown item type is listed once in `warnings()`.
 - test/codex-rollout.test.ts (new), on edit-run-and-resume-rollout.jsonl:
@@ -317,6 +309,7 @@ The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of p
   - A `requestedModel` other than `gpt-6-luna` reports the switch.
   - The 300- and 10080-minute windows map to `five_hour` and `seven_day`, with `utilization` 0 and `resetsAt` the capture's `resets_at`.
   - `billing` is `subscription`.
+  - `findRollout` finds a rollout placed at `sessions/2026/10/21/rollout-<time>-<id>.jsonl` from `home` and `id` alone, and returns null for an unknown id.
   - A truncated file yields [].
   - The output contains no `creator_user_id` or `creator_account_id` value.
 - `npm test` passes.
