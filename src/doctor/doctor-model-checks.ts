@@ -89,7 +89,11 @@ export function checkFallbackModel(
   // refusal names the pair the operator declared.
   const nameOf = (pair: FallbackModelConfig) =>
     pair.provider && pair.model ? `${pair.provider}/${pair.model}` : "a half-resolved pair";
-  const free = fallbackModelPair(config, modelsPath, readClaudeAccount(root));
+  // The claude account answer (6a/7); the fallback price lookup reads it only for "claude"
+  // (part 2a/9).
+  const account = readClaudeAccount(root);
+  const accounts = (b: string) => (b === "claude" ? account : null);
+  const free = fallbackModelPair(config, modelsPath, accounts);
   if (free) {
     const name = nameOf(free);
     if (demoted)
@@ -136,6 +140,8 @@ export async function checkFallbackChain(
   const states = loadRunnerStates(root, config);
   const providers = readPiProviders(modelsPath);
   const account = readClaudeAccount(root);
+  // The free-ness lookup reads the one claude account held here (part 2a/9).
+  const accounts = (b: string) => (b === "claude" ? account : null);
   const now = Date.now();
   let down = false;
   const fragments: string[] = [];
@@ -156,7 +162,7 @@ export async function checkFallbackChain(
       verdict = `cap reached (${usd(spent)}/${usdCap(cap)})`;
     } else if (nonPiBackend) {
       verdict = `claude ${pair.extraUsage ? "extra usage" : (account?.billing ?? "billing unknown")}`;
-    } else if (piPairFree(providers, pair, account)) {
+    } else if (piPairFree(providers, pair, accounts)) {
       verdict = up ? "free · server up" : "free";
     } else {
       verdict = cap !== undefined ? `priced, ${usd(spent)}/${usdCap(cap)} today` : "priced, team cap only";
@@ -633,6 +639,8 @@ export async function checkImageInput(
   // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
   // this check when a seam actually needs it — an all-claude team reads images without it.
   const accountNow = account === undefined ? readClaudeAccount(root) : account;
+  // The free-ness lookup reads the image-input check's one claude account (part 2a/9).
+  const accounts = (b: string) => (b === "claude" ? accountNow : null);
   const listed = readPiListedModels(root);
   const pairs = seamPairs(config);
   const needsDefinitions = pairs.some((p) => usesPiModels(p.agent ?? "pi"));
@@ -655,7 +663,7 @@ export async function checkImageInput(
   // The tiers' fallback pairs: a reroute target must itself read images to help, and part 4's
   // fallback regime picks among these, so a text-only fallback team is a coverage gap here.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    piPairFree(providers, p, accountNow),
+    piPairFree(providers, p, accounts),
   );
   for (const tier of MODEL_TIERS) {
     const pair = resolved[tier].pair;

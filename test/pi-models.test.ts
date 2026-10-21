@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackModelFree, seamFree, teamModelsFree, piAgentDir, piModelsPath, seamContextWindow } from "../src/pi/pi-models.js";
+import { fallbackModelFree, piAgentDir, piModelsPath, readPiProviders, seamContextWindow, seamFree, teamModelsFree } from "../src/pi/pi-models.js";
 import type { OpencodeCatalogCache } from "../src/agent/opencode/opencode-catalog.js";
 import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
@@ -298,15 +298,19 @@ test("a subscription claude seam is free; API billing, overage, and an absent ac
   cfg.backend = "claude";
   const api = { billing: "api" as const, observedAt: 1, windows: {} };
   const sub = { billing: "subscription" as const, observedAt: 1, windows: {} };
-  assert.equal(teamModelsFree(cfg, file, null), false, "no account file reads no subscription");
-  assert.equal(teamModelsFree(cfg, file, api), false, "API billing is never free");
-  assert.equal(teamModelsFree(cfg, file, sub), true, "subscription claude is free");
+  // The free-ness predicates take a per-backend account lookup (part 2a/9): a team that holds
+  // claude's account answers it for "claude" and null for any other backend.
+  const claudeAccounts = (b: string) => (b === "claude" ? sub : null);
+  const apiAccounts = (b: string) => (b === "claude" ? api : null);
+  assert.equal(teamModelsFree(cfg, file, () => null), false, "no account file reads no subscription");
+  assert.equal(teamModelsFree(cfg, file, apiAccounts), false, "API billing is never free");
+  assert.equal(teamModelsFree(cfg, file, claudeAccounts), true, "subscription claude is free");
   // A claude-routed fallback pair is accepted as free only under subscription billing.
   const withFallback = { ...cfg, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] };
-  assert.equal(fallbackModelFree(withFallback, file, api), false, "an API claude fallback is refused");
-  assert.equal(fallbackModelFree(withFallback, file, sub), true, "a subscription claude fallback is free");
+  assert.equal(fallbackModelFree(withFallback, file, apiAccounts), false, "an API claude fallback is refused");
+  assert.equal(fallbackModelFree(withFallback, file, claudeAccounts), true, "a subscription claude fallback is free");
   // A claude-backend team with a bare claude id is free under a subscription too.
-  assert.equal(teamModelsFree(claudeTeam("claude-sonnet-5-5"), file, sub), true);
+  assert.equal(teamModelsFree(claudeTeam("claude-sonnet-5-5"), file, claudeAccounts), true);
   // Overage is real money (plans/agent-backends.md §7): the subscription's overflow bills as API
   // spend, so a window using overage makes the seam — and a claude fallback — not free.
   const overage = {
@@ -314,8 +318,31 @@ test("a subscription claude seam is free; API billing, overage, and an absent ac
     observedAt: 1,
     windows: { five_hour: { status: "allowed", isUsingOverage: true, observedAt: 1 } },
   };
-  assert.equal(teamModelsFree(cfg, file, overage), false, "an overage subscription claude seam is not free");
-  assert.equal(fallbackModelFree(withFallback, file, overage), false, "an overage claude fallback is refused");
+  const overageAccounts = (b: string) => (b === "claude" ? overage : null);
+  assert.equal(teamModelsFree(cfg, file, overageAccounts), false, "an overage subscription claude seam is not free");
+  assert.equal(fallbackModelFree(withFallback, file, overageAccounts), false, "an overage claude fallback is refused");
+});
+
+test("seamFree reads the subscription account from the per-backend lookup (part 2a/9)", () => {
+  // The predicate judges the seam by what the lookup returns for the seam's backend, not a
+  // captured value: a subscription account under "claude" makes a claude seam free, and the
+  // same seam is NOT free when the lookup returns an API-billed account.
+  const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
+  const providers = readPiProviders(file);
+  const seam = { agent: "claude", provider: "claude", model: "claude-sonnet-5-5" };
+  const subscription = { billing: "subscription" as const, observedAt: 1, windows: {} };
+  const api = { billing: "api" as const, observedAt: 1, windows: {} };
+  assert.equal(
+    seamFree(providers, seam, (b) => (b === "claude" ? subscription : null)),
+    true,
+    "a subscription claude lookup reads free",
+  );
+  assert.equal(
+    seamFree(providers, seam, (b) => (b === "claude" ? api : null)),
+    false,
+    "an API-billed claude lookup reads not free",
+  );
+  assert.equal(seamFree(providers, seam, () => null), false, "no subscription reads not free");
 });
 
 test("a priced strong tier keeps the badge off even when every role runs a free model", () => {
@@ -413,37 +440,37 @@ function opencodeTeamAt(model: string | { default?: string; strong?: string }): 
 
 test("seamFree prices an opencode seam by its catalog entry (part 6b/7)", () => {
   // A cached free, unbilled gateway model is free; a bare id is keyed `opencode/<id>`.
-  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, null, OPENCAT), true);
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, () => null, OPENCAT), true);
   // The safe refusals: priced, unknown, billed, and a null catalog (nothing to read).
-  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash" }, null, OPENCAT), false, "priced in catalog");
-  assert.equal(seamFree(null, { agent: "opencode", model: "no-such-model" }, null, OPENCAT), false, "unknown in catalog");
-  assert.equal(seamFree(null, { agent: "opencode", model: "free-billed" }, null, OPENCAT), false, "billed free model");
-  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, null, null), false, "no catalog read");
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash" }, () => null, OPENCAT), false, "priced in catalog");
+  assert.equal(seamFree(null, { agent: "opencode", model: "no-such-model" }, () => null, OPENCAT), false, "unknown in catalog");
+  assert.equal(seamFree(null, { agent: "opencode", model: "free-billed" }, () => null, OPENCAT), false, "billed free model");
+  assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, () => null, null), false, "no catalog read");
   // A provider route keeps its slashed id verbatim — the key opencodeArgs runs it under.
-  assert.equal(seamFree(null, { agent: "opencode", model: "anthropic/claude-haiku-5-5" }, null, OPENCAT), true);
+  assert.equal(seamFree(null, { agent: "opencode", model: "anthropic/claude-haiku-5-5" }, () => null, OPENCAT), true);
   // The pi and claude arms are unchanged by the new catalog parameter.
-  assert.equal(seamFree(null, { agent: "claude", provider: "claude", model: "x" }, { billing: "subscription", observedAt: 1, windows: {} } as never, OPENCAT), true);
+  assert.equal(seamFree(null, { agent: "claude", provider: "claude", model: "x" }, (b: string) => (b === "claude" ? { billing: "subscription" as const, observedAt: 1, windows: {} } : null), OPENCAT), true);
 });
 
 test("a pi seam keeps judging by models.json even when a catalog is passed (part 6b/7)", () => {
   const file = writeModels();
   // Passing a catalog must not change the pi arm: a free pi pair is still free, a paid one not.
-  assert.equal(teamModelsFree(teamAt("lm-studio", "qwen3.8-27b"), file, null, OPENCAT), true);
-  assert.equal(teamModelsFree(teamAt("paid", "gpt-x"), file, null, OPENCAT), false);
+  assert.equal(teamModelsFree(teamAt("lm-studio", "qwen3.8-27b"), file, () => null, OPENCAT), true);
+  assert.equal(teamModelsFree(teamAt("paid", "gpt-x"), file, () => null, OPENCAT), false);
 });
 
 test("a team whose every tier is a catalog-free opencode model reads free (part 6b/7)", () => {
   // All tiers (roles, review, strong resolver) on the free gateway model: free with the cache,
   // and a null cache (nothing to read) is not free — the badge must not lie.
   const cfg = opencodeTeamAt("deepseek-v4.1-flash-free");
-  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, OPENCAT), true);
-  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), null, null), false, "no cache: not free");
+  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), () => null, OPENCAT), true);
+  assert.equal(teamModelsFree(cfg, path.join(tmpdir(), "absent.json"), () => null, null), false, "no cache: not free");
   // One priced opencode tier anywhere keeps the dollar badge.
   const onePriced = opencodeTeamAt({
     default: "deepseek-v4.1-flash-free",
     strong: "deepseek-v4.1-flash",
   });
-  assert.equal(teamModelsFree(onePriced, path.join(tmpdir(), "absent.json"), null, OPENCAT), false, "priced strong tier");
+  assert.equal(teamModelsFree(onePriced, path.join(tmpdir(), "absent.json"), () => null, OPENCAT), false, "priced strong tier");
 });
 
 test("fallbackModelFree accepts a catalog-free opencode fallback for a priced primary (part 6b/7)", () => {
@@ -452,10 +479,10 @@ test("fallbackModelFree accepts a catalog-free opencode fallback for a priced pr
   assert.equal(teamModelsFree(paid, file), false, "the primary itself is priced");
   // The free gateway model is a valid fallback; a null cache and a priced model are refused.
   const freeFallback = { ...paid, fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash-free" }] };
-  assert.equal(fallbackModelFree(freeFallback, file, null, OPENCAT), true, "catalog-free opencode fallback");
-  assert.equal(fallbackModelFree(freeFallback, file, null, null), false, "no cache: refused");
+  assert.equal(fallbackModelFree(freeFallback, file, () => null, OPENCAT), true, "catalog-free opencode fallback");
+  assert.equal(fallbackModelFree(freeFallback, file, () => null, null), false, "no cache: refused");
   const pricedFallback = { ...paid, fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash" }] };
-  assert.equal(fallbackModelFree(pricedFallback, file, null, OPENCAT), false, "catalog-priced fallback refused");
+  assert.equal(fallbackModelFree(pricedFallback, file, () => null, OPENCAT), false, "catalog-priced fallback refused");
 });
 
 test("seamContextWindow follows pi's saved default when the run names no model", () => {

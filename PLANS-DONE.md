@@ -5,6 +5,22 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 2a/9: The free-ness callers pass a per-backend account lookup (planned 2026-10-21 by the plan role; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/pi/pi-models.ts src/agent/image-input.ts src/gates/budget-gates.ts src/status/status-budget.ts src/roles/role-view.ts src/doctor/doctor-model-checks.ts and their tests; done 2026-10-21 by the feature role)
+
+**Goal.** Every free-ness predicate takes one `account: ClaudeAccount | null`. Part 1/9 already made the store per backend (`readAccount(root, backend)` in src/agent/subscription-account.ts) but left the five exported pi-models predicates on one account, so a later part cannot judge a second backend without another signature sweep. This part converts them to `accounts: (backend: string) => SubscriptionAccount | null` and builds the lookup where they are called. No behavior change: `accounts("claude")` returns the same account, and no caller asks for another backend yet. This is the mechanical half the feature role split out of part 2/9, one theme applied everywhere it holds.
+
+**Approach.**
+- src/pi/pi-models.ts: `seamFree(providers, seam, accounts = () => null, catalog = null)`, and the same lookup in place of `account` in `piPairFree`, `fallbackModelPair`, `fallbackModelFree` and `teamModelsFree`. `seamFree`'s claude arm becomes the generic subscription arm — `const account = accounts(seamAgent(seam)); if (account?.billing === "subscription") return !accountUsesOverage(account);` ahead of the unchanged `pi` and `opencode` arms and the NOT-free default.
+- src/gates/budget-gates.ts: `pollBudgetGate` builds `const accounts = (backend: string) => readAccount(root, backend)` once per poll and threads it into `seamFree`/`piPairFree` and `chainInfo`'s `isPriced`; keep the existing `account` value for the claude-only window and overage logic.
+- The other callers pass the lookup derived from the one account they hold: `const accounts = (b: string) => (b === "claude" ? account : null)` in src/status/status-budget.ts, src/roles/role-view.ts and src/doctor/doctor-model-checks.ts; src/agent/image-input.ts's `piPairFree` call does the same.
+- Leave `claudeWindowUsedUp`, `extraUsage`/`claudeOverageRefused`, `claudeWindowBlock` and every display on claude; they are not free-ness lookups (part 2c/9 and part 3/9 own them).
+
+**Acceptance criteria.**
+- The existing tests pass with only the argument updated where they pass an account: test/pi-models.test.ts, test/image-input.test.ts, test/budget-gates.test.ts, test/status-budget.test.ts, test/role-view.test.ts and test/doctor-model-checks.test.ts.
+- A new test calls `seamFree(providers, { agent: "claude" }, (b) => (b === "claude" ? subscriptionAccount : null))` and sees free, and with an API-billed account sees not free — the predicate reads the lookup, not a captured value.
+- `grep -n 'account: ClaudeAccount | null' src/pi/pi-models.ts` prints nothing.
+- `npm test` passes.
+
 ### Codex backend, part 1/9: The subscription account store is per backend, and a run's result names its backend (planned 2026-10-20 by user; independent of every eligible Planned entry; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 1; touches src/agent/subscription-account.ts (new) src/agent/claude/claude-account.ts src/paths.ts src/pi/pi-run-result.ts src/agent/run-agent.ts src/run/run-usage.ts src/run/run-finalize.ts src/merge/merge-slot.ts and their tests; done 2026-10-20 by the feature role)
 
 **Goal.** Make the account file (billing plus the newest usage-window reading per window type) per backend, so a second subscription backend never writes into claude's file. Today `observeClaudeAccount` is called for any run that reports `billing` or `rateWindows` (src/run/run-finalize.ts, src/merge/merge-slot.ts), and `PiRunResult` does not say which backend ran. There is no behavior change for claude: its file, its shape and every caller's answer stay the same.

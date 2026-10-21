@@ -276,7 +276,13 @@ export function rolePayload(
   // gate does) keeps them on one answer. OpenCode's `catalog` is threaded the way claude's
   // `account` is: absent, an opencode pair reads NOT free.
   const opencodeCatalog = readOpencodeCache(root);
-  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, readClaudeAccount(root), opencodeCatalog) : null;
+  // The claude account answer (6a/7), read the way the budget gate reads it — always, so the
+  // fallback price verdict sees the subscription even when claude is not this role's own seam
+  // (a pi role may still fall back to claude). The lookup returns it only for "claude" (part
+  // 2a/9) — no caller asks for another backend yet.
+  const claudeFallbackAccount = readClaudeAccount(root);
+  const accounts = (b: string) => (b === "claude" ? claudeFallbackAccount : null);
+  const freeFallback = declaredFallback ? fallbackModelPair(cfg, modelsPath, accounts, opencodeCatalog) : null;
   const fallback = freeFallback ?? declaredFallback;
   // One state read serves both the model-fallback episode and the next-run preview below.
   const state = loadRunnerState(root, role);

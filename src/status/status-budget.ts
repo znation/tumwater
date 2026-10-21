@@ -67,11 +67,14 @@ function claudeWindowBlock(
   if (cfg.review.enabled) seams.push(reviewConfig(cfg));
   if (seams.length > 0) seams.push(resolverConfig(cfg));
   if (!seams.some((s) => s.agent === "claude")) return undefined;
+  // This block is claude-only (the caller gate-keeps it on a claude seam), so its free-ness
+  // lookups read only claude's account from the lookup it holds.
+  const accounts = (b: string) => (b === "claude" ? account : null);
   const priced = seams.some((s) => {
-    if (s.agent === undefined || s.agent === "pi") return !seamFree(providers, s, account, catalog);
+    if (s.agent === undefined || s.agent === "pi") return !seamFree(providers, s, accounts, catalog);
     // An opencode seam is subscription-paid only when the catalog prices it at zero (part
     // 6b/7); any other agent the account cannot bill is never subscription-paid.
-    if (s.agent === "opencode") return !seamFree(providers, s, account, catalog);
+    if (s.agent === "opencode") return !seamFree(providers, s, accounts, catalog);
     return s.agent !== "claude"; // a backend the account cannot bill is never subscription-paid
   });
   const heldUntil =
@@ -111,6 +114,10 @@ export function collectBudget(
   // The persisted billing answer (6a/7), read once for every free-ness verdict below: a
   // subscription claude seam is free, so the badge and the pause set judge it as such.
   const account = readClaudeAccount(root, now);
+  // The free-ness predicates judge a seam by its own backend's subscription account (part
+  // 2a/9). This status poll holds one claude reading, so the derived lookup returns it for
+  // "claude" and null for any other backend.
+  const accounts = (b: string) => (b === "claude" ? account : null);
   const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
   const providers = readPiProviders(modelsPath);
   // The cached opencode models catalog (part 6b/7), seeded at the startup gate and read once per
@@ -118,7 +125,7 @@ export function collectBudget(
   const catalog = readOpencodeCache(root);
   const publishedDemotions = info?.fallbackDemotions ?? {};
   const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p, account, catalog) && !(modelPairName(p) in publishedDemotions);
+    piPairFree(providers, p, accounts, catalog) && !(modelPairName(p) in publishedDemotions);
   const servingResolved = resolveTierFallbacks(cfg, usable);
   // The subscription usage window (part 6d/7): one account read per poll serves the block.
   const claudeWindow = claudeWindowBlock(cfg, providers, account, catalog);
@@ -147,7 +154,7 @@ export function collectBudget(
       // One projection per poll, from the same spend the field above renders: null exactly
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: teamModelsFree(cfg, modelsPath, account, catalog),
+      free: teamModelsFree(cfg, modelsPath, accounts, catalog),
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
       // must not be advertised as one that will save the team — and a demoted one is refused
@@ -155,7 +162,7 @@ export function collectBudget(
       // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
       // resolution, so a map with no `default` entry names the pair the gate actually runs.
       fallback:
-        fallbackModelFree(cfg, modelsPath, account, catalog) && !(running && info?.fallbackDemoted)
+        fallbackModelFree(cfg, modelsPath, accounts, catalog) && !(running && info?.fallbackDemoted)
           ? (servingResolved.default.pair ?? null)
           : null,
       tiers:

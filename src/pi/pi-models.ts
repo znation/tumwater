@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import type { ClaudeAccount } from "../agent/claude/claude-account.js";
+import type { SubscriptionAccount } from "../agent/subscription-account.js";
 import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
 import { enabledRoleIds } from "../config/config.js";
 import { configForRole, resolverConfig, reviewConfig } from "../config/config-views.js";
@@ -233,7 +233,7 @@ interface SeamModel {
  * split in `runCostIsReal` (src/pi/pi-run-result.ts) — a run that saw `isUsingOverage` counts as
  * API spend, and so does every seam an overage account would run (plans/agent-backends.md §7
  * "Overage is real money"). */
-function accountUsesOverage(account: ClaudeAccount | null): boolean {
+function accountUsesOverage(account: SubscriptionAccount | null): boolean {
   return account !== null && Object.values(account.windows).some((w) => w.isUsingOverage === true);
 }
 
@@ -248,24 +248,32 @@ function accountUsesOverage(account: ClaudeAccount | null): boolean {
  * badge never reads n/a while spend it cannot see could still reach the cap. The one central
  * rule: the budget gate, the fallback view, and the status free-ness read all judge seams
  * through it (plans/agent-backends.md "Free-ness" and "Every seam, checked"). The opencode
- * `catalog` is threaded the way the claude `account` is: an absent catalog means "no cache to
- * read", so an opencode seam reads NOT free, the safe direction for a budget gate. */
+ * `catalog` is threaded the way the subscription `accounts` lookup is: an absent catalog means
+ * "no cache to read", so an opencode seam reads NOT free, the safe direction for a budget gate.
+ * `accounts` names the per-backend subscription account (part 2a/9): today only a claude seam
+ * asks, and it reads the same account it always did via `accounts((backend) => …)` returning
+ * claude's account for "claude" and null otherwise. */
 export function seamFree(
   providers: Map<string, PiModelDef[]> | null,
   seam: SeamModel,
-  account: ClaudeAccount | null = null,
+  accounts: (backend: string) => SubscriptionAccount | null = () => null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
   const backend = seamAgent(seam);
-  // One free-ness rule per backend: pi's pair price, claude's subscription, opencode's catalog,
-  // and nothing for any other backend (its spend could still reach the cap, so the badge must
-  // not read n/a). The opencode arm reads the gateway-qualified id (part 6b/7) and changes the
-  // pi and claude arms nothing.
+  // One free-ness rule per backend: pi's pair price, the subscription account a backend bills
+  // (claude today), opencode's catalog, and nothing for any other backend (its spend could
+  // still reach the cap, so the badge must not read n/a). The opencode arm reads the
+  // gateway-qualified id (part 6b/7) and changes the pi and subscription arms nothing.
   switch (backend) {
     case "pi":
       return pairFree(providers, seam.provider, seam.model);
-    case "claude":
+    case "claude": {
+      // The generic subscription arm: read the seam's own backend's account (today always
+      // "claude") so a future subscription backend is judged by its own lookup, not a captured
+      // one. A subscription that is spending into overage is NOT free.
+      const account = accounts(seamAgent(seam));
       return account?.billing === "subscription" && !accountUsesOverage(account);
+    }
     case "opencode":
       // A null catalog — no cache to read — and an unknown or billed model must all read NOT
       // free (opencodeModelFree's safe direction): the badge never reads n/a while spend it
@@ -287,15 +295,15 @@ export function seamFree(
  * must not read n/a while a backend whose billing it cannot see runs. Exported so the budget
  * gate (src/gates/budget-gates.ts), the status pause set (src/status/status-data.ts) and the
  * free-ness view judge fallback pairs with the same predicate — neither may engage a backend
- * their own badge would not call free. `catalog` is the opencode cache, threaded like `account`;
- * absent, an opencode pair reads NOT free. */
+ * their own badge would not call free. `catalog` is the opencode cache, threaded like the
+ * `accounts` lookup; absent, an opencode pair reads NOT free. */
 export function piPairFree(
   providers: Map<string, PiModelDef[]> | null,
   pair: { backend?: string; provider?: string; model?: string },
-  account: ClaudeAccount | null = null,
+  accounts: (backend: string) => SubscriptionAccount | null = () => null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
-  return seamFree(providers, { agent: pair.backend, provider: pair.provider, model: pair.model }, account, catalog);
+  return seamFree(providers, { agent: pair.backend, provider: pair.provider, model: pair.model }, accounts, catalog);
 }
 
 /** The free fallback pair the budget gate would engage for the team, or null when none is
@@ -306,11 +314,11 @@ export function piPairFree(
 export function fallbackModelPair(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),
-  account: ClaudeAccount | null = null,
+  accounts: (backend: string) => SubscriptionAccount | null = () => null,
   catalog: OpencodeCatalogCache | null = null,
 ): FallbackModelConfig | null {
   const providers = readPiProviders(modelsPath);
-  return fallbackPair(config, (p) => piPairFree(providers, p, account, catalog));
+  return fallbackPair(config, (p) => piPairFree(providers, p, accounts, catalog));
 }
 
 /** True when the configured fallback model (plans/fallback-model.md) is one the budget gate may
@@ -321,10 +329,10 @@ export function fallbackModelPair(
 export function fallbackModelFree(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),
-  account: ClaudeAccount | null = null,
+  accounts: (backend: string) => SubscriptionAccount | null = () => null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
-  return fallbackModelPair(config, modelsPath, account, catalog) !== null;
+  return fallbackModelPair(config, modelsPath, accounts, catalog) !== null;
 }
 
 /** True when every model the team could use is free: each enabled role's effective
@@ -336,13 +344,13 @@ export function fallbackModelFree(
  * free when models.json prices it at zero, and everything else counts as NOT free — the badge
  * must never read n/a while spend it is tracking could still reach the cap. With no enabled
  * roles and review off there are no pairs at all, so the team cannot spend and the answer is
- * true. `account` is the persisted claude billing answer (6a/7's reader), absent meaning "no
- * subscription", and `catalog` the opencode models cache (absent, an opencode seam reads not
- * free). */
+ * true. `accounts` names each seam's own backend's subscription account (claude today),
+ * absent meaning "no subscription", and `catalog` the opencode models cache (absent, an
+ * opencode seam reads not free). */
 export function teamModelsFree(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),
-  account: ClaudeAccount | null = null,
+  accounts: (backend: string) => SubscriptionAccount | null = () => null,
   catalog: OpencodeCatalogCache | null = null,
 ): boolean {
   const pairs: Array<{ agent: string | undefined; provider: string | undefined; model: string | undefined }> = [];
@@ -364,5 +372,5 @@ export function teamModelsFree(
   // construction — no definitions file to consult.
   if (pairs.length === 0) return true;
   const providers = readPiProviders(modelsPath);
-  return pairs.every((seam) => seamFree(providers, seam, account, catalog));
+  return pairs.every((seam) => seamFree(providers, seam, accounts, catalog));
 }
