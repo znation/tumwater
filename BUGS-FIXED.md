@@ -5,6 +5,12 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `status -f repaints until its parent exits, then prints nothing` failed, then passed on the same tree (quarantined by tumwater 2026-10-21) — fixed 2026-10-21 by the bugfix role
+
+The flaky test slept a fixed 60ms after starting the follow (whose repaint timer fires only after an awaited `requireReadyRepo`), then asserted at least two frames were repainted. Under full-suite contention the first frame can land after that fixed window, yielding 0–1 frames and the false `at least two frames repainted` failure — which is why it passed on a quiet re-run of the same tree. The test now polls for the required frame count with a bounded timeout instead of sleeping a fixed hop, so a slow-to-start follow no longer trips it.
+
+**Validation gap:** no-repro — the quarantine run proved the sporadic failure, but the race only fires under full-suite contention and could not be reproduced deterministically offline; the fix removes the fixed-window race by construction.
+
 ### The backlog-structure gate tells an author whose finished plan is already archived to "file it under '## Planned' in PLANS.md instead", the opposite of the fix, and a revision followed that advice (found by operator session 2026-10-21 from the refused Newest-failure plan's review chain) (reported by the user 2026-10-21) — fixed 2026-10-21 by the bugfix role
 
 - **Symptom:** `backlogStructureReason` renders one message for PLANS.md and PLANS-DONE.md (src/backlog/backlog-structure.ts:314-319): `<file> files "<title>" directly under "## Done" with no done date — a plan written into the done section is invisible to every Planned reader; file it under "## Planned" in PLANS.md instead`. For an entry already sitting in PLANS-DONE.md the only fault is a missing `done YYYY-MM-DD` token, so the trailing clause is exactly wrong: the entry is finished and archived, and restoring it to `## Planned` is what the next review rejects. Live case: revision 2 of the Newest-failure plan (feature-2 run 549, head a6a3bbec) did that — its commit reads `Restore PLANS.md/PLANS-DONE.md to main so the plan sits under ## Planned, not DONE` — and the following review rejected the change for the opposite reason ("the finished plan is still not under PLANS.md's `## Done`"), so the chain spent a revision on the wrong repair. Revision 3 repeated the original objection, its persistence count reached the cap, and the plan was refused with a note directing the team not to re-author the theme.

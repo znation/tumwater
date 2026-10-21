@@ -32,25 +32,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
-### `status -f repaints until its parent exits, then prints nothing` failed, then passed on the same tree (quarantined by tumwater 2026-10-21)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-✖ status -f repaints until its parent exits, then prints nothing (544.172833ms)
-AssertionError [ERR_ASSERTION]: at least two frames repainted
-at file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:42:16
-at async withFollow (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:25:9)
-at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:39:5)
-generatedMessage: false,
-code: 'ERR_ASSERTION',
-actual: false,
-expected: true,
-operator: '==',
-diff: 'simple'
-}
-~~~~
-
 ### The phase cell reads "due — starts on the next poll" for two runners the poll just declined and will decline again: the multi-instance cap and the yield-scaled gap record no `skipReason` (found by operator session 2026-10-21 from the GUI's Due chip, `rolePhase` in src/ui/status-model.ts and `phaseInfo` in src/ui/gui/gui-client-model.ts)
 
 - **Symptom:** `rolePhase` renders the plain `due` cell whenever `nextRunAt <= now` and `skipReason` names none of its five values (src/ui/status-model.ts:283-284, the `default:` arm), and `phaseInfo` renders that as "Due — starts on the next poll" (src/ui/gui/gui-client-model.ts:56). Two scheduling-pass declinations land a runner there although the poll has already decided against it and the same cause holds on the next pass, so the cell promises a start that does not come for the length of the episode:
