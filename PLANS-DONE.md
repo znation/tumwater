@@ -5,6 +5,46 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Comma-list completion skips the items already typed: `--role qa,<TAB>` offers `feature` and `feature-2` but not `qa` again, for every comma-list flag in bash, zsh and fish (planned 2026-10-20 by the plan role; independent of every eligible plan — the `diff --path` plan also edits src/cli/completion.ts, but only its flag/path tables, not `_tumwater_list` or the fish value functions) — done 2026-10-20
+
+**Goal.** `--role`, `--result`, `--type` and `history --model` take comma lists, and completion fills in the item after the last comma ("Shell completion past the comma", PLANS-DONE.md). It still offers items the list already holds: today `history --role qa,<TAB>` offers `qa,qa` (pinned by test "the bash script completes the item after the last comma of --role, --result and --type lists"), and `history --result merged,<TAB>` offers `merged,merged`. A repeated item is never useful. Completion should offer only the items not yet in the list.
+
+**Approach.**
+1. src/cli/completion.ts `bashScript`, the `_tumwater_list` helper: build the word list from `$1` minus the items in `head`, then pass that list to `compgen`. Use exactly this body:
+   ```
+   _tumwater_list() {
+     local head="" word words=""
+     [[ "$2" == *,* ]] && head="${2%,*},"
+     for word in $(printf '%s\n' "$1"); do
+       [[ ",$head" == *",$word,"* ]] || words+="$word "
+     done
+     COMPREPLY=( $(compgen -P "$head" -W "$words" -- "${2##*,}") )
+   }
+   ```
+   Write `$(printf '%s\n' "$1")`, not `$1`: the zsh script runs this function under bashcompinit, and zsh does not word-split a bare `$1`, but it does split a command substitution. The plan run checked this body in bash and in zsh with `bashcompinit`. Both gave `qa,feature qa,feature-2` for `qa,`, and `feature,feature-2 feature,qa` for `feature,`. The `,$head` / `,$word,` framing matches whole items, so `feature,` still offers `feature-2`. Update the helper's `#` comment to say it also drops the items already listed. The four call sites (`--role`/role positional, `--result`, `--type`, `history --model`) do not change. The role-positional case never holds a comma, so `head` is empty and nothing is dropped.
+2. src/cli/completion.ts `fishScript`: add a filter function next to `__tumwater_argc`:
+   ```
+   function __tumwater_unlisted; set -l typed (string split , -- (string match -r '^.*,' -- (commandline -ct))); while read -l word; contains -- $word $typed; or echo $word; end; end
+   ```
+   Emit it as one TS template-string line like the others, escaping `\` as the neighbouring lines do. `string match -r '^.*,'` yields the token up to its last comma, or nothing when the token has no comma. Then pipe the four list sources through it: `__tumwater_roles` becomes `tumwater completion --roles 2>/dev/null | __tumwater_unlisted`. Do the same for `__tumwater_models`, and for `__tumwater_results` and `__tumwater_types` (pipe their `printf`). `__fish_complete_list` calls these functions while the commandline still holds the token, so `commandline -ct` reads the list being typed. Out of scope: the `--role=qa,` spelling. Its first item reads `--role=qa`, so nothing is dropped, and completion behaves as it does today.
+3. Update the `fishFlagValue` doc comment to say the per-item completion skips the items already listed.
+4. docs/cli.md, the `tumwater completion bash|zsh|fish` paragraph: change "a comma-list value (`--role`, `--result`, `--type`) completes its last item, keeping the items before it" to "a comma-list value (`--role`, `--result`, `--type`, `history --model`) completes its last item, keeping the items before it and skipping those already listed".
+
+**Files touched.** src/cli/completion.ts, docs/cli.md, test/completion.test.ts.
+
+**Acceptance criteria.**
+- In test "the bash script completes the item after the last comma of --role, --result and --type lists", the last assertion changes to `["tumwater", "history", "--role", "qa,"]` → `["qa,feature", "qa,feature-2"]`. The other four assertions there are unchanged and still pass.
+- New test "the bash script skips the items a comma list already holds". It uses the existing `complete` helper, whose fake `tumwater` prints `feature feature-2 qa` for roles and `hf/m-a:deepinfra hf/m-b` for `--models`:
+  - `history --role feature,` gives `["feature,feature-2", "feature,qa"]`, so a prefix-sharing id is kept.
+  - `logs --role feature,qa,feature-2,` gives `[]`.
+  - `history --result merged,` gives the three other class names from `HISTORY_RESULT_FLAG_NAMES`, each prefixed `merged,`.
+  - `logs --type run_start,run_` holds no `run_start,run_start`, and holds `run_start,run_end`.
+  - `history --model hf/m-b,` gives `["hf/m-b,hf/m-a:deepinfra"]`.
+- In the fish test "the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3", or a new one: the script has a `function __tumwater_unlisted` line, and each of the `function __tumwater_roles`, `__tumwater_results`, `__tumwater_types` and `__tumwater_models` lines contains `| __tumwater_unlisted`.
+- New test, `{ skip: !fishInstalled }`: `complete -C 'tumwater history --result merged,'` lists no `merged,merged`.
+- "the fish script parses under fish when fish is installed", "fish completes the item after the last comma of a --result list", "the zsh script wraps the bash script in bashcompinit", and the existing bash role/result/type/model completion tests pass unchanged.
+- `npm run test:gate` passes.
+
 ### `tumwater diff --role <id>[,<id>...] --path <path>` limits each listed role's pending view to one file or directory: its commits that touch the path, the patch and the uncommitted edits under it. This is the follow-up to `diff --overlaps`, which names a shared file but cannot show what each role did to it (planned 2026-10-20 by the plan role; independent of every eligible plan. It shares src/cli/completion.ts with the in-flight "Shell completion past the comma" plan only through a one-word `PATH_FLAGS` addition, so rebase onto it if that one lands first; done 2026-10-20 by the feature role)
 
 **Goal.** `tumwater diff --overlaps` prints `src/cli.ts: feature, bugfix`. To see what each role did to that file, the operator today reads both roles' whole patches (`diff --role feature,bugfix`), which can be up to `DIFF_MAX_BYTES` each. `--path <path>` keeps only the part of each view under one repo-relative path. The diff is git's, through a literal pathspec, so a directory path covers everything below it. `tumwater diff --role feature,bugfix --path src/cli.ts` then shows exactly the two edits that will meet at merge.

@@ -162,11 +162,14 @@ function bashScript(help: string): string {
   });
   return [
     `# tumwater completion (generated from \`tumwater help\`)`,
-    `# Completes the item after the last comma of a comma-list value, keeping the items before it.`,
+    `# Completes the item after the last comma of a comma-list value, keeping the items before it and dropping those already listed.`,
     `_tumwater_list() {`,
-    `  local head=""`,
+    `  local head="" word words=""`,
     `  [[ "$2" == *,* ]] && head="\${2%,*},"`,
-    `  COMPREPLY=( $(compgen -P "$head" -W "$1" -- "\${2##*,}") )`,
+    `  for word in $(printf '%s\\n' "$1"); do`,
+    `    [[ ",$head" == *",$word,"* ]] || words+="$word "`,
+    `  done`,
+    `  COMPREPLY=( $(compgen -P "$head" -W "$words" -- "\${2##*,}") )`,
     `}`,
     `_tumwater() {`,
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
@@ -241,7 +244,8 @@ function bashScript(help: string): string {
 }
 
 /** The value suffix a fish flag line carries: what completes after the flag. `--role`, `--result`
- * and `--type` take comma lists, so they complete per item through `__fish_complete_list`. */
+ * and `--type` take comma lists, so they complete per item through `__fish_complete_list`,
+ * skipping the items already listed. */
 function fishFlagValue(command: string, flag: string): string {
   if (flag === "--role") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
   if (PATH_FLAGS.includes(flag)) return ` -r -F`;
@@ -263,10 +267,11 @@ function fishScript(help: string): string {
     `complete -c tumwater -f`,
     `function __tumwater_argc; count (commandline -opc); end`,
     `function __tumwater_doctor_checks; printf '%s\\n' ${DOCTOR_CHECK_WORDS}; end`,
-    `function __tumwater_roles; tumwater completion --roles 2>/dev/null; end`,
-    `function __tumwater_results; printf '%s\\n' ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}; end`,
-    `function __tumwater_models; tumwater completion --models 2>/dev/null; end`,
-    `function __tumwater_types; printf '%s\\n' ${EVENT_TYPE_CODES.join(" ")}; end`,
+    `function __tumwater_unlisted; set -l typed (string split , -- (string match -r '^.*,' -- (commandline -ct))); while read -l word; contains -- $word $typed; or echo $word; end; end`,
+    `function __tumwater_roles; tumwater completion --roles 2>/dev/null | __tumwater_unlisted; end`,
+    `function __tumwater_results; printf '%s\\n' ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")} | __tumwater_unlisted; end`,
+    `function __tumwater_models; tumwater completion --models 2>/dev/null | __tumwater_unlisted; end`,
+    `function __tumwater_types; printf '%s\\n' ${EVENT_TYPE_CODES.join(" ")} | __tumwater_unlisted; end`,
     `complete -c tumwater -n __fish_use_subcommand -a "${spec.commands.join(" ")}"`,
   ];
   for (const command of spec.commands) {

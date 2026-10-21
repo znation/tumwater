@@ -11,6 +11,7 @@ import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
 import { MODEL_TIERS } from "../src/config/config-schema.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
+import { HISTORY_RESULT_FLAG_NAMES } from "../src/history/history-data.js";
 import { templateIds } from "../src/init/init-templates.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logEvent } from "../src/events/events.js";
@@ -294,7 +295,31 @@ test("the bash script completes the item after the last comma of --role, --resul
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "feature,feature-2,q"], 3), ["feature,feature-2,qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "merged,p"], 3), ["merged,problems"]);
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "run_start,merge_f"], 3), ["run_start,merge_failed"]);
-  assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "qa,"], 3), ["qa,feature", "qa,feature-2", "qa,qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "qa,"], 3), ["qa,feature", "qa,feature-2"]);
+});
+
+test("the bash script skips the items a comma list already holds", async () => {
+  const script = completionScript("bash");
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "feature,"], 3), ["feature,feature-2", "feature,qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "feature,qa,feature-2,"], 3), []);
+  const others = Object.values(HISTORY_RESULT_FLAG_NAMES).filter((n) => n !== "merged").map((n) => `merged,${n}`);
+  assert.deepEqual((await complete(script, ["tumwater", "history", "--result", "merged,"], 3)).sort(), others.sort());
+  const types = await complete(script, ["tumwater", "logs", "--type", "run_start,run_"], 3);
+  assert.ok(!types.includes("run_start,run_start") && types.includes("run_start,run_end"));
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", "hf/m-b,"], 3), ["hf/m-b,hf/m-a:deepinfra"]);
+});
+
+test("the fish script filters comma-list sources through __tumwater_unlisted", () => {
+  const lines = fishScriptLines();
+  assert.ok(lines.some((l) => l.startsWith("function __tumwater_unlisted")));
+  for (const name of ["roles", "results", "types", "models"])
+    assert.ok(lines.some((l) => l.startsWith(`function __tumwater_${name};`) && l.includes("| __tumwater_unlisted")), name);
+});
+
+test("fish skips the items a --result list already holds", { skip: !fishInstalled }, async () => {
+  const { stdout } = await run("fish", ["-c", `${completionScript("fish")}\ncomplete -C 'tumwater history --result merged,'`]);
+  assert.ok(!stdout.includes("merged,merged"));
+  assert.ok(stdout.includes("merged,problems"));
 });
 
 test("the fish script parses under fish when fish is installed", { skip: !fishInstalled }, async () => {
