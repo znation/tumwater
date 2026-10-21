@@ -192,7 +192,7 @@ test("modelFromPi stays absent when a model, agent or provider resolves", async 
   assert.equal(configured.modelFromPi, undefined);
 
   // agent claude: the row keeps the claude/… tier default.
-  writeConfig(repo, { agent: "claude" });
+  writeConfig(repo, { backend: "claude" });
   const claude = snapshot(repo, modelsPath).roles.find((l) => l.role === "feature")!;
   assert.equal(claude.modelFromPi, undefined);
   assert.match(claude.model ?? "", /^claude\//);

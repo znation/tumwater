@@ -346,7 +346,7 @@ test("checkTierModels cannot run on an invalid config and says so without failin
 // pi's models.json for it — and must not probe pi's auth check.
 test("checkTierModels skips pi's definitions for claude-routed models", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   let probed = 0;
   const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => {
     probed++;
@@ -367,7 +367,7 @@ test("checkTierModels warns when pi's definitions name a reserved agent id", asy
     JSON.stringify({ providers: { claude: { models: [{ id: "claude-x", cost: { input: 0, output: 0 } }] } } }),
   );
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const outcome = await checkTierModels(root, file, async () => "ready");
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /declare provider "claude" — the name is reserved for an agent backend/);
@@ -417,7 +417,7 @@ test("checkTierModels warns when pi's definitions name the reserved opencode pro
 // team, an unset key, an API-key login, or an unreadable probe all hold the warning.
 test("checkAnthroApiKey warns on API key + claude.ai login with a claude seam in use", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const bin = tmpdir("doctor-claude-key-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"team"}\'');
   const env = { ANTHROPIC_API_KEY: "sk-ant-test" };
@@ -450,7 +450,7 @@ test("checkAnthroApiKey stays silent without a claude seam", async () => {
 // The auth probe is pinned against a fake claude on PATH (never a real model) for each verdict.
 test("checkClaudeAuth fails a logged-out claude and names the billing it implies", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const bin = tmpdir("doctor-claude-auth-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":false}\'');
   const out = await checkClaudeAuth(root, bin);
@@ -479,7 +479,7 @@ test("checkClaudeAuth fails a logged-out claude and names the billing it implies
 test("checkClaudeAuth probes under the configured team config dir", async () => {
   const root = readyRepo();
   const seen = path.join(tmpdir("doctor-claude-auth-cfg-"), "seen");
-  writeConfig(root, { agent: "claude", backends: { claude: { configDir: "/team/claude" } } });
+  writeConfig(root, { backend: "claude", backends: { claude: { configDir: "/team/claude" } } });
   const bin = tmpdir("doctor-claude-auth-cfg-bin-");
   writeScript(
     path.join(bin, "claude"),
@@ -551,7 +551,7 @@ test("a claude-only fallback is reported by the doctor's binary/credential/versi
 
 test("checkClaudeVersion fails a CLI below a configured model's floor", async () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const bin = tmpdir("doctor-claude-version-");
   writeScript(path.join(bin, "claude"), 'echo "2.1.216 (Claude Code)"');
   const old = await checkClaudeVersion(root, bin);
@@ -564,7 +564,7 @@ test("checkClaudeVersion fails a CLI below a configured model's floor", async ()
   assert.match(fresh.detail, /claude 2\.1\.295 \(>= 2\.1\.280 for claude-/);
 
   // `off`/`minimal` thinking has no claude setting below `low`, and the check notes the clamp.
-  writeConfig(root, { agent: "claude", thinking: "minimal" });
+  writeConfig(root, { backend: "claude", thinking: "minimal" });
   const clamped = await checkClaudeVersion(root, bin);
   assert.equal(clamped.level, "ok");
   assert.match(clamped.detail, /`off`\/`minimal` thinking clamps to `--effort low`/);
@@ -678,7 +678,7 @@ function onlyFeature(): Record<string, { enabled: boolean }> {
 test("checkImageInput is ok when every seam reads images (all-claude), naming them", async () => {
   const root = readyRepo();
   writeConfig(root, {
-    agent: "claude",
+    backend: "claude",
     model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" },
     roles: onlyFeature(),
   });

@@ -91,6 +91,7 @@ test("config set and unset reach the renamed role and top-level keys", () => {
 
 test("agent and agents load as backend and backends, and config set writes the new names", () => {
   const dir = tmpdir();
+  // legacy spelling, retired in part 5/5
   const file = writeConfig(dir, { agent: "claude", agents: { claude: { args: ["--x"] } } });
   const cfg = loadConfig(dir);
   assert.equal(cfg.backend, "claude");

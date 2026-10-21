@@ -482,7 +482,7 @@ test("an active model-fallback episode is reported with its pair and reason", ()
 // agent-qualified in `tumwater role` and carries the backend on the payload.
 test("a claude model-fallback episode renders as claude/model", () => {
   const dir = root();
-  writeConfig(dir, { agent: "claude", fallbackModel: { model: "claude-haiku-5-5" } });
+  writeConfig(dir, { backend: "claude", fallbackModel: { model: "claude-haiku-5-5" } });
   const state = freshRunnerState("feature");
   const since = Date.now() - 60_000;
   state.modelFallback = {
@@ -507,7 +507,7 @@ test("agent labels: a claude model job names the backend, pi stays byte-identica
   // renderer names it agent-qualified; a seam with no model at all falls back to `<agent>
   // default` rather than pi's label.
   const dir = root();
-  writeConfig(dir, { agent: "claude" });
+  writeConfig(dir, { backend: "claude" });
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.backend, "claude");
   assert.equal(p.model, "claude-sonnet-5-5", "routeModel fills the default tier's model");
@@ -525,7 +525,7 @@ test("agent labels: a claude model job names the backend, pi stays byte-identica
 // names subscription (with its primary window) or API; a pi seam carries no billing line.
 test("a claude model job's role view names its billing and subscription window", () => {
   const dir = root();
-  writeConfig(dir, { agent: "claude" });
+  writeConfig(dir, { backend: "claude" });
   writeClaudeAccount(dir, {
     billing: "subscription",
     observedAt: Date.now(),
@@ -587,7 +587,7 @@ test("the role view names the resolved seam's context window and previews the sa
 
 test("the role view names the fallback step a live orchestrator moved the role's tier to", () => {
   const dir = root();
-  writeConfig(dir, { agent: "claude" });
+  writeConfig(dir, { backend: "claude" });
   writeClaudeAccount(dir, {
     billing: "subscription",
     observedAt: Date.now(),

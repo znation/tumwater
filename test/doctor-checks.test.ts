@@ -194,7 +194,7 @@ test("checkBackendBinary falls back to the default when tumwater.json is malform
 // agents (the startup gate's backendsInUse), not always pi.
 test("checkBackendBinary checks the enabled seams' agents, not always pi", () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
 
   const present = checkBackendBinary(root, fakeBins("claude"));
   assert.equal(present.level, "ok");
@@ -207,7 +207,7 @@ test("checkBackendBinary checks the enabled seams' agents, not always pi", () =>
 
 test("checkBackendBinary joins each agent's verdict for a mixed pi and claude team", () => {
   const root = readyRepo();
-  writeConfig(root, { agent: "claude", roles: { coverage: { model: "pi/some-model" } } });
+  writeConfig(root, { backend: "claude", roles: { coverage: { model: "pi/some-model" } } });
 
   const both = checkBackendBinary(root, fakeBins("claude", "pi"));
   assert.equal(both.level, "ok");
@@ -843,7 +843,7 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude team", () =
   fs.writeFileSync(path.join(projects, "-slot-two", "b.jsonl"), "y".repeat(500));
 
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const claudeConfig = loadConfig(root);
   const outcome = checkClaudeTranscripts(claudeConfig, home);
   assert.equal(outcome.level, "ok");
@@ -874,7 +874,7 @@ test("checkClaudeTranscripts follows CLAUDE_CONFIG_DIR when it is set", () => {
   fs.mkdirSync(path.join(home, ".claude", "projects"), { recursive: true });
 
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const outcome = checkClaudeTranscripts(loadConfig(root), home, { CLAUDE_CONFIG_DIR: reloc });
   assert.equal(outcome.level, "ok");
   assert.match(outcome.detail, /^1\.5 KB across 1 project in /);
@@ -902,7 +902,7 @@ test("checkPiExtensions names what a team run skips and stands down without a pi
   assert.match(outcome!.detail, /\.pi\/agent\/extensions: my-tool\.js/);
 
   // No pi seam: the row is omitted entirely (doctor would not reach this host ~/.pi).
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   assert.equal(checkPiExtensions(loadConfig(root), home, ""), null);
 });
 
@@ -943,14 +943,14 @@ test("checkFunes warns for a Claude Code team without a config dir and is ok onc
   const root = readyRepo();
 
   // A Claude Code team with no backends.claude.configDir while funes's hook is installed.
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   const claudeCfg = loadConfig(root);
   const warn = checkFunes(claudeCfg, funesBin, home);
   assert.equal(warn?.level, "warn");
   assert.match(warn!.detail, /set backends\.claude\.configDir and log in there once/);
 
   // Once a team config dir is set, the row is ok (the hook can no longer index team runs).
-  writeConfig(root, { agent: "claude", backends: { claude: { configDir: "/team/claude" } } });
+  writeConfig(root, { backend: "claude", backends: { claude: { configDir: "/team/claude" } } });
   const ok = checkFunes(loadConfig(root), funesBin, home);
   assert.equal(ok?.level, "ok");
   assert.match(ok!.detail, /no team reach/);
@@ -965,7 +965,7 @@ test("checkClaudeTranscripts reports a sub-KB tree in plain bytes", () => {
   fs.mkdirSync(slug, { recursive: true });
   fs.writeFileSync(path.join(slug, "t.jsonl"), "x".repeat(100));
   const root = readyRepo();
-  writeConfig(root, { agent: "claude" });
+  writeConfig(root, { backend: "claude" });
   assert.match(checkClaudeTranscripts(loadConfig(root), home).detail, /^100 B across 1 project in /);
 });
 
@@ -984,7 +984,7 @@ test("checkClaudeTranscripts walks nested dirs, skips an unreadable one, and sca
   if (lockable) fs.chmodSync(locked, 0o000);
   try {
     const root = readyRepo();
-    writeConfig(root, { agent: "claude" });
+    writeConfig(root, { backend: "claude" });
     const outcome = checkClaudeTranscripts(loadConfig(root), home);
     assert.equal(outcome.level, "ok");
     assert.match(outcome.detail, /^1\.5 MB across 1 project in /);
