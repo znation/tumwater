@@ -866,6 +866,31 @@ test("a move below the line threshold, a pure deletion, or a reference in record
   assert.deepEqual([small, deleted, prose], [[], [], []]);
 });
 
+test("archiving a backlog entry or moving a design-doc section is not a move source; a code move beside it still is", async () => {
+  const entry = Array.from({ length: 12 }, (_, i) => `- Step ${i}: wire the finished part number ${i}.`).join("\n");
+  const findings = await movedFindings(
+    {
+      ...MOVE_BASE,
+      "PLANS.md": `# Plans\n\n### A plan\n\n${entry}\n`,
+      "PLANS-DONE.md": "# Done plans\n",
+      "plans/a.md": `# A\n\n${entry}\n`,
+      "plans/b.md": "# B\n",
+      "README.md": "Open work lives in PLANS.md; the design is in plans/a.md.\n",
+    },
+    {
+      "PLANS.md": "# Plans\n",
+      "PLANS-DONE.md": `# Done plans\n\n### A plan\n\n${entry}\n`,
+      "plans/a.md": "# A\n",
+      "plans/b.md": `# B\n\n${entry}\n`,
+      "src/big.ts": "export const keep = 1;\n",
+      "src/small.ts": MOVE_BODY,
+    },
+  );
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /^src\/big\.ts had 12 lines moved to src\/small\.ts, but it is still named at: docs\/x\.md:1 /);
+});
+
 test("a basename-only reference is not reported", async () => {
   const findings = await movedFindings(
     { ...MOVE_BASE, "docs/x.md": "See big.ts.\n" },

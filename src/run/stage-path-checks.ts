@@ -307,7 +307,12 @@ async function staleNameFindings(wt: string, diff: string): Promise<string[]> {
 /** (f) References to a file the change moved code out of. A modified (`M`) file is a source
  * when at least MOVED_LINES_MIN of its removed `-U0` lines (trimmed, at least MOVED_LINE_MIN_CHARS
  * long) were added verbatim to another file. Each hit of the source's path outside record prose
- * and the source itself, including in a receiver, is listed for the author to re-check. */
+ * and the source itself, including in a receiver, is listed for the author to re-check. Record
+ * prose is never a source: archiving a finished entry (PLANS.md → PLANS-DONE.md) or moving a
+ * section between design docs moves an entry, not code, and a reference names the file, which
+ * stays correct. Before this skip, each finished plan drew the finding on README.md and docs,
+ * and revision runs that rightly changed nothing were rejected until the review chain ran out
+ * (6 of 7 exhausted chains on 2026-10-20 and -21). */
 async function movedSourceFindings(
   wt: string,
   diff: string,
@@ -333,7 +338,7 @@ async function movedSourceFindings(
   }
   const findings: string[] = [];
   for (const e of entries) {
-    if (e.status !== "M") continue;
+    if (e.status !== "M" || isRecordProse(e.path)) continue;
     if (findings.length >= MAX_STALE_PATHS) break;
     const src = files.get(e.path);
     if (!src) continue;
