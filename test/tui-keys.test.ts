@@ -4702,3 +4702,83 @@ test("a History model filter that a later Ctrl+O empties blames the model", () =
   assert.equal(keys.state().historyResult, "none");
   assert.match(keys.state().paneCache ?? "", /no runs on model "m-a"/);
 });
+
+test("Ctrl+W on a History trail appends the run's patch after the stat, and a second press hides it", async () => {
+  const root = historyTrailRoot();
+  const { keys } = makeKeys(root, () => 0, () => Promise.resolve(" a.ts | 1 +"), { runPatch: () => Promise.resolve("diff --git a/a.ts b/a.ts") });
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await settle();
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  await settle();
+  const plain = renderRunDetail(readRunDetail(root, "clean", 1)!);
+  assert.equal(keys.state().trailCache, `${plain}\n\n a.ts | 1 +\n\ndiff --git a/a.ts b/a.ts`);
+  assert.equal(keys.state().trailPatch, true);
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  assert.equal(keys.state().trailCache, `${plain}\n\n a.ts | 1 +`);
+  assert.equal(keys.state().trailPatch, false);
+});
+
+test("the History trail composes detail, stat, patch, then transcript", async () => {
+  const root = historyTrailRoot();
+  writeTrailPiLog(root);
+  const { keys } = makeKeys(root, () => 0, () => Promise.resolve(" a.ts | 1 +"), { runPatch: () => Promise.resolve("PATCH") });
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  await settle();
+  const detail = readRunDetail(root, "clean", 1)!;
+  const plain = runTranscriptLines(root, "clean", 1, detail).found.join("\n");
+  assert.equal(keys.state().trailCache, `${renderRunDetail(detail)}\n\n a.ts | 1 +\n\nPATCH\n\n${plain}`);
+});
+
+test("Ctrl+W off a History trail flashes and reads no patch", () => {
+  const root = historyTrailRoot();
+  let calls = 0;
+  const { keys } = makeKeys(root, () => 0, undefined, { runPatch: () => { calls++; return Promise.resolve("x"); } });
+  openHistory(keys);
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  assert.match(keys.state().flash ?? "", /open a run's trail with Ctrl\+N/);
+  assert.equal(calls, 0);
+  assert.equal(keys.state().paneCache, before);
+});
+
+test("the trail patch follows Ctrl+P, and a late patch from the left run is dropped", async () => {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result: "changed", summary: "work" }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_100_000, loop: "clean", type: "run_start", run: 2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_160_000, loop: "clean", type: "run_end", run: 2, result: "changed", summary: "more" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const resolves: Array<(s: string) => void> = [];
+  const { keys } = makeKeys(root, () => 0, () => Promise.resolve("STAT"), { runPatch: () => new Promise<string>((r) => resolves.push(r)) });
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  keys.handleKey(undefined, { ctrl: true, name: "p" });
+  assert.equal(resolves.length, 2);
+  resolves[0]!("LEFT-RUN");
+  await settle();
+  assert.ok(!(keys.state().trailCache ?? "").includes("LEFT-RUN"));
+  resolves[1]!("OLDER-RUN");
+  await settle();
+  assert.ok((keys.state().trailCache ?? "").endsWith("OLDER-RUN"));
+});
+
+test("Ctrl+N off and back on starts the trail without its patch", async () => {
+  const root = historyTrailRoot();
+  let calls = 0;
+  const { keys } = makeKeys(root, () => 0, () => Promise.resolve("S"), { runPatch: () => { calls++; return Promise.resolve("P"); } });
+  openHistory(keys);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "w" });
+  await settle();
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await settle();
+  assert.equal(keys.state().trailPatch, false);
+  assert.equal(calls, 1);
+});

@@ -37,6 +37,7 @@ export interface TuiPanesDeps {
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
+  runPatch(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** Every Ctrl+<key> cycle walks its own ReadonlyArray<[key, label]> table one slot at a time,
@@ -182,6 +183,7 @@ export interface TuiPaneSession {
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
+  runPatch(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** Build the shared pane session from the disk-side deps the aggregator received. The pane
@@ -219,5 +221,6 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     revertCommit: deps.revertCommit,
     collectChange: deps.collectChange,
     runStat: deps.runStat,
+    runPatch: deps.runPatch,
   };
 }

@@ -38,8 +38,8 @@ export function historyWindowBounds(
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
  * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
- * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs, Ctrl+V twice reverts the
- * shown run's merged change), each with its cache and
+ * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs, Ctrl+W shows its commit
+ * patch, Ctrl+V twice reverts the shown run's merged change), each with its cache and
  * body window. With the trail off, Ctrl+P steps the window back by its own length (the
  * `history --since --until` window) and Ctrl+S returns to the trailing window. Split out of the
  * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and the
@@ -93,6 +93,9 @@ export function createHistoryPane(
   let trailGrep: string | null = null;
   let trailText = "";
   let trailStat: string | null = null;
+  // Whether the trail shows the run's commit patch (Ctrl+W), and the patch once it resolves.
+  let trailPatch = false;
+  let trailPatchText: string | null = null;
   let trailTranscriptText: string | null = null;
   let trailRun: { role: string; run: number; detail: RunDetail } | null = null;
   let reverting = false; // a revert preview or commit is in flight; a held Ctrl+V starts no second
@@ -214,7 +217,7 @@ export function createHistoryPane(
   // `tumwater run --stat` uses. Applies only while the trail is still on and no read or reset
   // bumped trailGen since the request, so an older run's stat never overwrites a newer view.
   const composeTrail = (): void => {
-    trailCache = [trailText, trailStat, trailTranscriptText].filter((part) => part !== null).join("\n\n");
+    trailCache = [trailText, trailStat, trailPatchText, trailTranscriptText].filter((part) => part !== null).join("\n\n");
   };
 
   // Read the shown run's transcript at the chosen level into trailTranscriptText (null when off
@@ -250,6 +253,23 @@ export function createHistoryPane(
     );
   };
 
+  const loadTrailPatch = (detail: RunDetail): void => {
+    const gen = trailGen;
+    void session.runPatch(session.root, detail).then(
+      (patch) => {
+        if (!trailMode || !trailPatch || gen !== trailGen) return;
+        trailPatchText = patch;
+        composeTrail();
+        session.requestRender();
+      },
+      (err: unknown) => {
+        if (!trailMode || !trailPatch || gen !== trailGen) return;
+        session.flashError(err);
+        session.requestRender();
+      },
+    );
+  };
+
   /** Re-read the pane's `index`-th newest completed run (its scope, window, search and outcome
    * class, as the rows show them) into trailCache, appending the run commit's per-file stat
    * once it resolves — the reader both the initial Ctrl+N toggle and the scope-change refreshes
@@ -273,6 +293,7 @@ export function createHistoryPane(
       }
       const detail = readRunDetail(session.root, row.role, row.run);
       trailStat = null;
+      trailPatchText = null;
       trailTranscriptText = null;
       trailRun = detail === null ? null : { role: row.role, run: row.run, detail };
       if (detail === null) {
@@ -282,6 +303,7 @@ export function createHistoryPane(
         loadTranscript();
         composeTrail();
         loadTrailStat(detail);
+        if (trailPatch) loadTrailPatch(detail);
       }
       trailIndex = index;
       return true;
@@ -395,6 +417,8 @@ export function createHistoryPane(
         trailCache = null;
         trailIndex = 0;
         trailTranscript = "off";
+        trailPatch = false;
+        trailPatchText = null;
         trailGrep = null;
       } else {
         // Toggle the trail on: read the pane-scoped newest completed run. A scope holding
@@ -456,6 +480,34 @@ export function createHistoryPane(
         composeTrail();
         session.paneScroll = 0;
       }
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "w") {
+      // Ctrl+W on a run trail shows or hides the shown run's full commit patch below its stat:
+      // the terminal twin of `tumwater history <role> <n> --patch`. Off the History view it
+      // falls through to the other panes' Ctrl+W arms.
+      if (session.view !== session.roleIds.length + 4) return false;
+      if (!promptLineFree(ctx.es)) {
+        session.requestRender();
+        return true;
+      }
+      if (!trailMode || trailRun === null) {
+        session.flashMessage("open a run's trail with Ctrl+N to show its patch");
+        session.requestRender();
+        return true;
+      }
+      trailPatch = !trailPatch;
+      if (trailPatch) {
+        loadTrailPatch(trailRun.detail);
+      } else {
+        // The bump keeps an in-flight patch from repainting; it also drops an in-flight stat.
+        trailGen++;
+        trailPatchText = null;
+        if (trailStat === null) loadTrailStat(trailRun.detail);
+        composeTrail();
+      }
+      session.paneScroll = 0;
       session.requestRender();
       return true;
     }
@@ -577,6 +629,8 @@ export function createHistoryPane(
       trailCache = null;
       trailIndex = 0;
       trailTranscript = "off";
+      trailPatch = false;
+      trailPatchText = null;
       trailGrep = null;
       session.revertArmed = null;
       session.armedRevert = null;
@@ -607,6 +661,7 @@ export function createHistoryPane(
         trailIndex,
         trailCache,
         trailTranscript,
+        trailPatch,
         trailGrep,
       };
     },

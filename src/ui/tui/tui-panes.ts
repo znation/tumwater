@@ -148,6 +148,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       return report.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "k") return health.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "w") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
     // Ctrl+P on Usage/Failures steps the report window back; every other view is History's.
     if (key.ctrl && key.name === "p" && (session.view === session.roleIds.length + 2 || session.view === session.roleIds.length + 3)) {
@@ -288,6 +289,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       trailIndex: hist.trailIndex,
       trailCache: hist.trailCache,
       trailTranscript: hist.trailTranscript,
+      trailPatch: hist.trailPatch,
       trailGrep: hist.trailGrep,
       selectedQueued: que.selectedQueued,
       queuedRows: que.queuedRows,

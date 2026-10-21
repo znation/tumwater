@@ -1,5 +1,5 @@
 import type { RunDetail } from "../../run/run-detail-data.js";
-import { runDetailStat } from "../../run/run-detail.js";
+import { runDetailPatch, runDetailStat } from "../../run/run-detail.js";
 import { collectTeamChanges, collectRoleChange, collectChangeOverlaps, type ChangeOverlapsView, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
@@ -52,6 +52,9 @@ interface TuiKeysDeps {
   /** The History trail's per-file stat footer; defaults to run-detail's runDetailStat so
    * tests need not shell out to git. */
   runStat?(root: string, detail: RunDetail): Promise<string>;
+  /** The History trail's full commit patch (Ctrl+W); defaults to run-detail's runDetailPatch so
+   * tests need not shell out to git. */
+  runPatch?(root: string, detail: RunDetail): Promise<string>;
 }
 
 /** The state render reads back each frame: the prompt line, the modes it names in the hint
@@ -181,6 +184,8 @@ interface TuiKeysState {
   /** The trail's agent transcript level (Ctrl+R): off, the plain transcript, or the transcript
    * with each agent run's prompt — `history <role> <n> --transcript [--prompt]`'s text. */
   trailTranscript: "off" | "plain" | "prompts";
+  /** Whether the trail shows the run's commit patch, toggled by Ctrl+W. */
+  trailPatch: boolean;
   /** The trail transcript's applied search (`/` while it shows); null when none. */
   trailGrep: string | null;
   /** Whether the viewed role's pane shows the collected unmerged change (the second Ctrl+N
@@ -280,6 +285,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const revertCommit = deps.revertCommit ?? revertMergedCommit;
   const collectChange = deps.collectChange ?? collectRoleChange;
   const runStat = deps.runStat ?? runDetailStat;
+  const runPatch = deps.runPatch ?? runDetailPatch;
   // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
   // and fixed bugs), read fresh — tui-backlog.ts's one definition, shared with the render so
   // stale-selection clamping cannot drift.
@@ -325,6 +331,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     revertCommit,
     collectChange,
     runStat,
+    runPatch,
   });
   // Whether the director's status row is in flight, fed by render each frame: the gate for
   // Ctrl+C's interrupt — while no director run is in progress, Ctrl+C flashes a notice instead of
