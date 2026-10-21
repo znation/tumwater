@@ -46,6 +46,7 @@ import { resolveRevertTarget } from "../operator/revert.js";
 import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
+import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { clampCount, intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, untilMsQuery, windowDays } from "./gui-args.js";
 import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
@@ -130,17 +131,23 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
  * indexes (the ones /api/backlog?file=…&index=N addresses) whose entry heading or body contains
  * the trimmed text, case-insensitively — the match `tumwater backlog --grep` and the TUI's `/`
  * use — so the dashboard's Search can find text bodies hold without bodies riding the status
- * poll. Missing or blank grep → 400. */
+ * poll. A `queued` key adds the queued messages whose full text (not only the 80-character
+ * preview) contains the text, as `{ role, file }` with the queue-file basename, director first —
+ * the match `tumwater prompt --list --grep` uses. Missing or blank grep → 400. */
 export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const needle = (q.get("grep") ?? "").trim();
   if (!needle) {
     badRequest(res, "grep required");
     return;
   }
-  const out: Record<string, number[]> = {};
+  const out: Record<string, number[] | Array<{ role: string; file: string }>> = {};
   for (const [file, reader] of BACKLOG_FILE_READERS) {
     out[file] = reader(root).flatMap((entry, i) => (entryMatches(entry, needle) ? [i] : []));
   }
+  const lower = needle.toLowerCase();
+  out.queued = queuedListRows(root, null, listWideScope(root))
+    .filter((row) => row.text.toLowerCase().includes(lower))
+    .map((row) => ({ role: row.role, file: row.file }));
   sendJson(res, 200, out);
 }
 

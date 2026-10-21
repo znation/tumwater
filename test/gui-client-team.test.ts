@@ -1029,7 +1029,7 @@ test("setBacklogGrep repaints and an empty search restores the tab byte-for-byte
   assert.equal(panels["backlog"], plain.panels["backlog"]);
 });
 
-const noHits = { plans: [], bugs: [], questions: [], done: [], fixed: [], answered: [] };
+const noHits = { plans: [], bugs: [], questions: [], done: [], fixed: [], answered: [], queued: [] };
 
 test("a Backlog Search keeps a row whose body matched on the server", () => {
   const { scope, panels } = backlogScope("plans", { backlogGrep: "zebra", backlogBodyHits: { needle: "zebra", ...noHits, plans: [1] } });
@@ -1038,6 +1038,17 @@ test("a Backlog Search keeps a row whose body matched on the server", () => {
   assert.match(html, /data-index='1'/);
   assert.doesNotMatch(html, /data-index='0'/);
   assert.doesNotMatch(html, /data-index='2'/);
+});
+
+test("a Backlog Search keeps an Inbox row whose full text matched on the server", () => {
+  const status = { ...grepBase, inboxPrompts: ["short preview"], inboxFiles: ["a.md"], inboxQueuedAt: [null] };
+  const hits = (needle: string) => ({ backlogGrep: "zebra", backlogBodyHits: { needle, ...noHits, queued: [{ role: "director", file: "a.md" }] } });
+  const hit = backlogScope("queued", hits("zebra"));
+  hit.scope.renderBacklog(status);
+  assert.match(hit.panels["backlog"] ?? "", /short preview/);
+  const stale = backlogScope("queued", hits("zeb"));
+  stale.scope.renderBacklog(status);
+  assert.match(stale.panels["backlog"] ?? "", /Nothing matches this search/);
 });
 
 test("body hits for an older needle are ignored", () => {

@@ -8,7 +8,7 @@ import { lanAddresses } from "../src/gui/gui-command.js";
 import { guiBindHost, startGui } from "../src/gui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
-import { inboxSize, dequeueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueuePrompt, enqueueRolePrompt, inboxSize, dequeueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -467,8 +467,15 @@ test("gui /api/backlog-match lists the indexes whose heading or body matches", a
   ]);
   const { server, base } = await startLocalGui(repo);
   try {
-    const d = await getJson<Record<string, number[]>>(base, "/api/backlog-match?grep=ZEBRA");
-    assert.deepEqual(d, { plans: [1], bugs: [0], questions: [], done: [], fixed: [], answered: [] });
+    const d = await getJson<Record<string, unknown>>(base, "/api/backlog-match?grep=ZEBRA");
+    assert.deepEqual(d, { plans: [1], bugs: [0], questions: [], done: [], fixed: [], answered: [], queued: [] });
+    // Queued messages match on full text, past the 80-character preview; director first.
+    const pad = "x".repeat(90);
+    const roleFile = enqueueRolePrompt(repo, "feature", `${pad} Zebra role`);
+    const dirFile = enqueuePrompt(repo, `${pad} zebra director`);
+    enqueuePrompt(repo, `${pad} nothing here`);
+    const q = await getJson<{ queued: unknown }>(base, "/api/backlog-match?grep=ZEBRA");
+    assert.deepEqual(q.queued, [{ role: "director", file: path.basename(dirFile) }, { role: "feature", file: path.basename(roleFile) }]);
     for (const url of ["/api/backlog-match?grep=%20", "/api/backlog-match"]) {
       assert.equal((await fetch(base + url)).status, 400, url);
     }

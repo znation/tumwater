@@ -98,10 +98,12 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
     const [key, , ic, tone, emptyTitle, emptyText] = BACKLOG.find((s) => s[0] === backlogTab);
     const list = items[key];
     // Search narrows rows by the text each one shows, or by a body match from /api/backlog-match;
-    // indexes stay the payload's own.
+    // indexes stay the payload's own. Inbox rows also match their full text there (the queued key).
     const needle = backlogGrep.toLowerCase();
     const hit = (text, file, i) => !needle || String(text).toLowerCase().includes(needle) ||
       (!!file && !!backlogBodyHits && backlogBodyHits.needle === backlogGrep && (backlogBodyHits[file] || []).includes(i));
+    const queuedHit = (q) => !!backlogBodyHits && backlogBodyHits.needle === backlogGrep &&
+      (backlogBodyHits.queued || []).some((m) => m.role === q.role && m.file === q.file);
     let shown = 0;
     let html;
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
@@ -126,7 +128,7 @@ export const GUI_CLIENT_BACKLOG_JS = String.raw`
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditsave' " + addr + ">Save</button>" +
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
         }
-        if (!hit(q.preview + " " + q.role)) return "";
+        if (!hit(q.preview + " " + q.role) && !queuedHit(q)) return "";
         shown++;
         const topBtn = alreadyFirst
           ? "<button type='button' class='btn btn-sm rowaction' data-action='prompttop' " + addr + ">Move to top</button>"
