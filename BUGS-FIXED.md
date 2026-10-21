@@ -5,6 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The "models for each tier" provider check can never report ready: `piProviderAuth` reads `doc.ready`, but pi answers `{"status":…}` — fixed 2026-10-20 by the bugfix role
+
+- **Symptom:** `tumwater doctor` prints `warn models for each tier: could not verify provider huggingface — the auth check did not run or its output was unreadable` (and the same for `qwenrunner`) while `pi auth check --provider huggingface --json` on the same host prints `{"status":"ready","provider":"huggingface","authType":"api_key"}` and exits 0. The warning carries no information about the credentials or the configured tiers, and no provider can ever come back ready through it.
+- **Reproduce:** on this host (pi-coding-agent 1.2.0, `/opt/homebrew/bin/pi`, the binary the doctor resolves):
+  - `pi auth check --provider huggingface --json` → `{"status":"ready",…}`, exit 0; `pi auth check --provider claude --json` (no claude credentials here) → `{"status":"not_ready","provider":"claude","reason":"provider_not_found"}`, exit 1.
+  - The probe alone, isolated: `piProviderAuth({}, "huggingface", process.env.PATH)` → `unknown`; a fake `pi` on PATH echoing real pi's shape `{"status":"ready",…}` with exit 0 → `unknown`; the same fake echoing `{"ready":true}` → `ready`. Only the invented shape reads.
+  - `tumwater doctor "models for each tier"` on main: the warn row above, with no `fail` for the two `huggingface/deepseek-ai/DeepSeek-V4*-Flash*:deepinfra` ids, which do resolve.
+- **Cause:** `piProviderAuth` (src/doctor/doctor-model-checks.ts) accepted only `doc.ready === true` / `=== false` and returned `unknown` otherwise; pi's contract is `{"status": "ready"|"not_ready"|"invalid", provider, reason?, authType?}` with exit codes 0/1/2 (pi's own `dist/cli/auth-check.d.ts` and docs/cli.md:303). pi emits no `ready` field, so every provider reached the `warn` and this branch was dead code on this pi. The tests pinned that shape against fake `pi` scripts, so nothing caught the drift. Secondary, same function: the exit-code gate (`result.code !== 0` → `unknown`) would still map pi's documented `not_ready` (exit 1) and `invalid` (exit 2) to `unknown` after the field is fixed.
+- **Fix:** `piProviderAuth` now reads `status` (`ready` → ready; `not_ready` and `invalid` → not-ready) and reads it from the body alone — pi's non-zero exits (1 not_ready, 2 invalid) are verdicts, not crashes, so the blanket exit-code gate is gone; only a reply that did not run or does not parse is `unknown`. Tests re-pinned to pi's real shapes and exit codes, one case per status.
+- **Impact:** the tier check's model-resolution half still works (an unresolvable id fails via the definitions / `pi --list-models` lookup), but its provider-readiness half has never distinguished a missing `HF_TOKEN` from a healthy one here, so the check meant to catch a broken strong tier before every review fails has been printing the same warning either way.
+
+**Validation gap:** none — the existing fake-pi suite reproduced the wrong-shape `unknown` and confirmed each status after the fix.
+
 ### `handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role` failed, then passed on the same tree (quarantined by tumwater 2026-10-20) — fixed 2026-10-20 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.

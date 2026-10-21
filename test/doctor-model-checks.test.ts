@@ -544,28 +544,34 @@ test("checkClaudeVersion fails a CLI below a configured model's floor", async ()
 });
 
 // The default probe runs the resolved agent binary's own auth check; pinned against a fake
-// pi on PATH (never a real model) for each verdict shape.
+// pi on PATH (never a real model) for each verdict shape. pi's real contract is
+// `{"status": "ready"|"not_ready"|"invalid", provider, reason?, authType?}` with exit codes
+// 0/1/2 respectively (pi's dist/cli/auth-check.d.ts, docs/cli.md) — a non-zero exit is a
+// verdict, not a crash.
 test("piProviderAuth reads ready out of the agent binary's auth check and never throws", async () => {
   const binDir = tmpdir("doctor-auth-bins-");
-  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":true}\'');
+  writeScript(path.join(binDir, "pi"), 'echo \'{"status":"ready","provider":"local","authType":"api_key"}\'');
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "ready");
 
-  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":false}\'');
+  // not_ready exits 1; that exit is a status, not a crash, so the verdict must not flip to
+  // unknown (it names an absent credential, which the caller warns about).
+  writeScript(path.join(binDir, "pi"), 'echo \'{"status":"not_ready","provider":"local","reason":"provider_not_found"}\'; exit 1');
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "not-ready");
 
-  // A `ready` that is not the boolean false is not not-ready: valid JSON with a non-boolean
-  // `ready` reads unknown, never not-ready (which would blame the credentials).
-  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":"yes"}\'');
-  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
+  // invalid (bad provider name) exits 2 and is likewise not a healthy credential.
+  writeScript(path.join(binDir, "pi"), 'echo \'{"status":"invalid","provider":"local","reason":"bad_provider"}\'; exit 2');
+  assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "not-ready");
 
-  // A valid `{"ready":false}` on a nonzero exit is unknown: the exit-code gate is first, so
-  // a crashed check is never read as "credentials missing".
-  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":false}\'; exit 3');
+  // A body without pi's `status` field (the old invented `ready` shape, or anything else) is
+  // unknown, never not-ready (which would blame the credentials).
+  writeScript(path.join(binDir, "pi"), 'echo \'{"ready":true}\'');
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
 
   writeScript(path.join(binDir, "pi"), "echo not-json");
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
 
+  // A probe that could not run (no parseable body) is unknown even though it exited nonzero:
+  // an empty/crashed check is never read as "credentials missing".
   writeScript(path.join(binDir, "pi"), "exit 3");
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir), "unknown");
 

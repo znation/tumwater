@@ -235,10 +235,14 @@ export function piSeamsInUse(config: TumwaterConfig): boolean {
 }
 
 /** The default credential probe: run the resolved agent binary's own auth check for one provider
- * and read `ready` out of its JSON. The binary resolves exactly as the spawn does
+ * and read `status` out of its JSON. The binary resolves exactly as the spawn does
  * (resolveBackendBin — the same source a real run would launch), so doctor tests the auth of
- * the pi it would actually run. Never throws; every failure mode ends on "unknown". The bounded
- * subprocess is the shared boundedProbe (probe.ts), also used by the claude probes. */
+ * the pi it would actually run. pi's contract is `{"status": "ready"|"not_ready"|"invalid",
+ * provider, reason?, authType?}` with exit codes 0/1/2 — a non-zero exit there is a verdict, not
+ * a crash, so readiness is read from the body alone and a reply that did not run or does not
+ * parse is the only "unknown" (never not-ready, which would blame credentials). Never throws;
+ * every failure mode ends on "unknown". The bounded subprocess is the shared boundedProbe
+ * (probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
@@ -254,12 +258,13 @@ export async function piProviderAuth(
     AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
   if (result === null) return "unknown";
-  if (result.code !== 0) return "unknown";
   // An unreadable reply is unknown, never not-ready (which would blame the credentials).
   const doc = parseJsonObject(result.stdout);
   if (doc === null) return "unknown";
-  if (doc.ready === true) return "ready";
-  if (doc.ready === false) return "not-ready";
+  if (doc.status === "ready") return "ready";
+  // `invalid` (a bad provider name, exit 2) is likewise not a healthy credential: it reads
+  // not-ready so the warning blames the setup, not the probe.
+  if (doc.status === "not_ready" || doc.status === "invalid") return "not-ready";
   return "unknown";
 }
 
