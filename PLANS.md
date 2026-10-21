@@ -53,4 +53,316 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Same file, extend the whole-blob `historyFetchScope` harness (or a sibling) to also return `histNewest`, and assert `fetchHistory(false)` resets a previously set `histNewest` to null. (The harness runs the served blob with injected `getJson`/`renderHistory`; set `histNewest = { state: "error", message: "x" }` through returned state, then `await scope.fetchHistory(false)`.)
 - The existing History tests pass unchanged: the drill-down toggle/caching tests, `histDetailCardHtml`, `fetchHistory`, and the toolbar/search persistence tests. `npm run test:gate` is green.
 
+### Codex backend, part 1/9: The subscription account store is per backend, and a run's result names its backend (planned 2026-10-20 by user; independent of every eligible Planned entry; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 1; touches src/agent/subscription-account.ts (new) src/agent/claude/claude-account.ts src/paths.ts src/pi/pi-run-result.ts src/agent/run-agent.ts src/run/run-finalize.ts src/merge/merge-slot.ts and their tests)
+
+**Goal.** Make the account file (billing plus the newest usage-window reading per window type) per backend, so a second subscription backend never writes into claude's file. Today `observeClaudeAccount` is called for any run that reports `billing` or `rateWindows` (src/run/run-finalize.ts, src/merge/merge-slot.ts), and `PiRunResult` does not say which backend ran. There is no behavior change for claude: its file, its shape and every caller's answer stay the same.
+
+**Approach.**
+- New src/agent/subscription-account.ts holds the generic half of src/agent/claude/claude-account.ts, renamed:
+  - the types `SubscriptionBilling` (`"subscription" | "api"`), `SubscriptionWindow` (today's `ClaudeWindow`, with the overage fields kept optional) and `SubscriptionAccount {billing, plan?, observedAt, windows}`, where `plan` is today's `subscriptionType`, kept under that name on read and write for claude's file;
+  - `accountPath(root, backend)`, which is `.tumwater/state/<backend>-account.json`. For claude that is today's `claudeAccountPath` file, and src/paths.ts keeps `claudeAccountPath` as `accountPath(root, "claude")`;
+  - `readAccount(root, backend, now?)`, `writeAccount(root, backend, account)` and `observeAccount(root, backend, run)`, with today's torn-file healing, the reset-on-`resetsAt` rule and the unix-seconds-to-ms conversion;
+  - `windowUsedUp`, `windowReserved`, `windowEntries`, `windowLabel` and `utilizationPct`;
+  - `subscriptionWindowRejected`. Its `isUsingOverage` test is harmless for a backend that never reports overage.
+- src/agent/claude/claude-account.ts keeps:
+  - its exported names as thin wrappers (`readClaudeAccount(root)` is `readAccount(root, "claude")`, and so on), so no caller changes in this part;
+  - the claude-only half: `seedClaudeAccount`, `parseClaudeAuthStatus`, `claudeAuthUsesSubscription`, and the `ANTHROPIC_API_KEY` and third-party-provider checks;
+  - `ClaudeAccount` and `ClaudeWindow` as type aliases.
+- src/pi/pi-run-result.ts: `PiRunResult` gains `agent?: string`, the backend id that ran. src/agent/run-agent.ts sets it from `backend.id` in every result it builds, the spawn-error result included.
+- src/run/run-finalize.ts and src/merge/merge-slot.ts call `observeAccount(root, run.agent ?? "pi", run)` instead of `observeClaudeAccount`. For a run without `billing` or `rateWindows` the write is skipped, as today. A pi run never reports either, so in practice only claude writes until Codex part 8/9.
+
+**Acceptance criteria.**
+- test/subscription-account.test.ts (new) covers these cases:
+  - `readAccount(root, "codex")` reads `.tumwater/state/codex-account.json`, and a missing file reads null.
+  - An `observeAccount(root, "codex", run)` with a `five_hour` reading writes only the codex file; claude's file is untouched.
+  - The reset-on-`resetsAt` and torn-file cases of test/claude-account.test.ts, run against `readAccount(root, "claude")`, give the same answers.
+- test/claude-account.test.ts passes unchanged.
+- A run-finalize test: a run with `agent: "codex"` and a rate window writes codex-account.json and not claude-account.json; a run with `agent: "claude"` writes claude's as today.
+- Every `PiRunResult` built by run-agent carries `agent`. The fake-pi and fake-claude tests assert `pi` and `claude`.
+- `npm test` passes.
+
+### Codex backend, part 2/9: Budget gates, holds, the reserve and the window events read each subscription backend's own account (planned 2026-10-20 by user; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/team/team-polls.ts src/orchestrator/orchestrator.ts src/pi/pi-models.ts src/agent/image-input.ts src/status/status-data.ts src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
+
+**Goal.** Every window decision (moving a job down its chain, the director's move, the handback, the team hold, the reserve, and the once-per-window events) works for any backend that reports a subscription. Today each is keyed to claude by `pairIsClaude` / `seamIsClaude` (src/gates/budget-gates.ts), the hold observation's `provider: "claude"` (src/team/team-polls.ts `claudeWindowObservation`), one `windowOut` value, the `claude_window_*` event names and the `claudeWindowReserve` key. There is no behavior change for a claude-only or pi-only team.
+
+**Approach.**
+- Accounts are passed as a lookup, not one value. `seamFree`, `piPairFree`, `fallbackModelPair`, `fallbackModelFree`, `teamModelsFree` (src/pi/pi-models.ts) and the two image-input callers (src/agent/image-input.ts) take `accounts: (backend: string) => SubscriptionAccount | null` in place of `account: ClaudeAccount | null`. Callers build it from `readAccount(root, id)`, once per poll.
+- src/gates/budget-gates.ts:
+  - `seamIsClaude` / `pairIsClaude` become `subscriptionBackendOf(seam | pair)`. It returns the backend id when that backend's account bills a subscription, else null.
+  - `windowOut` and `directorWindowOut` become maps keyed by that backend id.
+  - The window move, `windowTiers`, `windowResumed`, the moved tiers and `chainInfo`'s `"window"` / `"reserve"` reasons each read the job's own backend.
+  - The `extraUsage` position rule and the `"overage"` reason stay claude-only (`backend === "claude"`): overage is a claude concept.
+- src/gates/gate-polls.ts:
+  - The gate state's `claudeWindowWarned` / `claudeWindowReserved` become per-backend maps. A persisted old state reads as `{ claude: … }`.
+  - The window handback (`budget_handback`, reason `window`) gains `backend`.
+  - `windowMovedRoles` uses `subscriptionBackendOf`.
+  - The poll reads each subscription backend in use (`backendsInUse(config)`).
+- src/team/team-polls.ts: `claudeWindowObservation` becomes `windowObservation(backend, account)` with `role` and `provider` set to that backend. The `subscription-window` hold kind (src/team/team-hold.ts) is unchanged, and `seamHoldKey` already keys a non-pi backend by its id.
+- Events (src/events/events.ts, event-labels.ts, event-format.ts):
+  - `claude_window_{warning,reserved,limited,reset}` become `subscription_window_{warning,reserved,limited,reset}`, each with a `backend` field.
+  - src/events/event-legacy.ts's `normalizeLegacyEvent` maps each old name to the new one with `backend: "claude"`.
+  - The labels read "<Label> window …", from the backend's label ("Claude", later "Codex").
+  - `loggedWindowKeys` (src/orchestrator/orchestrator.ts) keys by backend and type.
+  - src/events/notify.ts pages on the new names.
+- Config:
+  - `BackendConfig` gains `windowReserve?: Record<string, number>`, allowed for claude now and for codex in part 4/9. It has the same validation as `claudeWindowReserve`: each fraction above 0 and at most 1.
+  - `claudeWindowReserve` stays as the older spelling. It is read as `backends.claude.windowReserve` when that is unset, and setting both is a load error that names both.
+  - src/config/config-views.ts exposes `windowReserveFor(config, backend)`.
+  - The TUI and GUI reserve editors keep editing the claude value through it. Their labels are part 3/9.
+- docs/config.md: `backends.<id>.windowReserve`, with `claudeWindowReserve` as its claude-only older spelling.
+
+**Acceptance criteria.**
+- The existing tests pass with only their event-name expectations updated: test/budget-gates.test.ts, test/budget-chain-info.test.ts, test/gate-polls.test.ts, test/team-polls.test.ts, test/notify.test.ts, test/event-format-team.test.ts and test/orchestrator-budget.e2e.test.ts.
+- A test registers a fake subscription backend `sub` whose account reports a rejected `five_hour` window. Then:
+  - its jobs move to their fallback;
+  - a hold keyed `sub` is placed;
+  - `subscription_window_limited {backend: "sub"}` is logged once;
+  - claude jobs, and claude's account, are untouched.
+- `normalizeLegacyEvent({type: "claude_window_limited", …})` gives `subscription_window_limited` with `backend: "claude"`. `tumwater logs --type claude_window_limited` still finds old lines.
+- `backends.claude.windowReserve: { "seven_day": 0.8 }` behaves exactly as `claudeWindowReserve` did. Both set is a load error. `backends.pi.windowReserve` is refused as an unknown key.
+- `npm test` passes.
+
+### Codex backend, part 3/9: Window displays name each subscription backend (planned 2026-10-20 by user; requires part 2/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/status/status-budget.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-operator.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts src/roles/role-view.ts src/roles/role-render.ts src/report/report-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts docs/backends.md and their tests)
+
+**Goal.** Show each subscription backend's windows under that backend's name, so a team with Claude and Codex both on subscriptions shows both. Today every surface prints one `claudeWindow` block labelled "Claude 5h": `claudeWindowBlock` (src/status/status-budget.ts), `claudeWindowBadge` (src/ui/badges.ts), the GUI tile (src/ui/gui/gui-client-operator.ts), the role view's billing line and "Claude window used up" (src/roles/role-render.ts), the report's "claude subscription, API-equivalent" line (src/report/report-render.ts), and doctor's "claude window" row (src/doctor/doctor-holds.ts `checkClaudeWindow`). A claude-only team's output is unchanged, apart from the JSON key added below.
+
+**Approach.**
+- src/status/status-budget.ts: `claudeWindowBlock` becomes `windowBlocks(slice, accounts)`, with one block per subscription backend in use, each `{backend, label, …today's fields}`. The `s.agent === "claude"` tests become "the job's backend is this block's".
+- `status --json` (src/ui/status-payload.ts, src/status/status-data.ts): a new `subscriptionWindows` list. `claudeWindow` stays as the claude entry for one release, with a doc comment saying so.
+- src/ui/badges.ts: the badge text comes from the block's label ("Claude 5h · 64%", "Codex 7d · 31%"). The hold text reads "<label> model jobs wait". With two blocks, the badge shows the one nearest its limit (today's rule, now across backends) and the tile lists all of them. src/ui/status-render.ts and src/ui/gui/gui-client-operator.ts follow.
+- Role view (src/roles/role-view.ts, role-render.ts): `claudeInPlay` becomes "the job's backend has an account". The billing line and "window used up" name the backend.
+- Report (src/report/report-render.ts): "<label> subscription, API-equivalent: $X", one line per backend with notional spend.
+- Doctor: `checkClaudeWindow` becomes `checkSubscriptionWindows`. It produces one row per subscription backend in use, named "<id> window". The "claude window" row name is kept for claude.
+- The TUI reserve editor (src/ui/tui/tui-editor-claude-reserve.ts) and the GUI settings label (src/ui/gui/gui-client-settings.ts) say "Claude window reserve (backends.claude.windowReserve)".
+- docs/backends.md: the window display paragraph says it is per backend.
+
+**Acceptance criteria.**
+- Every existing badge, status, role-view, report and doctor-holds test passes. Their claude-only text is unchanged; a JSON assertion may add `subscriptionWindows`.
+- With a fake second subscription backend `sub` labelled "Sub" whose account has `seven_day` at 40%:
+  - `status --json` lists two `subscriptionWindows` entries;
+  - the TUI badge shows the claude window when it is the nearer one, and "Sub 7d · 40%" when it is;
+  - doctor prints a "sub window" row.
+- `npm test` passes.
+
+### Codex backend, part 4/9: `codex` becomes a backend id, with `backends.codex`, tier defaults, the effort mapping, reserved flags and traits (planned 2026-10-20 by user; requires part 2/9 landed; design in plans/codex-backend.md "Config and routing" and "CODEX_HOME and sessions"; touches src/config/config-schema.ts src/config/model-selector.ts src/config/config-validation.ts src/agent/backend-traits.ts src/agent/codex/codex-args.ts (new) src/doctor/doctor-model-checks.ts docs/config.md and their tests)
+
+**Goal.** Make `codex` a valid backend wherever config is read: `backend: "codex"` beside a `model`, a top-level `backend: "codex"`, and `backends.codex` with `bin`, `args`, `configDir` and `windowReserve`. There is no adapter yet (part 7/9). The startup gate's existing rule ("backend X is configured but this build has no adapter for it") refuses a team that routes a job to codex until then.
+
+**Approach.**
+- src/config/config-schema.ts:
+  - `BACKEND_IDS` gains `"codex"`.
+  - `CODEX_BACKEND_KEYS` is `[...BACKEND_KEYS, "configDir", "windowReserve"]`, and validation picks the key list per backend. `configDir` has claude's rule: a leading `~` expands, and the value must be absolute after expansion.
+  - The `BackendConfig.configDir` doc comment says it becomes `CODEX_HOME` on codex.
+- src/config/model-selector.ts: `BACKEND_DEFAULT_MODELS.codex` is `{ small: "gpt-6-luna", default: "gpt-6.1-sol", strong: "gpt-6-astra" }` (design decision 4). A comment names the catalog descriptions they come from (design finding 14).
+- src/agent/codex/codex-args.ts (new) holds only two things in this part:
+  - `HARNESS_CODEX_FLAGS`: the flags listed in design §2 "Reserved passthrough flags".
+  - `HARNESS_CODEX_CONFIG_KEYS`: `model`, `model_reasoning_effort`, `sandbox_mode`, `project_doc_fallback_filenames`, `web_search`, `agents.enabled`, `check_for_update_on_startup`, `analytics.enabled`, `feedback.enabled`, `history.persistence`. A `-c <key>=…` or `--config <key>=…` passthrough whose key is one of these is refused.
+  - Part 5/9 adds the builder beside them.
+- `EFFORT_BY_THINKING` lives in codex-args.ts: `off` and `minimal` → `low`; `low`, `medium`, `high`, `xhigh` and `max` pass. `ultra` is not a value it can produce.
+- src/agent/backend-traits.ts: a `codex` entry.
+  - `streamsToolOutput` false.
+  - `usesPiModels` false.
+  - `reservedPassthroughFlag` uses `HARNESS_CODEX_FLAGS`, plus the config-key check, with the reason "it is managed by tumwater".
+  - `modelLabel` gives the bare model, or "codex default".
+- src/config/config-validation.ts: the `-c` key check above, with the message naming the arg and the key.
+- src/doctor/doctor-model-checks.ts: codex jobs skip the models.json lookup, as claude and opencode do.
+- docs/config.md:
+  - `backend` accepts `"codex"`, and `backends` is keyed by `pi`, `claude`, `opencode` or `codex`.
+  - `backends.codex.configDir` is the Codex home, which needs one `CODEX_HOME=<dir> codex login`.
+  - `backends.codex.windowReserve` is the reserve.
+
+**Acceptance criteria.**
+- `routeModel`:
+  - `{ backend: "codex", model: "gpt-6.1-sol" }` routes to `{agent: "codex", model: "gpt-6.1-sol"}`.
+  - A top-level `backend: "codex"` with no `model` resolves `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` for the strong, default and small tiers.
+  - `{ backend: "codex", model: "gpt-6-luna", thinking: "high" }` keeps thinking `high`.
+- Validation:
+  - `backends.codex: { configDir: "~/.codex-tumwater", windowReserve: { "seven_day": 0.7 } }` loads.
+  - `configDir: "relative/dir"` is refused.
+  - `backends.codex.args: ["--sandbox", "read-only"]` is refused, naming `--sandbox`.
+  - `backends.codex.args: ["-c", "model=x"]` and `["--config=model_reasoning_effort=high"]` are refused, naming the key.
+  - `backends.codex.args: ["-c", "model_verbosity=low"]` loads.
+  - `backends.opencode.configDir` is still refused.
+- test/backend-traits.test.ts: codex streams no tool output, uses no pi models, and labels `gpt-6.1-sol` as `gpt-6.1-sol` and an undefined model as `codex default`.
+- Startup gate: with `backend: "codex"` and no codex adapter registered, the problem names codex. A pi-only config is unaffected.
+- `npm test` passes.
+
+### Codex backend, part 5/9: The Codex invocation and environment: argv for fresh and resumed runs, isolation flags, and the scrubbed env (planned 2026-10-20 by user; requires part 4/9 landed; design in plans/codex-backend.md "The invocation" and "Findings, verified live" 6–10, 13 and 20; touches src/agent/codex/codex-args.ts src/agent/codex/codex-env.ts (new) and their tests)
+
+**Goal.** Build, as pure functions, the argv, stdin and environment of one Codex run, fresh or resumed. A Codex run then gets only the flags design §3 lists, the prompt on stdin, and an environment with no host Codex or Claude Code session state and no OpenAI API key.
+
+**Approach.**
+- src/agent/codex/codex-args.ts gains `codexArgs({model, effort?, resumeId?, args?, prompt})`. It returns `{args, stdin}`.
+  - A fresh run: `exec --json --dangerously-bypass-approvals-and-sandbox --ignore-user-config --ignore-rules`, then the `--disable` list (`plugins`, `apps`, `goals`, `image_generation`, `browser_use`, `computer_use`, `tool_suggest`, `skill_search`), then `-c agents.enabled=false`, `-c web_search="disabled"`, `-c check_for_update_on_startup=false`, `-c analytics.enabled=false`, `-c feedback.enabled=false`, `-c history.persistence="none"`, `-c 'project_doc_fallback_filenames=["CLAUDE.md"]'`, `-m <model>`, `-c model_reasoning_effort=<effort>` when one is given, the passthrough args (through `appendPassthroughArgs`, src/agent/agent-args.ts), and `-`.
+  - A resume: `exec resume <resumeId>` with the same flags, `-m` included (design finding 6). It has no `--sandbox` and no positional prompt besides `-`.
+  - It throws on an unknown effort, as `claudeArgs` does.
+  - It also exports `codexEffort(thinking, levels)`, which maps through `EFFORT_BY_THINKING` and returns undefined when the model's catalog `levels` (passed in) lack the result. Part 8/9 supplies the levels; until then the caller passes undefined, which means no clamp.
+- src/agent/codex/codex-env.ts (new): `codexEnv(base, {home?})`.
+  - It deletes every `CODEX_*`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CLAUDECODE` and every `CLAUDE_CODE_*`.
+  - It sets `CODEX_HOME` to `home` when one is given.
+  - It keeps everything else, including `TUMWATER_RUN`, `TUMWATER_NOTES_PATH` and the PATH that carries the notes shim.
+- Doc comments cite the design findings behind each flag. Every `-c` key in the argv was checked with `--strict-config` on Codex 0.163.0 (design finding 20).
+
+**Acceptance criteria.**
+- test/codex-args.test.ts (new):
+  - The fresh argv for `{model: "gpt-6.1-sol", effort: "high"}` equals the full expected list, and stdin is the prompt.
+  - The resume argv starts `exec resume <id>` and still carries `-m gpt-6.1-sol`.
+  - A passthrough `--sandbox` throws, naming it.
+  - `codexEffort("minimal", ["low","medium"])` is `low`. `codexEffort("max", ["low","medium","high"])` is undefined. `codexEffort("high", undefined)` is `high`.
+- test/codex-env.test.ts (new):
+  - From a base holding `CODEX_THREAD_ID`, `CODEX_SANDBOX`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `TUMWATER_RUN` and `HF_TOKEN`, the result keeps only `TUMWATER_RUN` and `HF_TOKEN` of those.
+  - `CODEX_HOME` is set when `home` is given and absent otherwise.
+- `npm test` passes.
+
+### Codex backend, part 6/9: The Codex stream translator and the rollout reader, with fixtures from the H1 captures (planned 2026-10-20 by user; independent of parts 1/9–5/9; design in plans/codex-backend.md "The stream translator and the rollout read that completes it" and "Findings, verified live" 3–5, 11, 15, 18, 19, 23 and 24; touches src/agent/codex/codex-stream.ts (new) src/agent/codex/codex-rollout.ts (new) src/agent/agent-backend.ts test/fixtures/codex-events.ts (new) and their tests; reads test/fixtures/codex-captures/)
+
+**Goal.** Translate `codex exec --json` into tumwater's canonical stream, and read the rollout file for what the stream lacks: this run's own token usage, the billing and the two usage windows. Both are pure over text, so the adapter (part 7/9) only wires them in.
+
+**Approach.**
+- src/agent/agent-backend.ts: `StreamTranslator` gains an optional `sessionId?(): string | undefined`, the backend session id once the stream has named it. This part only declares it; part 7/9's run-agent reads it.
+- src/agent/codex/codex-stream.ts (new): `codexTranslator()`, which follows design §5's table row by row.
+  - `bash` tool calls carry the inner command with the `/bin/zsh -lc` (or `bash -lc`) wrapper and its quoting removed.
+  - A `command_execution`'s `aggregated_output` reaches `tool_execution_end` capped at `outputLimits(window).bash` (src/pi-extension/bounded-output.ts; 16,000 characters at 128k and above): head and tail around a marker naming the cut. The stream can carry a megabyte (design finding 18).
+  - A `file_change` becomes one `edit` toolCall per changed path, `{path, kind}`, with `isError` when its `status` is not `completed`.
+  - A `command_execution` still open at `turn.completed` is closed with `tool_execution_end {isError: true}` and the result "abandoned: the run ended while this command was still running", and `codex_command_abandoned` is warned once (design finding 19).
+  - Repeated `error` items warn once per distinct message.
+  - "Reconnecting... n/m" becomes `auto_retry_start`.
+  - `turn.failed` is parsed through its JSON-string message to `status` and `error.type` / `code`, and classified per §5's table.
+  - `finalize()` reports "codex exited without finishing its turn" when the stream saw neither `turn.completed` nor `turn.failed`.
+  - `warnings()` lists unmapped event and item types once each, plus `codex_usage_partial` when the adapter flags it.
+  - `turnCompletedUsage()` returns the stream's own figure, for the fallback.
+- src/agent/codex/codex-rollout.ts (new):
+  - `findRollout(home, id)` returns the path of `sessions/**/rollout-*-<id>.jsonl`, or null. It walks only the date dirs from the run's start date onward.
+  - `rolloutLines(text, {sinceTurnStart, requestedModel})` reads only the records after this run's `task_started`. It returns the canonical `run_usage`, `billing` and `rate_limit` lines of design §5, or [] when the turn's records are missing or malformed. A turn with no `token_count` (a killed run, design finding 23) yields `run_usage` without any `rate_limit`.
+  - When the turn's `turn_context.model` differs from `requestedModel`, it also reports `{switchedTo: <model>}` so the adapter can warn `codex_model_switched` (design finding 24).
+  - It never returns or logs `session_meta` fields.
+- test/fixtures/codex-events.ts (new): loaders for the scrubbed captures in test/fixtures/codex-captures/ (its README.md maps each file to a finding), plus small builders for what no capture has:
+  - a used-up window, built from the binary's message ("You've hit your usage limit. … Try again at …") and a `usage_limit_reached` code;
+  - a `turn_context` whose model differs from the requested one.
+
+**Acceptance criteria.**
+- test/codex-stream.test.ts (new):
+  - edit-run.jsonl yields `session`, `agent_start`, a `message_end` with text, an `edit` toolCall for `/work/repo/a.txt` with its start and end, then a `bash` toolCall whose `command` is `cat a.txt && git status --short` (not the `/bin/zsh -lc` form), with its start and end.
+  - oversized-output.jsonl: the `tool_execution_end` result is at most 16,000 characters plus the marker, and keeps the first and last lines.
+  - abandoned-command.jsonl: the open `sleep 90; echo ok` call is closed as an error before the final message, and `warnings()` holds `codex_command_abandoned` once.
+  - long-command.jsonl: one call open for the whole run, closed with exit code 0.
+  - Fed through `PiStreamParser`, the final text is the last agent message.
+  - `sessionId()` is undefined before `thread.started` and the thread id after.
+  - Classification: unknown-model.jsonl is `configError`; not-logged-in.jsonl is `configError` and its ten reconnect lines are ten `auto_retry_start`; the built used-up window is `transientRateLimit` with a `rejected` `five_hour` reading and `retryAfterSeconds`.
+  - sigterm-mid-command.jsonl, which ends after `item.started` with no turn event, finalizes to an error message.
+  - An unknown item type is listed once in `warnings()`.
+- test/codex-rollout.test.ts (new), on edit-run-and-resume-rollout.jsonl:
+  - The first turn's `run_usage.input` is its last `turn_token_usage.input_tokens − cached_input_tokens`. The second turn's (the resume) is its own turn figure, not the thread total.
+  - A `requestedModel` other than `gpt-6-luna` reports the switch.
+  - The 300- and 10080-minute windows map to `five_hour` and `seven_day`, with `utilization` 0 and `resetsAt` the capture's `resets_at`.
+  - `billing` is `subscription`.
+  - A truncated file yields [].
+  - The output contains no `creator_user_id` or `creator_account_id` value.
+- `npm test` passes.
+
+### Codex backend, part 7/9: The codex adapter runs model jobs, with stream-minted sessions, the rollout read after each run, a PATH fake and its prompt dialect (planned 2026-10-20 by user; requires parts 5/9 and 6/9 landed; design in plans/codex-backend.md "CODEX_HOME and sessions", "The stream translator and the rollout read that completes it" and "The prompt dialect"; touches src/agent/codex/codex-backend.ts (new) src/agent/run-agent.ts src/agent/session-ledger.ts src/prompt/dialect.ts src/paths.ts test/fakes/fake-codex.ts (new) test/test-runner.ts and their tests)
+
+**Goal.** Codex model jobs run end to end. Fresh runs record their stream-minted session id; continues resume it; the rollout supplies this run's usage and windows; the reviewer's suite-rerun detection sees Codex's commands; and the prompt carries Codex's dialect.
+
+**Approach.**
+- src/agent/codex/codex-backend.ts (new): `codexBackend`, with `id: "codex"`, `label: "Codex"`, `defaultBin: "codex"` and `binEnv: "TUMWATER_CODEX_BIN"`. Its hooks:
+  - `resolveBin` goes through `resolveBinForBackend`.
+  - `invocation`:
+    - For a continue, it takes the newest ledger record of this kind that is `agent: "codex"`, has this cwd and a UUID id, and whose rollout `findRollout` finds under the run's home. Otherwise the run is fresh.
+    - It builds the args with `codexArgs` and the env with `codexEnv(withNotesPath(backendBaseEnv(…)), {home})`. The home is `backends.codex.configDir` expanded, else none.
+    - It returns `sessionId` only for a resume.
+  - `translator` returns `codexTranslator()`.
+  - `resumable` makes the same check as the continue.
+  - `afterRun` reads `findRollout` plus `rolloutLines` for the run's thread id: the resumed id, or else `translator.sessionId()`. On [] it flags `codex_usage_partial`, and a fresh run then emits `run_usage` from `turnCompletedUsage()`. A reported model switch warns `codex_model_switched {requested, ran}` once.
+  - `classifyExit` handles the stderr half of a CLI that died before `turn.failed`. A killed run returns {} (design finding 12).
+  - `imageInput` returns true for now. Part 8/9 reads the catalog.
+- src/agent/run-agent.ts:
+  - It registers `codexBackend`.
+  - After each translated batch, when `translator.sessionId?.()` first returns an id the pre-spawn ledger record lacked, it appends one more `recordSession` line with that id (same kind, name, cwd, model, `at` now).
+- src/agent/session-ledger.ts: `resumableSession` already takes the newest record of a kind. Add a test that the stream-minted record wins over its own pre-spawn record.
+- src/prompt/dialect.ts: `CODEX_DIALECT` per design §6 (readRange, the `…N tokens truncated…` oversized-output wording, and the rule to keep polling `write_stdin` until a command reports its exit code), and an entry in `DIALECTS`.
+- test/fakes/fake-codex.ts (new), the twin of fake-opencode.ts:
+  - a PATH shim named `codex` that replays a canned `--json` stream;
+  - it writes a matching rollout under `$CODEX_HOME/sessions/…`;
+  - it records argv and stdin per run;
+  - on `exec resume <id>` it appends to that rollout.
+- test/test-runner.ts strips `TUMWATER_CODEX_BIN` and `CODEX_*` from the suite environment.
+
+**Acceptance criteria.**
+- test/codex-run.test.ts (new), on fake-codex:
+  - A fresh author run exits success with the fake's final text and usage.
+  - The run's ledger holds a pre-spawn record and a second record whose id is the fake's thread id.
+  - A follow-up with `continueSession` runs `exec resume <that id>` with `-m`.
+  - With the rollout deleted, the follow-up runs fresh, and the resume path logs its usual handoff.
+  - A fake rollout reporting `seven_day` at 72% puts a `seven_day` reading with utilization 0.72 on the result, and `billing: "subscription"`.
+  - A reviewer run whose fake stream runs `npm test` is seen as a suite rerun.
+  - The harness's SIGTERM mid-command ends with no marked process left. The fake leaves a marked orphan, as the real CLI does, and the marker sweep reaps it.
+- Prompt: a codex run's prompt carries `CODEX_DIALECT`'s rules (test/prompt-rules.test.ts, beside the OpenCode rule cases).
+- `npm test` passes.
+
+### Codex backend, part 8/9: Codex billing, free-ness and windows: the account fed from runs, the API-key refusal, the context window, effort levels and image input from the catalog (planned 2026-10-20 by user; requires parts 3/9 and 7/9 landed; design in plans/codex-backend.md "Spend, free-ness, window, images"; touches src/pi/pi-models.ts src/agent/codex/codex-backend.ts src/agent/codex/codex-catalog.ts (new) src/agent/codex/codex-account.ts (new) src/gates/startup-gate.ts src/config/config-live.ts and their tests)
+
+**Goal.** A Codex job on a ChatGPT subscription counts as free to the budget gate while its windows serve, moves down its chain when a window is used up or past its reserve, and shows its windows on the badge. That works through parts 1/9–3/9's per-backend machinery with no Codex special case outside src/agent/codex/. An API-key Codex login is refused, because Codex reports no cost.
+
+**Approach.**
+- src/agent/codex/codex-catalog.ts (new): `readCodexCatalog(home)` parses `models_cache.json` under the run's `CODEX_HOME` (or `~/.codex`). For each model it returns `{levels, defaultLevel, contextWindow: context_window × effective_context_window_percent / 100, images: input_modalities includes "image"}`. A missing or malformed file reads as an empty catalog.
+- The adapter uses the catalog:
+  - `codexEffort(thinking, catalog[model]?.levels)` drops a level the model does not list;
+  - `imageInput` reads `images`, and a model missing from the catalog answers false.
+- src/pi/pi-models.ts:
+  - `seamFree`'s `codex` arm is `accounts("codex")?.billing === "subscription"`.
+  - `seamContextWindow`'s `codex` arm reads the catalog's `contextWindow`.
+- src/agent/codex/codex-account.ts (new): `seedCodexAccount(root, config)`, the counterpart of `seedClaudeAccount`.
+  - It runs `codex login status` with the run env, bounded at 10 s.
+  - "Logged in using ChatGPT" writes `{billing: "subscription"}`. Plan and windows arrive with the first run's rollout.
+  - "an API key" writes `{billing: "api"}`.
+  - Anything else writes nothing.
+- src/gates/startup-gate.ts and src/config/config-live.ts seed it when codex is in use, as they seed claude. A codex job on `billing: "api"` is a startup problem: "Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`".
+- A run's rollout reading reaches the codex account through part 1/9's `observeAccount`. Holds, moves, the reserve and the display then follow from parts 2/9 and 3/9.
+
+**Acceptance criteria.**
+- With a seeded subscription codex account:
+  - a Codex fallback step is accepted as a budget fallback for a priced primary;
+  - at the cap, a Codex job keeps running;
+  - an all-Codex team's badge shows the Codex windows instead of the spend.
+- A rejected `five_hour` reading in the codex account moves Codex default-tier jobs to their next step, places a `codex` hold only for jobs with no step, and logs `subscription_window_limited {backend: "codex"}` once. Claude jobs are untouched.
+- `backends.codex.windowReserve: { "seven_day": 0.7 }` with a `seven_day` reading at 0.71 moves Codex jobs and logs `subscription_window_reserved`.
+- `seamContextWindow` for `gpt-6.1-sol` with the fixture catalog is 475000. `imageInput("gpt-6-luna")` is true. An unknown model is null and false.
+- A fake `codex login status` printing "Logged in using an API key" makes the startup gate refuse a codex job with the message above.
+- `npm test` passes.
+
+### Codex backend, part 9/9: Doctor checks the Codex install, login, home and models; session retention; docs; and an opt-in `smoke:codex` live check (planned 2026-10-20 by user; requires part 8/9 landed; design in plans/codex-backend.md "CODEX_HOME and sessions", "Spend, free-ness, window, images", "Risks" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts src/agent/codex/codex-backend.ts src/agent/session-ledger.ts src/orchestrator/retention.ts docs/backends.md docs/config.md README.md scripts/smoke-codex.mjs (new) package.json and their tests)
+
+**Goal.** An operator can set Codex up from doctor's output alone, the team's Codex sessions are pruned like every other session, and one live command proves the production invocation still works after a Codex upgrade.
+
+**Approach.**
+- Doctor gets a `codex` check group, shown when any job routes to codex:
+  - the binary resolves, and `codex --version` is at least `CODEX_MIN_VERSION` (0.163.0, the probed version);
+  - `codex login status` under the run's home: ChatGPT passes; an API key fails with the startup-gate message; not logged in fails, naming `CODEX_HOME=<home> codex login --device-auth`;
+  - the home: `backends.codex.configDir` unset warns that team runs share the operator's `~/.codex` (trust entries, sessions in the resume picker, skills, a global AGENTS.md);
+  - each Codex model is in the catalog, with its window and any thinking level it lacks;
+  - the account: `credits.has_credits` true warns that a run crossing a limit may spend credits tumwater cannot count (design §7);
+  - leaks: the home's `AGENTS.md`, `skills/` beyond `.system`, `hooks`, and the target repo's `.codex/config.toml` MCP servers, each named;
+  - the size of the home's `sessions/`.
+- Retention: the existing pruning (src/orchestrator/retention.ts, src/agent/session-ledger.ts) deletes the ledger's expired Codex sessions with `codex delete --force <id>` under the run's env (bounded at 10 s). Without `--force` Codex refuses to delete without a terminal (design finding 21). When the delete fails, pruning removes the rollout file.
+- docs/backends.md gets a "Codex (`backend: "codex"`)" section: what it runs, the home and its one login, subscription-only billing, the windows and reserve, what is disabled and why, sessions, and the sandbox choice. docs/config.md covers the `backends.codex` keys. README.md lists Codex among the backends.
+- scripts/smoke-codex.mjs (new; `npm run smoke:codex`, not in `npm test`) runs the exact production invocation in a throwaway git repo:
+  - a fresh run that edits a file and runs a command;
+  - a resume that recalls it;
+  - a SIGTERM mid-command, after which no marked process is left;
+  - an end-of-run note through `tumwater-notes`;
+  - an assertion that the first request is under 10,000 input tokens (8,059 on 0.163.0), which catches an isolation regression;
+  - a 90-second command that the model must poll to completion, with no `codex_command_abandoned`;
+  - an assertion that the rollout gave a `five_hour` and a `seven_day` reading.
+
+**Acceptance criteria.**
+- Doctor tests on fake-codex:
+  - each row's pass, warn and fail cases above;
+  - a version below 0.163.0 fails;
+  - a pi-only team shows no codex group.
+- Retention test: an expired codex ledger record gets one `codex delete --force <id>` on the fake, and its rollout is gone. A fresh one is kept.
+- `npm run smoke:codex --help` (or a dry-run flag) prints its steps without spawning codex.
+- docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
+- `npm test` passes.
+
 ## Done

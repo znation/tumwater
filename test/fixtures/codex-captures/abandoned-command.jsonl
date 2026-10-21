@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a15ca1-45d5-7dc3-bf85-d166272e2116"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'sleep 90; echo ok'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"The command returned after 30 seconds with no output and session ID `81681`; it did not wait for the command to finish. I did not poll with `write_stdin`. DONE"}}
+{"type":"turn.completed","usage":{"input_tokens":16214,"cached_input_tokens":7936,"cache_write_input_tokens":0,"output_tokens":81,"reasoning_output_tokens":0}}

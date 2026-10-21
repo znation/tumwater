@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"01a15c9e-3b64-7811-902b-f1ef1afe50c8"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'sleep 600; echo finished > ten.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'sleep 600; echo finished > ten.txt'","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat ten.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat ten.txt'","aggregated_output":"finished\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"finished\n\nDONE"}}
+{"type":"turn.completed","usage":{"input_tokens":197625,"cached_input_tokens":173184,"cache_write_input_tokens":0,"output_tokens":1275,"reasoning_output_tokens":0}}

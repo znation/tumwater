@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a15b93-5831-7b51-90b4-c4815ce05820"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"This session was recorded with model `gpt-6-luna` but is resuming with `gpt-6.1-sol`. Consider switching back to `gpt-6-luna` as it may affect Codex performance."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"world RESUMED"}}
+{"type":"turn.completed","usage":{"input_tokens":63835,"cached_input_tokens":48640,"cache_write_input_tokens":0,"output_tokens":237,"reasoning_output_tokens":0}}
