@@ -52,6 +52,11 @@ export class RunUsage {
    * reporting run of the run wins. Undefined until a run reports them. */
   billing?: ClaudeBilling;
   rateWindows?: RateWindow[];
+  /** The backend id whose run last reported billing or rate windows (subscription-account.ts's
+   * per-backend file owner): "claude" for example. Undefined until a run that reported either
+   * folds in. Only meaningful beside billing/rateWindows — a pi run reports neither and owns
+   * no account file. */
+  agent?: string;
   /** Prompt tokens folded into THIS run so far (non-persisted, reset at run start). Every
    * pi run of the run contributes — the authoring run, its transient retry, the SUMMARY
    * follow-up, and (through foldMergeUsage) review and conflict-resolution runs — because
@@ -99,6 +104,7 @@ export class RunUsage {
     this.notionalCostUsd = 0;
     this.billing = undefined;
     this.rateWindows = undefined;
+    this.agent = undefined;
     this.promptTokens = 0;
     this.cacheReadTokens = 0;
     this.preEditPromptTokens = 0;
@@ -130,6 +136,7 @@ export class RunUsage {
     }
     if (run.billing !== undefined) this.billing = run.billing;
     if (run.rateWindows !== undefined) this.rateWindows = run.rateWindows;
+    if (run.billing !== undefined || run.rateWindows !== undefined) this.agent = run.agent;
     this.promptTokens += run.promptTokens;
     this.cacheReadTokens += run.cacheReadTokens;
     // The pre-edit prefix freezes at the run's first edit: every authoring run while no edit

@@ -63,6 +63,7 @@ test("runPi spawns the configured agentBin — a wrapper script behaves like the
     const result = await runPi(runPiFixture(dir, { config }));
     assert.equal(result.ok, true, `expected the wrapper-run pi to succeed: ${result.errorMessage}`);
     assert.match(result.finalText, /wrapped:1/, "the wrapper exported its env var before exec");
+    assert.equal(result.agent, "pi", "a pi run names its backend");
   } finally {
     restorePath();
   }
@@ -115,6 +116,7 @@ test("runPi's spawn-error message names the resolved binary and its source", asy
   assert.equal(result.ok, false);
   assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/pi-here/);
   assert.match(result.errorMessage ?? "", /resolved from agentBin in tumwater\.json/);
+  assert.equal(result.agent, "pi", "even a failed spawn names its backend");
 });
 
 /** Run a fake pi that opens one tool call (`command`, optionally `toolName`) and then hangs,

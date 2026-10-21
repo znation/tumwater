@@ -165,12 +165,13 @@ export interface PiRunOptions {
 }
 
 /** The failed result of a run that never started: all counters zero, all flags false. */
-function setupFailureResult(message: string): PiRunResult {
+function setupFailureResult(agent: string, message: string): PiRunResult {
   return {
     ok: false,
     finalText: "",
     nothingToDo: false,
     refused: false,
+    agent,
     outputTokens: 0,
     promptTokens: 0,
     cacheReadTokens: 0,
@@ -223,7 +224,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // Nothing is spawned yet: close what opened and fail the run instead of rejecting it.
       rawLog?.stream.end();
       nativeLog?.stream.end();
-      resolve(setupFailureResult(`could not prepare the agent run: ${errorMessage(err)}`));
+      resolve(setupFailureResult(backend.id, `could not prepare the agent run: ${errorMessage(err)}`));
       return;
     }
     // The marker precedes this run's first event in file order — written to the same stream
@@ -525,6 +526,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       refused: parser.refused,
       refusedReason: parser.refusedReason || undefined,
       verdictText: parser.verdictText || undefined,
+      agent: backend.id,
       outputTokens: parser.outputTokens,
       promptTokens: parser.promptTokens,
       cacheReadTokens: parser.cacheReadTokens,

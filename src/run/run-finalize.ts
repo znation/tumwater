@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { branchHead } from "../git/git.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
-import { observeClaudeAccount } from "../agent/claude/claude-account.js";
+import { observeAccount } from "../agent/subscription-account.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT, applyRunOutcome } from "./run-apply.js";
 import { restoreMidRunWake } from "../scheduling/backoff.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
@@ -146,12 +146,17 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
   // always-present 0 changes no rendered line.
   const runDurationMs = Math.max(0, Date.now() - deps.runStartedAt);
   // The account state (plans/agent-backends.md part 6a): fold this run's billing answer and
-  // rate-window readings into .tumwater/state/claude-account.json for the sibling parts that
-  // throttle or display the subscription window. Best-effort — the file is a cache, and an
-  // unwritable state dir must not fail a run whose real work is already done.
+  // rate-window readings into the reporting backend's .tumwater/state/<backend>-account.json
+  // for the sibling parts that throttle or display the subscription window. Best-effort — the
+  // file is a cache, and an unwritable state dir must not fail a run whose real work is
+  // already done. A pi run never reports either, so in practice claude owns the file until a
+  // second subscription backend lands (plans/codex-backend.md).
   if (usage.billing !== undefined || usage.rateWindows !== undefined) {
     try {
-      observeClaudeAccount(root, { billing: usage.billing, rateWindows: usage.rateWindows });
+      observeAccount(root, usage.agent ?? "pi", {
+        billing: usage.billing,
+        rateWindows: usage.rateWindows,
+      });
     } catch {
       // The next reporting run rewrites it; nothing this run depends on is lost.
     }

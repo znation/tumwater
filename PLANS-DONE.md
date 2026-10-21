@@ -5,6 +5,35 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 1/9: The subscription account store is per backend, and a run's result names its backend (planned 2026-10-20 by user; independent of every eligible Planned entry; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 1; touches src/agent/subscription-account.ts (new) src/agent/claude/claude-account.ts src/paths.ts src/pi/pi-run-result.ts src/agent/run-agent.ts src/run/run-usage.ts src/run/run-finalize.ts src/merge/merge-slot.ts and their tests; done 2026-10-20 by the feature role)
+
+**Goal.** Make the account file (billing plus the newest usage-window reading per window type) per backend, so a second subscription backend never writes into claude's file. Today `observeClaudeAccount` is called for any run that reports `billing` or `rateWindows` (src/run/run-finalize.ts, src/merge/merge-slot.ts), and `PiRunResult` does not say which backend ran. There is no behavior change for claude: its file, its shape and every caller's answer stay the same.
+
+**Approach.**
+- New src/agent/subscription-account.ts holds the generic half of src/agent/claude/claude-account.ts, renamed:
+  - the types `SubscriptionBilling` (`"subscription" | "api"`), `SubscriptionWindow` (today's `ClaudeWindow`, with the overage fields kept optional) and `SubscriptionAccount {billing, plan?, observedAt, windows}`, where `plan` is today's `subscriptionType`, kept under that file key on read and write for claude's file;
+  - `accountPath(root, backend)`, which is `.tumwater/state/<backend>-account.json`. For claude that is today's `claudeAccountPath` file, and src/paths.ts keeps `claudeAccountPath` as `accountPath(root, "claude")`;
+  - `readAccount(root, backend, now?)`, `writeAccount(root, backend, account)` and `observeAccount(root, backend, run)`, with today's torn-file healing, the reset-on-`resetsAt` rule and the unix-seconds-to-ms conversion;
+  - `windowUsedUp`, `windowReserved`, `windowEntries`, `windowLabel` and `utilizationPct`;
+  - `subscriptionWindowRejected`. Its `isUsingOverage` test is harmless for a backend that never reports overage.
+- src/agent/claude/claude-account.ts keeps:
+  - its exported names as thin wrappers (`readClaudeAccount(root)` is `readAccount(root, "claude")`, and so on);
+  - the claude-only half: `seedClaudeAccount`, `parseClaudeAuthStatus`, `claudeAuthUsesSubscription`, and the `ANTHROPIC_API_KEY` and third-party-provider checks;
+  - `ClaudeAccount`, `ClaudeWindow`, `ClaudeBilling` and `ClaudeWindowEntry` as type aliases of the generic types.
+- src/pi/pi-run-result.ts: `PiRunResult` gains `agent?: string`, the backend id that ran. src/agent/run-agent.ts sets it from `backend.id` in every result it builds, the spawn-error result included.
+- src/run/run-usage.ts: `RunUsage` gains `agent` (the backend that last reported billing/windows), so run-finalize, which folds the run's account at run end from the usage accumulator (not a live run object), can name the backend. 
+- src/merge/merge-slot.ts calls `observeAccount(root, run.agent ?? "pi", run)`; src/run/run-finalize.ts calls `observeAccount(root, usage.agent ?? "pi", {...})`. A run without `billing` or `rateWindows` skips the write, as today. A pi run never reports either, so in practice only claude writes until Codex part 8/9.
+
+**Acceptance criteria.**
+- test/subscription-account.test.ts (new) covers these cases:
+  - `readAccount(root, "codex")` reads `.tumwater/state/codex-account.json`, and a missing file reads null.
+  - An `observeAccount(root, "codex", run)` with a `five_hour` reading writes only the codex file; claude's file is untouched.
+  - The reset-on-`resetsAt` and torn-file cases of test/claude-account.test.ts, run against `readAccount(root, "claude")`, give the same answers.
+- test/claude-account.test.ts passes (its two `subscriptionType` references — the seed's `seeded.subscriptionType` and the writeClaudeAccount `before` literal — read the renamed `plan` field).
+- A run-finalize test: a run with `agent: "codex"` and a rate window writes codex-account.json and not claude-account.json; a run with `agent: "claude"` writes claude's as today.
+- Every `PiRunResult` built by run-agent carries `agent`. The fake-pi and fake-claude tests assert `pi` and `claude`.
+- `npm test` passes.
+
 ### `tumwater logs --transcript <TAB>` completes role ids in bash, zsh and fish, like `--role` (planned 2026-10-20 by the plan role; independent of every eligible plan: the TUI Transcript change step Ctrl+Y plan edits src/ui/tui and docs/cli.md's TUI keys table, and the dashboard Newest failure plan edits src/ui/gui/gui-client-history.ts, test/gui-client-history.test.ts, docs/how-it-works.md and docs/cli.md's "Watch run history" row; neither touches src/cli/completion.ts, test/completion.test.ts or docs/cli.md's completion line. Touches src/cli/completion.ts, test/completion.test.ts, docs/cli.md) — done 2026-10-20 by the feature role
 
 **Goal.** The generated completion scripts complete role ids after `--role` and as the first argument of `role`, `history` and `revert` (docs/cli.md's completion line). `tumwater logs --transcript <id>` is the one role-id flag left out. In `bashScript` (src/cli/completion.ts) the role arm fires only when `prev` is `--role`; in `fishFlagValue` the role completion is returned only for `flag === "--role"`. So `tumwater logs --transcript fe<TAB>` offers nothing.

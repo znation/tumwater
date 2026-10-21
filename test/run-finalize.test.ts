@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { eventsLogPath, statePath } from "../src/paths.js";
+import { eventsLogPath, accountPath, claudeAccountPath, statePath } from "../src/paths.js";
 import { finalizeRun } from "../src/run/run-finalize.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshRunnerState, zeroCounters } from "../src/runner/runner-state.js";
@@ -134,6 +134,33 @@ test("finalizeRun omits providerCost when the agent runs carried no provider", a
   await run(root, "organize", s, { result: "no_change" }, { usage });
   const end = eventsOfType(root, "run_end")[0]!;
   assert.equal(end.providerCost, undefined, "an empty provider split renders no field");
+});
+
+test("finalizeRun writes the reporting backend's own account file, not claude's", async () => {
+  // A codex run (plans/codex-backend.md "Groundwork: the subscription account is per
+  // backend", item 1) must not write its rate-window reading into claude's account file: the
+  // fold lands in .tumwater/state/codex-account.json. A claude run keeps writing claude's.
+  const codexRoot = await initializedRepo();
+  const usage = new RunUsage();
+  usage.fold(freshRunnerState("organize"), piRunResult({
+    agent: "codex",
+    billing: "subscription",
+    rateWindows: [{ type: "five_hour", status: "allowed", utilization: 0.4 }],
+  }));
+  await run(codexRoot, "organize", freshRunnerState("organize"), { result: "no_change" }, { usage });
+  assert.equal(fs.existsSync(accountPath(codexRoot, "codex")), true, "codex's account file is written");
+  assert.equal(fs.existsSync(claudeAccountPath(codexRoot)), false, "claude's file is untouched");
+
+  const claudeRoot = await initializedRepo();
+  const claudeUsage = new RunUsage();
+  claudeUsage.fold(freshRunnerState("organize"), piRunResult({
+    agent: "claude",
+    billing: "subscription",
+    rateWindows: [{ type: "five_hour", status: "allowed", utilization: 0.4 }],
+  }));
+  await run(claudeRoot, "organize", freshRunnerState("organize"), { result: "no_change" }, { usage: claudeUsage });
+  assert.equal(fs.existsSync(claudeAccountPath(claudeRoot)), true, "claude's account file is written as today");
+  assert.equal(fs.existsSync(accountPath(claudeRoot, "codex")), false, "no codex file for a claude run");
 });
 
 test("finalizeRun warns once at the error-streak crossing and re-arms after a healthy run", async () => {

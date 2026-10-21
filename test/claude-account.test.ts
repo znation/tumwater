@@ -1,7 +1,9 @@
-// --- src/agent/claude/claude-account.ts: the claude account state (plans/agent-backends.md
-// part 6a). The file is a cache the orchestrator writes from each run's billing/rate-window
-// report; these tests pin the reader's healing (absent/malformed/past-reset), the run
-// observation's seconds→ms conversion, and the startup seed's billing decision.
+// --- src/agent/claude/claude-account.ts: the claude specialization of the per-backend
+// subscription account store (src/agent/subscription-account.ts, plans/codex-backend.md
+// "Groundwork"). The reader's healing (absent/malformed/past-reset) and the run observation's
+// seconds→ms conversion now live in the generic store and are pinned here through the claude
+// wrappers and by test/subscription-account.test.ts; the startup seed's billing decision stays
+// claude-only.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -193,7 +195,7 @@ test("writeClaudeAccount: a write that fails mid-way leaves the previous reading
   // readClaudeAccount heals to null — silently "no subscription", so the window hold is ignored
   // until the next run re-observes. The write must leave the previous file untouched instead.
   const root = tmpdir();
-  const before = account({ billing: "subscription", observedAt: 1_000, subscriptionType: "team" });
+  const before = account({ billing: "subscription", observedAt: 1_000, plan: "team" });
   writeClaudeAccount(root, before);
 
   const real = fs.writeFileSync as (file: fs.PathLike, data: string | Uint8Array) => void;
@@ -259,7 +261,7 @@ test("seedClaudeAccount: a claude.ai login seeds subscription billing", () => {
 
     const seeded = seedClaudeAccount(root, config, 321);
     assert.equal(seeded?.billing, "subscription");
-    assert.equal(seeded?.subscriptionType, "team");
+    assert.equal(seeded?.plan, "team");
     assert.equal(readClaudeAccount(root, 321)?.billing, "subscription");
   });
 });

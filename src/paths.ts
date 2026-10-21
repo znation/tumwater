@@ -89,10 +89,17 @@ export function statePath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", `${role}.json`);
 }
 
+/** A backend's subscription account state (.tumwater/state/<backend>-account.json;
+ * subscription-account.ts): the billing answer and newest subscription window readings,
+ * written by the orchestrator only. */
+export function accountPath(root: string, backend: string): string {
+  return path.join(tumwaterDir(root), "state", `${backend}-account.json`);
+}
+
 /** The claude account state (.tumwater/state/claude-account.json; claude-account.ts): the
- * billing answer and newest subscription window readings, written by the orchestrator only. */
+ * claude backend's subscription account — accountPath for the "claude" backend. */
 export function claudeAccountPath(root: string): string {
-  return path.join(tumwaterDir(root), "state", "claude-account.json");
+  return accountPath(root, "claude");
 }
 
 /** The worktree-use registry (plans/disk-floor.md, part 2/4; git/worktree-use.ts): which

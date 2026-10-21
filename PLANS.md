@@ -57,34 +57,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Same file, extend the whole-blob `historyFetchScope` harness (or a sibling) to also return `histNewest`, and assert `fetchHistory(false)` resets a previously set `histNewest` to null. (The harness runs the served blob with injected `getJson`/`renderHistory`; set `histNewest = { state: "error", message: "x" }` through returned state, then `await scope.fetchHistory(false)`.)
 - The existing History tests pass unchanged: the drill-down toggle/caching tests, `histDetailCardHtml`, `fetchHistory`, and the toolbar/search persistence tests. `npm run test:gate` is green.
 
-### Codex backend, part 1/9: The subscription account store is per backend, and a run's result names its backend (planned 2026-10-20 by user; independent of every eligible Planned entry; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 1; touches src/agent/subscription-account.ts (new) src/agent/claude/claude-account.ts src/paths.ts src/pi/pi-run-result.ts src/agent/run-agent.ts src/run/run-finalize.ts src/merge/merge-slot.ts and their tests)
-
-**Goal.** Make the account file (billing plus the newest usage-window reading per window type) per backend, so a second subscription backend never writes into claude's file. Today `observeClaudeAccount` is called for any run that reports `billing` or `rateWindows` (src/run/run-finalize.ts, src/merge/merge-slot.ts), and `PiRunResult` does not say which backend ran. There is no behavior change for claude: its file, its shape and every caller's answer stay the same.
-
-**Approach.**
-- New src/agent/subscription-account.ts holds the generic half of src/agent/claude/claude-account.ts, renamed:
-  - the types `SubscriptionBilling` (`"subscription" | "api"`), `SubscriptionWindow` (today's `ClaudeWindow`, with the overage fields kept optional) and `SubscriptionAccount {billing, plan?, observedAt, windows}`, where `plan` is today's `subscriptionType`, kept under that name on read and write for claude's file;
-  - `accountPath(root, backend)`, which is `.tumwater/state/<backend>-account.json`. For claude that is today's `claudeAccountPath` file, and src/paths.ts keeps `claudeAccountPath` as `accountPath(root, "claude")`;
-  - `readAccount(root, backend, now?)`, `writeAccount(root, backend, account)` and `observeAccount(root, backend, run)`, with today's torn-file healing, the reset-on-`resetsAt` rule and the unix-seconds-to-ms conversion;
-  - `windowUsedUp`, `windowReserved`, `windowEntries`, `windowLabel` and `utilizationPct`;
-  - `subscriptionWindowRejected`. Its `isUsingOverage` test is harmless for a backend that never reports overage.
-- src/agent/claude/claude-account.ts keeps:
-  - its exported names as thin wrappers (`readClaudeAccount(root)` is `readAccount(root, "claude")`, and so on), so no caller changes in this part;
-  - the claude-only half: `seedClaudeAccount`, `parseClaudeAuthStatus`, `claudeAuthUsesSubscription`, and the `ANTHROPIC_API_KEY` and third-party-provider checks;
-  - `ClaudeAccount` and `ClaudeWindow` as type aliases.
-- src/pi/pi-run-result.ts: `PiRunResult` gains `agent?: string`, the backend id that ran. src/agent/run-agent.ts sets it from `backend.id` in every result it builds, the spawn-error result included.
-- src/run/run-finalize.ts and src/merge/merge-slot.ts call `observeAccount(root, run.agent ?? "pi", run)` instead of `observeClaudeAccount`. For a run without `billing` or `rateWindows` the write is skipped, as today. A pi run never reports either, so in practice only claude writes until Codex part 8/9.
-
-**Acceptance criteria.**
-- test/subscription-account.test.ts (new) covers these cases:
-  - `readAccount(root, "codex")` reads `.tumwater/state/codex-account.json`, and a missing file reads null.
-  - An `observeAccount(root, "codex", run)` with a `five_hour` reading writes only the codex file; claude's file is untouched.
-  - The reset-on-`resetsAt` and torn-file cases of test/claude-account.test.ts, run against `readAccount(root, "claude")`, give the same answers.
-- test/claude-account.test.ts passes unchanged.
-- A run-finalize test: a run with `agent: "codex"` and a rate window writes codex-account.json and not claude-account.json; a run with `agent: "claude"` writes claude's as today.
-- Every `PiRunResult` built by run-agent carries `agent`. The fake-pi and fake-claude tests assert `pi` and `claude`.
-- `npm test` passes.
-
 ### Codex backend, part 2/9: Budget gates, holds, the reserve and the window events read each subscription backend's own account (planned 2026-10-20 by user; requires part 1/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/team/team-polls.ts src/orchestrator/orchestrator.ts src/pi/pi-models.ts src/agent/image-input.ts src/status/status-data.ts src/events/events.ts src/events/event-legacy.ts src/events/event-labels.ts src/events/event-format.ts src/events/notify.ts src/config/config-schema.ts src/config/config-validation.ts src/config/config-views.ts docs/config.md and their tests)
 
 **Goal.** Every window decision (moving a job down its chain, the director's move, the handback, the team hold, the reserve, and the once-per-window events) works for any backend that reports a subscription. Today each is keyed to claude by `pairIsClaude` / `seamIsClaude` (src/gates/budget-gates.ts), the hold observation's `provider: "claude"` (src/team/team-polls.ts `claudeWindowObservation`), one `windowOut` value, the `claude_window_*` event names and the `claudeWindowReserve` key. There is no behavior change for a claude-only or pi-only team.

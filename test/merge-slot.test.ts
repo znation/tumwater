@@ -119,6 +119,7 @@ test("a merge run's five_hour reading reaches claude-account.json at fold time",
   assert.equal(readClaudeAccount(root), null, "no account file before any reading");
   foldUsage(
     piRunResult({
+      agent: "claude",
       outputTokens: 100,
       costUsd: 0.3,
       billing: "subscription",

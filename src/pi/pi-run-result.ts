@@ -133,6 +133,11 @@ export interface PiRunResult {
   rateWindows?: RateWindow[];
   /** True when any reported rate-limit window showed the account spending into overage. */
   usedOverage?: boolean;
+  /** The backend id that ran this run (plans/codex-backend.md "Groundwork: the subscription
+   * account is per backend", item 1): "pi", "claude", "codex" for example. The callers
+   * that fold a run into a subscription account (run-finalize, merge-slot) write the account
+   * of the backend that ran. Undefined in older callers that construct a result by hand. */
+  agent?: string;
 }
 
 /** Whether a run's cost is real money that charges the daily cap (plans/agent-backends.md

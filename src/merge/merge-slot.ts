@@ -8,7 +8,7 @@ import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
 import { applyMergeOutcome, ERROR_STREAK_WARN } from "../run/run-apply.js";
-import { observeClaudeAccount } from "../agent/claude/claude-account.js";
+import { observeAccount } from "../agent/subscription-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
@@ -478,11 +478,12 @@ export function mergeUsage(author: RoleRunner, root: string): {
       // A claude reviewer's or resolver's billing/window readings reach the account file the
       // moment this run folds, not at the author's next run end — so a pi-author team's
       // claude reviewer still updates the five-hour window before the author's next run
-      // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like run-finalize.ts's
-      // call; the file is a cache and an unwritable state dir must not fail the merge.
+      // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). The run's agent names the
+      // backend's own file. Best-effort like run-finalize.ts's call; the file is a cache and
+      // an unwritable state dir must not fail the merge.
       if (run.billing !== undefined || run.rateWindows !== undefined) {
         try {
-          observeClaudeAccount(root, { billing: run.billing, rateWindows: run.rateWindows });
+          observeAccount(root, run.agent ?? "pi", run);
         } catch {
           // The next reporting run rewrites it; nothing this merge depends on is lost.
         }
