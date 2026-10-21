@@ -7,6 +7,8 @@
  * its own `res`.
  */
 import { cancelScheduledStopMessage, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
+import { runDoctor } from "../doctor/doctor.js";
+import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
@@ -88,6 +90,22 @@ export async function handleKillOrphans(req: http.IncomingMessage, res: http.Ser
   if (!body) return;
   const report = await kill(root);
   sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") });
+}
+
+/** Handle POST /api/doctor-reprobe: the dashboard Health card's Re-probe models button, the
+ * twin of `tumwater doctor --reprobe`. A POST because it spends one model call per claimed pi
+ * image-input model and rewrites `.tumwater/state/image-probes.json`; GET /api/doctor stays
+ * probe-free. Same body discipline as /api/kill-orphans; `run` takes the probe mode so a test
+ * can pin that the handler asks for "all" without spawning a probe. */
+export async function handleDoctorReprobe(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  root: string,
+  run: (root: string, probeImages: "all") => Promise<DoctorReport> = (r, p) => runDoctor(r, undefined, undefined, p),
+): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  sendJson(res, 200, await run(root, "all"));
 }
 
 /** Handle POST /api/abort: the dashboard's per-row abort control — the same marker-writing

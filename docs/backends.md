@@ -110,8 +110,9 @@ A claimed pi model job is only as good as the **live probe** confirms: `tumwater
 claimed model a real generated PNG and checks the answer, caching the verdict in
 `.tumwater/state/image-probes.json` for 7 days. A failed probe makes the job read `false`
 everywhere — a claim the doctor contradicted must not let a blind read through. The TUI Health
-tab and the dashboard never probe (a refresh must not spend a model call); `--reprobe` forces
-terminal runs to probe again.
+tab and the dashboard never probe on a refresh (it must not spend a model call); `--reprobe`
+forces terminal runs to probe again, and the dashboard Health card's Re-probe models button
+forces every probe, as `--reprobe` does.
 
 When a run does read an image on a text-only model job, it is stopped and the role **reroutes**
 onto a peer tier that reads images (small → default → strong from the role's own tier; a strong

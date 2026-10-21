@@ -10,7 +10,8 @@
  * success/error toast pattern the composer's send uses (showFlash). Spliced into
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
  * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
- * through GET /api/doctor on each open (and on its Re-run button) and paints the report; a
+ * through GET /api/doctor on each open (and on its Re-run button) and paints the report (its
+ * Re-probe models button POSTs /api/doctor-reprobe instead, spending the image probes); a
  * third, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
  * button (POST /api/role-enable) and — for a role that still keeps worktree/branch leftovers — a
  * two-click Retire button (POST /api/retire). */
@@ -68,6 +69,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<label><input type='checkbox' data-action='doctor-problems'> Problems only</label>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
@@ -105,6 +107,27 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       body.innerHTML = renderDoctorReport(report, doctorProblems);
     } catch (err) {
       body.innerHTML = errorPanel("Health checks could not run", err, "empty");
+    }
+  }
+  let doctorReprobing = false;
+  async function reprobeDoctorClick() {
+    if (doctorReprobing) return;
+    doctorReprobing = true;
+    try {
+      buildSettingsView();
+      const body = $("doctorbody");
+      body.innerHTML = "<div class='empty'>Re-probing…</div>";
+      showFlash("Re-probing image-input models…");
+      try {
+        const report = await postJson("/api/doctor-reprobe", {});
+        lastDoctor = report;
+        body.innerHTML = renderDoctorReport(report, doctorProblems);
+      } catch (err) {
+        body.innerHTML = errorPanel("Health checks could not run", err, "empty");
+        showFlash("error: " + clientErrorMessage(err));
+      }
+    } finally {
+      doctorReprobing = false;
     }
   }
   function toggleDoctorProblems(checked) {

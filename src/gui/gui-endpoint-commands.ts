@@ -15,4 +15,4 @@ export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, h
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";
-export { handleResetCounters, handleRestart, handleReclaim, handleKillOrphans, handleAbort, handleStopSchedule, handleRoleNotes, handleRetire, handleRevert, handleBriefEdit } from "./gui-operator-commands.js";
+export { handleResetCounters, handleRestart, handleReclaim, handleKillOrphans, handleDoctorReprobe, handleAbort, handleStopSchedule, handleRoleNotes, handleRetire, handleRevert, handleBriefEdit } from "./gui-operator-commands.js";

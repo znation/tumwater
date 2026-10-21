@@ -63,6 +63,7 @@ import {
   handleQuestionAnswer,
   handleReclaim,
   handleKillOrphans,
+  handleDoctorReprobe,
   handleRestart,
   handleStopSchedule,
   handleResetCounters,
@@ -270,6 +271,7 @@ export function startGui(
     "POST /api/stop-schedule": (req, res) => handleStopSchedule(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),
     "POST /api/kill-orphans": (req, res) => handleKillOrphans(req, res, root),
+    "POST /api/doctor-reprobe": (req, res) => handleDoctorReprobe(req, res, root),
     "POST /api/abort": (req, res) => handleAbort(req, res, root),
     "POST /api/pause-role": (req, res) => handlePauseRole(req, res, root),
   };
