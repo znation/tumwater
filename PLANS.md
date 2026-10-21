@@ -125,4 +125,38 @@ This part rewrites them first. Series goal and siblings: part 1/5; part 4b/5 han
 - Every other test in the file passes unchanged. Without `--ready`, output does not change.
 - `npm run test:gate` passes.
 
+### `history <role> --last --result <class>[,...]` opens the role's newest run in the listed outcome classes, e.g. `history feature --last --result problems` jumps straight to its latest failure's trail (planned 2026-10-20 by the plan role; independent of every eligible plan: the Backend/model split parts change test configs and src/config, the two completion plans change src/cli/completion.ts, and the `--list --ready` plan changes the backlog list view; this one changes the one-run trail command, the history `--result` parser and the CLI arg helpers)
+
+**Goal.** To read a role's last failure today, you run `tumwater history --role feature --result problems -n 1`, copy the run number, then run `tumwater history feature <n>`. `history <role> --last` jumps to the newest run of any outcome. Add `--result` to the `--last` form so one command does it: `history <role> --last --result <class>[,<class>...]` prints the trail of the role's newest completed run whose outcome class is listed. It uses the same classes and spellings as the listing's `--result` (merged, none, refused, problems; `changes` stays a hidden alias), and it composes with `--stat`, `--patch`, `--transcript [--prompt] [--grep]` and `--json` exactly as `--last` does.
+
+**Approach.**
+1. src/history/history.ts: move the body of cmdHistory's `--result` validation (from the empty-value check through the deduplicating `parseHistoryResultClass` loop) into an exported `parseHistoryResultList(raw: string | undefined): HistoryResultClass[]`. It fails with `HISTORY_RESULT_VALUE_ERROR` on a missing, empty or all-commas value, and with the existing `history --result must be one of …` wording (gotSuffix + typoSuffix) on an unknown piece. cmdHistory calls it in place of the inline loop, and the listing behaves as before.
+2. src/cli/cli-args.ts: add `parseResultFlag(args, missingValueError): { rest: string[]; raw: string | null }` beside `parseTypeFlag`, built on the module-local `takeValuedFlag` the same way. It removes the value token so `peelPositionals` cannot read `problems` as a run number.
+3. src/cli.ts `runTrailCommand`: after `parseGrepFlag`, call `parseResultFlag(ungrepped, HISTORY_RESULT_VALUE_ERROR)` (import the constant alongside `HISTORY_GREP_VALUE_ERROR`), and peel positionals from its `rest`. Add `{ names: ["--result"] }` to that call's `rejectUnknownArgs` spec list, matching the `--grep` entry. Pass `result: raw` to cmdRunDetail. `historyTrailForm` (cli-command-args.ts) already skips `--result`'s value through `HISTORY_LISTING_VALUED_FLAGS`, so `history feature --last --result problems` already routes to the trail form. Do not change it.
+4. src/run/run-detail.ts `cmdRunDetail`: add an option `result?: string | null` (default null).
+   - After the `--grep needs --transcript` check, fail with `history --result needs --last on a one-run trail (usage: ${RUN_DETAIL_USAGE})` when `result !== null && !last`.
+   - Otherwise parse it with `parseHistoryResultList(result)`.
+   - With classes, the `--last` scan becomes `readRunRows(root, HISTORY_MAX_RUNS, role).find((r) => classes.includes(historyClass(r.result)))?.run ?? null`. Without them, keep today's `readRunRows(root, 1, role)[0]`.
+   - A miss stays exit 0, printing `null` under `--json`. In prose, the wording comes from `runNotFoundPhrase(role, \`completed run with result "${flagNames}"\`)`, where `flagNames` is the classes mapped through `HISTORY_RESULT_FLAG_NAMES` and joined with `,`. It reads, for example, `no completed run with result "problems" for bugfix in the scanned window (the retained log may have rotated past it)`. Keep this wording module-local beside `runNotFoundLastMessage`, and give that message an optional classes argument instead of adding a third helper.
+   - `RUN_DETAIL_USAGE` becomes `tumwater history <role> [<n>] [--last [--result <class>[,...]]] [--stat] [--patch] [--transcript [--prompt] [--grep <text>]] [--json]`. Update the cmdRunDetail doc comment's synopsis and add one sentence on `--result`.
+5. src/cli/help.ts: update the trail stanza's synopsis to the new usage. After the `--last` sentence, add `--result <class>[,...] (with --last) picks the newest run in the listed outcome classes instead (the listing's --result classes; scans the role's last 200 runs);`, wrapped to the stanza's column.
+6. docs/cli.md "Watch run history" row: after "`tumwater history <role> --last` shows the newest completed run's trail instead of numbering one", add "; `--last --result <class>[,...]` picks the newest run in the listed outcome classes (`history feature --last --result problems` opens its latest failure)".
+
+Out of scope: shell completion of `--result` after a trail form (src/cli/completion.ts is held by two in-flight plans), and the TUI/GUI trail views.
+
+**Files touched.** src/history/history.ts, src/cli/cli-args.ts, src/cli.ts, src/run/run-detail.ts, src/cli/help.ts, docs/cli.md, test/run-detail.test.ts.
+
+**Acceptance criteria** (in test/run-detail.test.ts, using its `writeEvents`/`start`/`end` helpers):
+- New test "cmdRunDetail --last --result picks the newest run in the listed classes": seed bugfix runs 2 (`changed`), 5 (`error`), 7 (`no_change`).
+  - `{ last: true, result: "problems" }` prints the same stdout as `["bugfix", "5"]`.
+  - `result: "merged"` matches run 2's trail.
+  - `result: "problems,merged"` gives run 5.
+  - `result: "changes"` (the hidden alias) gives run 2.
+  - The `--json` payload deepEquals the numbered form's.
+- New test "--last --result with no matching run: not-found line at exit 0, null under --json": with only `changed` runs, `result: "refused"` prints `^no completed run with result "refused" for bugfix in the scanned window`, and `--json` prints `null`.
+- New test "--result needs --last and a known class": `cmdRunDetail(repo, ["bugfix", "5"], false, { result: "problems" })` fails with `--result needs --last`, and `result: "problemz"` fails with `history --result must be one of merged, none, refused, problems`.
+- A CLI-level case through the existing `cli(repo, …)` helper: `history bugfix --last --result problems` exits 0 with the run-5 header, which proves `problems` is not peeled as a positional.
+- The usage regexes in this file (the `usage: tumwater history <role> \[<n>\] \[--last\] …` matches) are updated to the new `RUN_DETAIL_USAGE`. Every other test, including test/history*.test.ts's `--result` cases, passes unchanged.
+- `npm run test:gate` passes.
+
 ## Done
