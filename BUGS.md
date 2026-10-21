@@ -32,6 +32,25 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 **Waiting for the next failure 2026-10-19 by bugfix: a `fail orphans` line for a leaked `logs -f` will end with `(run <pid>-…; tumwater <pid> exited)` when it inherited a run's mark, naming the run that spawned it; a line with no such suffix means the process escaped the mark (detached with a cleared environment) and the spawner is still unknown.**
 
+### `status -f repaints until its parent exits, then prints nothing` failed, then passed on the same tree (quarantined by tumwater 2026-10-21)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ status -f repaints until its parent exits, then prints nothing (544.172833ms)
+AssertionError [ERR_ASSERTION]: at least two frames repainted
+at file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:42:16
+at async withFollow (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:25:9)
+at async TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/status-follow.test.js:39:5)
+generatedMessage: false,
+code: 'ERR_ASSERTION',
+actual: false,
+expected: true,
+operator: '==',
+diff: 'simple'
+}
+~~~~
+
 ## Fixed
 
 ## Verified
