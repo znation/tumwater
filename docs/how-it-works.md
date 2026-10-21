@@ -466,6 +466,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   text — and the hint line names the active scope and pattern.
   On History, `Ctrl+S` cycles the pane's trailing window (default, 1h, 6h, 1d, 7d) through the
   same collector and sparse-window note `tumwater history --since` uses.
+  With the trail off, `Ctrl+P` steps that window back by its own length through the same
+  `readRunRowsSince` bound `tumwater history --since --until` uses; the header names it
+  `window: between X and Y ago`, and `Ctrl+S` returns to the trailing window.
   `Ctrl+O` cycles the pane's outcome filter (all, merged, none, refused, problems) through the same
   `historyClass` buckets and an emptied filter's `no runs with result` wording
   `tumwater history --result` uses, with the hint line naming the active class (`result: all` or

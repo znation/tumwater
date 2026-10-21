@@ -13,6 +13,7 @@ import { renderDoctor, renderDoctorProblems } from "../src/doctor/doctor-render.
 import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
+import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange } from "../src/change/change-render.js";
 import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
@@ -4238,4 +4239,92 @@ test("`/` on a History trail whose transcript shows searches the transcript, not
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().trailGrep, null, "leaving and re-entering the trail starts bare");
+});
+
+function stepHistoryRoot(now: number): string {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", run: 1, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 90 * 60_000, loop: "feature", type: "run_end", run: 2, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 2.5 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 3, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+    { ts: now - 6.5 * 24 * 60 * 60_000, loop: "feature", type: "run_end", run: 4, result: "changed" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  return root;
+}
+
+function openStepHistory(keys: ReturnType<typeof makeKeys>["keys"], windows: number): void {
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  for (let i = 0; i < windows; i++) keys.handleKey(undefined, { ctrl: true, name: "s" });
+}
+
+const ctrlP = { ctrl: true, name: "p" };
+
+test("Ctrl+P off the trail steps the History window back one window length, and Ctrl+S resets it", () => {
+  const now = Date.now();
+  const { keys } = makeKeys(stepHistoryRoot(now), () => now);
+  openStepHistory(keys, 1);
+  assert.equal(keys.state().historySince, "1h");
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 1);
+  assert.match(keys.state().paneCache ?? "", /window: between 2h and 1h ago/);
+  assert.match(keys.state().paneCache ?? "", /feature #2/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /feature #1/);
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 2);
+  for (let i = 0; i < 2; i++) keys.handleKey(undefined, { ctrl: true, name: "s" });
+  assert.equal(keys.state().historySince, "1d");
+  assert.equal(keys.state().historyStep, 0);
+  assert.match(keys.state().paneCache ?? "", /window: last 1d/);
+  keys.handleKey(undefined, ctrlP);
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 2);
+  assert.match(keys.state().paneCache ?? "", /window: between 3d and 2d ago/);
+  assert.match(keys.state().paneCache ?? "", /feature #3/);
+});
+
+test("Ctrl+P wraps the stepped History window after the 7-day cap", () => {
+  const now = Date.now();
+  const { keys } = makeKeys(stepHistoryRoot(now), () => now);
+  openStepHistory(keys, 3);
+  assert.equal(keys.state().historySince, "1d");
+  for (let i = 0; i < 6; i++) keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 6);
+  assert.match(keys.state().paneCache ?? "", /between 7d and 6d ago/);
+  assert.match(keys.state().paneCache ?? "", /feature #4/);
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 0);
+  assert.match(keys.state().flash ?? "", /oldest window reached; back to the last 1d/);
+  keys.handleKey(undefined, { ctrl: true, name: "s" });
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historySince, "7d");
+  assert.equal(keys.state().historyStep, 0);
+  assert.match(keys.state().flash ?? "", /oldest window reached; back to the last 7d/);
+});
+
+test("Ctrl+P on the default History window only flashes the Ctrl+S hint", () => {
+  const now = Date.now();
+  const { keys } = makeKeys(stepHistoryRoot(now), () => now);
+  openStepHistory(keys, 0);
+  const before = keys.state().paneCache;
+  keys.handleKey(undefined, ctrlP);
+  assert.equal(keys.state().historyStep, 0);
+  assert.equal(keys.state().paneCache, before);
+  assert.match(keys.state().flash ?? "", /Ctrl\+S/);
+});
+
+test("Ctrl+N on a stepped History window opens that window's newest run", () => {
+  const now = Date.now();
+  const { keys } = makeKeys(stepHistoryRoot(now), () => now);
+  openStepHistory(keys, 1);
+  keys.handleKey(undefined, ctrlP);
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.equal(keys.state().trailMode, true);
+  assert.match(keys.state().trailCache ?? "", /run 2|#2/);
+});
+
+test("historyWindowBounds steps a trailing window back by its own length", () => {
+  assert.deepEqual(historyWindowBounds(3_600_000, 0), { sinceMs: 3_600_000, untilMs: null });
+  assert.deepEqual(historyWindowBounds(86_400_000, 2), { sinceMs: 259_200_000, untilMs: 172_800_000 });
+  assert.deepEqual(historyWindowBounds(null, 3), { sinceMs: null, untilMs: null });
 });

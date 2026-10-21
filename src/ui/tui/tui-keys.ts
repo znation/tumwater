@@ -59,6 +59,9 @@ interface TuiKeysState {
   /** The Activity view's Ctrl+A team-model editor holds the prompt line. */
   modelMode: boolean;
   rolePromptFor: string | null;
+  /** How many window lengths back the History window ends (Ctrl+P off the trail); 0 is the
+   * trailing window. */
+  historyStep: number;
   /** Whether the prompt line is editing an image path to attach to the next director prompt
    * (Ctrl+V on the Activity view). */
   attachMode: boolean;

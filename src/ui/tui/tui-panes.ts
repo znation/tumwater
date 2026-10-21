@@ -264,6 +264,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       reportSince: rep.reportSince,
       historyRole: hist.historyRole,
       historySince: hist.historySince,
+      historyStep: hist.historyStep,
       historyResult: hist.historyResult,
       historyGrep: hist.historyGrep,
       historySummary: hist.historySummary,

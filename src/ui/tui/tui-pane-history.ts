@@ -1,4 +1,5 @@
-import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
+import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
+import { durationLabel } from "../../cli/cli-args.js";
 import {
   HISTORY_DEFAULT_RUNS,
   HISTORY_MAX_RUNS,
@@ -21,12 +22,24 @@ import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import { nextInCycle, cycleLabel, HISTORY_WINDOWS, HISTORY_RESULTS, type TuiPaneSession } from "./tui-pane-session.js";
 
+/** The bounds `readRunRowsSince` reads for a trailing window of `windowMs` stepped `step` window
+ * lengths back: step 0 (or no window) is the trailing window, step k the window (k+1)*len to k*len
+ * ago, the `history --since --until` pair. */
+export function historyWindowBounds(
+  windowMs: number | null,
+  step: number,
+): { sinceMs: number | null; untilMs: number | null } {
+  if (windowMs === null || step === 0) return { sinceMs: windowMs, untilMs: null };
+  return { sinceMs: (step + 1) * windowMs, untilMs: step * windowMs };
+}
+
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
  * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
  * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs), each with its cache and
- * body window. Split out of the pane-navigation monolith; it owns the pane's
- * window/result/scope/search/trail state and
- * the arms that touch them. */
+ * body window. With the trail off, Ctrl+P steps the window back by its own length (the
+ * `history --since --until` window) and Ctrl+S returns to the trailing window. Split out of the
+ * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and the
+ * arms that touch them. */
 export function createHistoryPane(
   session: TuiPaneSession,
 ) {
@@ -34,6 +47,9 @@ export function createHistoryPane(
   // the default newest-N read. Session-only like the view/scroll state; the next Ctrl+T into
   // History computes the cache with it.
   let historyWindow: number | null = null;
+  // How many window lengths back the window ends (Ctrl+P off the trail); session-only like the
+  // window, and 0 means the trailing window. Ctrl+S resets it.
+  let historyStep = 0;
   // The History pane's session outcome filter (Ctrl+O), a HISTORY_RESULTS class or null for no
   // filter. Session-only like the window; the next Ctrl+T into History computes with it.
   let historyResult: HistoryResultClass | null = null;
@@ -87,10 +103,12 @@ export function createHistoryPane(
     role: string | null,
     grep: string | null,
     limit: number,
+    step: number,
   ): { covered: boolean; afterGrep: number; filtered: RunRow[] } => {
-    const { rows, covered } = sinceMs === null
+    const bounds = historyWindowBounds(sinceMs, step);
+    const { rows, covered } = bounds.sinceMs === null
       ? { rows: readRunRows(session.root, limit, role), covered: true }
-      : readRunRowsSince(session.root, sinceMs, role);
+      : readRunRowsSince(session.root, bounds.sinceMs, role, bounds.untilMs);
     const grepped = grep === null ? rows : runRowsMatchingGrep(rows, grep);
     const filtered = resultClass === null ? grepped : grepped.filter((r) => historyClass(r.result) === resultClass);
     return { covered, afterGrep: grepped.length, filtered };
@@ -119,8 +137,16 @@ export function createHistoryPane(
     role: string | null,
     grep: string | null,
     summary: HistorySummaryGroup | null,
+    step: number,
   ): string => {
-    const { covered, afterGrep, filtered } = selectPaneRows(sinceMs, resultClass, role, grep, HISTORY_DEFAULT_RUNS);
+    const { covered, afterGrep, filtered } = selectPaneRows(
+      sinceMs,
+      resultClass,
+      role,
+      grep,
+      HISTORY_DEFAULT_RUNS,
+      step,
+    );
     // The session Summary toggle (Ctrl+Y) swaps the row list for the same per-role tally the CLI's
     // `history --summary` and the dashboard History view print (summarizeRunRows → renderSummary),
     // folded over exactly the rows the window/scope/result/search selected, so the three surfaces
@@ -139,7 +165,11 @@ export function createHistoryPane(
     // role-only read (no window, no class) still prints its scope line above the rows.
     const header = [
       ...(role === null ? [] : ["role: " + role]),
-      ...(sinceMs === null ? [] : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
+      ...(sinceMs === null
+        ? []
+        : step > 0
+          ? ["window: between " + durationLabel((step + 1) * sinceMs) + " and " + durationLabel(step * sinceMs) + " ago"]
+          : ["window: last " + (cycleLabel(HISTORY_WINDOWS, sinceMs) ?? "default")]),
       ...(resultLabel === null ? [] : ["result: " + resultLabel]),
       ...(grep === null ? [] : ["search: " + grep]),
     ].join("\n");
@@ -220,7 +250,7 @@ export function createHistoryPane(
     try {
       const unfiltered = historyWindow === null && historyResult === null && historyGrep === null;
       const limit = unfiltered ? index + 1 : HISTORY_MAX_RUNS;
-      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, limit).filtered[index];
+      const row = selectPaneRows(historyWindow, historyResult, historyRole, historyGrep, limit, historyStep).filtered[index];
       if (row === undefined) {
         if (onEmpty !== null) onEmpty();
         return false;
@@ -257,7 +287,7 @@ export function createHistoryPane(
    * roster sync share). */
   const recompute = (): boolean => {
     if (session.view !== session.roleIds.length + 4) return false;
-    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary);
+    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary, historyStep);
     session.paneScroll = 0;
     return true;
   };
@@ -276,7 +306,7 @@ export function createHistoryPane(
     }
     historyGrep = pattern;
     if (trailMode) refreshTrail();
-    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary);
+    session.paneCache = historyPaneCache(historyWindow, historyResult, historyRole, historyGrep, historySummary, historyStep);
     session.paneScroll = 0;
   };
 
@@ -319,9 +349,29 @@ export function createHistoryPane(
       // Ctrl+P steps an on-screen trail back to the next older run in the pane's scope,
       // wrapping to the newest after the oldest. Anywhere else it falls through (false) to the
       // Activity caps and Transcript pause editors' routing.
-      if (session.view !== session.roleIds.length + 4 || !trailMode) return false;
+      if (session.view !== session.roleIds.length + 4) return false;
+      if (!trailMode) {
+        // Trail off: step the window back one window length, wrapping to the trailing window once
+        // the next window would start past the 7-day cap `history --since` rides.
+        if (promptLineFree(ctx.es)) {
+          if (historyWindow === null) {
+            session.flashMessage("pick a window with Ctrl+S to step back through earlier windows");
+          } else if ((historyStep + 2) * historyWindow <= LOGS_SINCE_MAX_MS) {
+            historyStep += 1;
+            recompute();
+          } else {
+            historyStep = 0;
+            session.flashMessage(
+              "oldest window reached; back to the last " + cycleLabel(HISTORY_WINDOWS, historyWindow),
+            );
+            recompute();
+          }
+        }
+        session.requestRender();
+        return true;
+      }
       if (promptLineFree(ctx.es)) {
-        const next = trailIndex + 1;
+        const next =trailIndex + 1;
         if (!(next < HISTORY_MAX_RUNS && loadTrail(null, next))) {
           loadTrail(null, 0);
           session.flashMessage("oldest run reached; back to the newest");
@@ -369,6 +419,7 @@ export function createHistoryPane(
       // session state: advancing it off the History view only changes the label, and the next
       // Ctrl+T into History computes the cache with it; on the History view this handler
       // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
+      historyStep = 0;
       historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
       if (trailMode) refreshTrail();
       recompute();
@@ -443,6 +494,7 @@ export function createHistoryPane(
       return {
         historyRole,
         historySince: historyWindow === null ? null : cycleLabel(HISTORY_WINDOWS, historyWindow),
+        historyStep,
         historyResult: cycleLabel(HISTORY_RESULTS, historyResult),
         historyGrep,
         historySummary,

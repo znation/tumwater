@@ -148,6 +148,9 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "failures", scope: null, window: "7d" }), /Ctrl\+E window: 7d/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /Ctrl\+E window: default/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /PgUp\/PgDn scroll/);
+  assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+P earlier window/);
+  assert.doesNotMatch(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /earlier window/);
+  assert.doesNotMatch(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: true }), /earlier window/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /Ctrl\+R refresh/);
   assert.match(hint({ kind: "health" }), /PgUp\/PgDn scroll/);
