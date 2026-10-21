@@ -81,4 +81,29 @@ No dashboard client change: the Pending view keeps fetching the unscoped list.
 - The existing pendingOverlapsHtml tests pass unchanged. Their two-argument calls still work because the third argument defaults to all roles.
 - `npm run test:gate` passes.
 
+### `GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes: the dashboard API twin of `tumwater history --result` (planned 2026-10-20 by the plan role; independent of every eligible plan: the `diff --overlaps --path` plan edits `handleDiff` in the same file, a different function; the Overlapping files Role picker plan changes src/ui/gui/gui-client-pending.ts; part 5/5 of the Backend/model split changes src/config and test configs; touches src/gui/gui-endpoints.ts docs/how-it-works.md test/gui-endpoints.test.ts)
+
+**Goal.** `tumwater history --result <class>[,...]` narrows the run listing to outcome classes (merged/none/refused/problems), and `GET /api/run?last=1&result=` already accepts the same list (PLANS-DONE.md "`GET /api/run?role=<id>&last=1…`"). `GET /api/history` (`handleHistory`, src/gui/gui-endpoints.ts) takes `role`, `n`/`sinceMs`/`untilMs`, `grep`, `model` and `summary`, but no `result`. A script asking "feature's failed runs in the last day" has to fetch every row and reclassify them itself, copying `historyClass`. This plan adds `result` to `/api/history`, parsed by the same code `/api/run` uses, so the two endpoints accept and reject the same values.
+
+**Approach.**
+1. src/gui/gui-endpoints.ts: extract the class-list loop in `handleRun`'s `last` branch (the `splitCommaList(q.get("result") ?? "")` loop over `parseHistoryResultClass`, with its `result must be one of …${gotSuffix(piece)}${typoSuffix(piece, names)}` 400) into a module-level `function resultClassesQuery(q: URLSearchParams, res: http.ServerResponse): HistoryResultClass[] | null`. It returns the deduplicated classes in first-seen order (`[]` when `result` is absent, empty, or only commas, meaning "filter nothing"), or `null` once it has sent the 400. Give it a one-line doc comment naming both callers. `handleRun` calls it and returns on `null`. Its `classFilter = classes.length ? classes : null` line and its 404 wording stay as they are.
+2. `handleHistory`: call `resultClassesQuery` first, before the `sinceMs` branch, and return on `null`. A bad class is then a 400 in both shapes, and it comes before any other 400 that `handleHistory` sends. Add `historyClass` to the existing `../history/history-data.js` import. Define `const inClasses = (rows: RunRow[]): RunRow[] => (classes.length ? rows.filter((r) => classes.includes(historyClass(r.result))) : rows);` beside `onModels`. Apply it after grep and before `onModels` in both the window branch and the count branch, which is the CLI's order (`cmdHistory`: grep, then `--result`, then `--model`). `summary`/`modelSummary` then fold the narrowed rows. With `result` absent the response is the same as today's. Add one sentence to the doc comment: "`result=<class>[,...]` keeps only the runs in those outcome classes (the `history --result` rule, parsed by resultClassesQuery like /api/run's), after `grep` and before `model`; an unknown class is a 400."
+3. docs/how-it-works.md: after the "`GET /api/run?role=<id>&last=1` serves the role's newest completed run … (`newestRunNumber`, shared)." sentence, add: "`GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes, after `grep` and before `model`, the rows `tumwater history --result` lists." When this was planned, `grep -n 'api/history' docs/invariants.md` printed nothing, so the plan claims no invariant ID.
+
+The dashboard History view keeps filtering its outcome buckets client-side (`historyClass` in src/ui/gui/gui-client-history.ts). This plan does not change the client.
+
+**Files touched.** src/gui/gui-endpoints.ts, docs/how-it-works.md, test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- New test "handleHistory ?result keeps outcome classes in both shapes, before model and the summaries fold" in test/gui-endpoints.test.ts. It reuses the fixture shape of "handleHistory ?model keeps exact selectors in both shapes, before the summaries fold" (feature `changed` on m-b, clean `no_change` on m-a, qa `error`) and asserts:
+  - `?n=50&result=problems` serves only qa.
+  - `?n=50&result=merged,none` serves feature and clean.
+  - `?sinceMs=3600000&result=none` serves only clean.
+  - `?n=50&result=merged&model=m-a` serves no rows with status 200, which shows the filters compose.
+  - `?n=50&result=none&summary=1` has `summary` equal to `summarizeRunRows` of the served rows.
+  - `?n=50&result=` and `?n=50&result=,` serve all 3 rows.
+  - `?n=50&result=bogus` and `?sinceMs=3600000&result=bogus` are 400s whose error matches `/result must be one of/`.
+- The existing "handleRun ?last serves the newest run, narrowed by result and model" test passes unchanged. That shows the extraction kept `/api/run`'s parsing and wording.
+- `npm run test:gate` passes.
+
 ## Done
