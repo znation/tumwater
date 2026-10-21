@@ -337,3 +337,29 @@ test("invocation creates the OPENCODE_DB parent directory on a fresh team root, 
   assert.equal(inv.env.OPENCODE_DB, path.join(dbDir, "opencode.db"));
   assert.equal(fs.statSync(dbDir).isDirectory(), true);
 });
+
+test("opencode classifies a FreeTierError stderr as a transient backend failure and a model/variant stderr as a config error", () => {
+  // The 403 `provider.auth` / FreeTierError refusals read transient: the subscription runs out
+  // from under the team, so the runner retries, not a permanent misconfiguration.
+  assert.deepEqual(
+    opencodeBackend.classifyExit({ code: 1, stderr: "FreeTierError: OpenCode's free tier can only be used from within OpenCode", killed: false }),
+    { transientBackend: true, backendKind: "server" },
+  );
+  // `provider.no-route` "Model unavailable" and "Variant unavailable" name a bad selector,
+  // which is a permanent config error, not a retry.
+  assert.deepEqual(
+    opencodeBackend.classifyExit({ code: 1, stderr: "Model unavailable: opencode/no-such-model", killed: false }),
+    { configError: true },
+  );
+  assert.deepEqual(
+    opencodeBackend.classifyExit({ code: 1, stderr: "Variant unavailable for opencode/deepseek-v4.1-flash-free: medium", killed: false }),
+    { configError: true },
+  );
+  // A harness-killed run has its own cause, and a clean or unrelated exit classifies to nothing.
+  assert.deepEqual(
+    opencodeBackend.classifyExit({ code: null, stderr: "FreeTierError", killed: true }),
+    {},
+  );
+  assert.deepEqual(opencodeBackend.classifyExit({ code: 0, stderr: "", killed: false }), {});
+  assert.deepEqual(opencodeBackend.classifyExit({ code: 1, stderr: "boom", killed: false }), {});
+});
