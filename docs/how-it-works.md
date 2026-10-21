@@ -484,7 +484,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   History drill-down use, then the run commit's per-file stat footer (`tumwater history <role>
   <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
   `Ctrl+N` again returns to the rows. `Ctrl+P` on a trail steps to the next older run among those same rows, wrapping to the newest after the oldest. `Ctrl+R` on a trail adds the run's agent transcript, then the transcript with each agent run's prompt, then hides it again (the text of `history <role> <n> --transcript [--prompt]`).
-  On a trailing window, the dashboard History toolbar's ◀ Earlier / Later ▶ buttons step that window back by its own length, through `/api/history?sinceMs=&untilMs=`, the twin of `history --since --until`.
+  On a trailing window, the dashboard History toolbar's ◀ Earlier / Later ▶ buttons step that window back by its own length, through `/api/history?sinceMs=&untilMs=`, the twin of `history --since --until`. The dashboard Usage and Failures toolbars carry the same buttons on their 1h/6h/1d windows, through `/api/report` and `/api/failures` `?sinceMs=&untilMs=`, the twin of `report [--failures] --since --until`.
   The dashboard's History drill-down adds a "Revert this change…" button on a run whose change is on
   the base branch: it previews through `previewRevert`, then reverts through `revertMergedCommit`,
   the two cores `tumwater revert` uses (`POST /api/revert`).

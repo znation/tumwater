@@ -6,7 +6,7 @@ import { collectReport, type ReportData, type ReportDay } from "../src/report/re
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
 import { eventsLogPath } from "../src/paths.js";
-import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
+import { REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
 import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
@@ -149,8 +149,8 @@ test("the Usage and Failures views fetch their window on activation, never on a 
   assert.match(GUI_PAGE, /<section id="failures" class="view" aria-label="Failures" hidden><\/section>/);
   // Both views build their URL from the shared reportEndpoint helper, so the ?sinceMs / ?days
   // and &role= shapes cannot drift; each passes its own resource name.
-  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => reportEndpoint\("report", days, role, sinceMs\)/);
-  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs\) => reportEndpoint\("failures", days, role, sinceMs\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs, step\) => reportEndpoint\("report", days, role, sinceMs, step\)/);
+  assert.match(GUI_PAGE, /endpoint: \(days, role, sinceMs, step\) => reportEndpoint\("failures", days, role, sinceMs, step\)/);
   assert.match(GUI_PAGE, /if \(v === "usage"\) fetchReport\(\)/);
   assert.match(GUI_PAGE, /if \(v === "failures"\) fetchFailures\(\)/);
   // The team view's "today" tiles read a one-day report, refreshed on new events.
@@ -572,6 +572,101 @@ test("the Usage trailing-window control fetches ?sinceMs, renders markdown, and 
   clickHandler!({});
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(getJsonUrls[1], "/api/report?days=7", "the day click reverts to ?days");
+});
+
+test("reportEndpoint steps a since window back by its own length with untilMs", () => {
+  const stub = { addEventListener() {}, dataset: {}, innerHTML: "" };
+  const { reportEndpoint } = clientScope<{ reportEndpoint(r: string, d: number, role: string, ms: number | null, step?: number): string }>(
+    ["panel-build", "view-scaffold"], ["reportEndpoint", "reportCanStepEarlier", "REPORT_MAX_MS"], {
+      document: { getElementById: () => stub },
+      $: () => stub, recall: () => null, store: () => {}, markActive: () => {}, clickClosest: () => null, icon: iconStub,
+    });
+  assert.equal(reportEndpoint("report", 14, "", 86400000, 1), "/api/report?sinceMs=172800000&untilMs=86400000");
+  assert.equal(reportEndpoint("failures", 14, "clean", 3600000, 2), "/api/failures?sinceMs=10800000&untilMs=7200000&role=clean");
+  assert.equal(reportEndpoint("report", 14, "", 86400000, 0), "/api/report?sinceMs=86400000");
+  assert.equal(reportEndpoint("report", 14, "", 86400000), "/api/report?sinceMs=86400000");
+  assert.equal(reportEndpoint("report", 7, "", null, 3), "/api/report?days=7");
+});
+
+test("reportCanStepEarlier stops at the server's sinceMs cap", () => {
+  const stub = { addEventListener() {}, dataset: {}, innerHTML: "" };
+  const scope = clientScope<{ REPORT_MAX_MS: number; reportCanStepEarlier(ms: number | null, step: number): boolean }>(
+    ["panel-build", "view-scaffold"], ["reportEndpoint", "reportCanStepEarlier", "REPORT_MAX_MS"], {
+      document: { getElementById: () => stub },
+      $: () => stub, recall: () => null, store: () => {}, markActive: () => {}, clickClosest: () => null, icon: iconStub,
+    });
+  assert.equal(scope.REPORT_MAX_MS, REPORT_SINCE_MAX_MS);
+  assert.equal(scope.reportCanStepEarlier(86400000, 5), true);
+  assert.equal(scope.reportCanStepEarlier(86400000, 6), false);
+  assert.equal(scope.reportCanStepEarlier(21600000, 26), true);
+  assert.equal(scope.reportCanStepEarlier(21600000, 27), false);
+  assert.equal(scope.reportCanStepEarlier(null, 0), false);
+});
+
+test("the report step buttons walk a since window back and a since or day click resets it", async () => {
+  interface El { dataset: Record<string, string>; innerHTML: string; style: { display: string }; addEventListener(type: string, fn: (ev: unknown) => void): void; querySelector?(sel: string): unknown }
+  const els: Record<string, El> = {};
+  const urls: string[] = [];
+  let clickHandler: ((ev: unknown) => void) | null = null;
+  for (const id of ["report", "failures", "usagebody", "failbody", "usagewindow", "failwindow", "usagerole", "failrole", "usagewindowstep"]) {
+    els[id] = {
+      dataset: {}, innerHTML: "", style: { display: "none" },
+      addEventListener(type, fn) { if (type === "click" && id === "report") clickHandler = fn; },
+    };
+  }
+  const earlier = { disabled: false };
+  const later = { disabled: false };
+  els.usagewindowstep!.querySelector = (sel: string) => (sel.includes("earlier") ? earlier : later);
+  let stepClick: { dataset: Record<string, string> } | null = null;
+  let daysClick: { dataset: Record<string, string> } | null = null;
+  const inject = {
+    document: { getElementById: (id: string) => els[id] ?? null },
+    $: (id: string) => els[id] ?? null,
+    markActive: () => {},
+    recall: (key: string) => (key === "usage-since" ? "3600000" : null),
+    store: () => {},
+    lastStatus: null,
+    getJson: async (url: string) => { urls.push(url); return { markdown: "# usage\n\nbody" }; },
+    errorPanel: (title: string) => title,
+    clickClosest: (_ev: unknown, sel: string) => (sel === "[data-step]" ? stepClick : sel === "[data-days]" ? daysClick : null),
+    renderMarkdown: (md: string) => md,
+    icon: iconStub,
+    plural: (n: number, one: string) => `${n} ${one}`,
+    workSplit: () => "",
+    fmtTokens: (n: number) => String(n),
+    fmtUsd: (n: number) => "$" + n.toFixed(2),
+  };
+  const keys = Object.keys(inject);
+  const run = new Function(...keys, `${[ESC_LINE, clientRegion("panel-build"), GUI_CLIENT_REPORT_CHART_JS, GUI_CLIENT_REPORT_JS].join("\n")}\nreturn { fetchReport };`) as (
+    ...args: unknown[]
+  ) => { fetchReport(throttled?: boolean): Promise<void> };
+  const { fetchReport } = run(...keys.map((k) => inject[k as keyof typeof inject]));
+  const click = async (step: typeof stepClick, days: typeof daysClick = null) => {
+    stepClick = step;
+    daysClick = days;
+    clickHandler!({});
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
+  await fetchReport();
+  assert.equal(urls[0], "/api/report?sinceMs=3600000");
+  assert.equal(els.usagewindowstep!.style.display, "");
+  assert.equal(later.disabled, true);
+  assert.equal(earlier.disabled, false);
+  assert.match(els.report!.innerHTML, /id='usagewindowstep'/);
+  assert.match(els.report!.innerHTML, /data-step='earlier'/);
+
+  await click({ dataset: { step: "earlier" } });
+  assert.equal(urls[1], "/api/report?sinceMs=7200000&untilMs=3600000");
+  assert.equal(later.disabled, false);
+
+  await click({ dataset: { step: "later" } });
+  assert.equal(urls[2], "/api/report?sinceMs=3600000");
+
+  await click({ dataset: { step: "earlier" } });
+  await click(null, { dataset: { days: "7" } });
+  assert.equal(urls[4], "/api/report?days=7");
+  assert.equal(els.usagewindowstep!.style.display, "none");
 });
 
 test("the report window pickers normalize a persisted value outside their menu", async () => {

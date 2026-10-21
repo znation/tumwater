@@ -10,11 +10,13 @@
  * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
  * the page's Markdown renderer, over the same kind of window and Role pickers. Both fetch when
  * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
- * is open. The chart builders are pure and live in gui-client-report-chart.ts (report-chart
- * region); the hover chip is one shared element (report-tip region) and the Role picker's
- * options are pure (report-role region); all are exercised in isolation by the tests. Spliced
- * into gui-client.ts's script after the chart module, reaching its helpers (esc, getJson,
- * icon, fmtTokens, fmtUsd, renderMarkdown) through that concatenation. */
+ * is open. On a trailing window, ◀ Earlier / Later ▶ step it back by its own length through
+ * `?sinceMs=&untilMs=`, the twin of `report --since --until`. The chart builders are pure and
+ * live in gui-client-report-chart.ts (report-chart region); the hover chip is one shared
+ * element (report-tip region) and the Role picker's options are pure (report-role region); all
+ * are exercised in isolation by the tests. Spliced into gui-client.ts's script after the chart
+ * module, reaching its helpers (esc, getJson, icon, fmtTokens, fmtUsd, renderMarkdown) through
+ * that concatenation. */
 import { SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
 
 export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
@@ -152,10 +154,18 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
       : "";
     const sinceButtons = (sinceChoices || []).map(([ms, label]) =>
       "<button type='button' data-since='" + ms + "'>" + esc(String(label)) + "</button>").join("");
+    // The step buttons (hidden until windowView shows them on a live since window) ride only a
+    // view that offers trailing windows.
+    const stepButtons = (sinceChoices || []).length
+      ? "<span id='" + pickerId + "step' style='display:none'>" +
+        "<button type='button' class='btn btn-sm' data-step='earlier'>◀ Earlier</button>" +
+        "<button type='button' class='btn btn-sm' data-step='later'>Later ▶</button></span>"
+      : "";
     return "<div class='view-head'><div><h1>" + esc(title) + "</h1>" +
       (blurb ? "<p>" + esc(blurb) + "</p>" : "") + "</div><div class='toolbar'>" + rolePicker +
       "<div class='seg' id='" + pickerId + "'>" + choices.map((n) => "<button type='button' data-days='" + n + "' class='" +
         (n === current ? "active" : "") + "'>" + n + " days</button>").join("") + sinceButtons + "</div>" +
+      stepButtons +
       "<button type='button' class='btn btn-sm' id='" + refreshId + "'>" + icon("refresh") + "Refresh</button></div></div>";
   }
   // The window-view scaffold Usage and Failures share: a lazily built panel (shared head
@@ -165,7 +175,9 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
   // naming the view on failure — optional 60-second throttling (Usage's event-driven refetch),
   // and click wiring for the picker's data-days and data-since buttons (persisted through
   // recall/store, each clearing the other so exactly one window shape is live) and the Refresh
-  // button. Usage and Failures are two configurations of this one scaffold.
+  // button. On a trailing window, ◀ Earlier / Later ▶ step it back by its own length through
+  // ?sinceMs=&untilMs=, the twin of report --since --until. Usage and Failures are two
+  // configurations of this one scaffold.
   function windowView(o) {
     // The persisted day window, normalized to one of the picker's choices at read. A stored value
     // outside the menu (a stale or hand-edited localStorage entry) would leave no button marked
@@ -182,6 +194,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     // The persisted Role scope for this view: "" is the team-wide report. Only a view that
     // configured a rolePickerId reads it, so a view without a picker never touches storage.
     let role = o.roleKey ? recall(o.roleKey) || "" : "";
+    // How many window lengths the trailing window is stepped back; view state, never persisted.
+    let step = 0;
     let fetchedAt = 0;
     // Keep this view's Role picker in step with the team's role list (custom roles included).
     function syncRoles(d) {
@@ -197,9 +211,15 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
       // (days → -1) and marks its own; otherwise the day window is the marked one.
       markActive($(o.pickerId), "days", sinceMs ? -1 : days);
       if (o.sinceChoices) markActive($(o.pickerId), "since", sinceMs || -1);
+      const stepEl = $(o.pickerId + "step");
+      if (stepEl) {
+        stepEl.style.display = sinceMs ? "" : "none";
+        stepEl.querySelector("[data-step='earlier']").disabled = !reportCanStepEarlier(sinceMs, step);
+        stepEl.querySelector("[data-step='later']").disabled = step === 0;
+      }
       syncRoles(lastStatus);
       try {
-        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role, sinceMs)));
+        $(o.bodyId).innerHTML = o.render(await getJson(o.endpoint(days, role, sinceMs, step)));
       } catch (err) {
         // Name the view, status, and server error rather than a bare "unavailable".
         $(o.bodyId).innerHTML = errorPanel(o.errorTitle, err, "card empty");
@@ -214,8 +234,17 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         fetchView();
       });
       container.addEventListener("click", (ev) => {
+        const st = clickClosest(ev, "[data-step]");
+        if (st) {
+          if (st.dataset.step === "earlier") {
+            if (reportCanStepEarlier(sinceMs, step)) step += 1;
+          } else step = Math.max(0, step - 1);
+          fetchView();
+          return;
+        }
         const s = clickClosest(ev, "[data-since]");
         if (s) {
+          step = 0;
           sinceMs = Number(s.dataset.since);
           store(o.sinceKey, String(sinceMs));
           fetchView();
@@ -225,6 +254,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         if (b) {
           // A day-window click clears a live trailing window, so the two cannot disagree
           // about which is in force; the empty string is the stored "no since" sentinel.
+          step = 0;
           sinceMs = null;
           store(o.sinceKey, "");
           days = Number(b.dataset.days);
@@ -242,11 +272,21 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
   // and Failures share one set, so their segmented controls always offer the same windows.
   const REPORT_SINCE_CHOICES = [[3_600_000, "1h"], [21_600_000, "6h"], [86_400_000, "1d"]];
 
+  // The server's cap on sinceMs for both endpoints (REPORT_SINCE_MAX_MS in
+  // src/events/event-window.ts); the two must agree, and a test pins it.
+  const REPORT_MAX_MS = 604_800_000;
+  // True while the next earlier window's sinceMs, (step + 2) * sinceMs, stays within the cap.
+  const reportCanStepEarlier = (sinceMs, step) => !!sinceMs && (step + 2) * sinceMs <= REPORT_MAX_MS;
+
   // The /api/report and /api/failures endpoints for one window and role scope, shared by the
   // two window views so their URL shape cannot drift: a trailing window asks ?sinceMs=, the
   // default asks ?days=, and a scope appends the same &role=.
-  const reportEndpoint = (resource, days, role, sinceMs) =>
-    (sinceMs ? "/api/" + resource + "?sinceMs=" + sinceMs : "/api/" + resource + "?days=" + days) +
+  // A stepped since window (step > 0) asks the bounded past window
+  // ?sinceMs=(step+1)*len&untilMs=step*len.
+  const reportEndpoint = (resource, days, role, sinceMs, step) =>
+    (sinceMs
+      ? "/api/" + resource + "?sinceMs=" + (step > 0 ? (step + 1) * sinceMs + "&untilMs=" + step * sinceMs : sinceMs)
+      : "/api/" + resource + "?days=" + days) +
     (role ? "&role=" + encodeURIComponent(role) : "");
 
   const usage = windowView({
@@ -256,7 +296,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
     sinceKey: "usage-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Usage report unavailable",
-    endpoint: (days, role, sinceMs) => reportEndpoint("report", days, role, sinceMs),
+    endpoint: (days, role, sinceMs, step) => reportEndpoint("report", days, role, sinceMs, step),
     render: (d) => {
       // The since shape is a Markdown totals report (the CLI's report --since render), not a
       // series: draw it through the page's Markdown renderer as the Failures tab does, dropping
@@ -308,7 +348,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
     sinceKey: "fail-since", sinceChoices: REPORT_SINCE_CHOICES,
     errorTitle: "Failure digest unavailable",
-    endpoint: (days, role, sinceMs) => reportEndpoint("failures", days, role, sinceMs),
+    endpoint: (days, role, sinceMs, step) => reportEndpoint("failures", days, role, sinceMs, step),
     render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");
