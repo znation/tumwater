@@ -61,8 +61,8 @@ export function runNotFoundLastMessage(
  * window holds none: the run `tumwater history <role> --last` opens, and bare `history --last`
  * with no role. With neither filter it is readRunRows' newest row; with `classes` it is the
  * newest row in those outcome classes, and with `models` the newest that started on one of those
- * selectors. */
-function newestRunRow(
+ * selectors. Also GET /api/run?last=1 with no role. */
+export function newestRunRow(
   root: string,
   role: string | null,
   classes: HistoryResultClass[] | null,
@@ -74,8 +74,8 @@ function newestRunRow(
 }
 
 /** The newest completed run's number for a role, or null when the scanned window holds none:
- * the run GET /api/run?last=1 serves; newestRunRow's number. */
-export function newestRunNumber(
+ * the run `history <role> <n>` resolves for `--last`; newestRunRow's number. */
+function newestRunNumber(
   root: string,
   role: string,
   classes: HistoryResultClass[] | null,

@@ -52,7 +52,7 @@ import { readBrief } from "../brief/brief.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import { gotSuffix, splitCommaList, splitCommaListUnique } from "../text/text.js";
-import { newestRunNumber, runNotFoundLastMessage } from "../run/run-detail.js";
+import { newestRunRow, runNotFoundLastMessage } from "../run/run-detail.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N[&grep=<text>]: rendered transcript lines for a role's
  * pi log (same rendering as `tumwater logs --transcript <id>`). A present `prompt` flag also
@@ -477,15 +477,19 @@ function transcriptText(root: string, role: string, run: number, detail: RunDeta
  * files directly, so it works whether or not the team is running.
  *
  * A present `last` flag replaces `run` with the role's newest completed run, the one
- * `tumwater history <role> --last` opens (newestRunNumber, shared): `result` (a comma list of
+ * `tumwater history <role> --last` opens (newestRunRow, shared): `result` (a comma list of
  * outcome classes) and `model` (a comma list of selectors) narrow it to the newest run in those
  * classes or on those models, an absent or empty value filtering nothing. `last` with `run`, and
  * `result`/`model` without `last`, are 400s; a class that is not one is a 400 worded like the
  * CLI's; no match answers 404 with runNotFoundLastMessage. The payload is the numbered form's,
- * the resolved number in `run`. */
+ * the resolved number in `run`. With no `role`, `last` opens the newest completed run of any role
+ * (newestRunRow with a null role, the run bare `tumwater history --last` opens), and the
+ * payload's `role` is that run's; `result`/`model` narrow it the same way, and a miss is a 404
+ * worded for any role. */
 export async function handleRun(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
-  const role = q.get("role");
-  if (rejectBadRole(root, res, role)) return;
+  let role = q.get("role");
+  const bareLast = role === null && q.get("last") !== null;
+  if (!bareLast && rejectBadRole(root, res, role)) return;
   let run: number | null;
   if (q.get("last") === null) {
     if (q.get("result") !== null) return badRequest(res, "result needs last");
@@ -499,7 +503,9 @@ export async function handleRun(q: URLSearchParams, res: http.ServerResponse, ro
     const models = splitCommaListUnique(q.get("model") ?? "");
     const classFilter = classes.length ? classes : null;
     const modelFilter = models.length ? models : null;
-    run = newestRunNumber(root, role as string, classFilter, modelFilter);
+    const row = newestRunRow(root, role, classFilter, modelFilter);
+    if (row !== null) role = row.role;
+    run = row?.run ?? null;
     if (run === null) {
       sendJson(res, 404, { error: runNotFoundLastMessage(role, classFilter, modelFilter) });
       return;

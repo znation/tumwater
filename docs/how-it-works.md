@@ -505,7 +505,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   `GET /api/run?role=<id>&last=1` serves the role's newest completed run instead of a numbered one,
   and `&result=<class>[,...]` / `&model=<selector>[,...]` narrow it to the newest run in those outcome
   classes or on those models, the run `tumwater history <role> --last [--result] [--model]` opens
-  (`newestRunNumber`, shared).
+  (`newestRunRow`, shared). Without `role`, `GET /api/run?last=1` serves the newest completed run of
+  any role, the run bare `tumwater history --last` opens, with the same `result`/`model` narrowing.
   `GET /api/history?result=<class>[,...]` keeps only the runs in those outcome classes, after `grep`
   and before `model`, the rows `tumwater history --result` lists.
   The Pending pane shows the durable merge queue above the pending-change roster, reading and

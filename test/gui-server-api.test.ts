@@ -345,6 +345,9 @@ test("gui /api/run serves one run's detail over the live route, 404 when the sca
     assert.equal(newest.run, 9);
     const idle = (await (await fetch(base + "/api/run?role=clean&last=1&result=none")).json()) as { run: number };
     assert.equal(idle.run, 7);
+    // No role: the newest run of any role, the payload naming its role.
+    const any = (await (await fetch(base + "/api/run?last=1")).json()) as { role: string; run: number };
+    assert.deepEqual([any.role, any.run], ["clean", 9]);
 
     // A run the scan does not hold → 404 (never a crash); a bad role and a non-count run →
     // the shared 400s.

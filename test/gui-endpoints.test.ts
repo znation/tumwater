@@ -805,6 +805,31 @@ test("handleRun ?last serves the newest run, narrowed by result and model", asyn
   assert.match((none.data as { error: string }).error, /no completed run for steward/);
 });
 
+test("handleRun ?last with no role serves the newest run of any role", async () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: 1_000, source: "clean", type: "run_start", run: 3, model: "m-a" },
+    { ts: 2_000, source: "clean", type: "run_end", run: 3, result: "changed" },
+    { ts: 3_000, source: "clean", type: "run_start", run: 4, model: "m-b" },
+    { ts: 4_000, source: "clean", type: "run_end", run: 4, result: "error" },
+    { ts: 5_000, source: "feature", type: "run_end", run: 5, result: "no_change" },
+  ].map((e) => JSON.stringify(e)));
+  const pick = async (query: string) => (await serveRun(root, query)).data as { role: string; run: number };
+  const newest = await serveRun(root, "?last=1");
+  assert.equal(newest.captured.status, 200);
+  assert.deepEqual(await pick("?last=1").then((d) => [d.role, d.run]), ["feature", 5]);
+  assert.deepEqual(newest.data, (await serveRun(root, "?role=feature&run=5")).data);
+  assert.deepEqual(await pick("?last=1&result=problems").then((d) => [d.role, d.run]), ["clean", 4]);
+  assert.deepEqual(await pick("?last=1&model=m-a").then((d) => [d.role, d.run]), ["clean", 3]);
+  const miss = await serveRun(root, "?last=1&model=m-b&result=merged");
+  assert.equal(miss.captured.status, 404);
+  assert.equal((miss.data as { error: string }).error, runNotFoundLastMessage(null, ["changes"], ["m-b"]));
+  const bogus = await serveRun(root, "?last=1&result=bogus");
+  assert.equal(bogus.captured.status, 400);
+  assert.match((bogus.data as { error: string }).error, /result must be one of/);
+  assert.equal((await serveRun(root, "?last=1&run=3")).captured.status, 400);
+});
+
 test("handleRun's stat names a pinned commit that is not in the repository", async () => {
   const root = tmpdir();
   writeEvents(root, [

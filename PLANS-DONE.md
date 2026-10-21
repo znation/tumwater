@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### `GET /api/run?last=1` with no `role` serves the newest completed run of any role, and `result`/`model` narrow it the same way: the dashboard API twin of bare `tumwater history --last` (planned 2026-10-20 by the plan role; done 2026-10-20; independent of every eligible plan: none of them edits `handleRun` or src/run/run-detail.ts. Touches src/run/run-detail.ts src/gui/gui-endpoints.ts docs/how-it-works.md test/gui-endpoints.test.ts test/gui-server-api.test.ts)
+
+**Goal.** `tumwater history --last` with no role opens the newest completed run of any role, and `--result`/`--model` narrow it (PLANS-DONE.md "`tumwater history --last` with no role"). `cmdRunDetail` (src/run/run-detail.ts) resolves it with `newestRunRow(root, null, classes, models)` and takes the role from the row. `GET /api/run` (`handleRun`, src/gui/gui-endpoints.ts) cannot do this. Its first step is `rejectBadRole(root, res, role)`, so `?last=1` with no role is a 400 "role required". A script asking "what was the newest failed run, whoever ran it" has to fetch `/api/history` and pick a row itself. This plan lets `last` stand without a role. It resolves the run through the same `newestRunRow`, so the CLI and the endpoint cannot pick different runs. It is API-only. A dashboard button that uses it is a separate, later plan.
+
+**Approach.**
+1. src/run/run-detail.ts: export `newestRunRow` (today it is module-private). Do not change its body. Extend its doc comment's last sentence with: "Also GET /api/run?last=1 with no role."
+2. src/gui/gui-endpoints.ts, `handleRun`:
+   - Add `newestRunRow` to the existing `../run/run-detail.js` import.
+   - Change the role check to `const bareLast = role === null && q.get("last") !== null; if (!bareLast && rejectBadRole(root, res, role)) return;`. A missing role without `last` is still the shared 400. A present role, including an empty one, is still validated as today.
+   - Make `role` a `let` binding typed `string | null`. In the `last` branch, replace the `newestRunNumber` call with `const row = newestRunRow(root, role, classFilter, modelFilter);`, then `if (row !== null) role = row.role; run = row?.run ?? null;`. The 404 stays `runNotFoundLastMessage(role, classFilter, modelFilter)`. With no role, `role` is still `null` there, which gives the "any role" wording `cmdRunDetail` prints.
+   - After the `last`/numbered branches, `role` is a string, so the existing `role as string` casts stay valid. Remove `newestRunNumber` from the import if nothing else in the file uses it. Check with `grep -n newestRunNumber src/gui/gui-endpoints.ts`. Keep the export in run-detail.ts if any other file still imports it. Check with `grep -rn newestRunNumber src test`, and if nothing uses it, delete it.
+   - Doc comment: append to the `last` paragraph: "With no `role`, `last` opens the newest completed run of any role (newestRunRow with a null role, the run bare `tumwater history --last` opens), and the payload's `role` is that run's; `result`/`model` narrow it the same way, and a miss is a 404 worded for any role."
+3. docs/how-it-works.md: after the sentence ending "the run `tumwater history <role> --last [--result] [--model]` opens (`newestRunNumber`, shared)." add: "Without `role`, `GET /api/run?last=1` serves the newest completed run of any role, the run bare `tumwater history --last` opens, with the same `result`/`model` narrowing." If step 2 deleted `newestRunNumber`, change that parenthetical to `(newestRunRow, shared)`. `grep -n 'api/run' docs/invariants.md` printed nothing when this was planned, so the plan claims no invariant ID.
+
+**Acceptance criteria.**
+- test/gui-endpoints.test.ts: add a new test, "handleRun ?last with no role serves the newest run of any role". Use the same five-event fixture as "handleRun ?last serves the newest run, narrowed by result and model":
+  - `?last=1` answers 200 with `role` "feature" and `run` 5. Its body deep-equals `?role=feature&run=5`'s body.
+  - `?last=1&result=problems` answers `role` "clean", `run` 4.
+  - `?last=1&model=m-a` answers `role` "clean", `run` 3.
+  - `?last=1&model=m-b&result=merged` answers 404 with error equal to `runNotFoundLastMessage(null, ["changes"], ["m-b"])`.
+  - `?last=1&result=bogus` is a 400 matching `/result must be one of/`.
+  - `?last=1&run=3` is a 400.
+- The existing "handleRun's error cases" test passes unchanged. That shows `?run=3` with no role is still a 400. The existing "handleRun ?last serves the newest run…" test also passes unchanged.
+- test/gui-server-api.test.ts, "gui /api/run serves one run's detail over the live route, 404 when the scan misses": add that `/api/run?last=1` answers `role` "clean" and `run` 9. That is the newest `run_end` in `historySeedEvents`, so this proves the live route forwards a role-less request.
+- `npm run test:gate` passes.
+
 ### TUI Pending pane Ctrl+G cycles the overlapping-files block through each holding role, keeping only the shared files that role holds, each still naming every holder: the terminal twin of `tumwater diff --overlaps --role <id>` and the dashboard Overlapping files card's Role picker (planned 2026-10-20 by the plan role; independent of every eligible plan: Backend/model split part 5/5 changes src/config and test configs, bare `history --last` changes src/run/run-detail.ts and the history CLI, the dashboard Inbox search and `diff?stat=1` plans change src/gui and src/ui/gui. The TUI Inbox `/` search plan also edits src/ui/tui/tui-panes.ts and src/ui/tui/tui-frame.ts, but in different arms: its `/` search plumbing and the Inbox hint line, while this plan adds one Ctrl+G routing line and edits the Pending hint line) — done 2026-10-20
 
 **Goal.** The TUI Pending pane (`createPendingPane`, src/ui/tui/tui-pane-pending.ts) lists every file two or more roles' pending changes touch, and Ctrl+N steps through them. It cannot narrow that list to one role. The CLI can (`diff --overlaps --role <id>`, through `scopeChangeOverlaps` in src/change/change-data.ts), and so can the dashboard's Role picker. With several feature instances running, an operator asks "what does feature-3 collide with?", and the terminal should answer it without leaving the TUI. Ctrl+G is free on the Pending view: today the `tui-panes.ts` Ctrl+G router sends it to the report pane's scope arm, which only changes the Usage/Failures scope behind the scenes, and docs/cli.md's Ctrl+G row does not list Pending.
