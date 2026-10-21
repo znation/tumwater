@@ -206,7 +206,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `tick`, and `report` CLI command bodies, beside the collector modules (`history-data.ts`,
   `src/run/run-detail-data.ts`, `src/report/report-data.ts`) whose payloads they print,
   `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
-  other read-only command bodies).
+  other read-only command bodies; `src/cli/follow-view.ts` holds the repaint loop those
+  `-f/--follow` views share).
 - `src/status/`: the `status` collector behind the status table, TUI, and dashboard
   (`status-data.ts` — a thin composer over the per-domain collectors `status-roles.ts`,
   `status-inbox.ts` and `status-budget.ts`) and its per-poll cached readers; rendering lives

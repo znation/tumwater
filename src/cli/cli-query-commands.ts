@@ -5,7 +5,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
-import { startParentDeathWatch } from "../process/supervisor.js";
+import { followView, type FollowViewSeams } from "./follow-view.js";
 import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
@@ -28,7 +28,7 @@ import { renderRoleMarkdown } from "../roles/role-render.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
-import { errorMessage, stripTerminalControls } from "../text/text.js";
+import { errorMessage } from "../text/text.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { INSTANCE_ROLES, baseRoleOf, roleInScope } from "../roles/runner-ids.js";
@@ -130,46 +130,6 @@ export async function cmdStatus(root: string, args: string[], seams: FollowViewS
     const snap = snapshot(root);
     say(renderStatus(root, scope ? scopeSnapshotToRoles(snap, scope) : snap, process.stdout.isTTY ? process.stdout.columns : undefined, scope !== null));
   }
-}
-
-/** The default repaint interval for a follow view — a fixed cadence, no knob. */
-const FOLLOW_VIEW_INTERVAL_MS = 2000;
-
-/** Test seams for a follow view's repaint interval and parent-death watch, so a test can
- * drive the repaint and its end without waiting on real seconds or a real TTY. */
-interface FollowViewSeams {
-  ppid?: () => number;
-  intervalMs?: number;
-  tty?: boolean;
-}
-
-/** A follow view's live loop: render once, then repaint on an interval until Ctrl+C or the
- * process that started this one is gone (the same parent-death rule `logs -f` uses).
- * Repaints in place with the `watch` clear-screen shape on a TTY, and prints frames
- * separated by a blank line when stdout is not a TTY so a piped follow stays readable. */
-async function followView(frameText: () => string, seams: FollowViewSeams): Promise<void> {
-  const tty = seams.tty ?? process.stdout.isTTY;
-  const interval = seams.intervalMs ?? FOLLOW_VIEW_INTERVAL_MS;
-  const frame = (): void => {
-    // The frame's text is rendered from model-written data (role live progress, run
-    // summaries, backlog titles) that can carry terminal escape sequences. The one-shot
-    // forms of these commands sanitize at say(); this live reprint writes raw to the
-    // terminal while rerendering its own clear-screen prefix, so it must strip controls
-    // itself — the display-boundary rule stripTerminalControls documents, applied here.
-    const text = stripTerminalControls(frameText());
-    process.stdout.write(tty ? "\x1b[H\x1b[2J" + text + "\n" : text + "\n\n");
-  };
-  frame();
-  await new Promise<void>((resolve) => {
-    const timer = setInterval(frame, interval);
-    startParentDeathWatch(() => {
-      clearInterval(timer);
-      resolve();
-    }, {
-      ...(seams.ppid ? { ppid: seams.ppid } : {}),
-      ...(seams.intervalMs !== undefined ? { intervalMs: seams.intervalMs } : {}),
-    });
-  });
 }
 
 /** `tumwater status -f`'s live loop: the team snapshot repainted until the parent exits. */

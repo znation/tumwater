@@ -49,14 +49,18 @@ Usage:
                                    process that started it exits, so a backgrounded follow
                                    does not outlive its parent; the header and budget stay
                                    team-wide
-  tumwater report [--days N] [--role <id>[,<id>...]] [--json]
+  tumwater report [--days N] [--role <id>[,<id>...]] [-f/--follow] [--json]
                                    Markdown usage report — tokens/runs/commits per day (default
                                    14 days); totals also include merge runs (reviewer + conflict
                                    resolution); --role <id>[,<id>...] scopes the report to the
                                    listed roles' runs, tokens, cost, and commits (merge runs
                                    and backlog tallies omitted); --json prints
                                    machine-readable usage data — the collector's own
-                                   payload, not the Markdown render
+                                   payload, not the Markdown render;
+                                   -f/--follow repaints the report, or with --failures the
+                                   failure digest, every couple of seconds until Ctrl+C or the
+                                   process that started it exits, so a backgrounded follow does
+                                   not outlive its parent; it refuses --json and --since;
   tumwater report --failures [--days N] [--since <duration>] [--role <id>[,<id>...]] [--json]
                                    Markdown failure digest — run outcomes, deltas,
                                    clustered errors, and team state changes (default

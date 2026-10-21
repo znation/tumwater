@@ -189,6 +189,7 @@ async function main(): Promise<void> {
         untilFlagSpec("report --until"),
         JSON_FLAG,
         ROLE_FLAG,
+        { names: ["-f", "--follow"] },
       ]);
       refuseTeamWorkspace(root);
       // --since is handled before the day-shape reads: it is a rival shape (totals over a
