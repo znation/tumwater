@@ -128,6 +128,58 @@ export function releaseChildHandles(child: ChildProcess): void {
   child.unref();
 }
 
+/** The text a detached child's stdout/stderr streams yielded, and whether each passed the byte
+ * ceiling. Text captured before a stream's overflow is retained; nothing after it is. */
+interface CappedCapture {
+  stdout: string;
+  stderr: string;
+  /** True once stdout exceeded `maxBuffer` bytes; no further stdout text is captured. */
+  stdoutOverflow: boolean;
+  /** True once stderr exceeded `maxBuffer` bytes; no further stderr text is captured. */
+  stderrOverflow: boolean;
+}
+
+/** Collect a detached child's stdout/stderr, keeping each stream while it stays within
+ * `maxBuffer` BYTES and reporting the stream that passes the ceiling via `onOverflow` (called at
+ * most once per stream, on the first overflowing chunk). The shared acquisition the three
+ * bounded detached-child probes (execGitBounded, runScriptGroup, boundedProbe) all hand-declared
+ * before: git fails loudly and kills the child on overflow, the script runner keeps a truncated
+ * tail for classification, the doctor probe aborts and reads "could not check" — the policy stays
+ * in the caller, the byte counting here. The chunk arrives as
+ * a Buffer from a raw stdio pipe, or as a String once the caller setEncoding'd the stream; both
+ * are counted by BYTE length (Buffer.byteLength / Buffer.length), exactly what execFile's
+ * maxBuffer ceiling limits. Call BEFORE the child can emit: receivers are attached here. */
+export function captureCappedOutput(
+  child: ChildProcess,
+  maxBuffer: number,
+  onOverflow?: (stream: "stdout" | "stderr") => void,
+): CappedCapture {
+  const captured: CappedCapture = { stdout: "", stderr: "", stdoutOverflow: false, stderrOverflow: false };
+  const capture = (stream: "stdout" | "stderr") => {
+    let bytes = 0;
+    child[stream]?.on("data", (chunk: Buffer | string) => {
+      bytes += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (bytes <= maxBuffer) {
+        captured[stream] += chunk;
+        return;
+      }
+      // Past the ceiling: drop this and every later chunk, and call onOverflow once per stream
+      // (further overflowing chunks are ignored).
+      if (stream === "stdout") {
+        if (captured.stdoutOverflow) return;
+        captured.stdoutOverflow = true;
+      } else {
+        if (captured.stderrOverflow) return;
+        captured.stderrOverflow = true;
+      }
+      onOverflow?.(stream);
+    });
+  };
+  capture("stdout");
+  capture("stderr");
+  return captured;
+}
+
 // ── Child environments ───────────────────────────────────────────────────────────────────
 
 /** The child-environment policy every spawn that hands a child the harness's environment shares:

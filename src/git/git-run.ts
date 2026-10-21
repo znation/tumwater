@@ -45,7 +45,7 @@ export async function committerIdentArgs(cwd: string): Promise<string[]> {
 import { spawn, type PromiseWithChild } from "node:child_process";
 import { findOnPath } from "../files/files.js";
 import { realGitFromXcrun } from "./xcrun-git.js";
-import { EXEC_MAX_BUFFER, childEnv, releaseChildHandles, signalTree } from "../process/process.js";
+import { EXEC_MAX_BUFFER, captureCappedOutput, childEnv, releaseChildHandles, signalTree } from "../process/process.js";
 import { KILL_GRACE_MS, armGroupDeadline } from "../process/process-group.js";
 import { errorMessage } from "../text/text.js";
 
@@ -180,16 +180,30 @@ export function execGitBounded(
     stdio: ["pipe", "pipe", "pipe"],
     ...(opts.extraEnv ? { env: childEnv(opts.extraEnv) } : {}),
   });
-  let stdout = "";
-  let stderr = "";
   const promise = new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
     let settled = false;
-    let stdoutSize = 0;
-    let stderrSize = 0;
     const deadline = armGroupDeadline(child, {
       timeoutMs,
       killGraceMs,
       onTimedOut: () => finish(new GitTimeoutError(timeoutMs)),
+    });
+    // setEncoding gives the stream a StringDecoder, so a multibyte UTF-8 character split
+    // across chunk boundaries is reassembled rather than corrupted — what execFile's utf8
+    // decoding did before this rewrite. It must precede captureCappedOutput so the receiver
+    // sees strings, not raw buffers.
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    const cap = captureCappedOutput(child, EXEC_MAX_BUFFER, (stream) => {
+      // Output past the ceiling is a hard failure, not silent truncation: killing the group
+      // stops a git that would otherwise emit unbounded output, and the error names the stream.
+      signalTree(child, "SIGKILL");
+      finish(
+        new GitExecError(
+          cap.stderr,
+          "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+          `${stream} maxBuffer length exceeded`,
+        ),
+      );
     });
     const finish = (err?: Error) => {
       if (settled) return;
@@ -201,34 +215,11 @@ export function execGitBounded(
         releaseChildHandles(child);
         reject(err);
       } else {
-        resolve({ stdout, stderr });
+        // Read cap's fields at settle time (they accumulate as data arrives) rather than
+        // destructuring a snapshot that stays empty.
+        resolve({ stdout: cap.stdout, stderr: cap.stderr });
       }
     };
-    const onOverflow = (stream: string) => {
-      signalTree(child, "SIGKILL");
-      finish(
-        new GitExecError(
-          stderr,
-          "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
-          `${stream} maxBuffer length exceeded`,
-        ),
-      );
-    };
-    // setEncoding gives the stream a StringDecoder, so a multibyte UTF-8 character split
-    // across chunk boundaries is reassembled rather than corrupted — what execFile's utf8
-    // decoding did before this rewrite.
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-    child.stdout?.on("data", (chunk: string) => {
-      stdoutSize += Buffer.byteLength(chunk);
-      if (stdoutSize > EXEC_MAX_BUFFER) onOverflow("stdout");
-      else stdout += chunk;
-    });
-    child.stderr?.on("data", (chunk: string) => {
-      stderrSize += Buffer.byteLength(chunk);
-      if (stderrSize > EXEC_MAX_BUFFER) onOverflow("stderr");
-      else stderr += chunk;
-    });
     child.on("error", (err: NodeJS.ErrnoException) => {
       // Before the deadline this is the spawn failing (git missing from PATH); after it, it can
       // only be a teardown signal that could not be delivered — the run is a timeout either
@@ -241,7 +232,7 @@ export function execGitBounded(
       // grace's SIGKILL does.
       if (deadline.fired()) deadline.settleIfGone();
       else if (code === 0) finish();
-      else finish(new GitExecError(stderr, code ?? undefined));
+      else finish(new GitExecError(cap.stderr, code ?? undefined));
     });
   });
   return Object.assign(promise, { child });

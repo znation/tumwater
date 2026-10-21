@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { releaseChildHandles, signalTree } from "../process/process.js";
+import { captureCappedOutput, releaseChildHandles, signalTree } from "../process/process.js";
 
 /** One bounded probe of a resolved binary: `null` when the spawn threw, the child errored,
  * the deadline passed, or stdout overran `maxOutputBytes` — every case the caller must read as
@@ -35,8 +35,6 @@ export function boundedProbe(
       resolve(null);
       return;
     }
-    let out = "";
-    let bytes = 0;
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settle = (result: { code: number | null; stdout: string } | null): void => {
@@ -50,18 +48,17 @@ export function boundedProbe(
       resolve(result);
     };
     // Deadline or runaway output: kill the whole group, tear down the handles, and settle —
-    // do not wait for a `'close'` the group may never deliver.
+    // do not wait for a `'close'` the group may never deliver. Overrun shares the path: it
+    // passes `abort` as captureCappedOutput's onOverflow.
     const abort = (): void => {
       signalTree(child, "SIGKILL");
       settle(null);
     };
     timer = setTimeout(abort, timeoutMs);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      out += chunk.toString("utf8");
-      bytes += chunk.length;
-      if (bytes > maxOutputBytes) abort();
-    });
+    // Captured stdout is capped at maxOutputBytes (reads past it abort); stderr was piped to
+    // ignore at spawn, so captureCappedOutput attaches nothing to it.
+    const captured = captureCappedOutput(child, maxOutputBytes, abort);
     child.on("error", () => settle(null));
-    child.on("close", (code) => settle({ code, stdout: out }));
+    child.on("close", (code) => settle({ code, stdout: captured.stdout }));
   });
 }

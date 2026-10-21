@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 // result carries the caller's run record (BuildCheckRun), and no runtime cycle is created —
 // build/build-check.ts imports this module's runtime values, this file imports only the type.
 import type { BuildCheckRun } from "../build/build-check.js";
-import { releaseChildHandles, signalTree, withoutLaunchServicesCheckIn } from "./process.js";
+import { captureCappedOutput, releaseChildHandles, signalTree, withoutLaunchServicesCheckIn } from "./process.js";
 import { errCode } from "../errno.js";
 
 /** The detached process-group runner: runScriptGroup starts a command in its own process
@@ -166,22 +166,12 @@ export function runScriptGroup(
       env: withoutLaunchServicesCheckIn(process.env),
     });
     let settled = false;
-    let stdout = "";
-    let stderr = "";
-    let stdoutSize = 0;
-    let stderrSize = 0;
-    child.stdout?.on("data", (chunk: Buffer) => {
-      if (stdoutSize < opts.maxBuffer) {
-        stdoutSize += chunk.length;
-        stdout += chunk;
-      }
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      if (stderrSize < opts.maxBuffer) {
-        stderrSize += chunk.length;
-        stderr += chunk;
-      }
-    });
+    // Captured output is capped at maxBuffer per stream (further chunks are dropped —
+    // classification reads the tail, so a chatty script can neither wedge the check nor balloon
+    // memory). The overflow is deliberately ignored here: truncated output still classifies.
+    // `captured` is read at settle time (its fields accumulate as data arrives), never
+    // destructured up front.
+    const captured = captureCappedOutput(child, opts.maxBuffer);
     const deadline = armGroupDeadline(child, {
       startedAt: spawnedAt,
       timeoutMs: opts.timeoutMs,
@@ -200,7 +190,7 @@ export function runScriptGroup(
       }
       const run: BuildCheckRun = { spawnedAt, settledAt: Date.now(), timeoutMs: opts.timeoutMs };
       if (timedOut) run.deadlineLateMs = deadline.lateMs();
-      resolve({ ...result, timedOut, stdout, stderr, run });
+      resolve({ ...result, timedOut, stdout: captured.stdout, stderr: captured.stderr, run });
     }
     child.on("error", (err: NodeJS.ErrnoException) => {
       // Before the deadline this is the spawn failing (npm missing from PATH). After it, it can
