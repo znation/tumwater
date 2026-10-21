@@ -4,13 +4,14 @@
  * uncommitted-file count; a row opens that role's drawer, whose Pending change section fetches
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
  * Refresh button is pressed — never on a timer of its own. It also paints the overlapping-files
- * card from `/api/diff?overlaps=1`, with a Role picker that narrows it client-side.
+ * card from `/api/diff?overlaps=1`, with Role and Folder pickers that narrow it client-side.
  * Spliced into gui-client.ts's script, reaching its helpers (esc, getJson, icon, errorPanel)
  * through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlaps = null;
   let pendingOverlapOpen = null;
   let pendingOverlapRole = "";
+  let pendingOverlapDir = "";
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -102,7 +103,8 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // The Overlapping files card: one "path: role, role" line per file two or more pending changes
   // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps. Its Role
   // picker keeps only the lines the chosen role holds (diff --overlaps --role), each line still
-  // naming every holder and keeping its index in the unfiltered list.
+  // naming every holder and keeping its index in the unfiltered list. Its Folder picker keeps only
+  // the lines at or under the chosen directory (diff --overlaps --path).
   // The expanded detail under one overlap line: each holding role's path-scoped change, or its
   // loading / error row. Pure.
   function overlapDetailHtml(rows) {
@@ -123,7 +125,21 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return [...ids].sort();
   }
-  function pendingOverlapsHtml(view, open, role) {
+  // The sorted, de-duplicated directories holding any overlap path; empty for a malformed
+  // document. A trailing-slash path (an untracked directory) also adds itself.
+  function pendingOverlapDirs(view) {
+    if (!view || typeof view !== "object" || !Array.isArray(view.overlaps)) return [];
+    const dirs = new Set();
+    for (const o of view.overlaps) {
+      if (!o || typeof o.path !== "string") continue;
+      const dir = o.path.endsWith("/");
+      const parts = (dir ? o.path.slice(0, -1) : o.path).split("/");
+      const n = dir ? parts.length : parts.length - 1;
+      for (let k = 1; k <= n; k++) dirs.add(parts.slice(0, k).join("/"));
+    }
+    return [...dirs].sort();
+  }
+  function pendingOverlapsHtml(view, open, role, dir) {
     const ok = view && typeof view === "object";
     let body;
     let head = "<div class='card-head'><h2>Overlapping files</h2></div>";
@@ -134,15 +150,21 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     } else {
       const holders = pendingOverlapHolders(view);
       const active = role && holders.includes(role) ? role : "";
+      const dirs = pendingOverlapDirs(view);
+      const activeDir = dir && dirs.includes(dir) ? dir : "";
       head = "<div class='card-head'><h2>Overlapping files</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingoverlaprole'><option value=''>All roles</option>" +
-        holders.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
-      body = "<div style='padding:10px 16px 12px'>" + view.overlaps.map((o, i) => {
+        holders.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label>" +
+        (dirs.length ? "<label><span class='sr-only'>Folder</span><select class='field' id='pendingoverlapdir'><option value=''>All folders</option>" +
+          dirs.map((d) => "<option value='" + esc(d) + "'" + (d === activeDir ? " selected" : "") + ">" + esc(d + "/") + "</option>").join("") + "</select></label>" : "") + "</div>";
+      const lines = view.overlaps.map((o, i) => {
         const roles = o && Array.isArray(o.roles) ? o.roles : [];
         if (active && !roles.includes(active)) return "";
         const path = o && typeof o.path === "string" ? o.path : "?";
+        if (activeDir && !path.startsWith(activeDir + "/")) return "";
         const line = "<button type='button' class='li-open mono clamp1' data-overlap='" + i + "'>" + esc(path) + ": " + esc(roles.map(roleLabel).join(", ")) + "</button>";
         return open && open.path === path ? line + "<div class='overlap-detail'>" + overlapDetailHtml(open.rows) + "</div>" : line;
-      }).join("") + "</div>";
+      }).join("");
+      body = lines ? "<div style='padding:10px 16px 12px'>" + lines + "</div>" : "<div class='empty'>No overlapping file matches the filters</div>";
     }
     return head + body;
   }
@@ -156,7 +178,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   }
   function paintPendingOverlaps() {
     const card = $("pendingoverlaps");
-    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps, pendingOverlapOpen, pendingOverlapRole);
+    if (card) card.innerHTML = pendingOverlapsHtml(pendingOverlaps, pendingOverlapOpen, pendingOverlapRole, pendingOverlapDir);
   }
   // Toggle one overlap line's detail: fetch each holding role's change scoped to the path. A
   // reply is dropped once another line (or a Refresh) replaced the open detail.
@@ -198,8 +220,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       if (b) togglePendingOverlap(Number(b.dataset.overlap));
     });
     $("pendingoverlaps").addEventListener("change", (e) => {
-      if (e.target.id !== "pendingoverlaprole") return;
-      pendingOverlapRole = e.target.value;
+      if (e.target.id === "pendingoverlapdir") pendingOverlapDir = e.target.value;
+      else if (e.target.id === "pendingoverlaprole") pendingOverlapRole = e.target.value;
+      else return;
       pendingOverlapOpen = null;
       paintPendingOverlaps();
     });
@@ -217,6 +240,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       return;
     }
     if (!pendingOverlapHolders(pendingOverlaps).includes(pendingOverlapRole)) pendingOverlapRole = "";
+    if (!pendingOverlapDirs(pendingOverlaps).includes(pendingOverlapDir)) pendingOverlapDir = "";
     paintPendingOverlaps();
   }
   async function fetchPending() {

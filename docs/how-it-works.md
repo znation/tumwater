@@ -445,7 +445,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Pending view also paints the merge queue as a card mirroring `tumwater
   queue`, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
-  `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin), and shows a role's full unmerged patch in its drawer, which also lists that role's waiting merges
+  `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer, which also lists that role's waiting merges
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater

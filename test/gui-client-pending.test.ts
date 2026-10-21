@@ -262,3 +262,43 @@ test("pendingOverlapsHtml lists each shared path with its roles, and states no-b
   assert.match(bad, /\?:/);
   assert.doesNotMatch(bad, /undefined|null/);
 });
+
+test("pendingOverlapsHtml's Folder picker keeps only the files at or under the chosen directory", () => {
+  const { pendingOverlapsHtml, pendingOverlapDirs } = clientScope<{
+    pendingOverlapsHtml(view: unknown, open?: unknown, role?: string, dir?: string): string;
+    pendingOverlapDirs(view: unknown): string[];
+  }>(["format", "labels", "pending-table"], ["pendingOverlapsHtml", "pendingOverlapDirs"]);
+  const view = { mainBranch: "main", state: "ready", overlaps: [
+    { path: "src/cli/a.ts", roles: ["feature", "qa"] },
+    { path: "src/gui/b.ts", roles: ["feature-2", "qa"] },
+    { path: "README.md", roles: ["feature", "qa"] },
+    { path: "test/new/", roles: ["feature", "qa"] },
+  ] };
+  assert.deepEqual(pendingOverlapDirs(view), ["src", "src/cli", "src/gui", "test", "test/new"]);
+  assert.deepEqual(pendingOverlapDirs(null), []);
+  assert.deepEqual(pendingOverlapDirs({ overlaps: "x" }), []);
+  const all = pendingOverlapsHtml(view);
+  assert.match(all, /id='pendingoverlapdir'/);
+  assert.match(all, /<option value=''>All folders<\/option>/);
+  assert.match(all, /<option value='src\/cli'>src\/cli\/<\/option>/);
+  assert.doesNotMatch(all, / selected/);
+  const src = pendingOverlapsHtml(view, null, "", "src");
+  assert.ok(src.includes("data-overlap='0'") && src.includes("data-overlap='1'"));
+  assert.ok(!src.includes("README.md") && !src.includes("test/new/</button>") && !src.includes("data-overlap='3'"));
+  assert.match(src, /<option value='src' selected>/);
+  const fresh = pendingOverlapsHtml(view, null, "", "test/new");
+  assert.ok(fresh.includes("data-overlap='3'") && !fresh.includes("data-overlap='0'"));
+  const none = pendingOverlapsHtml(view, null, "feature-2", "src/cli");
+  assert.ok(!none.includes("data-overlap"));
+  assert.match(none, /No overlapping file matches the filters/);
+  assert.match(none, /pendingoverlaprole/);
+  assert.match(none, /pendingoverlapdir/);
+  const ghost = pendingOverlapsHtml(view, null, "", "lib");
+  for (const i of [0, 1, 2, 3]) assert.ok(ghost.includes("data-overlap='" + i + "'"));
+  const root = pendingOverlapsHtml({ state: "ready", overlaps: [{ path: "README.md", roles: ["qa"] }] });
+  assert.match(root, /pendingoverlaprole/);
+  assert.doesNotMatch(root, /pendingoverlapdir/);
+  for (const v of [{ overlaps: [] }, { state: "no-base", mainBranch: "main" }, null, { overlaps: "x" }]) {
+    assert.doesNotMatch(pendingOverlapsHtml(v), /pendingoverlapdir/);
+  }
+});
