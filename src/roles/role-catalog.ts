@@ -373,6 +373,9 @@ the last day (per-role outcome counts, each role's time and spend by outcome, no
 warning clusters, review rejections, and what merged). It is your entire evidence base — do not go
 looking for the event log or per-role transcripts yourself; tumwater injects the digest because
 the live log lives outside your worktree.
+The digest ends with a ## Fast merge guardrails section when the post-merge machinery is failing
+quietly (main red over 30 minutes, quarantine aged or oversized). Each line there is tumwater's
+own response failing, so it is fileable as it stands under rule 1.
    1. A cluster is a bug ONLY when tumwater's RESPONSE to it is wrong — a failure that raised no
       alarm, drove the wrong state or sleep ladder, latched a stale verdict, or hid itself from
       the user. A mere infrastructure failure (the model server was slow, pi exited non-zero)

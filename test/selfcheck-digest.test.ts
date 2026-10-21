@@ -66,3 +66,19 @@ test("a missing log reads as idle while a present-but-corrupt feed is named unre
   assert.match(digest, /^log unreadable — evidence missing$/m);
   assert.doesNotMatch(digest, /no events retained/);
 });
+
+test("selfcheckDigest ends with ## Fast merge guardrails when main has been red over 30 min", () => {
+  const root = makeRepo();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef123456" }]);
+  const digest = selfcheckDigest(root) ?? "";
+  assert.match(digest, /## Fast merge guardrails/);
+  assert.match(digest, /main has had no passing full check for 31 min/);
+});
+
+test("selfcheckDigest adds no guardrail heading on a green main", () => {
+  const root = makeRepo();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 60_000, source: "tumwater", type: "main_check", sha: "abcdef123456", status: "passed", durationMs: 120_000 }]);
+  assert.doesNotMatch(selfcheckDigest(root) ?? "", /## Fast merge guardrails/);
+});

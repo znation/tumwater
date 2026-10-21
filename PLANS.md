@@ -6,34 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Fast merge guardrails, part 1/3: `tumwater doctor` and the selfcheck digest warn when main stays red over 30 minutes and when quarantine holds a test over 3 days or more than 10 tests (planned 2026-10-21 by user; design in plans/fast-merge.md "Guardrails" G1, G3 and "Where the warnings show"; touches src/baseline/main-guardrails.ts (new) src/doctor/doctor-holds.ts src/doctor/doctor-checks.ts src/run/selfcheck-digest.ts src/roles/role-catalog.ts docs/how-it-works.md and their tests)
-
-**Goal.** Make two quiet failures of the post-merge machinery visible: main staying red while merges go on, and quarantine growing or keeping a test long enough to hide it. Today the "main's check" row only names roles the red-main gate holds, and since roles keep working on a red main with known failures, it reads "no role waiting on main's check" while main is red. Nothing reads quarantine.json's age or size.
-
-**Approach.**
-- src/baseline/main-guardrails.ts (new), pure and synchronous:
-  - `redMainWarning(events, now)`: G1's rule over the last 24 h of events. Only `main_check` events with `durationMs` > 0 and `main_red_hold` events count; a pass with `quarantined` tests is a pass. Returns the phrase, or null when main is green or red for 30 minutes or less.
-  - `quarantineWarning(entries, now)`: G3's rule over `loadQuarantine` (src/review/known-flakes.ts). Returns the phrase naming the count when over 10 and the oldest tests over 3 days (age, BUGS.md heading or "not filed"), or null.
-  - `guardrailWarnings(root, now)`: both phrases that fire, reading `readEventsSince(root, DAY_MS)` and quarantine.json. Each phrase is bounded (`squash`, as the doctor rows do).
-- src/doctor/doctor-holds.ts `checkMainRed`: warns when roles are held, when `redMainWarning` fires, or both, joining the phrases in one row. Its ok detail is unchanged.
-- src/doctor/doctor-checks.ts `checkFlakyChecks`: warns when today's flake count does or `quarantineWarning` fires; ok/warn only, as today.
-- src/run/selfcheck-digest.ts: `selfcheckDigest` appends `## Fast merge guardrails` with one line per warning from `guardrailWarnings`, and nothing when none fires. A throw there drops only the section, never the digest.
-- src/roles/role-catalog.ts, selfcheck's charter: a line under `## Fast merge guardrails` is tumwater's own response failing (rule 1), so it is fileable as it stands.
-- docs/how-it-works.md: the main watch and quarantine bullets say what doctor warns about.
-
-**Acceptance criteria.**
-- test/main-guardrails.test.ts (new), on synthetic events with an injected `now`:
-  - a `main_red_hold` 31 min ago warns, naming its sha and 31 min; 29 min ago does not;
-  - that hold followed by a passed `main_check` with `durationMs` 0 still warns; followed by one with `durationMs` 120000, it does not;
-  - a pass 60 min ago, then reds 40 and 20 min ago, warns "for 40 min";
-  - a passed `main_check` carrying `quarantined` ends the red;
-  - reds and no pass in the 24 h reads "more than 24 h".
-- Quarantine: an entry with `firstSeen` 4 days ago warns with its age and heading; with `bug: ""` it says "not filed"; 11 fresh entries warn naming 11; 10 fresh entries do not.
-- test/doctor-holds.test.ts: `checkMainRed` warns on a 31-min red with no role held, and gives one row with both phrases when roles are held too.
-- test/doctor-checks.test.ts: `checkFlakyChecks` keeps its flake results and warns on an old quarantine entry.
-- test/selfcheck-digest.test.ts: a 31-min red puts `## Fast merge guardrails` and the phrase at the digest's end; a green main leaves no such heading.
-- `npm test` passes.
-
 ### Fast merge guardrails, part 2/3: `tumwater doctor` and the selfcheck digest warn on a revert that looks false and on more than 5 reverts a day (planned 2026-10-21 by user; requires part 1/3 landed; design in plans/fast-merge.md "Guardrails" G2; touches src/baseline/main-guardrails.ts src/baseline/main-revert.ts src/merge/merge-core.ts src/merge/merge-to-main.ts src/merge/merge-stack.ts src/events/events.ts src/doctor/doctor-holds.ts docs/how-it-works.md and their tests)
 
 **Goal.** Make a misfiring revert visible. Today a `main_revert` that blamed a flaky test, or that removed a change which later merged again unchanged with main green, leaves no trace beyond the event, and a burst of reverts reads the same as one.

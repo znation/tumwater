@@ -72,7 +72,8 @@ import { spawnSync } from "node:child_process";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
-import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
+import { flakeCounts, KNOWN_FLAKE_WINDOW_MS, loadQuarantine } from "../review/known-flakes.js";
+import { quarantineWarning } from "../baseline/main-guardrails.js";
 
 /** The environment/repo pre-flight checks, split out of
  * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
@@ -1095,18 +1096,24 @@ export function checkBuildCheck(
  * once, so a routine one-off flake stays quiet. ok/warn only — never a fail — so a flaky suite
  * cannot fail a scripted doctor pre-flight (the checkStalledPlans precedent; the exit-code rule is
  * outcome.ts's). */
-export function checkFlakyChecks(root: string): CheckOutcome {
+export function checkFlakyChecks(root: string, now: number = Date.now()): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   const flapped = flakeCounts(events).filter(([, n]) => n >= 2);
-  if (flapped.length === 0)
+  const phrases: string[] = [];
+  if (flapped.length > 0) {
+    const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
+    const [first, ...rest] = flapped;
+    const more =
+      rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
+    phrases.push(
+      `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`,
+    );
+  }
+  const q = quarantineWarning(loadQuarantine(root), now);
+  if (q !== null) phrases.push(q);
+  if (phrases.length === 0)
     return okOutcome("no check flapped more than once in the last 24h");
-  const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
-  const [first, ...rest] = flapped;
-  const more =
-    rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
-  return warnOutcome(
-    `${agree(flapped.length, "check", "checks")} flapped more than once in the last 24h: ${render(first!)}${more}`,
-  );
+  return warnOutcome(phrases.join("; "));
 }
 
 /** Build provenance — is the harness about to run (this process's dist/) the code main

@@ -372,6 +372,25 @@ test("checkMainRed: the detail names the bugfix role as repairer only when one i
   assert.match(withBugfix.detail, /the bugfix role is exempt and repairs it/);
 });
 
+test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", () => {
+  const root = tmpdir("tw-mainred-");
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef123456" }]);
+  const r = checkMainRed(root, bcfg({}), now);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /main has had no passing full check for 31 min/);
+});
+
+test("checkMainRed: one row joins the held-role phrase and the red-main phrase", () => {
+  const root = redRoot();
+  const now = Date.now();
+  writeEvents(root, [{ ts: now - 31 * 60_000, source: "tumwater", type: "main_red_hold", sha: "abcdef123456" }]);
+  const r = checkMainRed(root, bcfg({}), now);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /1 code role waiting/);
+  assert.match(r.detail, /main has had no passing full check for 31 min/);
+});
+
 const PH_NOW = Date.now();
 
 const providerHold = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_hold", ts: PH_NOW, holdMs: 3600_000, kind: "rate-limit", roles: ["feature", "qa"], ...o }); // retired-name-ok: legacy event field in a fixture

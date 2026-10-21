@@ -6,6 +6,7 @@
 import { DAY_MS } from "../text/datetime.js";
 import { collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
+import { guardrailWarnings } from "../baseline/main-guardrails.js";
 
 /** The `selfcheck` role's own digest window: the trailing 24 h ending now, not the local
  * calendar day. A calendar day starts at midnight, so a run at 06:32 would never see the
@@ -19,9 +20,19 @@ export const SELFCHECK_DIGEST_MS = DAY_MS;
  * run — an observer must not break on bookkeeping (plans/telemetry-role.md). The window and
  * the swallow-errors policy live with the digest, not in the run lifecycle that injects it. */
 export function selfcheckDigest(root: string): string | undefined {
+  let digest: string;
   try {
-    return renderFailureMarkdown(collectFailureReportSince(root, SELFCHECK_DIGEST_MS));
+    digest = renderFailureMarkdown(collectFailureReportSince(root, SELFCHECK_DIGEST_MS));
   } catch {
     return undefined;
+  }
+  // The guardrails section is own-evidence extra that must never cost the digest: a throw in
+  // guardrailWarnings (an unreadable log or quarantine) drops only the section.
+  try {
+    const warnings = guardrailWarnings(root);
+    if (warnings.length === 0) return digest;
+    return `${digest}\n## Fast merge guardrails\n${warnings.join("\n")}\n`;
+  } catch {
+    return digest;
   }
 }

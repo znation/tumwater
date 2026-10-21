@@ -228,6 +228,9 @@ discards a role's in-flight merge.
   `reverted after merge: turned main red — <failing tests>` as the review to revise against. With no
   free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
   once assigned.
+  A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the
+  selfcheck digest's `## Fast merge guardrails` section report how long main has had no passing full
+  check, the sha it has been red since, and its newest failing test.
 - A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
@@ -248,6 +251,9 @@ discards a role's in-flight merge.
   retries on a later poll when the checkout is dirty or off main). A test leaves quarantine when its
   entry is no longer under `## Open`; a later flake puts it back. The 24 h headline excuse
   (`known-flaky failure, merge kept`) remains for failures that name no test.
+  `tumwater doctor`'s `flaky checks` row and the selfcheck digest warn when a quarantined test's
+  age passes 3 days (naming the oldest, with its BUGS.md heading or "not filed") or when the list
+  holds more than 10 tests.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

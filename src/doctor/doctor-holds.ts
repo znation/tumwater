@@ -16,7 +16,7 @@ import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../run/run-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
-import { HOUR_MS, humanUntil } from "../text/datetime.js";
+import { DAY_MS, HOUR_MS, humanUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../team/team-polls.js";
@@ -24,6 +24,7 @@ import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { redMainWarning } from "../baseline/main-guardrails.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
@@ -266,20 +267,33 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
 }
 
 /** The `main red` check: names the code roles the red-main gate (mainRedGate) holds, ending
- * each blocked run `main_red` while main's suite is red. Read-only: it asks heldByMainRed,
- * the predicate the status phase's `main red` label reads, so the two cannot disagree. A warn,
- * not a fail: a red main does not stop the team from running. */
-export function checkMainRed(root: string, config: TumwaterConfig | undefined): CheckOutcome {
+ * each blocked run `main_red` while main's suite is red, and warns when main has been red over
+ * RED_MAIN_WARN_MS even with no role held (the red-main gate's guardrail, G1). Read-only: it
+ * asks heldByMainRed, the predicate the status phase's `main red` label reads, so the two
+ * cannot disagree on the held roles, and redMainWarning over the event trail, so both phrases
+ * can appear in one row. A warn, not a fail: a red main does not stop the team from running.
+ * `now` is injected so a test can pin a red's age. */
+export function checkMainRed(
+  root: string,
+  config: TumwaterConfig | undefined,
+  now: number = Date.now(),
+): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const mainCheck = mainCheckForPoll(root, config);
   const ids = runnerIds(config);
   const held = loadRunnerStates(root, config)
     .filter((s) => heldByMainRed(s, mainCheck));
-  if (held.length === 0) return okOutcome("no role waiting on main's check");
-  const err = held.find((s) => s.lastError)?.lastError;
-  const cause = err ? ` — ${squash(err, 160)}` : "";
-  const healer = ids.some((id) => baseRoleOf(id) === "bugfix")
-    ? "; the bugfix role is exempt and repairs it"
-    : "; no bugfix role is enabled to repair it — fix main by hand or enable bugfix";
-  return warnOutcome(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
+  const phrases: string[] = [];
+  if (held.length > 0) {
+    const err = held.find((s) => s.lastError)?.lastError;
+    const cause = err ? ` — ${squash(err, 160)}` : "";
+    const healer = ids.some((id) => baseRoleOf(id) === "bugfix")
+      ? "; the bugfix role is exempt and repairs it"
+      : "; no bugfix role is enabled to repair it — fix main by hand or enable bugfix";
+    phrases.push(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
+  }
+  const red = redMainWarning(readEventsSince(root, DAY_MS).events, now);
+  if (red !== null) phrases.push(red);
+  if (phrases.length === 0) return okOutcome("no role waiting on main's check");
+  return warnOutcome(phrases.join("; "));
 }

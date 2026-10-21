@@ -44,7 +44,7 @@ import { writeScript } from "./fakes/fake-commands.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { TUMWATER_SOURCE, logEvent, type HarnessEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
-import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
+import { bootstrapLatchPath, quarantinePath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
@@ -1212,6 +1212,25 @@ test("checkFlakyChecks ignores flake warnings older than the window", () => {
     { ts: Date.now() - 48 * 3_600_000, loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}old test failed` }, // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(checkFlakyChecks(root), { level: "ok", detail: "no check flapped more than once in the last 24h" });
+});
+
+test("checkFlakyChecks warns on an old quarantined test and keeps its flake results", () => {
+  const root = readyRepo();
+  const now = Date.now();
+  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
+  fs.writeFileSync(
+    quarantinePath(root),
+    JSON.stringify({ tests: [{ test: "test/old.test.ts", firstSeen: now - 4 * 24 * 3_600_000, lastSeen: now, count: 1, bug: "A hidden flake" }] }),
+  );
+  const flake = (headline: string) =>
+    logEvent(root, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+  flake("network test failed");
+  flake("network test failed");
+  const out = checkFlakyChecks(root, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /flapped more than once in the last 24h/);
+  assert.match(out.detail, /A hidden flake/);
+  assert.match(out.detail, /4d ago/);
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {
