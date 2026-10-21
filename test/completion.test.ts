@@ -111,6 +111,8 @@ test("the completion command works outside a repo and rejects other shells", asy
 test("the bash script completes role ids after --role and for role/history/revert", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "fe"], 3), ["feature", "feature-2"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--transcript", "fe"], 3), ["feature", "feature-2"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--transcript", "fe"], 3), []);
   assert.deepEqual(await complete(script, ["tumwater", "role", "q"], 2), ["qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "q"], 2), ["qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "revert", "q"], 2), ["qa"]);
@@ -273,6 +275,10 @@ test("the fish script completes values after --role, path flags, --template, and
   const modelLine = (cmd: string) => flagLines("model").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
   assert.ok(["small", "default", "strong"].every((t) => modelLine("role").includes(t)));
   assert.ok(modelLine("history").includes("__fish_complete_list , __tumwater_models"));
+  const transcriptFlag = (cmd: string) => flagLines("transcript").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
+  assert.ok(transcriptFlag("logs").includes("__fish_complete_list , __tumwater_roles"));
+  assert.ok(transcriptFlag("history").includes("__fish_seen_subcommand_from history"));
+  assert.ok(!transcriptFlag("history").includes("__tumwater_roles"));
   assert.ok(lines.some((l) => l.startsWith("function __tumwater_models") && l.includes("completion --models")));
   assert.ok(!modelLine("role").includes("completion --models"));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));

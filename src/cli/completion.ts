@@ -186,7 +186,7 @@ function bashScript(help: string): string {
     `    done`,
     `    return 0`,
     `  fi`,
-    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ ${ROLE_POSITIONAL_COMMANDS.map((c) => `"\${COMP_WORDS[1]}" == ${c}`).join(" || ")} ]] && [[ "$cur" != -* ]]; }; then`,
+    `  if [ "$prev" = "--role" ] || { [ "$prev" = "--transcript" ] && [ "\${COMP_WORDS[1]}" = logs ]; } || { [ "$COMP_CWORD" -eq 2 ] && [[ ${ROLE_POSITIONAL_COMMANDS.map((c) => `"\${COMP_WORDS[1]}" == ${c}`).join(" || ")} ]] && [[ "$cur" != -* ]]; }; then`,
     `    _tumwater_list "$(tumwater completion --roles 2>/dev/null)" "$cur"`,
     `    return 0`,
     `  fi`,
@@ -248,6 +248,7 @@ function bashScript(help: string): string {
  * skipping the items already listed. */
 function fishFlagValue(command: string, flag: string): string {
   if (flag === "--role") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
+  if (flag === "--transcript" && command === "logs") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
   if (PATH_FLAGS.includes(flag)) return ` -r -F`;
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
   if (flag === "--result") return ` -x -a "(__fish_complete_list , __tumwater_results)"`;
