@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import type { ReportData, ReportDay } from "../src/report/report-data.js";
+import type { ReportData, ReportDay } from "../src/report/report-types.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
 // browser, so it is exercised here through the same regex-extract + new Function seam as

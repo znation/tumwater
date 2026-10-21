@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
+import { collectReport, collectReportSince } from "../src/report/report-data.js";
+import type { ReportData } from "../src/report/report-types.js";
 import { collectFailureReportSince } from "../src/failure/failure-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { atLocalTs as at, dayKey, HOUR, ago, todayTs } from "./helpers/oracles.js";
