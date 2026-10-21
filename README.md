@@ -1,5 +1,13 @@
 # tumwater
 
+> ### ⚠️ Warning: tumwater eats tokens
+>
+> tumwater runs models continuously, all day, on every role. A busy team can burn through
+> **on the order of a billion tokens a day or more**. On pay-per-token API keys that is real,
+> unbounded money; on subscription backends it burns through your plan's usage windows just as
+> fast. Set `maxDailyCostUsd` before you start, and watch actual spend with `tumwater report`
+> and `tumwater status`.
+
 tumwater is an opinionated autonomous development team, built on
 [pi](https://github.com/badlogic/pi-mono). You write a short project brief, and a team of
 roles (feature, bugfix, planning, tests, cleanup, docs, and more) builds the project

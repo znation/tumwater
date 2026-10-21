@@ -5,6 +5,49 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### README and every GitHub release open with a token-consumption warning, so nobody enables the team without knowing it burns tokens continuously (planned 2026-10-21 by the director role; independent of every eligible plan: the three in-flight follow-mode/doctor plans edit src/cli, src/ui/tui, src/merge and src/doctor; the Codex series edits src/events, src/config, src/gates, src/team, src/orchestrator and src/agent, and its part 9/9 README change is the Backends paragraph, not the top of the file. None touches test/packaging.test.ts or .github/workflows/release.yml. Touches README.md .github/workflows/release.yml test/packaging.test.ts) — done 2026-10-21 by the feature role
+
+> Note: the acceptance criterion pins `/### ⚠️ …/` in raw README, so the README blockquote uses `> ### ⚠️`; release.yml keeps the approach copy's `> ## ⚠️` (its test pins only the billion figure and `--notes`).
+
+**Goal.** A user can install tumwater, read the README, or read any GitHub release's notes without being told that the team runs models continuously and consumes tokens at a scale that is easy to underestimate. Put one prominent warning at the very top of README.md and prepend the same warning to every GitHub release's auto-generated notes, so the cost is stated before the install line and before the changelog. The amount the user named is on the order of a billion tokens a day or more; both copies must say that figure and name `tumwater report` and `maxDailyCostUsd` as the ways to see and cap it.
+
+**Approach.**
+
+1. README.md — insert this exact block between the `# tumwater` H1 (line 1) and the intro paragraph that begins `tumwater is an opinionated autonomous development team`, with one blank line on each side, so it is the first thing under the title and above the npm install line:
+
+   ```
+   > ## ⚠️ Warning: tumwater eats tokens
+   >
+   > tumwater runs models continuously, all day, on every role. A busy team can burn through
+   > **on the order of a billion tokens a day or more**. On pay-per-token API keys that is real,
+   > unbounded money; on subscription backends it burns through your plan's usage windows just as
+   > fast. Set `maxDailyCostUsd` before you start, and watch actual spend with `tumwater report`
+   > and `tumwater status`.
+   ```
+
+   Do not touch the brief block between `<!-- tumwater:prompt:start -->` and `<!-- tumwater:prompt:end -->`; the warning goes above it. README.md is in the package's `files` allowlist (test/packaging.test.ts), so the same warning reaches npmjs.com — plain blockquote Markdown is used deliberately instead of GitHub's `> [!WARNING]` alert syntax, which npm renders literally as `[!WARNING]`.
+2. .github/workflows/release.yml — in the `Attach the packed tarball to a GitHub release` step, add a `RELEASE_WARNING: |` block scalar to the step's `env:` holding the warning below, and add `--notes "$RELEASE_WARNING"` to the `gh release create` arguments, keeping `--generate-notes` and `--title`. `gh release create --help` documents that `--notes` is prepended to automatically generated notes, so the warning leads every release body and the generated changelog follows it:
+
+   ```yaml
+   RELEASE_WARNING: |
+     > ## ⚠️ Warning: tumwater eats tokens
+     >
+     > tumwater runs models continuously, all day, on every role. A busy team can burn through
+     > **on the order of a billion tokens a day or more**. Set `maxDailyCostUsd` before you
+     > start, and watch actual spend with `tumwater report`.
+   ```
+
+   The existing `gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes tumwater-*.tgz` line becomes `gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_WARNING" tumwater-*.tgz`. No `scripts/release.mjs` change: that script never creates the GitHub release; the workflow does.
+3. test/packaging.test.ts — the file already reads both workflow YAMLs and pins their invariants, so pin both warnings there rather than adding a test file. Keep the existing two workflow tests unchanged.
+
+**Files touched.** README.md, .github/workflows/release.yml, test/packaging.test.ts.
+
+**Acceptance criteria.**
+- New test in test/packaging.test.ts, "the README leads with the token warning": read `../../README.md`, and assert the block matches `/### ⚠️ Warning: tumwater eats tokens/`, matches `/billion tokens a day or more/`, and that its index is greater than the index of `# tumwater` and less than the index of `<!-- tumwater:prompt:start -->`, so the warning cannot drift below the intro or into the brief.
+- New test in test/packaging.test.ts, "every release prepends the token warning": read `../../.github/workflows/release.yml`, and assert the text matches `/--generate-notes/`, matches `/--notes "\$RELEASE_WARNING"/`, and matches `/billion tokens a day or more/`, so removing `--generate-notes`, detaching the warning env var, or dropping the billion figure fails the gate.
+- README.md and release.yml carry the warning copy verbatim as written above; `npm test` passes and test/docs-links.test.ts stays green (the warning adds no link).
+- `npm run test:gate` is green.
+
 ### `tumwater doctor` gains a `merge-queue files` row that warns and names every durable-queue file the reader skips, so a stranded queue entry is a health signal instead of a count on one command's output (planned 2026-10-21 by the plan role; independent of every eligible plan: the in-flight `tumwater queue -f/--follow` and `tumwater backlog -f/--follow` entries edit src/cli/cli-query-commands.ts, src/cli/help.ts and docs/cli.md; the in-flight TUI Activity tally plan edits src/ui/tui and src/cli/log-commands.ts; the Codex parts edit src/events, src/config, src/gates, src/team, src/orchestrator and src/agent. None touches src/merge/merge-queue.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor-check-names.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts or test/doctor.test.ts. Touches src/merge/merge-queue.ts src/doctor/doctor-backlog.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts test/doctor-backlog.test.ts test/doctor.test.ts) — done 2026-10-21 by the feature role
 
 **Goal.** `readMergeQueue` (src/merge/merge-queue.ts) reads every queue file once and skips any that is torn, foreign, or vanished mid-listing, counting them in `MergeQueueView.unreadable`; `tumwater queue` prints a trailing line counting the files it skipped (`merge-queue-render.ts`) and the status badge folds the count into the queue depth. The drain repairs only an unreadable *head* (`staleHeadFile`), so a skipped file that sorts after a healthy entry stays in `.tumwater/merge-queue/` forever. Nothing calls it out by name or level: the `stale merge-queue entries` doctor row reads only readable entries and `merge lock` only the lock. Add a `merge-queue files` row that warns and names each skipped file, so a stranded queue entry is visible to `tumwater doctor` (and `doctor --problems`) instead of only as a number on one command's output.

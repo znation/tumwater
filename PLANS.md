@@ -463,46 +463,6 @@ The Codex theme is not abandoned: part 6/9 stands on its own (it needs none of p
 - `npm run test:gate` is green.
 
 
-### README and every GitHub release open with a token-consumption warning, so nobody enables the team without knowing it burns tokens continuously (planned 2026-10-21 by the director role; independent of every eligible plan: the three in-flight follow-mode/doctor plans edit src/cli, src/ui/tui, src/merge and src/doctor; the Codex series edits src/events, src/config, src/gates, src/team, src/orchestrator and src/agent, and its part 9/9 README change is the Backends paragraph, not the top of the file. None touches test/packaging.test.ts or .github/workflows/release.yml. Touches README.md .github/workflows/release.yml test/packaging.test.ts)
-
-**Goal.** A user can install tumwater, read the README, or read any GitHub release's notes without being told that the team runs models continuously and consumes tokens at a scale that is easy to underestimate. Put one prominent warning at the very top of README.md and prepend the same warning to every GitHub release's auto-generated notes, so the cost is stated before the install line and before the changelog. The amount the user named is on the order of a billion tokens a day or more; both copies must say that figure and name `tumwater report` and `maxDailyCostUsd` as the ways to see and cap it.
-
-**Approach.**
-
-1. README.md — insert this exact block between the `# tumwater` H1 (line 1) and the intro paragraph that begins `tumwater is an opinionated autonomous development team`, with one blank line on each side, so it is the first thing under the title and above the npm install line:
-
-   ```
-   > ## ⚠️ Warning: tumwater eats tokens
-   >
-   > tumwater runs models continuously, all day, on every role. A busy team can burn through
-   > **on the order of a billion tokens a day or more**. On pay-per-token API keys that is real,
-   > unbounded money; on subscription backends it burns through your plan's usage windows just as
-   > fast. Set `maxDailyCostUsd` before you start, and watch actual spend with `tumwater report`
-   > and `tumwater status`.
-   ```
-
-   Do not touch the brief block between `<!-- tumwater:prompt:start -->` and `<!-- tumwater:prompt:end -->`; the warning goes above it. README.md is in the package's `files` allowlist (test/packaging.test.ts), so the same warning reaches npmjs.com — plain blockquote Markdown is used deliberately instead of GitHub's `> [!WARNING]` alert syntax, which npm renders literally as `[!WARNING]`.
-2. .github/workflows/release.yml — in the `Attach the packed tarball to a GitHub release` step, add a `RELEASE_WARNING: |` block scalar to the step's `env:` holding the warning below, and add `--notes "$RELEASE_WARNING"` to the `gh release create` arguments, keeping `--generate-notes` and `--title`. `gh release create --help` documents that `--notes` is prepended to automatically generated notes, so the warning leads every release body and the generated changelog follows it:
-
-   ```yaml
-   RELEASE_WARNING: |
-     > ## ⚠️ Warning: tumwater eats tokens
-     >
-     > tumwater runs models continuously, all day, on every role. A busy team can burn through
-     > **on the order of a billion tokens a day or more**. Set `maxDailyCostUsd` before you
-     > start, and watch actual spend with `tumwater report`.
-   ```
-
-   The existing `gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes tumwater-*.tgz` line becomes `gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_WARNING" tumwater-*.tgz`. No `scripts/release.mjs` change: that script never creates the GitHub release; the workflow does.
-3. test/packaging.test.ts — the file already reads both workflow YAMLs and pins their invariants, so pin both warnings there rather than adding a test file. Keep the existing two workflow tests unchanged.
-
-**Files touched.** README.md, .github/workflows/release.yml, test/packaging.test.ts.
-
-**Acceptance criteria.**
-- New test in test/packaging.test.ts, "the README leads with the token warning": read `../../README.md`, and assert the block matches `/### ⚠️ Warning: tumwater eats tokens/`, matches `/billion tokens a day or more/`, and that its index is greater than the index of `# tumwater` and less than the index of `<!-- tumwater:prompt:start -->`, so the warning cannot drift below the intro or into the brief.
-- New test in test/packaging.test.ts, "every release prepends the token warning": read `../../.github/workflows/release.yml`, and assert the text matches `/--generate-notes/`, matches `/--notes "\$RELEASE_WARNING"/`, and matches `/billion tokens a day or more/`, so removing `--generate-notes`, detaching the warning env var, or dropping the billion figure fails the gate.
-- README.md and release.yml carry the warning copy verbatim as written above; `npm test` passes and test/docs-links.test.ts stays green (the warning adds no link).
-- `npm run test:gate` is green.
 
 ### `tumwater report -f/--follow` repaints the usage report (or, with `--failures`, the failure digest) every couple of seconds until Ctrl+C or its parent exits, the live twin of the dashboard Usage card and the TUI Usage and Failures panes (planned 2026-10-21 by the plan role; sits behind the in-flight `tumwater queue -f/--follow` and `tumwater backlog -f/--follow` entries, whose shared `followView` loop it lifts into a leaf module, so whichever lands first rebases `src/cli/cli-query-commands.ts` there; the in-flight TUI Activity tally plan edits src/cli/log-commands.ts and src/ui/tui; the `tumwater doctor` `merge-queue files` plan edits src/merge and src/doctor; the Codex parts edit src/events, src/config, src/gates, src/team, src/orchestrator and src/agent. None of those touches src/report, src/cli/follow-view.ts or test/report-follow.test.ts. Touches src/cli/follow-view.ts (new) src/cli/cli-query-commands.ts src/report/report.ts src/cli.ts src/cli/help.ts docs/cli.md test/report-follow.test.ts (new))
 

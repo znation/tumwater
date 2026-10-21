@@ -53,3 +53,26 @@ test("release workflow is tag-driven on v*", () => {
   );
   assert.ok(yml.includes("'v*'"), "release.yml must trigger on v* tags");
 });
+
+test("the README leads with the token warning", () => {
+  const readme = fs.readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+  const title = readme.indexOf("# tumwater");
+  const promptStart = readme.indexOf("<!-- tumwater:prompt:start -->");
+  const warning = readme.search(/### ⚠️ Warning: tumwater eats tokens/);
+  assert.ok(warning > -1, "README must carry the token warning heading");
+  assert.ok(readme.includes("billion tokens a day or more"), "README must state the billion-token figure");
+  assert.ok(
+    warning > title && warning < promptStart,
+    "the token warning must sit between the H1 and the prompt block",
+  );
+});
+
+test("every release prepends the token warning", () => {
+  const yml = fs.readFileSync(
+    new URL("../../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  assert.ok(yml.includes("--generate-notes"), "release.yml must keep --generate-notes");
+  assert.ok(yml.includes('--notes "$RELEASE_WARNING"'), "release.yml must pass --notes with RELEASE_WARNING");
+  assert.ok(yml.includes("billion tokens a day or more"), "release.yml's warning must state the billion-token figure");
+});

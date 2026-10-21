@@ -50,6 +50,12 @@ jobs:
       - name: Attach the packed tarball to a GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_WARNING: |
+            > ## ⚠️ Warning: tumwater eats tokens
+            >
+            > tumwater runs models continuously, all day, on every role. A busy team can burn through
+            > **on the order of a billion tokens a day or more**. Set `maxDailyCostUsd` before you
+            > start, and watch actual spend with `tumwater report`.
         run: |
           npm pack
-          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes tumwater-*.tgz
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --notes "$RELEASE_WARNING" tumwater-*.tgz
