@@ -13,6 +13,7 @@ import { renderDoctor, renderDoctorProblems } from "../src/doctor/doctor-render.
 import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
+import type { previewRevert } from "../src/operator/revert.js";
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange } from "../src/change/change-render.js";
@@ -53,11 +54,11 @@ async function untilFlash(flash: () => string, re: RegExp, timeoutMs = 10000): P
   }
 }
 
-function makeKeys(root: string, now: () => number, runStat?: () => Promise<string>) {
+function makeKeys(root: string, now: () => number, runStat?: () => Promise<string>, seams: Partial<Parameters<typeof createTuiKeys>[0]> = {}) {
   const quit = (): number => (quit.count += 1);
   quit.count = 0;
   let renders = 0;
-  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}), runStat }); // Health never resolves: no real probes
+  const keys = createTuiKeys({ root, quit, requestRender: () => (renders += 1), now, runDoctor: () => new Promise<DoctorReport>(() => {}), runStat, ...seams }); // Health never resolves: no real probes
   return { keys, quitCount: () => quit.count, renders: () => renders };
 }
 
@@ -1055,6 +1056,97 @@ test("Ctrl+R on the History trail cycles the agent transcript off, plain, prompt
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().trailTranscript, "off", "leaving and re-entering the trail starts bare");
+});
+
+const REVERT_SHA = "a".repeat(40);
+
+function revertRoot(result: "merged" | "changed"): string {
+  const root = makeRoot();
+  writeEvents(root, [
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", run: 1 }, // retired-name-ok: legacy event field in a fixture
+    { ts: 1_700_000_050_000, source: "clean", type: "merge_done", run: 1, commit: REVERT_SHA },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", run: 1, result, summary: "work" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  return root;
+}
+
+type PreviewResult = Awaited<ReturnType<typeof previewRevert>>;
+
+/** Keys on a History trail with preview/revert fakes that record calls and resolve on demand. */
+function revertRig(result: "merged" | "changed" = "merged", trail = true) {
+  const root = revertRoot(result);
+  const previews: Array<(r: PreviewResult) => void> = [];
+  const previewCalls: string[] = [];
+  const revertCalls: string[] = [];
+  const reverts: Array<() => void> = [];
+  const { keys } = makeKeys(root, () => 0, undefined, {
+    previewRevert: (_root, ref) => new Promise((resolve) => { previewCalls.push(ref); previews.push(resolve); }),
+    revertCommit: (_root, ref) => new Promise((resolve) => {
+      revertCalls.push(ref);
+      reverts.push(() => resolve({ ok: true, headSha: "b".repeat(40), beforeSha: "c".repeat(40), subject: "tumwater(clean): Tidy" }));
+    }),
+  });
+  openHistory(keys);
+  if (trail) keys.handleKey(undefined, { ctrl: true, name: "n" });
+  const ctrlV = (): void => keys.handleKey(undefined, { ctrl: true, name: "v" });
+  const okPreview = (over: Record<string, unknown> = {}): PreviewResult =>
+    ({ ok: true, sha: REVERT_SHA, subject: "tumwater(clean): Tidy", paths: ["a.txt"], head: "d".repeat(40), primary: "main", applies: true, dirty: false, ...over });
+  return { keys, previews, previewCalls, revertCalls, reverts, ctrlV, okPreview };
+}
+
+test("Ctrl+V twice on a History trail previews then reverts the run's merged commit", async () => {
+  const r = revertRig();
+  r.ctrlV();
+  assert.deepEqual(r.previewCalls, [REVERT_SHA]);
+  assert.match(r.keys.state().flash ?? "", /previewing/);
+  r.previews[0]!(r.okPreview());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(r.keys.state().flash ?? "", /press Ctrl\+V again/);
+  r.ctrlV();
+  assert.deepEqual(r.revertCalls, [REVERT_SHA]);
+  r.reverts[0]!();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(r.keys.state().flash ?? "", /main is now/);
+});
+
+test("a key between the two Ctrl+V presses disarms the revert", async () => {
+  const r = revertRig();
+  r.ctrlV();
+  r.previews[0]!(r.okPreview());
+  await new Promise((resolve) => setImmediate(resolve));
+  r.keys.handleKey(undefined, { name: "pagedown" });
+  r.ctrlV();
+  assert.equal(r.previewCalls.length, 2);
+  assert.deepEqual(r.revertCalls, []);
+});
+
+test("a conflicting or dirty preview never arms", async () => {
+  const r = revertRig();
+  r.ctrlV();
+  r.previews[0]!(r.okPreview({ applies: false }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(r.keys.state().flash ?? "", /would conflict/);
+  r.ctrlV();
+  r.previews[1]!(r.okPreview({ dirty: true }));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(r.keys.state().flash ?? "", /staged or unstaged/);
+  r.ctrlV();
+  assert.equal(r.previewCalls.length, 3);
+  assert.deepEqual(r.revertCalls, []);
+});
+
+test("Ctrl+V on an unmerged run's trail flashes the CLI's refusal", () => {
+  const r = revertRig("changed");
+  r.ctrlV();
+  assert.match(r.keys.state().flash ?? "", /did not merge/);
+  assert.deepEqual([r.previewCalls, r.revertCalls], [[], []]);
+});
+
+test("Ctrl+V off a History trail never reverts", () => {
+  const r = revertRig("merged", false);
+  r.ctrlV();
+  assert.match(r.keys.state().flash ?? "", /Ctrl\+N/);
+  assert.deepEqual([r.previewCalls, r.revertCalls], [[], []]);
 });
 
 test("Ctrl+R on a run with no transcript segment shows the note", () => {

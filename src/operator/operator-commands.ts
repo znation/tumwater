@@ -4,8 +4,8 @@ import { failOverDurationCap, flagValue, parseCountFlag, parseDurationFlag, pars
 import { errorMessage, splitCommaList } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { previewRevert, revertFollowUp, revertMergedCommit } from "./revert.js";
-import { runMergedSha, runNotFoundMessage } from "../run/run-detail.js";
+import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "./revert.js";
+import { runNotFoundMessage } from "../run/run-detail.js";
 import { readRunDetail } from "../run/run-detail-data.js";
 import { readRunRows } from "../history/history-data.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
@@ -472,11 +472,9 @@ function revertRunSha(root: string, positionals: string[], last: boolean): { sha
   if (run === null) fail(`no completed run of ${role} in the event log`);
   const detail = readRunDetail(root, role, run);
   if (detail === null) fail(runNotFoundMessage(role, run));
-  if (detail.result !== "merged")
-    fail(`${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert`);
-  const sha = runMergedSha(detail);
-  if (sha === null)
-    fail(`${role} run #${run} merged but the event log no longer names its commit; pass the sha from git log instead`);
+  const found = runRevertSha(role, run, detail);
+  if (!found.ok) fail(found.error);
+  const sha = found.sha;
   return { sha, line: `run ${role} #${run} merged as ${shortSha(sha)}`, role, run };
 }
 

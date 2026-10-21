@@ -5,6 +5,67 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### TUI History trail Ctrl+V, pressed twice after a dry-run preview, reverts the shown run's merged change: the terminal twin of `tumwater revert <role> <n>` and the dashboard History drill-down's Revert button (planned 2026-10-20 by the plan role; independent of every eligible plan. The Backend/model split part changes src/config and test configs, `prompt --list --grep` changes the prompt parser and src/inbox, `history --last --model` changes src/run/run-detail.ts and the history CLI, and the overlap drill-down changes src/gui and src/ui/gui. The TUI Health Ctrl+P plan shares tui-keys.ts, tui-pane-session.ts, tui-panes.ts, tui-frame.ts and docs/cli.md with this one, but only in neighboring hunks: the deps seams, the Ctrl+P router and the Health footer, where this plan adds new seams, the Ctrl+V router and the History footer; done 2026-10-20 by the feature role)
+
+**Goal.** An operator who spots a bad merge has three ways to undo it: `tumwater revert <sha>|<role> <n>` (`cmdRevert`, src/operator/operator-commands.ts), the dashboard History drill-down's preview-then-Revert button (`histRevertStep` in src/ui/gui/gui-client-history.ts → `handleRevert` in src/gui/gui-operator-commands.ts), and nothing in the TUI. The TUI already opens a run's full trail on the History view (Ctrl+N, Ctrl+P steps to older runs; `createHistoryPane` in src/ui/tui/tui-pane-history.ts holds the shown run in `trailRun`), so the operator reads the bad run and must then leave for a shell. Add Ctrl+V on a History run trail (mnemonic: re**V**ert). The first press runs `previewRevert` and flashes what it would undo, and arms only when the revert applies cleanly to a clean checkout. A second Ctrl+V right after it commits the revert through `revertMergedCommit`, the same cores the CLI and the dashboard call. Any other key in between disarms it. Ctrl+V is free on the History view. `handleKey`'s Ctrl+V router (src/ui/tui/tui-panes.ts) only reaches the queued and backlog arms, which return false off their own views. The attach editor's Ctrl+V is guarded to view 0, and the Transcript pause editor's to views 1..N (src/ui/tui/tui-editor-pause.ts).
+
+**Approach.**
+1. src/operator/revert.ts: export `runRevertSha(role: string, run: number, detail: RunDetail): { ok: true; sha: string } | { ok: false; error: string }`. It moves the two refusals out of `revertRunSha` (src/operator/operator-commands.ts), wording unchanged:
+   - `detail.result !== "merged"` gives `` `${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert` ``.
+   - A null `runMergedSha(detail)` (src/run/run-detail.ts) gives the "merged but the event log no longer names its commit; pass the sha from git log instead" sentence.
+   - Otherwise `{ ok: true, sha }`.
+
+   `revertRunSha` calls it and `fail`s on `!ok`, so the CLI's output is unchanged and the TUI cannot drift from it. Also export the `RevertPreview` interface, for the seam types. If importing `runMergedSha` from src/run/run-detail.ts into revert.ts creates an import cycle (check with `npm run test:gate`'s lint), put `runRevertSha` in src/run/run-detail.ts instead and import it from there in both places.
+2. src/ui/tui/tui-keys.ts: add two optional seams to the deps type, each with a doc comment in the style of `killOrphans?`:
+   - `previewRevert?: typeof previewRevert`
+   - `revertCommit?: typeof revertMergedCommit`
+
+   In `createTuiKeys`, default them to the real cores (`deps.previewRevert ?? previewRevert`, `deps.revertCommit ?? revertMergedCommit`) and pass both into `createTuiPanes`.
+3. src/ui/tui/tui-pane-session.ts:
+   - Add `previewRevert` and `revertCommit` to `TuiPanesDeps`, to the session interface, and to `createTuiPaneSession`'s object.
+   - Add the armed pair beside `armedKillOrphans`/`killOrphansArmed`: `armedRevert: string | null` (the full sha a second Ctrl+V reverts) and `revertArmed: string | null` (the pending arm), both initialized null, with doc comments in the same style.
+4. src/ui/tui/tui-panes.ts:
+   - `beginKey`: add `session.armedRevert = session.revertArmed; session.revertArmed = null;`.
+   - `handleKey`'s Ctrl+V router: put `if (history.handleKey?.(key, ctx)) return true;` first, ahead of the queued arm, and update the router comment.
+5. src/ui/tui/tui-pane-history.ts, `createHistoryPane`:
+   - Add `let reverting = false;`.
+   - Add a Ctrl+V arm. It returns false off view `session.roleIds.length + 4`. On that view it always returns true after `session.requestRender()`, and acts only when `promptLineFree(ctx.es)`:
+     - With the trail off, flash `open a run's trail with Ctrl+N to revert its change`.
+     - While `reverting` is set, flash `a revert is already running`, so a held key never starts a second git operation.
+     - Otherwise, `runRevertSha(trailRun.role, trailRun.run, trailRun.detail)` with `!ok` flashes its error.
+     - **Second press** (`session.armedRevert === sha`): set `reverting = true` and flash `` `reverting ${shortSha(sha)} …` ``. Then `void session.revertCommit(session.root, sha)`:
+       - On `ok`, flash `` `reverted ${shortSha(sha)}: main is now ${shortSha(r.headSha)}` `` plus `` `; ${followUp}` `` when `revertFollowUp(r.subject)` is non-null. These are the CLI's lines joined with "; ".
+       - On `!ok`, flash `r.error`.
+       - A rejection goes through `session.flashError`.
+       - In `finally`, clear `reverting` and `session.armedRevert`, and request a render.
+     - **First press**: set `reverting = true`, capture `const gen = trailGen`, and flash `` `previewing the revert of ${shortSha(sha)} …` ``. Then `void session.previewRevert(session.root, sha)`. When it resolves, apply its result only if `gen === trailGen`, so a trail closed or stepped since gets no stale arm. Each outcome flashes:
+       - `!p.ok` flashes `p.error`.
+       - `!p.applies` flashes `` `would conflict on ${p.primary} (HEAD ${shortSha(p.head)}); nothing was written` ``.
+       - `p.dirty` flashes the CLI's "the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written".
+       - Otherwise set `session.revertArmed = p.sha` and flash `` `press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${p.paths.length} file${p.paths.length === 1 ? "" : "s"}) on ${p.primary} — any other key keeps it` ``.
+
+       A rejection goes through `session.flashError`. In `finally`, clear `reverting` and request a render.
+   - `reset()` also clears `session.revertArmed` and `session.armedRevert`.
+   - Add a comment on the arm naming the CLI and dashboard twins and the two-press rule.
+   - Extend the factory doc comment to mention Ctrl+V.
+6. src/ui/tui/tui-frame.ts: in the `view.kind === "history"` footer, in the `view.trail ? [...]` spread that holds Ctrl+P/Ctrl+R, add `["Ctrl+V", "revert run"]` after the Ctrl+R entry.
+7. Docs:
+   - docs/cli.md TUI key table: add a row after the `Ctrl+R` | History (on a run trail) row: `` | `Ctrl+V` (twice) | History (on a run trail) | preview, then revert the shown run's merged change on main (the terminal twin of `tumwater revert <role> <n>` and the dashboard History drill-down's Revert; the first press arms only when the revert applies cleanly to a clean checkout, and any other key disarms it) | ``.
+   - docs/cli.md Steer row (a long line, so edit it with python): after "the dashboard's History drill-down offers the same revert, preview first", add ", and so does the TUI History trail's Ctrl+V (twice)".
+
+**Files touched.** src/operator/revert.ts, src/operator/operator-commands.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui-pane-session.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-pane-history.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/operator-revert.test.ts, test/tui-keys.test.ts.
+
+**Acceptance criteria.**
+- test/operator-revert.test.ts, new case "runRevertSha refuses an unmerged run and a merged run naming no commit, and returns the merged sha": a `RunDetail` with `result: "changed"` gives the did-not-merge error naming the role and run, a merged detail with no `mergedSha` and no commit-bearing merge event gives the no-longer-names error, and one with `mergedSha` returns it.
+- test/tui-keys.test.ts: write the events with a merged run (`run_end` `result: "merged"` and a `merge_done` carrying `commit`), open History and its trail with Ctrl+N, and inject `previewRevert`/`revertCommit` fakes that record their calls and resolve on demand. New cases:
+  - "Ctrl+V twice on a History trail previews then reverts the run's merged commit": the first Ctrl+V calls the preview fake with the commit and flashes `/previewing/`. After a preview resolves with `applies: true, dirty: false`, the flash matches `/press Ctrl+V again/`, and the next Ctrl+V calls the revert fake once with the same sha. When that resolves, the flash matches `/main is now/`.
+  - "a key between the two Ctrl+V presses disarms the revert": Ctrl+V, resolve the preview, any other key (e.g. PgDn), Ctrl+V. The second Ctrl+V calls the preview fake again and never the revert fake.
+  - "a conflicting or dirty preview never arms": a preview with `applies: false` flashes `/would conflict/`, one with `dirty: true` flashes `/staged or unstaged/`, and a following Ctrl+V previews again rather than reverting.
+  - "Ctrl+V on an unmerged run's trail flashes the CLI's refusal": a trail of a `result: "changed"` run flashes `/did not merge/` and calls neither fake.
+  - "Ctrl+V off a History trail never reverts": on the History rows (trail off) it flashes `/Ctrl\+N/` and calls neither fake. On the Backlog and Queued views the existing Ctrl+V cases still pass unchanged.
+- The existing History trail cases (the "Ctrl+N on the History pane swaps…", "Ctrl+P steps the trail back…" and "Ctrl+R on the History trail cycles…" tests) and the existing Ctrl+V cases pass unchanged.
+- `npm run test:gate` passes.
+
 ### TUI Health tab Ctrl+P re-probes every image-input model: the terminal twin of the dashboard Health card's Re-probe models button and `tumwater doctor --reprobe` (planned 2026-10-20 by the plan role; independent of every eligible plan: the Backend/model split part changes src/config and test configs, `prompt --list --grep` changes the prompt parser and src/inbox, `history --last --model` changes src/run/run-detail.ts and the history CLI, and the overlap drill-down changes src/gui and src/ui/gui. This one touches only the TUI Health pane, its key routing and footer, and docs) — done 2026-10-20
 
 **Goal.** The image-input check's failure says to fix the endpoint and then run `tumwater doctor --reprobe`. The dashboard can do this with its Health card's Re-probe models button (`handleDoctorReprobe` in src/gui/gui-operator-commands.ts, which runs `runDoctor` with `probeImages` `"all"`). The TUI Health tab cannot: its `runDoctor` seam (`runDoctorSeam` in `createTuiKeys`, src/ui/tui/tui-keys.ts) always passes `"never"`, so an operator in the terminal UI only sees cached verdicts and has to leave for a shell. Add Ctrl+P on the Health view (mnemonic: **P**robe). It re-runs the doctor checks with every claimed image-input model re-probed and paints the result. Ctrl+P is free on Health: the provider-caps editor's Ctrl+P opens on view 0 only, the Transcript pause editor's on views 1..N only, the report arm in `handleKey` (src/ui/tui/tui-panes.ts) is routed for Usage/Failures only, and History's Ctrl+P arm (`tui-pane-history.ts`) returns false off view N+4. Entering Health, Ctrl+R and Ctrl+O stay probe-free (`"never"`).

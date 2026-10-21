@@ -7,6 +7,7 @@ import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
 import { stampedSubject } from "../../git/commit-message.js";
+import { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import { requestAbort } from "../../operator/operator-intent.js";
 import { errorMessage } from "../../text/text.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
@@ -39,6 +40,12 @@ interface TuiKeysDeps {
   /** Seam for the Health tab's Ctrl+K orphan kill; defaults to `killOrphans` so tests need not
    * scan the process table or signal anything. */
   killOrphans?(root: string): Promise<OrphanKillReport>;
+  /** Seam for the History trail's first Ctrl+V (the revert preview); defaults to `previewRevert`
+   * so tests need not run git. */
+  previewRevert?: typeof previewRevert;
+  /** Seam for the History trail's second Ctrl+V (the revert itself); defaults to
+   * `revertMergedCommit` so tests never commit. */
+  revertCommit?: typeof revertMergedCommit;
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
   collectChange?(root: string, role: string): Promise<RoleChangeView>;
@@ -269,6 +276,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const collectOverlaps = deps.collectOverlaps ?? collectChangeOverlaps;
   const runDoctorSeam = deps.runDoctor ?? ((r: string, p: "never" | "all") => runDoctor(r, undefined, undefined, p));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
+  const previewRevertSeam = deps.previewRevert ?? previewRevert;
+  const revertCommit = deps.revertCommit ?? revertMergedCommit;
   const collectChange = deps.collectChange ?? collectRoleChange;
   const runStat = deps.runStat ?? runDetailStat;
   // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
@@ -312,6 +321,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     collectOverlaps,
     runDoctor: runDoctorSeam,
     killOrphans: killOrphansSeam,
+    previewRevert: previewRevertSeam,
+    revertCommit,
     collectChange,
     runStat,
   });

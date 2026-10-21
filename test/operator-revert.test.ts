@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { stampedRole } from "../src/git/commit-message.js";
-import { previewRevert, revertFollowUp, revertMergedCommit } from "../src/operator/revert.js";
+import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/revert.js";
+import type { RunDetail } from "../src/run/run-detail-data.js";
 
 test("reverting a rename commit commits both halves and leaves the tree clean", async () => {
   const repo = makeRepo();
@@ -234,4 +235,13 @@ test("revertFollowUp names a role, and is null when no role made the commit", ()
     revertFollowUp("tumwater(feature): add x"),
     "the feature role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not",
   );
+});
+
+test("runRevertSha refuses an unmerged run and a merged run naming no commit, and returns the merged sha", () => {
+  const base = { role: "clean", run: 3, startTs: null, events: [], mergedSha: null } as unknown as RunDetail;
+  const unmerged = runRevertSha("clean", 3, { ...base, result: "changed" });
+  assert.deepEqual(unmerged, { ok: false, error: "clean run #3 did not merge (result: changed); there is nothing to revert" });
+  const unnamed = runRevertSha("clean", 3, { ...base, result: "merged" });
+  assert.ok(!unnamed.ok && unnamed.error.includes("no longer names its commit"));
+  assert.deepEqual(runRevertSha("clean", 3, { ...base, result: "merged", mergedSha: "f".repeat(40) }), { ok: true, sha: "f".repeat(40) });
 });

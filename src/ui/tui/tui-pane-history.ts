@@ -18,6 +18,8 @@ import { renderModelSummary, renderSummary } from "../../history/history-render.
 import { historyPaneText } from "./tui-history.js";
 import { readRunDetail, type RunDetail } from "../../run/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../../run/run-detail.js";
+import { revertFollowUp, runRevertSha } from "../../operator/revert.js";
+import { shortSha } from "../../text/format.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { pageDir } from "./tui-keymap.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -36,7 +38,8 @@ export function historyWindowBounds(
 
 /** The History pane (view roleIds.length + 4) of the TUI (src/ui/tui/tui.tsx): the session
  * window (Ctrl+S), outcome filter (Ctrl+O), exact-role scope (Ctrl+G), free-text search (`/`),
- * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs), each with its cache and
+ * and the Ctrl+N completed-run trail (Ctrl+P steps it to older runs, Ctrl+V twice reverts the
+ * shown run's merged change), each with its cache and
  * body window. With the trail off, Ctrl+P steps the window back by its own length (the
  * `history --since --until` window) and Ctrl+S returns to the trailing window. Split out of the
  * pane-navigation monolith; it owns the pane's window/result/scope/search/trail state and the
@@ -92,6 +95,7 @@ export function createHistoryPane(
   let trailStat: string | null = null;
   let trailTranscriptText: string | null = null;
   let trailRun: { role: string; run: number; detail: RunDetail } | null = null;
+  let reverting = false; // a revert preview or commit is in flight; a held Ctrl+V starts no second
   let trailGen = 0; // bumped at every trail read or reset; a stat resolution applies only to its own gen
 
   /** The pane's row selection: scope, then window, then search, then outcome class — the order
@@ -322,6 +326,53 @@ export function createHistoryPane(
     session.paneScroll = 0;
   };
 
+  // The second Ctrl+V: commit the revert of `sha` through the same core the CLI calls and flash
+  // the CLI's lines joined with "; ".
+  const revertRun = (sha: string): void => {
+    reverting = true;
+    session.flashMessage(`reverting ${shortSha(sha)} …`);
+    void session.revertCommit(session.root, sha).then(
+      (r) => {
+        if (!r.ok) {
+          session.flashMessage(r.error);
+          return;
+        }
+        const followUp = revertFollowUp(r.subject);
+        session.flashMessage(`reverted ${shortSha(sha)}: main is now ${shortSha(r.headSha)}${followUp === null ? "" : `; ${followUp}`}`);
+      },
+      (err: unknown) => session.flashError(err),
+    ).finally(() => {
+      reverting = false;
+      session.armedRevert = null;
+      session.requestRender();
+    });
+  };
+
+  // The first Ctrl+V: preview the revert and arm the second press only when it applies cleanly
+  // to a clean checkout. A trail closed or stepped since (trailGen) gets no stale arm.
+  const previewRun = (sha: string): void => {
+    reverting = true;
+    const gen = trailGen;
+    session.flashMessage(`previewing the revert of ${shortSha(sha)} …`);
+    void session.previewRevert(session.root, sha).then(
+      (p) => {
+        if (gen !== trailGen) return;
+        if (!p.ok) session.flashMessage(p.error);
+        else if (!p.applies) session.flashMessage(`would conflict on ${p.primary} (HEAD ${shortSha(p.head)}); nothing was written`);
+        else if (p.dirty)
+          session.flashMessage("the checkout has staged or unstaged changes, so tumwater revert would refuse until they are committed or stashed; nothing was written");
+        else {
+          session.revertArmed = p.sha;
+          session.flashMessage(`press Ctrl+V again to revert ${shortSha(p.sha)} ${p.subject} (${p.paths.length} file${p.paths.length === 1 ? "" : "s"}) on ${p.primary} — any other key cancels`);
+        }
+      },
+      (err: unknown) => session.flashError(err),
+    ).finally(() => {
+      reverting = false;
+      session.requestRender();
+    });
+  };
+
   const handleKey = (
     key: { ctrl?: boolean; name?: string },
     ctx: TuiPaneCtx,
@@ -404,6 +455,27 @@ export function createHistoryPane(
         loadTranscript();
         composeTrail();
         session.paneScroll = 0;
+      }
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "v") {
+      // Ctrl+V on a run trail reverts the shown run's merged change: the terminal twin of
+      // `tumwater revert <role> <n>` and the dashboard History drill-down's Revert. The first
+      // press previews (previewRevert) and arms only a clean, applying revert; a second press
+      // right after commits it through revertMergedCommit, and any other key disarms it.
+      if (session.view !== session.roleIds.length + 4) return false;
+      if (promptLineFree(ctx.es)) {
+        if (!trailMode || trailRun === null) {
+          session.flashMessage("open a run's trail with Ctrl+N to revert its change");
+        } else if (reverting) {
+          session.flashMessage("a revert is already running");
+        } else {
+          const found = runRevertSha(trailRun.role, trailRun.run, trailRun.detail);
+          if (!found.ok) session.flashMessage(found.error);
+          else if (session.armedRevert === found.sha) revertRun(found.sha);
+          else previewRun(found.sha);
+        }
       }
       session.requestRender();
       return true;
@@ -506,6 +578,8 @@ export function createHistoryPane(
       trailIndex = 0;
       trailTranscript = "off";
       trailGrep = null;
+      session.revertArmed = null;
+      session.armedRevert = null;
     },
     dropScopes(roles) {
       // The same drop for History's exact-role scope: a retired or renamed role must not keep

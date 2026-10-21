@@ -2,6 +2,7 @@ import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
+import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
 import type { HistoryResultClass } from "../../history/history-data.js";
@@ -32,6 +33,8 @@ export interface TuiPanesDeps {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  previewRevert: typeof previewRevert;
+  revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
 }
@@ -159,6 +162,11 @@ export interface TuiPaneSession {
   armedKillOrphans: boolean;
   /** The Health pane's pending second Ctrl+K; moved to `armedKillOrphans` by beginKey. */
   killOrphansArmed: boolean;
+  /** The armed run revert (first Ctrl+V on a History trail): the full sha a second Ctrl+V
+   * reverts. */
+  armedRevert: string | null;
+  /** The History pane's pending second Ctrl+V; moved to `armedRevert` by beginKey. */
+  revertArmed: string | null;
   root: string;
   now(): number;
   requestRender(): void;
@@ -170,6 +178,8 @@ export interface TuiPaneSession {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  previewRevert: typeof previewRevert;
+  revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
 }
@@ -192,6 +202,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     notesClearArmed: null,
     armedKillOrphans: false,
     killOrphansArmed: false,
+    armedRevert: null,
+    revertArmed: null,
     root: deps.root,
     now: deps.now,
     requestRender: deps.requestRender,
@@ -203,6 +215,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     collectOverlaps: deps.collectOverlaps,
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
+    previewRevert: deps.previewRevert,
+    revertCommit: deps.revertCommit,
     collectChange: deps.collectChange,
     runStat: deps.runStat,
   };

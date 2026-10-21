@@ -4,6 +4,8 @@ import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js
 import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
 import { stampedRole, stampedSubject } from "../git/commit-message.js";
 import { shortSha } from "../text/format.js";
+import type { RunDetail } from "../run/run-detail-data.js";
+import { runMergedSha } from "../run/run-detail.js";
 
 /** `tumwater revert <sha>`: undo one merged change on main, committing the inverse as
  * `tumwater(operator): Revert <short sha>` on the primary checkout. Mirrors
@@ -80,6 +82,22 @@ interface RevertPreview {
   primary: string;
   applies: boolean;
   dirty: boolean;
+}
+
+/** The commit a run's merge put on main, or the CLI's refusal: the run did not merge, or merged
+ * but the event log no longer names its commit. Shared by `tumwater revert <role> <n>` and the
+ * TUI History trail's Ctrl+V so the two cannot drift. */
+export function runRevertSha(
+  role: string,
+  run: number,
+  detail: RunDetail,
+): { ok: true; sha: string } | { ok: false; error: string } {
+  if (detail.result !== "merged")
+    return { ok: false, error: `${role} run #${run} did not merge (result: ${detail.result ?? "unknown"}); there is nothing to revert` };
+  const sha = runMergedSha(detail);
+  if (sha === null)
+    return { ok: false, error: `${role} run #${run} merged but the event log no longer names its commit; pass the sha from git log instead` };
+  return { ok: true, sha };
 }
 
 /** `tumwater revert <sha> --dry-run`: what a revert of `ref` would undo and whether it applies
