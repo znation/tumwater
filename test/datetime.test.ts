@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DAY_MS, HOUR_MS, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
+import { DAY_MS, HOUR_MS, daysBetween, dayAt, dayKey, dayLabel, dayWindow, formatClock, formatDate, formatTime, formatTimestamp, humanAgo, humanSeconds, humanUntil, pad2, reportWindow, secondsSince, secondsUntil } from "../src/text/datetime.js";
 import { clockOf, dateOf } from "./helpers/oracles.js";
 
 // datetime.ts is the single home of local date/time formatting and calendar-day arithmetic
@@ -77,6 +77,13 @@ test("formatTime renders the zero-padded local wall clock from date parts alone"
   // drift to UTC rendering fails here rather than matching the constructor's own timezone.
   const d = new Date(2026, 2, 1, 23, 59, 59);
   assert.equal(formatTime(d), clockOf(d));
+});
+
+test("formatClock is the epoch-ms form of formatTime, from one local Date", () => {
+  const oracle = (ms: number) => formatTime(new Date(ms));
+  const at = new Date(2026, 2, 1, 14, 30, 5).getTime();
+  assert.equal(formatClock(at), "14:30:05");
+  assert.equal(formatClock(at), oracle(at));
 });
 
 test("dayKey is the LOCAL calendar day of the instant, never the UTC date", () => {

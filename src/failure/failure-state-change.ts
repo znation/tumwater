@@ -10,7 +10,7 @@ import { cutSplitsSurrogatePair, isNonBlankString } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
 import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase, PAUSE_EXPIRED_SUFFIX } from "../text/phrases.js";
-import { formatTime } from "../text/datetime.js";
+import { formatClock } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
@@ -107,7 +107,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "team_paused":
       text = teamPausePhrase();
-      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatTime(new Date(finiteNumber(ev.until, 0)))}`;
+      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatClock(finiteNumber(ev.until, 0))}`;
       if (isNonBlankString(ev.reason)) text += `: ${field(ev.reason)}`;
       break;
     case "team_resumed":
@@ -115,7 +115,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "role_paused":
       text = rolePausePhrase(field(ev.role ?? "?"));
-      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatTime(new Date(finiteNumber(ev.until, 0)))}`;
+      if (finiteNumber(ev.until, null) !== null) text += ` until ${formatClock(finiteNumber(ev.until, 0))}`;
       break;
     case "role_resumed":
       text = roleResumePhrase(field(ev.role ?? "?")) + (ev.expired === true ? PAUSE_EXPIRED_SUFFIX : "");

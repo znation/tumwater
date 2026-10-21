@@ -75,6 +75,17 @@ export function formatTime(d: Date): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+/** Epoch ms as a local `HH:MM:SS` wall-clock string — the epoch-ms form of formatTime, the
+ * dayKey-to-formatDate sibling. It shares the clock-instant rendering every event renderer's
+ * pause/reset/resume suffix needs (event-format.ts's pauseSuffix and windowResetPhrase,
+ * failure-state-change.ts's team/role pause untils, doctor-model-checks.ts's probe time), so no
+ * site re-derives `formatTime(new Date(ms))`. A non-finite or absent `ms` renders the same NaN
+ * clock formatTime's Date would — callers guard with finiteNumber first, exactly as they did
+ * before. */
+export function formatClock(ms: number): string {
+  return formatTime(new Date(ms));
+}
+
 /** Epoch ms as a local calendar-day key (`YYYY-MM-DD`) — the epoch-ms form of formatDate:
  * the day-bucketing rule the event log's day key (eventDayKey), the windowed readers' window
  * keys, the daily-budget stamp, and the failure digest's cluster dates all render through, so

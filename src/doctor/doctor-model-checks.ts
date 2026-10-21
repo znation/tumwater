@@ -33,7 +33,7 @@ import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { parsePiModelImages, parsePiModelTable, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
-import { formatDate, formatTime } from "../text/datetime.js";
+import { formatClock, formatDate } from "../text/datetime.js";
 import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { errorMessage, joinParts } from "../text/text.js";
@@ -97,7 +97,7 @@ export function checkFallbackModel(
   if (free) {
     const name = nameOf(free);
     if (demoted)
-      return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatTime(new Date(demoted.probeAt))}`);
+      return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatClock(demoted.probeAt)}`);
     return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
   }
   return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);

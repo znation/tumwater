@@ -7,7 +7,7 @@ import { orchestratorStopPhrase, backendKindPhrase, budgetPhrase, firstReason, t
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { isNonBlankString, joinWithMore, squash, textOr, truncate } from "../text/text.js";
-import { formatTimestamp, formatTime } from "../text/datetime.js";
+import { formatClock, formatTimestamp } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
@@ -77,7 +77,7 @@ function minutes(ms: unknown): number {
  * the wrong type (the corrupt-field rule windowResetPhrase applies). */
 function pauseSuffix(until: unknown, reason: unknown): string {
   const ms = finiteNumber(until, null);
-  return `${ms === null ? "" : ` until ${formatTime(new Date(ms))}`}${isNonBlankString(reason) ? `: ${reason}` : ""}`;
+  return `${ms === null ? "" : ` until ${formatClock(ms)}`}${isNonBlankString(reason) ? `: ${reason}` : ""}`;
 }
 
 /** `, resets HH:MM` for a subscription-window event carrying resetsAt, or "" when the field is
@@ -85,7 +85,7 @@ function pauseSuffix(until: unknown, reason: unknown): string {
  * corrupt-field rule the other optional-field renderers apply. */
 function windowResetPhrase(e: HarnessEvent): string {
   const at = finiteNumber(e.resetsAt, null);
-  return at === null ? "" : `, resets ${formatTime(new Date(at))}`;
+  return at === null ? "" : `, resets ${formatClock(at)}`;
 }
 
 /** The parenthesized ` (<window>)` a quiet-hours event names when it carries one, or "" when
