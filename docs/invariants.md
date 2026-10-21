@@ -432,14 +432,16 @@ resolver's resolution is not accepted.
 **Guarantee.** When the secret-leak check cannot stat or read a changed file for any reason
 other than the path holding no file (`ENOENT`, `ENOTDIR`), it names the file as a finding
 ("could not be read to check for leaked secrets") instead of passing it, so a credential the
-gate could not see never merges unchecked. Directories, gitlinks and oversized files stay
-deliberately skipped.
+gate could not see never merges unchecked. Directories, gitlinks, oversized files, and symlinks
+stay deliberately skipped — a symlink is never followed, because a change that adds one writes
+no content and its target (which could point out of the worktree) is not what the change put
+there.
 
 **Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/run/stage-check.ts`.
 
 **Pinned by.** `test/secret-leaks.test.ts` — "secretLeakReason names a changed file it cannot
 read, and skips a missing one", "secretLeakReason passes a value already at the merge-base, a
-directory, and no secrets".
+directory, and no secrets", "secretLeakReason does not follow a symlink out of the worktree".
 
 ## Tumwater owns every commit
 

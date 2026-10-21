@@ -112,9 +112,15 @@ export async function secretLeakReason(
   const leaks: string[] = [];
   for (const file of files) {
     const full = path.join(wt, file);
-    let stat: fs.Stats;
+    let stat: fs.Stats | null;
     try {
-      stat = fs.statSync(full);
+      // lstat, not stat: a symlink in the change set is not followed. The gate scans the
+      // content each change writes, and a change that adds a symlink writes no content — its
+      // target (which lstat's isFile() leaves unreadable, unlike stat's, which follows it out
+      // of the worktree) is not what the change put there. Following it would read an
+      // arbitrary host path a malicious repo can point a link at, and would flag that outside
+      // file's contents as this change's leak.
+      stat = fs.lstatSync(full);
     } catch (err) {
       if (!noFile(err)) leaks.push(unreadable(file, err));
       continue;

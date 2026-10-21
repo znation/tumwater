@@ -48,6 +48,18 @@ test("secretLeakReason names the file and variable, never the value", async () =
   assert.ok(!reason!.includes(VALUE));
 });
 
+test("secretLeakReason does not follow a symlink out of the worktree", async () => {
+  // A hostile repo can ship a path that is a symlink to a file outside the worktree (e.g.
+  // .tumwater/tumwater.json or /etc/...). The gate's leak check scans what a change writes;
+  // a symlink writes no content, so the link's target must not be read — following it would
+  // read an arbitrary host path and flag that outside file's contents as this change's leak.
+  const wt = await worktree({ "README.md": "# T\n" }, {});
+  const outside = path.join(tmpdir("tumwater-test-outside-"), "secret.txt");
+  fs.writeFileSync(outside, `{"env":"${VALUE}"}`);
+  fs.symlinkSync(outside, path.join(wt, "report.json"));
+  assert.equal(await secretLeakReason(wt, "main", ["report.json"], ENV), undefined);
+});
+
 test("secretLeakReason passes a value already at the merge-base, a directory, and no secrets", async () => {
   const wt = await worktree({ "old.json": VALUE }, { "old.json": `${VALUE}\nmore`, "dir/x.json": VALUE });
   assert.equal(await secretLeakReason(wt, "main", ["old.json"], ENV), undefined);
@@ -134,7 +146,7 @@ test("secretLeakReason names a changed file it cannot read, and skips a missing 
   } finally {
     undo();
   }
-  undo = fault("statSync", "EACCES");
+  undo = fault("lstatSync", "EACCES");
   try {
     assert.match((await secretLeakReason(wt, "main", ["clean.md"], ENV))!, /\(EACCES\)/);
   } finally {
