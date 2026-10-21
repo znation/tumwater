@@ -25,7 +25,7 @@ import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
+import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange, normalizeDiffPath } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, readRunRows, readRunRowsSince, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type RunRow } from "../history/history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE, readEventsSince } from "../events/event-window.js";
@@ -153,20 +153,20 @@ export function handleBacklogMatch(q: URLSearchParams, res: http.ServerResponse,
  * collectors degrade absent worktrees and missing base branches to their `state` instead of
  * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
  * it works whether or not the team is running. `?overlaps=1` serves collectChangeOverlaps
- * (exactly `tumwater diff --overlaps --json`'s `{ mainBranch, state, overlaps }`); with `role` it
- * is a 400. */
+ * (exactly `tumwater diff --overlaps --json`'s `{ mainBranch, state, overlaps }`); with `role` (a
+ * comma-separated list, each id validated) it keeps the files a listed role holds, exactly
+ * `tumwater diff --overlaps --role <ids> --json`. */
 export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const rawPath = q.get("path");
   if (q.get("overlaps") !== null) {
-    if (q.get("role") !== null) {
-      badRequest(res, "overlaps reads every role; drop role");
-      return;
-    }
     if (rawPath !== null) {
       badRequest(res, "overlaps reads every file; drop path");
       return;
     }
-    sendJson(res, 200, await collectChangeOverlaps(root));
+    const roles = roleListQuery(q, res, root);
+    if (roles === null) return;
+    const view = await collectChangeOverlaps(root);
+    sendJson(res, 200, roles === undefined ? view : scopeChangeOverlaps(view, roles));
     return;
   }
   const role = q.get("role");
@@ -187,6 +187,21 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
   sendJson(res, 200, await collectRoleChange(root, role, path === undefined ? {} : { path }));
 }
 
+/** Parse the `?role=` comma-separated list (each id trimmed, deduplicated, and validated by
+ * rejectBadRole; an empty list or unknown id → 400). Returns undefined when `role` is absent and
+ * null once a 400 is sent. */
+function roleListQuery(q: URLSearchParams, res: http.ServerResponse, root: string): string[] | undefined | null {
+  const raw = q.get("role");
+  if (raw === null) return undefined;
+  const roles = splitCommaListUnique(raw);
+  if (roles.length === 0) {
+    rejectBadRole(root, res, raw);
+    return null;
+  }
+  for (const r of roles) if (rejectBadRole(root, res, r)) return null;
+  return roles;
+}
+
 /** Parse and validate the role-scoped, sinceMs-or-days query the report and failures endpoints
  * both take: the `?role=` filter, a comma-separated list (each id trimmed, deduplicated, and
  * validated by rejectBadRole — an unknown id or an empty list → 400 naming it) and, when
@@ -196,16 +211,8 @@ export async function handleDiff(q: URLSearchParams, res: http.ServerResponse, r
  * The one home of that shared scaffolding, so the two endpoints cannot drift on the role rule or
  * the days-vs-sinceMs mutual exclusion (the server twin of reportEndpoint on the GUI client). */
 function reportScope(q: URLSearchParams, res: http.ServerResponse, root: string): { roles?: string[]; sinceMs?: number } | null {
-  const raw = q.get("role");
-  let roles: string[] | undefined;
-  if (raw !== null) {
-    roles = splitCommaListUnique(raw);
-    if (roles.length === 0) {
-      rejectBadRole(root, res, raw);
-      return null;
-    }
-    for (const r of roles) if (rejectBadRole(root, res, r)) return null;
-  }
+  const roles = roleListQuery(q, res, root);
+  if (roles === null) return null;
   if (q.get("sinceMs") !== null) {
     const sinceMs = reportSinceMs(q, res);
     if (sinceMs === null) return null;

@@ -24,7 +24,7 @@ import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
 import { BRIEF_TEXT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectChangeOverlaps, scopeChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { collectReportSince } from "../src/report/report-data.js";
 import { renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { entryKey } from "../src/backlog/backlog-parts.js";
@@ -1729,26 +1729,43 @@ test("handleDiff refuses an unknown role through rejectBadRole's 400", async () 
   assert.equal(traversal.captured.status, 400);
 });
 
-test("handleDiff with ?overlaps serves collectChangeOverlaps's document and refuses role", async () => {
+test("handleDiff with ?overlaps serves collectChangeOverlaps's document, scoped by role", async () => {
   const root = makeRepo();
   await initProject(root, "gui diff overlaps");
   fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
-  commitIn(root, "seed notes.txt");
+  fs.writeFileSync(path.join(root, "solo.md"), "seeded\n");
+  commitIn(root, "seed notes.txt and solo.md");
   const feature = await ensureWorktree(root, "feature", "main");
   const qa = await ensureWorktree(root, "qa", "main");
+  const bugfix = await ensureWorktree(root, "bugfix", "main");
   fs.appendFileSync(path.join(feature, "notes.txt"), "feature\n");
   fs.appendFileSync(path.join(qa, "notes.txt"), "qa\n");
+  fs.appendFileSync(path.join(qa, "solo.md"), "qa\n");
+  fs.appendFileSync(path.join(bugfix, "solo.md"), "bugfix\n");
   fs.writeFileSync(path.join(feature, "feature.md"), "work\n");
   commitIn(feature, "feature work");
 
   const ok = await serveDiff(root, "?overlaps=1");
   assert.equal(ok.captured.status, 200);
   assert.deepEqual(ok.data, await collectChangeOverlaps(root));
-  assert.deepEqual((ok.data as unknown as { overlaps: unknown }).overlaps, [{ path: "notes.txt", roles: ["feature", "qa"] }]);
+  assert.deepEqual((ok.data as unknown as { overlaps: unknown }).overlaps, [
+    { path: "notes.txt", roles: ["feature", "qa"] },
+    { path: "solo.md", roles: ["bugfix", "qa"] },
+  ]);
 
-  const both = await serveDiff(root, "?overlaps=1&role=feature");
-  assert.equal(both.captured.status, 400);
-  assert.match((both.data as { error: string }).error, /overlaps reads every role; drop role/);
+  const one = await serveDiff(root, "?overlaps=1&role=feature");
+  assert.equal(one.captured.status, 200);
+  assert.deepEqual((one.data as unknown as { overlaps: unknown }).overlaps, [{ path: "notes.txt", roles: ["feature", "qa"] }]);
+  const solo = await serveDiff(root, "?overlaps=1&role=bugfix");
+  assert.deepEqual((solo.data as unknown as { overlaps: unknown }).overlaps, [{ path: "solo.md", roles: ["bugfix", "qa"] }]);
+  const both = await serveDiff(root, "?overlaps=1&role=feature,bugfix");
+  assert.equal(both.captured.status, 200);
+  assert.deepEqual(both.data, scopeChangeOverlaps(await collectChangeOverlaps(root), ["feature", "bugfix"]));
+  assert.deepEqual((both.data as unknown as { overlaps: { path: string }[] }).overlaps.map((o) => o.path), ["notes.txt", "solo.md"]);
+  const ghost = await serveDiff(root, "?overlaps=1&role=ghost");
+  assert.equal(ghost.captured.status, 400);
+  assert.match((ghost.data as { error: string }).error, /unknown role "ghost"/);
+  assert.equal((await serveDiff(root, "?overlaps=1&role=")).captured.status, 400);
 
   const fresh = await serveDiff(tmpdir(), "?overlaps=1");
   assert.equal(fresh.captured.status, 200);

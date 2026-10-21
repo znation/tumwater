@@ -82,24 +82,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The existing History trail tests ("Ctrl+N on the History pane swaps the rows…", "Ctrl+R on the History trail cycles…", "Ctrl+V twice on a History trail…", "a late stat never overwrites…") pass unchanged. So does "Ctrl+W on Activity edits the pool size; Ctrl+W on a role's Transcript still opens the wake editor".
 - `npm run test:gate` passes.
 
-### `GET /api/diff?overlaps=1&role=<id>[,<id>...]` keeps only the shared files a listed role holds: the dashboard API twin of `tumwater diff --overlaps --role` (planned 2026-10-20 by the plan role)
-
-**Goal.** `tumwater diff --overlaps --role <ids>` now filters the overlap list to the files a listed role holds, each still naming every holder (`scopeChangeOverlaps`, src/change/change-data.ts). The dashboard endpoint still refuses that combination: `handleDiff` (src/gui/gui-endpoints.ts) answers `?overlaps=1&role=…` with 400 "overlaps reads every role; drop role". Lift that refusal so the API answers the same question with the same document the CLI prints under `--json`. Server only; no client change.
-
-**Approach.**
-1. src/gui/gui-endpoints.ts: extract the role-list half of `reportScope` into a new function `roleListQuery(q: URLSearchParams, res: http.ServerResponse, root: string): string[] | undefined | null`. It returns `undefined` when `?role=` is absent. Otherwise it splits the value with `splitCommaListUnique`, sends 400 through `rejectBadRole(root, res, raw)` for an empty list, validates each id with `rejectBadRole`, and returns the list. It returns `null` once a 400 has been sent. `reportScope` calls it and keeps its current behaviour; only the code moves.
-2. `handleDiff`, in the `overlaps` branch: remove the `role` refusal and keep the `path` refusal. Call `roleListQuery`; return on `null`. When the result is `undefined`, send `collectChangeOverlaps(root)` as now. Otherwise send `scopeChangeOverlaps(await collectChangeOverlaps(root), roles)`. Run the `path` check first so `?overlaps=1&path=x&role=ghost` still names path. Update the doc comment's last sentence: with `role` (a comma-separated list, each id validated) it keeps the files a listed role holds, exactly `tumwater diff --overlaps --role <ids> --json`.
-3. Docs: in docs/invariants.md, update the change-view paragraph sentence about `scopeChangeOverlaps` so that it covers `GET /api/diff?overlaps=1&role=<ids>` too. In docs/how-it-works.md, change the `GET /api/diff?overlaps=1` mention to `GET /api/diff?overlaps=1[&role=<ids>]`.
-
-**Files touched.** src/gui/gui-endpoints.ts, test/gui-endpoints.test.ts, docs/invariants.md, docs/how-it-works.md.
-
-**Acceptance criteria.**
-- In the existing test "handleDiff with ?overlaps serves collectChangeOverlaps's document and refuses role", rename it to "handleDiff with ?overlaps serves collectChangeOverlaps's document, scoped by role". Replace the `?overlaps=1&role=feature` 400 assertion with these:
-  - `?overlaps=1&role=feature` is 200, and its `overlaps` is `[{ path: "notes.txt", roles: ["feature", "qa"] }]`.
-  - Add a third worktree `bugfix` that touches only `solo.md` alongside `qa`'s `solo.md` edit (both uncommitted). Then `?overlaps=1&role=bugfix` lists only `solo.md`. `?overlaps=1&role=feature,bugfix` lists both paths, in path order. The whole document deep-equals `scopeChangeOverlaps(await collectChangeOverlaps(root), ["feature", "bugfix"])`.
-  - `?overlaps=1&role=ghost` is 400 matching `/unknown role "ghost"/`. `?overlaps=1&role=` (empty) is 400.
-- The existing assertion that `?overlaps=1&path=notes.txt` is 400 "overlaps reads every file; drop path" still passes.
-- The existing tests "handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role" and its failures twin still pass unchanged. They cover the single, multi and `feature,bogus` (400) role lists, so they show the `roleListQuery` extraction kept `reportScope`'s behaviour.
-- `npm run test:gate` passes.
-
 ## Done
