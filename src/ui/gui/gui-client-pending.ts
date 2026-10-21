@@ -4,14 +4,17 @@
  * uncommitted-file count; a row opens that role's drawer, whose Pending change section fetches
  * the full patch (`/api/diff?role=<id>`). It refetches when the view opens and when its
  * Refresh button is pressed — never on a timer of its own. It also paints the overlapping-files
- * card from `/api/diff?overlaps=1`, with Role and Folder pickers that narrow it client-side.
- * Spliced into gui-client.ts's script, reaching its helpers (esc, getJson, icon, errorPanel)
- * through that concatenation. */
+ * card from `/api/diff?overlaps=1`, with Role and Folder pickers that narrow it client-side,
+ * and the Merge queue card from the status payload, with a Role picker that keeps only the
+ * chosen role's waiting merges under their whole-queue positions (the tumwater queue --role
+ * twin). Spliced into gui-client.ts's script, reaching its helpers (esc, getJson, icon,
+ * errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlaps = null;
   let pendingOverlapOpen = null;
   let pendingOverlapRole = "";
   let pendingOverlapDir = "";
+  let pendingQueueRole = "";
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -85,20 +88,29 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // payload the page already polls; depth counts the unreadable queue files the status reader
   // skips, so a positive depth with no readable list states the count instead of inventing rows.
   // Pure: the age comes from the passed now, and a malformed entry renders a stand-in rather
-  // than undefined/NaN. Null/absent/zero-depth reads as empty.
-  function pendingQueueHtml(mergeQueue, now, labels) {
+  // than undefined/NaN. Null/absent/zero-depth reads as empty. Its Role picker keeps only the
+  // chosen role's waiting merges, each under its position in the whole queue (the
+  // tumwater queue --role twin); "All roles" (the default) shows every line.
+  function pendingQueueHtml(mergeQueue, now, labels, role = "") {
     const depth = mergeQueue && Number.isFinite(mergeQueue.depth) ? mergeQueue.depth : 0;
     const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
+    const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
+    const active = role && roles.includes(role) ? role : "";
+    let head = "<div class='card-head'><h2>Merge queue</h2></div>";
     let body;
     if (depth === 0) {
       body = "<div class='empty'>Merge queue empty</div>";
     } else if (entries.length === 0) {
       body = "<div class='empty'>merge queue: " + esc(depth) + " waiting</div>";
     } else {
-      body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) =>
+      if (roles.length) {
+        head = "<div class='card-head'><h2>Merge queue</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingqueuerole'><option value=''>All roles</option>" +
+          roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
+      }
+      body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => ({ e, i })).filter(({ e }) => !active || (e && e.role === active)).map(({ e, i }) =>
         queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined)).join("") + "</div>";
     }
-    return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
+    return head + body;
   }
   // The Overlapping files card: one "path: role, role" line per file two or more pending changes
   // touch (tumwater diff --overlaps). Pure; a malformed document reads as no overlaps. Its Role
@@ -174,7 +186,10 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function renderPendingQueue(status) {
     const card = $("pendingqueue");
     if (!card) return;
-    card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels);
+    const entries = status && status.mergeQueue && Array.isArray(status.mergeQueue.entries) ? status.mergeQueue.entries : [];
+    const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
+    if (!roles.has(pendingQueueRole)) pendingQueueRole = "";
+    card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels, pendingQueueRole);
   }
   function paintPendingOverlaps() {
     const card = $("pendingoverlaps");
@@ -215,6 +230,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       "<div class='card' id='pendingoverlaps'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
+    $("pendingqueue").addEventListener("change", (e) => {
+      if (e.target.id === "pendingqueuerole") {
+        pendingQueueRole = e.target.value;
+        renderPendingQueue(lastStatus);
+      }
+    });
     $("pendingoverlaps").addEventListener("click", (e) => {
       const b = e.target.closest("[data-overlap]");
       if (b) togglePendingOverlap(Number(b.dataset.overlap));

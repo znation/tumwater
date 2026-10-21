@@ -444,7 +444,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   `GET /api/transcript?…&prompt=1` with each agent run's prompt, the text `tumwater logs --transcript <id> --prompt` prints; `&grep=<text>` keeps only the entries containing the text, each under its run's separator, as `tumwater logs --transcript <id> --grep` does. The role drawer's search box sends that `&grep=`. Its History, Usage, Failures, and
   Pending views match `tumwater history`, `tumwater report`, `tumwater report --failures`, and
   `tumwater diff`; the Pending view also paints the merge queue as a card mirroring `tumwater
-  queue`, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
+  queue`, with a Role picker that keeps only the chosen role's waiting merges, each under its
+  whole-queue position, the `tumwater queue --role` twin, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
   `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`), which also lists that role's waiting merges
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the

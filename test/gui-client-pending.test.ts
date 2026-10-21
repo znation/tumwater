@@ -162,6 +162,68 @@ test("pendingQueueHtml escapes role and summary markup", () => {
   assert.doesNotMatch(html, /<script>|<img>/);
   assert.match(html, /r&lt;script&gt;/);
   assert.match(html, /&lt;img&gt;/);
+  assert.match(html, /value='r&lt;script&gt;'/, "a role id carrying markup is escaped in the picker option");
+});
+
+test("pendingQueueHtml keeps the chosen role's merges under their whole-queue positions", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 3, entries: [
+    { role: "feature-2", sha: "aaaaaaaaaaaaaaaa", run: 1, summary: "a", enqueuedAt: now },
+    { role: "clean", sha: "bbbbbbbbbbbbbbbb", run: 2, summary: "b", enqueuedAt: now },
+    { role: "feature", sha: "cccccccccccccccc", run: 3, summary: "c", enqueuedAt: now },
+  ] };
+  const html = pendingQueueHtml(q, now, [], "clean");
+  assert.match(html, /2\. clean run #2 · bbbbbbbb · 0s ago · b/);
+  assert.doesNotMatch(html, /1\. |3\. |1\.feature|3\.feature/);
+  assert.equal((html.match(/2\. clean run #2/g) || []).length, 1, "only the clean line renders");
+  const m = /id='pendingqueuerole'>([\s\S]*?)<\/select>/.exec(html);
+  assert.ok(m, "head holds the role picker");
+  const opts = m ? m[1] ?? "" : "";
+  assert.match(opts, /option value=''>All roles<\/option>/);
+  assert.match(opts, /value='clean' selected>[^<]*<\/option>/);
+  assert.match(opts, /value='feature'/);
+  assert.match(opts, /value='feature-2'/);
+  assert.ok(opts.indexOf("value='clean'") < opts.indexOf("value='feature'"), "role options are sorted");
+});
+
+test("pendingQueueHtml shows the whole queue for All roles and ignores an absent role", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 3, entries: [
+    { role: "feature-2", sha: "aaaaaaaaaaaaaaaa", run: 1, summary: "a", enqueuedAt: now },
+    { role: "clean", sha: "bbbbbbbbbbbbbbbb", run: 2, summary: "b", enqueuedAt: now },
+    { role: "feature", sha: "cccccccccccccccc", run: 3, summary: "c", enqueuedAt: now },
+  ] };
+  const all = pendingQueueHtml(q, now, [], "");
+  assert.match(all, /1\. feature #2 run #1/);
+  assert.match(all, /2\. clean run #2/);
+  assert.match(all, /3\. feature run #3/);
+  const m = /id='pendingqueuerole'>([\s\S]*?)<\/select>/.exec(all);
+  assert.ok(m, "head holds the role picker");
+  const opts = m ? m[1] ?? "" : "";
+  assert.match(opts, /option value=''>All roles<\/option>/);
+  assert.doesNotMatch(opts, /selected/);
+  assert.equal(pendingQueueHtml(q, now), all, "the three-argument call equals the All-roles call");
+  assert.equal(pendingQueueHtml(q, now, [], "qa"), all, "a role with no waiting merge shows the whole queue");
+});
+
+test("pendingQueueHtml renders no role picker without roles", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  assert.doesNotMatch(pendingQueueHtml({ depth: 0 }, now), /pendingqueuerole|undefined|NaN/);
+  assert.match(pendingQueueHtml({ depth: 0 }, now), /Merge queue empty/);
+  assert.doesNotMatch(pendingQueueHtml({ depth: 2 }, now), /pendingqueuerole|undefined|NaN/);
+  assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: "nope" }, now), /pendingqueuerole|undefined|NaN/);
 });
 
 test("drawerQueueHtml lists only the role's queued merges under their whole-queue positions and labels", () => {
