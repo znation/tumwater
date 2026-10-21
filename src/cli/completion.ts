@@ -4,7 +4,8 @@
 import { customRoleNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { BACKEND_IDS, BACKEND_KEYS, CLAUDE_AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, THINKING_LEVELS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS, DOTTED_SECTION_FIELDS } from "../config/config-keys.js";
-import { HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS } from "../history/history-data.js";
+import { compareCodeUnits } from "../collections.js";
+import { HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, readRunRows } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
 import { allRoleIds } from "../roles/roles.js";
@@ -78,6 +79,19 @@ export function completionRoleIds(root: string): string[] {
     return knownRoleIds(loadConfig(root));
   } catch {
     return allRoleIds();
+  }
+}
+
+/** The selectors `history --model` completes: the distinct models recent runs started on, in the
+ * order `history --summary --by model` lists them. An unreadable or absent log must not write
+ * errors into the operator's prompt, and outside a repo it prints nothing. */
+export function completionModels(root: string): string[] {
+  try {
+    const models = new Set<string>();
+    for (const row of readRunRows(root, HISTORY_MAX_RUNS, null)) if (row.model !== null) models.add(row.model);
+    return [...models].sort(compareCodeUnits);
+  } catch {
+    return [];
   }
 }
 
@@ -196,6 +210,11 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "${MODEL_TIERS.join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    // bash splits at `:`; past a selector's colon `prev` is not --model, so nothing completes.
+    `  if [ "$prev" = "--model" ] && [ "\${COMP_WORDS[1]}" = history ]; then`,
+    `    COMPREPLY=( $(compgen -W "$(tumwater completion --models 2>/dev/null)" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
@@ -223,8 +242,9 @@ function fishFlagValue(command: string, flag: string): string {
   if (flag === "--type") return ` -x -a "${EVENT_TYPE_CODES.join(" ")}"`;
   if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
   if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
-  // Only `role --model` is a closed set; `history --model` takes run selectors read from the log.
+  // `role --model` completes the closed tier set; `history --model` completes the log's selectors.
   if (flag === "--model" && command === "role") return ` -x -a "${MODEL_TIERS.join(" ")}"`;
+  if (flag === "--model" && command === "history") return ` -x -a "(tumwater completion --models 2>/dev/null)"`;
   return "";
 }
 

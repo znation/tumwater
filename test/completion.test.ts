@@ -12,7 +12,8 @@ import { cli } from "./helpers/cli-harness.js";
 import { MODEL_TIERS } from "../src/config/config-schema.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { templateIds } from "../src/init/init-templates.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
+import { logEvent } from "../src/events/events.js";
 
 const run = promisify(execFile);
 
@@ -51,7 +52,7 @@ async function complete(script: string, words: string[], cword: number, cwd?: st
   const quoted = words.map((w) => `'${w}'`).join(" ");
   const { stdout } = await run("bash", [
     "-c",
-    `tumwater() { if [ "$2" = --config-keys ]; then printf 'maxDailyCostUsd\\nmaxDailyCostUsdPerRole.qa\\nroles.qa.model\\nroles.qa.enabled\\nmodel.strong\\n'; else printf 'feature\\nfeature-2\\nqa\\n'; fi; }\n${script}\nCOMP_WORDS=(${quoted}); COMP_CWORD=${cword}; _tumwater; printf '%s\\n' "\${COMPREPLY[@]}"`,
+    `tumwater() { if [ "$2" = --models ]; then printf 'hf/m-a:deepinfra\\nhf/m-b\\n'; elif [ "$2" = --config-keys ]; then printf 'maxDailyCostUsd\\nmaxDailyCostUsdPerRole.qa\\nroles.qa.model\\nroles.qa.enabled\\nmodel.strong\\n'; else printf 'feature\\nfeature-2\\nqa\\n'; fi; }\n${script}\nCOMP_WORDS=(${quoted}); COMP_CWORD=${cword}; _tumwater; printf '%s\\n' "\${COMPREPLY[@]}"`,
   ], { cwd });
   return stdout.split("\n").filter(Boolean);
 }
@@ -113,6 +114,34 @@ test("the bash script completes role ids after --role and for role/history/rever
   assert.deepEqual(await complete(script, ["tumwater", "history", "q"], 2), ["qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "revert", "q"], 2), ["qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "revert", "qa", "q"], 3), []);
+});
+
+test("completion --models prints the selectors recent runs started on, and nothing without a log", async () => {
+  const repo = makeRepo();
+  const ts = Date.now() - 60_000;
+  const start = (run: number, model?: string) =>
+    logEvent(repo, { ts: ts + run, source: "qa", type: "run_start", run, ...(model ? { model } : {}) });
+  const end = (run: number) => logEvent(repo, { ts: ts + run + 10, source: "qa", type: "run_end", run, result: "ok", tokens: 1, costUsd: 0 });
+  start(1, "m-b");
+  end(1);
+  start(2, "m-a");
+  end(2);
+  start(3, "m-b");
+  end(3);
+  start(4);
+  const ok = await cli(repo, "completion", "--models");
+  assert.equal(ok.code, 0);
+  assert.equal(ok.stdout, "m-a\nm-b\n");
+  const bare = tmpdir();
+  await run("git", ["init", "-q", bare]);
+  const none = await cli(bare, "completion", "--models");
+  assert.equal(none.code, 0);
+  assert.equal(none.stdout, "");
+  assert.equal(none.stderr, "");
+  assert.ok(completionSpec().flags.completion?.includes("--models"));
+  const bad = await cli(repo, "completion", "--models", "bash");
+  assert.notEqual(bad.code, 0);
+  assert.match(bad.stderr, /bash, zsh, or fish/);
 });
 
 test("completion --roles prints the repo's role ids, or the catalog on a broken config", async () => {
@@ -193,7 +222,8 @@ test("the bash script completes summary groups after --by and tier names after r
   assert.deepEqual(await complete(script, ["tumwater", "history", "--by", ""], 3), ["role", "model"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--model", "st"], 4), ["strong"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--model", ""], 4), [...MODEL_TIERS]);
-  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", ""], 3), []);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", ""], 3), ["hf/m-a:deepinfra", "hf/m-b"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "--model", "hf/m-a"], 3), ["hf/m-a:deepinfra"]);
 });
 
 test("the bash script completes pi thinking levels after --thinking", async () => {
@@ -238,7 +268,8 @@ test("the fish script completes values after --role, path flags, --template, and
   assert.ok(flagLines("by").some((l) => l.includes("-a") && l.includes("role") && l.includes("model")));
   const modelLine = (cmd: string) => flagLines("model").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
   assert.ok(["small", "default", "strong"].every((t) => modelLine("role").includes(t)));
-  assert.ok(modelLine("history") !== "" && !modelLine("history").includes("-a"));
+  assert.ok(modelLine("history").includes("completion --models"));
+  assert.ok(!modelLine("role").includes("completion --models"));
   assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));
 });
 

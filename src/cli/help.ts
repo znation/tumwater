@@ -516,6 +516,7 @@ Usage:
   tumwater completion <bash|zsh|fish>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc; fish: tumwater completion fish | source)
   tumwater completion --roles      Print the role ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)
+  tumwater completion --models     Print the model selectors history --model completes (those the recent runs started on; nothing when the log is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
 
