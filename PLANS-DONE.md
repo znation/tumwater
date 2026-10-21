@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backend/model split, part 4c/5: Move test configs off namespaced and prefix-routed model ids to an explicit `backend` (planned 2026-10-19 by user, split 2026-10-20 by the plan role from part 5/5 after the feature role's trial run; independent of every eligible plan — it changes only test files; part 4b/5 edits some of the same files for the `agent` key, a rebase either way; touches test/budget-gates.test.ts test/config-write.test.ts test/gui-endpoints.test.ts test/gui-client-boot.test.ts test/team-hold.test.ts test/team-polls.test.ts test/team-alerts.test.ts test/pi-models.test.ts test/role-view.test.ts test/doctor-model-checks.test.ts test/opencode-catalog.test.ts test/config-live.test.ts test/startup-gate.test.ts test/runner-pi-claude.test.ts test/doctor.test.ts and any further test file the probe below names; done 2026-10-20)
+
+**Goal.** Part 5/5 removes the two routing rules where the model id picks the backend. Both live in `routeModel` (src/config/model-selector.ts): a `claude/…` or `opencode/…` provider runs that backend (the `isBackendId(provider)` branch), and a bare `claude-…` id runs on claude (the `startsWith("claude-")` branch). 5/5 also removes the matching `isBackendId(provider)` branch in `seamKeyedFallbackProvider` (src/config/config-fallbacks.ts) and `seamAgent`'s `isBackendId(seam.provider)` fallback (model-selector.ts). Part 4/5 moved the `model: "claude/…"` literals. The trial run found these spellings still relied on:
+- bare `claude-…` ids with no `backend: "claude"` in scope;
+- `claude/<id>` and `opencode/<id>` strings in `fallback` values and chains;
+- resolved-seam fixtures that name the backend only through `provider: "claude"` / `"opencode"`.
+
+This part rewrites them first. Series goal and siblings: part 1/5; part 4b/5 handles the `agent` key.
+
+**Approach.** Mechanical, one theme, no src change. Each rewrite resolves to the same backend and model as before, so assertions stay as they are.
+- A bare `claude-…` id resolved with no explicit backend (top-level `backend` unset or `pi`): add `backend: "claude"` to its section. A tier-map entry becomes the object form `{ backend: "claude", model }`, and a role or review section gains the key.
+- A `"claude/<id>"` or `"opencode/<id>"` fallback string or chain step: becomes `{ backend: "claude" | "opencode", model: "<id>" }`, the part 2/5 step form.
+- A resolved seam or pair fixture that names the backend only through `provider: "claude" | "opencode"`: gains `agent: "<id>"`, and its `provider` is dropped, the shape `routeModel` produces for these backends.
+- Leave alone the cases part 4/5 already left: rendered display labels (`claude/claude-sonnet-5-5`), OpenCode argv (`--model opencode/<id>`), opencode catalog keys, event/history fixtures, and the legacy-rule pins in test/model-selector.test.ts, test/config-views.test.ts and test/config-validation*.test.ts. Each pin you touch gets the `// legacy spelling, retired in part 5/5` comment.
+- **Probe** (local only, never committed):
+  1. In `routeModel`, make `backend` = `provider === undefined ? configBackend : "pi"`.
+  2. In `seamKeyedFallbackProvider`, make it `provider === undefined ? config.backend : "pi"`.
+  3. In `seamAgent`, return `seam.agent ?? "pi"`.
+  4. Run `npm run test:gate` into a scratch log and migrate each failing test whose cause is one of the three spellings above.
+  5. Restore with `git checkout -- src/config` and re-run the gate.
+
+**Acceptance criteria.**
+- `git diff --stat main` names only files under test/.
+- With the probe applied, the gate's failures are confined to the legacy-pin files part 5/5 rewrites: test/model-selector.test.ts, test/config-views.test.ts, test/config-validation.test.ts, test/config-validation-model.test.ts and test/badges.test.ts. The run's VERIFIED line names the probe's remaining failing files.
+- `npm run test:gate` passes on the committed tree (src restored).
+
+**Result 2026-10-20 (feature role).** Migrated test/budget-gates.test.ts, test/config-views.test.ts, test/doctor-model-checks.test.ts, test/pi-models.test.ts, test/role-view.test.ts, test/runner-pi-claude.test.ts, test/runner-pi-followups.test.ts, test/runner-pi-opencode.test.ts and test/runner-pi-retry.test.ts (the runner tests also moved their in-memory `config.agent =` to `backend`, overlapping part 4b/5). The other listed files needed no edit: their `provider: "claude"` values are payload passthroughs, not routing, and no probe run failed in them. **Finding for part 5/5:** the probe still fails five tests outside the legacy-pin files — doctor-model-checks (two fallback-seam checks), doctor, role-view (a claude model-fallback episode) and startup-gate (a claude seam only as a fallback) — and, with `seamAgent`'s probe step applied, more in budget-gates and pi-models. All of them configure a plain `{ backend: "claude", model }` fallback step: `fallbackPair` hands back `provider: "claude"` with no agent, and `seamsInUse` / `withModelOverrides` / `seamAgent` then re-derive the backend from that provider through the rules 5/5 deletes. No test edit can fix that; 5/5 must give fallback pairs an explicit agent in src first. A claude role beside a top-level pi `provider` also inherits that provider (`paid/claude-sonnet-5-5`), so the migrated budget-gates cases write the top level as a `paid/gpt-x` selector.
+
 ### `plan --list --ready` and `bug --list --ready` keep only the entries a role could claim, each under its unfiltered number, the numbered twin of `tumwater backlog --ready` (planned 2026-10-20 by the plan role; independent of every eligible plan — the Backend/model split parts change test configs and src/config, the TUI History model filter touches src/ui/tui, and the two completion plans touch src/cli/completion.ts; this one touches the backlog list view, help and docs only; done 2026-10-20 by the feature role)
 
 **Goal.** `tumwater backlog --ready` hides held entries (`readyBacklog`, src/backlog/backlog-render.ts), but it prints no position numbers. `plan --list` and `bug --list` print the numbers that `--top`/`--edit`/`--cancel`/`--show` take, but they cannot hide held entries. A long backlog with blocked series and refused bugs buries the claimable ones. With `--ready`, `plan --list` and `bug --list` keep only the entries whose hold is null. Each entry keeps its unfiltered position, so `plan --list --ready` followed by `plan --top <n>` acts on the entry that was printed.

@@ -110,7 +110,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   // A subscription claude fallback is free by the account's billing answer, not by
   // models.json: the check reads the same account the budget gate does.
   const claudeSub = readyRepo();
-  writeConfig(claudeSub, { fallbackModel: { provider: "claude", model: "claude-sonnet-5-5" } });
+  writeConfig(claudeSub, { fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   writeClaudeAccount(claudeSub, { billing: "subscription", observedAt: Date.now(), windows: {} });
   const accepted = checkFallbackModel(claudeSub, path.join(tmpdir(), "absent.json"));
   assert.equal(accepted.level, "ok");
@@ -230,9 +230,9 @@ test("checkTierModels notes per-token billing for a Claude model routed to pi; a
   const pinned = await checkTierModels(root, file, async () => "ready");
   assert.equal(pinned.level, "warn");
   assert.match(pinned.detail, /anthropic\/claude-opus-5-5 runs on pi and is billed per token/);
-  // A bare `claude-opus-5-5` routes to the claude CLI (rule 3a), so it is not a pi pair: the
-  // pi sweep must not name it score-wise nor probe pi's auth.
-  writeConfig(root, { model: "claude-opus-5-5" });
+  // A bare `claude-opus-5-5` under an explicit claude backend routes to the claude CLI, so it
+  // is not a pi pair: the pi sweep must not name it score-wise nor probe pi's auth.
+  writeConfig(root, { backend: "claude", model: "claude-opus-5-5" });
   let probed = 0;
   const bare = await checkTierModels(root, file, async () => {
     probed++;

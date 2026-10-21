@@ -30,8 +30,8 @@ test("a priced opencode run demotes the cached free model once through the runne
   // Seed the catalog cache with the free model free, as part 6a's startup seed would.
   writeOpencodeCache(root, { fetchedAt: 1, cliVersion: "2.0.32", models: { [FREE_KEY]: { free: true } } });
   const config = defaultConfig();
-  config.agent = "opencode";
-  config.model = FREE_KEY;
+  config.backend = "opencode";
+  config.model = FREE_KEY.replace("opencode/", "");
   await withOpencodeReplay(opencodeCaptures.editRun, { cannedExport: pricedExport() }, async () => {
     const { runnerPi } = makeHost(root, config);
     const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-1-author");
@@ -47,8 +47,8 @@ test("a $0 opencode run leaves the cached free model free through the runner", a
   const root = tmpdir();
   writeOpencodeCache(root, { fetchedAt: 1, cliVersion: "2.0.32", models: { [FREE_KEY]: { free: true } } });
   const config = defaultConfig();
-  config.agent = "opencode";
-  config.model = FREE_KEY;
+  config.backend = "opencode";
+  config.model = FREE_KEY.replace("opencode/", "");
   // The unmodified export has info.cost 0.
   await withOpencodeReplay(opencodeCaptures.editRun, async () => {
     const { runnerPi } = makeHost(root, config);

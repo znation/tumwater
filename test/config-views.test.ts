@@ -359,7 +359,12 @@ test("a non-pi fallback pair is keyed by its backend, in both selector forms", (
   // a bare `<id>` on a claude team both read `claude`, so a run on either form is handed
   // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
   const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
-  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {
+  assert.deepEqual(fallbackPair({ ...claude, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] }), {
+    provider: "claude",
+    model: "claude-sonnet-5-5",
+    extraUsage: true,
+  });
+  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), { // legacy spelling, retired in part 5/5
     provider: "claude",
     model: "claude-sonnet-5-5",
     extraUsage: true,
@@ -475,7 +480,7 @@ test("applyFallbackModel keeps a free seam while moving a priced one", () => {
   config.model = { default: "paid/gpt-x", strong: "paid/gpt-x" };
   config.fallback = "free/qwen-free";
   // A free (subscription claude) role and a priced pi role: only the priced one moves.
-  config.roles.feature = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  config.roles.feature = { enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   config.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
   const resolved = resolveTierFallbacks(config, () => true);
   const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
@@ -494,7 +499,7 @@ test("applyFallbackModel keeps a free seam's ambient thinking level", () => {
   config.thinking = "high";
   config.fallback = "free/qwen-free";
   config.review = { ...config.review, enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
-  config.roles.feature = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  config.roles.feature = { enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   const resolved = resolveTierFallbacks(config, () => true);
   const out = applyFallbackModel(config, resolved, (seam) => seam.agent === "claude");
   // The kept free tier carries the ambient thinking level in its selector; its roles inherit it,
@@ -597,7 +602,7 @@ test("applyFallbackModel without a resolved map is unchanged", () => {
 
 test("routeModel: a registered provider runs its agent; any other provider runs pi", () => {
   // A provider naming an agent is a namespace, not a pi provider: that agent runs.
-  assert.deepEqual(routeModel("claude", "claude-opus-5-5", "pi", "strong"), {
+  assert.deepEqual(routeModel("claude", "claude-opus-5-5", "pi", "strong"), { // legacy spelling, retired in part 5/5
     agent: "claude",
     model: "claude-opus-5-5",
   });
@@ -608,7 +613,7 @@ test("routeModel: a registered provider runs its agent; any other provider runs 
   assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
   // Rule 3a (plans/provider-concurrency.md): a bare id starting with `claude-` runs on claude,
   // whatever the top-level agent says.
-  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong"), {
+  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong"), { // legacy spelling, retired in part 5/5
     agent: "claude",
     model: "claude-opus-5-5",
   });
@@ -748,12 +753,13 @@ test("a legacy pi config gains no model and stays on pi", () => {
 
 test("Mixing providers: one config serves HF on pi, claude for strong seams, and an oMLX fallback on pi", () => {
   // PLANS.md "Mixed claude + pi fleets, part 4/4" README example: a Claude model id beside
-  // models from other providers, with no `agent` key and no `claude/` prefix. Rule 3a keeps
-  // the bare `claude-…` id on the claude CLI while named providers stay on pi.
+  // models from other providers, with no top-level `backend` key and no `claude/` prefix. The
+  // strong tier's object form puts the claude id on the claude CLI while named providers stay
+  // on pi.
   const config: TumwaterConfig = defaultConfig();
   config.model = {
     default: "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
-    strong: "claude-opus-5-5",
+    strong: { backend: "claude", model: "claude-opus-5-5" },
   };
   config.fallback = "omlx/Qwen3.8-27B-MLX-oQ4e-mtp";
   // The default tier (feature role) runs on pi through HF.
@@ -895,7 +901,7 @@ test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () 
     "map with tier entry and inherited default": mk({
       model: { default: "qwenrunner/qwen3.8-27b", strong: "huggingface/zai-org/GLM-5.3-Flash:together:low" },
     }),
-    "bare claude id under pi": mk({ model: "claude-opus-5-5" }),
+    "bare claude id under pi": mk({ model: "claude-opus-5-5" }), // legacy spelling, retired in part 5/5
     "claude namespace under pi": mk({ model: "claude/claude-opus-5-5" }), // legacy spelling, retired in part 5/5
     "opencode namespace under pi": mk({ model: "opencode/anthropic/claude-sonnet-5-5" }), // legacy spelling, retired in part 5/5
     "anthropic id under claude backend": mk({ backend: "claude", model: "anthropic/claude-sonnet-5-5" }),
@@ -906,14 +912,15 @@ test("ROUTING_GOLDENS: every pre-existing routing shape resolves as it did", () 
       thinking: "low",
     }),
     "role tier-name override": withRole(
+      // legacy spelling, retired in part 5/5
       { model: { default: "qwenrunner/qwen3.8-27b", strong: "claude-opus-5-5" } },
       "feature",
       { model: "strong" },
     ),
     "review override": review,
     "fallback chain": mk({
-      model: "claude-sonnet-5-5",
-      fallback: ["qwenrunner/qwen3.8-27b", "claude/claude-haiku-5-5"],
+      model: "claude-sonnet-5-5", // legacy spelling, retired in part 5/5
+      fallback: ["qwenrunner/qwen3.8-27b", "claude/claude-haiku-5-5"], // legacy spelling, retired in part 5/5
     }),
   };
   for (const [name, config] of Object.entries(cases)) {
@@ -955,13 +962,13 @@ test("explicit backend: a role naming only backend inherits the tier's model onl
     config.roles.feature = { ...config.roles.feature!, backend };
     return configForRole(config, "feature");
   };
-  // Rule 3a routes the tier to claude, so a pi-only role gets pi's own default, not that id.
-  const pi = role({ default: "claude-opus-5-5" }, "pi");
+  // The tier routes to claude, so a pi-only role gets pi's own default, not that id.
+  const pi = role({ default: { backend: "claude", model: "claude-opus-5-5" } }, "pi");
   assert.equal(pi.agent, "pi");
   assert.equal(pi.model, undefined);
   assert.equal(pi.provider, undefined);
-  // The tier is on claude through the namespace, so the claude role inherits its id.
-  const claude = role({ default: "claude/claude-opus-5-5" }, "claude");
+  // The tier is on claude through its backend key, so the claude role inherits its id.
+  const claude = role({ default: { backend: "claude", model: "claude-opus-5-5" } }, "claude");
   assert.equal(claude.agent, "claude");
   assert.equal(claude.model, "claude-opus-5-5");
 });

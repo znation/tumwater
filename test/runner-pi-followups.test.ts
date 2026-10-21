@@ -122,9 +122,9 @@ test("a follow-up that runs on a claude seam writes its native log under that se
       // (a model-failure fallback to the other backend). Resolving that seam through
       // configForRole gives a well-formed agent run config.
       const roleCfg = defaultConfig();
-      roleCfg.agent = "pi";
+      roleCfg.backend = "pi";
       const claudeCfg = defaultConfig();
-      claudeCfg.agent = "claude";
+      claudeCfg.backend = "claude";
       claudeCfg.model = "claude-sonnet-5-5";
       const claudeSeam = configForRole(claudeCfg, "feature");
       const { runnerPi } = makeHost(root, roleCfg);

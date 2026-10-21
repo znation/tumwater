@@ -43,6 +43,13 @@ function teamAt(provider: string | undefined, model: string | undefined): Tumwat
   return cfg;
 }
 
+function claudeTeam(model: string): TumwaterConfig {
+  const cfg = defaultConfig();
+  cfg.backend = "claude";
+  cfg.model = model;
+  return cfg;
+}
+
 test("piModelsPath points at pi's agent models.json under the home dir", () => {
   assert.equal(piModelsPath({}, "/h"), path.join("/h", ".pi", "agent", "models.json"));
 });
@@ -267,7 +274,7 @@ test("a claude-routed selector is never free, even if models.json prices its nam
   // A models.json that even names a free `claude` provider must not make a claude run read
   // cost n/a: pi's pricing cannot see claude CLI billing (part 6/7 makes subscriptions free).
   const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
-  const cfg = teamAt("claude", "claude-sonnet-5-5");
+  const cfg = claudeTeam("claude-sonnet-5-5");
   cfg.backend = "claude";
   assert.equal(teamModelsFree(cfg, file), false, "a claude-routed seam is not free");
   // The same for a fallback selector that routes to claude by its provider namespace.
@@ -285,7 +292,7 @@ test("a claude-routed selector is never free, even if models.json prices its nam
 
 test("a subscription claude seam is free; API billing, overage, and an absent account keep today's refusal", () => {
   const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
-  const cfg = teamAt("claude", "claude-sonnet-5-5");
+  const cfg = claudeTeam("claude-sonnet-5-5");
   cfg.backend = "claude";
   const api = { billing: "api" as const, observedAt: 1, windows: {} };
   const sub = { billing: "subscription" as const, observedAt: 1, windows: {} };
@@ -296,8 +303,8 @@ test("a subscription claude seam is free; API billing, overage, and an absent ac
   const withFallback = { ...cfg, fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] };
   assert.equal(fallbackModelFree(withFallback, file, api), false, "an API claude fallback is refused");
   assert.equal(fallbackModelFree(withFallback, file, sub), true, "a subscription claude fallback is free");
-  // An agent-less claude provider namespace under a subscription is free too.
-  assert.equal(teamModelsFree(teamAt("claude", "claude-sonnet-5-5"), file, sub), true);
+  // A claude-backend team with a bare claude id is free under a subscription too.
+  assert.equal(teamModelsFree(claudeTeam("claude-sonnet-5-5"), file, sub), true);
   // Overage is real money (plans/agent-backends.md §7): the subscription's overflow bills as API
   // spend, so a window using overage makes the seam — and a claude fallback — not free.
   const overage = {
@@ -411,7 +418,7 @@ test("seamFree prices an opencode seam by its catalog entry (part 6b/7)", () => 
   assert.equal(seamFree(null, { agent: "opencode", model: "free-billed" }, null, OPENCAT), false, "billed free model");
   assert.equal(seamFree(null, { agent: "opencode", model: "deepseek-v4.1-flash-free" }, null, null), false, "no catalog read");
   // A provider route keeps its slashed id verbatim — the key opencodeArgs runs it under.
-  assert.equal(seamFree(null, { provider: "opencode", model: "anthropic/claude-haiku-5-5" }, null, OPENCAT), true);
+  assert.equal(seamFree(null, { agent: "opencode", model: "anthropic/claude-haiku-5-5" }, null, OPENCAT), true);
   // The pi and claude arms are unchanged by the new catalog parameter.
   assert.equal(seamFree(null, { agent: "claude", provider: "claude", model: "x" }, { billing: "subscription", observedAt: 1, windows: {} } as never, OPENCAT), true);
 });

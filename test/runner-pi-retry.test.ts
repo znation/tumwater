@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
-import { configForRole } from "../src/config/config-views.js";
+import { configForRole, reviewConfig } from "../src/config/config-views.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
@@ -119,10 +119,11 @@ test("a 429 on a claude reviewer's final agent run folds the review seam through
   const root = tmpdir();
   const cfg = defaultConfig();
   cfg.agent = "pi";
-  cfg.provider = "omlx";
-  cfg.model = "qwen";
-  cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
+  cfg.model = "omlx/qwen";
+  cfg.review = { ...cfg.review, backend: "claude", model: "claude-sonnet-5-5" };
   const author = new RoleRunner(root, "feature", cfg, "main");
+  assert.equal(reviewConfig(cfg).agent, "claude", "the review seam routes to claude");
+  assert.equal(reviewConfig(cfg).provider, undefined, "and inherits no pi provider from the author");
   const { foldUsage } = mergeUsage(author, root);
   foldUsage(piRunResult({ ok: false, transientRateLimit: true }));
   assert.equal(

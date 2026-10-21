@@ -22,7 +22,7 @@ test("a claude agent run keeps its native log and surfaces unmapped-event warnin
     claudeResult({ totalCostUsd: 0.01 }),
   ], async () => {
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     const { runnerPi, warns } = makeHost(root, config);
     const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-1-author");
@@ -46,7 +46,7 @@ test("a subscription claude rejected window earns no within-run retry", async ()
     claudeResult({ isError: true, apiErrorStatus: 429, text: "Claude usage limit reached" }),
   ], async (fake) => {
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     const { runnerPi, usage, sleeps } = makeHost(root, config);
     const result = await runnerPi.runRolePi(root, "work", "tumwater-feature-1-author");
@@ -70,7 +70,7 @@ test("an API-billed claude authoring run carries the remaining team budget as --
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
     saveRunnerState(root, { ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     config.maxDailyCostUsd = 15;
     const { runnerPi } = makeHost(root, config);
@@ -86,7 +86,7 @@ test("a per-role cap lowers the claude agent run's --max-budget-usd below the te
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
     saveRunnerState(root, { ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 1.5 });
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     config.maxDailyCostUsd = 15;
     config.maxDailyCostUsdPerRole = { feature: 2 };
@@ -108,7 +108,7 @@ test("a fallback step's own cap lowers the claude agent run's --max-budget-usd t
       dayCostByPair: { "claude/claude-sonnet-5-5": 3 },
     });
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     config.maxDailyCostUsd = 15;
     config.fallbackStepCaps = { "claude/claude-sonnet-5-5": 5 };
@@ -130,7 +130,7 @@ test("a per-role cap sums a multi-instance role's spend and keys on the base rol
     saveRunnerState(root, { ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
     saveRunnerState(root, { ...freshRunnerState("feature-2"), dayStamp: todayStamp(), dayCostUsd: 0.6 });
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     config.maxDailyCostUsd = 15;
     config.maxDailyCostUsdPerRole = { feature: 2 };
@@ -153,7 +153,7 @@ test("a subscription account and the director both pass no --max-budget-usd", as
   ], async (fake) => {
     saveRunnerState(root, { ...freshRunnerState("feature"), dayStamp: todayStamp(), dayCostUsd: 12 });
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     config.model = "claude-sonnet-5-5";
     config.maxDailyCostUsd = 15;
 

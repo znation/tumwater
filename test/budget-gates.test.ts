@@ -374,8 +374,11 @@ test("a subscription claude seam stays put at the cap while a priced pi seam mov
   const models = writeModelsFile(root, MODELS_JSON);
   writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
   const cfg = configWith(10);
-  // One role pinned to subscription claude, one to a priced pi model; the top level is paid.
-  cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
+  // The top level is paid, written as a selector so a claude section inherits no pi provider.
+  cfg.provider = undefined;
+  cfg.model = "paid/gpt-x";
+  // One role pinned to subscription claude, one to a priced pi model.
+  cfg.roles.feature = { ...cfg.roles.feature, provider: undefined, backend: "claude", model: "claude-sonnet-5-5", enabled: true };
   cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
   const state = newBudgetGateState(cfg);
 
@@ -400,7 +403,7 @@ test("an overage subscription claude seam moves to its fallback at the cap", () 
     windows: { five_hour: { status: "allowed", isUsingOverage: true, observedAt: Date.now() } },
   });
   const cfg = configWith(10);
-  cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
+  cfg.roles.feature = { ...cfg.roles.feature, provider: undefined, backend: "claude", model: "claude-sonnet-5-5", enabled: true };
   const state = newBudgetGateState(cfg);
 
   const p = poll(root, state, cfg, models, [spentRunnerState("feature", 10)]);
@@ -625,7 +628,7 @@ test("a used-up claude window moves subscription claude roles to the fallback be
   cfg.backend = "claude"; cfg.model = "claude-sonnet-5-5";
   cfg.roles.feature = { enabled: true };
   cfg.roles.plan = { enabled: true, provider: "paid", model: "gpt-x" };
-  cfg.roles.bugfix = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  cfg.roles.bugfix = { enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   const state = newBudgetGateState(cfg);
 
   const p = poll(root, state, cfg, models, [spentRunnerState("feature", 1)]);
@@ -680,7 +683,9 @@ test("a used-up claude window resolves a claude reviewer to the fallback, and re
   const models = writeModelsFile(root, MODELS_JSON);
   rejectedWindow(root);
   const cfg = configWith(10);
-  cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
+  cfg.provider = undefined;
+  cfg.model = "paid/gpt-x";
+  cfg.review = { ...cfg.review, provider: undefined, backend: "claude", model: "claude-sonnet-5-5" };
   const state = newBudgetGateState(cfg);
 
   const out = poll(root, state, cfg, models);
@@ -701,7 +706,7 @@ test("a used-up claude window with no fallback leaves the live config for the ho
   const cfg = configWith(10);
   cfg.fallback = undefined;
   cfg.fallbackModel = undefined;
-  cfg.roles.feature = { ...cfg.roles.feature, provider: "claude", model: "claude-sonnet-5-5", enabled: true };
+  cfg.roles.feature = { ...cfg.roles.feature, provider: undefined, backend: "claude", model: "claude-sonnet-5-5", enabled: true };
   const state = newBudgetGateState(cfg);
   const p = poll(root, state, cfg, models);
   assert.equal(p.roleConfig, cfg);
@@ -728,7 +733,7 @@ test("a used-up claude window leaves a claude-pinned role under a priced pi tier
   const models = writeModelsFile(root, MODELS_JSON);
   rejectedWindow(root);
   const cfg = configWith(10);
-  cfg.roles.bugfix = { enabled: true, provider: "claude", model: "claude-sonnet-5-5" };
+  cfg.roles.bugfix = { enabled: true, backend: "claude", model: "claude-sonnet-5-5" };
   const state = newBudgetGateState(cfg);
   const p = poll(root, state, cfg, models);
   assert.equal(configForRole(p.roleConfig, "bugfix").agent, "claude");

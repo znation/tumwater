@@ -183,7 +183,7 @@ test("an opencode fallback pair reads free in the role view only when the cached
   // gate does, so `tumwater role` cannot disagree with the gate about a fallback it would
   // engage. A missing cache (no catalog read) leaves the pair NOT free — the safe direction.
   const dir = root();
-  writeConfig(dir, { fallbackModel: { provider: "opencode", model: "deepseek-v4.1-flash-free" } });
+  writeConfig(dir, { fallback: [{ backend: "opencode", model: "deepseek-v4.1-flash-free" }] });
   const noCache = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(noCache.fallbackFree, false, "no cached catalog: an opencode fallback is not provably free");
   writeOpencodeCache(dir); // the fixture prices the gateway free model free
@@ -194,7 +194,7 @@ test("an opencode fallback pair reads free in the role view only when the cached
 
 test("a subscription claude fallback reads free in the role view", () => {
   const dir = root();
-  writeConfig(dir, { fallbackModel: { provider: "claude", model: "claude-sonnet-5-5" } });
+  writeConfig(dir, { fallback: [{ backend: "claude", model: "claude-sonnet-5-5" }] });
   writeClaudeAccount(dir, { billing: "subscription", observedAt: Date.now(), windows: {} });
   const p = rolePayload(dir, "bugfix", NO_MODELS);
   assert.deepEqual(p.fallback, { provider: "claude", model: "claude-sonnet-5-5" });
