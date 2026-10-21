@@ -82,6 +82,7 @@ import {
   finishedKey,
   planDependencyFinding,
   strayPlaceholderFinding,
+  ungroundedRefusalFinding,
   waitingNoteFinding,
 } from "./stage-backlog-checks.js";
 import { gitLevelFindings } from "./stage-path-checks.js";
@@ -127,6 +128,8 @@ export async function stageCheckFindings(
     const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
     const dependency = base === undefined ? undefined : planDependencyFinding(head, base, archived);
     if (dependency !== undefined) findings.push(dependency);
+    const refusal = base === undefined ? undefined : ungroundedRefusalFinding("PLANS.md", head, base);
+    if (refusal !== undefined) findings.push(refusal);
   }
   const baseRev = FINISHED_ARCHIVES.some((s) => files.includes(s.file) || files.includes(s.archive))
     ? await changeBaseRev(wt, mainBranch).catch(() => undefined)
@@ -161,6 +164,12 @@ export async function stageCheckFindings(
     const base = await baseFileText(wt, mainBranch, "BUGS.md");
     const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
     if (waiting !== undefined) findings.push(waiting);
+  }
+  if (files.includes("BUGS.md")) {
+    const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
+    const base = await baseFileText(wt, mainBranch, "BUGS.md");
+    const refusal = base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base);
+    if (refusal !== undefined) findings.push(refusal);
   }
   for (const file of PLACEHOLDER_FILES) {
     if (!files.includes(file)) continue;

@@ -14,7 +14,7 @@ import {
 } from "../backlog/backlog-md.js";
 import { DONE_DATE_RE, FIXED_DATE_RE } from "../backlog/backlog.js";
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
-import { entryKey, planDependencyProblems } from "../backlog/backlog-parts.js";
+import { entryKey, partKey, planDependencyProblems, seriesPart, type PartRef } from "../backlog/backlog-parts.js";
 import { WAITING_FOR_FAILURE_NOTE } from "../roles/role-guidance.js";
 import { moreSuffix } from "../text/phrases.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
@@ -202,5 +202,83 @@ export function heldMovedFinding(
     `this run moved a backlog entry another instance of this role is working on: "${dup.title}" — it is that ` +
     `instance's task (see <held-entries>), so revert every edit made for it, including the ` +
     `entry's move, and leave nothing behind if that was the whole change`
+  );
+}
+
+/** The reason clause of a Refused note — everything after its leading `Refused … by <role>:` —
+ * or the whole note when it has no such prefix. This is what the refusal rule lets a run write
+ * freely, and what the ungrounded-refusal finding judges. */
+function refusalReason(note: string): string {
+  const i = note.indexOf(": ");
+  return i < 0 ? note : note.slice(i + 2);
+}
+
+/** True when `reason` grounds the refusal in this entry itself — it names no series part other
+ * than the entry's own (`own`), and cites neither another entry's Refused or Needs note nor a
+ * role's own notes. Any of those means the refusal rests on another entry's hold or on the
+ * role's opinion, not on an objection to this entry, so it should skip the entry instead. A
+ * reason that names a part outside its own series, or any part at all for an entry with no
+ * part (`own === null`), is a different-series reference — the same class as naming 7/9 from a
+ * 6/9 refusal. */
+function groundedRefusalReason(reason: string, own: PartRef | null): boolean {
+  if (/\brefus(?:al|ed|ing)?\s+of\b/i.test(reason)) return false; // cites another entry's refusal
+  if (/\bNeeds-[A-Za-z]/.test(reason)) return false; // cites another entry's Needs note
+  if (/\b(?:roles?['’]?s?|my|our|own)\s+notes?\b/i.test(reason)) return false; // rests on a role's own notes
+  // A part ref: an optional leading series name before `part N/M`, comma- or space-separated
+  // (own series when none is named, or when a space-separated word is not a title-cased series
+  // name — bridge words like `until part 7/9` resolve to the entry's own series).
+  const re = /(?:([A-Za-z][A-Za-z0-9 ._-]*?)([,\s]\s*))?part[s]?\s+([0-9]+[a-z]?)\/(\d+)\b/gi;
+  let m;
+  while ((m = re.exec(reason)) !== null) {
+    const token = (m[3] ?? "").toLowerCase();
+    if (own === null) return false;
+    let series = own.series;
+    if (m[1] !== undefined) {
+      const word = m[1].trim();
+      // An explicit comma names the series whatever its case; a space-separated word is a
+      // series only when it is the entry's own (any case) or title-cased, so a bridge word
+      // like `until` or `behind` still resolves to the entry's own series.
+      const comma = (m[2] ?? "").includes(",");
+      if (comma || word.toLowerCase() === own.series.toLowerCase() || /^[A-Z]/.test(word)) series = word;
+    }
+    if (partKey(series, token) !== partKey(own.series, own.part)) return false;
+  }
+  return true;
+}
+
+/** The finding for a Refused note the change adds to `file` (PLANS.md or BUGS.md) whose reason
+ * grounds the refusal outside the entry — it quotes another entry's Refused or Needs note, the
+ * role's own notes, or a different series part (the `b9664a461` case). `head` is the edited
+ * text, `base` its text at the merge-base. A refusal already on main is not this change's and
+ * is skipped; only a newly added (or edited) one is judged. Names the first offending entry in
+ * file order, with a count of the rest. Stages after `waitingNoteFinding`, sharing its guard.
+ * Undefined when the change adds no such refusal. */
+export function ungroundedRefusalFinding(
+  file: "PLANS.md" | "BUGS.md",
+  head: string,
+  base: string,
+): string | undefined {
+  const refusalByKey = (md: string): Map<string, { title: string; note: string; section: string }> => {
+    const out = new Map<string, { title: string; note: string; section: string }>();
+    for (const sectionLine of fenceAwareHeadingLines(md, "## ")) {
+      const section = headingTitle(sectionLine, "## ");
+      for (const e of parseEntryDetails(md, section)) {
+        const note = refusalNote(e.body);
+        if (note !== null) out.set(entryKey(e.title), { title: e.title, note, section });
+      }
+    }
+    return out;
+  };
+  const was = refusalByKey(base);
+  const newlyAdded = [...refusalByKey(head)].filter(
+    ([key, e]) => was.get(key)?.note !== e.note && !groundedRefusalReason(refusalReason(e.note), seriesPart(e.title)),
+  );
+  if (newlyAdded.length === 0) return undefined;
+  const first = newlyAdded[0]![1];
+  return (
+    `${file}'s "${first.section}" entry "${truncate(first.title, 160)}" carries a newly added Refused note ` +
+    `whose reason cites another entry's Refused/Needs note, a role's own notes, or a different series part ` +
+    `instead of an objection to this entry; implement this entry or pick another, but do not refuse it` +
+    moreSuffix(newlyAdded.length - 1)
   );
 }

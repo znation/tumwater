@@ -10,6 +10,7 @@ import {
   heldMovedFinding,
   planDependencyFinding,
   strayPlaceholderFinding,
+  ungroundedRefusalFinding,
   waitingNoteFinding,
 } from "../src/run/stage-backlog-checks.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -665,6 +666,70 @@ test("stageCheckFindings asks only a bugfix role for the Waiting note", async ()
   }
   const other = await stageCheckFindings(wt, "main", EXEMPT, "feature");
   assert.ok(!other.some((f) => f.includes("Waiting for the next failure")));
+});
+
+// Ungrounded-refusal check: a Refused note that cites another entry's hold or a different series
+// part instead of an objection to this entry spreads a refusal across a series (b9664a461).
+
+const PLAN_DOC = (planned: string) => `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n_None yet._\n`;
+const part69 = (extra = "") => `### Codex backend, part 6/9: translator (planned 2026-10-20 by user)\n\n**Goal.** body.\n${extra}`;
+const BAD_REFUSE = "**Refused 2026-10-21 by feature: re-authoring the Codex theme is directed not to happen — the feature run's refusal of part 2b/9 and this role's notes both record part 6/9 as abandoned; no consumer until part 7/9 lands behind unimplemented parts 4/9 and 5/9**";
+const GOOD_REFUSE = "**Refused 2026-10-21 by feature: this entry grows complexity without justification and keeps fighting back**";
+
+const PART6_BASE = PLAN_DOC(`${part69()}\n`);
+
+test("ungroundedRefusalFinding flags a Refused note citing another part or a role's notes", () => {
+  const head = PLAN_DOC(`${part69(BAD_REFUSE + "\n")}\n`);
+  const f = ungroundedRefusalFinding("PLANS.md", head, PART6_BASE)!;
+  assert.match(f, /Codex backend, part 6\/9/);
+  assert.match(f, /do not refuse it/);
+});
+
+test("ungroundedRefusalFinding flags a cross-series part named without a comma", () => {
+  const other = (extra = "") => `### Postgres, part 6/9: x (planned 2026-10-20 by user)\n\n**Goal.** b.\n${extra}`;
+  const base = PLAN_DOC(`${other()}\n`);
+  const head = PLAN_DOC(`${other("**Refused 2026-10-21 by feature: Codex part 6/9 is already abandoned**\n")}\n`);
+  assert.match(ungroundedRefusalFinding("PLANS.md", head, base)!, /do not refuse it/);
+});
+
+test("ungroundedRefusalFinding flags a cross-series part named with comma and space", () => {
+  const other = (extra = "") => `### Postgres, part 6/9: x (planned 2026-10-20 by user)\n\n**Goal.** b.\n${extra}`;
+  const base = PLAN_DOC(`${other()}\n`);
+  const head = PLAN_DOC(`${other("**Refused 2026-10-21 by feature: Codex, part 6/9 is already abandoned**\n")}\n`);
+  assert.match(ungroundedRefusalFinding("PLANS.md", head, base)!, /do not refuse it/);
+});
+
+test("ungroundedRefusalFinding stays quiet for a grounded refusal that merely says notes", () => {
+  const head = PLAN_DOC(`${part69(GOOD_REFUSE.replace("justification", "justification — note the duplicate is being removed") + "\n")}\n`);
+  assert.equal(ungroundedRefusalFinding("PLANS.md", head, PART6_BASE), undefined);
+});
+
+test("ungroundedRefusalFinding stays quiet for a PRINCIPLES-grounded refusal and a pre-existing one", () => {
+  const good = PLAN_DOC(`${part69(GOOD_REFUSE + "\n")}\n`);
+  assert.equal(ungroundedRefusalFinding("PLANS.md", good, PART6_BASE), undefined);
+  const already = PLAN_DOC(`${part69(BAD_REFUSE + "\n")}\n`);
+  assert.equal(ungroundedRefusalFinding("PLANS.md", already, already), undefined);
+});
+
+test("ungroundedRefusalFinding names a BUGS.md bug and counts the others", () => {
+  const bug = (t: string, extra = "") => `### ${t} (found by qa 2026-10-02)\n\n**Symptom:** broke.\n${extra}`;
+  const bugs = (b: string) => bugsDoc(`${b}\n`);
+  const refuse = (t: string) => `**Refused 2026-10-21 by feature: ${t}**`;
+  const head = bugs(
+    `${bug("Bug C: other", refuse("until part 7/9 lands") + "\n")}\n${bug("Bug D: twin", refuse("and this role's notes record it") + "\n")}\n`,
+  );
+  const f = ungroundedRefusalFinding("BUGS.md", head, bugs(`${bug("Bug C: other")}\n${bug("Bug D: twin")}\n`))!;
+  assert.match(f, /Bug C/);
+  assert.match(f, /1 more/);
+});
+
+test("stageCheckFindings flags a PLANS.md refusal citing another part, for any role", async () => {
+  const { wt } = await repoWith({ "PLANS.md": PART6_BASE });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), PLAN_DOC(`${part69(BAD_REFUSE + "\n")}\n`));
+  for (const role of ["feature", "bugfix"]) {
+    const findings = await stageCheckFindings(wt, "main", EXEMPT, role);
+    assert.ok(findings.some((f) => f.includes("do not refuse it")), `${role}: ${findings.join("\n")}`);
+  }
 });
 
 // Stale-name check: a removed compound identifier that a comment or doc still names.

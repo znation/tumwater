@@ -220,7 +220,9 @@ When to ask, when to refuse:
   justification, or keeps fighting back): refuse it. Revert nothing; append this note directly
   under the entry's heading in PLANS.md (a planned feature) or BUGS.md:
   **Refused <YYYY-MM-DD> by <role>: <one-line reason>**
-  That note is the only change a refusing run leaves.
+  The one-line reason must name what in this entry makes it harmful; another entry's hold, or
+  your own notes, is never a reason — skip that entry instead. That note is the only change a
+  refusing run leaves.
 - Skip entries carrying a Refused note: never pick or re-refuse them. A fully blocked backlog is
   a legitimate nothing-to-do state.
 

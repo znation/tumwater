@@ -672,6 +672,26 @@ claimed entry that merges releases the claim on the next poll", "pausing one ins
 claim so a sibling can take the entry", "pausing the whole feature role keeps every instance's
 claim" and "a released claim is saved to disk before the runner runs again".
 
+### INV-N4: a newly added Refused note must ground the refusal in its own entry, not in another entry's hold or a different series part
+
+**Guarantee.** A Refused note a change adds to a PLANS.md or BUGS.md entry is judged by
+`ungroundedRefusalFinding` at staging: it is flagged when its reason cites another entry's
+Refused or Needs note, rests on a role's own notes, or names a series part other than the entry's
+own (for an entry with no part, any series-part reference). A refusal already on main is never
+this change's fault and is skipped. A refusal naming only its own entry's conflict with
+PRINCIPLES.md is grounded and passes.
+
+**Binds.** `src/run/stage-backlog-checks.ts` (`ungroundedRefusalFinding`,
+`groundedRefusalReason`), `src/run/stage-check.ts`.
+
+**Pinned by.** `test/stage-check.test.ts` — "ungroundedRefusalFinding flags a Refused note citing
+another part or a role's notes", "ungroundedRefusalFinding flags a cross-series part named without a
+comma", "ungroundedRefusalFinding flags a cross-series part named with comma and space",
+"ungroundedRefusalFinding stays quiet for a grounded refusal that merely says notes",
+"ungroundedRefusalFinding stays quiet for a PRINCIPLES-grounded refusal and a pre-existing one",
+"ungroundedRefusalFinding names a BUGS.md bug and counts the others" and
+"stageCheckFindings flags a PLANS.md refusal citing another part, for any role".
+
 ## The backlog archive: finished entries move once, and only the ones a change added
 
 The archive moves finished entries out of PLANS.md / BUGS.md into PLANS-DONE.md / BUGS-FIXED.md: at

@@ -51,20 +51,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Considered and excluded:** the maintenance allowance's admission (src/orchestrator/orchestrator-scheduling.ts:453) also calls `noteSkip(..., undefined)`, but its headroom is recomputed from in-flight roles every pass (`maintenanceQuotaOverLine` at :259-262 owns the "used has reached the allowance" case, which already reads `waiting: maintenance allowance used …` through `maintenanceQuotaHold`), so a role declined only by the one-poll reservation is normally admitted on the next pass and the label's promise holds there. Left alone rather than adding a third state for a promise that keeps itself.
 - **Out of scope, deliberately:** the 2 s poll and the start latency it costs stay as they are — this entry makes the label tell the truth, it does not add a wake mechanism. The multiplier/clock split stays too, since `yieldMultiplierSuffix`'s own comment already declares a `now`-due cell at ×N to be "a role waiting out its gap, not a broken clock"; only the phase cell contradicts it.
 
-### A refusal can rest on another entry's refusal or on the role's own notes instead of on anything in the refused entry, so one refusal spreads across a series: feature-4 refused Codex part 6/9 as "orphaned code in a dead theme" (found by operator session 2026-10-21 from commit b9664a461)
-
-- **Symptom:** `b9664a461`'s Refused note on Codex part 6/9 gives two reasons:
-  - "the feature run's refusal of part 2b/9 ("the purpose is abandoned pending a fresh theme") and this role's notes both record part 6/9 as abandoned";
-  - "no Codex source exists … this translator/rollout reader has no consumer until part 7/9 lands".
-
-  Neither objects to 6/9 itself. Its heading says it is independent of parts 1/9–5/9, and its design pairs it with part 7/9's adapter on purpose. `dcc20618b`'s message records the same: 6/9's refusal "cited 2b/9's refusal rather than any objection of its own". The trigger, feature instances getting the plan-less exhaustion note, is fixed in `2416b9937`. The spread itself has no guard.
-- **Reproduce:** `git show b9664a461 -- PLANS.md`.
-- **Cause:** the refusal rule in the run prompt allows refusing "a task that would harm the project (it violates PRINCIPLES.md, grows complexity without justification, or keeps fighting back)" (src/prompt/prompt.ts:218-224), with any one-line reason. Nothing separates "this entry is unfit" from "another entry was refused" or "my notes say the theme is dead". A Refused note holds its entry, and every part that requires it, until a human clears it, so an ungrounded refusal is expensive.
-- **Expected / fix sketch:**
-  - The refusal rule says the reason must name what in this entry makes it harmful. Another entry's hold, or the role's own notes, is never a reason; skip that entry instead.
-  - The pre-queue self-check (src/run/stage-backlog-checks.ts, beside `waitingNoteFinding`) flags a newly added Refused note whose reason quotes another entry's Refused or Needs note, or names a different series part as its ground. The finding: "this refusal cites <other entry>'s hold, not a problem with this entry: implement this entry or pick another, but do not refuse it".
-  - Tests in test/stage-check*.test.ts: the `b9664a461` note is flagged; a refusal naming only this entry's own conflict with PRINCIPLES.md is not.
-
 ## Fixed
 
 ## Verified
