@@ -264,9 +264,9 @@ export function setConfigKey(
       const rawEntry = objectOrEmpty(rawEntryCandidate);
       oldValue = record.roles?.[parsed.id]?.[parsed.field];
       if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
+        unchanged = true;
+        return cfg;
+      }
       const roles = {
         ...rawRoles,
         [parsed.id]: { ...rawEntry, [parsed.field]: value },
@@ -317,9 +317,9 @@ export function setConfigKey(
   const result = writeConfigMutation(root, (cfg) => {
     oldValue = (cfg as unknown as Record<string, unknown>)[key];
     if (isDeepStrictEqual(oldValue, value)) {
-          unchanged = true;
-          return cfg;
-        }
+      unchanged = true;
+      return cfg;
+    }
     const next = { ...cfg, [key]: value };
     // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
     // override one entry), so an unrelated whole-config write must not re-expand the file's
