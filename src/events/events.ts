@@ -72,7 +72,7 @@ export interface HarnessEvent {
     | "budget_paused" // team daily spend reached maxDailyCostUsd with no usable free fallback; roles stop starting runs; `topRoles` as on budget_warning, omitted when none spent
     | "budget_fallback" // team daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; roles keep running on it; `topRoles` as on budget_warning, omitted when none spent
     | "budget_resumed" // the cap was raised/disabled or a new local day started; roles run again
-    | "budget_handback" // at budget_resumed: the in-flight runs still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
+    | "budget_handback" // at budget_resumed: the in-flight runs still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up subscription window reset rather than the budget, carrying backend (that window's backend)
     | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
     | "team_paused" // operator pause via `tumwater pause`; roles stop starting new runs, director exempt; carries `until` (ms epoch, timed pause only) and `reason` (the operator's `--reason`, when given) — events logged before carry neither
     | "team_resumed" // the pause was lifted (`tumwater resume`); roles run again; carries expired: true when the pause's `until` deadline lifted it (absent on older events and on a restarted orchestrator's first crossing)

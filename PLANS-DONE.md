@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 2e/9: The poll loop reads each subscription backend in use for its window move, hold, reserve and warning (planned 2026-10-21 by the plan role; requires parts 2c/9 and 2d/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/gate-polls.ts src/gates/budget-gates.ts test/gate-polls.test.ts test/orchestrator-budget.e2e.test.ts) — done 2026-10-22 by the feature role
+
+**Goal.** `pollTeamGates` reads every backend in `backendsInUse(liveConfig)` instead of claude alone, so a second subscription backend gets its own hold, reserve crossings, warning and window-move roles, and the window handback names the backend whose window resumed. No behavior change for a claude-only team. Closes the 2c series.
+
+**Approach.**
+- src/gates/gate-polls.ts: import `backendsInUse` from `./startup-gate.js` and `readAccount` from `../agent/subscription-account.js`; drop `readClaudeAccount` and the `seamIsClaude` import. Keep `TeamGateStates.claudeWindowWarned`/`claudeWindowReserved` as one `ReadonlySet<string>` of `backend:type:resetsAt` keys (the shape `logWindowEventOnce` builds and orchestrator's `loggedWindowKeys` seeds) — no per-backend map is needed, because every key already carries its backend.
+- Replace the single `readClaudeAccount` block with a loop over `backendsInUse(liveConfig)`: for each `backend`, `const account = readAccount(root, backend, now)`, collect `windowObservation(backend, account, now, windowReserveFor(liveConfig, backend))`, and advance `states.claudeWindowReserved = pollClaudeWindowReserve(root, states.claudeWindowReserved, account, now, reserve, backend)` and the warning poll with `backend`. Pass the collected observations to one `pollTeamHold`.
+- `windowMovedRoles`: replace `seamIsClaude(configForRole(liveConfig, r.role))` with a per-backend check, where `accounts = (b) => readAccount(root, b, now)`: a role on a moved tier is added only when its OWN backend is the tier's moved backend (`subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) === subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts)`), so a healthy backend's role riding the same tier is not dragged over.
+- Handback: `const handBack = gateResumed || (windowResumedBackends.length > 0 && !budgetActive);` and, when the resumption is a window, name the backend whose window resumed on the `budget_handback` event beside `reason: "window"` — mapped per pair from the resumed backends (`windowResumedBackends`) whose tiers' price-resolved pair it is, not from the fallback pair itself (which for claude-only carries no backend, and for two subscription backends names the opposite one).
+- src/gates/budget-gates.ts: delete the `seamIsClaude` shim part 2c kept for this call site.
+
+**Acceptance criteria.**
+- The gate-polls and orchestrator-budget e2e tests pass with only their event `backend` expectations updated; a claude-only team's holds, events and moves are unchanged, and its window handback event gains `backend: "claude"`.
+- A test registers a fake subscription backend `sub` whose account reports a rejected `five_hour` window: its roles enter `windowMovedRoles`, a hold keyed `sub` is placed, `subscription_window_limited { backend: "sub" }` is logged once, and claude's roles, hold and account are untouched. With claude rejected and `sub` healthy, only claude's roles move.
+- A test with a `sub` reserve logs `subscription_window_reserved { backend: "sub" }` once per window, and claude's own reserve memory is unaffected.
+- A test with a sub and a claude role riding the SAME tier, sub's window used up and claude healthy, moves only the sub role — the healthy claude role on the moved tier is not dragged over.
+- `grep -n 'seamIsClaude\|pairIsClaude' src` and `grep -n 'readClaudeAccount' src/gates/gate-polls.ts` print nothing.
+- `npm test` passes.
+
 ### Codex backend, part 2c/9: The budget gate's window move, chain reasons and director move read each subscription backend's own used-up window (planned 2026-10-21 by the plan role; requires parts 2a/9 and 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts test/budget-gates.test.ts test/budget-chain-info.test.ts) — done 2026-10-22 by the feature role
 
 **Goal.** Part 2c was too large for one run, so it is split into 2c (this part, the gate), 2d/9 (the hold observation and the once-per-window polls) and 2e/9 (the poll loop). This part makes the budget gate read each subscription backend's own used-up window instead of one claude `windowOut`, so a job moving down its chain, the director's move and each tier's chain reason name the backend that actually reported the window. No behavior change for a claude-only or pi-only team.

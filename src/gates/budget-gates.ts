@@ -176,18 +176,13 @@ function claudeOverageRefused(account: ClaudeAccount): boolean {
   return newest?.overageStatus === "rejected";
 }
 
-/** Does this model seam route to the claude backend? Thin shim over seamAgent; part 2e/9
- * removes it once the per-backend lookup replaces its callers. */
-export function seamIsClaude(seam: { agent?: string }): boolean {
-  return seamAgent(seam) === "claude";
-}
-
 /** The subscription backend a fallback pair or model seam routes to, when that backend's
  * account reads subscription billing: a resolved seam's own routed agent, else a fallback
  * pair's `backend` (`x.backend`), whose account is `billing === "subscription"`, else null.
  * One backend can be a subscription while another bills by API, so a used-up window is judged
- * per backend. (Not exported until part 2e/9's poll loop calls it, per the exports invariant.) */
-function subscriptionBackendOf(
+ * per backend. Exported for the gate-polls window loop (part 2e/9), which reads it per
+ * backend in use. */
+export function subscriptionBackendOf(
   x: FallbackModelConfig | { agent?: string },
   accounts: (backend: string) => SubscriptionAccount | null,
 ): string | null {

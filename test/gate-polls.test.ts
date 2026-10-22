@@ -18,6 +18,7 @@ import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/team/team-hold.js";
 import type { ModelFallbackState } from "../src/runner/model-fallback.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { writeAccount } from "../src/agent/subscription-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
@@ -206,6 +207,7 @@ test("pollTeamGates: a used-up claude window moves claude roles to the fallback 
   const back = readEvents(root, 100).filter((e) => e.type === "budget_handback");
   assert.equal(back.length, 1);
   assert.equal(back[0]!.reason, "window");
+  assert.equal(back[0]!.backend, "claude", "the handback names the backend whose window resumed");
   assert.equal(cfgOf(0), config, "the live config is back");
   assert.equal(cfgOf(1), config, "the director's too");
 });
@@ -327,6 +329,156 @@ test("pollTeamGates: a cap reopen while the claude window is still used up hands
   assert.equal(reopened.gate, "open");
   assert.deepEqual(handbacks, [], "the run is already on the pair the window still assigns");
   assert.equal(readEvents(root, 100).filter((e) => e.type === "budget_handback").length, 0);
+});
+
+test("pollTeamGates: a used-up sub window moves the sub tier's roles, holds backend sub, and leaves claude untouched", () => {
+  const root = tmpdir("gate-polls-sub-window-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  const config = paidFallbackConfig(10);
+  // The strong tier routes to the test-only `sub` backend and the default tier to claude, so one
+  // config carries two subscription backends and each backend's window is judged from its own
+  // account (part 2e/9). Never through loadConfig: `sub` is a test-only backend id.
+  config.model = {
+    strong: { backend: "sub", model: "sub-astra" },
+    default: { backend: "claude", model: "claude-sonnet-5-5" },
+  };
+  config.roles = {
+    ...config.roles,
+    feature: { enabled: true, model: "strong" },
+    bugfix: { enabled: true, model: "default" },
+  };
+  const runners = [
+    fakeRunner("feature", spentRunnerState("feature", 1), null, [], "sub"),
+    fakeRunner("bugfix", spentRunnerState("bugfix", 1), null, [], "claude"),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "sub"),
+  ];
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", "bugfix", DIRECTOR_ROLE] },
+  };
+
+  // sub rejected, claude healthy: only the sub role moves, the hold keys `sub`, the limited
+  // event names `sub`, and claude's role and account are untouched.
+  writeAccount(root, "sub", {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
+  const states = newTeamGateStates(config);
+  const subOut = pollTeamGates(states, ctx);
+  assert.ok(subOut.windowMovedRoles.has("feature"), "the sub role moves");
+  assert.ok(!subOut.windowMovedRoles.has("bugfix"), "claude's healthy role does not move");
+  assert.ok(!subOut.windowMovedRoles.has(DIRECTOR_ROLE), "the director stays");
+  const limited = readEvents(root, 100).filter((e) => e.type === "subscription_window_limited");
+  assert.equal(limited.length, 1);
+  assert.equal(limited[0]!.backend, "sub", "the limited event names the sub backend");
+  const held = heldProviders(states.teamHold);
+  assert.ok(held.has("sub"), "the hold keys the sub backend");
+  assert.ok(!held.has("claude"), "claude's healthy window holds nothing");
+
+  // claude rejected, sub healthy: only claude's role moves, and the limited event names claude.
+  writeAccount(root, "sub", { billing: "subscription", observedAt: now, windows: {} });
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  const claudeOut = pollTeamGates(newTeamGateStates(config), ctx);
+  assert.ok(claudeOut.windowMovedRoles.has("bugfix"), "claude's rejected role moves");
+  assert.ok(!claudeOut.windowMovedRoles.has("feature"), "the healthy sub role does not move");
+  const limitedClaude = readEvents(root, 100).filter((e) => e.type === "subscription_window_limited");
+  assert.equal(limitedClaude.length, 2, "a second limited event for claude");
+  assert.equal(limitedClaude[1]!.backend, "claude");
+});
+
+test("pollTeamGates: a window on one backend does not move a healthy backend's role on the same tier", () => {
+  const root = tmpdir("gate-polls-sub-same-tier-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  const config = paidFallbackConfig(10);
+  // Both roles ride tier `strong`: feature on the test-only `sub` backend, bugfix pinned to claude
+  // on the SAME tier, so the tier's own seam (sub) moving must not drag claude's healthy role.
+  config.model = {
+    strong: { backend: "sub", model: "sub-astra" },
+    default: { backend: "claude", model: "claude-sonnet-5-5" },
+  };
+  config.roles = {
+    ...config.roles,
+    feature: { enabled: true, model: "strong" },
+    bugfix: { enabled: true, model: "strong", backend: "claude" },
+  };
+  const runners = [
+    fakeRunner("feature", spentRunnerState("feature", 1), null, [], "sub"),
+    fakeRunner("bugfix", spentRunnerState("bugfix", 1), null, [], "claude"),
+    fakeRunner(DIRECTOR_ROLE, freshRunnerState(DIRECTOR_ROLE), null, [], "sub"),
+  ];
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", "bugfix", DIRECTOR_ROLE] },
+  };
+
+  // sub rejected, claude healthy: the tier moves because of sub, so only the sub role moves;
+  // the healthy claude role on the same tier keeps its pair (part 2e/9).
+  writeAccount(root, "sub", {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
+  const out = pollTeamGates(newTeamGateStates(config), ctx);
+  assert.ok(out.windowMovedRoles.has("feature"), "the sub role moves");
+  assert.ok(!out.windowMovedRoles.has("bugfix"), "the healthy claude role on the same tier stays");
+});
+
+test("pollTeamGates: a sub reserve logs subscription_window_reserved once per window without disturbing claude's reserve memory", () => {
+  const root = tmpdir("gate-polls-sub-reserve-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  const config = paidFallbackConfig(10);
+  config.model = {
+    strong: { backend: "sub", model: "sub-astra" },
+    default: { backend: "claude", model: "claude-sonnet-5-5" },
+  };
+  config.backends = { sub: { windowReserve: { five_hour: 0.9 } } };
+  config.claudeWindowReserve = { five_hour: 0.9 };
+  const states = newTeamGateStates(config);
+  const ctx = {
+    root,
+    runners: [],
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: [] },
+  };
+  const reserved = () =>
+    readEvents(root, 100).filter((e) => e.type === "subscription_window_reserved");
+
+  writeAccount(root, "sub", {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "allowed_warning", utilization: 0.95, resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "allowed_warning", utilization: 0.95, resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  pollTeamGates(states, ctx);
+  pollTeamGates(states, ctx); // a second poll must not re-log the same window
+  const byBackend = (b: string) => reserved().filter((e) => e.backend === b);
+  assert.equal(byBackend("sub").length, 1, "the sub reserve logs once per window");
+  assert.equal(byBackend("claude").length, 1, "claude's own reserve logs once too");
+  assert.equal(reserved().length, 2, "each backend's crossing keeps its own key");
 });
 
 // The per-provider failure hold keys on the provider each role's NEXT run will run on

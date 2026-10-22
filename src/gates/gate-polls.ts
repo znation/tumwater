@@ -1,13 +1,14 @@
-import type { TumwaterConfig } from "../config/config-schema.js";
+import type { TumwaterConfig, FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import type { BudgetGate } from "../budget/budget.js";
 import {
   gateRoleConfig,
   newBudgetGateState,
   pollBudgetGate,
   runOnPair,
-  seamIsClaude,
+  subscriptionBackendOf,
   type BudgetGateState,
 } from "./budget-gates.js";
+import { backendsInUse } from "./startup-gate.js";
 import { fallbackDemotion, type FallbackDemotion } from "../budget/fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
@@ -41,7 +42,7 @@ import {
   type DiskGateState,
 } from "./disk-gate.js";
 import { pollErrorStorm, pollFailureSpread, pollTeamHold, pollClaudeWindowWarning, pollClaudeWindowReserve, windowObservation, type HoldInputs } from "../team/team-polls.js";
-import { readClaudeAccount } from "../agent/claude/claude-account.js";
+import { readAccount } from "../agent/subscription-account.js";
 import type { ReclaimController } from "../team/reclaim.js";
 import { standingHolds, type TeamHold } from "../team/team-hold.js";
 import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
@@ -53,7 +54,7 @@ import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
-import { configForRole, roleSeamTier, windowReserveFor } from "../config/config-views.js";
+import { configForRole, roleSeamTier, windowReserveFor, withModelOverrides } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's team-wide gates and alarms, as one family: the daily cost budget
@@ -170,8 +171,9 @@ interface TeamGatePoll {
   /** Whether the cap is reached this poll: the budget hold only holds while it is. */
   budgetActive: boolean;
   /** The roles (the director excluded) a usage-window move put on a fallback pair — their tier
-   * moved and their own seam is claude, so a role pinned to another model is not in it: their run
-   * outcomes fold into the fallback breaker even below the cap. Empty while no window moved. */
+   * moved because the role's OWN subscription backend's window stands, so a role on the tier whose
+   * own backend is healthy (another backend moved it) is not in it: their run outcomes fold into
+   * the fallback breaker even below the cap. Empty while no window moved. */
   windowMovedRoles: ReadonlySet<string>;
   /** The roles (the director excluded) whose own `quietHoursPerRole` window holds right now:
    * a stateless verdict recomputed every poll beside `capPaused` — no event, no bookkeeping
@@ -207,6 +209,12 @@ export function pollTeamGates(
 ): TeamGatePoll {
   const { root, runners, liveConfig, modelsPath, now, info } = ctx;
 
+  // The per-backend subscription account lookup (part 2e/9): each backend's account is read on
+  // demand — the window hold/reserve/warning loop, the window-move and the handback reads each
+  // call accounts fresh — so a second subscription backend is judged from its own account, never
+  // from claude's.
+  const accounts = (backend: string) => readAccount(root, backend, now);
+
   // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
   // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
   // owns only the wiring — the demotion publish below and the per-runner assignment at
@@ -223,7 +231,7 @@ export function pollTeamGates(
     servingResolved,
     budgetActive,
     windowTiers,
-    windowResumed,
+    windowResumedBackends,
     directorConfig,
     chain,
   } = pollBudgetGate(states.budget, {
@@ -291,7 +299,22 @@ export function pollTeamGates(
   // aborted runs read as the budget reopening, not as unexplained failures. The subscription
   // window reset (below the cap): the same hand-back for the pairs the window move used. A window
   // that resets while the cap still holds hands back nothing.
-  const handBack = gateResumed || (windowResumed && !budgetActive);
+  const handBack = gateResumed || (windowResumedBackends.length > 0 && !budgetActive);
+  // The window handback names the backend whose window resumed (the entry's goal) — not the
+  // handed-back pair's own backend: for claude-only the fallback pair carries no backend (it would
+  // read undefined), and with two subscription backends it would name the opposite one. A pair
+  // belongs to those resumed backends whose tiers' price-resolved pair it is.
+  const resumedBackendSet = new Set<string>(windowResumedBackends);
+  const resumedBackendForPair = (leftPair: FallbackModelConfig): string | undefined => {
+    for (const tier of MODEL_TIERS) {
+      const p = priceResolved[tier]?.pair;
+      if (p && p.provider === leftPair.provider && p.model === leftPair.model) {
+        const b = subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
+        if (b !== null && resumedBackendSet.has(b)) return b;
+      }
+    }
+    return undefined;
+  };
   if (handBack && fallbackPairs.length > 0) {
     // A cap reopen while the window is still used up leaves the window's tiers on their
     // fallback pairs: handing those runs back would abort them to restart on the same pair.
@@ -311,7 +334,9 @@ export function pollTeamGates(
           roles: matching.map((r) => r.role),
           provider: leftPair.provider,
           model: leftPair.model,
-          ...(gateResumed ? {} : { reason: "window" }),
+          ...(gateResumed
+            ? {}
+            : { reason: "window", backend: resumedBackendForPair(leftPair) }),
         });
         for (const r of matching) r.handBackRun();
       }
@@ -350,11 +375,21 @@ export function pollTeamGates(
   const budgetPausedRoles = new Set<string>();
   const windowMovedRoles = new Set<string>();
   const movedTiers = Object.keys(windowTiers);
+  // The backend whose used-up window moved a given tier: the tier's own seam's backend — the same
+  // read budget-gates made to put it in `windowTiers`. A role on a moved tier whose own backend is
+  // DIFFERENT (a healthy backend riding the same tier) keeps its pair: only the role whose own
+  // backend owns the out window is moved.
+  const tierMovedBackend = (tier: ModelTier) =>
+    subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
   for (const r of runners) {
     if (r.role === DIRECTOR_ROLE) continue;
     const tier = roleSeamTier(liveConfig, r.role);
-    // A role pinned to a non-claude model keeps it through a window move (it is not on a pair).
-    if (movedTiers.includes(tier) && seamIsClaude(configForRole(liveConfig, r.role)))
+    // A role pinned to the moved tier's own subscription backend keeps it through the window move
+    // (it is not on a pair); a role on the same tier pinning a healthy backend does not.
+    if (
+      movedTiers.includes(tier) &&
+      subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) === tierMovedBackend(tier)
+    )
       windowMovedRoles.add(r.role);
     // Below the cap only a window-moved role can sit on a demoted fallback.
     if (!budgetActive && !windowMovedRoles.has(r.role)) continue;
@@ -495,16 +530,25 @@ export function pollTeamGates(
   // back to states.teamHold — one hold per provider, lifted holds kept keyed for their relapse
   // memory but never reading as held — and the permit-time closures read the LATEST poll's map
   // there, so a waiter granted its permit after a later poll sees that poll's world.
-  const claudeAccount = readClaudeAccount(root, now);
-  const claudeWindow = windowObservation("claude", claudeAccount, now, windowReserveFor(liveConfig, "claude"));
+  const windowAccountReads = backendsInUse(liveConfig).map(
+    (backend) => [backend, accounts(backend)] as const,
+  );
+  // The subscription-window hold, reserve and warning, read per backend in use (part 2e/9): a
+  // second subscription backend gets its own hold, reserve and warning memory keyed by its own
+  // `backend`, so claude's roles, hold and events are untouched by another backend's window.
+  // One account read per backend feeds both the hold observations and the reserve/warning polls;
+  // a backend whose account implies no hold contributes no observation.
+  const windowObservations = windowAccountReads
+    .map(([backend, account]) =>
+      windowObservation(backend, account, now, windowReserveFor(liveConfig, backend)),
+    )
+    .filter((o): o is NonNullable<typeof o> => o !== null);
   states.teamHold = pollTeamHold(
     root,
     states.teamHold,
     holdInputs(runners),
     now,
-    // The one subscription backend in use today is claude (part 2e passes one observation per
-    // backend); when its account implies no hold, no window observation joins the step.
-    claudeWindow === null ? [] : [claudeWindow],
+    windowObservations,
     windowTiers,
   );
   // The standings hold, published for observers (PLANS.md 2026-10-17 "the dashboards and
@@ -516,23 +560,28 @@ export function pollTeamGates(
   publishInfoFields(root, info, [
     ["providerHolds", providerHolds.length > 0 ? providerHolds : undefined],
   ]);
-  states.claudeWindowReserved = pollClaudeWindowReserve(
-    root,
-    states.claudeWindowReserved,
-    claudeAccount,
-    now,
-    "claude",
-    windowReserveFor(liveConfig, "claude"),
-  );
-  // The subscription usage window's warning is observational (the hold above is the gate): the
-  // first allowed_warning logs once per window, and the memory lives beside the holds map.
-  states.claudeWindowWarned = pollClaudeWindowWarning(
-    root,
-    states.claudeWindowWarned,
-    claudeAccount,
-    now,
-    "claude",
-  );
+  // The reserve and warning polls, one per subscription backend in use: each logs its own
+  // events keyed by its own backend (the `backend:type:resetsAt` keys), so claude's own reserve
+  // and warning memory is unaffected by another backend's crossings (part 2e/9).
+  for (const [backend, account] of windowAccountReads) {
+    states.claudeWindowReserved = pollClaudeWindowReserve(
+      root,
+      states.claudeWindowReserved,
+      account,
+      now,
+      backend,
+      windowReserveFor(liveConfig, backend),
+    );
+    // The subscription usage window's warning is observational (the hold above is the gate): the
+    // first allowed_warning logs once per window, and the memory lives beside the holds map.
+    states.claudeWindowWarned = pollClaudeWindowWarning(
+      root,
+      states.claudeWindowWarned,
+      account,
+      now,
+      backend,
+    );
+  }
 
   // Team-wide error-storm warning (src/team/error-storm.ts): when several roles' run streaks
   // fail consecutively on one shared cause, each role's own "consecutive run failures"

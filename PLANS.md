@@ -6,24 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Codex backend, part 2e/9: The poll loop reads each subscription backend in use for its window move, hold, reserve and warning (planned 2026-10-21 by the plan role; requires parts 2c/9 and 2d/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/gate-polls.ts src/gates/budget-gates.ts test/gate-polls.test.ts test/orchestrator-budget.e2e.test.ts)
-
-**Goal.** `pollTeamGates` reads every backend in `backendsInUse(liveConfig)` instead of claude alone, so a second subscription backend gets its own hold, reserve crossings, warning and window-move roles, and the window handback names the backend whose window resumed. No behavior change for a claude-only team. Closes the 2c series.
-
-**Approach.**
-- src/gates/gate-polls.ts: import `backendsInUse` from `./startup-gate.js` and `readAccount` from `../agent/subscription-account.js`; drop `readClaudeAccount` and the `seamIsClaude` import. Keep `TeamGateStates.claudeWindowWarned`/`claudeWindowReserved` as one `ReadonlySet<string>` of `backend:type:resetsAt` keys (the shape `logWindowEventOnce` builds and orchestrator's `loggedWindowKeys` seeds) — no per-backend map is needed, because every key already carries its backend.
-- Replace the single `readClaudeAccount` block with a loop over `backendsInUse(liveConfig)`: for each `backend`, `const account = readAccount(root, backend, now)`, collect `windowObservation(backend, account, now, windowReserveFor(liveConfig, backend))`, and advance `states.claudeWindowReserved = pollClaudeWindowReserve(root, states.claudeWindowReserved, account, now, reserve, backend)` and the warning poll with `backend`. Pass the collected observations to one `pollTeamHold`.
-- `windowMovedRoles`: replace `seamIsClaude(configForRole(liveConfig, r.role))` with `subscriptionBackendOf(configForRole(liveConfig, r.role), accounts) !== null`, where `accounts = (b) => readAccount(root, b, now)`.
-- Handback: `const handBack = gateResumed || (windowResumedBackends.length > 0 && !budgetActive);` and, when the resumption is a window, add `backend: subscriptionBackendOf(leftPair, accounts) ?? undefined` to the `budget_handback` event beside `reason: "window"`.
-- src/gates/budget-gates.ts: delete the `seamIsClaude` shim part 2c kept for this call site.
-
-**Acceptance criteria.**
-- The gate-polls and orchestrator-budget e2e tests pass with only their event `backend` expectations updated; a claude-only team's holds, events and handbacks are unchanged.
-- A test registers a fake subscription backend `sub` whose account reports a rejected `five_hour` window: its roles enter `windowMovedRoles`, a hold keyed `sub` is placed, `subscription_window_limited { backend: "sub" }` is logged once, and claude's roles, hold and account are untouched. With claude rejected and `sub` healthy, only claude's roles move.
-- A test with a `sub` reserve logs `subscription_window_reserved { backend: "sub" }` once per window, and claude's own reserve memory is unaffected.
-- `grep -n 'seamIsClaude\|pairIsClaude' src` and `grep -n 'readClaudeAccount' src/gates/gate-polls.ts` print nothing.
-- `npm test` passes.
-
 ### Codex backend, part 3/9: Window displays name each subscription backend (planned 2026-10-20 by user; requires part 2e/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/status/status-budget.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-operator.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts src/roles/role-view.ts src/roles/role-render.ts src/report/report-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts docs/backends.md and their tests)
 
 **Goal.** Show each subscription backend's windows under that backend's name, so a team with Claude and Codex both on subscriptions shows both. Today every surface prints one `claudeWindow` block labelled "Claude 5h": `claudeWindowBlock` (src/status/status-budget.ts), `claudeWindowBadge` (src/ui/badges.ts), the GUI tile (src/ui/gui/gui-client-operator.ts), the role view's billing line and "Claude window used up" (src/roles/role-render.ts), the report's "claude subscription, API-equivalent" line (src/report/report-render.ts), and doctor's "claude window" row (src/doctor/doctor-holds.ts `checkClaudeWindow`). A claude-only team's output is unchanged, apart from the JSON key added below.
