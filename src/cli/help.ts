@@ -183,12 +183,16 @@ Usage:
                                    entries containing the text, case-insensitively, under their
                                    run's separator (like logs --transcript --grep);
                                    --json prints the collector's payload
-  tumwater diff [--json]           One line per role holding pending work — the ahead-of-main
+  tumwater diff [-f/--follow] [--json]
+                                   One line per role holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles
                                    with no worktree or nothing pending are skipped, and a
                                    missing baseline prints the per-role view's degradation
-                                   line; --json prints the {mainBranch, roles} roster
-  tumwater diff --role <id>[,<id>...] [--stat] [--path <path>] [--json]
+                                   line; --json prints the {mainBranch, roles} roster;
+                                   -f/--follow repaints the same view every couple of seconds
+                                   until Ctrl+C or the process that started it exits, so a
+                                   backgrounded follow does not outlive its parent; it refuses --json
+  tumwater diff --role <id>[,<id>...] [--stat] [--path <path>] [-f/--follow] [--json]
                                    Show the change that role holds: its branch's unmerged
                                    commits (one line each, plus the ahead-of-main patch) and
                                    its worktree's uncommitted edits (the file list, plus the
@@ -199,7 +203,7 @@ Usage:
                                    (composes with --stat, --json and a comma list); --json prints the
                                    collector's payload as machine-readable data; a comma list prints each listed
                                    role's view in that order, separated by a blank line (--json: {mainBranch, roles})
-  tumwater diff --overlaps [--role <id>[,<id>...]] [--path <path>] [--json]
+  tumwater diff --overlaps [--role <id>[,<id>...]] [--path <path>] [-f/--follow] [--json]
                                    List each file two or more roles' pending changes touch
                                    (committed ahead of main or uncommitted), one line per path
                                    naming those roles; --role keeps only the files a listed

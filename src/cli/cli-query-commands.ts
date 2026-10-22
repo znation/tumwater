@@ -141,7 +141,7 @@ async function followStatus(root: string, scope: string[] | null, seams: FollowV
 /** `tumwater diff`: one line per role holding pending work, the files two or more roles touch
  * with `--overlaps` (`--role` keeps those a listed role holds, `--path` those at or under it),
  * or the full per-role view of each role listed with `--role <id>[,<id>...]`. */
-export async function cmdDiff(root: string, args: string[]): Promise<void> {
+export async function cmdDiff(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
   // (no git, not a repository, no tumwater.json, no commits) has no team to ask about,
   // and the change view's own degradation would misreport that as "main branch <name>
@@ -149,22 +149,31 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // command. Past the gate an absent worktree still degrades to a `no worktree for
   // <role>` line (exit 0), so the command answers in any initialized directory —
   // report's rationale.
-  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG, DIFF_PATH_FLAG]);
+  rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG]);
   await requireReadyRepo(root);
   rejectRepeatFlag(args.filter((a) => a === "--path").length > 1, "--path");
+  const follow = args.includes("-f") || args.includes("--follow");
+  if (follow && args.includes("--json")) fail("diff --json prints one document; -f/--follow repaints a live view — drop one of them");
   if (args.includes("--overlaps")) {
     if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
     // Overlaps are computed across every role; --role only filters which entries print.
     const scope = parseRoleListScope(root, args);
     const path = diffPathArg(args);
-    let view = await collectChangeOverlaps(root);
-    if (scope === null && path === undefined) {
-      sayJsonOrRender(args, view, renderChangeOverlaps);
+    // The read and its zero-arg render are factored into one thunk so the follow's frame
+    // and the snapshot print exactly the same text from the same reader.
+    const readOverlaps = async () => {
+      let view = await collectChangeOverlaps(root);
+      if (scope === null && path === undefined) return { view, render: () => renderChangeOverlaps(view) };
+      if (scope !== null) view = scopeChangeOverlaps(view, scope);
+      if (path !== undefined) view = scopeChangeOverlapsToPath(view, path);
+      return { view, render: () => renderChangeOverlaps(view, scope ?? undefined, path) };
+    };
+    if (follow) {
+      await followView(async () => (await readOverlaps()).render(), seams);
       return;
     }
-    if (scope !== null) view = scopeChangeOverlaps(view, scope);
-    if (path !== undefined) view = scopeChangeOverlapsToPath(view, path);
-    sayJsonOrRender(args, view, (v) => renderChangeOverlaps(v, scope ?? undefined, path));
+    const { view, render } = await readOverlaps();
+    sayJsonOrRender(args, view, () => render());
     return;
   }
   // Absent --role is the team-wide form: one line per role holding pending work
@@ -173,16 +182,28 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // listed role's view in order.
   const roles = parseRoleListScope(root, args);
   const path = roles === null ? undefined : diffPathArg(args);
-  if (roles === null) {
-    if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
-    if (args.includes("--path")) fail("diff --path needs --role <id> (the team roster prints no patch)");
-    sayJsonOrRender(args, await collectTeamChanges(root), renderTeamChange);
-  } else if (roles.length === 1) {
-    const change = await collectRoleChange(root, roles[0]!, { stat: args.includes("--stat"), path });
-    sayJsonOrRender(args, change, renderRoleChange);
-  } else {
-    sayJsonOrRender(args, await collectRoleChanges(root, roles, { stat: args.includes("--stat"), path }), renderRoleChanges);
+  // The roster/role reads below are factored into a thunk (view + zero-arg render) so the
+  // follow's frame and the snapshot share one reader and print byte-identical text.
+  const readChange = async (): Promise<{ view: unknown; render: () => string }> => {
+    if (roles === null) {
+      if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
+      if (args.includes("--path")) fail("diff --path needs --role <id> (the team roster prints no patch)");
+      const view = await collectTeamChanges(root);
+      return { view, render: () => renderTeamChange(view) };
+    }
+    if (roles.length === 1) {
+      const change = await collectRoleChange(root, roles[0]!, { stat: args.includes("--stat"), path });
+      return { view: change, render: () => renderRoleChange(change) };
+    }
+    const view = await collectRoleChanges(root, roles, { stat: args.includes("--stat"), path });
+    return { view, render: () => renderRoleChanges(view) };
+  };
+  if (follow) {
+    await followView(async () => (await readChange()).render(), seams);
+    return;
   }
+  const { view, render } = await readChange();
+  sayJsonOrRender(args, view, () => render());
 }
 
 /** The normalised `--path` value of `diff --role` (undefined when absent): leading `./` pieces
