@@ -6,7 +6,9 @@
  * leftovers helpers, all of which live here beside the checks that use them. The environment
  * and repo-setup checks stay in doctor-checks.ts; the project's own state, disk and build
  * checks live in doctor-project-checks.ts; model readiness lives in doctor-model-checks.ts;
- * the backlog-document checks in doctor-backlog.ts; doctor.ts remains the composition layer
+ * the per-document backlog checks live in doctor-backlog-plans.ts and doctor-backlog-bugs.ts
+ * beside doctor-backlog.ts's shared helpers and queue checks;
+ * doctor.ts remains the composition layer
  * that calls each check in fixed order. */
 import path from "node:path";
 import { defaultConfig, knownRoleIds, slotCount } from "../config/config.js";

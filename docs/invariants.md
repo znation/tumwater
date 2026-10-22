@@ -648,7 +648,7 @@ as well. `planDependencyProblems` reports a still-planned prerequisite named wit
 
 **Binds.** `src/backlog/backlog-parts.ts` (`requiredParts`, `prerequisitesMerged`,
 `planDependencyProblems`), `src/backlog/backlog-eligibility.ts` (`entryHoldAgainst`), `src/run/stage-backlog-checks.ts` and
-`src/doctor/doctor-backlog.ts` (where the wording problem is reported).
+`src/doctor/doctor-backlog-plans.ts` (where the wording problem is reported).
 
 **Pinned by.** `test/backlog-eligibility.test.ts` — "requiredParts reads the trailing
 parenthetical, expands ranges, and resolves bare refs to the own series", "a body mentioning

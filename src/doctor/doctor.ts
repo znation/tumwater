@@ -51,7 +51,9 @@ import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "./doctor
 import { checkOpencode } from "./doctor-opencode-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
-import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueueFiles, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs } from "./doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
+import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs } from "./doctor-backlog-bugs.js";
+import { checkMergeQueueFiles, checkStaleQueuedMerges, checkStalePrompts, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -64,7 +66,8 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueu
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
  * doctor-checks.ts, doctor-project-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts,
- * doctor-claude-checks.ts, doctor-opencode-checks.ts and doctor-backlog.ts;
+ * doctor-claude-checks.ts, doctor-opencode-checks.ts, doctor-backlog.ts,
+ * doctor-backlog-plans.ts and doctor-backlog-bugs.ts;
  * this module composes them into the report. */
 
 /** Run one doctor check, turning a throw or rejection into a fail row: a check that crashed

@@ -1,66 +1,58 @@
 import { roleLabel } from "../roles/role-labels.js";
-import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
-import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
-import { questionFilingDate } from "../backlog/question-answer.js";
-import { entryHold, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
-import { planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
-import { BACKLOG_FILES, lastDate, validationGapTag } from "../backlog/backlog-md.js";
-import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
-import { liveFinishedHistory } from "../backlog/backlog-archive.js";
-import { fixSymbols, fixedEntriesAt, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
-import { briefFile } from "../brief/brief.js";
-import type { TumwaterConfig } from "../config/config-schema.js";
-import { currentBranch, targetBranch } from "../git/git.js";
-import { gitTry } from "../git/git-run.js";
+import { humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
+import type { HarnessEvent } from "../events/events.js";
+import { eventsSince } from "../events/event-window.js";
+import { finiteNumber } from "../files/json-object.js";
+import { lowerMedian } from "../collections.js";
+import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
 import { listWideScope, queuedListRows } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
-import { formatTimestamp, humanSeconds, secondsSince, HOUR_MS, DAY_MS } from "../text/datetime.js";
-import { eventsSince, readEventsSince } from "../events/event-window.js";
-import type { HarnessEvent } from "../events/events.js";
-import { finiteNumber, stringList } from "../files/json-object.js";
-import { lowerMedian } from "../collections.js";
-import { plural, shortSpanPhrase } from "../text/phrases.js";
+import { currentBranch, targetBranch } from "../git/git.js";
+import { gitTry } from "../git/git-run.js";
+import { briefFile } from "../brief/brief.js";
+import { BACKLOG_FILES } from "../backlog/backlog-md.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
-/** The doctor's backlog-document checks, split out of doctor-checks.ts: the checks that read
- * the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) and queues rather
- * than the environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated
- * `## ` headings, refused entries, stale open bugs, stale queued merges, stale queued prompts,
- * the merge-queue files the reader skips, and uncommitted edits to the backlog files in the
- * primary checkout. They share this module's
- * helpers (readDoc and its checked wrapper readDocChecked, andMore) and the heading-trim
- * constant, and all of them warn instead of failing: damaged documentation is operator signal,
- * not a broken environment. doctor.ts composes them beside the environment checks; the shared
- * CheckOutcome shape is imported from outcome.ts. */
+/** The doctor's backlog modules' shared scaffolding and the check groups that do not read a
+ * single backlog document: the merge-queue and queued-prompt checks (checkStaleQueuedMerges,
+ * checkMergeQueueFiles, checkStalePrompts and the mergeWaitPhrase helper) and the uncommitted-
+ * edits-in-the-primary-checkout check. This module also hosts the helpers and constants the
+ * per-document checks import — readDoc and its checked wrapper readDocChecked, andMore, and the
+ * age/heading-trim bounds — so the per-document reads cannot drift. The per-document
+ * checks live in doctor-backlog-plans.ts (the plan-document structure and fix-claim checks) and
+ * doctor-backlog-bugs.ts (open bugs, questions and holds). All of them warn instead of failing:
+ * damaged documentation is operator signal, not a broken environment. doctor.ts composes them
+ * beside the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
 
 /** How many Fixed records the two newest-first Fixed-record checks (fix claims and validation
  * gaps) verify: the newest, since the section is newest-first by template convention. Older
  * records drift as the code evolves — a symbol legitimately fixed long ago gets renamed later,
  * and pre-convention Fixed entries predate the validation-gap line — so a whole-section scan
  * would warn forever on records nobody should rewrite. */
-const FIX_CLAIMS_CHECKED = 10;
+export const FIX_CLAIMS_CHECKED = 10;
 
 /** A second or later suspect record's heading is trimmed to this many characters in the warn —
  * the first is named in full, the rest only enough to find them in BUGS.md. */
-const FIX_CLAIM_HEADING_MAX = 60;
+export const FIX_CLAIM_HEADING_MAX = 60;
 
 /** A refused entry's note is trimmed to this many characters in the refusals warn. */
-const REFUSAL_NOTE_MAX = 120;
+export const REFUSAL_NOTE_MAX = 120;
 
 /** The whole days an open question may wait before the stale-questions check warns about it:
  * an opinionated default, matching the 7-day window the `--list` age is meant to surface.
  * A question awaiting a human answer is operator signal, so the value needs no knob. */
-const STALE_QUESTION_DAYS = 7;
+export const STALE_QUESTION_DAYS = 7;
 
 /** The whole days an open bug may wait before the stale-bugs check warns about it: an
  * opinionated default with no knob, like STALE_QUESTION_DAYS. Three days is long enough that a
  * bug filed late one evening and fixed the next day never warns. */
-const STALE_BUG_DAYS = 3;
+export const STALE_BUG_DAYS = 3;
 
 /** The `(and N more …)` suffix three one-line doctor details append after naming their first
  * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
@@ -69,7 +61,7 @@ const STALE_BUG_DAYS = 3;
  * FIX_CLAIM_HEADING_MAX, the duplicate-headings site passes its items through as built;
  * `noun` names what the extras are ("record(s)" for fix claims, empty for the other two).
  * Empty string when there are no extras. */
-function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""): string {
+export function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""): string {
   return rest.length > 0
     ? ` (and ${rest.length} more${noun ? ` ${noun}` : ""}: ${rest.map(render).join(", ")})`
     : "";
@@ -78,7 +70,7 @@ function andMore<T>(rest: readonly T[], render: (item: T) => string, noun = ""):
 /** Read one backlog file for a check, or the failure message explaining why it could not be
  * read (text.ts's errorMessage). Callers shape the failure themselves — a returned warn for a
  * single-file check, an "(unreadable)" list entry for the multi-file heading sweep. */
-function readDoc(p: string): { doc: string } | { error: string } {
+export function readDoc(p: string): { doc: string } | { error: string } {
   try {
     return { doc: fs.readFileSync(p, "utf8") };
   } catch (err) {
@@ -89,239 +81,11 @@ function readDoc(p: string): { doc: string } | { error: string } {
 /** The single-file check's read prologue, shared by checkFixClaims and checkStrandedPlans:
  * an absent file is that check's own "nothing to verify" ok outcome, an unreadable one a warn
  * naming the file. Returns the document, or the outcome the caller should return as-is. */
-function readDocChecked(p: string, file: string, missingDetail: string): string | CheckOutcome {
+export function readDocChecked(p: string, file: string, missingDetail: string): string | CheckOutcome {
   if (!fs.existsSync(p)) return okOutcome(missingDetail);
   const read = readDoc(p);
   if ("error" in read) return warnOutcome(`cannot read ${file} — ${read.error}`);
   return read.doc;
-}
-
-/** Fix claims — the standalone half of the merge gate's false-fix check (src/verdict/fix-claim.ts):
- * that gate fires only when an md-only diff moves a BUGS.md entry to Fixed, so a phantom fix that
- * reached main any other way (merged before the gate existed, or through a path it never sees) was
- * visible only to a human reading raw history. This re-verifies the newest Fixed records against
- * the tree at `root` — the primary checkout IS main's tree — with the gate's own parsing and
- * existence rules. Deliberately looser than the gate: a record warns only when EVERY symbol its Fix
- * paragraph names is absent (one live symbol passes — the phantom signature, not a half-stale
- * narrative), and a record naming no symbols is skipped, since pure-documentation fixes are
- * legitimate. A warn, never a fail (the checkFallbackModel precedent): a suspicious record is
- * operator signal, not a broken environment. */
-export function checkFixClaims(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
-  // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
-  // walks where one suffices.
-  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
-  // The haystack walks src/, test/ and scripts/: build it only once a record names something.
-  let haystack: string | undefined;
-  const phantoms: Array<{ heading: string; missing: string[] }> = [];
-  for (const { title: heading, body } of records) {
-    const symbols = fixSymbols(body);
-    if (symbols.length === 0) continue;
-    haystack ??= sourceHaystack(root);
-    const missing = unbackedSymbols(root, symbols, haystack);
-    if (missing.length === symbols.length) phantoms.push({ heading, missing });
-  }
-  const [first, ...rest] = phantoms;
-  if (!first)
-    return okOutcome(`newest ${records.length} Fixed record(s) name code that exists on this tree`);
-  // falseFixReason's message shape: the heading, then up to 3 missing names.
-  const { heading, missing } = first;
-  const names = missingSymbolNames(missing);
-  // Every other suspect is still named, shortened: a doctor check is one line.
-  const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
-  return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
-      `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
-}
-
-/** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's
- * invariant 2 ("the vocabulary is closed and lives in one place"): the bugfix guidance tells every
- * run to write exactly one `**Validation gap:**` line with a known tag, and `none` rather than no
- * line at all so a tally's denominator stays honest. Nothing checks that a Fixed entry actually
- * carries such a line or that its tag is one of the closed vocabulary — a typo like `no-reprod`
- * lands as its own key on `tumwater report`'s `Validation gaps` line and matches no
- * closed-vocabulary consumer that enumerates the six non-`none` tags, and an entry with no line at
- * all is invisible to every one of them. Re-reads the newest Fixed records with the same
- * FIX_CLAIMS_CHECKED bound (pre-convention history would otherwise warn forever) and warns on a
- * missing or unrecognized tag. An entry declaring `unclear-invariant` should also have pinned the
- * reconstructed guarantee in docs/invariants.md in the same commit — a fix that names no such
- * section warns with that nudge (informational: code-pinned or prose-that-skips-the-filename fixes
- * may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
- * operator signal, not a broken environment. */
-export function checkValidationGaps(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
-  const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
-  const unpinned: Array<{ title: string }> = [];
-  for (const { title, body } of records) {
-    const tag = validationGapTag(body);
-    if (tag === null) suspects.push({ title, problem: "missing" });
-    else if (!VALIDATION_GAP_TAGS.includes(tag)) suspects.push({ title, problem: "unrecognized", tag });
-    else if (tag === "unclear-invariant" && !body.toLowerCase().includes("docs/invariants.md"))
-      unpinned.push({ title });
-  }
-  const [first, ...rest] = suspects;
-  if (!first) {
-    if (unpinned.length > 0) {
-      const up = unpinned[0]!;
-      const more = andMore(unpinned.slice(1), (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
-      return warnOutcome(`BUGS.md record "${up.title}" is an \`unclear-invariant\` fix but names no ` +
-        `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
-        `same commit so the next bug in that area does not reconstruct it again${more}`);
-    }
-    return okOutcome(`newest ${records.length} Fixed record(s) carry a known Validation gap tag`);
-  }
-  const more = andMore(rest, (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
-  const what = first.problem === "missing"
-    ? `BUGS.md record "${first.title}" has no **Validation gap:** line`
-    : `BUGS.md record "${first.title}" names unrecognized Validation gap tag "${first.tag}"`;
-  const valid = VALIDATION_GAP_TAGS.join(", ");
-  return warnOutcome(`${what}${more} — every Fixed entry writes exactly one of: ${valid}; ` +
-      `write \`none\` rather than omitting the line (the bugfix role records it; see plans/repair-traces.md)`);
-}
-
-/** Stranded plans — plan headings filed under the wrong PLANS.md section (the stranded-plan
- * detector, src/backlog/backlog-structure.ts): a `(planned …)` heading sitting under `## Done` is
- * invisible to every Planned reader, and a done-dated heading still under `## Planned` invites
- * a second implementation. The clean role repairs these when it happens to run; this makes
- * the state visible to an operator without waiting for that run. Reads the tree at `root` —
- * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
- * heading is operator signal, not a broken environment. */
-export function checkStrandedPlans(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  // PLANS-DONE.md too: finished plans are archived there (plans/backlog-archive.md), and a plan
-  // filed under its ## Done is as invisible as one under PLANS.md's. Each entry names its file.
-  const stranded = strandedPlanEntriesFor(root);
-  const clean = "no plan headings filed under the wrong PLANS.md section";
-  if (stranded.length === 0) return okOutcome(clean);
-  const [first, ...rest] = stranded;
-  if (!first) return okOutcome(clean);
-  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
-  const file = first.file ?? "PLANS.md";
-  return warnOutcome(`${file} has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
-      `move it under ## ${first.section === "Done" ? "Planned" : "Done"}${file === "PLANS.md" ? "" : " in PLANS.md"} ` +
-      "(the clean role repairs these)");
-}
-
-/** Finished history still in the live backlog files (plans/backlog-archive.md): entries under
- * PLANS.md's `## Done` or BUGS.md's `## Fixed` that have not moved to PLANS-DONE.md or
- * BUGS-FIXED.md. Every run that reads the live file pays for them. A starting team archives them
- * unless that is refused (a dirty file, a checkout off the base branch), and a hand commit can put
- * new ones there between starts, so this names how many there are and the fix. A warn, never a
- * fail: the team works either way, only more expensively. */
-export function checkLiveFinished(root: string): CheckOutcome {
-  const live = liveFinishedHistory(root);
-  if (live.length === 0) return okOutcome("PLANS.md and BUGS.md hold no finished entries — they are archived");
-  const parts = live.map((l) => `${l.file} ## ${l.section} holds ${plural(l.entries, "finished entry", "finished entries")} (${Math.round(l.bytes / 1024)} KB)`);
-  return warnOutcome(`${parts.join("; ")} — every run that reads the file pays for them; ` +
-    "`tumwater archive` moves them to the archive files and commits them (a starting team does too)");
-}
-
-/** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
- * check, src/backlog/backlog-structure.ts): a `## Done` a past merge or conflict resolution added
- * twice leaves every later entry after the first section invisible to the section readers, and
- * nothing repairs it on its own. Reads the tree at `root` — the primary checkout IS main's tree —
- * like checkFixClaims. A warn, never a fail: existing damage is operator signal, not a broken
- * environment, and a merge that adds another copy of the heading trips the gate's same rule (a) —
- * src/backlog/backlog-structure.ts fires only when a count EXCEEDS the merge-base's, so an edit
- * that leaves an existing duplicate alone passes and the duplicate itself needs a deliberate
- * removal edit. */
-export function checkBacklogHeadings(root: string): CheckOutcome {
-  const duplicates: string[] = [];
-  for (const file of BACKLOG_FILES) {
-    const p = path.join(root, file);
-    if (!fs.existsSync(p)) continue; // Absent file (early repo): contributes nothing.
-    const read = readDoc(p);
-    if ("error" in read) {
-      duplicates.push(`${file} (unreadable)`);
-      continue;
-    }
-    const { doc } = read;
-    for (const title of duplicateHeadings(doc)) duplicates.push(`${file} "## ${title}"`);
-  }
-  if (duplicates.length === 0)
-    return okOutcome("no duplicated ## section headings in the backlog files");
-  const [first, ...rest] = duplicates;
-  const more = andMore(rest, (d) => d);
-  return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
-      `later entries are invisible; keep one heading per name (the gate blocks only a merge ` +
-      `that adds another copy — remove the duplicate in a deliberate edit)`);
-}
-
-/** Stalled plans — planned plans held by a **Needs review …** or **Needs replan …** note,
- * parked until the plan role splits or replans them. No role takes a held entry (the claim
- * gate refuses one) and nothing clears the note on its own, so the state is visible only as
- * the `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
- * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
- * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
- * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
- * already classifies the notes, so this check adds no parsing: only the planned entries whose
- * hold is exactly needs-review or needs-replan are collected. A warn, never a fail — the
- * checkRefusedEntries precedent: a parked plan is operator signal, not a broken environment,
- * and the plan role resolves it itself. */
-export function checkStalledPlans(root: string): CheckOutcome {
-  const planned = plannedPlanEntries(root);
-  const stalled = planned.filter((entry) => {
-    const hold = entryHold(entry, planned);
-    return hold === "needs-review" || hold === "needs-replan";
-  });
-  const [first, ...rest] = stalled;
-  if (!first) return okOutcome("no planned plan is held by a Needs-review or Needs-replan note");
-  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
-  const hold = entryHold(first, planned);
-  const note = (first.body.split(/\n/).find(
-    (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
-  ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
-  return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
-      `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
-}
-
-/** Plan dependencies — mistakes in the planned plans' `requires … landed` clauses that the claim
- * allocator (entryHoldAgainst) cannot see: a ref naming no heading (the hold is void, so the
- * dependent is claimable now), a clause that parses to no refs (it holds nothing), and a
- * dependency cycle (every part on it stays blocked forever). Reads the tree at `root` through
- * planDependencyProblems. A warn, never a fail, like checkStalledPlans: the plan role writes the
- * clauses by hand and fixes them itself. The most serious kind is named — cycle, then dangling,
- * then unparsed — with a count of the other kinds. */
-export function checkPlanDependencies(root: string): CheckOutcome {
-  const { cycle, dangling, unparsed, misworded } = planDependencyProblems(plannedPlanEntries(root), donePlans(root));
-  const [firstDangling, ...restDangling] = dangling;
-  const [firstUnparsed, ...restUnparsed] = unparsed;
-  const [firstMisworded, ...restMisworded] = misworded;
-  const quote = (t: string) => `"${truncate(t, FIX_CLAIM_HEADING_MAX)}"`;
-  const others = (parts: Array<[number, string]>): string =>
-    parts.some(([n]) => n > 0) ? ` (also ${parts.map(([n, noun]) => `${n} ${noun}`).join(", ")})` : "";
-  const danglingMsg = (d: { title: string; ref: string }) =>
-    `PLANS.md plan ${quote(d.title)} requires ${d.ref}, which no PLANS.md heading carries — the hold is void, ` +
-    "so the plan is claimable now; fix the series name or part number";
-  const unparsedMsg = (t: string) =>
-    `PLANS.md plan ${quote(t)} has a \`requires … landed\` clause that names no part the allocator can read — ` + // vocabulary-ok: PLANS.md heading syntax
-    "it holds nothing; write each ref as `<Series> i/n` or give the heading a `<Series>, part i/n:` prefix";
-  const miswordedMsg = (w: { title: string; ref: string }) =>
-    `PLANS.md plan ${quote(w.title)} names ${w.ref} as a prerequisite without a \`requires … landed\` clause — ` + // vocabulary-ok: PLANS.md heading syntax
-    "the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`"; // vocabulary-ok: PLANS.md heading syntax
-  if (cycle !== null) {
-    return warnOutcome(`plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
-      "edit one heading's `requires … landed` clause to break it" + // vocabulary-ok: PLANS.md heading syntax
-      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
-  }
-  if (firstDangling) {
-    return warnOutcome(danglingMsg(firstDangling) +
-      andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, "ref(s)") +
-      others([[unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
-  }
-  if (firstUnparsed) {
-    return warnOutcome(unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)") +
-      others([[misworded.length, "misworded dependency(ies)"]]));
-  }
-  if (firstMisworded) {
-    return warnOutcome(miswordedMsg(firstMisworded) +
-      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, "dependency(ies)"));
-  }
-  return okOutcome("every planned plan's requires clause names a known part, with no cycle or misworded dependency");
 }
 
 /** How long a queued merge may wait without its change starting before the stale-queued-merge check
@@ -430,216 +194,6 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
   const median = lowerMedian(waits);
   const longest = Math.max(...waits);
   return `merges in the last 24h waited ${shortSpanPhrase(median)} median, ${shortSpanPhrase(longest)} longest (${plural(waits.length, "merge")})`;
-}
-
-/** The read-events window (ms) that reaches the oldest of `sinces` — `Date.now()` minus the
- * oldest timestamp, floored at 0 — so a recurrence check reads events past every candidate's
- * `since`. The single home of the "oldest of a set of since-times" step, shared by
- * checkWaitingBugs and checkRegressedFixes, so those sites cannot drift on the clamp or the
- * time base. */
-function sinceWindowMs(sinces: readonly number[]): number {
-  return Math.max(0, Date.now() - Math.min(...sinces));
-}
-
-/** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
- * answer. A team can stay parked on a question for days while `tumwater doctor` reports
- * nothing; the `--list` age (`questionAgeSuffix` on `tumwater questions`) is the only other
- * place the wait shows, and only when the operator asks. Reads the tree at `root` — the
- * primary checkout IS main's tree — like checkRefusedEntries, reusing
- * `questionFilingDate`/`openQuestionEntries` (src/backlog) unchanged. The age is the whole
- * days between the heading's `(asked by …)` stamp and now through backlog.js's ageInDays,
- * the one age formula, floored at 0; an undated heading is skipped. A warn, never a fail —
- * the checkStalledPlans/checkRefusedEntries precedent: a question awaiting a human is
- * operator signal, not a broken environment. */
-export function checkStaleQuestions(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "QUESTIONS.md"), "QUESTIONS.md", "no QUESTIONS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  const stale = openQuestionEntries(root).flatMap((q) => {
-    const stamp = questionFilingDate(q.title);
-    if (stamp === null) return [];
-    const days = ageInDays(stamp);
-    return days >= STALE_QUESTION_DAYS ? [{ title: q.title, days }] : [];
-  });
-  const [first, ...rest] = stale;
-  if (!first) return okOutcome("no open question has waited more than 7 days for an answer");
-  const more = andMore(rest, (q) => `"${truncate(q.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`QUESTIONS.md question "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for an answer${more} — ` +
-      `a question that waits too long for a human answer is worth your attention`);
-}
-
-/** Stale bugs — unrefused open BUGS.md bugs whose `(found by … YYYY-MM-DD)` or `(reported …)`
- * stamp is at least 3 days old. The bugfix role fixes a bug within hours, so one that sits means
- * no role is fixing it. Positions are the 1-based `bug --list` numbers; a refused bug is skipped
- * (checkRefusedEntries names it), a waiting bug is skipped (checkWaitingBugs names it) and so is
- * an undated heading. A warn, never a fail. */
-export function checkStaleBugs(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  const stale = openBugEntries(root).flatMap((entry, index) => {
-    if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
-    const stamp = filingDate(entry.title);
-    if (stamp === null) return [];
-    const days = ageInDays(stamp);
-    return days >= STALE_BUG_DAYS ? [{ position: index + 1, title: entry.title, days }] : [];
-  });
-  const [first, ...rest] = stale;
-  if (!first) return okOutcome("no open bug has waited more than 3 days for a fix");
-  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for a fix${more} — ` +
-      `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
-}
-
-/** The first span between straight double quotes in a bug heading that is at least 12
- * characters long — the test name a flake bug's heading quotes — or null. The floor stops a
- * short quoted word from matching unrelated failures. */
-export function quotedTestName(title: string): string | null {
-  return /"([^"]{12,})"/.exec(title)?.[1] ?? null;
-}
-
-/** Local midnight at the end of a `YYYY-MM-DD` day, in ms: the earliest instant a failure can
- * be told apart from the one a same-day note or fix record was written about. NaN for a
- * malformed date. */
-function dayAfterMs(date: string): number {
-  return new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1).getTime();
-}
-
-/** The first `YYYY-MM-DD` in a Waiting for the next failure note's text, or null. */
-export function waitingNoteDate(note: string): string | null {
-  return /\d{4}-\d{2}-\d{2}/.exec(note)?.[0] ?? null;
-}
-
-/** Every event at or after `sinceMs` that records a failure naming `name`: a `warning` whose
- * message includes it (gate and merge flake warnings, a merge check kept for one retry), or a
- * `review_rejected` with a reason that includes it (its text is the first such reason). In
- * event order. */
-export function failureMentions(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string }[] {
-  return events.flatMap((e) => {
-    if (typeof e.ts !== "number" || e.ts < sinceMs) return [];
-    if (e.type === "warning" && typeof e.message === "string" && e.message.includes(name)) return [{ ts: e.ts, text: e.message }];
-    if (e.type === "review_rejected") {
-      const reason = stringList(e.reasons).find((r) => r.includes(name));
-      if (reason !== undefined) return [{ ts: e.ts, text: reason }];
-    }
-    return [];
-  });
-}
-
-/** Waiting bugs — open BUGS.md bugs held by a **Waiting for the next failure …** note, which
- * parks a bug until it fails again. Positions are the 1-based `bug --list` numbers; a bug that
- * is also Refused is left to checkRefusedEntries. Ok when the hold is undisturbed — doctor
- * then only names the bugs and how to release one — and a warn when a held bug's quoted test
- * has failed in a gate or merge check since the day after its note (the note carries only a
- * date, so a same-day failure cannot be told from the one it was written about). A warn is
- * never a fail, and doctor writes nothing to BUGS.md. */
-export function checkWaitingBugs(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  const held = openBugEntries(root).flatMap((entry, index) => {
-    const note = waitingNote(entry.body);
-    if (note === null || refusalNote(entry.body) !== null) return [];
-    const name = quotedTestName(entry.title);
-    const date = waitingNoteDate(note);
-    const since = name !== null && date !== null ? dayAfterMs(date) : null;
-    return [{ position: index + 1, title: entry.title, note, name, since }];
-  });
-  const [first, ...rest] = held;
-  if (!first) return okOutcome("no open bug is waiting for its next failure");
-  const sinces = held.flatMap((b) => (b.since !== null && !Number.isNaN(b.since) ? [b.since] : []));
-  if (sinces.length > 0) {
-    const { events } = readEventsSince(root, sinceWindowMs(sinces));
-    const recurred = held.flatMap((b) => {
-      if (b.name === null || b.since === null) return [];
-      const mentions = failureMentions(events, b.name, b.since);
-      const newest = mentions[mentions.length - 1];
-      return newest ? [{ ...b, newest }] : [];
-    });
-    const [again, ...others] = recurred;
-    if (again) {
-      const more = andMore(others, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-      return warnOutcome(`BUGS.md bug #${again.position} "${truncate(again.title, FIX_CLAIM_HEADING_MAX)}" failed again since its Waiting for the next failure note ` +
-        `(${formatTimestamp(again.newest.ts)}: ${truncate(again.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
-        `record the occurrence under the entry and release it with \`tumwater bug --release ${again.position}\``);
-    }
-  }
-  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
-  return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
-      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +
-      `release it now with \`tumwater bug --release ${first.position}\``);
-}
-
-/** Regressed fixes — a newest-10 BUGS.md Fixed record whose heading quotes a test name that a
- * gate or merge check has failed on since the day after its fix (the heading carries only a
- * date, so a same-day failure cannot be told from the one the fix answered), unless an Open bug
- * already quotes the same test, which means the regression is filed. A warn, never a fail, and
- * doctor writes nothing to BUGS.md. */
-export function checkRegressedFixes(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
-  if (typeof doc !== "string") return doc;
-  const candidates = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
-    const name = quotedTestName(entry.title);
-    const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
-    if (name === null || date === null) return [];
-    const since = dayAfterMs(date);
-    return Number.isNaN(since) ? [] : [{ title: entry.title, name, date, since }];
-  });
-  const open = candidates.length > 0 ? openBugEntries(root).map((e) => quotedTestName(e.title)) : [];
-  const unfiled = candidates.filter((c) => !open.includes(c.name));
-  if (unfiled.length > 0) {
-    const { events } = readEventsSince(root, sinceWindowMs(unfiled.map((c) => c.since)));
-    const regressed = unfiled.flatMap((c) => {
-      const mentions = failureMentions(events, c.name, c.since);
-      const newest = mentions[mentions.length - 1];
-      return newest ? [{ ...c, newest }] : [];
-    });
-    const [first, ...rest] = regressed;
-    if (first) {
-      const more = andMore(rest, (c) => `"${truncate(c.title, FIX_CLAIM_HEADING_MAX)}"`);
-      return warnOutcome(`BUGS.md Fixed record "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" quotes a test that failed again after its ${first.date} fix ` +
-        `(${formatTimestamp(first.newest.ts)}: ${truncate(first.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
-        "file it as a new bug with `tumwater bug`, quoting the test name and citing the Fixed record");
-    }
-  }
-  return okOutcome("no recently Fixed bug's quoted test has failed since its fix");
-}
-
-/** Refused entries — planned plans and open bugs held by a **Refused …** note. No role clears
- * a Refused note, so the entry stays parked until a human or the director edits it, or an
- * operator releases it with `--release <n>`, and the
- * only other signs are the `[refused]` marks in the backlog listings. Reads the tree at `root`
- * — the primary checkout IS main's tree — like checkFixClaims, in `--list` order (PLANS.md
- * Planned, then BUGS.md Open). A warn, never a fail: a refusal is operator signal, not a broken
- * environment. The warning also counts the planned parts a refused series part holds. */
-export function checkRefusedEntries(root: string): CheckOutcome {
-  const planned = plannedPlanEntries(root);
-  const parts = plannedPartKeys(planned);
-  const sources = [
-    { file: "PLANS.md", command: "plan", entries: planned },
-    { file: "BUGS.md", command: "bug", entries: openBugEntries(root) },
-  ];
-  const held = sources.flatMap(({ file, command, entries }) =>
-    entries.flatMap((entry, index) => {
-      const note = refusalNote(entry.body);
-      if (note === null) return [];
-      const mergeDone = prerequisitesMerged(entry.title, parts);
-      const waiting = file === "PLANS.md" ? plansWaitingOn(planned, index).length : 0;
-      return [{ file, command, position: index + 1, title: entry.title, note, mergeDone, waiting }];
-    }));
-  const [first, ...rest] = held;
-  if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
-  const more = andMore(rest, (e) =>
-    `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"` +
-    (e.mergeDone.length > 0 ? " [prerequisites no longer planned]" : "") +
-    (e.waiting > 0 ? ` [${e.waiting} part(s) wait on it]` : ""));
-  const stale = first.mergeDone.length > 0
-    ? `; its prerequisite(s) ${first.mergeDone.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
-    : "";
-  const waiting = first.waiting > 0
-    ? `; ${first.waiting} planned part(s) wait on it, directly or through an earlier part`
-    : "";
-  return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
-      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${waiting}${more} — no role takes a refused entry until it is edited: ` +
-      `answer the objection and release the entry with \`tumwater ${first.command} --release ${first.position}\`, ` +
-      `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
 }
 
 /** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout. An

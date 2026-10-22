@@ -58,7 +58,8 @@ import { spawnSync } from "node:child_process";
  * the instance/pin/branch audits) live in doctor-contention-checks.ts; the model-readiness
  * checks (the cap fallback, the agent binary's credential probe, the declared tiers) live in
  * doctor-model-checks.ts; the backlog-document checks (BUGS.md / PLANS.md readers) live in
- * doctor-backlog.ts; the report's terminal rendering lives beside the CLI's other
+ * doctor-backlog-plans.ts and doctor-backlog-bugs.ts beside
+ * doctor-backlog.ts's shared helpers; the report's terminal rendering lives beside the CLI's other
  * Markdown/terminal renderers (doctor-render.ts). doctor.ts stays the composition layer only:
  * runDoctor calls each check in fixed order and folds the results into a DoctorReport. */
 

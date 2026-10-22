@@ -16,7 +16,7 @@ import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merg
 import { resolveBacklogInsertConflicts, resolveInsertOnlyText } from "../src/merge/backlog-conflicts.js";
 import { falseFixReason } from "../src/verdict/fix-claim.js";
 import { backlogStructureReason } from "../src/backlog/backlog-structure.js";
-import { checkLiveFinished } from "../src/doctor/doctor-backlog.js";
+import { checkLiveFinished } from "../src/doctor/doctor-backlog-plans.js";
 import { makeRepo, seedCommit, sh, initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";

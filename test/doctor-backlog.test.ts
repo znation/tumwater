@@ -2,7 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkMergeQueueFiles, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "../src/doctor/doctor-backlog-plans.js";
+import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -14,9 +16,11 @@ import { shortSpanPhrase } from "../src/text/phrases.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
-// Unit coverage for the doctor's backlog-document checks (src/doctor/doctor-backlog.ts): the three
-// checks that read the tracked Markdown backlog rather than the environment. The environment
-// checks' own coverage lives in test/doctor-checks.test.ts (the model-readiness checks in
+// Unit coverage for the doctor's per-document backlog checks (split across
+// src/doctor/doctor-backlog-plans.ts, doctor-backlog-bugs.ts and the shared-helper/queue
+// module doctor-backlog.ts): the checks that read the tracked
+// Markdown backlog rather than the environment. The environment checks' own coverage lives in
+// test/doctor-checks.test.ts (the model-readiness checks in
 // test/doctor-model-checks.test.ts); report composition, rendering, and
 // the CLI wiring (`tumwater doctor` exit codes through main()) are pinned in
 // test/doctor.test.ts, and the fixtures those files share live in test/fixtures/doctor-fixtures.ts.
