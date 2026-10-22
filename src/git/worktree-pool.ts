@@ -3,8 +3,7 @@
  * place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and its
  * cross-process lock live in slots-state.ts, which other processes (`tumwater diff`, `retire`) also
  * read; this module owns choosing a slot, holding it through the disk-floor registry, and handing
- * it back. Since part 4/5 landed, a role's run (runner-run.ts) and a merge (merge-batch.ts)
- * both acquire one through leaseSlot.
+ * it back. Nothing leases a slot yet — part 4/5 wires the roles to it.
  *
  * The lease decision is synchronous: `updateSlotsState` writes slots.json under the slots lock, and
  * one Node process runs every run and merge, so two concurrent `leaseSlot` calls claim distinct
