@@ -30,7 +30,9 @@ current one, so history, old logs and old scripts stay readable.
 
 | Word | Meaning |
 | --- | --- |
-| due | A role is ready and starts on the next poll. |
+| due | A role is ready and the next poll starts it — a role the poll declined but will decline again shows an `idle: …` or `waiting: …` reason instead. |
+| idle: every role instance is busy | The role's concurrent-instances cap is full (another of its instances is writing). |
+| idle: waiting out its yield gap ×N | A scalable role is held back by its yield-stretched minimum gap. |
 | waiting to merge | A run's commit is in the merge queue. |
 | waiting: <reason> | A role is held by a condition, such as "waiting: low disk" or "waiting: maintenance allowance used". |
 | blocked | A backlog entry that cannot be picked: `[blocked: refused]`, `[blocked: needs review]`, `[blocked: requires …]`. |
