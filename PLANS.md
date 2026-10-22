@@ -205,25 +205,4 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
 - `npm test` passes.
 
-### `tumwater start --gui --port <n>` picks the dashboard port (planned 2026-10-22 by user; touches src/cli/cli-flag-specs.ts src/cli/cli-start.ts src/process/supervisor.ts src/cli/help.ts docs/cli.md and their tests)
-
-**Goal.** `tumwater start --gui` (and its `run` alias) accepts `--port <n>` and serves the dashboard there, instead of only on the hard-coded 7180. Today `--port`, `--all-interfaces` and `--token` exist only on `tumwater gui`; `START_FLAG_SPECS` rejects `--port`, and the dashboard child is spawned as a bare `["gui"]` (`spawnGuiChild` in src/process/supervisor.ts), so the one-command form is stuck on the default. Only `--port` is added: `--all-interfaces` and `--token` stay on `tumwater gui` (widening those is out of scope and would need its own plan).
-
-**Approach.**
-- src/cli/cli-flag-specs.ts: extract the existing GUI `--port` entry into one exported `PORT_FLAG` (`names: ["--port"]`, `value: true`, `valueName: "<n>"`, `validate` calling `parsePortFlag`) and use it in both `START_FLAG_SPECS` and `GUI_FLAG_SPECS`, so the shape check and error rendering cannot drift between the two commands. Update the `--gui` comment in `START_FLAG_SPECS`, which currently states port selection stays on `tumwater gui`.
-- src/cli/cli-start.ts:
-  - In `cmdStart`, beside the existing `--once` rival checks, refuse `--port` without `--gui`: `fail("--port is only valid with --gui (e.g. `tumwater start --gui --port 8080`); the standalone dashboard is `tumwater gui --port <n>`")`.
-  - In `guiChildPlan`, parse the port with `flagValue(runArgs, "--port")` + `parsePortFlag` (null when absent) and return it as a new `guiArgs` field — `["--port", String(port)]` when given, else `[]`. Strip both `--port` and its value token from `orchestratorArgs` (alongside `--gui`/`--tui`), so the supervised orchestrator generation and the self-redeploy hand-off never receive it and never hit the `--port`-requires-`--gui` refusal.
-  - Thread `plan.guiArgs` through `superviseDashboard(signal, stdio, guiArgs)` into `spawnGuiChild`.
-- src/process/supervisor.ts: give `spawnGuiChild` a trailing `extraArgs: string[] = []` parameter, mirroring `spawnStartChild`, and spawn `["gui", ...extraArgs]`; update its doc comment (currently "on its defaults").
-- src/cli/help.ts and docs/cli.md: show `tumwater start --gui [--port <n>]`, and say the `/`-line next to `gui --port N` that booting with `start --gui --port N` does the same.
-- Tests: extend `guiChildPlan` cases in test/cli-start.test.ts (subject returns `guiArgs`, strips `--port` and its value, leaves other args); extend the vocabulary test and valid-flags list in test/cli-args.test.ts (`--port <n>` accepted by `run`, `gui`'s list unchanged); add the `--port`-without-`--gui` refusal to test/cli-start-guards.test.ts; and extend the live `run --gui` case in test/cli-start-window.test.ts to spawn with a free `--port` (skip when taken) and fetch the dashboard on it. A bad `--port abc` is covered by the spec's `validate` in test/cli-args.test.ts.
-
-**Acceptance criteria.**
-- `guiChildPlan(["--gui", "--port", "8123"])` returns `guiArgs: ["--port", "8123"]` and `orchestratorArgs: []`; `guiChildPlan(["--gui"])` returns `guiArgs: []`; `guiChildPlan(["--branch", "x", "--gui", "--port", "8123", "--for", "2h"])` keeps `--branch x --for 2h` and no `--port`.
-- `tumwater start --gui --port 8123` on a ready repo serves the dashboard on 8123: the live test fetches it there, the default 7180 is not bound by this run, and the process still frees 8123 on shutdown.
-- `tumwater start --port 8123` (no `--gui`) exits nonzero with the message above; `tumwater start --gui --port abc` exits nonzero with `parsePortFlag`'s invalid-port wording before the ready-repo gate.
-- `tumwater gui --port 8123`, `--all-interfaces` and `--token` behave exactly as before; `gui`'s valid-flags error text still names all three.
-- `tumwater help start` and docs/cli.md show the `--port` form; `npm test` passes.
-
 ## Done

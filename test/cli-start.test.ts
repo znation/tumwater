@@ -62,19 +62,42 @@ test("guiChildPlan strips --gui and reports it, leaving other args untouched", (
   assert.deepEqual(guiChildPlan(["--gui"]), {
     spawnGui: true,
     spawnTui: false,
+    guiArgs: [],
     orchestratorArgs: [],
     childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--for", "2h"]), {
     spawnGui: true,
     spawnTui: false,
+    guiArgs: [],
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--once", "--role", "clean"]), {
     spawnGui: false,
     spawnTui: false,
+    guiArgs: [],
     orchestratorArgs: ["--once", "--role", "clean"],
+    childStdio: "inherit",
+  });
+});
+
+// `run --gui --port N`: the port rides on the dashboard child and is stripped from the
+// orchestrator generation (whose cmdStart, seeing --port without --gui, would refuse it). A
+// mid-line `--port N` disappears entirely while the surrounding args survive.
+test("guiChildPlan threads --port onto the dashboard child and strips it from the orchestrator", () => {
+  assert.deepEqual(guiChildPlan(["--gui", "--port", "8123"]), {
+    spawnGui: true,
+    spawnTui: false,
+    guiArgs: ["--port", "8123"],
+    orchestratorArgs: [],
+    childStdio: "inherit",
+  });
+  assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--port", "8123", "--for", "2h"]), {
+    spawnGui: true,
+    spawnTui: false,
+    guiArgs: ["--port", "8123"],
+    orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: "inherit",
   });
 });
@@ -87,18 +110,21 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
   assert.deepEqual(guiChildPlan(["--tui"]), {
     spawnGui: false,
     spawnTui: true,
+    guiArgs: [],
     orchestratorArgs: [],
     childStdio: ["ignore", "ignore", "ignore"],
   });
   assert.deepEqual(guiChildPlan(["--gui", "--tui"]), {
     spawnGui: true,
     spawnTui: true,
+    guiArgs: [],
     orchestratorArgs: [],
     childStdio: ["ignore", "ignore", "ignore"],
   });
   assert.deepEqual(guiChildPlan(["--branch", "x", "--tui", "--for", "2h"]), {
     spawnGui: false,
     spawnTui: true,
+    guiArgs: [],
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: ["ignore", "ignore", "ignore"],
   });

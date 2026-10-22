@@ -268,18 +268,24 @@ export function spawnStartChild(
   );
 }
 
-/** The production dashboard spawner for `run --gui`: a `tumwater gui` child on its defaults,
- * stdio shared so a terminal Ctrl+C reaches it exactly as it reaches the orchestrator child —
- * unless `--tui` is hosted, when the caller passes silent stdio so the dashboard's
- * `tumwater gui at http://…` banner cannot paint over the observer TUI's full-screen render.
+/** The production dashboard spawner for `run --gui`: a `tumwater gui` child (on its defaults, or
+ * on `--port <n>` when `extraArgs` carries the port), stdio shared so a terminal Ctrl+C reaches
+ * it exactly as it reaches the orchestrator child — unless `--tui` is hosted, when the caller
+ * passes silent stdio so the dashboard's `tumwater gui at http://…` banner cannot paint over the
+ * observer TUI's full-screen render.
  * `env` carries the caller's mark — in production DASHBOARD_CHILD_ENV naming this supervisor's
  * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
  * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor
  * dies outright (SIGKILL, a crash), freeing the dashboard port. Deliberately not SUPERVISED_ENV:
  * the child must run `gui`, not supervise a team. Resolves like spawnStartChild — a failed spawn
  * is `{ code: 1, signal: null }` — so an EMFILE/ENOMEM here cannot throw an unhandled 'error'. */
-export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}, stdio: StdioOptions = "inherit"): Promise<ChildExit> {
-  return spawnSupervised(["gui"], signal, env, stdio);
+export function spawnGuiChild(
+  signal: AbortSignal,
+  env: NodeJS.ProcessEnv = {},
+  stdio: StdioOptions = "inherit",
+  extraArgs: string[] = [],
+): Promise<ChildExit> {
+  return spawnSupervised(["gui", ...extraArgs], signal, env, stdio);
 }
 
 /** Spawn one supervised child (`commandArgs` after the cli.js script path) and resolve on its

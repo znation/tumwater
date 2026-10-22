@@ -20,7 +20,8 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                             # roles until 5 plans are done; remove "bootstrap" from
                             # tumwater.json to end that early
 tumwater start              # start the team (Ctrl+C to stop)
-tumwater start --gui        # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
+tumwater start --gui            # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
+                                # add --port <n> to serve it on another port (the `tumwater gui --port <n>` twin)
 tumwater start --tui        # ... and host the TUI in this same terminal (the `tumwater tui` view; quitting it stops the team like Ctrl+C)
 tumwater start --for 2h     # run for a bounded window (capped at 90d), then finish current work, print a per-role summary of the window, and exit (one window across updates); shown as `stops in …` on status, the TUI, and the dashboard
 tumwater start --once       # one full round of runs, finishes the merges it produced, and exits (for cron/CI); exits 3 if a run failed;
@@ -29,6 +30,8 @@ tumwater start --branch <name>  # merge into that branch instead of baseBranch i
 ```
 
 `tumwater gui --port N` serves the dashboard on another port than 7180;
+booting with `tumwater start --gui --port N` serves it the same way from the
+one-command start.
 `gui --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole
 network, so pair it with `--token <secret>`.
 

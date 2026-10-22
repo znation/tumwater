@@ -237,7 +237,7 @@ function probeScript(dir: string, outFile: string | null, body: string): string 
     p,
     'import fs from "node:fs";\n' +
       (outFile
-        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}], ${JSON.stringify(SUPERVISOR_PID_ENV)}: process.env[${JSON.stringify(SUPERVISOR_PID_ENV)}], ${JSON.stringify(RUN_WINDOW_START_ENV)}: process.env[${JSON.stringify(RUN_WINDOW_START_ENV)}] }));\n`
+        ? `fs.writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ argv2: process.argv[2], argv3: process.argv[3], ${JSON.stringify(SUPERVISED_ENV)}: process.env[${JSON.stringify(SUPERVISED_ENV)}], ${JSON.stringify(SUPERVISOR_PID_ENV)}: process.env[${JSON.stringify(SUPERVISOR_PID_ENV)}], ${JSON.stringify(RUN_WINDOW_START_ENV)}: process.env[${JSON.stringify(RUN_WINDOW_START_ENV)}] }));\n`
         : "") + body,
   );
   return p;
@@ -314,6 +314,23 @@ test("spawnGuiChild runs the same script with `gui`, and a silent stdio (run --t
       },
     );
     assert.equal(readJson<Record<string, unknown>>(silentOut).argv2, "gui");
+
+    // `run --gui --port N` hands the dashboard child the port as extra args, so the spawned
+    // command is `gui --port N` — the child (and its banner) must see them.
+    const portOut = path.join(dir, "evidence-gui-port.json");
+    await withArgv1(
+      probeScript(dir, portOut, "process.exit(0);\n"),
+      async () => {
+        const e = await within(
+          spawnGuiChild(new AbortController().signal, {}, "inherit", ["--port", "8123"]),
+          15_000,
+        );
+        assert.deepEqual(e, { code: 0, signal: null });
+      },
+    );
+    const portSeen = readJson<Record<string, unknown>>(portOut);
+    assert.equal(portSeen.argv2, "gui");
+    assert.equal(portSeen.argv3, "--port");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

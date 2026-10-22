@@ -164,17 +164,24 @@ test("run's flag vocabulary accepts --branch, --once, --role, --gui, and --tui a
   expectOk(() => rejectUnknownArgs("run", ["--once"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--once", "--role", "feature"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--gui"], START_FLAG_SPECS));
+  expectOk(() => rejectUnknownArgs("run", ["--gui", "--port", "8123"], START_FLAG_SPECS));
   expectOk(() => rejectUnknownArgs("run", ["--tui"], START_FLAG_SPECS));
   // A typo'd --once must fail with the standard wording, not silently run a daemon round.
   const r = expectFail(() => rejectUnknownArgs("run", ["--onc"], START_FLAG_SPECS));
   assert.match(r.stderr, /unknown argument: --onc/);
   assert.match(
     r.stderr,
-    /valid flags for tumwater run: --branch <name>, --once, --gui, --tui, --for <duration>, --role <id>/,
+    /valid flags for tumwater run: --branch <name>, --once, --gui, --port <n>, --tui, --for <duration>, --role <id>/,
   );
   // --once takes no value: a following token is a stray, not its argument.
   const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], START_FLAG_SPECS));
   assert.match(valued.stderr, /unknown argument: yes/);
+  // run's --port shares gui's shape check: a malformed value is named by parsePortFlag, and
+  // a repeated --port fails like gui's does.
+  const badPort = expectFail(() => rejectUnknownArgs("run", ["--gui", "--port", "abc"], START_FLAG_SPECS));
+  assert.match(badPort.stderr, /--port must be an integer between 1 and 65535/);
+  const runPortDup = expectFail(() => rejectUnknownArgs("run", ["--gui", "--port", "8000", "--port", "9000"], START_FLAG_SPECS));
+  assert.match(runPortDup.stderr, /--port may only be given once/);
 });
 
 test("rejectUnknownArgs adds a did-you-mean hint for a near-miss flag", () => {

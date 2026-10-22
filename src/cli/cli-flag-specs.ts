@@ -406,10 +406,24 @@ export function byFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--by"], value: true, valueName: "<role|model>", missingValue };
 }
 
+/** `tumwater gui`'s `--port <n>` flag: the dashboard port, shape-checked by parsePortFlag so
+ * `gui --port abc` and `start --gui --port abc` are named before the ready-repo gate can mask
+ * them. Shared by `gui` and `start --gui` (START_FLAG_SPECS) so the shape check and the
+ * valid-flags error rendering cannot drift between the two commands. */
+const PORT_FLAG: FlagSpec = {
+  names: ["--port"],
+  value: true,
+  valueName: "<n>",
+  validate: (value) => {
+    parsePortFlag(value);
+  },
+};
+
 /** `tumwater start`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of runs, then exit), `--role <id>`
- * (scope a --once round to one role, parsed by parseRoleFlag), and `--gui` (also serve the
- * browser dashboard on its defaults; port/token selection stays on `tumwater gui`). Exported
+ * (scope a --once round to one role, parsed by parseRoleFlag), `--gui` (also serve the browser
+ * dashboard), and `--port <n>` (choose the dashboard port, shared with `tumwater gui`; the
+ * dashboard's --all-interfaces and --token stay on `tumwater gui`). Exported
  * so the caller's rejectUnknownArgs check and its tests share one definition of what `start`
  * (and its hidden alias `run`) accepts — before this vocabulary existed, run parsed --branch
  * and silently ignored every other flag, so a typo'd option ran the daemon with default
@@ -418,11 +432,12 @@ export const START_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
   // `run --gui` is the one-command form of the dashboard: it boots the team and serves the
-  // browser dashboard at its defaults, loopback on port 7180. The dashboard's own --port,
-  // --all-interfaces, and --token stay on `tumwater gui`; widening them here would mean two
-  // flag vocabularies to keep in step. `run --gui --once` is refused in cmdStart beside the
-  // timer it arms.
+  // browser dashboard on its defaults, loopback on port 7180. `--port <n>` (shared with `tumwater
+  // gui` via PORT_FLAG) picks another port, exactly like `tumwater gui --port <n>`; the
+  // dashboard's other flags --all-interfaces and --token stay on `tumwater gui`. `run --gui
+  // --once` and `--port` without `--gui` are refused in cmdStart beside the timer it arms.
   { names: ["--gui"] },
+  PORT_FLAG,
   // `run --tui` is the one-command form of the observer TUI: it boots the team and hosts the
   // same in-terminal TUI `tumwater tui` attaches from another terminal. Its flag vocabulary
   // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdStart
@@ -441,22 +456,13 @@ export const START_FLAG_SPECS: FlagSpec[] = [
  * and cmdGui's own re-check share this one wording. */
 export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
 
-/** `tumwater gui`'s flag vocabulary: `--port <n>` (the dashboard port, shape-checked by
- * parsePortFlag so `gui --port abc` is named before the ready-repo gate can mask it),
- * `--all-interfaces`, and `--token <secret>` (the dashboard auth token). Exported so
- * cli.ts's rejectUnknownArgs check and its tests share one definition of what `gui`
- * accepts, like every other command's spec in this module; cmdGui re-runs parsePortFlag
- * and the token emptiness check on the accepted args, so the gate and the body cannot
- * drift apart. */
+/** `tumwater gui`'s flag vocabulary: `--port <n>` (the dashboard port), `--all-interfaces`,
+ * and `--token <secret>` (the dashboard auth token). Exported so cli.ts's rejectUnknownArgs
+ * check and its tests share one definition of what `gui` accepts, like every other command's
+ * spec in this module; cmdGui re-runs parsePortFlag and the token emptiness check on the
+ * accepted args, so the gate and the body cannot drift apart. */
 export const GUI_FLAG_SPECS: FlagSpec[] = [
-  {
-    names: ["--port"],
-    value: true,
-    valueName: "<n>",
-    validate: (value) => {
-      parsePortFlag(value);
-    },
-  },
+  PORT_FLAG,
   { names: ["--all-interfaces"] },
   { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
 ];

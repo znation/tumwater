@@ -76,6 +76,19 @@ test("run --tui --once fails before boot with the rival-shapes message", async (
   });
 });
 
+// `--port` names the `--gui` dashboard's port; alone it names no port for `run`, so it is
+// refused before any boot (a valid value already passed the spec's shape gate — `run --port
+// abc` fails earlier, in the dispatcher, with parsePortFlag's wording).
+test("run --port without --gui fails before boot with the --port-requires--gui message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run port");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--port", "8123");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--port is only valid with --gui/);
+  });
+});
+
 // A TUI owns the terminal, so `run --tui` refuses before boot when this supervisor's stdin or
 // stdout is not a TTY (piped, as under a script or this harness) — failing fast with the
 // actionable tuiTerminalError instead of pointlessly booting a team and only then crashing on

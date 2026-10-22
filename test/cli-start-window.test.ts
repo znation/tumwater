@@ -37,6 +37,20 @@ function portFree(port: number): Promise<boolean> {
   });
 }
 
+/** Pick a free loopback port for a `run --gui --port N` live test, then release it so the
+ * spawned dashboard can bind it. A tiny race (another process taking it in between) is handled
+ * by the skip-if-in-use check the test already runs before spawning. */
+function pickFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
 /** One GET of a dashboard path, resolved once the body is fully read; a connection error or a
  * stalled response rejects so the caller fails instead of hanging. */
 function getDashboardBody(port: number, path: string): Promise<string> {
@@ -154,6 +168,43 @@ test("run --gui serves the dashboard from the supervisor and frees the port on S
     assert.ok(
       await waitForPortFree(DASHBOARD_PORT),
       `the dashboard port must be free after the supervisor exits; output so far:\n${s.out()}`,
+    );
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
+// `run --gui --port N`: the one-command form serves the dashboard on the chosen port instead
+// of the 7180 default, and still frees it on shutdown. Skips cleanly when the picked port is
+// already taken. (The chosen port is fetched, so the default 7180 is not bound by this run.)
+test("run --gui --port serves the dashboard on the chosen port and frees it on SIGTERM", async (t) => {
+  const port = await pickFreePort();
+  if (!(await portFree(port))) {
+    t.skip(`port ${port} is already in use; skipping the live run --gui --port test`);
+    return;
+  }
+  const repo = makeRepo();
+  await initProject(repo, "cli run gui port");
+  onlyCleanRole(repo);
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run", "--gui", "--port", String(port)]);
+  try {
+    await s.waitFor(
+      (out) =>
+        out.includes("tumwater running on branch main") &&
+        out.includes(`tumwater gui at http://127.0.0.1:${port}`),
+      "the run banner and the dashboard banner on the chosen port",
+    );
+    const body = await waitForDashboard(port);
+    assert.match(body, /tumwater/i, `GET / serves the tumwater page; body starts: ${body.slice(0, 120)}`);
+
+    s.child.kill("SIGTERM");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected a clean supervisor exit after SIGTERM; output so far:\n${s.out()}`);
+    assert.ok(
+      await waitForPortFree(port),
+      `the chosen dashboard port must be free after the supervisor exits; output so far:\n${s.out()}`,
     );
   } finally {
     s.kill();

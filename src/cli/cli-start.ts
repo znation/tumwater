@@ -15,6 +15,7 @@ import {
   flagValue,
   parseBranchFlag,
   parseDurationFlag,
+  parsePortFlag,
   parseRoleListFlag,
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
@@ -64,6 +65,12 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // stays allowed — the dashboard serves for the window.
   if (once && args.includes("--gui"))
     failRivalShapes("--gui", "--once", "a one-round run cannot serve a dashboard it is about to kill");
+  // `--port` chooses the `--gui` dashboard's port; without `--gui` it names no port for this
+  // command, so refuse it (a valid value already passed the spec's shape gate) before any boot.
+  if (args.includes("--port") && !args.includes("--gui"))
+    fail(
+      "--port is only valid with --gui (e.g. `tumwater start --gui --port 8080`); the standalone dashboard is `tumwater gui --port <n>`",
+    );
   const forMs = parseRunWindow(args, once);
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
@@ -408,6 +415,11 @@ export function onceSummary(
 export function guiChildPlan(runArgs: string[]): {
   spawnGui: boolean;
   spawnTui: boolean;
+  /** The `--port <n>` args the dashboard child gets (`["--port", String(port)]` when `--port`
+   * was given, else `[]`), threaded into spawnGuiChild so a one-command `run --gui --port N`
+   * serves the dashboard on N. The port is parsed here (parsePortFlag has already run its
+   * shape gate on the dispatcher, so this is the same value re-typed for the child). */
+  guiArgs: string[];
   orchestratorArgs: string[];
   /** The stdio the supervised children (the run child and, when `--gui`, the dashboard child)
    * get: `"inherit"` on a plain `run`/`run --gui`, but silent when a TUI is hosted — the
@@ -418,10 +430,25 @@ export function guiChildPlan(runArgs: string[]): {
    * exactly such an interleaving line, so it is silenced with the rest. */
   childStdio: StdioOptions;
 } {
+  const portIdx = runArgs.indexOf("--port");
+  const portRaw = portIdx >= 0 ? runArgs[portIdx + 1] : undefined;
+  const port = portRaw !== undefined ? parsePortFlag(portRaw) : null;
+  // Drop --port and its value from the supervized orchestrator generation along with --gui/--tui:
+  // the child's own cmdStart would otherwise hit the `--port` requires `--gui` refusal (its
+  // args no longer carry --gui) or supervise a second dashboard, and a self-redeploy hand-off
+  // must never forward the port it is not serving itself.
+  const skip = new Set<number>();
+  if (portIdx >= 0) {
+    skip.add(portIdx);
+    if (portIdx + 1 < runArgs.length) skip.add(portIdx + 1);
+  }
   return {
     spawnGui: runArgs.includes("--gui"),
     spawnTui: runArgs.includes("--tui"),
-    orchestratorArgs: runArgs.filter((arg) => arg !== "--gui" && arg !== "--tui"),
+    guiArgs: port === null ? [] : ["--port", String(port)],
+    orchestratorArgs: runArgs.filter(
+      (arg, i) => arg !== "--gui" && arg !== "--tui" && !skip.has(i),
+    ),
     childStdio: runArgs.includes("--tui") ? ["ignore", "ignore", "ignore"] : "inherit",
   };
 }
@@ -432,11 +459,11 @@ export function guiChildPlan(runArgs: string[]): {
  * redeploy and exits on its own if this supervisor dies outright (SIGKILL, a crash) — a killed
  * supervisor never leaves a dashboard holding its port. Any other dashboard exit (a failed bind
  * prints its own message and exits) ends this loop and leaves the team running. */
-async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "inherit"): Promise<void> {
+async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "inherit", guiArgs: string[] = []): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
   for (;;) {
-    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) }, stdio);
+    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) }, stdio, guiArgs);
     if (signal.aborted || exit.code !== RESTART_EXIT_CODE) return;
   }
 }
@@ -497,7 +524,7 @@ async function superviseStartCommand(root: string, runArgs: string[], branchArg:
         guiController.abort();
       })
     : Promise.resolve();
-  const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.childStdio) : Promise.resolve();
+  const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.childStdio, plan.guiArgs) : Promise.resolve();
   const code = await superviseStart(
     {
       spawnChild: (signal) =>
