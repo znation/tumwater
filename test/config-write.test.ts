@@ -697,6 +697,11 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   // backends.<id>.<field> names one backend field; a typo'd field names the valid ones.
   assert.deepEqual(parseConfigKey("backends.claude.bin"), { kind: "agent", id: "claude", field: "bin" });
   assert.deepEqual(parseConfigKey("backends.pi.args"), { kind: "agent", id: "pi", field: "args" });
+  // codex's configDir/windowReserve are CLI-addressable, like claude's (part 4/9): a
+  // `config set backends.codex.configDir` must be writable, not refused as an unknown field.
+  assert.deepEqual(parseConfigKey("backends.codex.configDir"), { kind: "agent", id: "codex", field: "configDir" });
+  assert.deepEqual(parseConfigKey("backends.codex.windowReserve"), { kind: "agent", id: "codex", field: "windowReserve" });
+  assert.deepEqual(parseConfigKey("backends.codex.args"), { kind: "agent", id: "codex", field: "args" });
   const badField = parseConfigKey("backends.claude.binary");
   assert.equal(badField.kind, "error");
   if (badField.kind === "error")

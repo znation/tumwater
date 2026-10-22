@@ -149,15 +149,15 @@ test("backend beside model: tier entries, roles and review accept registered bac
   );
   assert.match(
     validationError({ model: { strong: { backend: "gemini", model: "x" } } }),
-    /model\.strong\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+    /model\.strong\.backend must name a backend \(pi, claude, opencode, codex; got "gemini"\)/,
   );
   assert.match(
     validationError({ roles: { feature: { backend: "gemini" } } }),
-    /roles\.feature\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+    /roles\.feature\.backend must name a backend \(pi, claude, opencode, codex; got "gemini"\)/,
   );
   assert.match(
     validationError({ review: { backend: "gemini" } }),
-    /review\.backend must name a backend \(pi, claude, opencode; got "gemini"\)/,
+    /review\.backend must name a backend \(pi, claude, opencode, codex; got "gemini"\)/,
   );
   assert.match(
     validationError({ model: { strong: { backend: "claude", mdoel: "x" } } }),

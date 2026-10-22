@@ -99,4 +99,27 @@ test("routeModel resolves the backend from the keys, never from the model id", (
   // opencode declares no tier defaults, so a no-model opencode job resolves no model.
   assert.deepEqual(routeModel(undefined, undefined, "opencode", "default"), { agent: "opencode" });
   assert.deepEqual(routeModel(undefined, undefined, "opencode", "strong"), { agent: "opencode" });
+  // codex (part 4/9): takes the model id as written — no `codex/` namespace is prepended even
+  // when a provider is present — and resolves its tier defaults (gpt-6-astra / gpt-6.1-sol /
+  // gpt-6-luna) when no model survives.
+  assert.deepEqual(routeModel(undefined, "gpt-6.1-sol", "codex", "default"), {
+    agent: "codex",
+    model: "gpt-6.1-sol",
+  });
+  assert.deepEqual(routeModel("whatever", "gpt-6.1-sol", "codex", "default"), {
+    agent: "codex",
+    model: "gpt-6.1-sol",
+  });
+  assert.deepEqual(routeModel(undefined, undefined, "codex", "strong"), {
+    agent: "codex",
+    model: "gpt-6-astra",
+  });
+  assert.deepEqual(routeModel(undefined, undefined, "codex", "default"), {
+    agent: "codex",
+    model: "gpt-6.1-sol",
+  });
+  assert.deepEqual(routeModel(undefined, undefined, "codex", "small"), {
+    agent: "codex",
+    model: "gpt-6-luna",
+  });
 });

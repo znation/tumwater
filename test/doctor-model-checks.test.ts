@@ -378,6 +378,22 @@ test("checkTierModels notes opencode-routed models and the built-in opencode cav
   assert.equal(probed, 0, "an opencode-routed config probes no pi provider");
 });
 
+// codex (part 4/9): a model routed to codex is not a pi pair and must not consult (or require)
+// pi's definitions nor probe pi's auth; the routing note names the codex backend, not claude.
+test("checkTierModels notes codex-routed models and the codex backend, not claude", async () => {
+  const root = readyRepo();
+  writeConfig(root, { backend: "codex", model: "gpt-6-astra" });
+  let probed = 0;
+  const outcome = await checkTierModels(root, path.join(tmpdir(), "absent-models.json"), async () => {
+    probed++;
+    return "ready";
+  });
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /codex-routed .* resolved by the codex backend, not pi's definitions/);
+  assert.ok(!outcome.detail.includes("claude-routed"), `a codex seam must not be labeled claude-routed: ${outcome.detail}`);
+  assert.equal(probed, 0, "a codex-routed config probes no pi provider");
+});
+
 // The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): with
 // ANTHROPIC_API_KEY exported (for pi's anthropic provider) a claude seam prefers the key over a
 // claude.ai login, silently moving every claude run to API billing. Doctor warns only when the

@@ -338,8 +338,10 @@ The groundwork makes the middle group per backend with **no behavior change for 
 - `codex` joins `BACKEND_IDS`.
   - `backend: "codex"` runs bare model ids, and the no-model default, on Codex.
   - The model id goes to `-m` as written.
-  - There is no `codex/<id>` spelling. Since Backend/model split part 5/5 (merged 2026-10-20),
-    a backend-id namespace in a model id is a load error anyway.
+  - There is no `codex/<id>` spelling: write the bare model id. A model id never names a
+    backend — checkRetiredSelector rejects only the retired claude/opencode namespaces — so a
+    whole `codex/<id>` parses to a provider `codex` that codex, like pi, drops, leaving the
+    model half.
 - **Tier defaults** (decision 4), from the catalog's own descriptions:
   - strong: `gpt-6-astra`;
   - default: `gpt-6.1-sol`, Codex's own default;

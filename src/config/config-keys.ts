@@ -7,7 +7,7 @@
  * validate → atomic-write idiom, the cross-process lock) live in src/config/config-write.ts;
  * the per-key validators and key-shape parsing here are the one home of the wording both the
  * writers and the read side show. */
-import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
+import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
 import { typoSuffix } from "../text/suggest.js";
 import { MAX_DURATION_SECONDS, POSITIVE_INTEGER, show } from "./config-field-checks.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -139,9 +139,10 @@ export function parseConfigKey(key: string): ParsedConfigKey {
   // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
   // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
   if (parts.length === 3 && first === "backends" && second !== undefined && second !== "" && third !== undefined) {
-    // configDir is claude-only (CLAUDE_AGENT_KEYS): a config set backends.pi.configDir would
-    // write a key nothing reads, so it is refused everywhere but claude.
-    const validKeys = second === "claude" ? CLAUDE_AGENT_KEYS : BACKEND_KEYS;
+    // configDir/windowReserve are claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS):
+    // a config set backends.pi.configDir would write a key nothing reads, so it is refused
+    // everywhere but claude and codex.
+    const validKeys = second === "claude" ? CLAUDE_AGENT_KEYS : second === "codex" ? CODEX_BACKEND_KEYS : BACKEND_KEYS;
     if ((validKeys as readonly string[]).includes(third))
       return { kind: "agent", id: second, field: third as "bin" | "args" | "configDir" | "windowReserve" };
     return {

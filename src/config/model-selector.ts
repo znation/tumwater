@@ -78,14 +78,25 @@ const BACKEND_DEFAULT_MODELS: Record<BackendId, Partial<Record<ModelTier, string
   // applies, exactly as pi's does. The free model is a time-limited promotion, so its id
   // belongs in tumwater.json, not in code.
   opencode: {},
+  // codex's tier defaults (plans/codex-backend.md decision 4), from the catalog's own
+  // descriptions (design finding 14): strong is `gpt-6-astra`, default is `gpt-6.1-sol` (Codex's
+  // own default), small is `gpt-6-luna`. The director runs the strong tier, as on claude.
+  codex: {
+    small: "gpt-6-luna",
+    default: "gpt-6.1-sol",
+    strong: "gpt-6-astra",
+  },
 };
 
 /** The backend and concrete model a resolved seam's provider/model pair routes to
  * (plans/agent-backends.md "Config"). The backend is the `explicitBackend` (a tier entry's,
  * role's or review's `backend` key), else the config's `backend`, else pi — a model id never
  * names one. pi keeps the parsed provider (the caller's); claude and opencode take the whole
- * `provider/model` id with no provider, verbatim. When no model id survives the resolution, the
- * backend's tier default fills in (pi supplies none). */
+ * `provider/model` id with no provider, verbatim; codex takes the bare model as written (there
+ * is no `codex/<id>` spelling — a model id never names a backend, and a whole `codex/<id>`
+ * parses to provider `codex` which codex, like pi, drops, leaving the model half). When no
+ * model id survives the resolution, the
+ * backend's tier default fills in (pi and opencode supply none). */
 export function routeModel(
   provider: string | undefined,
   model: string | undefined,
@@ -95,7 +106,9 @@ export function routeModel(
 ): { agent: string; model?: string } {
   const backend = explicitBackend ?? configBackend;
   const whole =
-    model !== undefined && provider !== undefined && backend !== "pi" ? `${provider}/${model}` : model;
+    model !== undefined && provider !== undefined && backend !== "pi" && backend !== "codex"
+      ? `${provider}/${model}`
+      : model;
   if (whole !== undefined) return { agent: backend, model: whole };
   const def = BACKEND_DEFAULT_MODELS[backend as BackendId]?.[tier];
   return def !== undefined ? { agent: backend, model: def } : { agent: backend };

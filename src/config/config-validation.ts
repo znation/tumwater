@@ -5,6 +5,7 @@ import {
   THINKING_LEVELS,
   BACKEND_KEYS,
   CLAUDE_AGENT_KEYS,
+  CODEX_BACKEND_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
@@ -21,6 +22,7 @@ import {
 } from "./config-schema.js";
 import { DIRECTOR_ROLE, allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
+import { HARNESS_CODEX_CONFIG_KEYS } from "../agent/codex/codex-args.js";
 import { isJsonObject } from "../files/json-object.js";
 import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
@@ -42,6 +44,7 @@ import {
   checkNumberField,
   checkObjectSection,
   checkReservedArgs,
+  codexConfigKey,
   checkStringArrayField,
   checkStringField,
   NON_NEGATIVE,
@@ -255,14 +258,15 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
         continue;
       }
-      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : BACKEND_KEYS, prefix, problems);
+      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : id === "codex" ? CODEX_BACKEND_KEYS : BACKEND_KEYS, prefix, problems);
       checkString(entry, `${prefix}.`, "bin", false);
       checkStringArray(entry, `${prefix}.`, "args");
-      // claude's per-backend config dir (plans/notes-command.md "Keeping funes out of team runs"):
-      // a leading `~` expands; the value must be an absolute path after expansion, or claude would
-      // resolve a relative CLAUDE_CONFIG_DIR from the run's cwd and write transcripts somewhere
-      // unexpected. Only claude accepts the key (CLAUDE_AGENT_KEYS), so it is inert nowhere.
-      if (id === "claude") {
+      // claude's and codex's per-backend config dir (plans/notes-command.md "Keeping funes out
+      // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
+      // absolute path after expansion, or claude would resolve a relative CLAUDE_CONFIG_DIR (and
+      // codex a relative CODEX_HOME) from the run's cwd and write transcripts somewhere
+      // unexpected. Only claude and codex accept the key, so it is inert nowhere else.
+      if (id === "claude" || id === "codex") {
         checkString(entry, `${prefix}.`, "configDir", false);
         if (typeof entry.configDir === "string" && entry.configDir !== "")
           if (!path.isAbsolute(expandHomeTilde(entry.configDir, os.homedir())))
@@ -282,6 +286,25 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
                 problems.push(`${prefix}.windowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
             }
           }
+        }
+      }
+      // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
+      // key tumwater sets on every run (HARNESS_CODEX_CONFIG_KEYS) is appended AFTER the harness's
+      // own `-c` and Codex's parser is last-wins, so it would silently override the model, effort,
+      // sandbox mode or telemetry the harness resolved. The standalone-flag screen above
+      // (reservedPassthroughFlag + checkReservedArgs) splits on `=` and cannot see a separate
+      // `-c` token, so codex gets its own arity-aware scan of the key. Any other key is the
+      // operator's own and passes.
+      if (id === "codex" && Array.isArray(entry.args)) {
+        const args = entry.args as unknown[];
+        for (let i = 0; i < args.length; i++) {
+          const arg = args[i];
+          if (typeof arg !== "string") continue;
+          const key = codexConfigKey(arg, typeof args[i + 1] === "string" ? (args[i + 1] as string) : undefined);
+          if (key !== undefined && HARNESS_CODEX_CONFIG_KEYS.has(key))
+            problems.push(
+              `${prefix}.args[${i}] ${show(arg)} passes the config key ${key}, which tumwater manages — drop it or use another key`,
+            );
         }
       }
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.

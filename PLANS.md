@@ -30,49 +30,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - doctor prints a "sub window" row.
 - `npm test` passes.
 
-### Codex backend, part 4/9: `codex` becomes a backend id, with `backends.codex`, tier defaults, the effort mapping, reserved flags and traits (planned 2026-10-20 by user; requires part 2e/9 landed; design in plans/codex-backend.md "Config and routing" and "CODEX_HOME and sessions"; touches src/config/config-schema.ts src/config/model-selector.ts src/config/config-validation.ts src/agent/backend-traits.ts src/agent/codex/codex-args.ts (new) src/doctor/doctor-model-checks.ts docs/config.md and their tests)
-
-**Goal.** Make `codex` a valid backend wherever config is read: `backend: "codex"` beside a `model`, a top-level `backend: "codex"`, and `backends.codex` with `bin`, `args`, `configDir` and `windowReserve`. There is no adapter yet (part 7/9). The startup gate's existing rule ("backend X is configured but this build has no adapter for it") refuses a team that routes a job to codex until then.
-
-**Approach.**
-- src/config/config-schema.ts:
-  - `BACKEND_IDS` gains `"codex"`.
-  - `CODEX_BACKEND_KEYS` is `[...BACKEND_KEYS, "configDir", "windowReserve"]`, and validation picks the key list per backend. `configDir` has claude's rule: a leading `~` expands, and the value must be absolute after expansion.
-  - The `BackendConfig.configDir` doc comment says it becomes `CODEX_HOME` on codex.
-- src/config/model-selector.ts: `BACKEND_DEFAULT_MODELS.codex` is `{ small: "gpt-6-luna", default: "gpt-6.1-sol", strong: "gpt-6-astra" }` (design decision 4). A comment names the catalog descriptions they come from (design finding 14).
-- src/agent/codex/codex-args.ts (new) holds only two things in this part:
-  - `HARNESS_CODEX_FLAGS`: the flags listed in design §2 "Reserved passthrough flags".
-  - `HARNESS_CODEX_CONFIG_KEYS`: `model`, `model_reasoning_effort`, `sandbox_mode`, `project_doc_fallback_filenames`, `web_search`, `agents.enabled`, `check_for_update_on_startup`, `analytics.enabled`, `feedback.enabled`, `history.persistence`. A `-c <key>=…` or `--config <key>=…` passthrough whose key is one of these is refused.
-  - Part 5/9 adds the builder beside them.
-- `EFFORT_BY_THINKING` lives in codex-args.ts: `off` and `minimal` → `low`; `low`, `medium`, `high`, `xhigh` and `max` pass. `ultra` is not a value it can produce.
-- src/agent/backend-traits.ts: a `codex` entry.
-  - `streamsToolOutput` false.
-  - `usesPiModels` false.
-  - `reservedPassthroughFlag` uses `HARNESS_CODEX_FLAGS`, plus the config-key check, with the reason "it is managed by tumwater".
-  - `modelLabel` gives the bare model, or "codex default".
-- src/config/config-validation.ts: the `-c` key check above, with the message naming the arg and the key.
-- src/doctor/doctor-model-checks.ts: codex jobs skip the models.json lookup, as claude and opencode do.
-- docs/config.md:
-  - `backend` accepts `"codex"`, and `backends` is keyed by `pi`, `claude`, `opencode` or `codex`.
-  - `backends.codex.configDir` is the Codex home, which needs one `CODEX_HOME=<dir> codex login`.
-  - `backends.codex.windowReserve` is the reserve.
-
-**Acceptance criteria.**
-- `routeModel`:
-  - `{ backend: "codex", model: "gpt-6.1-sol" }` routes to `{agent: "codex", model: "gpt-6.1-sol"}`.
-  - A top-level `backend: "codex"` with no `model` resolves `gpt-6-astra`, `gpt-6.1-sol` and `gpt-6-luna` for the strong, default and small tiers.
-  - `{ backend: "codex", model: "gpt-6-luna", thinking: "high" }` keeps thinking `high`.
-- Validation:
-  - `backends.codex: { configDir: "~/.codex-tumwater", windowReserve: { "seven_day": 0.7 } }` loads.
-  - `configDir: "relative/dir"` is refused.
-  - `backends.codex.args: ["--sandbox", "read-only"]` is refused, naming `--sandbox`.
-  - `backends.codex.args: ["-c", "model=x"]` and `["--config=model_reasoning_effort=high"]` are refused, naming the key.
-  - `backends.codex.args: ["-c", "model_verbosity=low"]` loads.
-  - `backends.opencode.configDir` is still refused.
-- test/backend-traits.test.ts: codex streams no tool output, uses no pi models, and labels `gpt-6.1-sol` as `gpt-6.1-sol` and an undefined model as `codex default`.
-- Startup gate: with `backend: "codex"` and no codex adapter registered, the problem names codex. A pi-only config is unaffected.
-- `npm test` passes.
-
 ### Codex backend, part 5/9: The Codex invocation and environment: argv for fresh and resumed runs, isolation flags, and the scrubbed env (planned 2026-10-20 by user; requires part 4/9 landed; design in plans/codex-backend.md "The invocation" and "Findings, verified live" 6–10, 13 and 20; touches src/agent/codex/codex-args.ts src/agent/codex/codex-env.ts (new) and their tests)
 
 **Goal.** Build, as pure functions, the argv, stdin and environment of one Codex run, fresh or resumed. A Codex run then gets only the flags design §3 lists, the prompt on stdin, and an environment with no host Codex or Claude Code session state and no OpenAI API key.

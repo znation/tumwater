@@ -40,7 +40,7 @@ type FallbackChain = FallbackStep | FallbackStep[];
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
  * ids so validation rejects a typo'd backend at load time instead of falling back to pi. A
  * model id never names a backend: the backend is the `backend` key's. */
-export const BACKEND_IDS = ["pi", "claude", "opencode"] as const;
+export const BACKEND_IDS = ["pi", "claude", "opencode", "codex"] as const;
 export type BackendId = (typeof BACKEND_IDS)[number];
 
 /** The tier-map key list validation feeds checkKnownKeys: a `model` or `fallback` map whose
@@ -82,8 +82,8 @@ export interface RoleConfig {
    * (`small` / `default` / `strong`) naming that tier of the top-level `model` map (plans/
    * model-tiers.md). Falls back to the role's catalog tier when absent. */
   model?: string;
-  /** The backend that runs this role's `model` (`pi`, `claude`, `opencode`); the model passes
-   * to it as written. Alone, it inherits the tier's model only when the tier routes to it. */
+  /** The backend that runs this role's `model` (`pi`, `claude`, `opencode` or `codex`); the model
+   * passes to it as written; alone, it inherits a tier's model only via tier routing. */
   backend?: string;
   /** pi thinking-level override for this role; falls back to the top-level value. */
   thinking?: string;
@@ -247,8 +247,8 @@ export interface TumwaterConfig {
   /** pi thinking level; omitted = pi's own default. */
   thinking?: string;
   /** The agent backend for bare selectors and the no-model default (plans/agent-backends.md
-   * "Config"): `"pi"` (the default), `"claude"` or `"opencode"`. A tier entry's, role's or
-   * review's own `backend` outranks it; claude and opencode take the model id
+   * "Config"): `"pi"` (the default), `"claude"`, `"opencode"`, `"codex"`. A tier entry's, role's
+   * or review's own `backend` outranks it; claude, opencode and codex take the model id
    * verbatim. Typed as a string so a test or later backend can register an id outside the
    * schema's reserved BACKEND_IDS; validation still rejects an unknown id in a loaded file. */
   backend?: string;
@@ -505,27 +505,34 @@ export interface BackendConfig {
   bin?: string;
   /** Extra argv appended last, like piArgs; absent means none. */
   args?: string[];
-  /** (claude only) The config dir set as `CLAUDE_CONFIG_DIR`, so team transcripts and claude's
-   * own auth land in a directory of the team's own (a leading `~` expands; must be absolute after
-   * expansion — validateConfig checks). Unset uses claude's default lookup. */
+  /** (claude and codex) The team's own config dir, set as `CLAUDE_CONFIG_DIR` for every claude
+   * process and `CODEX_HOME` for every codex process (plans/codex-backend.md §4), so team
+   * transcripts, auth and sessions land in a directory of the team's own (a leading `~` expands;
+   * must be absolute after expansion — validateConfig checks). Unset uses the backend's default
+   * lookup. */
   configDir?: string;
   /** Per-window-type share of the subscription window the team leaves for you (the nested
    * spelling of `claudeWindowReserve`, plans/codex-backend.md part 2b/9): a map from window
-   * type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. Only `backends.claude` accepts
-   * the key today (CLAUDE_AGENT_KEYS); a file may set it or the top-level `claudeWindowReserve`,
-   * not both (validateConfig rejects a file with both). */
+   * type (`five_hour`, `seven_day`) to a fraction 0 < f ≤ 1. Only `backends.claude` and
+   * `backends.codex` accept the key (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS); a file may set it
+   * or the top-level `claudeWindowReserve`, not both (validateConfig rejects a file with both). */
   windowReserve?: Record<string, number>;
 }
 
 /** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
  * field (`backends.claude.binary`) is a load error rather than a silently inert entry.
- * `configDir` is claude-only (CLAUDE_AGENT_KEYS), so it is not silently inert on pi/opencode. */
+ * `configDir`/`windowReserve` are claude/codex-only (CLAUDE_AGENT_KEYS / CODEX_BACKEND_KEYS),
+ * so they are not silently inert on pi/opencode. */
 export const BACKEND_KEYS = ["bin", "args"];
 
 /** The keys a claude `backends.claude` entry may hold — the shared agent keys plus `configDir`
- * and `windowReserve`, the per-backend fields only the claude adapter reads (part 4/9 opens
- * `windowReserve` for codex too). */
+ * and `windowReserve`, the per-backend fields only the claude adapter reads. */
 export const CLAUDE_AGENT_KEYS = [...BACKEND_KEYS, "configDir", "windowReserve"];
+
+/** The keys a codex `backends.codex` entry may hold — the same as claude's: the shared agent keys
+ * plus `configDir` (which becomes `CODEX_HOME` for the codex processes, plans/codex-backend.md
+ * §4) and `windowReserve` (the part 2 per-backend reserve). */
+export const CODEX_BACKEND_KEYS = [...BACKEND_KEYS, "configDir", "windowReserve"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */
 export const BOOTSTRAP_KEYS = ["untilPlansDone"];

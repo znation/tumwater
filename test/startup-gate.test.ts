@@ -225,12 +225,10 @@ test("an opencode seam with a missing configured binary fails startup, naming th
 });
 
 // The no-registered-adapter guard itself (part 2/7): a backend an enabled seam routes to that
-// this build has no registered adapter for must be named. The registry now registers all three
-// reserved ids (pi, claude, opencode) and config validation restricts `backend` and every model
-// provider to those ids, so the guard has no reachable trigger through a config file — but it
-// remains the gate for any future backend id, so exercise it directly: a config whose `backend`
-// routes a seam to an unregistered id must be caught naming that id. (Loading that config from
-// tumwater.json would reject it in validation, so it is passed as the already-parsed config.)
+// this build has no registered adapter for must be named. The registry registers pi, claude and
+// opencode; config validation also admits `codex` (part 4/9) — a reserved id whose adapter lands
+// in part 7/9 — so `backend: "codex"` is the one reachable no-adapter trigger through a real
+// config file. Exercise both the reachable id and a genuinely unknown id.
 test("unregisteredBackendInUse names a seam routed to a backend with no registered adapter", async () => {
   const repo = makeRepo();
   await initProject(repo, "startup gate unregistered backend");
@@ -238,6 +236,10 @@ test("unregisteredBackendInUse names a seam routed to a backend with no register
   const cfg = readJson(file) as Record<string, unknown>;
   cfg.backend = "futuristic";
   assert.equal(unregisteredBackendInUse(cfg as never), "futuristic");
+  // codex is a valid config id with no adapter yet (part 4/9), so a config that routes a seam
+  // to it must be caught naming codex until part 7/9 registers the adapter.
+  cfg.backend = "codex";
+  assert.equal(unregisteredBackendInUse(cfg as never), "codex");
 });
 
 test("a registered opencode adapter whose binary exists passes the gate", async () => {

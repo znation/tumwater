@@ -315,3 +315,22 @@ export function checkReservedArgs(
     if (why) problems.push(`${argsPath}[${i}] ${show(arg)} duplicates a flag tumwater sets — ${why}`);
   });
 }
+
+/** The config <key> a `-c <key>=…` / `--config <key>=…` / `-c<key>=…` / `-c=<key>=…` /
+ * `--config=<key>=…` argv element names, or undefined when the element is not a keyed codex
+ * config passthrough. Codex takes the key and value in one token (`-c key=value`), and accepts a
+ * joined `-c=<key>=<value>` identically to `-c <key>=<value>`; `-c` and `--config` alone are
+ * followed by the `<key>=<value>` token as the next element, so the scanner passes both. Kept
+ * here beside its one caller (the codex `backends.args` screen); the tokens actually split by
+ * checkReservedArgs cannot see this form, which is why the scan is its own loop. */
+export function codexConfigKey(arg: string, next: string | undefined): string | undefined {
+  let rest: string | undefined;
+  if (arg === "-c" || arg === "--config") rest = next;
+  else if (arg.startsWith("--config=")) rest = arg.slice("--config=".length);
+  else if (arg.startsWith("-c=")) rest = arg.slice(3);
+  else if (arg.startsWith("-c") && arg.length > 2 && !arg.startsWith("--")) rest = arg.slice(2);
+  if (rest === undefined) return undefined;
+  const eq = rest.indexOf("=");
+  const key = (eq === -1 ? rest : rest.slice(0, eq)).trim();
+  return key === "" ? undefined : key;
+}

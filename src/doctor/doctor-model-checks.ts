@@ -591,7 +591,9 @@ export async function checkTierModels(
     routedNotes.push(
       agent === "opencode"
         ? `${n} opencode-routed ${agree(n, "model", "models")} — \`opencode/…\` ids run on the OpenCode CLI, and pi's built-in \`opencode\` provider is not reachable from tumwater`
-        : `${n} claude-routed ${agree(n, "model", "models")} — resolved by the claude backend, not pi's definitions`,
+        : agent === "codex"
+          ? `${n} codex-routed ${agree(n, "model", "models")} — resolved by the codex backend, not pi's definitions`
+          : `${n} claude-routed ${agree(n, "model", "models")} — resolved by the claude backend, not pi's definitions`,
     );
   }
   const routedText = routedNotes.length > 0 ? routedNotes.join("; ") : "";

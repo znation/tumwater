@@ -372,14 +372,10 @@ test("validateConfig accepts a reserved agent id and rejects an unknown or blank
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "pi" }));
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "claude" }));
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "opencode" }));
-  assert.match(
-    validationError({ ...defaultConfig(), backend: "codex" }),
-    /backend must name a backend \(pi, claude, opencode; got "codex"\)/,
-  );
-  assert.doesNotMatch(validationError({ ...defaultConfig(), backend: "codex" }), /did you mean/);
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), backend: "codex" }));
   assert.match(
     validationError({ ...defaultConfig(), backend: "claue" }),
-    /backend must name a backend \(pi, claude, opencode; got "claue"\) — did you mean `claude`\?$/,
+    /backend must name a backend \(pi, claude, opencode, codex; got "claue"\) — did you mean `claude`\?$/,
   );
   assert.match(validationError({ ...defaultConfig(), backend: "" }), /backend must not be empty/);
 });
@@ -510,6 +506,59 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   // A non-conflicting extra passes for both backends.
   assert.doesNotThrow(() =>
     validateConfig({ backends: { claude: { args: ["--verbose-extra"] }, pi: { args: ["--no-skills"] } } }),
+  );
+});
+
+test("codex joins the backends section: configDir, windowReserve and reserved flags (part 4/9)", () => {
+  // configDir (a leading `~` expands) and windowReserve load, as they do for claude.
+  assert.doesNotThrow(() =>
+    validateConfig({ backends: { codex: { configDir: "~/.codex-tumwater", windowReserve: { seven_day: 0.7 } } } }),
+  );
+  assert.doesNotThrow(() => validateConfig({ backends: { codex: { configDir: "/team/codex" } } }));
+  // A relative config dir would resolve a relative CODEX_HOME against the run's cwd; refused.
+  assert.match(
+    validationError({ backends: { codex: { configDir: "relative/dir" } } }),
+    /backends\.codex\.configDir must be an absolute path after ~ expansion \(got "relative\/dir"\)/,
+  );
+  // The reserved standalone-flag set is enforced like claude's and opencode's.
+  assert.match(
+    validationError({ backends: { codex: { args: ["--sandbox", "read-only"] } } }),
+    /backends\.codex\.args\[0\] "--sandbox" duplicates a flag tumwater sets/,
+  );
+  assert.match(
+    validationError({ backends: { codex: { args: ["--json"] } } }),
+    /backends\.codex\.args\[0\] "--json" duplicates a flag tumwater sets/,
+  );
+  // A `-c` / `--config` passthrough whose key tumwater sets is refused, naming the key.
+  assert.match(
+    validationError({ backends: { codex: { args: ["-c", "model=x"] } } }),
+    /backends\.codex\.args\[0\] "-c" passes the config key model, which tumwater manages/,
+  );
+  assert.match(
+    validationError({ backends: { codex: { args: ["--config=model_reasoning_effort=high"] } } }),
+    /backends\.codex\.args\[0\] "--config=model_reasoning_effort=high" passes the config key model_reasoning_effort, which tumwater manages/,
+  );
+  // The `--config <key>=…` spacing and a joint `-ckey=` token are caught too.
+  assert.match(
+    validationError({ backends: { codex: { args: ["--config", "web_search=on"] } } }),
+    /passes the config key web_search, which tumwater manages/,
+  );
+  assert.match(
+    validationError({ backends: { codex: { args: ["-csandbox_mode=read-only"] } } }),
+    /passes the config key sandbox_mode, which tumwater manages/,
+  );
+  // The joined `-c=<key>=<value>` spelling is accepted by codex identically to `-c <key>=<value>`.
+  assert.match(
+    validationError({ backends: { codex: { args: ["-c=model_reasoning_effort=high"] } } }),
+    /passes the config key model_reasoning_effort, which tumwater manages/,
+  );
+  // A key tumwater does not set is the operator's own and passes.
+  assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["-c", "model_verbosity=low"] } } }));
+  assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["--enable", "automation"] } } }));
+  // opencode still refuses configDir (only claude and codex accept it).
+  assert.match(
+    validationError({ backends: { opencode: { configDir: "/team/opencode" } } }),
+    /unknown key "configDir" in backends\.opencode \(valid keys: bin, args\)/,
   );
 });
 

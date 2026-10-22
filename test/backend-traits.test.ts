@@ -20,7 +20,7 @@ test("pi streams tool output, uses pi's models and labels provider/model", () =>
   assert.equal(modelLabel("pi", undefined, undefined), "?/?");
 });
 
-test("claude and opencode stream no tool output and use no pi models", () => {
+test("claude, opencode and codex stream no tool output and use no pi models", () => {
   assert.equal(streamsToolOutput("claude"), false);
   assert.equal(usesPiModels("claude"), false);
   assert.equal(modelLabel("claude", "claude", "claude-sonnet-5-5"), "claude-sonnet-5-5");
@@ -31,15 +31,21 @@ test("claude and opencode stream no tool output and use no pi models", () => {
   assert.equal(usesPiModels("opencode"), false);
   assert.equal(modelLabel("opencode", "opencode", "deepseek-v4.1-flash-free"), "opencode/deepseek-v4.1-flash-free");
   assert.equal(modelLabel("opencode", undefined, undefined), "opencode/?");
+  // codex (part 4/9): streams no tool output, resolves no pi models, and labels the bare model
+  // or "codex default".
+  assert.equal(streamsToolOutput("codex"), false);
+  assert.equal(usesPiModels("codex"), false);
+  assert.equal(modelLabel("codex", undefined, "gpt-6.1-sol"), "gpt-6.1-sol");
+  assert.equal(modelLabel("codex", undefined, undefined), "codex default");
 });
 
 test("an id with no entry reads as pi (undefined and unknown both become pi traits)", () => {
   assert.equal(streamsToolOutput(undefined), true);
   assert.equal(usesPiModels(undefined), true);
   assert.equal(modelLabel(undefined, "x", "y"), "x/y");
-  assert.equal(streamsToolOutput("codex"), true, "an unregistered id routes to pi at run time");
-  assert.equal(usesPiModels("codex"), true);
-  assert.equal(modelLabel("codex", "x", "y"), "x/y");
+  assert.equal(streamsToolOutput("other"), true, "an unregistered id routes to pi at run time");
+  assert.equal(usesPiModels("other"), true);
+  assert.equal(modelLabel("other", "x", "y"), "x/y");
 });
 
 test("reservedPassthroughFlag keeps each backend's validation reason", () => {
@@ -56,4 +62,9 @@ test("reservedPassthroughFlag keeps each backend's validation reason", () => {
   assert.equal(reservedPassthroughFlag("opencode", "-m"), "it is managed by tumwater");
   assert.equal(reservedPassthroughFlag("opencode", "--title"), "it is managed by tumwater");
   assert.equal(reservedPassthroughFlag("opencode", "--print-logs"), undefined, "an unreserved opencode flag is free");
+  // codex's reserved set reads "it is managed by tumwater" too; the `-c` config-key screen is
+  // arity-aware and lives in config-validation against HARNESS_CODEX_CONFIG_KEYS.
+  assert.equal(reservedPassthroughFlag("codex", "--sandbox"), "it is managed by tumwater");
+  assert.equal(reservedPassthroughFlag("codex", "--json"), "it is managed by tumwater");
+  assert.equal(reservedPassthroughFlag("codex", "--strict-config"), undefined, "an unreserved codex flag is free");
 });

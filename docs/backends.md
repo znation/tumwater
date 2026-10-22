@@ -157,7 +157,9 @@ A tier entry, a role (`roles.<id>`), the review and a fallback step each take th
 `huggingface/…` ids stay on pi. A model id never names a backend: `claude/<id>`, `opencode/<id>`
 (under pi) and a bare `claude-…` id under pi fail the load, each message naming the edit — write
 `backend: "claude"` beside `model: "claude-opus-5-5"`, or `anthropic/claude-…` to keep a claude
-model on pi. A fallback step with no `backend` inherits its tier primary's backend (the tier
+model on pi. codex likewise has no namespace spelling: write the bare model id
+(`gpt-6.1-sol`), since a whole `codex/<id>` string parses to a `codex` provider that codex,
+like pi, drops, leaving the model half. A fallback step with no `backend` inherits its tier primary's backend (the tier
 entry's, else the top level's).
 Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
 default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
