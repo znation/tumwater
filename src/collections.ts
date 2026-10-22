@@ -38,7 +38,7 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
  * (src/team/failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the once-summary outcome tally
  * (cli/cli-start.ts), the logs' per-type tally (cli/log-commands.ts), the flaky-check tally
- * (doctor/doctor-checks.ts), and the multi-runner base tally
+ * (doctor/doctor-project-checks.ts), and the multi-runner base tally
  * (orchestrator/orchestrator-scheduling.ts), so those sites cannot drift on how a missing key is
  * seeded. */
 export function increment<K>(map: Map<K, number>, key: K): void {
@@ -123,7 +123,7 @@ export function rankByCount<T>(
 
 /** The lower median of a non-empty numeric list: the middle value, or the smaller of the
  * middle two for an even count. Returns a fresh sorted copy; the input is never mutated.
- * Shared by report-data.ts's per-day medians, doctor-checks.ts's and doctor-backlog.ts's
+ * Shared by report-data.ts's per-day medians, doctor-project-checks.ts's and doctor-backlog.ts's
  * 24 h phrase medians. (failure-data.ts's `median` is deliberately different: the mean of
  * the middle two for an even count.) */
 export function lowerMedian(values: number[]): number {

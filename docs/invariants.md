@@ -182,7 +182,7 @@ unreadable.
 
 **Binds.** `src/events/event-window.ts` (`readWindowEvents`, `scanEventsFile`, `eventLogState`,
 `EventLogState`), `src/failure/failure-data.ts` (`FailureReportData.logState`),
-`src/failure/failure-render.ts` (`renderFailureMarkdown`), `src/doctor/doctor-checks.ts`
+`src/failure/failure-render.ts` (`renderFailureMarkdown`), `src/doctor/doctor-project-checks.ts`
 (`checkEventLog`).
 
 **Pinned by.** `test/failure-render.test.ts` — "a present-but-unreadable feed is named

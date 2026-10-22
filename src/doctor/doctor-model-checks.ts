@@ -31,7 +31,8 @@ import { errorMessage, joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
- * repo checks stay there): the cap fallback price and fallback-chain checks (checkFallbackModel,
+ * repo-setup checks stay there, and whose state/disk/build checks live in
+ * doctor-project-checks.ts): the cap fallback price and fallback-chain checks (checkFallbackModel,
  * checkFallbackChain), the pi auth/probe checks (piProviderAuth, piListedModels), the seam
  * framework (seamPairs and the per-backend seam predicates), and the declared-tier and
  * image-input checks (checkTierModels, checkImageInput). The claude and opencode provider

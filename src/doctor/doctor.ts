@@ -16,24 +16,26 @@ import {
   checkBackendBinary,
   checkBrief,
   checkBootstrap,
-  checkBuild,
-  checkBuildCheck,
   checkClaudeTranscripts,
   checkExecPath,
   checkFunes,
   checkGitBinary,
   checkConfigKeyNames,
   checkInit,
-  checkDiskSpace,
-  checkEventLog,
-  checkFlakyChecks,
   checkOpencodeVersion,
   checkNodeVersion,
   checkPiExtensions,
   checkRepo,
-  checkStateDir,
   type DoctorReport,
 } from "./doctor-checks.js";
+import {
+  checkBuild,
+  checkBuildCheck,
+  checkDiskSpace,
+  checkEventLog,
+  checkFlakyChecks,
+  checkStateDir,
+} from "./doctor-project-checks.js";
 import {
   checkCheckContention,
   checkLeftoverRoleBranches,
@@ -61,8 +63,8 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueu
  * verdicts on the environment. Every check is read-only against .tumwater/ (works with or
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
- * doctor-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts, doctor-claude-checks.ts,
- * doctor-opencode-checks.ts and doctor-backlog.ts;
+ * doctor-checks.ts, doctor-project-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts,
+ * doctor-claude-checks.ts, doctor-opencode-checks.ts and doctor-backlog.ts;
  * this module composes them into the report. */
 
 /** Run one doctor check, turning a throw or rejection into a fail row: a check that crashed

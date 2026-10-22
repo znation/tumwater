@@ -68,7 +68,7 @@ export function formatDate(d: Date): string {
 
 /** Wall-clock time as zero-padded `HH:MM:SS` in local time — the clock half formatTimestamp
  * builds, and the direct rendering of the status table's last-run cell (status-render.ts's
- * lastRunCell), doctor-checks's probe-at stamp, failure-render's state-change stamp, and
+ * lastRunCell), doctor-project-checks's probe-at stamp, failure-render's state-change stamp, and
  * operator-intent's pause/deadline wording, so a local time of day reads the same shape at
  * every surface. */
 export function formatTime(d: Date): string {

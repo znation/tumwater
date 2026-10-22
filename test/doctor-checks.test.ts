@@ -6,24 +6,26 @@ import {
   checkBackendBinary,
   checkBootstrap,
   checkBrief,
-  checkBuild,
-  checkBuildCheck,
-  checkDurationPhrase,
   checkExecPath,
   checkClaudeTranscripts,
-  checkDiskSpace,
   checkFunes,
   checkPiExtensions,
-  diskReclaimPhrase,
-  checkEventLog,
-  checkFlakyChecks,
   checkGitBinary,
   checkInit,
   checkNodeVersion,
   checkOpencodeVersion,
   checkRepo,
-  checkStateDir,
 } from "../src/doctor/doctor-checks.js";
+import {
+  checkBuild,
+  checkBuildCheck,
+  checkDurationPhrase,
+  checkDiskSpace,
+  diskReclaimPhrase,
+  checkEventLog,
+  checkFlakyChecks,
+  checkStateDir,
+} from "../src/doctor/doctor-project-checks.js";
 import {
   checkCheckContention,
   checkLeftoverRoleBranches,
@@ -56,8 +58,9 @@ import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// Unit coverage for the pre-flight environment and repo checks
-// (src/doctor/doctor-checks.ts) and the contention checks (src/doctor/doctor-contention-checks.ts):
+// Unit coverage for the pre-flight environment and repo checks, the project's on-disk
+// state/build checks (src/doctor/doctor-project-checks.ts), and the contention checks
+// (src/doctor/doctor-contention-checks.ts):
 // every check's ok/fail/warn branches. The binary checks take an
 // explicit PATH so the missing branch is exercised by passing "" — no PATH mutation, no
 // spawning. Report composition, rendering, and the CLI wiring (`tumwater doctor` exit codes

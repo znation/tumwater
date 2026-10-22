@@ -3,10 +3,11 @@
  * lock, the worktree pool, the three `_wait` contention rows (slot, provider, check), and the
  * parallel-work-instance, tumwater-pin, leftover-role-branch and provider-concurrency audits.
  * Read-only like every doctor check; they share the wait fold (sumWaits) and the pin/worktree
- * leftovers helpers, all of which live here beside the checks that use them. The environment,
- * repo and build checks stay in doctor-checks.ts; model readiness lives in
- * doctor-model-checks.ts; the backlog-document checks in doctor-backlog.ts; doctor.ts remains
- * the composition layer that calls each check in fixed order. */
+ * leftovers helpers, all of which live here beside the checks that use them. The environment
+ * and repo-setup checks stay in doctor-checks.ts; the project's own state, disk and build
+ * checks live in doctor-project-checks.ts; model readiness lives in doctor-model-checks.ts;
+ * the backlog-document checks in doctor-backlog.ts; doctor.ts remains the composition layer
+ * that calls each check in fixed order. */
 import path from "node:path";
 import { defaultConfig, knownRoleIds, slotCount } from "../config/config.js";
 import { CUSTOM_NAME_RE, type TumwaterConfig } from "../config/config-schema.js";
