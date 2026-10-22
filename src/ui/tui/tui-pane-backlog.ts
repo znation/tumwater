@@ -290,5 +290,5 @@ export function createBacklogPane(
     state() {
       return { selectedEntry, entryScroll, releaseArmed: session.releaseArmed, backlogGrep };
     },
-  } satisfies TuiPaneModule & { clearBacklogSelection(): void; grep(): string | null; applySearch(pattern: string | null): void }; 
+  } satisfies TuiPaneModule & { clearBacklogSelection(): void; grep(): string | null; applySearch(pattern: string | null): void };
 }

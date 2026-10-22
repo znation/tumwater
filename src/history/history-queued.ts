@@ -27,7 +27,7 @@ export function bucketMergeEvents(events: HarnessEvent[]): {
     (e) => e.source,
   );
   const outcomeByRunner = groupBy(
-    events.filter((e) => e.type === "merge_done" || e.type === "merge_failed"), 
+    events.filter((e) => e.type === "merge_done" || e.type === "merge_failed"),
     (e) => e.source,
   );
   return { mergeQueuedByRunner, outcomeByRunner };

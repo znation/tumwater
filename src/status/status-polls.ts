@@ -128,7 +128,7 @@ function scanMainCheck(root: string): MainCheckScan {
     for (const e of events) {
       if (e.type === "build_check" && isFullCheckScope(e.scope, e.full)) {
         check = e;
-      } else if (e.type === "merge_done" && typeof e.ts === "number") { 
+      } else if (e.type === "merge_done" && typeof e.ts === "number") {
         mergeDone.push(e);
       }
     }

@@ -59,7 +59,7 @@ export interface RunDetail {
  * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
 export function runCommitSha(d: RunDetail): string | null {
   const queued = d.events.find(
-    (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
+    (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "",
   );
   return queued === undefined ? null : (queued.commit as string);
 }

@@ -250,7 +250,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // The day report's check-slot wait median, mirroring the slot_wait push: only waits logged
     // at or above the 30 s threshold count, so a 0 ms or pre-waitedMs event adds nothing.
     pushPositiveWaitedMs(target.checkWaitsMs, ev);
-  } else if (ev.type === "merge_done" || ev.type === "merge_failed") { 
+  } else if (ev.type === "merge_done" || ev.type === "merge_failed") {
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
     // Attribute the outcome to the authoring role (writeMergeOutcome logs role: entry.role)
