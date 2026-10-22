@@ -193,18 +193,18 @@ export function createTranscriptRenderer(opts: { includePrompts?: boolean } = {}
             | { role?: unknown; timestamp?: unknown; content?: unknown }
             | undefined;
           if (!message || typeof message !== "object") return [];
-          if (message.role === "user") {
-            if (runOpen && runTime === null && typeof message.timestamp === "number") {
-              runTime = formatTimestamp(message.timestamp);
-            }
-            if (!includePrompts) return []; // never render user content (the run prompt)
-            // emitSeparator() runs here for the first time in this run, so the assistant's
-            // later call returns [] — the separator is not duplicated.
-            return [...emitSeparator(), ...renderUserPrompt(message.content)];
+          if (message.role === "assistant") {
+            const turn = renderAssistantMessage(message.content);
+            return [...emitSeparator(), ...turn];
           }
-          if (message.role !== "assistant") return [];
-          const turn = renderAssistantMessage(message.content);
-          return [...emitSeparator(), ...turn];
+          if (message.role !== "user") return [];
+          if (runOpen && runTime === null && typeof message.timestamp === "number") {
+            runTime = formatTimestamp(message.timestamp);
+          }
+          if (!includePrompts) return []; // never render user content (the run prompt)
+          // emitSeparator() runs here for the first time in this run, so the assistant's
+          // later call returns [] — the separator is not duplicated.
+          return [...emitSeparator(), ...renderUserPrompt(message.content)];
         }
         case "auto_retry_start": {
           const attempt = typeof event.attempt === "number" ? event.attempt : "?";
