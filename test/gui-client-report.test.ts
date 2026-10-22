@@ -543,6 +543,35 @@ test("the Merge wait median chart draws one bar per timed day and seriesHasMerge
   assert.equal(seriesHasMergeWaitMedian(data), true);
 });
 
+test("the Run duration median chart draws one bar per timed day and seriesHasRunMedian gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartRunMedian(d: ReportData): string;
+    seriesHasRunMedian(d: ReportData): boolean;
+  }
+  const { chartCommits, chartRunMedian, seriesHasRunMedian } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartRunMedian", "seriesHasRunMedian"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { runMedianMs: 95_000 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { runMedianMs: 180_000 }),
+  ]);
+  const svg = chartRunMedian(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles, ["2026-09-01: 95s median run duration", "2026-09-03: 3m median run duration"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasRunMedian(mk([mkDay("2026-09-01", { checkMedianMs: 5_000 }), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasRunMedian(data), true);
+});
+
 test("the Provider wait median chart draws one bar per timed day and seriesHasProviderWaitMedian gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

@@ -1063,6 +1063,24 @@ test("collectReport gives each day the lower median of its merge_done queuedMs, 
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeWaitMedianMs" in d));
 });
 
+test("collectReport gives each day the lower median of its run_end durationMs, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    ev(at(0), "run_end", { durationMs: 10_000 }),
+    ev(at(0), "run_end", { durationMs: 20_000 }),
+    ev(at(0), "run_end", { durationMs: 30_000 }),
+    ev(at(0), "merge_done", { queuedMs: 0, durationMs: 9_000_000 }), // a merge's duration is not a run duration
+    ev(at(2), "run_end", {}), // logged before durationMs existed: skipped, not counted as zero
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.runMedianMs, 20_000);
+  assert.ok(!("runMedianMs" in data.series[1]!), "a day with no run_end has none");
+  assert.ok(!("runMedianMs" in data.series[0]!), "a day with only a duration-less run_end has none");
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("runMedianMs" in d));
+});
+
 test("collectReport gives each day the lower median of its provider_wait waitedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>

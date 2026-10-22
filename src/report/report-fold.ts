@@ -54,6 +54,9 @@ export interface UsageFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** ms of each run_end that carried a positive durationMs, unsorted — the day report's
+   * run-duration median beside its merge-wait median. */
+  runDurationsMs: number[];
   /** ms of each provider_wait event that carries a positive waitedMs (a role run whose
    * semaphore admission waited PROVIDER_WAIT_EVENT_MS or more for its provider/team slot),
    * unsorted. */
@@ -177,6 +180,8 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (ev.result === "refused") addTo(target.refusalsByRole, role, 1);
     if (target.runs !== undefined) target.runs++;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
+    const runMs = finiteNumber(ev.durationMs, 0);
+    if (runMs > 0) target.runDurationsMs.push(runMs);
     addTo(target.tokensByRole, role, tokens);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
@@ -301,6 +306,8 @@ interface DayFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** ms of each that-day run_end that carried a positive durationMs, unsorted. */
+  runDurationsMs: number[];
   /** ms of each that-day provider_wait event that carries positive waitedMs, unsorted. */
   providerWaitsMs: number[];
   /** ms of each that-day slot_wait event that carries positive waitedMs, unsorted. */
@@ -455,6 +462,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       checkDurationsMs: [],
       checkFailures: 0,
       mergeWaitsMs: [],
+      runDurationsMs: [],
       providerWaitsMs: [],
       slotWaitsMs: [],
       checkWaitsMs: [],

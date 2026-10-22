@@ -394,6 +394,8 @@ export function renderReportMarkdown(data: ReportData): string {
     if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
     const waits = medianLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     if (waits !== undefined) lines.push(waits);
+    const runDurations = medianLine(data.series, "Run duration median", (d) => d.runMedianMs);
+    if (runDurations !== undefined) lines.push(runDurations);
     const providerWaits = medianLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
     if (providerWaits !== undefined) lines.push(providerWaits);
     const slotWaits = medianLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);

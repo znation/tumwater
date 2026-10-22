@@ -159,6 +159,11 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return medianBarChart(data, "mergeWaitMedianMs", "#f59e0b", "merge wait");
   }
 
+  // The lower median of the day's run durations, from runMedianMs.
+  function chartRunMedian(data) {
+    return medianBarChart(data, "runMedianMs", "#14b8a6", "run duration");
+  }
+
   // The lower median of the day's provider-slot waits, from providerWaitMedianMs.
   function chartProviderWaitMedian(data) {
     return medianBarChart(data, "providerWaitMedianMs", "#a855f7", "provider wait");
@@ -388,6 +393,10 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // True when some day carries a merge-wait median; the element renders only then.
   function seriesHasMergeWaitMedian(data) {
     return seriesHasScalar(data, "mergeWaitMedianMs");
+  }
+  // True when some day carries a run-duration median; the element renders only then.
+  function seriesHasRunMedian(data) {
+    return seriesHasScalar(data, "runMedianMs");
   }
   // True when some day carries a provider-wait median; the element renders only then.
   function seriesHasProviderWaitMedian(data) {

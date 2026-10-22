@@ -68,6 +68,7 @@ export function collectReportSince(
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
+    runDurationsMs: [],
     providerWaitsMs: [],
     slotWaitsMs: [],
     checkWaitsMs: [],
@@ -220,6 +221,7 @@ export function collectReport(root: string, days: number, role?: string | readon
       }
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
       if (fold.mergeWaitsMs.length > 0) day.mergeWaitMedianMs = lowerMedian(fold.mergeWaitsMs);
+      if (fold.runDurationsMs.length > 0) day.runMedianMs = lowerMedian(fold.runDurationsMs);
       if (fold.providerWaitsMs.length > 0)
         day.providerWaitMedianMs = lowerMedian(fold.providerWaitsMs);
       // A workspace wait is the pool's, not a role's, so only the team series carries it.
