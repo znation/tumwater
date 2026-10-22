@@ -48,6 +48,23 @@ function readPid(file: string): number {
   return fs.existsSync(file) ? Number(fs.readFileSync(file, "utf8").trim()) : 0;
 }
 
+/** Best-effort SIGKILL of a whole process group from a test's cleanup, after the test's own
+ * assertions have already established the state. A group the check killed can still leave a
+ * zombie launchd reaps asynchronously, and its freed group id can be reused by an unrelated
+ * tree we may not signal (kill EPERM) before that reap lands — so an unguarded re-kill here
+ * spurious-failed a passing test (BUGS.md 2026-10-22, the quarantine). The single-pid
+ * twins above already wrap their cleanup; this is the group-shaped version. Mirrors pidAlive's
+ * pid<=0 guard: a torn pid file must never latch a cleanup onto pid 0 (our own group). */
+function killGroupQuietly(pgid: number): void {
+  if (!Number.isInteger(pgid) || pgid <= 0) return;
+  try {
+    process.kill(-pgid, "SIGKILL");
+  } catch {
+    // Already gone, or the id was reused and belongs to someone we cannot signal; the
+    // assertions before the finally already verified the tree the test owns is dead.
+  }
+}
+
 // A timed-out check must take its whole process tree with it. npm runs detached as its own
 // process group leader; the old execFileAsync `timeout` signalled npm alone, so everything
 // below it survived and reparented to PID 1 — four orphaned trees on the team, one alive 12
@@ -174,7 +191,7 @@ test("a timed-out check whose tree ignores SIGTERM and holds its pipes settles a
     assert.equal(groupAlive(pgid), false, "nothing in the check's process group survives it");
     assert.equal(pidAlive(sleepPid), false, "the SIGTERM-ignoring pipe holder is dead");
   } finally {
-    if (pgid > 0 && groupAlive(pgid)) process.kill(-pgid, "SIGKILL");
+    killGroupQuietly(pgid);
   }
 });
 
@@ -195,7 +212,27 @@ test("a timed-out check does not settle on its leader's close while a grandchild
     await waitFor(() => !pidAlive(sleepPid), "the surviving grandchild to be reaped", 300);
     assert.equal(pidAlive(sleepPid), false, "the surviving grandchild was SIGKILLed before the check settled");
   } finally {
-    if (pgid > 0 && groupAlive(pgid)) process.kill(-pgid, "SIGKILL");
+    killGroupQuietly(pgid);
+  }
+});
+
+// The cleanup guard behind the quarantine (BUGS.md 2026-10-22): once a check's group is dead
+// and its id is freed, the id can be reused by an unrelated tree this process may not signal,
+// so the finally's unguarded re-kill threw EPERM and failed a test whose assertions already
+// passed. The guard must swallow that — the tree a given test owns is already verified dead by
+// its own assertions, so a stale id's EPERM is noise, not a leak. Without the guard this throws.
+test("cleanup of a stale process-group id swallows the EPERM from a reused pid", async (t) => {
+  const kill = t.mock.method(process, "kill", () => {
+    const err = new Error("kill EPERM") as NodeJS.ErrnoException;
+    err.code = "EPERM";
+    err.errno = -1;
+    throw err;
+  });
+  try {
+    // A stale id (a foreign group we cannot signal). No throw may escape the cleanup.
+    killGroupQuietly(12_345);
+  } finally {
+    kill.mock.restore();
   }
 });
 

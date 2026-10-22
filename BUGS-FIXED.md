@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-22) — fixed 2026-10-22 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. The failure was in the test's own cleanup, not in the code under test.
+
+~~~~
+ℹ duration_ms 252392.406334
+✖ failing tests:
+test at dist/test/build-check-process.test.js:138:1
+✖ a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression) (983.552834ms)
+Error: kill EPERM
+at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/build-check-process.test.js:167:21)
+errno: -1,
+code: 'EPERM',
+syscall: 'kill'
+}
+~~~~
+
+**Cause:** after the group signal and SIGKILL, a zombie launchd reaps asynchronously, and the freed group id can be reused by an unrelated tree this test process may not signal before that reap lands. The test's `finally` then re-killed the group (`process.kill(-pgid, "SIGKILL")`) and threw `EPERM` — failing a test whose assertions had already passed. The sibling single-pid regression test already guarded its `finally` with a `try/catch`; the group-shaped cleanup did not. The `groupAlive` EPERM-equals-alive convention additionally latches a reused id as alive, so the guard must not signal that id at all in cleanup.
+
+**Fix (test/build-check-process.test.ts):** a `killGroupQuietly` helper wraps the cleanup `process.kill(-pgid, "SIGKILL")` in a `try/catch` (guarding `pgid <= 0` like `pidAlive`), used by both group-cleanup `finally` blocks. The tree a test owns is already verified dead by that test's own assertions, so a stale id's EPERM (or already-gone ESRCH) is noise, not a leak. A new regression test stubs `process.kill` to throw EPERM and asserts the helper swallows it — it reproduces the quarantine's exact error when the guard is removed.
+
+**Validation gap:** no-repro — the EPERM fired once under team load and could not be reproduced deterministically; the regression test reproduces it only by stubbing `process.kill` to throw EPERM.
+
 ### A pooled slot left with a killed run's uncommitted edits failed every role it was handed, and a role-branch checkout could drop such edits without a trace (found by operator session 2026-10-22 from the restarted team's `run_end` errors) — fixed 2026-10-22 by operator session
 
 - **Symptom:** after the 10-21 restart, 13 runs in the first 4 minutes ended `git checkout --detach main failed (1): error: Your local changes to the following files would be overwritten by checkout`, and roles were streak-paused. Two slots held edits from runs the 10-21 process-table wedge killed (feature's 21-file fast-merge "Defaults" revision; bugfix-2's BUGS.md cleanup), and neither was pinned to its owner. An operator saved both as patches and reset the slots by hand.

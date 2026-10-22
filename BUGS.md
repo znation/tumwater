@@ -58,23 +58,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** src/config/config-validation.ts runs `checkRetiredSelector("model", …)` only `if (r.provider === undefined)`. The legacy `provider` + `model` pair is never checked against the backend ids, at the top level or in a role or `review` section. The fallback-step check does catch it (config-selector-checks.ts:131, "names the backend … as its provider but … backend is \"pi\"").
 - **Expected / fix sketch:** reject a legacy `provider` that is a backend id other than `pi` on a section that resolves to pi, with the same edit the step check names (`backend: "claude"` beside the model, no provider). Check the top level, `roles.<id>`, and `review`. The live tumwater.json uses no such provider (checked 2026-10-21). Test in test/config-validation*.test.ts.
 
-### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-22)
-
-The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
-
-~~~~
-ℹ duration_ms 252392.406334
-✖ failing tests:
-test at dist/test/build-check-process.test.js:138:1
-✖ a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression) (983.552834ms)
-Error: kill EPERM
-at TestContext.<anonymous> (file:///Users/zach/tumwater/.tumwater/worktrees/_merge/dist/test/build-check-process.test.js:167:21)
-errno: -1,
-code: 'EPERM',
-syscall: 'kill'
-}
-~~~~
-
 ## Fixed
 
 ## Verified
