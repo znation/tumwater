@@ -343,14 +343,14 @@ test("setRoleModelFields sets, clears, and no-ops the model triple against the f
 
   // A set rebuilds roles.feature from the file's own entry, preserving its other fields and
   // the file's other entries (never re-expanding the section to the catalog).
-  let r = setRoleModelFields(dir, "feature", { provider: "claude", model: "claude-opus-5", thinking: "high" });
+  let r = setRoleModelFields(dir, "feature", { provider: "huggingface", model: "claude-opus-5", thinking: "high" });
   assert.deepEqual(r, { ok: true });
   let raw = readJson(file) as Record<string, unknown>;
   assert.deepEqual(raw.roles, {
-    feature: { enabled: true, provider: "claude", model: "claude-opus-5", thinking: "high" },
+    feature: { enabled: true, provider: "huggingface", model: "claude-opus-5", thinking: "high" },
     qa: { enabled: false },
   });
-  assert.equal(loadConfig(dir).roles.feature?.provider, "claude");
+  assert.equal(loadConfig(dir).roles.feature?.provider, "huggingface");
   assert.equal(loadConfig(dir).roles.feature?.thinking, "high");
 
   // "" clears each named field; clearing keys the file never had is a no-op that leaves the
@@ -395,13 +395,13 @@ test("setRoleModelFields refuses an unknown base on a no-op and drops an entry w
   assert.equal(fs.existsSync(path.join(fresh, "tumwater.json")), false, "a refused no-op never creates the file");
 
   // Clearing the entry's only overrides removes roles.<base> entirely — no empty object kept.
-  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "claude", model: "opus", thinking: "high" } } }));
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "huggingface", model: "opus", thinking: "high" } } }));
   r = setRoleModelFields(dir, "feature", { provider: "", model: "", thinking: "" });
   assert.deepEqual(r, { ok: true });
   let raw = readJson(file) as Record<string, unknown>;
   assert.equal("roles" in raw, false, "the section emptied by dropping its last entry is removed, not kept as {}");
   // A role with other fields keeps them when only the triple is cleared.
-  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "claude", enabled: true, model: "opus" } } }));
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { provider: "huggingface", enabled: true, model: "opus" } } }));
   r = setRoleModelFields(dir, "feature", { provider: "", model: "" });
   assert.deepEqual(r, { ok: true });
   raw = readJson(file) as Record<string, unknown>;
@@ -411,21 +411,21 @@ test("setRoleModelFields refuses an unknown base on a no-op and drops an entry w
 test("setRoleModelFields is all-or-nothing: a bad thinking level or unknown role writes nothing", () => {
   const dir = tmpdir();
   const file = path.join(dir, "tumwater.json");
-  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { enabled: true, provider: "claude" } } }));
+  fs.writeFileSync(file, JSON.stringify({ roles: { feature: { enabled: true, provider: "huggingface" } } }));
 
   // A bad thinking level names roles.feature.thinking and leaves the whole entry untouched
   // (the provider set alongside it is not written either — the candidate failed validation).
   const before = fs.readFileSync(file, "utf8");
-  let r = setRoleModelFields(dir, "feature", { provider: "claude", thinking: "bogus" });
+  let r = setRoleModelFields(dir, "feature", { provider: "huggingface", thinking: "bogus" });
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /roles\.feature\.thinking/);
   assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected candidate never touches the file");
   const raw = readJson(file) as Record<string, unknown>;
-  assert.equal((raw.roles as { feature: Record<string, unknown> }).feature.provider, "claude", "the prior provider value is kept");
+  assert.equal((raw.roles as { feature: Record<string, unknown> }).feature.provider, "huggingface", "the prior provider value is kept");
 
   // An unknown base id is refused by validateConfig, writing nothing (no file is created).
   const fresh = tmpdir();
-  r = setRoleModelFields(fresh, "nope", { provider: "claude" });
+  r = setRoleModelFields(fresh, "nope", { provider: "huggingface" });
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /unknown role|nope/i);
   assert.equal(fs.existsSync(path.join(fresh, "tumwater.json")), false, "a refused write never creates the file");

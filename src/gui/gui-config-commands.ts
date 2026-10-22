@@ -208,7 +208,7 @@ export async function handleRoleInstances(req: http.IncomingMessage, res: http.S
  * roles.<base>.<field> on a bad value and refuses an unknown role, reported as a 400 exactly
  * as handleRoleInterval reports a write failure. A no-op write says so in its message. */
 export async function handleRoleModel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
-  const body = await readPostBody(req, res, '{"role": "feature", "provider": "claude", "model": "claude-opus-5", "thinking": "high"}');
+  const body = await readPostBody(req, res, '{"role": "feature", "provider": "huggingface", "model": "claude-opus-5", "thinking": "high"}');
   if (!body) return;
   const role = requireRoleField(res, body);
   if (role === null) return;

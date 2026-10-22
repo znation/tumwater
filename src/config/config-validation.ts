@@ -188,6 +188,19 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     for (const m of new Set(out)) problems.push(m);
   };
   if (r.provider === undefined) checkRetiredSelector("model", r.model, topBackend, problems);
+  // The retired spelling doubled a backend id as the provider namespace, so a `provider` that IS
+  // a backend id other than `pi` on a section that otherwise runs on pi is the old back-compat
+  // form: configForRole still resolves the section to pi and hands the bare provider name to
+  // pi, which has no such provider — reject it with the edit the step check names (write the
+  // backend beside the model, drop the provider). checkRetiredSelector covers the no-provider
+  // spellings; this catches the pair a provider in scope used to make valid.
+  const checkLegacyProvider = (provider: unknown, at: string, backend: string): void => {
+    if (typeof provider === "string" && isBackendId(provider) && provider !== "pi" && backend === "pi")
+      problems.push(
+        `${at}provider "${provider}" is the retired backend namespace but this section runs on pi — write backend: "${provider}" beside the model and drop the provider`,
+      );
+  };
+  checkLegacyProvider(r.provider, "", topBackend);
   // A map's entries are selector strings too, resolved by config-views' topTierSelector with
   // parseModelSelector; the keyed check above sees only the object, so each entry runs the
   // same empty-half check (the map form cannot coexist with a legacy provider, so it parses
@@ -415,6 +428,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkEntryBackend(o, "review", problems);
     if ((o.provider ?? r.provider) === undefined)
       checkRetiredSelector("review.model", o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
+    checkLegacyProvider(o.provider ?? r.provider, "review.", typeof o.backend === "string" ? o.backend : topBackend);
     checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
   });
 
@@ -465,6 +479,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   checkObjectSection(r, "fallbackModel", problems, (o) => {
     checkKnownKeys(o, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
     checkModelTriple(o, "fallbackModel.");
+    // legacyFallbackPair (config-fallbacks.ts) forces a fallbackModel that names its own
+    // provider onto backend pi whatever the team's backend, so a legacy provider that is a
+    // backend id there is the same silent-pi-pair flaw the checks above reject.
+    checkLegacyProvider(o.provider, "fallbackModel.", "pi");
     if (!("provider" in o) && !("model" in o))
       problems.push(`fallbackModel must name a provider or a model (got ${show(o)})`);
   });
@@ -565,6 +583,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         checkEntryBackend(o, `roles.${id}`, problems);
         if ((o.provider ?? r.provider) === undefined)
           checkRetiredSelector(`roles.${id}.model`, o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
+        checkLegacyProvider(o.provider ?? r.provider, `roles.${id}.`, typeof o.backend === "string" ? o.backend : topBackend);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
         // Only feature and bugfix may split (src/roles/runner-ids.ts INSTANCE_ROLES); an

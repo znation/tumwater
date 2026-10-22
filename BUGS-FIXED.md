@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A legacy `provider: "claude"` silently runs the seam on pi with a provider named "claude": the retired-spelling load check skips any section that sets `provider` (found by operator session 2026-10-21 from the e2e test `a window move's failing fallback is demoted…`, red since c0fda416a) — fixed 2026-10-22 by the bugfix role
+
+- **Validation gap:** no-observability — the mis-spelled config loaded with no load-time diagnostic, so the flaw was silent; confirmation came from observing the window-move e2e role never run.
+- **Symptom:** a config with `"provider": "claude", "model": "claude-opus-5-5"` (the old spelling, where the backend id doubled as the provider namespace) loads with no problem. Since c0fda416a, `configForRole` resolves it to `{ agent: "pi", provider: "claude" }`, so every run goes to pi with a provider pi does not have, and the budget gate no longer treats the seam as claude. test/orchestrator-budget.e2e.test.ts's window-move test used that spelling: its role never ran and never moved to its fallback. The test now writes `backend: "claude"`.
+- **Reproduce:** `fastConfig(["clean"])` with `provider: "claude"` and `model: "claude-opus-5-5"`; `saveConfig` accepts it and `configForRole(c, "clean").agent` is `"pi"`.
+- **Cause:** src/config/config-validation.ts runs `checkRetiredSelector("model", …)` only `if (r.provider === undefined)`. The legacy `provider` + `model` pair is never checked against the backend ids, at the top level or in a role or `review` section. The fallback-step check does catch it (config-selector-checks.ts:131, "names the backend … as its provider but … backend is \"pi\"").
+- **Fix:** added `checkLegacyProvider` in src/config/config-validation.ts, run at the top level, for each `roles.<id>`, for `review`, and for the legacy `fallbackModel` section (which `legacyFallbackPair` forces onto backend pi when it names its own provider, so it is the same silent-pi-pair flaw): a legacy `provider` that is a backend id other than `pi` on a section that resolves to pi is rejected with "write backend: \"claude\" beside the model and drop the provider". Regression tests in test/config-validation-model.test.ts (fail before, pass after).
+
 ### `a timed-out check whose tree ignores SIGTERM and holds its pipes settles at deadline + grace with the group gone (regression)` failed, then passed on the same tree (quarantined by tumwater 2026-10-22) — fixed 2026-10-22 by the bugfix role
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. The failure was in the test's own cleanup, not in the code under test.

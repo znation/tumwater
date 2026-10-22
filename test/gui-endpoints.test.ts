@@ -1262,14 +1262,14 @@ function serveRoleModel(root: string, body: unknown) {
 test("handleRoleModel writes the triple through setRoleModelFields and answers 200", async () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { roles: { feature: { enabled: true } } });
-  const { captured, data } = await serveRoleModel(root, { role: "feature", provider: "claude", model: "claude-opus-5", thinking: "high" });
+  const { captured, data } = await serveRoleModel(root, { role: "feature", provider: "huggingface", model: "claude-opus-5", thinking: "high" });
   assert.equal(captured.status, 200);
   assert.deepEqual(data, { ok: true, role: "feature", message: "feature: model updated" });
   // The file on disk is what the scheduler polls — the write went through setRoleModelFields.
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
   assert.equal(feat.enabled, true, "the entry's other fields preserved");
-  assert.equal(feat.provider, "claude");
+  assert.equal(feat.provider, "huggingface");
   assert.equal(feat.model, "claude-opus-5");
   assert.equal(feat.thinking, "high");
   // Clearing with empty strings removes all three in one write.
@@ -1283,13 +1283,13 @@ test("handleRoleModel writes the triple through setRoleModelFields and answers 2
 test("handleRoleModel maps an instance id to its base role's keys and accepts the director", async () => {
   const root = tmpdir();
   writeJsonFile(configPath(root), { roles: { feature: { instances: 2 } } });
-  const inst = await serveRoleModel(root, { role: "feature-2", provider: "claude", model: "opus" });
+  const inst = await serveRoleModel(root, { role: "feature-2", provider: "huggingface", model: "opus" });
   assert.equal(inst.captured.status, 200);
   assert.deepEqual(inst.data, { ok: true, role: "feature", message: "feature: model updated" });
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
   assert.equal(feat.instances, 2, "the entry's other fields preserved");
-  assert.equal(feat.provider, "claude");
+  assert.equal(feat.provider, "huggingface");
   assert.equal(feat.model, "opus");
   // The director is accepted — configForRole resolves roles.director.* like any role's.
   const dir = await serveRoleModel(root, { role: "director", thinking: "low" });
@@ -1300,13 +1300,13 @@ test("handleRoleModel maps an instance id to its base role's keys and accepts th
 
 test("handleRoleModel trims values and refuses a bad thinking level, writing nothing", async () => {
   const root = tmpdir();
-  writeJsonFile(configPath(root), { roles: { feature: { provider: "claude" } } });
+  writeJsonFile(configPath(root), { roles: { feature: { provider: "huggingface" } } });
   // Values are trimmed before the write.
-  const trimmed = await serveRoleModel(root, { role: "feature", provider: "  claude  ", model: " opus " });
+  const trimmed = await serveRoleModel(root, { role: "feature", provider: "  huggingface  ", model: " opus " });
   assert.equal(trimmed.captured.status, 200);
   const onDisk = readJson(configPath(root)) as Record<string, unknown>;
   const feat = (onDisk.roles as { feature: Record<string, unknown> }).feature;
-  assert.equal(feat.provider, "claude");
+  assert.equal(feat.provider, "huggingface");
   assert.equal(feat.model, "opus");
   // A bad thinking level answers 400 naming roles.feature.thinking, file untouched.
   const beforeBad = fs.readFileSync(configPath(root), "utf8");
@@ -1318,7 +1318,7 @@ test("handleRoleModel trims values and refuses a bad thinking level, writing not
 
 test("handleRoleModel refuses a missing role, a non-string field, none-of-the-three, and an unknown role", async () => {
   const root = tmpdir();
-  writeJsonFile(configPath(root), { roles: { feature: { provider: "claude" } } });
+  writeJsonFile(configPath(root), { roles: { feature: { provider: "huggingface" } } });
   const before = fs.readFileSync(configPath(root), "utf8");
   // A missing/blank role answers 400 role required.
   for (const bad of [{}, { role: "  " }, { role: 5 }, { role: null }]) {
@@ -1335,7 +1335,7 @@ test("handleRoleModel refuses a missing role, a non-string field, none-of-the-th
   assert.equal(none.captured.status, 400);
   assert.match((none.data as { error: string }).error, /provider, model or thinking required/);
   // An unknown role id is refused through validateConfig, writing nothing.
-  const unknown = await serveRoleModel(root, { role: "nope", provider: "claude" });
+  const unknown = await serveRoleModel(root, { role: "nope", provider: "huggingface" });
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role|nope/i);
   assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "every refused write leaves the file byte-identical");
@@ -2561,7 +2561,7 @@ test("dashboard role and Settings writes say when the value was already in place
     ["interval", (b) => serveRoleInterval(root, b), { role: "feature", minRunIntervalSeconds: 300 }, /min run interval set to 300s/, /min run interval is already 300s/],
     ["instances", (b) => serveRoleInstances(root, b), { role: "feature", instances: 2 }, /instances set to 2/, /instances is already 2/],
     ["quiet hours", (b) => serveRoleQuietHours(root, b), { role: "feature", window: "23:00-07:00" }, /quiet hours set to/, /quiet hours unchanged/],
-    ["model", (b) => serveRoleModel(root, b), { role: "feature", provider: "claude", model: "claude-opus-5", thinking: "high" }, /model updated/, /model overrides unchanged/],
+    ["model", (b) => serveRoleModel(root, b), { role: "feature", provider: "huggingface", model: "claude-opus-5", thinking: "high" }, /model updated/, /model overrides unchanged/],
     ["enable", (b) => serveRoleEnable(root, b), { role: "feature" }, /already enabled/, /already enabled/],
   ];
   for (const [name, serve, body, first, second] of cases) {

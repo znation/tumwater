@@ -239,3 +239,48 @@ test("the explicit backend form and its pi and opencode neighbours still validat
     }),
   );
 });
+
+test("a legacy provider that is a backend id other than pi fails the load, naming the edit", () => {
+  // The retired spelling doubled a backend id as the provider namespace. Since the
+  // Backend/model split, configForRole still resolves such a section to pi and hands the
+  // bare provider name to pi, which has no such provider — so the pair must fail the load
+  // with the same edit the step check names (write the backend beside the model, drop the
+  // provider).
+  assert.match(
+    validationError({ provider: "claude", model: "claude-opus-5-5" }),
+    /provider "claude" is the retired backend namespace but this section runs on pi — write backend: "claude" beside the model and drop the provider/,
+  );
+  assert.match(
+    validationError({ provider: "opencode", model: "deepseek-free" }),
+    /provider "opencode" is the retired backend namespace/,
+  );
+  // Roles and review inherit the top-level provider and apply their own.
+  assert.match(
+    validationError({ provider: "claude", roles: { feature: { model: "claude-opus-5-5" } } }),
+    /roles\.feature\.provider "claude" is the retired backend namespace/,
+  );
+  assert.match(
+    validationError({ provider: "claude", review: { model: "claude-opus-5-5" } }),
+    /review\.provider "claude" is the retired backend namespace/,
+  );
+  // An explicit pi backend does not dodge it; a non-backend provider name stays legal, and
+  // a backend that carries its own provider namespace (claude beside provider claude)
+  // still loads.
+  assert.match(
+    validationError({ provider: "claude", backend: "pi", model: "claude-opus-5-5" }),
+    /provider "claude" is the retired backend namespace/,
+  );
+  assert.doesNotThrow(() => validateConfig({ provider: "huggingface", model: "omlx/local-free" }));
+  assert.doesNotThrow(() => validateConfig({ backend: "claude", model: "claude-opus-5-5" }));
+});
+
+test("fallbackModel's legacy provider is checked too (it is a legacy provider-bearing section)", () => {
+  // legacyFallbackPair forces a fallbackModel that names its own provider onto backend pi, so
+  // a provider that is a backend id there is the same silent-pi-pair flaw and must be rejected.
+  assert.match(
+    validationError({ fallbackModel: { provider: "claude", model: "claude-opus-5-5" } }),
+    /fallbackModel\.provider "claude" is the retired backend namespace/,
+  );
+  assert.doesNotThrow(() => validateConfig({ fallbackModel: { provider: "huggingface", model: "omlx/local-free" } }));
+  assert.doesNotThrow(() => validateConfig({ fallbackModel: { model: "claude-opus-5-5" } }));
+});
