@@ -296,8 +296,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // Agent backends (plans/agent-backends.md "Config"): each entry is an object with an
   // optional non-empty `bin` string and an optional array-of-strings `args`. A passthrough arg
   // that repeats a flag the backend's own harness invocation sets is appended last and wins,
-  // so it silently overrides the harness — refused here for the two backends whose reserved
-  // sets are known (claude-args.ts HARNESS_CLAUDE_FLAGS, config-schema.ts HARNESS_PI_FLAGS).
+  // so it silently overrides the harness — refused here for the backends whose reserved sets
+  // are known (claude-args.ts HARNESS_CLAUDE_FLAGS, opencode-args.ts HARNESS_OPENCODE_FLAGS,
+  // codex-args.ts HARNESS_CODEX_FLAGS, config-schema.ts HARNESS_PI_FLAGS).
   checkObjectSection(r, "backends", problems, (o) => {
     for (const [id, entry] of Object.entries(o)) {
       const prefix = `backends.${id}`;

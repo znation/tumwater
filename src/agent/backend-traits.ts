@@ -35,8 +35,9 @@ export function usesPiModels(backend: string | undefined): boolean {
 }
 
 /** The reason string config validation prints for a reserved `backends.<id>.args` flag, or
- * undefined when the flag is not reserved for that backend. Wraps claude's HARNESS_CLAUDE_FLAGS
- * and pi's HARNESS_PI_FLAGS, keeping each backend's reason wording. The flag is the bare name —
+ * undefined when the flag is not reserved for that backend. Wraps the HARNESS_*_FLAGS sets for
+ * claude (HARNESS_CLAUDE_FLAGS), opencode (HARNESS_OPENCODE_FLAGS), codex (HARNESS_CODEX_FLAGS)
+ * and pi (HARNESS_PI_FLAGS), keeping each backend's reason wording. The flag is the bare name —
  * checkReservedArgs splits `--mode=x` on `=` before calling. */
 export function reservedPassthroughFlag(backend: string, flag: string): string | undefined {
   switch (backend) {
