@@ -99,9 +99,11 @@ export async function changedFiles(wt: string): Promise<string[]> {
 
 /** Repo-relative paths changed between the branch's fork point from main and its HEAD —
  * everything a merge of this branch would bring in (the three-dot range diffs against the
- * merge-base, so commits main gained during the run are not included). */
+ * merge-base, so commits main gained during the run are not included). A failed `git diff`
+ * throws: an empty list is vacuously review-exempt (isExemptDiff), so the gate skipped its
+ * reviewer and the in-lock re-check its build check. A view catches it itself. */
 export async function aheadOfMainFiles(wt: string, mainBranch: string): Promise<string[]> {
-  const out = await gitTry(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
+  const out = await git(wt, "diff", "--name-only", `${mainBranch}...HEAD`);
   // Decode git's C-quoted names (same convention as `git status --porcelain`): every caller
   // uses these as real worktree paths or matches them against plain HEAD-provided names, and
   // an undecoded `"h\303\251llo.md"` reads as a nonexistent file (hasConflictMarkers) and
@@ -146,7 +148,8 @@ function splitDiffByFile(diff: string): string[] {
  * memory (measured ~0.5 s of redundant git work on a 530 KB / 39-file run). Section byte length
  * ranks files at least as well as numstat's added+deleted: it is exactly what the reviewer will
  * see, and a binary file's short "Binary files differ" stub naturally ranks below any real text
- * change. */
+ * change. A failed `git diff` throws: the reviewer handed an empty diff judged no change at
+ * all. A view catches it itself. */
 export async function aheadOfMainDiff(
   wt: string,
   mainBranch: string,
@@ -154,13 +157,13 @@ export async function aheadOfMainDiff(
   pathspec: string[] = [],
 ): Promise<string> {
   const range = `${mainBranch}...HEAD`;
-  const full = (await gitTry(wt, "diff", range, ...pathspec)) ?? "";
+  const full = await git(wt, "diff", range, ...pathspec);
   if (full.length <= maxBytes) return full;
   // Over the cap: rank files by change size and include the largest while budget allows.
   const ranked = splitDiffByFile(full).sort((a, b) => b.length - a.length);
   let out =
     `[diff truncated: the full ahead-of-main diff is ${full.length} bytes; ` +
-    `showing --stat plus the largest files]\n\n` + ((await gitTry(wt, "diff", "--stat", range, ...pathspec)) ?? "") + "\n";
+    `showing --stat plus the largest files]\n\n` + (await git(wt, "diff", "--stat", range, ...pathspec)) + "\n";
   for (const d of ranked) {
     // Account for the surrounding newlines in the budget check so the output never exceeds maxBytes
     // even when a section ends exactly on the boundary.

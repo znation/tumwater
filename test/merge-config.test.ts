@@ -8,6 +8,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { assertClean, commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
+import { withUnreadableIndex } from "./helpers/git-faults.js";
 
 /** merge-git.ts's config write-back across a merge that untracks tumwater.json, split out
  * of merge-to-main.test.ts (whose mergeToMain clusters stay there): these tests exercise
@@ -154,4 +155,14 @@ test("the config write-back is restore-only-when-absent: a newer write wins", as
     '{"provider":"newer"}\n',
     "the newer bytes win",
   );
+});
+
+test("configBytesToPreserve throws when git cannot read the index, rather than skipping the preserve", async () => {
+  // Read as "untracked", the merge that untracks the config deleted the running team's copy.
+  const root = trackedConfigRoot('{"provider":"o"}\n');
+  const sha = await untrackingBranch(root);
+  await withUnreadableIndex(root, () =>
+    assert.rejects(configBytesToPreserve(root, sha), /git ls-files --error-unmatch tumwater\.json failed/),
+  );
+  assert.ok(await configBytesToPreserve(root, sha), "readable again: the live bytes are preserved");
 });

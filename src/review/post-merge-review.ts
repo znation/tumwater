@@ -3,7 +3,7 @@ import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, revie
 import { reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
-import { gitTry } from "../git/git-run.js";
+import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { readPrinciples } from "../prompt/principles.js";
@@ -80,7 +80,10 @@ type PostReviewOutcome =
 
 /** Review the merged commit C: the usual reviewer prompt over `git diff C^ C`, run in a detached
  * checkout of C. Logs `review_start` and `review_verdict` / `review_rejected` with
- * `afterMerge: true`. Never throws. */
+ * `afterMerge: true`. A diff git fails to produce is a failed review with no reviewer run: read
+ * as empty, the reviewer approved a commit it never saw. Throws only when git could not start
+ * (gitCouldNotStart), which says nothing about C, so the caller keeps the entry as it was for
+ * the next poll instead of counting a failed run toward dropping it. */
 export async function reviewMergedCommit(
   root: string,
   config: TumwaterConfig,
@@ -95,7 +98,7 @@ export async function reviewMergedCommit(
     const pi = await useWorktree(root, postReviewWorktreePath(root), async () => {
       const wt = await ensureDetachedWorktree(root, postReviewWorktreePath(root), commit);
       await gitTry(wt, "checkout", "--detach", "--force", commit);
-      const diff = (await gitTry(wt, "diff", `${commit}^`, commit)) ?? "";
+      const diff = await git(wt, "diff", `${commit}^`, commit);
       logEventBestEffort(root, { source: role, type: "review_start", head: commit, afterMerge: true });
       return runGatePi({
         cwd: wt,
@@ -120,6 +123,7 @@ export async function reviewMergedCommit(
     logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
     return { kind: "approve", reasons: verdict.reasons };
   } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
     return { kind: "failed", detail: errorMessage(err) };
   }
 }

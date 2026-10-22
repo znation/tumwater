@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
@@ -10,6 +10,7 @@ import { slotWorktreePath, slotsStatePath } from "../src/paths.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { commitIn, headSha, makeRepo, sh, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { dropLooseObject } from "./helpers/git-faults.js";
 
 // `tumwater diff`'s collector (src/change/change-data.ts), called directly: the cli-diff tests
 // reach
@@ -58,6 +59,21 @@ test("a fully merged branch with a dirty worktree shows only the uncommitted hal
   assert.equal(view.diff, "");
   assert.deepEqual(view.dirtyFiles, ["notes.txt"]);
   assert.match(view.uncommittedDiff, /notes\.txt/);
+});
+
+test("the change views still answer when git cannot diff a role's branch", async () => {
+  // aheadOfMainFiles and aheadOfMainDiff throw for the merge gate's sake; a view catches them.
+  const repo = makeRepo();
+  await initProject(repo, "change-data unreadable diff");
+  const wt = await ensureWorktree(repo, "feature", "main");
+  writeFileDeep(path.join(wt, "sub", "new.ts"), "export const added = 1;\n");
+  commitIn(wt, "branch change");
+  dropLooseObject(wt, "HEAD:sub");
+  const view = await collectRoleChange(repo, "feature");
+  assert.equal(view.state, "ready");
+  assert.equal(view.ahead, 1);
+  assert.equal(view.diff, "");
+  assert.equal((await collectChangeOverlaps(repo)).state, "ready");
 });
 
 test("a commit with an empty message parses to a sha with an empty subject", async () => {

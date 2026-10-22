@@ -147,12 +147,13 @@ export async function collectRoleChange(
   const spec = opts.path === undefined ? [] : ["--", `:(literal)${opts.path}`];
   const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`, ...spec));
   // Under opts.stat both halves hold the uncapped `git diff --stat` summary (one line per file).
+  // A view: a diff git fails to produce shows empty, as it always did.
   const diff =
     commits.length === 0
       ? ""
       : opts.stat
         ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`, ...spec)) ?? "")
-        : await aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec);
+        : await aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec).catch(() => "");
   // A view: a git that fails to answer shows no uncommitted edits, as it always did.
   const dirtyFiles = (await changedFiles(wt).catch(() => [])).filter((f) => inPath(f, opts.path));
   const uncommittedDiff =
@@ -270,7 +271,8 @@ export async function collectChangeOverlaps(root: string): Promise<ChangeOverlap
     knownRoleIdsCached(root).map(async (role) => {
       const wt = await roleWorktreeDir(root, role);
       if (wt === null || !(await isUsableWorktree(wt))) return null;
-      const committed = (await aheadOfMain(wt, mainBranch)) > 0 ? await aheadOfMainFiles(wt, mainBranch) : [];
+      const committed =
+        (await aheadOfMain(wt, mainBranch)) > 0 ? await aheadOfMainFiles(wt, mainBranch).catch(() => []) : [];
       return { role, files: [...committed, ...(await changedFiles(wt).catch(() => []))] };
     }),
   );

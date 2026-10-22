@@ -372,7 +372,11 @@ resolves both like any conflict. Edits nothing gives back (ones a run chose to d
 check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Both kinds
 are deleted after `sessionRetentionDays`. An
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
-its inbox. A change whose merge ends blocked, in a review error, or in a conflict that stays
+its inbox. In the merge pipeline too, git commands that fail never read as "nothing there": a
+conflict list, a change's diff or a resolution's diff that git cannot produce fails that merge or
+review instead of letting unreviewed or unchecked work through, and the change stays unmerged for
+its next attempt. When git cannot start at all, a revision waits for its role's next run and a
+post-merge review for the next poll, neither counted as failed. A change whose merge ends blocked, in a review error, or in a conflict that stays
 under the limit is put back in the merge queue by the pipeline itself, at once, with its original
 summary and no author run; a review error waits 60 s first, and a held reviewer configuration
 error is not re-queued. A change kept because main's check was failing goes back once main's head

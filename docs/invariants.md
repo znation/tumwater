@@ -2580,6 +2580,17 @@ override adds a variable and the child keeps PATH and the rest.
 **Pinned by.** `test/git.test.ts` — "runGit reassembles a UTF-8 character split across two output
 chunks" and "runGit's extraEnv adds to the inherited environment rather than replacing it".
 
+### INV-AP4: `gitTryStarted` is null only when git ran, and throws when git could not start
+
+**Guarantee.** `gitTryStarted` returns git's output, or null when git ran and exited nonzero (an
+answer such as "no merge-base"), and rethrows a failure `gitCouldNotStart` classifies as a spawn
+errno, which answers nothing about the repository.
+
+**Binds.** `src/git/git-run.ts` (`gitTryStarted`, `gitCouldNotStart`).
+
+**Pinned by.** `test/git.test.ts` — "gitTryStarted is null when git ran and failed, and throws when
+git could not start".
+
 ## Operator requests: a marker reaches exactly the roles it names, and the poll always acknowledges it
 
 The orchestrator's poll consumes the request markers that the CLI, GUI and TUI drop
@@ -3586,7 +3597,7 @@ main-watch's confirming re-run go on with their passing result.
 **Pinned by.** `test/known-flakes-quarantine.test.ts` — "quarantine: a failed quarantine.json write
 warns and records nothing instead of throwing".
 
-## Review verdict and revision finality: a reply without a verdict never approves, and a rejected change revises until one objection survives two revisions or the backstop
+## Review verdict and revision finality: a reply without a verdict never approves, a rejected change revises until one objection survives two revisions or the backstop, and a git that could not start never drops a revision
 
 ### INV-BH1: a reply with no verdict line is no verdict, and the last verdict line wins
 
@@ -3640,6 +3651,20 @@ deletes the rejected ref", "a converging chain whose revisions raise only new ob
 revising", "a chain whose objections never repeat ends at the backstop" and "the director never
 gets a revision: a rejection leaves no revision state"; `test/revision-prior-tags.test.ts` — "a
 (prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".
+
+### INV-BH5: a re-apply git could not start keeps the revision and its ref
+
+**Guarantee.** `applyRevision` and `applyWithConflicts` throw, instead of reporting a diff that no
+longer applies, when git could not start for `pickBase`'s reads (`gitTryStarted`). The run then
+ends in `error` with no agent run, and `state.revision` and the rejected ref wait for the next run.
+Only git's own answer, a missing object or a conflict no settler resolves, drops them.
+
+**Binds.** `src/runner/revision.ts` (`pickBase`, `pickSettlingBacklog`, `applyRevision`,
+`applyWithConflicts`), `src/git/git-run.ts` (`gitTryStarted`) and `src/runner/runner-run.ts`.
+
+**Pinned by.** `test/revision.test.ts` — "a re-apply git could not start throws, rather than
+reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
+the revision and its ref for the next run".
 
 ## Batch merge: a stack merges as one fast-forward on its own check, and only a full check that passed on exactly the merged tip seeds main's baseline
 
@@ -3823,6 +3848,23 @@ calls, not one per file.
 **Pinned by.** `test/git-diff.test.ts` — "aheadOfMainDiff over the cap keeps --stat plus the
 largest files within budget" and "aheadOfMainDiff over the cap spawns only two git calls, not one
 per file".
+
+### INV-BM4: the ahead-of-main reads throw when git fails, and only a view reads that as no change
+
+**Guarantee.** `aheadOfMainFiles` and `aheadOfMainDiff` (its capped `--stat` read included) throw
+when `git diff` fails. Read as empty, the file list was vacuously review-exempt, so the gate
+skipped its reviewer and the in-lock re-check its build check, and the reviewer judged an empty
+diff. `tumwater diff`'s role and overlap views catch the error and show no ahead-of-main change.
+
+**Binds.** `src/git/git-diff.ts` (`aheadOfMainFiles`, `aheadOfMainDiff`); their deciding callers
+`src/review/review.ts`, `src/review/review-run.ts` and `src/merge/merge-to-main.ts`
+(`verifyMerge`); the views in `src/change/change-data.ts` (`collectRoleChange`,
+`collectChangeOverlaps`).
+
+**Pinned by.** `test/git-diff.test.ts` — "aheadOfMainFiles and aheadOfMainDiff throw when git
+cannot diff, rather than reporting no change" and "a capped aheadOfMainDiff throws when its --stat
+read fails, rather than dropping the file list"; `test/change-data.test.ts` — "the change views
+still answer when git cannot diff a role's branch".
 
 ## Fallback chain reasons: a moved tier names why the step before it cannot run, in a fixed order
 
@@ -4058,7 +4100,7 @@ twice" and "with no free runner the revision waits in reverted.json and is assig
 **Pinned by.** `test/main-revert.test.ts` — "a failed reverted.json rewrite warns, and the next poll
 does not hand the commit out twice".
 
-## Post-merge reviews: post-review.json never throws out of the merge drain
+## Post-merge reviews: post-review.json never throws out of the merge drain, and a commit is never reviewed over a diff git could not produce
 
 ### INV-BT1: a torn post-review.json entry is dropped
 
@@ -4082,6 +4124,20 @@ revert's settle still frees the merge slot and a skip check still logs its reaso
 warns and still frees the merge slot", "a failed post-review.json write in the revert skip check
 still logs why it does not revert", and "a rejecting post-merge review reverts the commit and hands
 it back as a revision" (on the healthy path the entry is still dropped).
+
+### INV-BT3: a commit whose diff git cannot produce fails its review, and a git that could not start counts nothing
+
+**Guarantee.** `reviewMergedCommit` reads `git diff C^ C` with `git`, so a diff git fails to
+produce is a `failed` outcome with no reviewer run, never a review of an empty diff. A git that
+could not start (`gitCouldNotStart`) rethrows, and the drain's catch leaves the entry as it was for
+the next poll instead of counting a failed run toward `POST_REVIEW_FAILURE_LIMIT`.
+
+**Binds.** `src/review/post-merge-review.ts` (`reviewMergedCommit`) and
+`src/merge/merge-post-review.ts` (`startPostReview`).
+
+**Pinned by.** `test/post-merge-review.test.ts` — "a merged commit whose diff git cannot produce
+fails its review, never approving an empty diff" and "a post-merge review git could not start keeps
+its entry without counting a failed run".
 
 ## Image-probe cache: a foreign entry reads as unprobed
 
@@ -4273,7 +4329,7 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Pinned by.** `test/backlog-archive.test.ts` — "fileQuarantineBugsOnMain skips and leaves BUGS.md in place when BUGS.md cannot be read"; "archiveFinishedOnMain skips and leaves the archive intact when an archive file cannot be read"; "archiveNewFinishedEntries rejects and writes nothing when the archive file cannot be read".
 
-## Merge fast-forward: a failed config write-back never undoes a merge
+## Merge fast-forward: a failed config write-back never undoes a merge, and an unreadable index never skips the preserve
 
 ### INV-CI1: a fast-forward that moved main returns success even when the live tumwater.json write-back fails, and logs one warning
 
@@ -4282,6 +4338,18 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/merge/merge-git.ts` (`ffMainToOrWhy`, `restoreConfigBytes`).
 
 **Pinned by.** `test/merge-config.test.ts` — "a failed config write-back after the fast-forward warns and still reports the merge".
+
+### INV-CI2: the preserve step throws when git cannot say whether the config is tracked
+
+**Guarantee.** `configBytesToPreserve` reads "untracked" only from `git ls-files --error-unmatch`'s
+exit code 1. Any other failure, an unreadable index or a git that could not start, throws before
+the fast-forward, rather than skipping the preserve so that a merge untracking the config deletes
+the live one.
+
+**Binds.** `src/merge/merge-git.ts` (`configBytesToPreserve`, `configTracked`, `ffMainToOrWhy`).
+
+**Pinned by.** `test/merge-config.test.ts` — "configBytesToPreserve throws when git cannot read the
+index, rather than skipping the preserve".
 
 ## Prompt move-to-top: a failed write leaves the prompt and its images where they were
 
@@ -4427,3 +4495,32 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/git/git-diff.ts` (`changedFiles`), `src/git/git-run.ts` (`gitCouldNotStart`), `src/git/git.ts` (`commitPathsAndDiscardRest`), `src/git/slot-salvage.ts` (`salvageSlotLeftovers`), `src/run/run-stage.ts`, `src/verdict/refusal.ts`, `src/runner/runner-run.ts` and `src/change/change-data.ts`.
 
 **Pinned by.** `test/git-diff.test.ts` — "changedFiles throws when git cannot answer, rather than reporting no changes"; `test/refusal.test.ts` — "refusalContradiction throws on a git that cannot read the worktree instead of letting the refusal discard it"; `test/run-stage.test.ts` — "a git failure after the fix-up throws instead of reading as a reverted change"; `test/git.test.ts` — "gitCouldNotStart is true for a git that never ran and false for git's own failure".
+
+
+## Merge conflict path: a git that fails to answer fails the merge, never reads as no conflict or an unchanged resolution
+
+### INV-CV1: a conflict list git fails to produce throws, and a rebase git could not start is not a conflict
+
+**Guarantee.** `conflictedFiles` throws when `git diff --diff-filter=U` fails, so `resolveConflict`
+never goes on to `continueRebase`, which stages every marker, on a list git could not produce.
+`attemptRebase` rethrows a rebase git could not start (`gitCouldNotStart`), so neither
+`rebaseOntoMain` nor `rebaseOntoMainLeaveConflicts` reports it as a conflict or a failed rebase.
+
+**Binds.** `src/merge/merge-git.ts` (`conflictedFiles`, `attemptRebase`, `rebaseOntoMain`,
+`rebaseOntoMainLeaveConflicts`) and `src/merge/merge-to-main.ts` (`resolveConflict`).
+
+**Pinned by.** `test/merge-git.test.ts` — "conflictedFiles throws when git cannot read the index,
+rather than reporting no conflicts" and "a rebase git could not start throws, rather than reading
+as a conflict or a failed rebase".
+
+### INV-CV2: a resolution whose diff git cannot produce never skips its re-review
+
+**Guarantee.** `resolvedDiffDiverges` throws when either diff fails, rather than comparing an
+empty resolved diff, a subset of any approved one, and merging the resolution on the build check
+alone.
+
+**Binds.** `src/merge/merge-diff.ts` (`resolvedDiffDiverges`) and `src/merge/merge-to-main.ts`
+(`mergeToMain`).
+
+**Pinned by.** `test/merge-diff.test.ts` — "a resolution whose diff git cannot produce throws
+instead of skipping its re-review".

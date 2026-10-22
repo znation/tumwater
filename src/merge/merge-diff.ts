@@ -1,5 +1,5 @@
 import { increment } from "../collections.js";
-import { gitTry } from "../git/git-run.js";
+import { git } from "../git/git-run.js";
 
 /** The merge-scope DIFF COMPARISON (see merge-to-main.ts for the merge flow that consults
  * it): whether a conflict-resolved tree's diff ahead of main stays inside the diff the review
@@ -11,14 +11,15 @@ import { gitTry } from "../git/git-run.js";
  * did not — three-dot against the branch tip as the gate judged it: the merge-base with
  * current main is the base the reviewer's diff was cut against (syncPinToMain rebased before
  * the gate when it could, and a conflicted pre-gate rebase leaves the pin on its original
- * base). */
+ * base). A failed diff throws, failing the merge: read as empty, a resolved diff git could not
+ * produce is a subset of anything, and the resolution merged without its re-review. */
 export async function resolvedDiffDiverges(
   ctx: { mainBranch: string },
   wt: string,
   preMergeHead: string,
 ): Promise<boolean> {
-  const approved = (await gitTry(wt, "diff", `${ctx.mainBranch}...${preMergeHead}`)) ?? "";
-  const resolved = (await gitTry(wt, "diff", `${ctx.mainBranch}...HEAD`)) ?? "";
+  const approved = await git(wt, "diff", `${ctx.mainBranch}...${preMergeHead}`);
+  const resolved = await git(wt, "diff", `${ctx.mainBranch}...HEAD`);
   const a = diffLineMultiset(approved);
   const r = diffLineMultiset(resolved);
   return !(subsetOf(r.add, a.add) && subsetOf(r.del, a.del));

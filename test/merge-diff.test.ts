@@ -4,7 +4,11 @@
  * merge-to-main.test.ts (2026-10-11). */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { diffLineMultiset } from "../src/merge/merge-diff.js";
+import fs from "node:fs";
+import path from "node:path";
+import { diffLineMultiset, resolvedDiffDiverges } from "../src/merge/merge-diff.js";
+import { commitIn, headSha, initializedWorktree } from "./fixtures/repo-fixtures.js";
+import { dropLooseObject } from "./helpers/git-faults.js";
 
 test("diffLineMultiset counts hunk content lines that carry header-like prefixes", () => {
   const diff = [
@@ -28,3 +32,17 @@ test("diffLineMultiset counts hunk content lines that carry header-like prefixes
   assert.deepEqual(add, ["--gone", "new", "old2"]);
 });
 
+test("a resolution whose diff git cannot produce throws instead of skipping its re-review", async () => {
+  // Read as empty, the resolved diff is a subset of any approved one, so a resolution that
+  // added lines the reviewer never saw merged on the build check alone.
+  const { wt } = await initializedWorktree();
+  fs.mkdirSync(path.join(wt, "sub"));
+  fs.writeFileSync(path.join(wt, "sub", "x.ts"), "export const approved = 1;\n");
+  commitIn(wt, "the approved change");
+  const preMergeHead = headSha(wt);
+  fs.appendFileSync(path.join(wt, "sub", "x.ts"), "export const restored = 2;\n");
+  commitIn(wt, "the resolution");
+  assert.equal(await resolvedDiffDiverges({ mainBranch: "main" }, wt, preMergeHead), true);
+  dropLooseObject(wt, "HEAD:sub"); // the resolved tree only: the approved diff still reads
+  await assert.rejects(resolvedDiffDiverges({ mainBranch: "main" }, wt, preMergeHead), /git diff main\.\.\.HEAD failed/);
+});

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { committerIdentArgs, git, gitTry, runGit } from "../git/git-run.js";
+import { GitError, committerIdentArgs, git, gitCouldNotStart, gitTry, runGit } from "../git/git-run.js";
 import { readTextOrNull, writeBytesAtomic } from "../files/files.js";
 import { currentBranch, gitLines, headOf } from "../git/git.js";
 import { treeDiffFiles, unquotePorcelainPath } from "../git/git-diff.js";
@@ -22,9 +22,11 @@ import { errorFirstLine, errorMessage, joinWithMore } from "../text/text.js";
  * real paths — a non-ASCII conflicted file arrives as `"h\303\251llo.ts"` (core.quotePath is on
  * by default), and undecoded it does not exist on disk: hasConflictMarkers could never read
  * it, so an unresolved conflict in such a file passed the marker check and continueRebase
- * committed its markers to main. */
+ * committed its markers to main. A failed `git diff` throws: read as "no conflicts", it sent
+ * the resolver's caller straight to `continueRebase`, which stages every marker, and a
+ * stopped cherry-pick down the path that deletes a hand-back's ref. */
 export async function conflictedFiles(wt: string): Promise<string[]> {
-  const out = await gitTry(wt, "diff", "--name-only", "--diff-filter=U");
+  const out = await git(wt, "diff", "--name-only", "--diff-filter=U");
   return gitLines(out).map(unquotePorcelainPath);
 }
 
@@ -87,7 +89,9 @@ export async function mainCommitsTouching(
  * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
  * failure). Shared by the two rebase wrappers below, which differ only in cleanup policy.
  * Rebase — not merge — keeps main's history linear: each run merges as its own commit on top
- * of whatever main holds. */
+ * of whatever main holds. A rebase git could not start throws (gitCouldNotStart), as does a
+ * failed conflict listing: neither says anything about the change, so neither may count as a
+ * merge conflict. */
 async function attemptRebase(
   wt: string,
   mainBranch: string,
@@ -99,7 +103,8 @@ async function attemptRebase(
     // marker style only matters to its leave-conflicts sibling.
     await runGit(wt, [...(await committerIdentArgs(wt)), "-c", "merge.conflictStyle=diff3", "rebase", mainBranch]);
     return "rebased";
-  } catch {
+  } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
     return (await conflictedFiles(wt)).length > 0 ? "conflict" : "other";
   }
 }
@@ -260,13 +265,28 @@ export async function continueRebase(wt: string): Promise<string> {
  * (plans/portability.md §4b/7): the config file exists, is tracked in the current index (and
  * HEAD — a staged-or-dirty config makes `git merge --ff-only` refuse below, so the two agree
  * on every merge that can succeed), and is absent from the incoming tree. Anything else —
- * already untracked, already absent, present in `ref` — needs no preserve step. */
+ * already untracked, already absent, present in `ref` — needs no preserve step. A failed
+ * `cat-file` reads as absent, which only preserves bytes the write-back then leaves alone. */
 export async function configBytesToPreserve(root: string, ref: string): Promise<Buffer | null> {
   const cfg = configPath(root);
   if (!fs.existsSync(cfg)) return null;
-  if ((await gitTry(root, "ls-files", "--error-unmatch", CONFIG_BASENAME)) === null) return null;
+  if (!(await configTracked(root))) return null;
   if ((await gitTry(root, "cat-file", "-e", `${ref}:${CONFIG_BASENAME}`)) !== null) return null;
   return fs.readFileSync(cfg);
+}
+
+/** Whether the live config is tracked in `root`'s index: `ls-files --error-unmatch` exits 1 for
+ * an untracked path, and any other failure throws. Read as "untracked", an unreadable index or
+ * a git that could not start skipped the preserve step, so a merge that untracks the config
+ * deleted the live one. */
+async function configTracked(root: string): Promise<boolean> {
+  try {
+    await git(root, "ls-files", "--error-unmatch", CONFIG_BASENAME);
+    return true;
+  } catch (err) {
+    if (err instanceof GitError && err.code === 1) return false;
+    throw err;
+  }
 }
 
 /** The preserve step's write-back, restore-only-when-absent: write the saved bytes only when

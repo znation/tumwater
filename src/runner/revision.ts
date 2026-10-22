@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readTextOrNull } from "../files/files.js";
-import { gitTry } from "../git/git-run.js";
+import { gitTry, gitTryStarted } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
@@ -34,7 +34,9 @@ export const REVISION_BACKSTOP = 6;
 /** What pickSettlingBacklog did: the whole range is in the worktree with no markers (`clean`),
  * it stopped on conflicts the backlog settler could not settle (`conflicted`, those files still
  * unmerged in the index and carrying markers, the sequencer state already quit), or git failed
- * for another reason (`failed`: a missing object, an empty range, a pick already in progress). */
+ * for another reason (`failed`: a missing object, an empty range, a pick already in progress).
+ * A pick git could not start, or a conflict listing git failed to produce, throws instead: a
+ * `failed` pick drops the hand-back and deletes its ref, and neither says the diff is gone. */
 type PickOutcome = { status: "clean" } | { status: "conflicted"; files: string[] } | { status: "failed" };
 
 /** The picks a stopped `cherry-pick` sequence still owes after the one it stopped on, oldest
@@ -60,7 +62,7 @@ async function pickSettlingBacklog(wt: string, base: string, sha: string): Promi
   for (;;) {
     // diff3 carries the base section of every conflict, which the backlog settler reads; the
     // markers an author is handed keep it too.
-    const picked = await gitTry(wt, "-c", "merge.conflictStyle=diff3", "cherry-pick", "--no-commit", ...picks);
+    const picked = await gitTryStarted(wt, "-c", "merge.conflictStyle=diff3", "cherry-pick", "--no-commit", ...picks);
     if (picked !== null) return { status: "clean" };
     // conflictedFiles, not a raw diff: it decodes git's C-quoted names, so a non-ASCII
     // conflicted path is the on-disk name the prompt and hasConflictMarkers can use.
@@ -79,17 +81,19 @@ async function pickSettlingBacklog(wt: string, base: string, sha: string): Promi
 
 /** The exclusive start of the range to re-apply for `sha`: the merge-base with main, except that a
  * commit already on main (a reverted change, plans/fast-merge.md part 4c) has merge-base `sha`
- * itself and an empty range, so its own parent is the base and the range is that one commit. */
+ * itself and an empty range, so its own parent is the base and the range is that one commit. null
+ * (the caller drops the hand-back) only on git's own answer, never because git could not start. */
 async function pickBase(wt: string, mainBranch: string, sha: string): Promise<string | null> {
-  const base = await gitTry(wt, "merge-base", mainBranch, sha);
+  const base = await gitTryStarted(wt, "merge-base", mainBranch, sha);
   if (base === null) return null;
-  const full = await gitTry(wt, "rev-parse", sha);
+  const full = await gitTryStarted(wt, "rev-parse", sha);
   if (full?.trim() !== base.trim()) return base;
   // A commit main merely fast-forwarded onto keeps the empty range; only one main reverted is
   // handed back to be re-applied.
-  const reverts = (await gitTry(wt, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(sha)}`)) ?? "";
+  const reverts =
+    (await gitTryStarted(wt, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(sha)}`)) ?? "";
   if (!reverts.split("\n").some((subject) => subject.endsWith(`Revert ${shortSha(sha)}`))) return base;
-  return gitTry(wt, "rev-parse", `${sha}^`);
+  return gitTryStarted(wt, "rev-parse", `${sha}^`);
 }
 
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
@@ -99,7 +103,8 @@ async function pickBase(wt: string, mainBranch: string, sha: string): Promise<st
  * on the way (pickSettlingBacklog). On any other git failure — most often a conflict with what
  * main merged since the rejection, but also a missing object — the cherry-pick is aborted and
  * the worktree reset to main, and false is returned so the caller falls back to a plain
- * rejection note. */
+ * rejection note. A git that could not start, or a stopped pick whose conflicts git cannot list,
+ * throws instead, keeping the revision and its ref for the next run. */
 export async function applyRevision(wt: string, mainBranch: string, sha: string): Promise<boolean> {
   const base = await pickBase(wt, mainBranch, sha);
   if (base === null) {
@@ -123,8 +128,9 @@ export async function applyRevision(wt: string, mainBranch: string, sha: string)
  * `git reset` drops the index's unmerged entries so the marker-bearing files are plain
  * working-tree edits the run can commit normally, and `{ applied: true, conflicted }` is
  * returned. A failure with no unmerged paths (a missing object, a bad revision) aborts, resets
- * to main, and returns `{ applied: false }` so the caller falls back to a fresh start. Never
- * throws for a git-level failure. */
+ * to main, and returns `{ applied: false }` so the caller falls back to a fresh start. A git
+ * that could not start, or a stopped pick whose conflicts git cannot list, throws instead, so the
+ * run errors with the hand-back and its ref kept for the next. */
 export async function applyWithConflicts(
   wt: string,
   mainBranch: string,

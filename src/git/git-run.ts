@@ -287,3 +287,15 @@ export async function gitTry(cwd: string, ...args: string[]): Promise<string | n
     return null;
   }
 }
+
+/** gitTry for a call whose failure is itself an answer the caller acts on (no merge-base, a
+ * cherry-pick that stopped), when acting on it drops work: null only when git ran and failed,
+ * and a throw when git could not start (gitCouldNotStart), which answers nothing. */
+export async function gitTryStarted(cwd: string, ...args: string[]): Promise<string | null> {
+  try {
+    return await runGit(cwd, args);
+  } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
+    return null;
+  }
+}

@@ -21,6 +21,8 @@ import {
 } from "../src/merge/merge-git.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
 import { assertWorktreeSettled, commitIn, headSha, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
+import { UNSTARTABLE_GIT_ARG, withUnreadableIndex } from "./helpers/git-faults.js";
+import { gitCouldNotStart } from "../src/git/git-run.js";
 
 // Behavioral coverage for the merge flow's git plumbing (merge-git.ts). The export pin in
 // merge-to-main.test.ts only checks that these helpers exist; these tests drive real rebases,
@@ -65,6 +67,29 @@ test("conflictedFiles decodes the C-quoted name of a non-ASCII conflicted file",
   assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
   assert.deepEqual(await conflictedFiles(wt), ["héllo.md"]);
   assert.equal(hasConflictMarkers(wt, await conflictedFiles(wt)), true);
+});
+
+test("conflictedFiles throws when git cannot read the index, rather than reporting no conflicts", async () => {
+  // Read as "no conflicts", the resolver's caller went straight to continueRebase, which stages
+  // every marker, and a revision's stopped pick went down the path that deletes its ref.
+  const { wt } = await conflictingSetup();
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  await withUnreadableIndex(wt, () =>
+    assert.rejects(conflictedFiles(wt), /git diff --name-only --diff-filter=U failed/),
+  );
+  assert.deepEqual(await conflictedFiles(wt), ["seed.txt"]);
+});
+
+test("a rebase git could not start throws, rather than reading as a conflict or a failed rebase", async () => {
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "branch work");
+  const before = headSha(wt);
+  // The rebase's own spawn fails; the conflict listing after it would run and find nothing.
+  await assert.rejects(rebaseOntoMain(wt, UNSTARTABLE_GIT_ARG), (err) => gitCouldNotStart(err));
+  await assert.rejects(rebaseOntoMainLeaveConflicts(wt, UNSTARTABLE_GIT_ARG), (err) => gitCouldNotStart(err));
+  assertWorktreeSettled(wt);
+  assert.equal(headSha(wt), before);
 });
 
 test("rebaseOntoMainLeaveConflicts returns clean when main has not moved", async () => {

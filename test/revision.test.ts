@@ -27,6 +27,8 @@ import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "
 import { makeRoleRunner } from "./fixtures/runner-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
+import { gitCouldNotStart } from "../src/git/git-run.js";
 
 /** Unit coverage for the revise-rejected feature (plans/revise-rejected.md part 1/2): the
  * rejected commit is kept alive under its own ref, re-applied to current main as uncommitted
@@ -151,6 +153,16 @@ test("applyRevision resets to clean main when the rejected commit no longer exis
   assert.equal(await applyRevision(root, "main", "0".repeat(40)), false);
   assert.equal(headSha(root), before);
   assert.equal(await isDirty(root), false, "clean main after a missing object");
+});
+
+test("a re-apply git could not start throws, rather than reporting a diff that no longer applies", async () => {
+  // Reported as not applied, the caller drops the revision or hand-back and deletes its ref.
+  const root = makeRepo();
+  const before = headSha(root);
+  await assert.rejects(applyRevision(root, "main", UNSTARTABLE_GIT_ARG), (err) => gitCouldNotStart(err));
+  await assert.rejects(applyWithConflicts(root, "main", UNSTARTABLE_GIT_ARG), (err) => gitCouldNotStart(err));
+  assert.equal(headSha(root), before);
+  assert.equal(await isDirty(root), false);
 });
 
 test("applyWithConflicts resets to main when the cherry-pick fails without conflicts", async () => {
@@ -685,6 +697,26 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
       assert.equal(await refSha(repo, rejectedRefName("improve")), null, "the rejected ref is gone");
     },
   );
+});
+
+test("a revision whose re-apply git could not start keeps the revision and its ref for the next run", async () => {
+  const repo = await initializedRepo();
+  const rejected = headSha(repo);
+  await setRef(repo, rejectedRefName("improve"), rejected);
+  const ran = path.join(tmpdir(), "revision-unstartable-ran");
+  await withPi(`touch "${ran}"`, async () => {
+    const runner = makeRoleRunner(repo, "improve");
+    const revision = { sha: UNSTARTABLE_GIT_ARG, round: 1, at: Date.now() };
+    runner.state.revision = revision;
+    runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
+    const outcome = await runner.run();
+
+    assert.equal(outcome.result, "error");
+    assert.ok(!fs.existsSync(ran), "no agent run started without the rejected diff");
+    assert.deepEqual(runner.state.revision, revision, "the revision waits for the next run");
+    assert.equal(await refSha(repo, rejectedRefName("improve")), rejected, "the rejected ref is kept");
+    assert.equal(eventsOfType(repo, "revision").length, 0);
+  });
 });
 
 test("a merged revision deletes the rejected ref", async () => {

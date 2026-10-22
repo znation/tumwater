@@ -11,6 +11,7 @@ import { aheadOfMainDiff, aheadOfMainFiles, changedFiles, unquotePorcelainPath }
 import { commitAll } from "../src/git/git.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { loggingGit, makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { dropLooseObject, gitFailingOn } from "./helpers/git-faults.js";
 
 test("changedFiles is empty on a clean worktree", async () => {
   const repo = makeRepo();
@@ -249,4 +250,31 @@ test("aheadOfMainFiles omits files only main gained after the branch forked (thr
   fs.writeFileSync(path.join(wt, "branch-only.txt"), "on branch\n");
   await commitAll(wt, "branch change");
   assert.deepEqual(await aheadOfMainFiles(wt, "main"), ["branch-only.txt"]);
+});
+
+test("aheadOfMainFiles and aheadOfMainDiff throw when git cannot diff, rather than reporting no change", async () => {
+  // An empty file list is vacuously review-exempt and an empty diff shows the reviewer nothing,
+  // so a failed read must never stand in for either.
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.mkdirSync(path.join(wt, "sub"));
+  fs.writeFileSync(path.join(wt, "sub", "new.ts"), "export const added = 1;\n");
+  await commitAll(wt, "branch change");
+  dropLooseObject(wt, "HEAD:sub");
+  await assert.rejects(aheadOfMainFiles(wt, "main"), /git diff --name-only main\.\.\.HEAD failed/);
+  await assert.rejects(aheadOfMainDiff(wt, "main"), /git diff main\.\.\.HEAD failed/);
+});
+
+test("a capped aheadOfMainDiff throws when its --stat read fails, rather than dropping the file list", async () => {
+  const repo = makeRepo();
+  const wt = await ensureWorktree(repo, "improve", "main");
+  fs.writeFileSync(path.join(wt, "big.txt"), blob("BIG", 400));
+  fs.writeFileSync(path.join(wt, "small.txt"), blob("SML", 100));
+  await commitAll(wt, "big change");
+  const restore = gitFailingOn("diff --stat");
+  try {
+    await assert.rejects(aheadOfMainDiff(wt, "main", 10_000), /git diff --stat main\.\.\.HEAD failed/);
+  } finally {
+    restore();
+  }
 });

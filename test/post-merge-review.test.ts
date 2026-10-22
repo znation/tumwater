@@ -22,6 +22,7 @@ import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
 import { sleep } from "./helpers/wait.js";
+import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
 
 test("review.afterMerge accepts known base role ids and rejects the director and unknown ids", () => {
   assert.doesNotThrow(() => validateConfig({ review: { afterMerge: ["clean", "dedupe", "coverage"] } }));
@@ -164,6 +165,45 @@ test("no post-merge review is queued when review is disabled or the merged diff 
   const exempt = await mergeListed("NOTES.md", { enabled: true });
   assert.equal(eventsOfType(exempt, "merged").length, 1);
   assert.equal(readPostReviews(exempt).length, 0);
+});
+
+/** Count the reviewer runs `runner` makes from here on. */
+function countReviews(runner: RoleRunner): { count: number } {
+  const counted = { count: 0 };
+  const run = runner.runGatePi;
+  (runner as { runGatePi: RoleRunner["runGatePi"] }).runGatePi = (opts) => {
+    counted.count++;
+    return run(opts);
+  };
+  return counted;
+}
+
+test("a merged commit whose diff git cannot produce fails its review, never approving an empty diff", async () => {
+  const { root, runner, ctx } = setup("VERDICT: approve\n1. fine");
+  const reviews = countReviews(runner);
+  // The repository's first commit has no parent, so `git diff C^ C` fails for real.
+  const first = sh(root, "git", "rev-list", "--max-parents=0", "HEAD");
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit: first, role: "improve", summary: "seed" }] }));
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(reviews.count, 0, "no reviewer ran over an empty diff");
+  assert.equal(eventsOfType(root, "review_verdict").length, 0);
+  assert.deepEqual(readPostReviews(root), [{ commit: first, role: "improve", summary: "seed", failures: 1 }]);
+});
+
+test("a post-merge review git could not start keeps its entry without counting a failed run", async () => {
+  // A spawn failure says nothing about the commit: counted, a wedge as long as 2026-10-21's
+  // reached POST_REVIEW_FAILURE_LIMIT and dropped the review, leaving the commit unreviewed.
+  const { root, runner, ctx } = setup("VERDICT: approve\n1. fine");
+  const reviews = countReviews(runner);
+  const entry = { commit: UNSTARTABLE_GIT_ARG, role: "improve", summary: "s" };
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [entry] }));
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(reviews.count, 0);
+  assert.deepEqual(readPostReviews(root), [entry], "kept as it was, for the next poll");
 });
 
 test("a torn post-review.json entry is dropped and the well-formed one is still reviewed", async () => {
