@@ -4,7 +4,8 @@
  * free pair the team runs on at the daily cap, and the per-role fallback config (fallbackPair,
  * resolveTierFallbacks, applyFallbackModel, …) — lives in config-fallbacks.ts, which builds on
  * this module one-way. No I/O and no caching — the persistence side (defaults, loading,
- * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts. */
+ * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts
+ * (editor verbs) and config-request.ts (the director's staged request). */
 import { MODEL_TIERS, type BackendConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
 import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { modelPairName } from "../budget/budget.js";

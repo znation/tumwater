@@ -30,7 +30,8 @@ export function configPath(root: string): string {
 }
 
 /** The cross-process lock serializing read-modify-write updates of tumwater.json
- * (writeConfigMutation and applyConfigRequest in config/config-write.ts): the CLI's
+ * (writeConfigMutation in config/config-write.ts and applyConfigRequest in
+ * config/config-request.ts): the CLI's
  * `tumwater config set`, a standalone `tumwater gui` server, and the running team are separate
  * processes that can rewrite one config in the same instant, and without serialization each
  * one's whole-file write silently drops the others' change. A lock directory owned by the

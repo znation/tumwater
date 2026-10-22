@@ -413,7 +413,7 @@ reason `tumwater.json` had to be added to `review.exemptPaths` in the first plac
 
 **Approach.**
 - src/paths.ts — `configRequestPath(wt)` = `<wt>/.tumwater-config-request.json`.
-- src/config/config-write.ts — `applyConfigRequest(root, wt): { applied: string[]; ignored: string[]; error?: string } | null`
+- src/config/config-request.ts — `applyConfigRequest(root, wt): { applied: string[]; ignored: string[]; error?: string } | null`
   (null when no request exists): read, permit-filter, validate, atomic write, delete. The atomic
   writer already exists and is already shared — `writeJsonAtomic(file, value, trailingNewline)` in
   src/files/json-files.ts, which `setDailyBudgetUsd` was moved onto by 1963677 — so this adds a second
@@ -808,7 +808,7 @@ reload the degradation story depends on is intact: `POLL_MS = 2000` (src/orchest
 Corrections and new pins:
 1. **`commitAll` drifted: src/git/git.ts.** Body unchanged — `git add -A` plus
    the commit — so the delete-the-file mechanism stands as written.
-2. **3/7's `applyConfigRequest` (src/config/config-write.ts) writes the live config from the director's
+2. **3/7's `applyConfigRequest` (src/config/config-request.ts) writes the live config from the director's
    tick (src/tick/tick-verdict.ts) — outside the merge lock, so it can interleave with an in-flight
    untracking landing. Two consequences, both pinned:** (a) it *strengthens* this entry — since
    3/7, no code path can land a config diff at all (the request file is consumed before every
@@ -867,7 +867,7 @@ one-entry early return), `initProject`, the `created` list,
 and the check-name list (test/doctor.test.ts). Capability absence re-confirmed:
 `grep -rn` for `exampleConfigPath`, `seedConfig`, or `exampleDrift` over `src/` is empty, and no
 `tumwater.example.json` exists. One interaction from 3/7, checked and harmless:
-`applyConfigRequest` (src/config/config-write.ts) writes the config only when the director's request file
+`applyConfigRequest` (src/config/config-request.ts) writes the config only when the director's request file
 exists and never seeds from the example, so "init is the only seeder" stands — the one nuance is
 that a director request in a repo with no config still creates one (an explicit human act, same
 spirit as seeding); no plan change.

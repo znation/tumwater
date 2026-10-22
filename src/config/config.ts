@@ -327,8 +327,8 @@ export function collapseBackendAliases(config: TumwaterConfig): TumwaterConfig {
 }
 
 /** Persist a config after validating it, so an invalid tumwater.json can never be written.
- * Written atomically (writeJsonAtomic, trailing newline — the POSIX-newline convention here
- * and at config-write.ts, the file's other writers): the config-live poller re-reads the file
+ * Written atomically (writeJsonAtomic, trailing newline — the POSIX-newline convention shared
+ * with config-write.ts and config-request.ts): the config-live poller re-reads the file
  * every ~2 s, so a plain overwrite could hand it a torn read mid-write. */
 export function saveConfig(root: string, config: TumwaterConfig): void {
   const collapsed = collapseBackendAliases(config);

@@ -66,8 +66,9 @@ import {
 } from "./config-selector-checks.js";
 
 /** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
- * through (config.ts's load/save, config-write.ts's budget editing and director config
- * requests), judged against the key allow-lists and value shapes that live beside the types
+ * through (config.ts's load/save, config-write.ts's budget editing and
+ * config-request.ts's director config requests), judged against the key allow-lists and
+ * value shapes that live beside the types
  * they mirror in config-schema.ts. Split out of config.ts — which keeps defaultConfig and the
  * read side (load/save/cache, per-role views) — because this is a self-contained concern:
  * it depends only on the schema, the role catalog (allRoleIds), and message wording, not on

@@ -14,7 +14,7 @@ import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty, deleteRef } from "../git/git.js";
-import { applyConfigRequest } from "../config/config-write.js";
+import { applyConfigRequest } from "../config/config-request.js";
 import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";

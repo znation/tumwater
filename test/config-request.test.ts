@@ -1,4 +1,4 @@
-// Tests for src/config/config-write.ts's director config-request path
+// Tests for src/config/config-request.ts's director config-request path
 // (applyConfigRequest) — the request file the director writes and the run applies.
 
 import test from "node:test";
@@ -8,7 +8,7 @@ import path from "node:path";
 import { readJson } from "./helpers/json-read.js";
 import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { skipIfRoot, tmpdir } from "./fixtures/repo-fixtures.js";
-import { applyConfigRequest } from "../src/config/config-write.js";
+import { applyConfigRequest } from "../src/config/config-request.js";
 import { customRoleNames, defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
 
