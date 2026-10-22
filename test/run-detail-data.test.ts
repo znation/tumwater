@@ -227,3 +227,59 @@ test("mergedSha pairs a run with its role's merged event inside the merge window
   assert.equal(readRunDetail(root, "feature", 4)!.mergedSha, "direct");
   assert.equal(readRunDetail(root, "feature", 5)!.mergedSha, null);
 });
+
+test("a run's main_revert names the automatic revert of its landed sha", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  const merged = (ts: number, commit: string): HarnessEvent => ev({ ts, source: "feature", loop: "feature", type: "merged", commit }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "feature", failingTests: ["a.test.ts", "b.test.ts"] }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
+    sha: "landed1",
+    revert: "rev1",
+    failingTests: ["a.test.ts", "b.test.ts"],
+  });
+  // A revert of another runner's change, or of another commit, each leave this run uncovered —
+  // the match is on both runner and sha.
+  const wrongRunner = tmpdir();
+  writeEvents(wrongRunner, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "bugfix", failingTests: [] }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.equal(readRunDetail(wrongRunner, "feature", 1)!.reverted, null);
+  const wrongCommit = tmpdir();
+  writeEvents(wrongCommit, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "other", revert: "rev1", runner: "feature", failingTests: [] }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.equal(readRunDetail(wrongCommit, "feature", 1)!.reverted, null);
+  const none = tmpdir();
+  writeEvents(none, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 1100, run: 1, result: "changed" })]);
+  assert.equal(readRunDetail(none, "feature", 1)!.reverted, null);
+});
+
+test("a no-op fast-forward run matches its main_revert through the pinned commit", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    startEvent({ ts: 1000, run: 1 }),
+    ev({ ts: 1100, type: "merge_queued", commit: "pin1" }),
+    endEvent({ ts: 1200, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "pin1", revert: "rev1", runner: "feature", failingTests: ["a.test.ts"] }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  // No `merged` event, so mergedSha is null and the pinned commit is what merged — the
+  // reverted.sha names that pinned commit.
+  assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
+    sha: "pin1",
+    revert: "rev1",
+    failingTests: ["a.test.ts"],
+  });
+});

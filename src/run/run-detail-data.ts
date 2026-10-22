@@ -49,6 +49,10 @@ export interface RunDetail {
    * pinned commit when the merge rebased. Null for every other run, and when the event rotated
    * out or the merge was a no-op fast-forward (which logs none). */
   mergedSha: string | null;
+  /** The automatic main-watch revert of this run's merged change, from a `main_revert` event
+   * whose `runner` is this role and whose `commit` is the run's landed or pinned sha; null when
+   * there is none (an operator `tumwater revert` logs no `main_revert` and stays uncovered). */
+  reverted: { sha: string; revert: string; failingTests: string[] } | null;
 }
 
 /** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
@@ -82,7 +86,8 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
   // and readTailText reads bytes proportional to the limit's line count — so the cap is also
   // the largest byte read one command can cost, and every read-only view scans under the
   // same bound.
-  const events = readEvents(root, HISTORY_SCAN_MAX_EVENTS).filter((e) => e.source === role);
+  const all = readEvents(root, HISTORY_SCAN_MAX_EVENTS);
+  const events = all.filter((e) => e.source === role);
   // Newest run_start for this role+run: the block's lower bound.
   let startIdx = -1;
   for (let i = events.length - 1; i >= 0; i--) {
@@ -97,7 +102,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
     // number still answers — unpaired, undated at the front — else there is no such run here.
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]!;
-      if (e.type === "run_end" && e.run === runNumber) return detailFrom(role, runNumber, events, [e], e, null);
+      if (e.type === "run_end" && e.run === runNumber) return detailFrom(role, runNumber, all, events, [e], e, null);
     }
     return null;
   }
@@ -127,7 +132,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
     if (end !== null ? e.ts > end.ts : nextStart !== null && e.ts >= nextStart.ts) break;
     block.push(e);
   }
-  return detailFrom(role, runNumber, events, block, end, start.ts);
+  return detailFrom(role, runNumber, all, events, block, end, start.ts);
 }
 
 /** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
@@ -136,6 +141,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
 function detailFrom(
   role: string,
   runNumber: number,
+  all: HarnessEvent[],
   scoped: HarnessEvent[],
   block: HarnessEvent[],
   end: HarnessEvent | null,
@@ -154,7 +160,7 @@ function detailFrom(
       merge = resolved.outcome;
     }
   }
-  return {
+  const detail: RunDetail = {
     role,
     run: runNumber,
     startTs,
@@ -167,7 +173,33 @@ function detailFrom(
     events: block,
     merge,
     mergedSha: mergedShaOf(result, merge, scoped, block),
+    reverted: null,
   };
+  detail.reverted = revertedOf(detail, all);
+  return detail;
+}
+
+/** The automatic main-watch revert of a run's landed change, matched from the unfiltered event
+ * list (the `main_revert` event is logged under `tumwater`, not the run's role): the newest
+ * `main_revert` whose `runner` is this role and whose `commit` is the run's landed (`mergedSha`)
+ * or pinned (`runCommitSha`) sha — the latter catching a no-op fast-forward that logs no
+ * `merged` event. Its `revert` names the inverse commit (empty when the source logged none) and
+ * `failingTests` the tests the main watch named (empty when absent); null when nothing matches,
+ * since an operator `tumwater revert` logs no `main_revert` and is not an automatic revert. */
+function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reverted"] {
+  const targetSha = d.mergedSha ?? runCommitSha(d);
+  for (let i = all.length - 1; i >= 0; i--) {
+    const e = all[i]!;
+    if (e.type !== "main_revert") continue;
+    if (typeof e.runner !== "string" || e.runner !== d.role) continue;
+    if (typeof e.commit !== "string" || e.commit !== targetSha) continue;
+    return {
+      sha: e.commit,
+      revert: typeof e.revert === "string" ? e.revert : "",
+      failingTests: Array.isArray(e.failingTests) ? (e.failingTests as string[]) : [],
+    };
+  }
+  return null;
 }
 
 /** The commit of the newest `merged` event in `pool` (oldest-first) inside [from, to]. */

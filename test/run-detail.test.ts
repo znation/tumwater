@@ -590,6 +590,28 @@ test("renderRunDetail names the landed sha only when it differs from the pinned 
   assert.doesNotMatch(header(null), /merged as/);
 });
 
+test("renderRunDetail names a reverted change and its first failing test", () => {
+  const base = readRunDetail(
+    (() => {
+      const root = tmpdir();
+      writeEvents(root, [
+        start({ ts: 1000 }),
+        { ts: 1500, loop: "bugfix", source: "bugfix", type: "merge_queued", commit: "abcdef1234" } as HarnessEvent, // retired-name-ok: legacy event field in a fixture
+        end({ ts: 2000 }),
+      ]);
+      return root;
+    })(),
+    "bugfix",
+    3,
+  )!;
+  const header = (d: Partial<RunDetail>): string => renderRunDetail({ ...base, ...d }).split("\n")[0]!;
+  assert.match(
+    header({ reverted: { sha: "abcdef1234", revert: "9999999", failingTests: ["a.test.ts", "b.test.ts"] } }),
+    / · reverted abcdef12 \(failing: a\.test\.ts\)$/m,
+  );
+  assert.doesNotMatch(header({ reverted: null }), /reverted/);
+});
+
 test("history --transcript appends only the run's own agent runs, composes with --last/--stat, and notes a miss", async () => {
   const repo = makeRepo();
   writeEvents(repo, [
