@@ -3,8 +3,8 @@
  * half of the codex invocation (plans/codex-backend.md "Config and routing" §2 and
  * "The invocation"
  * §3). Part 4/9 owns these constants so config validation and the traits layer can screen a
- * `backends.codex.args` passthrough before the adapter lands; part 5/9 adds the `codexArgs` argv
- * builder beside them, and 6/9 the stream translator. Pure — imports no runtime registry,
+ * `backends.codex.args` passthrough before the adapter registered; part 5/9 adds the `codexArgs`
+ * argv builder beside them, and 6/9 the stream translator. Pure — imports no runtime registry,
  * config or
  * subprocess — so config-validation.ts can import it without dragging the adapter in.
  *

@@ -269,8 +269,8 @@ export function checkBackendBinary(
   const agents = config !== undefined ? backendsInUse(config) : ["pi"];
   // A seam backend with no registered adapter in this build can never run; naming that beats
   // the binary check (which would pass an installed binary only to fall through to pi). The
-  // same rule and wording as the startup gate's. After opencode's adapter lands (part 5/7)
-  // this stays the general rule for any future id.
+  // same rule and wording as the startup gate's, and it generalizes the same way: opencode
+  // and codex now have adapters registered, so only a future id without one trips it.
   const unregistered = config !== undefined ? unregisteredBackendInUse(config) : undefined;
   if (unregistered !== undefined)
     return failOutcome(`backend ${unregistered} is configured but this build has no adapter for it`);
