@@ -168,6 +168,53 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   const checkStringArray = (obj: Record<string, unknown>, prefix: string, key: string): void =>
     checkStringArrayField(problems, obj, prefix, key);
 
+  // claude's and codex's per-backend config dir (plans/notes-command.md "Keeping funes out
+  // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
+  // absolute path after expansion, or claude would resolve a relative CLAUDE_CONFIG_DIR (and
+  // codex a relative CODEX_HOME) from the run's cwd and write transcripts somewhere
+  // unexpected. Only claude and codex accept the key, so it is inert nowhere else. The nested
+  // reserve spelling (part 2b/9): the same 0 < f ≤ 1 rule the top-level `claudeWindowReserve`
+  // map gets, so a bad entry can never silently no-op a reserve.
+  const checkBackendConfig = (entry: Record<string, unknown>, prefix: string): void => {
+    checkString(entry, `${prefix}.`, "configDir", false);
+    if (typeof entry.configDir === "string" && entry.configDir !== "")
+      if (!path.isAbsolute(expandHomeTilde(entry.configDir, os.homedir())))
+        problems.push(
+          `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
+        );
+    if (entry.windowReserve === undefined) return;
+    const wr = entry.windowReserve;
+    if (!isJsonObject(wr)) {
+      problems.push(`${prefix}.windowReserve must be an object mapping window types to fractions (got ${show(wr)})`);
+      return;
+    }
+    for (const [type, value] of Object.entries(wr)) {
+      if (type.trim() === "") problems.push(`${prefix}.windowReserve.<empty> — a window type must not be empty`);
+      else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
+        problems.push(`${prefix}.windowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
+    }
+  };
+
+  // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
+  // key tumwater sets on every run (HARNESS_CODEX_CONFIG_KEYS) is appended AFTER the harness's
+  // own `-c` and Codex's parser is last-wins, so it would silently override the model, effort,
+  // sandbox mode or telemetry the harness resolved. The standalone-flag screen above
+  // (reservedPassthroughFlag + checkReservedArgs) splits on `=` and cannot see a separate
+  // `-c` token, so codex gets its own arity-aware scan of the key. Any other key is the
+  // operator's own and passes.
+  const checkCodexConfigKeys = (entry: Record<string, unknown>, prefix: string): void => {
+    const args = entry.args as unknown[];
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (typeof arg !== "string") continue;
+      const key = codexConfigKey(arg, typeof args[i + 1] === "string" ? (args[i + 1] as string) : undefined);
+      if (key !== undefined && HARNESS_CODEX_CONFIG_KEYS.has(key))
+        problems.push(
+          `${prefix}.args[${i}] ${show(arg)} passes the config key ${key}, which tumwater manages — drop it or use another key`,
+        );
+    }
+  };
+
   const r = raw; // Narrowed to an object by isJsonObject above.
   checkKnownKeys(r, TOP_LEVEL_KEYS, label, problems);
   // The top level's `model` may be a selector string or a map by tier (plans/model-tiers.md);
@@ -261,52 +308,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : id === "codex" ? CODEX_BACKEND_KEYS : BACKEND_KEYS, prefix, problems);
       checkString(entry, `${prefix}.`, "bin", false);
       checkStringArray(entry, `${prefix}.`, "args");
-      // claude's and codex's per-backend config dir (plans/notes-command.md "Keeping funes out
-      // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
-      // absolute path after expansion, or claude would resolve a relative CLAUDE_CONFIG_DIR (and
-      // codex a relative CODEX_HOME) from the run's cwd and write transcripts somewhere
-      // unexpected. Only claude and codex accept the key, so it is inert nowhere else.
-      if (id === "claude" || id === "codex") {
-        checkString(entry, `${prefix}.`, "configDir", false);
-        if (typeof entry.configDir === "string" && entry.configDir !== "")
-          if (!path.isAbsolute(expandHomeTilde(entry.configDir, os.homedir())))
-            problems.push(
-              `${prefix}.configDir must be an absolute path after ~ expansion (got ${show(entry.configDir)})`,
-            );
-        // The nested reserve spelling (part 2b/9): the same 0 < f ≤ 1 rule the top-level
-        // `claudeWindowReserve` map gets, so a bad entry can never silently no-op a reserve.
-        if (entry.windowReserve !== undefined) {
-          const wr = entry.windowReserve;
-          if (!isJsonObject(wr)) {
-            problems.push(`${prefix}.windowReserve must be an object mapping window types to fractions (got ${show(wr)})`);
-          } else {
-            for (const [type, value] of Object.entries(wr)) {
-              if (type.trim() === "") problems.push(`${prefix}.windowReserve.<empty> — a window type must not be empty`);
-              else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
-                problems.push(`${prefix}.windowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
-            }
-          }
-        }
-      }
-      // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
-      // key tumwater sets on every run (HARNESS_CODEX_CONFIG_KEYS) is appended AFTER the harness's
-      // own `-c` and Codex's parser is last-wins, so it would silently override the model, effort,
-      // sandbox mode or telemetry the harness resolved. The standalone-flag screen above
-      // (reservedPassthroughFlag + checkReservedArgs) splits on `=` and cannot see a separate
-      // `-c` token, so codex gets its own arity-aware scan of the key. Any other key is the
-      // operator's own and passes.
-      if (id === "codex" && Array.isArray(entry.args)) {
-        const args = entry.args as unknown[];
-        for (let i = 0; i < args.length; i++) {
-          const arg = args[i];
-          if (typeof arg !== "string") continue;
-          const key = codexConfigKey(arg, typeof args[i + 1] === "string" ? (args[i + 1] as string) : undefined);
-          if (key !== undefined && HARNESS_CODEX_CONFIG_KEYS.has(key))
-            problems.push(
-              `${prefix}.args[${i}] ${show(arg)} passes the config key ${key}, which tumwater manages — drop it or use another key`,
-            );
-        }
-      }
+      if (id === "claude" || id === "codex") checkBackendConfig(entry, prefix);
+      if (id === "codex" && Array.isArray(entry.args)) checkCodexConfigKeys(entry, prefix);
       if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
       checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
         reservedPassthroughFlag(id, flag),
