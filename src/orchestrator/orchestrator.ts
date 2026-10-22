@@ -18,7 +18,7 @@ import {
 } from "./orchestrator-poll.js";
 import { RoleRunner } from "../runner/runner.js";
 import { dropDanglingTumwaterPins, removeLegacyLandWorktrees } from "../git/worktree.js";
-import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
+import { pinCrashedRuns, retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { mergeTasks, newMergePipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
@@ -218,6 +218,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // `--once --role` filter): a scoped run must not retire or unpin the other roles, whose
   // pending resumes the next full-team start still owns. See retireLegacyRoleWorktrees.
   await retireLegacyRoleWorktrees(root, runnerIds(config));
+  // A run the previous process died in resumes in its own slot: pin it before any run leases.
+  pinCrashedRuns(root, runnerIds(config));
 
   // Session retention (src/orchestrator/retention.ts owns the whole concern): construction runs the
   // startup prune, seeding the once-per-day gate so an unchanged team prunes at most once

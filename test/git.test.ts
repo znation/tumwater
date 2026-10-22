@@ -27,7 +27,7 @@ import {
   subjectsBetween,
   targetBranch,
 } from "../src/git/git.js";
-import { runGit } from "../src/git/git-run.js";
+import { gitCouldNotStart, runGit } from "../src/git/git-run.js";
 import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
 // The merge-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which got
 // them from git.ts in the bugfix that completed the half-finished organize run 78 move) once the
@@ -783,4 +783,13 @@ test("commitMessage returns the full message and null for an unknown sha", async
   // git's %B drops the commit message's trailing newline when it prints it.
   assert.equal(await commitMessage(wt, sha), "subject line\n\nWHY: it matters");
   assert.equal(await commitMessage(wt, "0123456789abcdef0123456789abcdef01234567"), null);
+});
+
+test("gitCouldNotStart is true for a git that never ran and false for git's own failure", async () => {
+  const repo = makeRepo();
+  const failure = async (cwd: string, args: string[]): Promise<unknown> => runGit(cwd, args).then(() => undefined, (e: unknown) => e);
+  // A cwd that does not exist fails the spawn itself, as a full process table (EAGAIN) does.
+  assert.equal(gitCouldNotStart(await failure(path.join(repo, "gone"), ["status"])), true);
+  assert.equal(gitCouldNotStart(await failure(repo, ["rev-parse", "--verify", "no-such-ref"])), false);
+  assert.equal(gitCouldNotStart(new Error("not a git error")), false);
 });

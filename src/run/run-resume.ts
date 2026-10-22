@@ -5,6 +5,7 @@ import { RETRIABLE_MERGE_RESULTS } from "../merge/merge-core.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { sessionDir } from "../paths.js";
 import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prompt/prompt-followup.js";
+import { appendPromptNote } from "../text/format.js";
 
 /** What a run starts with, decided before any worktree or pi work: whether it resumes the
  * interrupted session (and why), the prompt it runs, and the raw user request it executes.
@@ -57,14 +58,21 @@ export function takesSalvagedWork(plan: RunStartPlan): boolean {
  * (`restored`, the patch's root-relative path). A fresh run becomes a `salvaged` handoff over
  * those edits: a fresh session told they are there, which skips the fresh path's reset as every
  * handoff does. A resume or handoff keeps its plan: its kept slot was lost, and the restore gives
- * it back the edits it expects. */
-export function planWithSalvagedWork(role: string, plan: RunStartPlan, restored: string): RunStartPlan {
-  if (plan.resuming || plan.handoff || plan.prompt === null) return { ...plan, restored };
+ * it back the edits it expects. `note`, when the restore left conflicts or hunks it could not
+ * place (buildSalvageRestoreNote), is appended to either prompt. */
+export function planWithSalvagedWork(
+  role: string,
+  plan: RunStartPlan,
+  restored: string,
+  note?: string,
+): RunStartPlan {
+  if (plan.prompt === null) return { ...plan, restored };
+  const handingOff = !plan.resuming && !plan.handoff;
+  const prompt = handingOff ? buildHandoffPrompt(role, plan.prompt, "salvaged") : plan.prompt;
   return {
     ...plan,
-    handoff: true,
-    resumeCause: "salvaged",
-    prompt: buildHandoffPrompt(role, plan.prompt, "salvaged"),
+    ...(handingOff ? { handoff: true, resumeCause: "salvaged" as const } : {}),
+    prompt: note === undefined ? prompt : appendPromptNote(prompt, note),
     restored,
   };
 }

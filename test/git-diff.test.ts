@@ -17,6 +17,19 @@ test("changedFiles is empty on a clean worktree", async () => {
   assert.deepEqual(await changedFiles(repo), []);
 });
 
+test("changedFiles throws when git cannot answer, rather than reporting no changes", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "work.txt"), "unsaved\n");
+  const index = path.join(repo, ".git", "index");
+  fs.chmodSync(index, 0);
+  try {
+    await assert.rejects(changedFiles(repo), /git status --porcelain -z failed/);
+  } finally {
+    fs.chmodSync(index, 0o644);
+  }
+  assert.deepEqual(await changedFiles(repo), ["work.txt"]);
+});
+
 test("changedFiles lists modified, untracked, and deleted files by repo-relative path", async () => {
   const repo = makeRepo();
   seedCommit(repo, "gone.txt", "bye\n", "second");

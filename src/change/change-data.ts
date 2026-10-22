@@ -153,7 +153,8 @@ export async function collectRoleChange(
       : opts.stat
         ? ((await gitTry(wt, "diff", "--stat", `${mainBranch}...HEAD`, ...spec)) ?? "")
         : await aheadOfMainDiff(wt, mainBranch, DIFF_MAX_BYTES, spec);
-  const dirtyFiles = (await changedFiles(wt)).filter((f) => inPath(f, opts.path));
+  // A view: a git that fails to answer shows no uncommitted edits, as it always did.
+  const dirtyFiles = (await changedFiles(wt).catch(() => [])).filter((f) => inPath(f, opts.path));
   const uncommittedDiff =
     dirtyFiles.length === 0
       ? ""
@@ -270,7 +271,7 @@ export async function collectChangeOverlaps(root: string): Promise<ChangeOverlap
       const wt = await roleWorktreeDir(root, role);
       if (wt === null || !(await isUsableWorktree(wt))) return null;
       const committed = (await aheadOfMain(wt, mainBranch)) > 0 ? await aheadOfMainFiles(wt, mainBranch) : [];
-      return { role, files: [...committed, ...(await changedFiles(wt))] };
+      return { role, files: [...committed, ...(await changedFiles(wt).catch(() => []))] };
     }),
   );
   const holdings = held.filter((h): h is { role: string; files: string[] } => h !== null);

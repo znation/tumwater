@@ -363,11 +363,14 @@ supervisor takes the team down instead of leaving it orphaned and running unatte
 recover the same way, and so do runs the watchdog stops as stalled, up to three in a row. A run
 that ends before tumwater can account for its workspace (a crash, or tumwater's own git commands
 failing, as when the machine runs out of processes) leaves its uncommitted edits in the
-workspace. The next run to use that workspace saves them as a patch under
+workspace. A crashed run's workspace is held for its role, and the restart resumes the run in it.
+Otherwise the next run to use that workspace saves the edits as a patch under
 `.tumwater/salvage/pending/<role>/`, and the role's next run gets them back in a fresh session
-told they are there. Edits nothing gives back (ones a run chose to discard, or a check's scratch
-files) are saved directly under `.tumwater/salvage/` for you to read. Both kinds are deleted after
-`sessionRetentionDays`. An
+told they are there. If the role's branch has moved since, files that clash come back with
+conflict markers, and hunks git cannot place arrive in the prompt to apply by hand. The role
+resolves both like any conflict. Edits nothing gives back (ones a run chose to discard, or a
+check's scratch files) are saved directly under `.tumwater/salvage/` for you to read. Both kinds
+are deleted after `sessionRetentionDays`. An
 interrupted merge goes back through the pipeline, and an interrupted director prompt goes back to
 its inbox. A change whose merge ends blocked, in a review error, or in a conflict that stays
 under the limit is put back in the merge queue by the pipeline itself, at once, with its original

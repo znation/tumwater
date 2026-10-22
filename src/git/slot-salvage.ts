@@ -11,18 +11,26 @@
  * A patch whose run gave its slot up unsettled (the slot record's `unsettledRun`: an exception
  * escaped the run, or its process died holding the lease) waits under salvagePendingDir until
  * that role's next run, which restores it into its fresh checkout (restoreSalvagedWork) and
- * runs as a handoff over it. Every other patch is edits a settled run chose to discard, or a
- * verification's scratch output: those stay directly under salvageDir for the operator. Session
- * retention prunes both kinds (src/orchestrator/retention.ts). */
+ * runs as a handoff over it. A patch the role's branch has moved under still goes back: files
+ * that conflict keep their markers, and hunks git cannot place at all reach the run as text to
+ * apply by hand. Every other patch is edits a settled run chose to discard, or a verification's
+ * scratch output: those stay directly under salvageDir for the operator. Session retention
+ * prunes both kinds (src/orchestrator/retention.ts).
+ *
+ * Neither half throws work away on a git that could not start (gitCouldNotStart, the wedge's
+ * EAGAIN): the salvage leaves the slot as it is and fails the lease, and the restore leaves the
+ * patch waiting, so the next attempt finds everything where it was. */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { conflictedFiles } from "../merge/merge-git.js";
 import { salvageDir, salvagePendingDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
-import { git, gitTry, runGit } from "./git-run.js";
+import { git, gitCouldNotStart, gitTry, runGit } from "./git-run.js";
+import { isUsableWorktree } from "./worktree.js";
 
 /** The patch file's name: a sortable local timestamp, the slot's directory name and the role that
  * last held it, so a listing reads in order and names whose work each file is. */
@@ -49,19 +57,27 @@ interface SalvageParties {
  * run under salvagePendingDir when it is set, and is kept directly under salvageDir otherwise.
  * Returns the patch path, or null when there was nothing to save or `dir` is not a worktree git
  * can read (a slot about to be recreated). The patch is built through a temporary index, so the
- * slot's own index is untouched. Never throws: a salvage that fails is logged as a warning that
- * the edits are being discarded unsaved, and the reset goes ahead, since a slot that no lease
- * can reset would fail every role the pool hands it. */
+ * slot's own index is untouched. Throws only when git could not start (gitCouldNotStart), which
+ * fails the lease with the slot untouched: the lease that finds git running again saves the
+ * edits. Any other failure to save is logged as a warning that the edits are being discarded
+ * unsaved, and the reset goes ahead, since a slot that no lease can reset would fail every role
+ * the pool hands it. */
 export async function salvageSlotLeftovers(
   root: string,
   dir: string,
   { leftBy, recoverFor, forRole }: SalvageParties,
   now: Date = new Date(),
 ): Promise<string | null> {
-  const status = await gitTry(dir, "status", "--porcelain", "--untracked-files=all");
-  if (!status) return null;
-  const files = status.split("\n").filter((line) => line.trim() !== "").length;
   const slot = path.basename(dir);
+  let status: string;
+  try {
+    status = await git(dir, "status", "--porcelain", "--untracked-files=all");
+  } catch (err) {
+    if (gitCouldNotStart(err) && (await isUsableWorktree(dir))) throw err;
+    return null;
+  }
+  if (status === "") return null;
+  const files = status.split("\n").filter((line) => line.trim() !== "").length;
   const by = leftBy ?? "an unknown role";
   let tmp: string | undefined;
   try {
@@ -91,6 +107,7 @@ export async function salvageSlotLeftovers(
     );
     return file;
   } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
@@ -132,35 +149,125 @@ function settlePatch(root: string, file: string): string {
   }
 }
 
+/** What restoring a salvaged patch into a checkout did: the patch's new path under salvageDir,
+ * the files left with conflict markers (`<<<<<<< ours` the branch now, `>>>>>>> theirs` the saved
+ * edits), and the hunks git could not place at all, per file, as diff text. */
+interface RestoredWork {
+  patch: string;
+  conflicted: string[];
+  unplaced: { path: string; diff: string }[];
+}
+
 /** Restore the newest patch of `role`'s unfinished work waiting under salvagePendingDir into `dir`,
  * the fresh checkout of the role's branch its run is about to work in, as uncommitted edits. The
- * patch applies exactly when the checkout is still at the patch's base, or by a three-way merge
- * when the branch has moved, and the result is unstaged, so the run finds the worktree an
- * interrupted run would have kept. Returns the restored patch's path, now moved out to
- * salvageDir (older pending patches, superseded by it, move out with it); null when nothing was
- * pending or the restore failed. A patch that does not apply cleanly moves out with a warning
- * naming it, and `dir` is put back as it was, so the run starts fresh. Never throws. */
-export async function restoreSalvagedWork(root: string, role: string, dir: string): Promise<string | null> {
+ * patch applies exactly when the checkout is still at the patch's base. When the branch has moved,
+ * each file goes back on its own (placeSalvagedFile): by a three-way merge, which may leave
+ * conflict markers, else hunk by hunk, with the hunks that fit nowhere returned as text. The
+ * result is unstaged, so the run finds the worktree an interrupted run would have kept. The
+ * patch, and any older one it supersedes, then moves out to salvageDir. Returns null when
+ * nothing was pending. When git could not start or the patch could not be read, the checkout is
+ * put back as it was, the patch stays waiting for the role's next run, and a warning says so.
+ * Never throws. */
+export async function restoreSalvagedWork(root: string, role: string, dir: string): Promise<RestoredWork | null> {
   const [newest, ...older] = pendingPatches(root, role);
   if (newest === undefined) return null;
-  for (const file of older) settlePatch(root, file);
+  let placed: Omit<RestoredWork, "patch">;
   try {
-    try {
-      await git(dir, "apply", "--index", newest);
-    } catch {
-      await git(dir, "apply", "--3way", newest);
-    }
-    await git(dir, "reset", "-q");
-    return settlePatch(root, newest);
+    placed = await applySalvage(dir, newest);
   } catch (err) {
     await gitTry(dir, "reset", "-q", "--hard");
     await gitTry(dir, "clean", "-fdq");
-    const kept = path.relative(root, settlePatch(root, newest));
     warnEventBestEffort(
       root,
       role,
-      `could not restore the uncommitted work an earlier run left unfinished from ${kept} (${errorMessage(err)}); this run starts fresh, and the patch is kept`,
+      `could not restore the uncommitted work an earlier run left unfinished (${errorMessage(err)}); it stays waiting at ${path.relative(root, newest)} for the next run`,
     );
     return null;
+  }
+  for (const file of older) settlePatch(root, file);
+  return { patch: settlePatch(root, newest), ...placed };
+}
+
+/** Apply `patch` into the clean checkout `dir`: exactly when it fits, else file by file. Throws
+ * only when git could not start or the patch cannot be read. */
+async function applySalvage(dir: string, patch: string): Promise<Omit<RestoredWork, "patch">> {
+  try {
+    await git(dir, "apply", "--index", patch);
+    await git(dir, "reset", "-q");
+    return { conflicted: [], unplaced: [] };
+  } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
+  }
+  const unplaced: RestoredWork["unplaced"] = [];
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tumwater-restore-"));
+  try {
+    const sections = fs.readFileSync(patch, "utf8").split(/^(?=diff --git )/m).filter((p) => p.startsWith("diff --git "));
+    for (const [i, section] of sections.entries()) {
+      const file = path.join(tmp, `${i}.patch`);
+      fs.writeFileSync(file, section);
+      unplaced.push(...(await placeSalvagedFile(dir, file, section)));
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  // Read before the reset drops the unmerged index entries; the markers stay in the files.
+  const conflicted = await conflictedFiles(dir);
+  await git(dir, "reset", "-q");
+  return { conflicted, unplaced };
+}
+
+/** The paths one file's section of a patch touches (`git apply --numstat -z`: a rename names its
+ * new path), without decoding git's quoting by hand. */
+async function sectionPaths(dir: string, file: string): Promise<string[]> {
+  const fields = (await git(dir, "apply", "--numstat", "-z", file)).split("\0");
+  const paths: string[] = [];
+  for (let i = 0; i < fields.length; i++) {
+    const m = /^[-\d]+\t[-\d]+\t(.*)$/s.exec(fields[i]!);
+    if (m === null) continue;
+    if (m[1] !== "") paths.push(m[1]!);
+    else if (fields[i + 2] !== undefined) {
+      paths.push(fields[i + 2]!); // a rename: the empty path is followed by its old and new path
+      i += 2;
+    }
+  }
+  return paths;
+}
+
+/** Put one file's section of a salvaged patch back into `dir`: by a three-way merge, which leaves
+ * conflict markers where both sides changed the same lines, else by direct application hunk by
+ * hunk. Returns the hunks that fit nowhere (git's `.rej` text, read and removed so it is never
+ * committed), or the whole section when git could place none of it; empty when all of it went
+ * back. */
+async function placeSalvagedFile(dir: string, file: string, section: string): Promise<RestoredWork["unplaced"]> {
+  const paths = await sectionPaths(dir, file).catch((err: unknown) => {
+    if (gitCouldNotStart(err)) throw err;
+    return [];
+  });
+  const label = paths.join(", ") || (/^diff --git a\/(.*?) b\//.exec(section)?.[1] ?? "a file");
+  if (await applied(dir, ["apply", "--3way", file])) return [];
+  if (paths.length > 0 && (await git(dir, "--literal-pathspecs", "ls-files", "-u", "--", ...paths)) !== "") return [];
+  // A deletion whose file the branch has already removed is done; there is nothing to hand back.
+  if (/^deleted file mode /m.test(section) && paths.length > 0 && paths.every((p) => !fs.existsSync(path.join(dir, p)))) {
+    return [];
+  }
+  if (await applied(dir, ["apply", "--reject", file])) return [];
+  const rejected: RestoredWork["unplaced"] = [];
+  for (const p of paths) {
+    const rej = path.join(dir, `${p}.rej`);
+    if (!fs.existsSync(rej)) continue;
+    rejected.push({ path: p, diff: fs.readFileSync(rej, "utf8") });
+    fs.rmSync(rej, { force: true });
+  }
+  return rejected.length > 0 ? rejected : [{ path: label, diff: section }];
+}
+
+/** Run one `git apply` and say whether it succeeded; a git that could not start throws. */
+async function applied(dir: string, args: string[]): Promise<boolean> {
+  try {
+    await git(dir, ...args);
+    return true;
+  } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
+    return false;
   }
 }

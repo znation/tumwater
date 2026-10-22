@@ -13,7 +13,7 @@ import { useWorktree } from "../git/worktree-use.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { MERGE_LOCK_WAIT_MS, branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
-import { buildConflictHandbackNote } from "../prompt/gate-prompts.js";
+import { buildConflictHandbackNote, buildSalvageRestoreNote } from "../prompt/gate-prompts.js";
 import {
   buildConflictDiscardNote,
   buildMainKnownRedNote,
@@ -452,12 +452,15 @@ async function runOnceInLeasePhase(
 
 /** Give a run on a fresh checkout back the work an earlier run of its role left unsettled
  * (src/git/slot-salvage.ts): restore the newest waiting patch into `dir` and run over it as
- * planWithSalvagedWork says. A run that does not take such work, or has none waiting or cannot
- * restore it, keeps its plan. */
+ * planWithSalvagedWork says, told which files carry conflict markers and which hunks it must
+ * place by hand when the branch moved under the patch. A run that does not take such work, or
+ * has none waiting or cannot restore it now, keeps its plan. */
 async function restoreSalvagedPhase(ctx: RunnerRunContext, plan: RunStartPlan, dir: string): Promise<RunStartPlan> {
   if (!takesSalvagedWork(plan)) return plan;
   const restored = await restoreSalvagedWork(ctx.root, ctx.role, dir);
-  return restored === null ? plan : planWithSalvagedWork(ctx.role, plan, path.relative(ctx.root, restored));
+  if (restored === null) return plan;
+  const note = buildSalvageRestoreNote(conflictedFileHunks(dir, restored.conflicted), restored.unplaced, restored.patch);
+  return planWithSalvagedWork(ctx.role, plan, path.relative(ctx.root, restored.patch), note);
 }
 
 /** Put `tumwater/<role>` on the leased slot before authoring. An existing branch is checked
@@ -704,7 +707,8 @@ async function runWithWorktreePhase(
   }
 
   const runBase = await headOf(wt, "HEAD");
-  const primaryBefore = new Set(await changedFiles(ctx.root));
+  // The stray-write warning only reports, so a `git status` that fails on either side skips it.
+  const primaryBefore = await changedFiles(ctx.root).catch(() => null);
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.runs}`, resuming, cfg);
   // The harness owns every commit (INV-H1): fold any the agent made into the run's one commit.
   await foldAgentCommitsSince(ctx, wt, runBase);
@@ -712,7 +716,8 @@ async function runWithWorktreePhase(
   // can read as no_change with its work orphaned (BUGS.md, 2026-10-20). The before/after diff
   // cannot attribute paths to this run when roles overlap, so only warn: the verdict, resume
   // handling and model-fallback fold below stay as they were.
-  const strayed = (await changedFiles(ctx.root)).filter((f) => !primaryBefore.has(f));
+  const primaryAfter = primaryBefore === null ? null : await changedFiles(ctx.root).catch(() => null);
+  const strayed = primaryAfter === null ? [] : primaryAfter.filter((f) => !primaryBefore!.includes(f));
   if (strayed.length > 0 && !pi.aborted) {
     const shown = strayed.slice(0, 10).join(", ") + (strayed.length > 10 ? `, … (${strayed.length} paths)` : "");
     ctx.warn(`wrote outside the worktree (possibly another writer's): ${shown}`);

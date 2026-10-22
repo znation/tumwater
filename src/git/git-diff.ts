@@ -3,7 +3,7 @@
  * ahead-of-main diff extraction (including its oversized-diff truncation). Everything here
  * interprets git output; spawning git stays in git.ts. */
 import { changeBaseRev, gitLines } from "./git.js";
-import { gitTry } from "./git-run.js";
+import { git, gitTry } from "./git-run.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 
 /** Git's C-quoting short escapes (its `sq_lookup` table) and the byte each decodes to. The
@@ -66,7 +66,10 @@ export function unquotePorcelainPath(p: string): string {
 
 /** Repo-relative paths of every change in the worktree — modified, untracked, and deleted, parsed
  * from `git status --porcelain -z` (paths only). The refusal path uses this to classify what a
- * refusing run left behind: markdown notes may be kept, everything else is discarded.
+ * refusing run left behind: markdown notes may be kept, everything else is discarded. A failed
+ * `git status` throws: read as "no changes", it once sent a refusal's or a self-check's
+ * decision down the path that drops the run's work (2026-10-21's spawn wedge), so a caller that
+ * only reports (a view, a warning) catches it itself.
  *
  * The `-z` format is what git recommends for machine parsing: records are NUL-terminated and
  * paths are emitted verbatim, never C-quoted, so a path with whitespace, a quote, a control
@@ -77,7 +80,7 @@ export function unquotePorcelainPath(p: string): string {
  * `-z` a rename/copy is two records — `XY <to>\0<from>\0`, destination first — so this reads
  * the destination (the path that exists now) and skips the extra origin record. */
 export async function changedFiles(wt: string): Promise<string[]> {
-  const out = await gitTry(wt, "status", "--porcelain", "-z");
+  const out = await git(wt, "status", "--porcelain", "-z");
   if (!out) return [];
   const files: string[] = [];
   const records = out.split("\0");

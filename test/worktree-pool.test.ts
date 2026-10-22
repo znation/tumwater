@@ -8,7 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { leaseSlot, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
+import { leaseSlot, pinCrashedRuns, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -774,4 +774,53 @@ test("a run lease its process died holding is attributed to its role and saved a
   assert.equal(readdirSync(salvagePendingDir(root, "feature")).length, 1, "the dead run's work waits for feature");
   assert.match(readdirSync(salvagePendingDir(root, "feature"))[0]!, /-feature\.patch$/, "not named for docs");
   next.release();
+});
+
+/** A slot whose run lease `role` held when its process died, with the run's edit still in it. */
+async function crashedRun(root: string, role: string, purpose: "run" | "verify" = "run"): Promise<string> {
+  const held = await leaseSlot(root, { role, purpose, ref: "main" });
+  writeFileSync(join(held.dir, "in-flight.md"), "work in flight\n");
+  const state = readSlotsState(root);
+  state.slots.find((slot) => slot.dir === held.dir)!.lease = { role, purpose, since: 1, pid: process.pid + 1 };
+  writeSlotsState(root, state);
+  return held.dir;
+}
+
+test("startup pins a run the previous process died in, so its resume keeps the slot and its edits", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const dir = await crashedRun(root, "feature");
+  saveRunnerState(root, { ...freshRunnerState("feature"), running: true });
+
+  pinCrashedRuns(root, ["feature", "docs"]);
+  assert.equal(slotForDir(root, dir)?.pinnedFor, "feature");
+  // Another role's lease neither takes nor resets the pinned slot.
+  const other = await leaseSlot(root, { role: "docs", purpose: "run", ref: "main" });
+  assert.notEqual(other.dir, dir);
+  const resume = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main", keep: true });
+  assert.equal(resume.dir, dir);
+  assert.equal(resume.preserved, true);
+  assert.equal(readFileSync(join(dir, "in-flight.md"), "utf8"), "work in flight\n");
+  assert.equal(existsSync(salvageDir(root)), false, "nothing needed saving");
+  resume.release();
+  other.release();
+});
+
+test("the crash pin skips a role that is not configured, not resuming, already pinned, or verifying", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 4 });
+  const removed = await crashedRun(root, "gone");
+  saveRunnerState(root, { ...freshRunnerState("gone"), running: true });
+  const idle = await crashedRun(root, "docs");
+  saveRunnerState(root, freshRunnerState("docs"));
+  const verify = await crashedRun(root, "security", "verify");
+  saveRunnerState(root, { ...freshRunnerState("security"), running: true });
+  const second = await crashedRun(root, "feature");
+  saveRunnerState(root, { ...freshRunnerState("feature"), resumePending: true });
+  const state = readSlotsState(root);
+  state.slots.push({ dir: join(root, "elsewhere"), lease: null, pinnedFor: "feature", lastRole: null, lastReleasedAt: null });
+  writeSlotsState(root, state);
+
+  pinCrashedRuns(root, ["docs", "security", "feature"]);
+  for (const dir of [removed, idle, verify, second]) assert.equal(slotForDir(root, dir)?.pinnedFor, null, dir);
 });

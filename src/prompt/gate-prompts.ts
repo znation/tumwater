@@ -410,6 +410,62 @@ export interface StagedDescription {
   body: string;
 }
 
+/** How much of the hunks a salvage restore could not place one note quotes, per file and in all:
+ * enough to apply a typical leftover by hand without letting one huge rejected file crowd out
+ * the run's own prompt. The full patch is always named for the rest. */
+const UNPLACED_FILE_CHARS = 4_000;
+const UNPLACED_TOTAL_CHARS = 16_000;
+
+/** The note a run gets when the salvaged work restored into its worktree (src/git/slot-salvage.ts)
+ * did not all go back cleanly because its branch moved since the work was saved: the files left
+ * with conflict markers, with their hunks' line ranges, and the hunks git could not place at all,
+ * quoted for the run to apply by hand (a binary file only named), with the saved patch's path for
+ * anything cut. Undefined when everything went back cleanly. */
+export function buildSalvageRestoreNote(
+  conflicted: readonly (string | ConflictedFile)[],
+  unplaced: readonly { path: string; diff: string }[],
+  patchPath: string,
+): string | undefined {
+  if (conflicted.length === 0 && unplaced.length === 0) return undefined;
+  const parts = ["The saved edits did not all go back cleanly: your branch moved since they were saved."];
+  if (conflicted.length > 0) {
+    const readHint = listsHunks(conflicted)
+      ? "\nRead each listed hunk's line range plus a few lines of context, not a conflicted file from the top."
+      : "";
+    parts.push(
+      `These files carry conflict markers: \`<<<<<<< ours\` holds the branch's current text and
+\`>>>>>>> theirs\` the saved edits. Resolve every marker (<<<<<<<, =======, >>>>>>>), keeping the
+intent of both sides:
+${conflicted.map(conflictedFileLine).join("\n")}${readHint}`,
+    );
+  }
+  if (unplaced.length > 0) {
+    let budget = UNPLACED_TOTAL_CHARS;
+    let cut = 0;
+    const quoted: string[] = [];
+    for (const { path, diff } of unplaced) {
+      const body = diff.includes("GIT binary patch")
+        ? "(a binary file: its saved version is in the patch below)"
+        : diff.length > UNPLACED_FILE_CHARS
+          ? `${diff.slice(0, UNPLACED_FILE_CHARS)}\n… (cut; the rest is in the patch below)`
+          : diff.trimEnd();
+      if (body.length > budget) {
+        cut += 1;
+        continue;
+      }
+      budget -= body.length;
+      quoted.push(`<diff path="${path}">\n${body}\n</diff>`);
+    }
+    parts.push(
+      `These saved hunks could not be placed at all. Apply what still makes sense by hand, and leave
+out what the branch already does:
+${quoted.join("\n")}${cut > 0 ? `\n(${cut} more file(s) not shown: they are in the patch below.)` : ""}`,
+    );
+  }
+  parts.push(`The whole saved patch is at ${patchPath}; read it only if you need more than the above.`);
+  return `<salvage-restore>\n${parts.join("\n\n")}\n</salvage-restore>`;
+}
+
 /** The note appended to a role's run prompt when a change was handed back to it with the
  * conflict markers left in place (PLANS.md "Robust conflict landing, part 2/2"): the merge
  * resolver could not settle it, so the author — who knows what the change was for — resolves it

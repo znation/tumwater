@@ -7,6 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildConflictHandbackNote,
+  buildSalvageRestoreNote,
   buildConflictPrompt,
   buildReviewPrompt,
   buildReviewResumePrompt,
@@ -451,4 +452,38 @@ test("buildStageFixPrompt asks for a whole-change SUMMARY when the subject was d
   const p = buildStageFixPrompt(["a fault"], { summary: null, body: "" });
   assert.match(p, /\n {2}SUMMARY: <[^\n]*whole change, not of this turn/);
   assert.doesNotMatch(p, /description stays/, "no empty description block");
+});
+
+test("buildSalvageRestoreNote is undefined when the salvaged work went back cleanly", () => {
+  assert.equal(buildSalvageRestoreNote([], [], "/r/.tumwater/salvage/p.patch"), undefined);
+});
+
+test("buildSalvageRestoreNote names conflicted hunks and quotes unplaced hunks, binary only named", () => {
+  const note = buildSalvageRestoreNote(
+    [{ path: "notes.md", hunks: [{ start: 2, end: 6 }], more: 0 }],
+    [
+      { path: "long.md", diff: "@@ -17,3 +17,3 @@\n-line 18\n+line eighteen\n" },
+      { path: "logo.png", diff: "diff --git a/logo.png b/logo.png\nGIT binary patch\nliteral 12\nzcmXp" },
+    ],
+    "/r/.tumwater/salvage/p.patch",
+  )!;
+  assert.match(note, /^<salvage-restore>\n/);
+  assert.match(note, /`<<<<<<< ours` holds the branch's current text/);
+  assert.match(note, /^- notes\.md \(conflict hunks at lines 2-6\)$/m);
+  assert.match(note, /<diff path="long\.md">\n@@ -17,3 \+17,3 @@\n-line 18\n\+line eighteen\n<\/diff>/);
+  assert.match(note, /<diff path="logo\.png">\n\(a binary file: its saved version is in the patch below\)/);
+  assert.doesNotMatch(note, /zcmXp/, "base85 never reaches the prompt");
+  assert.match(note, /The whole saved patch is at \/r\/\.tumwater\/salvage\/p\.patch/);
+});
+
+test("buildSalvageRestoreNote caps what it quotes and points at the patch for the rest", () => {
+  const big = (n: number): string => `@@ -1 +1 @@\n${"+x\n".repeat(n)}`;
+  const note = buildSalvageRestoreNote(
+    [],
+    [{ path: "a.md", diff: big(3_000) }, ...Array.from({ length: 6 }, (_, i) => ({ path: `f${i}.md`, diff: big(1_200) }))],
+    "/r/p.patch",
+  )!;
+  assert.match(note, /… \(cut; the rest is in the patch below\)/);
+  assert.match(note, /\(\d+ more file\(s\) not shown: they are in the patch below\.\)/);
+  assert.ok(note.length < 20_000, `the note stays bounded (${note.length} chars)`);
 });

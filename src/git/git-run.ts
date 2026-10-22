@@ -82,6 +82,15 @@ export class GitError extends Error {
   }
 }
 
+/** True when `err` is a git call whose process could not be started at all: a spawn errno such
+ * as EAGAIN or ENOMEM, which is what every git call reported while the 2026-10-21 process-table
+ * wedge lasted. That says nothing about the repository and passes with the condition, so a
+ * caller about to act on the answer (discard edits, reset a workspace) waits and retries rather
+ * than treating it as "nothing there". */
+export function gitCouldNotStart(err: unknown): boolean {
+  return err instanceof GitError && typeof err.code === "string";
+}
+
 /** The one error every entry point that shells out to git reports when the binary itself is
  * missing from PATH. Without a preflight check, `isGitRepo`'s failed probe reads as "not a
  * git repository (run `git init` first)" — pointing at the wrong fix for a machine with no

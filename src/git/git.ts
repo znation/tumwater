@@ -2,7 +2,7 @@ import { errCode } from "../errno.js";
 import { isDirectory } from "../files/files.js";
 import fs from "node:fs";
 import path from "node:path";
-import { GIT_TIMEOUT_MS, commitAuthorArgs, committerIdentArgs, execGitBounded, git, gitTry } from "./git-run.js";
+import { GIT_TIMEOUT_MS, commitAuthorArgs, committerIdentArgs, execGitBounded, git, gitCouldNotStart, gitTry } from "./git-run.js";
 
 /** A valid object id (SHA-1 or SHA-256). */
 function isSha(s: string): boolean {
@@ -430,16 +430,21 @@ export async function isDirty(cwd: string): Promise<boolean> {
  * HEAD by the time the reset runs) and untracked files via clean -fd. Returns the new commit hash,
  * or null when nothing was stageable under those paths (the caller then decides what to do with the
  * rest). The refusal path uses this so a refusing run's objection note is kept while its half-done
- * code work is not. */
+ * code work is not. A git that could not start throws instead (gitCouldNotStart): read as
+ * "nothing stageable", it would send the caller on to discard everything, notes included. */
 export async function commitPathsAndDiscardRest(
   wt: string,
   message: string,
   paths: string[],
 ): Promise<string | null> {
   if (paths.length === 0) return null;
-  const added = await gitTry(wt, "add", "--", ...paths);
-  if (added === null) return null; // Pathspec matched nothing — treat as nothing stageable.
-  const staged = await gitTry(wt, "diff", "--cached", "--name-only");
+  try {
+    await git(wt, "add", "--", ...paths);
+  } catch (err) {
+    if (gitCouldNotStart(err)) throw err;
+    return null; // Pathspec matched nothing — treat as nothing stageable.
+  }
+  const staged = await git(wt, "diff", "--cached", "--name-only");
   if (!staged) return null; // Nothing actually changed under those paths.
   await git(wt, ...(await committerIdentArgs(wt)), "commit", ...commitAuthorArgs(), "-m", message);
   await git(wt, "reset", "--hard", "HEAD");

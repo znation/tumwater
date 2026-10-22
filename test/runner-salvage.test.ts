@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { makeRoleRunner, roleWt } from "./fixtures/runner-fixtures.js";
-import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { commitIn, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { leaseSlot } from "../src/git/worktree-pool.js";
 import { logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -57,6 +58,56 @@ test("edits a run left when git failed under it come back to the role's next run
       assert.equal(resume?.cause, "salvaged");
       assert.match(String(resume?.restored), /^\.tumwater\/salvage\/\S+-feature\.patch$/);
       assert.deepEqual(fs.readdirSync(salvagePendingDir(repo, "feature")), [], "nothing is left waiting");
+    },
+  );
+});
+
+test("saved edits the role's branch moved under come back with conflict markers for the run to resolve", async () => {
+  const repo = await initializedRepo();
+  fs.writeFileSync(path.join(repo, "notes.md"), "v1\n");
+  commitIn(repo, "notes");
+  const prompts = path.join(tmpdir(), "prompts-salvage-conflict.log");
+  const counter = path.join(tmpdir(), "salvage-conflict-count");
+  const seen = path.join(tmpdir(), "salvage-conflict-seen.md");
+  await withPi(
+    [
+      logPromptsTo(prompts),
+      `n=$(cat "${counter}" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "${counter}"`,
+      `if [ "$n" = 1 ]; then`,
+      `  printf 'v2 from the first run\\n' > notes.md`,
+      `  chmod 000 "$(git rev-parse --absolute-git-dir)/index"`,
+      `  printf '%s\\n' '${assistantLine("done\nSUMMARY: update the notes")}'`,
+      `else`,
+      `  cp notes.md "${seen}"`,
+      `  printf 'v3 and v2, resolved\\n' > notes.md`,
+      `  printf '%s\\n' '${assistantLine("resolved\nSUMMARY: update the notes")}'`,
+      `fi`,
+    ].join("\n"),
+    async () => {
+      const runner = makeRoleRunner(repo, "feature");
+      assert.equal((await runner.run()).result, "error");
+      const wt = roleWt(repo, "feature");
+      fs.chmodSync(path.join(sh(wt, "git", "rev-parse", "--absolute-git-dir"), "index"), 0o644);
+      // Another role's lease saves feature's edits for it; then feature's branch moves on the
+      // same line before feature runs again.
+      (await leaseSlot(repo, { role: "docs", purpose: "run", ref: "main" })).release();
+      sh(repo, "git", "checkout", "-q", "-B", "moved", "main");
+      fs.writeFileSync(path.join(repo, "notes.md"), "v3 on the branch\n");
+      commitIn(repo, "move the branch");
+      sh(repo, "git", "update-ref", "refs/heads/tumwater/feature", "moved");
+      sh(repo, "git", "checkout", "-q", "main");
+
+      const second = await runner.run();
+      assert.equal(second.result, "queued");
+      assert.equal(
+        fs.readFileSync(seen, "utf8"),
+        "<<<<<<< ours\nv3 on the branch\n=======\nv2 from the first run\n>>>>>>> theirs\n",
+        "the run found the conflict markers in place",
+      );
+      const prompt = readRunBlocks(prompts)[1]!;
+      assert.match(prompt, /<salvage-restore>/);
+      assert.match(prompt, /^- notes\.md \(conflict hunks at lines 1-5\)$/m);
+      assert.equal(sh(repo, "git", "show", `${second.commit}:notes.md`), "v3 and v2, resolved");
     },
   );
 });

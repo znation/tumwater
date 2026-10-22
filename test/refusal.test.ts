@@ -135,6 +135,21 @@ test("a refusal contradicted by its own reply keeps its work (BUGS.md 2026-09-23
   assert.deepEqual(await refusalContradiction(wt, "SUMMARY: note only"), []);
 });
 
+test("refusalContradiction throws on a git that cannot read the worktree instead of letting the refusal discard it", async () => {
+  // 2026-10-21: in the spawn wedge `git status` failed, and an empty answer here would read as
+  // "no work beside the refusal", so the refusal's reset would drop finished work. Thrown, the
+  // run ends unsettled and its next run gets the edits back (src/git/slot-salvage.ts).
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "broken.ts"), "export const fixed = true;\n");
+  const index = path.join(sh(wt, "git", "rev-parse", "--absolute-git-dir"), "index");
+  fs.chmodSync(index, 0);
+  try {
+    await assert.rejects(refusalContradiction(wt, "did it\nSUMMARY: fixed the leak\nTUMWATER_REFUSED: none"), /git status/);
+  } finally {
+    fs.chmodSync(index, 0o644);
+  }
+});
+
 test("refusalContradiction returns empty when the worktree is clean", async () => {
   const { wt } = await initializedWorktree();
   assert.deepEqual(await refusalContradiction(wt, "SUMMARY: nothing changed"), []);

@@ -513,6 +513,29 @@ export async function retireLegacyRoleWorktrees(
   }
 }
 
+/** Startup pass for runs the previous process died in (crash, kill -9, power loss): such a run's
+ * lease is still in slots.json with the dead pid, and its RoleRunner reads the persisted
+ * `running` flag as a resume that must run in the same checkout, the cwd its session used. Pin
+ * each such slot for its role, as the graceful shutdown's abort pin would have, unless the role
+ * already holds a pin; the next claim then clears the dead lease (marking the run unsettled) and
+ * the resume leases the pinned slot with its edits in place. Only configured roles count, as in
+ * retireLegacyRoleWorktrees, so a removed role never leaks a pin. Like that pass, it runs before
+ * any run can lease, while loadRunnerState still reports the on-disk flags. */
+export function pinCrashedRuns(root: string, configured: readonly string[]): void {
+  const configuredSet = new Set(configured);
+  updateSlotsState(root, (state) => {
+    for (const slot of state.slots) {
+      const lease = slot.lease;
+      if (lease === null || lease.pid === process.pid || lease.purpose !== "run") continue;
+      if (!configuredSet.has(lease.role) || state.slots.some((s) => s.pinnedFor === lease.role)) continue;
+      const runner = loadRunnerState(root, lease.role);
+      if (runner.running !== true && runner.resumePending !== true) continue;
+      slot.pinnedFor = lease.role;
+      slot.pinnedAt = Date.now();
+    }
+  });
+}
+
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
  * `ref`, any uncommitted edits its last holder left saved first (salvageSlotLeftovers), as work
  * to hand back when that holder was a run that never settled them; rejects on a `signal` abort
