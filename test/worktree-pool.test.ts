@@ -6,14 +6,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { leaseSlot, slotPoolSnapshot, tryLeaseSlot, removeDroppedSlots, retireLegacyRoleWorktrees, type SlotLeaseHandle } from "../src/git/worktree-pool.js";
 import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-state.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
-import { eventsLogPath, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
+import { eventsLogPath, salvageDir, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { sleep } from "./helpers/wait.js";
@@ -671,4 +671,46 @@ test("tryLeaseSlot resolves null instead of waiting, and a check lease never tak
   assert.equal(await tryLeaseSlot(root, { role: "feature", purpose: "verify-check", ref: "main" }), null);
   check.release();
   second.release();
+});
+
+test("a slot a killed run left with uncommitted edits is saved as a patch and reset for the next role", async () => {
+  // 2026-10-21: two slots held uncommitted work from runs the process-table wedge killed, and the
+  // next lease's checkout failed on them ("Your local changes … would be overwritten") for every
+  // role the pool handed them to.
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  writeFileSync(join(root, "notes.md"), "v1\n");
+  commitIn(root, "notes");
+  const killed = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  writeFileSync(join(killed.dir, "notes.md"), "edited by the killed run\n");
+  writeFileSync(join(killed.dir, "new-file.md"), "untracked work\n");
+  killed.release(); // as a run the harness could not clean up after releases it
+
+  const next = await leaseSlot(root, { role: "security", purpose: "run", ref: "main" });
+  assert.equal(next.dir, killed.dir);
+  assert.equal(sh(next.dir, "git", "status", "--porcelain"), "", "the slot is clean for its new holder");
+  const saved = readdirSync(salvageDir(root));
+  assert.equal(saved.length, 1);
+  assert.match(saved[0]!, /^\d{4}-\d\d-\d\d-\d{6}-_slot-1-feature\.patch$/);
+  const patch = join(salvageDir(root), saved[0]!);
+  assert.match(
+    warningMessages(root).join("\n"),
+    /workspace _slot-1 still held 2 uncommitted file\(s\) feature left behind; saved them to \.tumwater\/salvage\/\S+ and reset it for security/,
+  );
+  // The patch gives the work back: applied on the base, both edits return.
+  sh(next.dir, "git", "apply", "--index", patch);
+  assert.equal(readFileSync(join(next.dir, "notes.md"), "utf8"), "edited by the killed run\n");
+  assert.equal(readFileSync(join(next.dir, "new-file.md"), "utf8"), "untracked work\n");
+  sh(next.dir, "git", "reset", "-q", "--hard");
+  next.release();
+});
+
+test("a clean slot is reset with nothing saved and no warning", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  (await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" })).release();
+  const next = await leaseSlot(root, { role: "security", purpose: "run", ref: "main" });
+  assert.equal(existsSync(salvageDir(root)), false);
+  assert.equal(warningMessages(root).some((m) => m.includes("uncommitted")), false);
+  next.release();
 });

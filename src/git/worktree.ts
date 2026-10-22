@@ -249,7 +249,12 @@ function clearStaleIndexLock(wt: string): void {
   }
 }
 
-/** `git checkout --detach ref`, tolerating a dangling tumwater pin. Leaving a detached HEAD makes
+/** `git checkout --detach --force ref`, tolerating a dangling tumwater pin. `--force` because every
+ * caller hard-resets to `ref` right after: without it, uncommitted edits a killed run left in the
+ * worktree failed the checkout ("Your local changes … would be overwritten") on every later reset,
+ * so a pooled slot holding them failed each role it was handed (2026-10-21). A pooled slot's
+ * edits are saved first (slot-salvage.ts); the harness's own scratch worktrees hold nothing to
+ * keep. Leaving a detached HEAD makes
  * git walk every ref to report orphaned commits, so one `refs/tumwater/…` pin (merge, rejected,
  * legacy landing) whose object is gone fails the checkout "fatal: bad object <ref>" (128) and
  * errors the role's run. The pin is unusable either way, so the named ref is deleted and the
@@ -258,7 +263,7 @@ function clearStaleIndexLock(wt: string): void {
 async function checkoutDetached(root: string, wt: string, ref: string): Promise<void> {
   for (;;) {
     try {
-      await git(wt, "checkout", "--detach", ref);
+      await git(wt, "checkout", "--detach", "--force", ref);
       return;
     } catch (err) {
       const dangling = /fatal: bad object (refs\/tumwater\/\S+)/.exec(String(err instanceof Error ? err.message : err));

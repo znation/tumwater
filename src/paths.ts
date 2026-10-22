@@ -74,6 +74,12 @@ export function worktreesDir(root: string): string {
   return path.join(tumwaterDir(root), "worktrees");
 }
 
+/** Where a pooled slot's uncommitted leftovers are saved as patches before the slot is reset for
+ * another lease (slot-salvage.ts). Never read by tumwater: the files are for the operator. */
+export function salvageDir(root: string): string {
+  return path.join(tumwaterDir(root), "salvage");
+}
+
 /** A role's persistent git worktree under .tumwater/worktrees/. */
 export function worktreePath(root: string, role: string): string {
   return path.join(worktreesDir(root), role);

@@ -41,6 +41,22 @@ test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing 
   assert.equal(fs.readFileSync(path.join(dir, "seed.txt"), "utf8"), "moved\n");
 });
 
+test("ensureDetachedWorktree re-points a worktree whose tracked files a killed run left modified", async () => {
+  // A plain `checkout --detach` refuses when an edit to a file the target changes would be
+  // overwritten, so a killed run's edits failed every later reset of the worktree (2026-10-21).
+  const root = makeRepo();
+  const dir = mirrorWorktreePath(root);
+  await ensureDetachedWorktree(root, dir, headSha(root));
+  fs.writeFileSync(path.join(dir, "seed.txt"), "a killed run's edit\n");
+  fs.writeFileSync(path.join(root, "seed.txt"), "moved\n");
+  sh(root, "git", "commit", "-q", "-am", "move main");
+  const moved = headSha(root);
+  await ensureDetachedWorktree(root, dir, moved);
+  assert.equal(headSha(dir), moved);
+  assert.equal(fs.readFileSync(path.join(dir, "seed.txt"), "utf8"), "moved\n");
+  assertClean(dir);
+});
+
 test("ensureDetachedWorktree clears a stale index.lock left by a killed git", async () => {
   const repo = makeRepo();
   const head = headSha(repo);

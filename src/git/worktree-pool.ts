@@ -16,6 +16,7 @@ import { worktreesDir, slotWorktreePath } from "../paths.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState, slotForDir, updateSlotsState, type SlotPurpose } from "./slots-state.js";
+import { salvageSlotLeftovers } from "./slot-salvage.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 import { logEventBestEffort, warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
@@ -490,7 +491,8 @@ export async function retireLegacyRoleWorktrees(
 }
 
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
- * `ref`; rejects on a `signal` abort while waiting. The returned `release` is idempotent. */
+ * `ref`, any uncommitted edits its last holder left saved first (salvageSlotLeftovers); rejects
+ * on a `signal` abort while waiting. The returned `release` is idempotent. */
 export async function leaseSlot(
   root: string,
   options: LeaseSlotOptions,
@@ -517,7 +519,8 @@ async function prepareLeased(
   options: LeaseSlotOptions,
 ): Promise<SlotLeaseHandle> {
   const { role, ref, keep } = options;
-  const preserved = keep === true && slotForDir(root, dir)?.pinnedFor === role;
+  const record = slotForDir(root, dir);
+  const preserved = keep === true && record?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
   // The use registry is LRU bookkeeping; freeing the slot is the real work of a release, so a
   // failed registry write here (ENOSPC, a lock timeout) must not escape: the dead-lease reaper
@@ -528,6 +531,9 @@ async function prepareLeased(
   };
   if (!preserved) {
     try {
+      // A run the harness could not clean up after may have left uncommitted edits here; save
+      // them before the reset discards them (slot-salvage.ts).
+      await salvageSlotLeftovers(root, dir, record?.lastRole ?? null, role);
       await ensureDetachedWorktree(root, dir, ref);
     } catch (err) {
       releaseUse();

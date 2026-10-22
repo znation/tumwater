@@ -4379,3 +4379,13 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 **Binds.** `src/verdict/refusal.ts` (`handleRefusal`), `src/runner/runner-run.ts` (`mergePhase`) and `src/merge/merge-to-main.ts` (`tryMerge`, `MergeContext.lockTimeoutMs`).
 
 **Pinned by.** `test/refusal.test.ts` — "a note merge that throws records lastError and still returns the refusal"; `test/merge-to-main.test.ts` — "mergeToMain waits for merge.lock up to ctx.lockTimeoutMs and names the lock when it gives up".
+
+## Worktree pool lease: a slot a killed run left dirty is saved and reset, never handed on broken
+
+### INV-CU1: a lease saves a slot's uncommitted leftovers as a patch, then resets it, and a dirty worktree never fails the reset
+
+**Guarantee.** Before `prepareLeased` resets a slot it is not preserving for its role's resume, `salvageSlotLeftovers` writes any modified, deleted or untracked (not ignored) files in it as a patch against the slot's HEAD under `.tumwater/salvage/`, named by time, slot and the slot's last holder, and logs a warning naming all three. A clean slot writes nothing and warns nothing. The reset's detach (`checkoutDetached`) is forced, so uncommitted edits never fail it. A salvage that fails is logged as a warning and the reset still runs.
+
+**Binds.** `src/git/slot-salvage.ts` (`salvageSlotLeftovers`), `src/git/worktree-pool.ts` (`prepareLeased`) and `src/git/worktree.ts` (`checkoutDetached`, `ensureDetachedWorktree`).
+
+**Pinned by.** `test/worktree-pool.test.ts` — "a slot a killed run left with uncommitted edits is saved as a patch and reset for the next role" and "a clean slot is reset with nothing saved and no warning"; `test/worktree.test.ts` — "ensureDetachedWorktree re-points a worktree whose tracked files a killed run left modified".

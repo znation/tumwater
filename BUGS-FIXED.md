@@ -5,6 +5,15 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A pooled slot left with a killed run's uncommitted edits failed every role it was handed, and a role-branch checkout could drop such edits without a trace (found by operator session 2026-10-22 from the restarted team's `run_end` errors) — fixed 2026-10-22 by operator session
+
+- **Symptom:** after the 10-21 restart, 13 runs in the first 4 minutes ended `git checkout --detach main failed (1): error: Your local changes to the following files would be overwritten by checkout`, and roles were streak-paused. Two slots held edits from runs the 10-21 process-table wedge killed (feature's 21-file fast-merge "Defaults" revision; bugfix-2's BUGS.md cleanup), and neither was pinned to its owner. An operator saved both as patches and reset the slots by hand.
+- **Cause:** a run that cannot clean up (killed, or its own git calls failing) releases its slot dirty. `prepareLeased` resets any slot it is not preserving through `ensureDetachedWorktree`, whose `checkout --detach` (not forced) refuses on those edits, so the lease failed and freed the slot still dirty for the next role, forever. When the role branch's `checkout -f` ran instead, it discarded the edits silently.
+- **Fix:** `prepareLeased` first saves a slot's leftovers (modified, deleted and untracked files) as a patch under `.tumwater/salvage/` through a temporary index, and warns naming the slot, the role that left them and the file (src/git/slot-salvage.ts). `checkoutDetached` now forces the detach that the hard reset right after it already implied. Pinned by INV-CU1 and tests in test/worktree-pool.test.ts and test/worktree.test.ts; both fail with the production error when the fix is reverted.
+- **Not covered:** salvage patches are never pruned. Nothing re-queues salvaged work: an operator applies a patch by hand, or the role redoes the work.
+
+**Validation gap:** none — the live team showed the failure and the leftovers, and the pool test reproduces the exact checkout error with a slot released dirty.
+
 ### A failed review held its team permit through its in-place retry pauses, so with the permits full no other role could start for up to a minute (found by operator session 2026-10-21 from `a run parked through a restart hold…` in test/orchestrator-redeploy.e2e.test.ts) — fixed 2026-10-22 by operator session
 
 - **Symptom:** with `maxConcurrent: 1`, a parked role never started while the only verification's reviewer kept failing. The e2e test timed out at 20 s, holding `permits.inUse 1/1`, and the review logged `retrying the review in place` and then nothing.
