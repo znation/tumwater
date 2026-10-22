@@ -3,8 +3,9 @@
  * (plans/provider-concurrency.md §5). These pin the properties a unit test is meant to hold:
  * a run with no lease in context is a no-op, a run on the lease's own key never re-keys, a run
  * on another key releases the old key before (and instead of waiting in line for) the new one,
- * a re-key to a full provider parks and reports the wait through the hooks, and the pool-slot
- * drop returns the key without giving up the team permit. */
+ * a re-key to a full provider parks and reports the wait through the hooks, the pool-slot
+ * drop returns the key without giving up the team permit, and an idle stretch runs without the
+ * lease's permit. */
 import test from "node:test";
 import assert from "node:assert/strict";
 
@@ -13,6 +14,7 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import {
   dropProviderLeaseKey,
   ensureProviderLease,
+  idleWithoutProviderLease,
   withProviderLease,
 } from "../src/concurrency/provider-lease.js";
 import { sleep } from "./helpers/wait.js";
@@ -136,4 +138,43 @@ test("dropProviderLeaseKey returns the held key without giving up the team permi
   });
   lease.release();
   assert.equal(semaphore.snapshot().inUse, 0);
+});
+
+test("idleWithoutProviderLease runs the wait without the lease's permit and key, then takes both back", async () => {
+  const semaphore = new Semaphore(1);
+  semaphore.setKeyCaps({ omlx: 1 });
+  const lease = await semaphore.acquireLease(0, "omlx");
+  await withProviderLease(lease, semaphore, async () => {
+    await idleWithoutProviderLease(async () => {
+      const snap = semaphore.snapshot();
+      assert.deepEqual([snap.inUse, snap.byKey.omlx!.inUse], [0, 0], "nothing is held during the wait");
+    });
+    const snap = semaphore.snapshot();
+    assert.deepEqual([snap.inUse, snap.byKey.omlx!.inUse], [1, 1], "both are held again after it");
+  });
+  lease.release();
+  assert.equal(semaphore.snapshot().inUse, 0);
+});
+
+test("idleWithoutProviderLease just waits without a lease in context, and takes nothing back once aborted", async () => {
+  let waited = false;
+  await idleWithoutProviderLease(async () => {
+    waited = true;
+  });
+  assert.equal(waited, true, "no lease in context: the wait still runs");
+
+  const semaphore = new Semaphore(1);
+  const lease = await semaphore.acquireLease(0);
+  const controller = new AbortController();
+  await withProviderLease(lease, semaphore, async () => {
+    // A parked run takes the permit during the wait; once aborted, the lease must not queue for it.
+    const other = semaphore.acquireLease(0);
+    await idleWithoutProviderLease(async () => {
+      controller.abort();
+    }, controller.signal);
+    (await other).release();
+  });
+  assert.equal(semaphore.snapshot().inUse, 0, "the aborted lease took nothing back");
+  lease.release();
+  assert.equal(semaphore.snapshot().inUse, 0, "and releasing it owes nothing");
 });

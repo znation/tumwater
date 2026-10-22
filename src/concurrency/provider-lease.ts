@@ -91,3 +91,36 @@ export async function dropProviderLeaseKey(): Promise<void> {
   if (!ctx) return;
   await ctx.lease.rekey(undefined);
 }
+
+/** Run `wait`, an idle stretch inside the calling lease's work, with the lease's team permit and
+ * key slot handed back (SemaphoreLease.pause), so a parked run can use them meanwhile, then take
+ * them back (resume) before returning. A failed review's in-place retry pause is the caller: with
+ * one team permit, a reviewer that kept failing held it through two 30 s pauses and starved every
+ * other role. Once `signal` has fired, nothing is taken back and the caller's release() settles a
+ * still-paused lease. No-op without a lease in context. */
+export async function idleWithoutProviderLease(wait: () => Promise<void>, signal?: AbortSignal): Promise<void> {
+  const ctx = providerLeaseStore.getStore();
+  if (!ctx) return wait();
+  ctx.lease.pause();
+  try {
+    await wait();
+  } finally {
+    if (!signal?.aborted) await untilAborted(ctx.lease.resume(), signal);
+  }
+}
+
+/** `p`, or an earlier return once `signal` fires: a resume parked on a full team must not keep an
+ * aborted verification waiting for a permit it no longer needs. */
+async function untilAborted(p: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return p;
+  let onAbort: () => void = () => {};
+  const aborted = new Promise<void>((resolve) => {
+    onAbort = resolve;
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    await Promise.race([p, aborted]);
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}

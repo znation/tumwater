@@ -13,7 +13,10 @@ import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logFlagsTo, piRanMarker, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
-import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
+import { sleep, waitForLogLines, watchdogClock } from "./helpers/wait.js";
+import { withProviderLease } from "../src/concurrency/provider-lease.js";
+import { Semaphore } from "../src/concurrency/semaphore.js";
+import { VERIFY_TIER } from "../src/merge/merge-verify.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 
@@ -426,6 +429,36 @@ test("a retry waits out a provider hold without spending a retry", async () => {
     const result = await reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2, reviewHeld }, freshRunnerState(ROLE));
     assert.equal(result.decision, "approved");
   });
+});
+
+test("a retry's pause hands the verification's permit to a parked role, and the next attempt waits to take it back", async () => {
+  // 2026-10-21: with one team permit, a reviewer that kept failing held it through both 30 s
+  // pauses, so a role parked behind it could not start (orchestrator-redeploy.e2e's restart hold).
+  const { root, wt } = await gateFixture();
+  const counter = path.join(tmpdir(), "runs");
+  const runs = (): number => Number(fs.readFileSync(counter, "utf8").trim());
+  const sem = new Semaphore(1);
+  const lease = await sem.acquireLease(VERIFY_TIER);
+  // The role run parked behind the verification: granted only once the pause hands the permit over.
+  const parked = sem.acquireLease(0);
+  await withPi(flakyReviewer(counter, 1, "exit 143"), async () => {
+    const review = withProviderLease(lease, sem, () =>
+      reviewAheadOfMain({ ...gateCtx(root, wt), retries: 2, retryDelayMs: 50 }, freshRunnerState(ROLE)),
+    );
+    const first = await Promise.race([parked.then(() => "role"), review.then(() => "review")]);
+    assert.equal(first, "role", "the parked role starts before the review ends, not after it");
+    const roleLease = await parked;
+    assert.equal(runs(), 1, "the parked role got the permit during the pause after the first, failed run");
+    await sleep(300);
+    assert.equal(runs(), 1, "the next attempt waits for the permit instead of running without one");
+    roleLease.release();
+    const result = await review;
+    assert.equal(result.decision, "approved");
+    assert.equal(runs(), 2);
+    assert.equal(sem.snapshot().inUse, 1, "the verification holds its permit again");
+  });
+  lease.release();
+  assert.equal(sem.snapshot().inUse, 0);
 });
 
 test("gate does not discard the commit when the reviewer run itself fails", async () => {

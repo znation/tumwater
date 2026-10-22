@@ -18,6 +18,7 @@ import { conflictMarkerReason } from "../merge/merge-git.js";
 import { protectedEditReason } from "./protected-edits.js";
 import { secretLeakReason } from "./secret-leaks.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
+import { idleWithoutProviderLease } from "../concurrency/provider-lease.js";
 import { setMergeStage } from "../merge/merge-slot.js";
 import type { SlotLeaseHandle } from "../git/worktree-pool.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
@@ -387,7 +388,9 @@ async function reviewAttempt(
  * the provider, or stated no VERDICT after its recovery turn. A resumable session is resumed,
  * otherwise the retry starts fresh (reviewAttempt). A configuration error and an abort are not
  * retried. While the reviewer's provider is held the retry waits for the hold to lift and
- * costs nothing. See reviewAttempt for the rest of the gate's contract. */
+ * costs nothing. Each pause runs without the caller's team permit (idleWithoutProviderLease):
+ * a verification hands its lease back while it waits and takes it back before the next attempt.
+ * See reviewAttempt for the rest of the gate's contract. */
 export async function reviewAheadOfMain(
   ctx: ReviewContext,
   state: RunnerState,
@@ -407,8 +410,12 @@ export async function reviewAheadOfMain(
       ctx.role,
       `the reviewer run failed (${result.detail ?? "no detail"}) — ${held ? "waiting for the provider hold to lift, then " : ""}retrying the review in place`,
     );
-    await sleepUnlessAborted(delayMs, ctx.signal);
-    while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepUnlessAborted(Math.min(delayMs, 5000), ctx.signal);
+    // The pause holds no team permit: a verification's lease is handed back while it waits and
+    // re-taken before the next attempt, so a reviewer that keeps failing does not starve the roles.
+    await idleWithoutProviderLease(async () => {
+      await sleepUnlessAborted(delayMs, ctx.signal);
+      while (ctx.reviewHeld?.() && !ctx.signal?.aborted) await sleepUnlessAborted(Math.min(delayMs, 5000), ctx.signal);
+    }, ctx.signal);
     if (ctx.signal?.aborted) return { decision: "failed", aborted: true };
     if (!held) retry.retriesLeft -= 1;
     retry.attempt += 1;

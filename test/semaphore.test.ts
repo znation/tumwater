@@ -495,6 +495,72 @@ test("re-key waiters hold a team permit only, so the key always drains (no deadl
   l2.release();
 });
 
+test("a paused lease hands its permit and key slot to a parked waiter, and resume queues for the next free one", async () => {
+  const sem = new Semaphore(1);
+  sem.setKeyCaps({ k: 1 });
+  const holder = await sem.acquireLease(0, "k");
+  let waiterGranted = false;
+  const waiter = sem.acquireLease(0, "k").then((l) => {
+    waiterGranted = true;
+    return l;
+  });
+  await flushImmediate();
+  assert.equal(waiterGranted, false, "the waiter parks while the holder holds the only permit");
+
+  holder.pause();
+  const parked = await waiter;
+  assert.equal(waiterGranted, true, "pause hands the team permit and k's slot to the waiter");
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1]);
+
+  let resumed = false;
+  const resume = holder.resume().then(() => (resumed = true));
+  await flushImmediate();
+  assert.equal(resumed, false, "resume waits like any admission waiter while the permit is taken");
+  parked.release();
+  await resume;
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [1, 1], "the holder has both back");
+  holder.release();
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0]);
+});
+
+test("releasing a paused lease, or one whose resume is still queued, owes nothing", async () => {
+  const sem = new Semaphore(1);
+  sem.setKeyCaps({ k: 1 });
+  const idle = await sem.acquireLease(0, "k");
+  idle.pause();
+  idle.pause(); // a second pause is a no-op, never a second give-back
+  idle.release();
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0], "a paused lease held nothing to free");
+
+  const holder = await sem.acquireLease(0, "k");
+  holder.pause();
+  const other = await sem.acquireLease(0, "k");
+  let resumed = false;
+  const resume = holder.resume().then(() => (resumed = true));
+  await flushImmediate();
+  holder.release(); // the aborted verification's finally, while its resume is queued
+  await resume;
+  assert.equal(resumed, true, "the cancelled resume settles");
+  assert.equal(sem.waiting, 0, "and leaves the queue");
+  other.release();
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["k"]?.inUse], [0, 0], "no count goes negative or leaks");
+  await holder.resume(); // a released lease never takes a permit back
+  assert.equal(sem.snapshot().inUse, 0);
+});
+
+test("a forced lease's pause gives its key slot back and resume takes it again without waiting", async () => {
+  const sem = new Semaphore(1);
+  sem.setKeyCaps({ k: 1 });
+  const forced = sem.forceLease("k");
+  forced.pause();
+  assert.equal(sem.snapshot().byKey["k"]?.inUse, 0);
+  await forced.resume();
+  assert.equal(sem.snapshot().byKey["k"]?.inUse, 1);
+  assert.equal(sem.snapshot().inUse, 0, "a forced lease never counts toward the team total");
+  forced.release();
+  assert.equal(sem.snapshot().byKey["k"]?.inUse, 0);
+});
+
 test("snapshot reports team and per-key in-use, caps and waiters", async () => {
   const sem = new Semaphore(4);
   sem.setKeyCaps({ a: 1, b: 3 });

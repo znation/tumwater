@@ -25,6 +25,14 @@ export interface SemaphoreLease {
    * ahead of every admission waiter, because it holds a team permit nobody else can use while
    * it waits. A forced lease re-keys without waiting. */
   rekey(to?: string): Promise<void>;
+  /** Hand the team permit and the key's slot back while the lease stays open, for an idle wait
+   * inside its work (a failed review's in-place retry pause), so a parked waiter can use them.
+   * A no-op on a released or already paused lease, or while a re-key is parked. */
+  pause(): void;
+  /** Take a paused lease's permit back, re-admitted at its own tier on its current key in queue
+   * order like any admission waiter. A no-op unless paused. A release() while it waits cancels it
+   * and owes nothing. */
+  resume(): Promise<void>;
 }
 
 export class Semaphore {
@@ -86,14 +94,7 @@ export class Semaphore {
       return;
     }
     await new Promise<void>((resolve) => {
-      const waiter = { tier, resolve };
-      let i = this.waiters.length;
-      while (i > 0) {
-        const prev = this.waiters[i - 1];
-        if (!prev || prev.tier <= tier) break; // insert before strictly-greater tiers only
-        i -= 1;
-      }
-      this.waiters.splice(i, 0, waiter);
+      this.enqueue({ tier, resolve });
     });
   }
 
@@ -114,9 +115,29 @@ export class Semaphore {
     // CANCEL the pending grant rather than undo a slot this lease never took. Null when no
     // rekey is parked.
     let parkedRekey: { key: string; resolve: () => void; granted: boolean } | null = null;
+    // True while pause() has handed the team permit and the key's slot back: release() then owes
+    // nothing, and resume() re-admits at this lease's tier on its current key.
+    let paused = false;
+    // resume()'s admission waiter while it is queued. release() cancels it if drive has not
+    // granted it yet, and gives the grant back if it has.
+    let parkedResume: { tier: number; key?: string; resolve: () => void } | null = null;
     const release = (): void => {
       if (closed) return;
       closed = true;
+      if (parkedResume !== null) {
+        const w = parkedResume;
+        parkedResume = null;
+        const idx = this.waiters.indexOf(w);
+        if (idx >= 0) {
+          // Still queued: it took nothing, so cancel it and owe nothing.
+          this.waiters.splice(idx, 1);
+          w.resolve();
+          return;
+        }
+        // drive granted it this microtask: its permit and key slot are taken, so give them back.
+        paused = false;
+      }
+      if (paused) return; // pause() already gave the permit and the key's slot back
       if (parkedRekey !== null) {
         // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so drive
         // can't grant it) and, if the grant already arrived this microtask, give the new key's slot
@@ -137,6 +158,12 @@ export class Semaphore {
     };
     const rekey = async (to?: string): Promise<void> => {
       if (to === currentKey || closed) return;
+      if (paused) {
+        // Nothing is held while paused: the move only changes the key resume() admits on.
+        currentKey = to;
+        lease.key = to;
+        return;
+      }
       // Give the old key back first, waking that key's waiters.
       if (currentKey !== undefined) {
         this.bumpKeyInUse(currentKey, -1);
@@ -159,7 +186,31 @@ export class Semaphore {
       if (to !== undefined) this.bumpKeyInUse(to, 1);
       this.drive();
     };
-    const lease: SemaphoreLease = { key: currentKey, release, rekey };
+    const pause = (): void => {
+      if (closed || paused || parkedRekey !== null) return;
+      paused = true;
+      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, -1);
+      this.inUse -= 1;
+      this.drive();
+    };
+    const resume = async (): Promise<void> => {
+      if (closed || !paused || parkedResume !== null) return;
+      if (this.canLeaseAtOnce(tier, currentKey)) {
+        this.inUse += 1;
+        if (currentKey !== undefined) this.bumpKeyInUse(currentKey, 1);
+        paused = false;
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        const waiter = { tier, key: currentKey, resolve };
+        parkedResume = waiter;
+        this.enqueue(waiter);
+      });
+      parkedResume = null;
+      // drive granted it (the permit and key slot are taken), unless release() cancelled it.
+      if (!closed) paused = false;
+    };
+    const lease: SemaphoreLease = { key: currentKey, release, rekey, pause, resume };
 
     if (this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key))) {
       this.inUse += 1;
@@ -167,16 +218,22 @@ export class Semaphore {
       return lease;
     }
     await new Promise<void>((resolve) => {
-      const waiter = { tier, key, resolve };
-      let i = this.waiters.length;
-      while (i > 0) {
-        const prev = this.waiters[i - 1];
-        if (!prev || prev.tier <= tier) break;
-        i -= 1;
-      }
-      this.waiters.splice(i, 0, waiter);
+      this.enqueue({ tier, key, resolve });
     });
     return lease;
+  }
+
+  /** Queue an admission waiter behind every waiter of its tier or a lower one, so it inserts
+   * before strictly-greater tiers only (tier order, FIFO within a tier) — the one home of the
+   * queue's ordering, shared by acquire, acquireLease and a paused lease's resume. */
+  private enqueue(waiter: { tier: number; key?: string; resolve: () => void }): void {
+    let i = this.waiters.length;
+    while (i > 0) {
+      const prev = this.waiters[i - 1];
+      if (!prev || prev.tier <= waiter.tier) break;
+      i -= 1;
+    }
+    this.waiters.splice(i, 0, waiter);
   }
 
   /** Synchronously report whether acquireLease(tier, key) would return at once — both the
@@ -197,23 +254,37 @@ export class Semaphore {
     if (currentKey !== undefined) {
       this.bumpKeyInUse(currentKey, 1);
     }
+    // True while pause() has given the key's slot back (a forced lease holds no team permit).
+    let paused = false;
     const release = (): void => {
-      if (currentKey !== undefined) {
+      if (currentKey !== undefined && !paused) {
         this.bumpKeyInUse(currentKey, -1);
       }
       this.drive();
     };
     const rekey = async (to?: string): Promise<void> => {
       if (to === currentKey) return;
-      if (currentKey !== undefined) {
+      if (currentKey !== undefined && !paused) {
         this.bumpKeyInUse(currentKey, -1);
       }
       currentKey = to;
       lease.key = to;
-      if (to !== undefined) this.bumpKeyInUse(to, 1);
+      if (to !== undefined && !paused) this.bumpKeyInUse(to, 1);
       this.drive();
     };
-    const lease: SemaphoreLease = { key: currentKey, release, rekey };
+    const pause = (): void => {
+      if (paused) return;
+      paused = true;
+      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, -1);
+      this.drive();
+    };
+    // Like the forced lease itself, taking the slot back never waits.
+    const resume = async (): Promise<void> => {
+      if (!paused) return;
+      paused = false;
+      if (currentKey !== undefined) this.bumpKeyInUse(currentKey, 1);
+    };
+    const lease: SemaphoreLease = { key: currentKey, release, rekey, pause, resume };
     return lease;
   }
 

@@ -840,6 +840,27 @@ on.
 giving up the team permit"; `test/orchestrator-permits.e2e.test.ts` — "two runs on one provider and
 a single worktree slot both finish (pool-slot wait rule, part 4/5)".
 
+### INV-P6: a failed review's retry pause holds no permit, and a paused lease owes nothing
+
+**Guarantee.** While a failed reviewer run waits to be retried in place, the verification's lease is
+paused: its team permit and key slot go to parked waiters, and the next attempt starts only after
+`resume` re-admits it at its own tier and key. Releasing a paused lease, or one whose resume is still
+queued, frees nothing twice and leaves no waiter behind. Once the verification is aborted, the
+pause takes nothing back. A forced lease's pause and resume move only its key slot and never wait.
+Without a lease in context, `idleWithoutProviderLease` only runs the wait.
+
+**Binds.** `src/concurrency/semaphore.ts` (`SemaphoreLease.pause`, `SemaphoreLease.resume`,
+`forceLease`), `src/concurrency/provider-lease.ts` (`idleWithoutProviderLease`) and
+`src/review/review.ts` (`reviewAheadOfMain`).
+
+**Pinned by.** `test/semaphore.test.ts` — "a paused lease hands its permit and key slot to a parked
+waiter, and resume queues for the next free one", "releasing a paused lease, or one whose resume is
+still queued, owes nothing" and "a forced lease's pause gives its key slot back and resume takes it
+again without waiting"; `test/provider-lease.test.ts` — "idleWithoutProviderLease runs the wait
+without the lease's permit and key, then takes both back" and "idleWithoutProviderLease just waits
+without a lease in context, and takes nothing back once aborted"; `test/review.test.ts` — "a retry's
+pause hands the verification's permit to a parked role, and the next attempt waits to take it back".
+
 ## Init: a user's repo loses nothing to tumwater init
 
 `initProject` is the one command that writes into a user's existing project. It validates first,

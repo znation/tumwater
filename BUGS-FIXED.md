@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A failed review held its team permit through its in-place retry pauses, so with the permits full no other role could start for up to a minute (found by operator session 2026-10-21 from `a run parked through a restart hold…` in test/orchestrator-redeploy.e2e.test.ts) — fixed 2026-10-22 by operator session
+
+- **Symptom:** with `maxConcurrent: 1`, a parked role never started while the only verification's reviewer kept failing. The e2e test timed out at 20 s, holding `permits.inUse 1/1`, and the review logged `retrying the review in place` and then nothing.
+- **Cause:** aa4f716eb (10-19) retries a failed reviewer run in place twice, 30 s apart. The verification (src/merge/merge-verify.ts) holds one lease for its whole body, so the lease stayed held through both pauses doing nothing. On a full team that is up to a minute of one permit lost per failing reviewer.
+- **Fix:** `SemaphoreLease` gains `pause()`/`resume()`. `idleWithoutProviderLease` (src/concurrency/provider-lease.ts) pauses the calling lease for an idle wait and resumes it at its own tier and key afterwards, unless the work was aborted. `reviewAheadOfMain` runs each retry pause through it. Pinned by INV-P6 and tests in test/semaphore.test.ts, test/provider-lease.test.ts and test/review.test.ts; the review test fails against the old loop.
+
+**Validation gap:** none — the e2e test reproduced the starvation, and the review-level test reproduces it in-process with a one-permit semaphore and a reviewer that fails once.
+
 ### Killing the test runner (`kill $PID`) leaves node --test and its workers running, and the run's exit sweep cannot see them, so orphaned suites spun the host into being unable to start any process (found by operator session 2026-10-21 from the 14:14–16:02 wedge) — fixed 2026-10-21 by operator session
 
 - **Symptom:** from 14:14:55 to the 16:02 reboot, every spawn on the team's host failed with EAGAIN or ENOMEM. That included git in every role, agents' bash, launchd's user services and other sessions, and login took minutes. systemstats' coalition counters show the team's process tree going from about 2,000 process creations a second to about 51,000, flat for 1h47m, with only about 30 of its processes alive at a time. Node in that tree spent 61% of its CPU samples inside `posix_spawn`.
