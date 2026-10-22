@@ -25,6 +25,7 @@ import {
   applyFallbackModel,
   fallbackPair,
   resolveTierFallbacks,
+  seamsInUse,
   tierChainSteps,
   tierFallbackLabels,
   tiersResolveDistinctPairs,
@@ -37,8 +38,8 @@ import { formatModelSelector, seamAgent } from "../config/model-selector.js";
 import { configForRole, isTierName, reviewConfig, roleSeamTier, windowReserveFor, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
-import { readAccount } from "../agent/subscription-account.js";
-import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
+import { readAccount, type SubscriptionAccount } from "../agent/subscription-account.js";
+import { claudeWindowUsedUp, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { dayAt } from "../text/datetime.js";
@@ -71,9 +72,9 @@ export interface BudgetGateState {
    * under (`"<window?><cap?>"`): the view differs between a window move below the cap and a
    * cap episode, so a change in either re-derives it beside a changed live config. */
   fromKey: string;
-  /** Whether the previous poll had the window move active (a used-up window with a fallback
-   * to move to), for the one return-on-reset poll. */
-  prevWindowMoved: boolean;
+  /** The backends whose window move was active last poll (a used-up own window with a fallback
+   * to move to), for the one per-backend return-on-reset poll. */
+  prevWindowMoved: ReadonlySet<string>;
   /** The director's window view (directorWindowView) and the live config it was derived from;
    * `directorFrom` is null while the director keeps the live config. */
   directorFrom: TumwaterConfig | null;
@@ -98,7 +99,7 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     engaged: null,
     from: null,
     fromKey: "",
-    prevWindowMoved: false,
+    prevWindowMoved: new Set<string>(),
     directorFrom: null,
     directorView: config,
     directorKey: "",
@@ -144,25 +145,26 @@ interface BudgetGatePoll {
   /** Whether the cap is reached this poll — the budget hold only ever holds while it is;
    * the per-role sets are empty when it is not. */
   budgetActive: boolean;
-  /** The subscription window that is used up this poll (claudeWindowUsedUp), or null. */
-  windowOut: { type: string; resetsAt: number; reserve?: true } | null;
+  /** The used-up subscription windows behind this poll's move, keyed by backend — a backend
+   * counts only when a subscription seam of it is in the config with its own window used up
+   * and a fallback pair exists to move to; empty when no backend's window moves anything. */
+  windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>;
   /** The tiers the window move put on a fallback pair, tier → label (tierFallbackLabels over
    * the moved tiers); empty when nothing moved. */
   windowTiers: Partial<Record<ModelTier, string>>;
-  /** True on exactly the poll the window move ends (the window reset): the orchestrator hands
-   * back the in-flight runs still on the fallback pairs, unless the cap still holds. */
+  /** True on exactly the poll any backend's window move ends (its window reset, or no fallback):
+   * the orchestrator hands back the in-flight runs still on the fallback pairs, unless the cap
+   * still holds. */
   windowResumed: boolean;
+  /** The backends whose move ended this poll (windowResumed true), for the orchestrator's
+   * return-on-reset hand-back. */
+  windowResumedBackends: readonly string[];
   /** The config the director runs under: the live config, except while the window move stands
    * and its own model job is subscription claude — then its tier's fallback pair
    * (gateRoleConfig's `directorConfig`). The cap never moves it. */
   directorConfig: TumwaterConfig;
   /** Where each tier this poll moved off its primary runs (chainInfo); empty when none moved. */
   chain: Partial<Record<ModelTier, ChainTierInfo>>;
-}
-
-/** Is this fallback pair a claude one (its `backend`)? */
-function pairIsClaude(p: FallbackModelConfig): boolean {
-  return p.backend === "claude";
 }
 
 /** Can the account not take extra usage: some window is rejected, or the newest non-reset
@@ -174,9 +176,28 @@ function claudeOverageRefused(account: ClaudeAccount): boolean {
   return newest?.overageStatus === "rejected";
 }
 
-/** Does this model seam route to the claude backend? */
+/** Does this model seam route to the claude backend? Thin shim over seamAgent; part 2e/9
+ * removes it once the per-backend lookup replaces its callers. */
 export function seamIsClaude(seam: { agent?: string }): boolean {
   return seamAgent(seam) === "claude";
+}
+
+/** The subscription backend a fallback pair or model seam routes to, when that backend's
+ * account reads subscription billing: a resolved seam's own routed agent, else a fallback
+ * pair's `backend` (`x.backend`), whose account is `billing === "subscription"`, else null.
+ * One backend can be a subscription while another bills by API, so a used-up window is judged
+ * per backend. (Not exported until part 2e/9's poll loop calls it, per the exports invariant.) */
+function subscriptionBackendOf(
+  x: FallbackModelConfig | { agent?: string },
+  accounts: (backend: string) => SubscriptionAccount | null,
+): string | null {
+  const seam = x as { agent?: string; backend?: string };
+  // A resolved seam carries its routed backend in `agent` (fallback pairs never do); a raw
+  // fallback pair carries the backend in its own `backend` field.
+  const id = seam.agent !== undefined ? seamAgent({ agent: seam.agent }) : seam.backend;
+  if (id === undefined) return null;
+  const account = accounts(id);
+  return account?.billing === "subscription" ? id : null;
 }
 
 /** Does an in-flight run's captured model pair (RoleRunner.runModelPair()) match the fallback
@@ -244,12 +265,10 @@ export function pollBudgetGate(
   // The persisted billing answer (6a/7): a subscription claude seam is free money, so the
   // predicates below never move it to a fallback and accept a subscription claude pair as a
   // budget fallback. One read per poll; an absent file reads as "no subscription".
-  const account = readClaudeAccount(root);
   // The free-ness predicates judge a seam by its own backend's subscription account (part
   // 2a/9): today only claude asks, and this lookup returns claude's account for "claude" and
-  // null otherwise. The claude-only window and overage logic below keeps the single `account`
-  // value; the predicates read the per-backend lookup so a later part can judge another
-  // backend without another signature sweep.
+  // null otherwise. The used-up-window and overage logic below reads it per backend, so a
+  // second backend's window and overage are judged from its own account.
   const accounts = (backend: string) => readAccount(root, backend);
   // The cached opencode models catalog (part 6b/7), seeded at the startup gate and read once
   // per poll so every free-ness verdict below prices opencode seams against the same snapshot.
@@ -262,32 +281,42 @@ export function pollBudgetGate(
   // verdict. The resolution below deliberately prices alone (the map's keys are the pairs
   // that would run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
-  // A used-up subscription window (claudeWindowUsedUp, the rule the team hold reads too): while
-  // it stands a subscription claude pair is no fallback — it would meet the same window.
-  // `windowReserveFor(config, "claude")` makes a window past its fraction count as used up for
-  // the team; the director's own reading (directorWindowOut) ignores it, as it runs the
-  // operator's prompts.
-  const windowOut = claudeWindowUsedUp(account, now, true, windowReserveFor(liveConfig, "claude"));
-  const directorWindowOut = claudeWindowUsedUp(account, now);
+  // A backend's used-up subscription window (windowUsedUp, the rule the team hold reads too):
+  // while it stands a subscription pair of that backend is no fallback — it would meet the
+  // same window. `windowReserveFor(config, backend)` makes a window past its reserve fraction
+  // count as used up for the team; the director's own reading (directorWindowOutFor) ignores
+  // it, as it runs the operator's prompts.
+  const windowOutFor = (backend: string) =>
+    claudeWindowUsedUp(accounts(backend), now, true, windowReserveFor(liveConfig, backend));
+  const directorWindowOutFor = (backend: string) => claudeWindowUsedUp(accounts(backend), now);
   // A priced step (one pi does not price at zero, or claude on API billing) is usable only
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
   // can be passed; at the cap only free steps remain, as before.
   const pairFreeAt = (p: FallbackModelConfig) => {
-    if (account?.billing === "subscription" && pairIsClaude(p)) {
-      // The first Claude model runs on the subscription only; a later one (extraUsage) may
-      // spend extra usage within its cap while no window is rejected or refuses overage.
-      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p, accounts, catalog);
+    const subBackend = subscriptionBackendOf(p, accounts);
+    if (subBackend !== null) {
+      // The first model of a subscription backend runs on the subscription only; a later one
+      // (extraUsage, claude-only) may spend extra usage within its cap while no window is
+      // rejected or refuses overage.
+      if (!p.extraUsage) return windowOutFor(subBackend) === null && piPairFree(providers, p, accounts, catalog);
       // Past the reserve this step would spend the reserved quota before reaching extra usage:
       // it waits until a reading shows the account already spending overage.
-      if (windowOut?.reserve === true && !Object.values(account.windows).some((w) => w.isUsingOverage === true))
+      const subAccount = accounts(subBackend)!;
+      if (
+        windowOutFor(subBackend)?.reserve === true &&
+        !Object.values(subAccount.windows).some((w) => w.isUsingOverage === true)
+      )
         return false;
       return (
         !reached &&
-        !claudeOverageRefused(account) &&
+        !claudeOverageRefused(subAccount) &&
         (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
       );
     }
-    if (piPairFree(providers, p, accounts, catalog)) return !(windowOut !== null && pairIsClaude(p));
+    // The subscription-window rule lives entirely in the branch above (it returns early for
+    // any subscription pair); below that branch a pair is never a subscription, so only the
+    // free-ness and cap rules apply.
+    if (piPairFree(providers, p, accounts, catalog)) return true;
     if (reached) return false;
     return (
       p.maxDailyCostUsd === undefined ||
@@ -424,44 +453,81 @@ export function pollBudgetGate(
   // in the semaphore when it tripped, the half-open probe, and the merges must still run on the
   // free pair — a demotion must never promote them to the priced model the cap already spent.
   const onFallback = reached && pairNames.length > 0;
-  // A used-up window moves the subscription claude jobs to their tier's fallback below the cap
-  // too; with no fallback to move to, nothing changes and the claude hold applies.
-  const windowMove = windowOut !== null && pairNames.length > 0;
+  // A used-up window moves the subscription jobs of the backend whose window stands to their
+  // tier's fallback below the cap too; with no fallback to move to, nothing changes and that
+  // backend's hold applies. Every backend with a subscription seam in the config counts
+  // (seamsInUse enumerates them: every enabled role, the reviewer, the resolver, the director,
+  // and every tier fallback step), so a used-up window with no seam on that backend (or no
+  // fallback) moves nothing.
+  const seamBackends = new Set<string>();
+  for (const seam of seamsInUse(liveConfig)) {
+    if (seam.agent === undefined) continue;
+    const acc = accounts(seam.agent);
+    if (acc?.billing === "subscription") seamBackends.add(seam.agent);
+  }
+  // The used-up windows behind this poll's move, keyed by backend: a backend counts only when
+  // a subscription seam of it is in the config, its own window is used up, and there is a
+  // fallback pair to move to. `windowOut` names only those backends; a healthy or absent
+  // backend's window is untouched.
+  const windowOut: Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>> = {};
+  const movedBackends = new Set<string>();
+  for (const backend of seamBackends) {
+    const win = windowOutFor(backend);
+    if (win !== null && pairNames.length > 0) {
+      windowOut[backend] = win;
+      movedBackends.add(backend);
+    }
+  }
+  const windowMove = movedBackends.size > 0;
   // The resolved pairs are part of the key: a priced step crossing its own daily cap changes
   // the resolution without a config or window change, and the view must follow it.
   const resolvedKey = MODEL_TIERS.map((t) => {
     const rp = priceResolved[t].pair;
     return rp ? modelPairName(rp) : "-";
   }).join(",");
-  const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}|${resolvedKey}`;
+  // The set of window-moved backends is part of the key too (not just the `w` flag): a second
+  // backend's window can come or go while the move still stands, and the view must re-derive
+  // for the roles it newly blocks or frees.
+  const movedKey = [...movedBackends].sort().join("+");
+  const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}|${movedKey}|${resolvedKey}`;
   if ((onFallback || windowMove) && (state.from !== liveConfig || state.fromKey !== fromKey)) {
     state.from = liveConfig;
     state.fromKey = fromKey;
     // A job keeps its own model while that model is available: below the cap every seam but a
-    // subscription claude one during a used-up window; at the cap it must also be free.
+    // subscription one whose own backend's window is used up; at the cap it must also be free.
+    const seamBlocked = (seam: { agent?: string; provider?: string; model?: string }) => {
+      const b = subscriptionBackendOf(seam, accounts);
+      return b !== null && windowOut[b] !== undefined;
+    };
     const available = (seam: { agent?: string; provider?: string; model?: string }) =>
-      !(windowOut !== null && seamIsClaude(seam)) && (!reached || seamFree(providers, seam, accounts, catalog));
+      !seamBlocked(seam) && (!reached || seamFree(providers, seam, accounts, catalog));
     const view = applyFallbackModel(liveConfig, priceResolved, available);
-    // A role pinned to subscription claude under a tier that is not claude has no tier pair to fall
-    // onto — dropping its override would put it on the tier's priced primary — so it keeps its
-    // pin and the claude hold stops it, as before the window move.
-    if (windowOut !== null) {
+    // A role pinned to a subscription backend under a tier of another backend has no tier pair
+    // to fall onto — dropping its override would put it on the tier's priced primary — so it
+    // keeps its pin and that backend's hold stops it, as before the window move.
+    if (movedBackends.size > 0) {
       for (const role of enabledRoleIds(liveConfig)) {
         const tier = roleSeamTier(liveConfig, role);
         const pin = liveConfig.roles[role];
-        if (pin && seamIsClaude(configForRole(liveConfig, role)) && !seamIsClaude(withModelOverrides(liveConfig, tier, {})))
-          view.roles[role] = pin;
+        const roleBackend = subscriptionBackendOf(configForRole(liveConfig, role), accounts);
+        const tierBackend = subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
+        if (pin && roleBackend !== null && roleBackend !== tierBackend) view.roles[role] = pin;
       }
-      // A reviewer pinned to subscription claude under such a tier would likewise end up on the
-      // tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer would
-      // stop the whole team).
+      // A reviewer pinned to a subscription backend under such a tier would likewise end up on
+      // the tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer
+      // would stop the whole team).
       const rm = liveConfig.review.model;
       const reviewTier: ModelTier = isTierName(rm) ? rm : "strong";
       const reviewPair = priceResolved[reviewTier].pair;
+      const reviewBackend = subscriptionBackendOf(reviewConfig(liveConfig), accounts);
+      const reviewTierBackend = subscriptionBackendOf(withModelOverrides(liveConfig, reviewTier, {}), accounts);
+      // Only the reviewer's own backend's window counts: a reviewer on a healthy backend must
+      // stay put even while another backend's window moves its tier.
       if (
         reviewPair &&
-        seamIsClaude(reviewConfig(liveConfig)) &&
-        !seamIsClaude(withModelOverrides(liveConfig, reviewTier, {}))
+        reviewBackend !== null &&
+        windowOut[reviewBackend] !== undefined &&
+        reviewBackend !== reviewTierBackend
       )
         view.review = {
           ...view.review,
@@ -477,34 +543,48 @@ export function pollBudgetGate(
     }
     state.fallbackConfig = view;
   }
-  // The tiers the window move put on a fallback pair: those whose own seam is subscription claude.
+  // The tiers the window move put on a fallback pair: those whose own seam is a subscription
+  // backend whose window stands.
   const windowTiers: Partial<Record<ModelTier, string>> = {};
   if (windowMove) {
     const moved = new Set<ModelTier>();
-    for (const tier of MODEL_TIERS)
-      if (seamIsClaude(withModelOverrides(liveConfig, tier, {}))) moved.add(tier);
+    for (const tier of MODEL_TIERS) {
+      const b = subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
+      if (b !== null && windowOut[b] !== undefined) moved.add(tier);
+    }
     const labels = tierFallbackLabels(priceResolved);
     for (const tier of MODEL_TIERS) if (moved.has(tier) && labels[tier] !== undefined) windowTiers[tier] = labels[tier];
   }
   // The director follows availability, not the cap: while the window move stands and its own
-  // model job is subscription claude, its tier's resolved pair replaces the live config (only
-  // subscription claude jobs are unavailable, so a priced director primary keeps its model over
-  // the cap). With no fallback (windowMove false) it stays on the live config and the scheduler
-  // holds it on the claude hold.
-  const directorMoved = directorWindowOut !== null && pairNames.length > 0 && seamIsClaude(configForRole(liveConfig, DIRECTOR_ROLE));
+  // model job is a subscription backend, its tier's resolved pair replaces the live config (only
+  // subscription jobs of a used-up window are unavailable, so a priced director primary keeps
+  // its model over the cap). With no fallback (windowMove false) it stays on the live config and
+  // the scheduler holds it on that backend's hold.
+  const directorBackend = subscriptionBackendOf(configForRole(liveConfig, DIRECTOR_ROLE), accounts);
+  const directorMoved =
+    directorBackend !== null && pairNames.length > 0 && directorWindowOutFor(directorBackend) !== null;
   if (!directorMoved) state.directorFrom = null;
   else if (state.directorFrom !== liveConfig || state.directorKey !== resolvedKey) {
     state.directorFrom = liveConfig;
     state.directorKey = resolvedKey;
-    state.directorView = applyFallbackModel(liveConfig, priceResolved, (seam) => !seamIsClaude(seam));
+    state.directorView = applyFallbackModel(
+      liveConfig,
+      priceResolved,
+      (seam) => {
+        const b = subscriptionBackendOf(seam, accounts);
+        return b === null || windowOut[b] === undefined;
+      },
+    );
   }
-  const windowResumed = state.prevWindowMoved && !windowMove;
-  state.prevWindowMoved = windowMove;
+  const windowResumedBackends = [...state.prevWindowMoved].filter((b) => !movedBackends.has(b));
+  const windowResumed = windowResumedBackends.length > 0;
+  state.prevWindowMoved = movedBackends;
   const movedTiers = new Set<ModelTier>();
   // The tiers `applyFallbackModel` moved: those whose own seam fails the `available` test above.
   for (const tier of MODEL_TIERS) {
     const seam = withModelOverrides(liveConfig, tier, {});
-    const out = (windowMove && seamIsClaude(seam)) || (reached && !seamFree(providers, seam, accounts, catalog));
+    const b = subscriptionBackendOf(seam, accounts);
+    const out = (windowMove && b !== null && windowOut[b] !== undefined) || (reached && !seamFree(providers, seam, accounts, catalog));
     if (out) movedTiers.add(tier);
   }
   const chain = chainInfo({
@@ -514,8 +594,8 @@ export function pollBudgetGate(
     breakers: state.breakers,
     states,
     now,
-    windowOut,
-    account,
+    windowOutFor,
+    accounts,
     isPriced: (p) => !piPairFree(providers, p, accounts, catalog),
   });
   return {
@@ -533,6 +613,7 @@ export function pollBudgetGate(
     windowOut,
     windowTiers,
     windowResumed,
+    windowResumedBackends,
     directorConfig: directorMoved ? state.directorView : liveConfig,
   };
 }
@@ -550,8 +631,8 @@ export function chainInfo(a: {
   breakers: FallbackBreakerMap;
   states: Pick<RunnerState, "dayStamp" | "dayCostByPair">[];
   now: number;
-  windowOut: { resetsAt: number; reserve?: true } | null;
-  account: ClaudeAccount | null;
+  windowOutFor: (backend: string) => { resetsAt: number; reserve?: true } | null;
+  accounts: (backend: string) => SubscriptionAccount | null;
   isPriced: (p: FallbackModelConfig) => boolean;
 }): Partial<Record<ModelTier, ChainTierInfo>> {
   const out: Partial<Record<ModelTier, ChainTierInfo>> = {};
@@ -563,7 +644,11 @@ export function chainInfo(a: {
     const own = steps.filter((s) => s.tier === (r.from ?? tier)).map((s) => s.pair);
     const idx = r.step ?? 0;
     const prior = idx > 0 ? own[idx - 1]! : null;
-    const primaryClaude = seamIsClaude(withModelOverrides(a.config, tier, {}));
+    // The backend whose used-up window this tier's chain reads for the window/reserve reason:
+    // the prior step's own backend when a prior step is subscription, else the primary's.
+    const priorSub = prior ? subscriptionBackendOf(prior, a.accounts) : null;
+    const primarySub = subscriptionBackendOf(withModelOverrides(a.config, tier, {}), a.accounts);
+    const windowBackend = (prior !== null ? priorSub : null) ?? primarySub;
     const info: ChainTierInfo = { pair: modelPairName(r.pair), step: idx + 1, of: own.length, reason: "cap" };
     const priorName = prior ? modelPairName(prior) : "";
     if (prior && a.breakers[priorName] !== undefined && !fallbackServingPair(a.breakers, priorName)) {
@@ -574,10 +659,17 @@ export function chainInfo(a: {
     ) {
       info.reason = "step-cap";
       info.returnsAt = midnight;
-    } else if ((prior !== null && pairIsClaude(prior) || primaryClaude) && a.windowOut !== null) {
-      info.reason = a.windowOut.reserve ? "reserve" : "window";
-      info.returnsAt = a.windowOut.resetsAt;
-    } else if (prior && pairIsClaude(prior) && prior.extraUsage && a.account && claudeOverageRefused(a.account)) {
+    } else if (windowBackend !== null && a.windowOutFor(windowBackend) !== null) {
+      const win = a.windowOutFor(windowBackend)!;
+      info.reason = win.reserve ? "reserve" : "window";
+      info.returnsAt = win.resetsAt;
+    } else if (
+      prior &&
+      subscriptionBackendOf(prior, a.accounts) !== null &&
+      prior.extraUsage &&
+      a.accounts("claude") &&
+      claudeOverageRefused(a.accounts("claude")!)
+    ) {
       info.reason = "overage";
     } else {
       info.returnsAt = midnight;

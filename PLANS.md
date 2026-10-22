@@ -6,23 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Codex backend, part 2c/9: The budget gate's window move, chain reasons and director move read each subscription backend's own used-up window (planned 2026-10-21 by the plan role; requires parts 2a/9 and 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts test/budget-gates.test.ts test/budget-chain-info.test.ts)
-
-**Goal.** Part 2c was too large for one run, so it is split into 2c (this part, the gate), 2d/9 (the hold observation and the once-per-window polls) and 2e/9 (the poll loop). This part makes the budget gate read each subscription backend's own used-up window instead of one claude `windowOut`, so a job moving down its chain, the director's move and each tier's chain reason name the backend that actually reported the window. No behavior change for a claude-only or pi-only team.
-
-**Approach.**
-- `pairIsClaude` goes; `seamIsClaude` becomes a thin exported `seamAgent(seam) === "claude"` shim (part 2e removes it). Add `export function subscriptionBackendOf(x: FallbackModelConfig | { agent?: string }, accounts: (backend: string) => SubscriptionAccount | null): string | null`: the id (`"backend" in x ? x.backend : seamAgent(x)`) whose account reads `billing === "subscription"`, else null.
-- Replace the single `readClaudeAccount`/`windowOut`/`directorWindowOut` with `windowOutFor(backend)` / `directorWindowOutFor(backend)` over the existing `accounts = (backend) => readAccount(root, backend)` lookup, each calling `claudeWindowUsedUp(accounts(backend), now, …, windowReserveFor(liveConfig, backend))` (no reserve for the director reading). `BudgetGatePoll.windowOut` becomes a `Partial<Record<string, { type: string; resetsAt: number; reserve?: true }>>` keyed by backend; `windowResumed` stays the boolean "any backend's move ended this poll" and a new `windowResumedBackends: readonly string[]` names them; `BudgetGateState.prevWindowMoved` becomes a `ReadonlySet<string>`.
-- `pairFreeAt` keys its subscription branch on the pair's own backend; the `extraUsage` and overage rules stay claude-only. `available`, `windowTiers`, `movedTiers`, `directorMoved` and `windowMove` (any subscription seam's own window stands, with a fallback pair to move to) use the lookup.
-- `chainInfo`'s `windowOut`/`account` params become the `windowOutFor`/`accounts` lookups, so its `"window"`/`"reserve"` reason reads the prior step's own backend; the `"overage"` reason stays claude-only.
-- src/gates/gate-polls.ts needs no edit: it reads only `windowTiers`/`windowResumed`, whose meaning is unchanged.
-
-**Acceptance criteria.**
-- The budget-gates and budget-chain-info tests pass with only their account/windowOut shape expectations updated; a claude-only team's decision is unchanged.
-- A test seeds a `sub` subscription account (a rejected `five_hour` window) and a config whose strong tier names that backend; `pollBudgetGate` moves only that tier's seams to fallback, `windowOut` names `sub`, and claude's account and window are untouched. With claude rejected and `sub` healthy, only claude's seams move.
-- `grep -n 'pairIsClaude' src` prints nothing; `windowOut` is a backend-keyed record and `windowResumedBackends` names the resumed backend.
-- `npm test` passes.
-
 ### Codex backend, part 2e/9: The poll loop reads each subscription backend in use for its window move, hold, reserve and warning (planned 2026-10-21 by the plan role; requires parts 2c/9 and 2d/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/gate-polls.ts src/gates/budget-gates.ts test/gate-polls.test.ts test/orchestrator-budget.e2e.test.ts)
 
 **Goal.** `pollTeamGates` reads every backend in `backendsInUse(liveConfig)` instead of claude alone, so a second subscription backend gets its own hold, reserve crossings, warning and window-move roles, and the window handback names the backend whose window resumed. No behavior change for a claude-only team. Closes the 2c series.
@@ -237,6 +220,5 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `npm run smoke:codex --help` (or a dry-run flag) prints its steps without spawning codex.
 - docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
 - `npm test` passes.
-
 
 ## Done

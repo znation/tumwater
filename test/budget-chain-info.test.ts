@@ -37,10 +37,17 @@ function claudePrimary(): { config: Args["config"]; resolution: Resolution } {
 
 function info(
   c: { config: Args["config"]; resolution: Resolution },
-  over: Partial<Args> & { spend?: Record<string, number> } = {},
+  over: Partial<Args> & {
+    spend?: Record<string, number>;
+    windowOut?: { resetsAt: number; reserve?: true };
+    account?: ClaudeAccount;
+  } = {},
 ) {
-  const { spend, ...rest } = over;
+  const { spend, windowOut, account, ...rest } = over;
   const none = { pair: null, from: null };
+  // The default account makes the claude fallback pair a subscription seam; the window and
+  // overage reasons below read it through the per-backend `accounts` lookup.
+  const acct = account ?? ({ billing: "subscription", observedAt: now, windows: {} } as ClaudeAccount);
   return chainInfo({
     config: c.config,
     resolved: { default: c.resolution, small: none, strong: none },
@@ -48,8 +55,8 @@ function info(
     breakers: {},
     states: spend ? [{ dayStamp: todayStamp(now), dayCostByPair: spend }] : [],
     now,
-    windowOut: null,
-    account: null,
+    windowOutFor: () => (windowOut !== undefined ? windowOut : null),
+    accounts: (b) => (b === "claude" ? acct : null),
     isPriced: () => true,
     ...rest,
   });
