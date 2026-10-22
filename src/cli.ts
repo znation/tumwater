@@ -122,8 +122,8 @@ async function main(): Promise<void> {
       // Imported lazily: cli/cli-start.ts pulls the whole team-booting subgraph (orchestrator,
       // supervisor, redeploy, launch-services — the run path's machinery), and every other
       // command's spawn pays module compilation for it unless the dispatch defers that load
-      // to the commands that actually boot or serve a team.
-      await (await import("./cli/cli-start.js")).cmdInit(root, args);
+      // to the commands that actually boot or serve a team. cli-init.ts stays light for init.
+      await (await import("./cli/cli-init.js")).cmdInit(root, args);
       break;
     case "start":
     case "run":

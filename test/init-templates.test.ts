@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { cmdInit } from "../src/cli/cli-start.js";
+import { cmdInit } from "../src/cli/cli-init.js";
 import { INIT_TEMPLATES, getTemplate, templateCatalog, templateIds, unknownTemplateError } from "../src/init/init-templates.js";
 import { parseEntryDetails } from "../src/backlog/backlog-md.js";
 import { parseInitArgs } from "../src/cli/cli-command-args.js";

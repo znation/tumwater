@@ -931,7 +931,7 @@ leaves no half-written file when a seeded write dies mid-way".
 lists, but writes no file, edits no .gitignore, calls no `git init` and makes no commit. Listing
 templates touches nothing either.
 
-**Binds.** `src/init/init.ts` (`initProject`, `ensureGitignore`), `src/cli/cli-start.ts`
+**Binds.** `src/init/init.ts` (`initProject`, `ensureGitignore`), `src/cli/cli-init.ts`
 (`cmdInit`).
 
 **Pinned by.** `test/init.test.ts` — "initProject --dry-run writes nothing: no files, no gitignore
