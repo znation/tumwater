@@ -236,8 +236,8 @@ export function backendsInUse(config: TumwaterConfig): string[] {
  * are registered by importing src/agent/run-agent.ts (see the import above); a seam backend
  * that is not in the registry is one this build cannot run. Doctor's binary check asks the
  * same question, so the startup gate and doctor cannot disagree about which backend a build
- * can serve. opencode's and codex's adapters now register like pi's and claude's, so only a
- * future id without an adapter trips this rule. */
+ * can serve. After the opencode adapter lands (part 5/7) this stays the general rule for any
+ * future id. */
 export function unregisteredBackendInUse(config: TumwaterConfig): string | undefined {
   return backendsInUse(config).find((agent) => backendById(agent) === undefined);
 }
