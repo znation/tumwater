@@ -256,7 +256,7 @@ test("once --role: the CLI scopes the round — banner and summary name only tha
   });
 });
 
-test("once --role: an unknown or disabled role fails fast with the shared wording", async () => {
+test("once --role: an unknown role fails fast with the shared wording, and a disabled one names how to enable it", async () => {
   const repo = await makeFastRepo("once scoped invalid test", ["clean"]); // dedupe is disabled
   await withPi("exit 0", async () => {
     const unknown = await cli(repo, "run", "--once", "--role", "nope");
@@ -264,8 +264,11 @@ test("once --role: an unknown or disabled role fails fast with the shared wordin
     assert.match(unknown.stderr, /unknown role: nope \(valid ids: .*clean/);
     const disabled = await cli(repo, "run", "--once", "--role", "dedupe");
     assert.equal(disabled.code, 1);
-    assert.match(disabled.stderr, /unknown role: dedupe \(valid ids: .*clean/,
-      "a disabled id reads as unknown: it is not a role this round can run");
+    assert.match(
+      disabled.stderr,
+      /dedupe is disabled, so a --once round cannot run it — enable it with `tumwater role dedupe --enable`/,
+      "a disabled id is named as disabled, with the command that enables it",
+    );
   });
 });
 
@@ -297,10 +300,11 @@ test("once: a merge_blocked change is re-queued by the pipeline and merges with 
   const counter = path.join(tmpdir("requeue-count-"), "n");
   const config = loadConfig(repo);
   // Invocation 1 is the baseline, 2 the gate; the reviewer then moves main, so the merge's rebase
-  // is not a no-op and the in-lock merge check (invocation 3) runs, red. The re-queued
-  // attempt's check (4) is green.
+  // is not a no-op and the in-lock merge check runs. It is red twice: invocation 3, and 4, the
+  // immediate re-run that would otherwise pass the red as a flake and merge. The re-queued
+  // attempt's check (5) is green.
   config.check = {
-    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -ne 3 ]`,
+    command: `n=$(cat '${counter}' 2>/dev/null || echo 0); n=$((n+1)); echo $n > '${counter}'; [ $n -lt 3 ] || [ $n -gt 4 ]`,
   };
   saveConfig(repo, config);
   // The first review also moves main (once).

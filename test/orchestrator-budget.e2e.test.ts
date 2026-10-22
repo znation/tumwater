@@ -387,7 +387,9 @@ test("a window move's failing fallback is demoted and its tier held, below the c
   await initProject(repo, "window fallback breaker test");
   const config = fallbackConfig(["clean"]);
   config.maxDailyCostUsd = 1000; // never reached
-  config.provider = "claude"; // the agent id doubles as the provider namespace
+  // The claude primary is named by `backend`; a `provider` of "claude" now routes to pi.
+  delete config.provider;
+  config.backend = "claude";
   config.model = "claude-opus-5-5";
   saveConfig(repo, config);
   const now = Date.now();

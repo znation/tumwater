@@ -221,20 +221,24 @@ test("runOrchestrator starts one runner per runner id and an unclaimed extra ins
   const config = loadConfig(repo);
   config.roles.feature = { ...(config.roles.feature ?? { enabled: true }), instances: 3 };
   saveConfig(repo, config);
-  // Two eligible plans: feature and feature-2 take one each (part 4/7's claims); feature-3 has
-  // no free entry and never runs.
+  // Three instances hold six runner ids (two per instance, so a runner waiting on its change in
+  // the merge pipeline does not use up an instance — fast-merge Lever 1). Two eligible plans:
+  // feature and feature-2 take one each (part 4/7's claims); feature-3 to feature-6 have no free
+  // entry and never run.
   fs.writeFileSync(path.join(repo, "PLANS.md"), twoPlansDoc());
   const restore = fakePiIdle();
   const controller = new AbortController();
+  const ids = ["feature", "feature-2", "feature-3", "feature-4", "feature-5", "feature-6"];
   try {
     const done = runRepoOrchestrator(repo, { config, signal: controller.signal, pollMs: FAST_POLL_MS });
-    await waitFor(() => readOrchestratorInfo(repo)?.roles.includes("feature-3") === true, "all three runners registered");
-    assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ["feature", "feature-2", "feature-3"]);
+    await waitFor(() => readOrchestratorInfo(repo)?.roles.includes("feature-6") === true, "all six runners registered");
+    assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ids);
     await waitFor(
       () => loadRunnerState(repo, "feature").runs >= 1 && loadRunnerState(repo, "feature-2").runs >= 1,
       "the two claimed instances run",
     );
-    assert.equal(loadRunnerState(repo, "feature-3").runs, 0, "the extra instance with no claim does not run");
+    for (const id of ids.slice(2))
+      assert.equal(loadRunnerState(repo, id).runs, 0, `${id}, with no claim, does not run`);
     // Runs lease pooled slots: no per-role worktree is created for the instance.
     assert.equal(fs.existsSync(worktreePath(repo, "feature-2")), false, "no feature-2 role worktree");
     controller.abort();

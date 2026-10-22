@@ -156,10 +156,12 @@ test("a drain past its cap aborts and counts only the permit holder — the run 
 test("a run parked through a restart hold does not start when the permit frees, and runs once the hold lifts", async () => {
   const { repo, started } = await parkedPairRepo("parked hold test");
   // The permit holder's pi blocks until the test releases it, so the permit changes hands
-  // strictly INSIDE the hold — no timing race on how long the holder runs.
+  // strictly INSIDE the hold — no timing race on how long the holder runs. It removes its marker
+  // before replying, so the run ends with no change: a change would be queued and reviewed, and
+  // the review holds a permit through its in-place retries, starving the parked role.
   const go = path.join(tmpdir(), "go");
   const restore = fakePi(
-    `touch started.txt\nwhile [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.05; done\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    `touch started.txt\nwhile [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.05; done\nrm -f started.txt\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   );
   const holderEnded = () => readEvents(repo).some((e) => e.type === "run_end");
   const { redeployer, swaps } = scriptedRedeployer(repo, {
