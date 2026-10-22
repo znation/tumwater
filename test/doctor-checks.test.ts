@@ -19,19 +19,21 @@ import {
   checkFlakyChecks,
   checkGitBinary,
   checkInit,
-  checkMergeLock,
   checkNodeVersion,
   checkOpencodeVersion,
-  checkProviderConcurrency,
-  checkCheckContention,
-  checkProviderContention,
   checkRepo,
   checkStateDir,
+} from "../src/doctor/doctor-checks.js";
+import {
+  checkCheckContention,
   checkLeftoverRoleBranches,
+  checkMergeLock,
+  checkProviderConcurrency,
+  checkProviderContention,
   checkTumwaterPins,
   checkWorkInstances,
   checkWorktreePool,
-} from "../src/doctor/doctor-checks.js";
+} from "../src/doctor/doctor-contention-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -55,7 +57,8 @@ import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
 // Unit coverage for the pre-flight environment and repo checks
-// (src/doctor/doctor-checks.ts): every check's ok/fail/warn branches. The binary checks take an
+// (src/doctor/doctor-checks.ts) and the contention checks (src/doctor/doctor-contention-checks.ts):
+// every check's ok/fail/warn branches. The binary checks take an
 // explicit PATH so the missing branch is exercised by passing "" — no PATH mutation, no
 // spawning. Report composition, rendering, and the CLI wiring (`tumwater doctor` exit codes
 // through main()) are pinned in test/doctor.test.ts; the model-readiness checks' own coverage

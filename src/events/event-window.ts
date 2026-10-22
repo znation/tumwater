@@ -372,8 +372,9 @@ export function readEventsSince(
 /** The "recent events of a kind" read every doctor wait/failure check shares: events since the
  * trailing `sinceMs` window, kept only when they clear `now − sinceMs` (the caller's seam for the
  * window's far edge) and pass `keep`. One home of the read-and-recheck shape the slot/provider
- * wait checks (doctor-checks.ts), the notify-failure check, and the queued-merge wait check each
- * spelled beside readEventsSince's cutoff — the kind + recency rule cannot drift per caller. `keep`
+ * wait checks (doctor-contention-checks.ts), the notify-failure check, and the queued-merge
+ * wait check each spelled beside readEventsSince's cutoff — the kind + recency rule cannot drift
+ * per caller. `keep`
  * defaults to every event, so the ts-only reader passes nothing; `now` is explicit so every call in
  * one window derives from the same instant (readEventsSince's own cutoff still uses the real
  * clock, so this recheck is what a test seam can pin). `ts` is already number-typed by

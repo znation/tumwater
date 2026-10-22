@@ -28,20 +28,22 @@ import {
   checkEventLog,
   checkFlakyChecks,
   checkOpencodeVersion,
-  checkMergeLock,
   checkNodeVersion,
   checkPiExtensions,
-  checkProviderConcurrency,
-  checkCheckContention,
-  checkProviderContention,
   checkRepo,
   checkStateDir,
-  checkWorktreePool,
-  checkLeftoverRoleBranches,
-  checkTumwaterPins,
-  checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
+import {
+  checkCheckContention,
+  checkLeftoverRoleBranches,
+  checkMergeLock,
+  checkProviderConcurrency,
+  checkProviderContention,
+  checkTumwaterPins,
+  checkWorkInstances,
+  checkWorktreePool,
+} from "./doctor-contention-checks.js";
 import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkOpencode, checkTierModels } from "./doctor-model-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
@@ -57,7 +59,8 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueu
  * verdicts on the environment. Every check is read-only against .tumwater/ (works with or
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
- * doctor-checks.ts and doctor-model-checks.ts; this module composes them into the report. */
+ * doctor-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts and doctor-backlog.ts;
+ * this module composes them into the report. */
 
 /** Run one doctor check, turning a throw or rejection into a fail row: a check that crashed
  * verified nothing, so it must not read as a pass or abort the report. */

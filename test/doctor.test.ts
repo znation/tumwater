@@ -20,7 +20,8 @@ import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/d
 // verdict counting, and corrupt-config resilience, renderDoctor's rendering, and the `tumwater
 // doctor` CLI contract pinned through main() (no readiness gate, --json payload, exit codes).
 // The individual checks' ok/fail/warn branches are unit-covered in test/doctor-checks.test.ts
-// (it pins src/doctor/doctor-checks.ts), the model-readiness checks in
+// (it pins src/doctor/doctor-checks.ts and src/doctor/doctor-contention-checks.ts), the
+// model-readiness checks in
 // test/doctor-model-checks.test.ts, the orphan check in test/doctor-orphans.test.ts, and the
 // fixtures all three files share live in test/fixtures/doctor-fixtures.ts.
 test("runDoctor composes the full report — fixed check order, not-running header, ready verdict", async () => {
