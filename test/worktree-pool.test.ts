@@ -13,7 +13,7 @@ import { readSlotsState, slotForDir, writeSlotsState } from "../src/git/slots-st
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { slotCount } from "../src/config/config.js";
-import { eventsLogPath, salvageDir, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
+import { eventsLogPath, salvageDir, salvagePendingDir, slotWorktreePath, slotsStatePath, worktreeUsePath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { sleep } from "./helpers/wait.js";
@@ -712,5 +712,66 @@ test("a clean slot is reset with nothing saved and no warning", async () => {
   const next = await leaseSlot(root, { role: "security", purpose: "run", ref: "main" });
   assert.equal(existsSync(salvageDir(root)), false);
   assert.equal(warningMessages(root).some((m) => m.includes("uncommitted")), false);
+  next.release();
+});
+
+test("an unsettled run's leftovers wait for that role's next run; a settled run's are kept", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const unsettled = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  writeFileSync(join(unsettled.dir, "draft.md"), "unfinished\n");
+  unsettled.release({ unsettled: true }); // an exception escaped the run
+  assert.equal(slotForDir(root, unsettled.dir)?.unsettledRun, "feature");
+
+  const next = await leaseSlot(root, { role: "security", purpose: "run", ref: "main" });
+  const waiting = readdirSync(salvagePendingDir(root, "feature"));
+  assert.equal(waiting.length, 1, "the patch waits for feature's next run");
+  assert.match(waiting[0]!, /-_slot-1-feature\.patch$/);
+  assert.match(
+    warningMessages(root).join("\n"),
+    /workspace _slot-1 still held 1 uncommitted file\(s\) from feature's unfinished run; saved them to \.tumwater\/salvage\/pending\/feature\/\S+ for its next run and reset it for security/,
+  );
+  // A settled release (the run's verdict chose what to keep) leaves its edits only to the operator.
+  writeFileSync(join(next.dir, "scratch.md"), "discarded on purpose\n");
+  next.release();
+  assert.equal(slotForDir(root, next.dir)?.unsettledRun, null);
+  (await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" })).release();
+  assert.equal(readdirSync(salvagePendingDir(root, "feature")).length, 1, "nothing new waits for feature");
+  assert.equal(existsSync(salvagePendingDir(root, "security")), false, "nothing waits for security");
+  assert.deepEqual(
+    readdirSync(salvageDir(root)).filter((f) => f.endsWith(".patch")).map((f) => f.replace(/^\S+?-_slot/, "_slot")),
+    ["_slot-1-security.patch"],
+    "the settled run's edits are kept for the operator",
+  );
+});
+
+test("a verification released unsettled leaves nothing waiting: its edits are not a role's work", async () => {
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  const check = await leaseSlot(root, { role: "feature", purpose: "verify", ref: "main" });
+  writeFileSync(join(check.dir, "debris.txt"), "check output\n");
+  check.release({ unsettled: true });
+  assert.equal(slotForDir(root, check.dir)?.unsettledRun, null);
+  (await leaseSlot(root, { role: "security", purpose: "run", ref: "main" })).release();
+  assert.equal(existsSync(join(salvageDir(root), "pending")), false);
+  assert.equal(readdirSync(salvageDir(root)).filter((f) => f.endsWith(".patch")).length, 1);
+});
+
+test("a run lease its process died holding is attributed to its role and saved as unfinished work", async () => {
+  // A crash, kill -9 or power loss never releases: the lease stays with the dead pid and the
+  // slot record still names the slot's previous holder.
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 1 });
+  (await leaseSlot(root, { role: "docs", purpose: "run", ref: "main" })).release();
+  const crashed = await leaseSlot(root, { role: "feature", purpose: "run", ref: "main" });
+  writeFileSync(join(crashed.dir, "half-done.md"), "work in flight\n");
+  const state = readSlotsState(root);
+  state.slots[0]!.lease = { role: "feature", purpose: "run", since: 1, pid: process.pid + 1 };
+  writeSlotsState(root, state);
+
+  const next = await leaseSlot(root, { role: "security", purpose: "run", ref: "main" });
+  assert.equal(next.dir, crashed.dir);
+  assert.equal(readdirSync(salvagePendingDir(root, "feature")).length, 1, "the dead run's work waits for feature");
+  assert.match(readdirSync(salvagePendingDir(root, "feature"))[0]!, /-feature\.patch$/, "not named for docs");
   next.release();
 });

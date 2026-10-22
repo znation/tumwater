@@ -3989,6 +3989,17 @@ OpenCode DB directory that cannot be created costs only the OpenCode session del
 unwritable events feed" and "RetentionPruner: an OpenCode DB dir that cannot be created skips the
 session deletes and still prunes the rest".
 
+### INV-BQ5: salvaged workspace patches age out on the session window
+
+**Guarantee.** A prune pass deletes salvaged slot patches older than the window, both those waiting
+for a role's next run and those kept for the operator, and warns with the count when it deleted any.
+
+**Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`) and `src/paths.ts`
+(`salvageDir`, `salvagePendingDir`).
+
+**Pinned by.** `test/retention.test.ts` — "RetentionPruner: salvaged workspace patches past the
+window are pruned, waiting or kept".
+
 ## Runner state in the poll loop: a failed save costs only that save
 
 ### INV-BR1: a skip-reason or claim-release save that fails warns and the poll goes on
@@ -4382,12 +4393,20 @@ catalog once" and "a failed live catalog seed warns instead of crashing the poll
 
 **Pinned by.** `test/refusal.test.ts` — "a note merge that throws records lastError and still returns the refusal"; `test/merge-to-main.test.ts` — "mergeToMain waits for merge.lock up to ctx.lockTimeoutMs and names the lock when it gives up".
 
-## Worktree pool lease: a slot a killed run left dirty is saved and reset, never handed on broken
+## Worktree pool lease: a slot a killed run left dirty is saved and reset, never handed on broken, and the work goes back to its role
 
 ### INV-CU1: a lease saves a slot's uncommitted leftovers as a patch, then resets it, and a dirty worktree never fails the reset
 
-**Guarantee.** Before `prepareLeased` resets a slot it is not preserving for its role's resume, `salvageSlotLeftovers` writes any modified, deleted or untracked (not ignored) files in it as a patch against the slot's HEAD under `.tumwater/salvage/`, named by time, slot and the slot's last holder, and logs a warning naming all three. A clean slot writes nothing and warns nothing. The reset's detach (`checkoutDetached`) is forced, so uncommitted edits never fail it. A salvage that fails is logged as a warning and the reset still runs.
+**Guarantee.** Before `prepareLeased` resets a slot it is not preserving for its role's resume, `salvageSlotLeftovers` writes any modified, deleted or untracked (not ignored) files in it as a patch against the slot's HEAD, named by time, slot and the slot's last holder, and logs a warning naming all three. The patch goes under `.tumwater/salvage/pending/<role>/` when the slot record's `unsettledRun` names that role, and directly under `.tumwater/salvage/` otherwise. A clean slot writes nothing and warns nothing. The reset's detach (`checkoutDetached`) is forced, so uncommitted edits never fail it. A salvage that fails is logged as a warning and the reset still runs.
 
 **Binds.** `src/git/slot-salvage.ts` (`salvageSlotLeftovers`), `src/git/worktree-pool.ts` (`prepareLeased`) and `src/git/worktree.ts` (`checkoutDetached`, `ensureDetachedWorktree`).
 
 **Pinned by.** `test/worktree-pool.test.ts` — "a slot a killed run left with uncommitted edits is saved as a patch and reset for the next role" and "a clean slot is reset with nothing saved and no warning"; `test/worktree.test.ts` — "ensureDetachedWorktree re-points a worktree whose tracked files a killed run left modified".
+
+### INV-CU2: a run that never settled its worktree gets its edits back on the role's next run
+
+**Guarantee.** A slot's `unsettledRun` names the role whose run gave it up without settling its worktree: a run lease released `unsettled` (an exception escaped `runOnceInLeasePhase`), or a run lease whose process died, which `clearDeadLeases` also records as the slot's `lastRole`. Any other release or dead lease clears it. The role's next run on a fresh checkout restores the newest patch waiting for it as unstaged edits, unless it is a promptless recovery run or a user's request. A fresh run then becomes a `salvaged` handoff (a fresh session whose prompt says the edits are there), while a resume keeps its plan. The run's `resume` event names the patch, which moves out of `pending/` with any older one there. A patch that does not apply leaves the checkout clean, moves out with a warning, and the run starts fresh. The stage self-check's empty-tree test uses `isDirty`, so a failing `git status` throws (an unsettled release) instead of reading as a reverted change.
+
+**Binds.** `src/git/worktree-pool.ts` (`clearDeadLeases`, `releaseSlot`, `prepareLeased`), `src/git/slots-state.ts` (`unsettledRun`), `src/git/slot-salvage.ts` (`restoreSalvagedWork`), `src/runner/runner-run.ts` (`runOnceInLeasePhase`, `restoreSalvagedPhase`), `src/run/run-resume.ts` (`takesSalvagedWork`, `planWithSalvagedWork`), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`) and `src/run/run-stage.ts`.
+
+**Pinned by.** `test/runner-salvage.test.ts` — "edits a run left when git failed under it come back to the role's next run as a handoff"; `test/worktree-pool.test.ts` — "an unsettled run's leftovers wait for that role's next run; a settled run's are kept", "a verification released unsettled leaves nothing waiting: its edits are not a role's work" and "a run lease its process died holding is attributed to its role and saved as unfinished work"; `test/slot-salvage.test.ts` — "restoreSalvagedWork restores the newest waiting patch as unstaged edits and moves it out", "restoreSalvagedWork finds nothing for a role with no waiting patch" and "a patch that no longer applies is kept with a warning and the checkout is left clean"; `test/run-stage.test.ts` — "a git failure after the fix-up throws instead of reading as a reverted change".

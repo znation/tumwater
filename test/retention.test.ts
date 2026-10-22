@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
-import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath } from "../src/paths.js";
+import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { recordSession, sessionLedgerPath } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -46,6 +46,22 @@ test("RetentionPruner: construction runs the startup prune at a positive window"
   new RetentionPruner(root, 7);
   assert.equal(fs.existsSync(session), false);
   assert.equal(fs.existsSync(toolOut), false);
+});
+
+test("RetentionPruner: salvaged workspace patches past the window are pruned, waiting or kept", () => {
+  const root = tmpdir();
+  const kept = staleFile(salvageDir(root), "2026-09-01-000000-_slot-1-docs.patch");
+  const waiting = staleFile(salvagePendingDir(root, "feature"), "2026-09-01-000000-_slot-2-feature.patch");
+  const fresh = path.join(salvageDir(root), "2026-10-22-000000-_slot-3-docs.patch");
+  fs.writeFileSync(fresh, "x");
+  new RetentionPruner(root, 7);
+  assert.equal(fs.existsSync(kept), false);
+  assert.equal(fs.existsSync(waiting), false);
+  assert.equal(fs.existsSync(fresh), true, "a patch inside the window stays");
+  assert.match(
+    eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
+    /pruned 2 old salvaged workspace patch\(es\)/,
+  );
 });
 
 test("RetentionPruner: retention 0 disables the startup prune", () => {

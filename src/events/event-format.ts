@@ -595,17 +595,24 @@ export function eventMessage(e: HarnessEvent): string {
       const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
       return `tumwater is down — restart ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; start it again with \`tumwater start\``;
     }
-    case "resume":
+    case "resume": {
       // Two causes share the resume machinery; the line names the real one so an operator
       // reading the feed can tell a restart from a role fighting the context ceiling, and a
-      // cross-agent handoff from either — the handoff keeps the worktree but starts fresh.
-      return e.cause === "cut-off"
-        ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
-        : e.cause === "handoff"
-          ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
-          : e.cause === "image-reroute"
-            ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
-            : "resuming the run a shutdown interrupted (same agent session and workspace)";
+      // cross-agent handoff from either — the handoff keeps the worktree but starts fresh. A
+      // run that got a salvaged patch back (src/git/slot-salvage.ts) names the patch.
+      const restored = e.restored === undefined ? "" : ` — uncommitted edits restored from ${textOr(e.restored)}`;
+      return (
+        (e.cause === "cut-off"
+          ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
+          : e.cause === "handoff"
+            ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
+            : e.cause === "image-reroute"
+              ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
+              : e.cause === "salvaged"
+                ? "handing the work an earlier run left unsaved to a fresh session"
+                : "resuming the run a shutdown interrupted (same agent session and workspace)") + restored
+      );
+    }
     case "slot_wait": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
       // working as designed. Names the wait, the pool it waited on, and how many slots are

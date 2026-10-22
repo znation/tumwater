@@ -28,8 +28,10 @@ import { dropProviderLeaseKey } from "../concurrency/provider-lease.js";
  * slot's existing checkout was kept as-is. */
 export interface SlotLeaseHandle {
   dir: string;
-  /** Idempotent. Only the first call's options apply; `pin` keeps the slot pinned for the role. */
-  release: (options?: { pin?: boolean }) => void;
+  /** Idempotent. Only the first call's options apply; `pin` keeps the slot pinned for the role,
+   * and `unsettled` says a run lease is given up without its run settling the worktree (an
+   * exception escaped it), so edits left in the slot go back to the role's next run. */
+  release: (options?: { pin?: boolean; unsettled?: boolean }) => void;
   /** True when the slot was already pinned for the role and its checkout was left untouched;
    * false when the lease reset the slot to `ref`. */
   preserved: boolean;
@@ -67,6 +69,7 @@ interface PoolSlot {
   pinnedAt?: number | null;
   lastRole: string | null;
   lastReleasedAt: number | null;
+  unsettledRun?: string | null;
 }
 
 interface PoolState {
@@ -136,10 +139,15 @@ function raceAbort(wait: Promise<void>, signal?: AbortSignal): Promise<void> {
 }
 
 /** Clear leases owned by any process other than this one: their runs are dead (design "Leases").
- * Pins are kept, and the freed slots become candidates for the current claim. */
+ * Pins are kept, and the freed slots become candidates for the current claim. A dead lease never
+ * released, so its role is recorded as the slot's last holder here, and a dead run as unsettled:
+ * whatever it left in the slot is that role's unfinished work (slot-salvage.ts). */
 function clearDeadLeases(state: PoolState, pid: number): void {
   for (const slot of state.slots) {
-    if (slot.lease !== null && slot.lease.pid !== pid) slot.lease = null;
+    if (slot.lease === null || slot.lease.pid === pid) continue;
+    slot.lastRole = slot.lease.role;
+    slot.unsettledRun = slot.lease.purpose === "run" ? slot.lease.role : null;
+    slot.lease = null;
   }
 }
 
@@ -320,9 +328,16 @@ const unsavedReleases = new Map<string, Set<string>>();
  * caller's own outcome and leaving the slot leased by this live pid. The pin and `lastRole` the
  * failed release would have recorded are not replayed; a lost pin only means the next resume
  * gets a fresh checkout. */
-function freeSlot(root: string, dir: string, role: string, count: number, pin: boolean): string[] {
+function freeSlot(
+  root: string,
+  dir: string,
+  role: string,
+  count: number,
+  pin: boolean,
+  unsettledRun: string | null = null,
+): string[] {
   try {
-    return releaseSlot(root, dir, role, count, pin);
+    return releaseSlot(root, dir, role, count, pin, unsettledRun);
   } catch (err) {
     const key = rootKey(root);
     const dirs = unsavedReleases.get(key) ?? new Set<string>();
@@ -337,12 +352,19 @@ function freeSlot(root: string, dir: string, role: string, count: number, pin: b
   }
 }
 
-/** Free `dir` in slots.json, record `lastRole`/`lastReleasedAt`, and return the idle unpinned
- * slot dirs to remove because the live slot budget shrank below them (oldest-released first).
- * `pin` keeps the slot pinned for `role`; otherwise a pin this role held is cleared. A
- * non-canonical (migrated legacy) slot is dropped the moment it is unpinned, so the one resume
- * it was kept for runs in it and the dir is removed on that first release. */
-function releaseSlot(root: string, dir: string, role: string, count: number, pin: boolean): string[] {
+/** Free `dir` in slots.json, record `lastRole`/`lastReleasedAt`/`unsettledRun`, and return the
+ * idle unpinned slot dirs to remove because the live slot budget shrank below them
+ * (oldest-released first). `pin` keeps the slot pinned for `role`; otherwise a pin this role held
+ * is cleared. A non-canonical (migrated legacy) slot is dropped the moment it is unpinned, so the
+ * one resume it was kept for runs in it and the dir is removed on that first release. */
+function releaseSlot(
+  root: string,
+  dir: string,
+  role: string,
+  count: number,
+  pin: boolean,
+  unsettledRun: string | null,
+): string[] {
   const toRemove: string[] = [];
   updateSlotsState(root, (state) => {
     const slot = state.slots.find((s) => s.dir === dir);
@@ -350,6 +372,7 @@ function releaseSlot(root: string, dir: string, role: string, count: number, pin
       slot.lease = null;
       slot.lastRole = role;
       slot.lastReleasedAt = Date.now();
+      slot.unsettledRun = unsettledRun;
       if (pin) {
         if (slot.pinnedFor !== role) slot.pinnedAt = Date.now();
         slot.pinnedFor = role;
@@ -491,8 +514,9 @@ export async function retireLegacyRoleWorktrees(
 }
 
 /** Lease a pooled slot for `role`, prepared at `ref`. Resolves once a slot is held and reset to
- * `ref`, any uncommitted edits its last holder left saved first (salvageSlotLeftovers); rejects
- * on a `signal` abort while waiting. The returned `release` is idempotent. */
+ * `ref`, any uncommitted edits its last holder left saved first (salvageSlotLeftovers), as work
+ * to hand back when that holder was a run that never settled them; rejects on a `signal` abort
+ * while waiting. The returned `release` is idempotent. */
 export async function leaseSlot(
   root: string,
   options: LeaseSlotOptions,
@@ -518,8 +542,11 @@ async function prepareLeased(
   dir: string,
   options: LeaseSlotOptions,
 ): Promise<SlotLeaseHandle> {
-  const { role, ref, keep } = options;
+  const { role, purpose, ref, keep } = options;
   const record = slotForDir(root, dir);
+  // A run that gave the slot up unsettled is the one its leftovers belong to, even when a
+  // failed prepare has since recorded another role as the last holder.
+  const unsettledRun = record?.unsettledRun ?? null;
   const preserved = keep === true && record?.pinnedFor === role;
   const useRelease = await beginWorktreeUse(root, dir);
   // The use registry is LRU bookkeeping; freeing the slot is the real work of a release, so a
@@ -532,15 +559,21 @@ async function prepareLeased(
   if (!preserved) {
     try {
       // A run the harness could not clean up after may have left uncommitted edits here; save
-      // them before the reset discards them (slot-salvage.ts).
-      await salvageSlotLeftovers(root, dir, record?.lastRole ?? null, role);
+      // them before the reset discards them, for that role's next run when it left them
+      // unsettled (slot-salvage.ts).
+      await salvageSlotLeftovers(root, dir, {
+        leftBy: unsettledRun ?? record?.lastRole ?? null,
+        recoverFor: unsettledRun,
+        forRole: role,
+      });
       await ensureDetachedWorktree(root, dir, ref);
     } catch (err) {
       releaseUse();
       // Free the claim without shrinking. releaseSlot retires a migrated legacy slot on this
       // unpinned release, so hand its removal to removeDroppedSlots; a canonical slot survives
-      // for reuse on the next lease.
-      const toRemove = freeSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false);
+      // for reuse on the next lease. This lease never used the slot, so an unsettled run's
+      // claim on what is left there stands.
+      const toRemove = freeSlot(root, dir, role, Number.MAX_SAFE_INTEGER, false, unsettledRun);
       wakeWaiters(root);
       void removeDroppedSlots(root, toRemove);
       throw err;
@@ -550,11 +583,12 @@ async function prepareLeased(
   return {
     dir,
     preserved,
-    release: (options) => {
+    release: (how) => {
       if (released) return;
       released = true;
       releaseUse();
-      const toRemove = freeSlot(root, dir, role, liveCount(root), options?.pin === true);
+      const unsettled = how?.unsettled === true && purpose === "run" ? role : null;
+      const toRemove = freeSlot(root, dir, role, liveCount(root), how?.pin === true, unsettled);
       wakeWaiters(root);
       // Best-effort: a slot whose directory is already gone is unregistered by the prune.
       void removeDroppedSlots(root, toRemove);

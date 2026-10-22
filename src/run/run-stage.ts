@@ -2,7 +2,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "./run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import { commitAll, foldCommitsSince, headOf } from "../git/git.js";
+import { commitAll, foldCommitsSince, headOf, isDirty } from "../git/git.js";
 import { changedFiles } from "../git/git-diff.js";
 import {
   buildCommitMessage,
@@ -266,7 +266,10 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
     // A fix-up turn may resolve its findings by reverting the whole change. With nothing left
     // in the worktree there is nothing to commit or queue: end the run no_change here instead
     // of handing a clean tree to commitAll. The worktree is left clean and no pin is taken.
-    if ((await changedFiles(ctx.wt)).length === 0) {
+    // isDirty, not changedFiles: a `git status` that fails must throw, not read as clean — on
+    // 2026-10-21 a spawn failure here ended bugfix-2's 17-minute run no_change and released
+    // its edits unpinned; thrown, the run ends unsettled and its next run gets them back.
+    if (!(await isDirty(ctx.wt))) {
       logSelfCheckOutcome(
         ctx,
         "stage self-check: the follow-up turn left no change; nothing to land",

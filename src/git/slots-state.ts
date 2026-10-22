@@ -38,6 +38,11 @@ interface SlotRecord {
   pinnedAt?: number | null;
   lastRole: string | null;
   lastReleasedAt: number | null;
+  /** The role whose run gave the slot up without settling its worktree: an exception escaped
+   * the run, or its process died holding the lease. Uncommitted edits found here are that
+   * role's unfinished work, which its next run gets back (slot-salvage.ts). Null when the last
+   * holder settled its worktree or was not a role run, and on records older than the field. */
+  unsettledRun?: string | null;
 }
 
 /** The whole persisted pool. */
@@ -59,8 +64,8 @@ function withSlotsLock<T>(root: string, fn: () => T): T {
  * entries follows readJsonFile's no-data policy for the file as a whole: the good slots stay,
  * the reader and the operator view degrade instead of crashing. Each readable entry's known
  * fields are defaulted by readSlotRecord (a `lease` that is not a complete claim reads as no
- * lease, and pinnedFor/lastRole/lastReleasedAt as null), while any field it does not know
- * rides along so an update's read-modify-write still round-trips it. */
+ * lease, and pinnedFor/lastRole/lastReleasedAt/unsettledRun as null), while any field it does
+ * not know rides along so an update's read-modify-write still round-trips it. */
 export function readSlotsState(root: string): SlotsState {
   const state = readJsonFile<SlotsState>(slotsStatePath(root));
   if (state === null || !Array.isArray(state.slots)) return { slots: [] };
@@ -114,6 +119,7 @@ function readSlotRecord(slot: unknown): SlotRecord | null {
     pinnedAt: slot.pinnedAt === undefined ? undefined : finiteNumber(slot.pinnedAt, null),
     lastRole: typeof slot.lastRole === "string" ? canonicalRoleId(slot.lastRole) : null,
     lastReleasedAt: finiteNumber(slot.lastReleasedAt, null),
+    unsettledRun: typeof slot.unsettledRun === "string" ? canonicalRoleId(slot.unsettledRun) : null,
   };
 }
 

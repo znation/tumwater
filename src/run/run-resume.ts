@@ -40,6 +40,33 @@ export interface RunStartPlan {
   /** The raw user prompt this run is executing (null for role runners), so an unfulfilled
    * outcome can re-queue it. */
   userPrompt: string | null;
+  /** The root-relative path of the salvaged patch restored into this run's checkout
+   * (planWithSalvagedWork), named in the run's `resume` event. Absent otherwise. */
+  restored?: string;
+}
+
+/** Whether a run takes back the work an earlier run of its role left unsettled
+ * (src/git/slot-salvage.ts): an authoring run of the role's own work does, while a promptless
+ * recovery run (it authors nothing) and a user's request (the edits are not about it) leave the
+ * patch waiting for a later run. */
+export function takesSalvagedWork(plan: RunStartPlan): boolean {
+  return plan.prompt !== null && plan.userPrompt === null;
+}
+
+/** The plan of a run whose fresh checkout just had its role's salvaged work restored into it
+ * (`restored`, the patch's root-relative path). A fresh run becomes a `salvaged` handoff over
+ * those edits: a fresh session told they are there, which skips the fresh path's reset as every
+ * handoff does. A resume or handoff keeps its plan: its kept slot was lost, and the restore gives
+ * it back the edits it expects. */
+export function planWithSalvagedWork(role: string, plan: RunStartPlan, restored: string): RunStartPlan {
+  if (plan.resuming || plan.handoff || plan.prompt === null) return { ...plan, restored };
+  return {
+    ...plan,
+    handoff: true,
+    resumeCause: "salvaged",
+    prompt: buildHandoffPrompt(role, plan.prompt, "salvaged"),
+    restored,
+  };
 }
 
 /** Decide how a run starts, consuming the resume flags as a side effect (the flag is

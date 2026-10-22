@@ -57,6 +57,9 @@ interface CtxOverrides {
   /** When true, requestStageFix deletes the run's only changed file, so the fix-up leaves a
    * clean worktree. */
   stageFixDrops?: boolean;
+  /** When true, requestStageFix makes the worktree's index unreadable, so the harness's next git
+   * call there fails, as every spawn did in the 2026-10-21 process-table wedge. */
+  stageFixBreaksGit?: boolean;
   /** When true, stageCheck runs the real stageCheckFindings (which stages the change and
    * restores the index) instead of returning canned findings. */
   realStageCheck?: boolean;
@@ -145,6 +148,7 @@ function buildCtx(
       if (over.stageFixDrops) {
         fs.rmSync(path.join(fixWt, "feature.ts"), { force: true });
       }
+      if (over.stageFixBreaksGit) fs.chmodSync(path.join(sh(fixWt, "git", "rev-parse", "--absolute-git-dir"), "index"), 0);
       return over.stageFix ?? null;
     },
     pinAndReset: async (pinWt: string, sha: string) => {
@@ -951,6 +955,27 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
     "stage self-check: the follow-up turn left no change; nothing to land",
   );
   assert.deepEqual(outcomes[0]!.findings, ["a finding"]);
+});
+
+test("a git failure after the fix-up throws instead of reading as a reverted change", async () => {
+  // 2026-10-21: in the spawn wedge this check's `git status` failed, read as "nothing left",
+  // and ended a 17-minute run no_change with its edits released in an unpinned slot. Thrown,
+  // the run ends unsettled and its next run gets the edits back (src/git/slot-salvage.ts).
+  const { root, wt } = await setup();
+  const { ctx } = makeCtx(root, wt, freshRunnerState("improve"), {
+    finalText: "SUMMARY: add the feature\n",
+    stageChecks: [["a finding"]],
+    stageFix: okPi({ finalText: "WHY: fixed\n" }),
+    stageFixBreaksGit: true,
+  });
+  const index = path.join(sh(wt, "git", "rev-parse", "--absolute-git-dir"), "index");
+  try {
+    await assert.rejects(stageRunMerge(ctx), /git status --porcelain failed/);
+  } finally {
+    fs.chmodSync(index, 0o644);
+  }
+  assert.equal(queueDepth(root), 0, "nothing is queued");
+  assert.notEqual(sh(wt, "git", "status", "--porcelain"), "", "the edits are still in the worktree");
 });
 
 test("the real staging self-check leaves the index clean, so a full revert still ends no_change", async () => {

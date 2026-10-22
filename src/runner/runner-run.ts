@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome, RunResult } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -33,7 +34,8 @@ import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
-import { planRunStart, type RunStartPlan } from "../run/run-resume.js";
+import { planRunStart, planWithSalvagedWork, takesSalvagedWork, type RunStartPlan } from "../run/run-resume.js";
+import { restoreSalvagedWork } from "../git/slot-salvage.js";
 import { DEFAULT_BACKEND } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { seamAgent } from "../config/model-selector.js";
@@ -403,7 +405,9 @@ export function slotPinnedForResume(
  * a run whose next run resumes (aborted, quiet-killed, cut off, or a failed dirty run),
  * keeping the branch checked out and the uncommitted edits in the same cwd pi's `--continue`
  * needs; every other release detaches first so the branch is free for whichever slot the role
- * leases next. */
+ * leases next. A run an exception ends releases its slot unsettled, so edits it leaves there
+ * are saved for the role's next run, and a run on a fresh checkout first takes back any such
+ * work an earlier run of the role left (restoreSalvagedPhase). */
 async function runOnceInLeasePhase(
   ctx: RunnerRunContext,
   plan: RunStartPlan,
@@ -422,8 +426,12 @@ async function runOnceInLeasePhase(
   });
   let outcome: RunOutcome | undefined;
   try {
-    if (!lease.preserved) await checkoutRoleBranchPhase(ctx, lease.dir);
-    outcome = await runWithWorktreePhase(ctx, plan, cfg, fallbackCtx, lease.dir);
+    let run = plan;
+    if (!lease.preserved) {
+      await checkoutRoleBranchPhase(ctx, lease.dir);
+      run = await restoreSalvagedPhase(ctx, plan, lease.dir);
+    }
+    outcome = await runWithWorktreePhase(ctx, run, cfg, fallbackCtx, lease.dir);
     return outcome;
   } finally {
     // The slot is pinned for the next run's resume when the verdict armed `resumePending`
@@ -435,8 +443,21 @@ async function runOnceInLeasePhase(
     // Detach is best-effort so it can never mask the run's own outcome or error; the release
     // still runs, and the next lease's checkout recovers an undetached branch either way.
     if (!pin) await gitTry(lease.dir, "checkout", "--detach");
-    lease.release({ pin });
+    // An exception escaped the run (no outcome), so nothing settled the worktree — not even a
+    // dirty check, when the exception was git itself failing (2026-10-21's spawn wedge): any
+    // edits left in the slot are this role's unfinished work, saved for its next run.
+    lease.release({ pin, unsettled: outcome === undefined });
   }
+}
+
+/** Give a run on a fresh checkout back the work an earlier run of its role left unsettled
+ * (src/git/slot-salvage.ts): restore the newest waiting patch into `dir` and run over it as
+ * planWithSalvagedWork says. A run that does not take such work, or has none waiting or cannot
+ * restore it, keeps its plan. */
+async function restoreSalvagedPhase(ctx: RunnerRunContext, plan: RunStartPlan, dir: string): Promise<RunStartPlan> {
+  if (!takesSalvagedWork(plan)) return plan;
+  const restored = await restoreSalvagedWork(ctx.root, ctx.role, dir);
+  return restored === null ? plan : planWithSalvagedWork(ctx.role, plan, path.relative(ctx.root, restored));
 }
 
 /** Put `tumwater/<role>` on the leased slot before authoring. An existing branch is checked
@@ -474,7 +495,12 @@ async function runWithWorktreePhase(
     // handoff resumes a FRESH session over those same edits (the newest author session belongs
     // to another agent), so it preserves the worktree exactly as a resume does.
     await abortSync(wt);
-    logEventBestEffort(ctx.root, { source: ctx.role, type: "resume", cause: resumeCause });
+    logEventBestEffort(ctx.root, {
+      source: ctx.role,
+      type: "resume",
+      cause: resumeCause,
+      ...(plan.restored !== undefined ? { restored: plan.restored } : {}),
+    });
   } else {
     // Salvage a commit a previous run left unmerged (src/runner/leftover.ts): recovery puts it
     // back on the merge queue, so it merges through the orchestrator's merge pipeline — the

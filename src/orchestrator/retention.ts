@@ -11,7 +11,7 @@ import { ensureParentDir, pruneOldFiles } from "../files/files.js";
 import { pruneSessionLedgers, pruneOpencodeSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
-import { opencodeDbPath, sessionsRootDir, toolOutputDir } from "../paths.js";
+import { opencodeDbPath, salvageDir, sessionsRootDir, toolOutputDir } from "../paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
  * has passed since the last prune (or no prune has run yet). */
@@ -99,5 +99,11 @@ export class RetentionPruner {
     const prunedLines = pruneSessionLedgers(sessions, days);
     if (prunedLines > 0)
       warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${prunedLines} stale session ledger line(s)`);
+    // Salvaged slot leftovers (src/git/slot-salvage.ts) age out on the same window as the
+    // sessions that made them: a patch still waiting by then belongs to a role that has not run
+    // since, and the operator had the window's length to take a kept one.
+    const prunedPatches = pruneOldFiles(salvageDir(root), days);
+    if (prunedPatches > 0)
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${prunedPatches} old salvaged workspace patch(es)`);
   }
 }

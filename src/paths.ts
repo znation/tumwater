@@ -75,9 +75,16 @@ export function worktreesDir(root: string): string {
 }
 
 /** Where a pooled slot's uncommitted leftovers are saved as patches before the slot is reset for
- * another lease (slot-salvage.ts). Never read by tumwater: the files are for the operator. */
+ * another lease (slot-salvage.ts). A patch directly here is kept for the operator until session
+ * retention prunes it; one waiting for its role's next run lives under salvagePendingDir. */
 export function salvageDir(root: string): string {
   return path.join(tumwaterDir(root), "salvage");
+}
+
+/** The patches of `role`'s unfinished work waiting for its next run to restore them
+ * (slot-salvage.ts, restoreSalvagedWork). */
+export function salvagePendingDir(root: string, role: string): string {
+  return path.join(salvageDir(root), "pending", role);
 }
 
 /** A role's persistent git worktree under .tumwater/worktrees/. */

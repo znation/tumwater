@@ -22,7 +22,7 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
  * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a
  * fresh session over the interrupted run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute";
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute" | "salvaged";
 
 /** The shared closing paragraph of the four resume bridges that hand the same task back
  * unchanged (restart, hung-tool, budget-resumed, rate-limit): finish or redo what you started
@@ -91,7 +91,9 @@ ${REPLY_ENDINGS}`;
  * in the worktree's session dir belongs to another agent, so this run starts a FRESH session —
  * the full assembled run prompt, plus the one fact a fresh session cannot know: an interrupted
  * run's uncommitted edits are sitting in the worktree. The worktree is NOT reset for a handoff,
- * so the bridge must send the new run to `git diff` before it starts its own work. */
+ * so the bridge must send the new run to `git diff` before it starts its own work. A `salvaged`
+ * handoff's edits were restored from a patch of a run the harness lost track of
+ * (src/git/slot-salvage.ts) rather than kept in place. */
 export function buildHandoffPrompt(
   roleId: string,
   runPrompt: string,
@@ -110,7 +112,11 @@ discard them. This run starts on the model job the daily budget left you.`
 when it read ${imageReroute?.path ?? "an image"}, because that model cannot read images; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them. This
 run is on a model that CAN read images, so read the image again.`
-        : `An earlier run of the "${roleId}" role on another model was interrupted; its
+        : cause === "salvaged"
+          ? `An earlier run of the "${roleId}" role was cut short before tumwater could save its work;
+its uncommitted edits were recovered and are in your worktree — review \`git status\` and
+\`git diff\` (new files show as untracked), then finish or discard them.`
+          : `An earlier run of the "${roleId}" role on another model was interrupted; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them.`;
   return `${runPrompt}\n\n${note}`;
 }
