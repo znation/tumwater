@@ -83,6 +83,17 @@ test("latestSession and resumableSession pick the newest of the run's kind, not 
   assert.deepEqual(resumableSession(dir, { kind: "gate", agent: "pi" }), resolver);
 });
 
+test("the stream-minted codex record wins over its own pre-spawn record", () => {
+  // A fresh codex run pre-spawns a ledger record carrying the session name, then (when the
+  // stream names its thread id) appends a second record with the UUID id. They share kind,
+  // agent, cwd and name; the later-appended stream-minted one is what a resume must reach.
+  const dir = tmpdir();
+  recordSession(dir, record({ agent: "codex", kind: "author", name: "t", cwd: "/wt", id: "t", at: 1000 }));
+  recordSession(dir, record({ agent: "codex", kind: "author", name: "t", cwd: "/wt", id: "01a15c9d-6762-7931-814e-a3e6e64c1b51", at: 2000 }));
+  const got = resumableSession(dir, { kind: "author", agent: "codex", cwd: "/wt" });
+  assert.equal(got?.id, "01a15c9d-6762-7931-814e-a3e6e64c1b51", "the stream-minted id is the one a resume uses");
+});
+
 test("resumableSession refuses a record whose agent or cwd does not match", () => {
   const dir = tmpdir();
   recordSession(dir, record({ agent: "claude", cwd: "/wt-a", kind: "author" }));

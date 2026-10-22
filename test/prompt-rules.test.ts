@@ -10,7 +10,7 @@ import {
   contextBudgetRule,
   principleBullets,
 } from "../src/prompt/prompt.js";
-import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT } from "../src/prompt/dialect.js";
+import { CLAUDE_DIALECT, CODEX_DIALECT, OPENCODE_DIALECT, PI_DIALECT } from "../src/prompt/dialect.js";
 import { roleById } from "../src/roles/roles.js";
 import type { BuildCheck } from "../src/build/build-check-detect.js";
 
@@ -141,6 +141,22 @@ test("a backend's own rules ride the run prompt", () => {
   assert.ok(rules.length > 0);
   for (const assigned of [false, true]) {
     const prompt = buildRunPrompt({ role, agent: "opencode", assigned });
+    for (const rule of rules) assert.ok(prompt.includes(`- ${rule}`), `${assigned ? "assigned" : "unassigned"} prompt states: ${rule}`);
+  }
+});
+
+test("a codex run's prompt carries the codex dialect's rules beside the OpenCode cases", () => {
+  // Codex's dialect (plans/codex-backend.md §6): the `sed`-only reading-budget rule (it has
+  // no read tool), the `…N tokens truncated…` oversized-output wording (finding 18), and one
+  // backend rule about polling a long command with write_stdin (finding 19).
+  const role = roleById("feature");
+  assert.ok(role);
+  const rules = CODEX_DIALECT.backendRules ?? [];
+  assert.ok(rules.length > 0);
+  for (const assigned of [false, true]) {
+    const prompt = buildRunPrompt({ role, agent: "codex", assigned });
+    assert.ok(flat(prompt).includes(flat(CODEX_DIALECT.readRange)), `${assigned} prompt states the codex read range`);
+    assert.ok(flat(prompt).includes("…N tokens truncated…"), `${assigned} prompt states the codex truncation marker`);
     for (const rule of rules) assert.ok(prompt.includes(`- ${rule}`), `${assigned ? "assigned" : "unassigned"} prompt states: ${rule}`);
   }
 });

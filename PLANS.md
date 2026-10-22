@@ -30,45 +30,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
   - doctor prints a "sub window" row.
 - `npm test` passes.
 
-### Codex backend, part 7/9: The codex adapter runs model jobs, with stream-minted sessions, the rollout read after each run, a PATH fake and its prompt dialect (planned 2026-10-20 by user; requires parts 5/9 and 6/9 landed; design in plans/codex-backend.md "CODEX_HOME and sessions", "The stream translator and the rollout read that completes it" and "The prompt dialect"; touches src/agent/codex/codex-backend.ts (new) src/agent/run-agent.ts src/agent/session-ledger.ts src/prompt/dialect.ts src/paths.ts test/fakes/fake-codex.ts (new) test/test-runner.ts and their tests)
-
-**Goal.** Codex model jobs run end to end. Fresh runs record their stream-minted session id; continues resume it; the rollout supplies this run's usage and windows; the reviewer's suite-rerun detection sees Codex's commands; and the prompt carries Codex's dialect.
-
-**Approach.**
-- src/agent/codex/codex-backend.ts (new): `codexBackend`, with `id: "codex"`, `label: "Codex"`, `defaultBin: "codex"` and `binEnv: "TUMWATER_CODEX_BIN"`. Its hooks:
-  - `resolveBin` goes through `resolveBinForBackend`.
-  - `invocation`:
-    - For a continue, it takes the newest ledger record of this kind that is `agent: "codex"`, has this cwd and a UUID id, and whose rollout `findRollout` finds under the run's home. Otherwise the run is fresh.
-    - It builds the args with `codexArgs` and the env with `codexEnv(withNotesPath(backendBaseEnv(…)), {home})`. The home is `backends.codex.configDir` expanded, else none.
-    - It returns `sessionId` only for a resume.
-  - `translator` returns `codexTranslator()`.
-  - `resumable` makes the same check as the continue.
-  - `afterRun` reads `findRollout` plus `rolloutLines` for the run's thread id: the resumed id, or else `translator.sessionId()`. On [] it flags `codex_usage_partial`, and a fresh run then emits `run_usage` from `turnCompletedUsage()`. A reported model switch warns `codex_model_switched {requested, ran}` once.
-  - `classifyExit` handles the stderr half of a CLI that died before `turn.failed`. A killed run returns {} (design finding 12).
-  - `imageInput` returns true for now. Part 8/9 reads the catalog.
-- src/agent/run-agent.ts:
-  - It registers `codexBackend`.
-  - After each translated batch, when `translator.sessionId?.()` first returns an id the pre-spawn ledger record lacked, it appends one more `recordSession` line with that id (same kind, name, cwd, model, `at` now).
-- src/agent/session-ledger.ts: `resumableSession` already takes the newest record of a kind. Add a test that the stream-minted record wins over its own pre-spawn record.
-- src/prompt/dialect.ts: `CODEX_DIALECT` per design §6 (readRange, the `…N tokens truncated…` oversized-output wording, and the rule to keep polling `write_stdin` until a command reports its exit code), and an entry in `DIALECTS`.
-- test/fakes/fake-codex.ts (new), the twin of fake-opencode.ts:
-  - a PATH shim named `codex` that replays a canned `--json` stream;
-  - it writes a matching rollout under `$CODEX_HOME/sessions/…`;
-  - it records argv and stdin per run;
-  - on `exec resume <id>` it appends to that rollout.
-- test/test-runner.ts strips `TUMWATER_CODEX_BIN` and `CODEX_*` from the suite environment.
-
-**Acceptance criteria.**
-- test/codex-run.test.ts (new), on fake-codex:
-  - A fresh author run exits success with the fake's final text and usage.
-  - The run's ledger holds a pre-spawn record and a second record whose id is the fake's thread id.
-  - A follow-up with `continueSession` runs `exec resume <that id>` with `-m`.
-  - With the rollout deleted, the follow-up runs fresh, and the resume path logs its usual handoff.
-  - A fake rollout reporting `seven_day` at 72% puts a `seven_day` reading with utilization 0.72 on the result, and `billing: "subscription"`.
-  - A reviewer run whose fake stream runs `npm test` is seen as a suite rerun.
-  - The harness's SIGTERM mid-command ends with no marked process left. The fake leaves a marked orphan, as the real CLI does, and the marker sweep reaps it.
-- Prompt: a codex run's prompt carries `CODEX_DIALECT`'s rules (test/prompt-rules.test.ts, beside the OpenCode rule cases).
-- `npm test` passes.
 
 ### Codex backend, part 8/9: Codex billing, free-ness and windows: the account fed from runs, the API-key refusal, the context window, effort levels and image input from the catalog (planned 2026-10-20 by user; requires parts 3/9 and 7/9 landed; design in plans/codex-backend.md "Spend, free-ness, window, images"; touches src/pi/pi-models.ts src/agent/codex/codex-backend.ts src/agent/codex/codex-catalog.ts (new) src/agent/codex/codex-account.ts (new) src/gates/startup-gate.ts src/config/config-live.ts and their tests)
 

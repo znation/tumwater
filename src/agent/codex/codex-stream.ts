@@ -35,6 +35,10 @@ export interface CodexStreamTranslator extends StreamTranslator {
   /** Flag this run's usage as partial (the rollout read found nothing) so `warnings()`
    * reports `codex_usage_partial`. Part 7/9's afterRun calls it. */
   flagUsagePartial(): void;
+  /** Flag that codex switched models behind the harness's back (finding 24: it can swap the
+   * model on a usage limit), so `warnings()` reports `codex_model_switched {requested, ran}`.
+   * Part 7/9's afterRun calls it once per switch. */
+  flagModelSwitched(requested: string, ran: string): void;
   finalize(): string[];
 }
 
@@ -419,6 +423,9 @@ export function codexTranslator(opts: { contextWindow?: unknown; cwd?: string } 
     },
     flagUsagePartial(): void {
       warnings.add("codex_usage_partial");
+    },
+    flagModelSwitched(requested: string, ran: string): void {
+      warnings.add(`codex_model_switched requested=${requested} ran=${ran}`);
     },
     finalize(): string[] {
       // The stream ended with neither turn.completed nor turn.failed (a SIGTERM the harness

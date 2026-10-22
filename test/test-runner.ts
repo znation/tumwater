@@ -282,6 +282,8 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   shell that exported it would spawn the operator's binary instead of the PATH shim.
  * - TUMWATER_OPENCODE_BIN is opencode's twin of the same: a fake-opencode suite run from a
  *   shell that exported it would spawn the operator's binary instead of the PATH shim.
+ * - TUMWATER_CODEX_BIN is codex's twin of TUMWATER_PI_BIN: a fake-codex suite run from a
+ *   shell that exported it would spawn the operator's binary instead of the PATH shim.
  * - CLAUDECODE and every CLAUDE_CODE_* mark a host Claude Code session. A run spawned inside
  *   one that kept them reports "Not logged in" (finding 2), and the isolation env strips them
  *   at spawn; dropping them here makes a suite started by hand and one started by a run
@@ -289,6 +291,9 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * - OPENCODE and every OPENCODE_* mark a host OpenCode session (its client, server, config,
  *   database, and session id), which opencodeEnv scrubs at spawn; dropping them here keeps a
  *   hand-run suite from inheriting a host session's variables into the fake-driven runs.
+ * - CODEX and every CODEX_* mark a host Codex session (its home, config, and state), which
+ *   codexEnv scrubs at spawn; dropping them here keeps a hand-run suite from inheriting a host
+ *   session's variables into the fake-driven runs.
  * - SUPERVISED_ENV marks the orchestrator child, so a `tumwater run` that inherits it skips its
  *   supervisor half. test/helpers/cli-harness.ts also drops it from every CLI child it starts.
  * - SUPERVISOR_PID_ENV carries the supervisor pid a supervised run was handed, so an inherited
@@ -331,10 +336,12 @@ export function suiteEnv(
   delete env.TUMWATER_PI_BIN;
   delete env.TUMWATER_CLAUDE_BIN;
   delete env.TUMWATER_OPENCODE_BIN;
+  delete env.TUMWATER_CODEX_BIN;
   delete env.CLAUDECODE;
   for (const key of Object.keys(env)) {
     if (key.startsWith("CLAUDE_CODE_")) delete env[key];
     if (key === "OPENCODE" || key.startsWith("OPENCODE_")) delete env[key];
+    if (key === "CODEX" || key.startsWith("CODEX_")) delete env[key];
   }
   delete env[SUPERVISED_ENV];
   delete env[SUPERVISOR_PID_ENV];

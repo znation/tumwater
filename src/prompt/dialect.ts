@@ -55,6 +55,20 @@ export const OPENCODE_DIALECT: PromptDialect = {
   ],
 };
 
+/** codex's dialect (plans/codex-backend.md §6): it has no read tool (so the reading-budget
+ * rule names only `sed -n`/`head`/`tail`), its oversized tool output comes truncated around a
+ * `…N tokens truncated…` marker (finding 18), and one backend rule tells the model how a
+ * longer command works: codex returns a session id to poll with `write_stdin`, and ends the
+ * command when the turn ends (finding 19). */
+export const CODEX_DIALECT: PromptDialect = {
+  readRange: "`sed -n 'A,Bp'` (or `head` / `tail`)",
+  oversizedOutput: `Oversized command output comes back as its head and tail around a \`…N tokens truncated…\`
+  marker — narrow the command (grep, \`sed -n\`, \`head\`/\`tail\`) instead of re-running it whole.`,
+  backendRules: [
+    "A command that runs longer than 30 seconds returns a session id while it keeps running. Keep calling `write_stdin` with that session id until it reports an exit code, and never end your turn while a command is still running: Codex kills it when you finish, and its result is lost.",
+  ],
+};
+
 /** The dialect table keyed by backend id: every backend but claude speaks pi's dialect (and
  * an unknown id falls back to pi because run-agent.ts routes an unregistered id to the pi
  * backend). Adding a backend means one row here, not another branch. */
@@ -62,6 +76,7 @@ const DIALECTS: Record<string, PromptDialect> = {
   pi: PI_DIALECT,
   claude: CLAUDE_DIALECT,
   opencode: OPENCODE_DIALECT,
+  codex: CODEX_DIALECT,
 };
 
 /** The dialect for an agent id, read from the per-backend table. */

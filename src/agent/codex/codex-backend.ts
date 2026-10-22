@@ -1,0 +1,184 @@
+/** The codex adapter for the agent seam (plans/codex-backend.md §4, §5, §6): it shapes one
+ * run's argv/stdin/env, translates codex's `exec --json` stream, reads the authoritative
+ * rollout after the process exits, and classifies the exit's stderr — everything
+ * backend-specific. src/agent/run-agent.ts owns the spawn and records this run in the session
+ * ledger; codex mints its own session id (a thread id, or the resumed record's id) in the
+ * stream's `thread.started`, which the runner's stream-mint pass appends to the ledger and
+ * `invocation` returns so a later `exec resume` can reach it.
+ *
+ * Sessions resume by id, out of the team's `CODEX_HOME`. A continue takes the ledger's newest
+ * record of this run's kind and resumes only when it is codex's, has this cwd, carries a UUID
+ * id, and `findRollout` finds its rollout under the run's home — anything else mints a fresh
+ * thread and the existing `handoff` path takes over (design §4). Together with the `resumable`
+ * hook, that is every resume point's one rule.
+ *
+ * Registration lives in src/agent/run-agent.ts beside the pi, claude and opencode adapters; a
+ * test selects codex by setting `config.agent = "codex"` on a run. A run carrying a note gets
+ * the notes path in its environment (the `tumwater-notes` command on PATH reads it), as the
+ * pi and claude adapters do. */
+
+import fs from "node:fs";
+import os from "node:os";
+import { loadConfigSafe } from "../../config/config.js";
+import { resolvedBackendConfig } from "../../config/config-views.js";
+import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
+import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
+import { teamRootOf } from "../../paths.js";
+import { expandHomeTilde } from "../../files/files.js";
+import type {
+  AgentBackend,
+  BackendBinConfig,
+  AgentExitClassification,
+  AgentExitInfo,
+  AgentInvocation,
+  AgentRunSpec,
+} from "../agent-backend.js";
+import { resumableSession } from "../session-ledger.js";
+import { codexArgs, codexEffort } from "./codex-args.js";
+import { codexEnv } from "./codex-env.js";
+import { findRollout, rolloutLines } from "./codex-rollout.js";
+import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
+
+/** A codex thread id (a UUID format, e.g. `01a15c9d-6762-7931-814e-a3e6e64c1b51`). The
+ * stream mints it in `thread.started`; the pre-spawn ledger record carries the session name
+ * instead, so this regex is what tells a resume that a record holds a real, stream-minted id
+ * worth resuming (design §4). */
+const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The team's Codex home for a run: `backends.codex.configDir`, a leading `~` expanded, else
+ * none — a run with no configured home keeps the operator's `CODEX_HOME` (codexEnv leaves it
+ * unset), and no rollout can then be found under a known home, so a continue falls back to a
+ * fresh thread. Pure. */
+function codexHome(config: { configDir?: string }): string | undefined {
+  const dir = config.configDir;
+  if (dir === undefined) return undefined;
+  return expandHomeTilde(dir, os.homedir());
+}
+
+/** The session this run uses: for a continue, the ledger's newest record of this kind when it
+ * is codex's, has this cwd, carries a UUID thread id, and `findRollout` finds its rollout
+ * under the run's home; otherwise the run is fresh (no pre-minted id — the stream names it).
+ * Returns the id and whether this is a resume, so `invocation` can name it and build `exec
+ * resume`. */
+function resolveCodexSession(
+  run: AgentRunSpec,
+  home: string | undefined,
+): { sessionId?: string; resumed: boolean } {
+  if (run.continueSession && home !== undefined) {
+    const record = resumableSession(run.sessionDir, {
+      kind: run.kind,
+      agent: "codex",
+      cwd: run.cwd,
+    });
+    if (record !== null && THREAD_ID_RE.test(record.id) && findRollout(home, record.id) !== null) {
+      return { sessionId: record.id, resumed: true };
+    }
+  }
+  return { resumed: false };
+}
+
+/** Classify codex's stderr: the seam's stderr half for a CLI that died before emitting a
+ * `turn.failed` (the stream's own failures are classified by the translator). A run the
+ * harness killed has its own cause and is never classified here (design finding 12). The
+ * codex CLI surfaces login/model/usage failures as stream JSON, so a bare nonzero exit with
+ * no stream carries no signal this part has a verdict for — it stays unclassified and the
+ * parser's own event-derived flags stand. */
+function classifyCodexExit(info: AgentExitInfo): AgentExitClassification {
+  if (info.killed) return {};
+  return {};
+}
+
+/** The agent-backend seam's codex adapter. */
+export const codexBackend: AgentBackend = {
+  id: "codex",
+  label: "Codex",
+  defaultBin: "codex",
+  binEnv: "TUMWATER_CODEX_BIN",
+
+  resolveBin(config: BackendBinConfig): ResolvedBackendBin {
+    return resolveBinForBackend(config, this);
+  },
+
+  invocation(run: AgentRunSpec): AgentInvocation {
+    // The notes path rides beside the run marker, as the pi and claude adapters' envs do
+    // (withNotesPath); from part 2/4 the run saves its note through the `tumwater-notes`
+    // command on PATH, so codex configures no MCP server for notes.
+    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    // A team home of its own (`CODEX_HOME`) keeps team sessions and trust entries out of the
+    // operator's `~/.codex` (design §4, finding 10); unset leaves the operator's home.
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
+    const env = codexEnv(base, { home });
+    const { sessionId, resumed } = resolveCodexSession(run, home);
+    const thinking = run.config.thinking;
+    // The effort (part 5/9): ride the thinking level through the decoder. The model's own
+    // cataloged effort levels (part 8/9) are undefined until then, so the value is unclamped.
+    const effort = thinking === undefined ? undefined : codexEffort(thinking);
+    const { args, stdin } = codexArgs({
+      model: run.config.model ?? "",
+      ...(effort !== undefined ? { effort } : {}),
+      ...(resumed && sessionId !== undefined ? { resumeId: sessionId } : {}),
+      args: resolvedBackendConfig(run.config, "codex").args,
+      prompt: run.prompt,
+    });
+    // A resumed run returns its id so the runner's pre-spawn ledger record carries it; a fresh
+    // run has none until the stream names it (the runner's stream-mint pass appends it).
+    return { args, stdin, env, ...(resumed && sessionId !== undefined ? { sessionId } : {}) };
+  },
+
+  translator() {
+    return codexTranslator();
+  },
+
+  imageInput(): boolean {
+    // Every Codex model reads images (the Read/`view_image` tool); part 8/9 reads the
+    // catalog to refine this.
+    return true;
+  },
+
+  resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {
+    const record = resumableSession(dir, { kind: opts.kind, agent: "codex", cwd: opts.cwd });
+    if (record === null || !THREAD_ID_RE.test(record.id)) return false;
+    const root = teamRootOf(dir);
+    const { config } = loadConfigSafe(root);
+    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+    if (home === undefined) return false;
+    return findRollout(home, record.id) !== null;
+  },
+
+  afterRun(run: AgentRunSpec, invocation: AgentInvocation, translator: CodexStreamTranslator): string[] {
+    const ct = translator;
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
+    const id = invocation.sessionId ?? ct.sessionId?.();
+    const fresh = invocation.sessionId === undefined;
+    // The rollout is authoritative, so its loss is worth one warning: a fresh run keeps the
+    // stream's own usage as a fallback, a resumed run records none (design §5, finding 4).
+    const fallback = (): string[] => {
+      ct.flagUsagePartial();
+      if (!fresh) return [];
+      const usage = ct.turnCompletedUsage();
+      return usage !== undefined ? [JSON.stringify({ type: "run_usage", ...usage })] : [];
+    };
+    if (home === undefined || id === undefined) return fallback();
+    const rollout = findRollout(home, id);
+    if (rollout === null) return fallback();
+    let text: string;
+    try {
+      text = fs.readFileSync(rollout, "utf8");
+    } catch {
+      return fallback();
+    }
+    // The stream never exposes the turn id — only the thread id that names the rollout file
+    // (real captures' `task_started.turn_id` is a different UUID), so the reader selects the
+    // last block, this run's, from the file the thread id located.
+    const { lines, switchedTo } = rolloutLines(text, {
+      requestedModel: run.config.model ?? "",
+    });
+    if (lines.length === 0) return fallback();
+    // Codex can switch models on a usage limit by itself (finding 24): warn once and record
+    // the model that actually ran in the rollout's reading.
+    if (switchedTo !== undefined) ct.flagModelSwitched(run.config.model ?? "", switchedTo);
+    return lines;
+  },
+
+  classifyExit: classifyCodexExit,
+};

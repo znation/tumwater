@@ -25,6 +25,7 @@ import { recordSession } from "./session-ledger.js";
 import { errorMessage } from "../text/text.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
+import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { seamImageInput } from "./image-input.js";
 import { ensureNotesShim } from "./notes-shim.js";
@@ -49,6 +50,7 @@ export const MAX_NATIVE_LINE_CHARS = 16 * 1024 * 1024;
 registerAgentBackend(piBackend);
 registerAgentBackend(claudeBackend);
 registerAgentBackend(opencodeBackend);
+registerAgentBackend(codexBackend);
 
 /** Prefix of PiRunResult.errorMessage when the agent process never started (no session file
  * is created for such a run). The resolved binary follows it, so a configured agentBin
@@ -300,13 +302,18 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
     };
     const invocation = backend.invocation(runSpec);
+    // The id the pre-spawn ledger record carries: a backend that mints one ahead of the run
+    // (claude, a codex resume), else the session name (pi, a fresh codex run — its id is born
+    // in the stream). The stream-mint pass below compares against it so a codex run appends
+    // its streamed thread id exactly once, and only when it differs from this.
+    const preSpawnSessionId = invocation.sessionId ?? opts.sessionName;
     // Record the run in the session ledger before its spawn, so a later resume can pick the
     // newest session of its own kind instead of whatever file is newest in the dir. The id is
     // the backend's own when it mints one ahead of the run (claude's UUID, or the resumed
     // record's id); pi mints none and keeps the session name.
     recordSession(opts.sessionDir, {
       agent: backend.id,
-      id: invocation.sessionId ?? opts.sessionName,
+      id: preSpawnSessionId,
       kind: opts.kind,
       name: opts.sessionName,
       cwd: opts.cwd,
@@ -405,11 +412,28 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // Quiet watchdog and its stall warning: src/pi/pi-watchdogs.ts.
 
     const onLine = (line: string) => rawLog.stream.write(line + "\n");
-    // Write one complete native line and feed its translation to the parser (which also hands
-    // the canonical lines to onLine for the raw log).
+    // The translator's session id, once the stream has named it (codex's `thread.started`).
+    // The pre-spawn record for a fresh codex run carries the session name; the id it actually
+    // ran with is born in the stream, so the first time this returns one the pre-spawn record
+    // lacked, append a second ledger record carrying it (same kind, name, cwd and model) — the
+    // record a later `exec resume` resumes (design §4 "Sessions").
+    let streamMintedSession = false;
     const emitNativeLine = (line: string) => {
       if (!nativeLog.broken) nativeLog.stream.write(line + "\n");
       for (const canonical of translator.translate(line)) parser.feed(canonical + "\n", onLine);
+      const sid = translator.sessionId?.();
+      if (sid !== undefined && sid !== preSpawnSessionId && !streamMintedSession) {
+        streamMintedSession = true;
+        recordSession(opts.sessionDir, {
+          agent: backend.id,
+          id: sid,
+          kind: opts.kind,
+          name: opts.sessionName,
+          cwd: opts.cwd,
+          ...(opts.config.model !== undefined ? { model: opts.config.model } : {}),
+          at: Date.now(),
+        });
+      }
     };
     // Split native stdout into complete lines, translate each, and feed the canonical lines to
     // the parser (which also hands them to onLine for the raw log). A trailing partial native

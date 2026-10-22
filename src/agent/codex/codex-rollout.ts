@@ -48,11 +48,14 @@ export interface RolloutLines {
   switchedTo?: string;
 }
 
-/** Read the records of ONE turn out of a rollout's text. `sinceTurnStart` is the turn's own
- * id (its `task_started.turn_id`); only that run's records count, so a resume that appends to
- * the same file reports its own figures, never the thread total (finding 4). `requestedModel`
- * is the `-m` tumwater passed; a turn whose `turn_context.model` differs reports the switch. */
-export function rolloutLines(text: string, opts: { sinceTurnStart: string; requestedModel: string }): RolloutLines {
+/** Read the records of ONE turn out of a rollout's text. A rollout is one file per thread that
+ * appends a new `task_started` block per run, so the adapter's `afterRun` read (which knows
+ * only the thread id that names the file, never a turn id) reads the LAST block — everything
+ * after the last `task_started`. `sinceTurnStart` (optional) selects a specific turn's block
+ * instead, which pins per-turn isolation: the thread total hides a resume's own figures
+ * (finding 4). `requestedModel` is the `-m` tumwater passed; a turn whose `turn_context.model`
+ * differs reports the switch. */
+export function rolloutLines(text: string, opts: { sinceTurnStart?: string; requestedModel: string }): RolloutLines {
   const { sinceTurnStart, requestedModel } = opts;
   let currentTurn: string | undefined;
   let sawTurn = false;
@@ -72,10 +75,20 @@ export function rolloutLines(text: string, opts: { sinceTurnStart: string; reque
     const ptype = str(parsed.type) === "event_msg" ? str(payload.type) : str(parsed.type);
     if (ptype === "task_started") {
       currentTurn = str(payload.turn_id);
-      if (currentTurn === sinceTurnStart) sawTurn = true;
+      // Each new task_started begins a fresh turn (a resume appends a second run to the same
+      // file), so the collectors restart at the block we are reading. With no turn id (the
+      // adapter's read) every task_started restarts them and the last block wins; with one,
+      // only the requested turn's does.
+      if (sinceTurnStart === undefined || currentTurn === sinceTurnStart) {
+        sawTurn = true;
+        lastUsage = undefined;
+        lastRateLimits = undefined;
+        model = undefined;
+        planType = undefined;
+      }
       continue;
     }
-    if (currentTurn !== sinceTurnStart) continue;
+    if (sinceTurnStart !== undefined && currentTurn !== sinceTurnStart) continue;
     switch (ptype) {
       case "turn_context":
         if (model === undefined) model = str(payload.model);

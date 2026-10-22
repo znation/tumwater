@@ -33,6 +33,17 @@ test("each turn's run_usage is its own last figure, not the thread total", () =>
   assert.equal(resumedUsage.output, 10);
 });
 
+test("reading without a turn id takes the last block — the just-finished run", () => {
+  // The adapter knows only the thread id (the rollout file's name), never a turn id — real
+  // captures' turn ids differ from the thread id — so the plain read must pick the run it
+  // just drove: the last block a resume appends (finding 4).
+  const lines = read(rolloutLines(FIXTURE, { requestedModel: "gpt-6-luna" }));
+  const usage = lines.find((e) => e.type === "run_usage")!;
+  assert.equal(usage.input, 8497 - 8064, "the last (resume) block wins, not the first");
+  assert.equal(usage.output, 10);
+  assert.equal(lines.some((e) => e.type === "billing"), true);
+});
+
 test("a requested model other than the one that ran reports the switch, requested model matches reports none", () => {
   assert.equal(rolloutLines(FIXTURE, { sinceTurnStart: FIRST, requestedModel: "gpt-6.1-sol" }).switchedTo, "gpt-6-luna");
   assert.equal(rolloutLines(FIXTURE, { sinceTurnStart: FIRST, requestedModel: "gpt-6-luna" }).switchedTo, undefined);
