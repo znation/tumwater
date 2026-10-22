@@ -266,9 +266,12 @@ export async function exemptSkipBlockReason(
  *   already-verified tree. A no-op rebase the gate did NOT verify — its pre-check was skipped
  *   (a timeout, a killed run) — falls through and runs the merge-scope check, which fails
  *   closed on the same timeout; an exempt diff or a project with no declared check falls
- *   through to its own arm below. Not taken when a `check.gateCommand` is configured: the
- *   gate then ran only that, not the full check. With a `check.mergeCommand` it is taken and
- *   seeds nothing (the main watch decides main's verdict).
+ *   through to its own arm below. Taken (Fast merge "Defaults") whenever a `check.mergeCommand`
+ *   resolves — to its own value or, when absent, to `check.gateCommand`. In the fallback case
+ *   (no separate `mergeCommand`) the in-lock command IS the gate command the gate already ran
+ *   green on the rebased head, so the in-lock run would add nothing; with a separate
+ *   `check.mergeCommand` the gate's green was the gate command, not the merge one. Either way
+ *   it skips and seeds nothing (the main watch decides main's verdict).
  * - doc-only delta ahead of main (the gate's own exemption test): cannot break the build.
  * - a code change whose rebased tree differs from the gate-verified one only in exempt paths
  *   (onlyExemptDriftFromVerified): main moved under the review by doc commits alone, so the
@@ -290,13 +293,13 @@ async function verifyMerge(
   // re-review sets verifiedHead to the resolved head, and that second rebase is then a no-op).
   // A no-op rebase the gate never verified — its pre-check timed out or was killed and left
   // GateResult.verifiedHead undefined — falls through and runs the merge-scope check, which
-  // fails closed on the same timeout. With a check.gateCommand configured the gate ran only
-  // that cheaper check, so even a verified no-op rebase must run the full check here: the
-  // merge scope is what verifies a single change (and each change of an abandoned stack),
-  // and a gateCommand green must never seed the baseline.
-  // With a check.mergeCommand the lock runs only that cheaper check, so the gate's verified
-  // head satisfies it whatever the gate ran — and nothing seeds the baseline: main's verdicts
-  // come from the main watch's full check on the tip.
+  // fails closed on the same timeout. With a check.gateCommand or check.mergeCommand
+  // configured (Fast merge "Defaults": the lock runs the gate command when mergeCommand is
+  // absent): in the fallback case (no separate `mergeCommand`) the in-lock command IS the gate
+  // command the gate already ran green on the rebased head, so the verified no-op rebase adds
+  // nothing — skip it; with a separate `mergeCommand` the gate's green was the gate command.
+  // Either way it seeds nothing — a cheaper command's green never seeds the baseline: main's
+  // verdicts come from the main watch's full check on the tip.
   if (rebasedHead === verifiedHead && mergeCommandOf(ctx.config) !== undefined) return true;
   if (rebasedHead === verifiedHead && gateCommandOf(ctx.config) === undefined) {
     noteGreenBaseline(rebasedHead);
@@ -384,9 +387,9 @@ async function verifyMerge(
  * that only rewrote SHAs) is the verified bytes themselves and seeds an observed green. Any
  * other drift seeds an inherited one, which attribution re-checks before trusting
  * (main-baseline.ts's observedOnly). Not taken without a verified head (the pre-check was skipped
- * or never ran) or with a `check.gateCommand` and no `check.mergeCommand`, for the same reasons
- * the no-op skip above is not.
- * With a mergeCommand the drift merges without a seed: the main watch decides main's verdict.
+ * or never ran). With an in-lock command configured (a gate or merge command — Fast merge
+ * "Defaults": the lock runs the gate command when mergeCommand is absent) the drift merges
+ * without a seed: the main watch decides main's verdict.
  * A git failure means "not proven" and the check runs. */
 async function onlyExemptDriftFromVerified(
   ctx: MergeContext,

@@ -6,43 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Merge on `check.gateCommand` when `check.mergeCommand` is unset, and review clean, dedupe and coverage after merging by default (planned 2026-10-21 by user; design in plans/fast-merge.md "Defaults"; touches src/build/build-check-detect.ts src/config/config.ts src/config/config-validation.ts src/doctor/doctor-checks.ts docs/config.md docs/how-it-works.md DEVELOPMENT.md and their tests)
-
-**Goal.** Fast merge parts 6/14 and 14/14 shipped `check.mergeCommand` and `review.afterMerge` as opt-in keys. tumwater.json is gitignored, so no team commit could set them. On 2026-10-21 the merge lock still ran the full `npm test` on every code merge (142–330 s each, the latest at 02:24), and every role was still reviewed before merging. Make both on by default (decided 2026-10-21 by you): a project that declared `check.gateCommand` merges on it, and clean, dedupe and coverage are reviewed after merging, unless the config opts out. This repo's tumwater.json sets `gateCommand`, so both switches take effect here at the next redeploy.
-
-**Approach.**
-- `mergeCommandOf` (src/build/build-check-detect.ts) is the one accessor every merge-path reader uses; `gateCommandOf` beside it is unchanged. Change `mergeCommandOf` alone, distinguishing an absent key from a blank one:
-  - `check.mergeCommand` absent → `gateCommandOf(config)` — the new default, so a project with only `check.gateCommand` set merges on it;
-  - a non-blank string → that string;
-  - a blank string (`""`) → undefined: the explicit opt-out, which keeps the full check in the merge lock even when a gate command is set.
-
-  The merge-path readers that call `gateCommandOf` directly keep their behavior through their own `mergeCommandOf` checks: in `verifyMerge` (src/merge/merge-to-main.ts) a verified no-op rebase now takes the `mergeCommandOf !== undefined` skip and seeds nothing, and `onlyExemptDriftFromVerified` returns before seeding. Update both doc comments — `mergeCommandOf`'s and the `check.mergeCommand` comment in src/config/config-validation.ts — to say the absent key falls back to `gateCommandOf`.
-- `review.afterMerge`: add `afterMerge: ["clean", "dedupe", "coverage"]` to `defaultConfig().review` (src/config/config.ts). `overlayDefaults` already merges `review` key by key, so a config that omits the key inherits it, and `"afterMerge": []` opts out. The readers (src/review/review.ts ~350, src/review/post-merge-review.ts ~36) need no change.
-- Never write a default into tumwater.json. A config write through the existing writers (the TUI and dashboard editors, the director's config requests) leaves an absent `mergeCommand` or `afterMerge` absent. Check this against the writer INV-B3 binds (docs/invariants.md), and add a test if none covers it.
-- `tumwater doctor`'s `check` row (`checkBuildCheck`, src/doctor/doctor-checks.ts) gains the facts a reader cannot get today: the in-lock command from `mergeCommandOf(config)`, so the row reads `npm test · merge lock runs npm run test:gate, full check after merging`, or `… full check in the merge lock` when it is undefined. `CheckConfigSlice` already carries `check`, so no new plumbing is needed; do not name the after-merge roles here — they live under `review`, which that slice does not hold, and the `review` row in docs/config.md already documents them.
-- Docs:
-  - docs/how-it-works.md: rewrite the `**Check.**` bullet's sentence "The full check then still runs once per merge, over the batch or the single change, and a failing result there blocks the merge" — the pre-change rule the objection named. It should say that with a gate command set the in-lock command is that gate command, unless `check.mergeCommand` names another or `""` opts back into the full check in the lock, and that main's full check runs on the tip after the merge via the main watch. Keep the paragraph's later `check.mergeCommand` sentences, adjusting only what the new default makes stale; the `review.afterMerge` bullet lower in the file already describes the after-merge review and needs no change.
-  - docs/config.md's `check` row: `mergeCommand` defaults to `gateCommand`, and `""` keeps the full check in the lock. The `review` row's default gains `"afterMerge":["clean","dedupe","coverage"]`, and the row says `[]` opts out.
-  - DEVELOPMENT.md's "The gate runs the affected tests" paragraph: "The full `npm test` still runs once per merge, on the rebased tree, and on main's baseline, unless `check.mergeCommand` is set" becomes "…unless a gate or merge command is set (`check.mergeCommand` defaults to `check.gateCommand`)".
-- Tests that assumed the old defaults change only their fixture config, not their assertions:
-  - Merge tests that set `gateCommand` and expect the full check in the lock set `mergeCommand: ""`.
-  - Tests that expect clean, dedupe or coverage to be reviewed before merging set `afterMerge: []`.
-
-**Files touched.**
-- Source: src/build/build-check-detect.ts, src/config/config.ts, src/config/config-validation.ts (comment only), src/doctor/doctor-checks.ts.
-- Docs: docs/config.md, docs/how-it-works.md, DEVELOPMENT.md.
-- Tests: test/build-check-detect.test.ts (the `mergeCommandOf: on for a real string, off for blank or missing` case gains an absent key plus `gateCommand` set → the gate command, and `""` plus `gateCommand` set → undefined), test/config-validation-check.test.ts, test/config-write.test.ts, test/post-merge-review.test.ts, the doctor tests for `checkBuildCheck`, and the fixture configs of merge and review tests that relied on the old defaults.
-
-**Acceptance criteria.**
-- With `check.gateCommand` set and no `mergeCommand`, `mergeCommandOf` returns the gate command. A fake merge runs it in the lock, not the full check, and the main watch runs the full check afterwards.
-- With `"mergeCommand": ""` and a gate command, the in-lock check is the full check, as before Fast merge part 6/14.
-- With neither key set, the full check runs in the lock, as today.
-- With no `review.afterMerge` in the file, a clean change merges with no `review_start` before its `merged` event, and gets an `afterMerge` review. With `"afterMerge": []`, it is reviewed before merging.
-- Writing an unrelated key through the config writer leaves both keys absent from the file.
-- doctor's `check` row names the in-lock command and where the full check runs.
-- docs/how-it-works.md's `**Check.**` bullet and DEVELOPMENT.md's "The gate runs the affected tests" paragraph no longer say the full check runs once per merge when a gate command is set.
-- `npm test` passes.
-
 ### Codex backend, part 2c/9: The budget gate's window move, chain reasons and director move read each subscription backend's own used-up window (planned 2026-10-21 by the plan role; requires parts 2a/9 and 2b/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 2; touches src/gates/budget-gates.ts test/budget-gates.test.ts test/budget-chain-info.test.ts)
 
 **Goal.** Part 2c was too large for one run, so it is split into 2c (this part, the gate), 2d/9 (the hold observation and the once-per-window polls) and 2e/9 (the poll loop). This part makes the budget gate read each subscription backend's own used-up window instead of one claude `windowOut`, so a job moving down its chain, the director's move and each tier's chain reason name the backend that actually reported the window. No behavior change for a claude-only or pi-only team.

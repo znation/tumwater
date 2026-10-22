@@ -563,12 +563,13 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }));
   fs.mkdirSync(path.join(root, "node_modules"));
-  assert.deepEqual(checkBuildCheck(root), { level: "ok", detail: "npm test" });
+  // No gate command set: the merge lock runs the full check.
+  assert.deepEqual(checkBuildCheck(root), { level: "ok", detail: "npm test · full check in the merge lock" });
 
   // The real worktree layout: the install lives at the repo root, three levels above the worktree.
   const wt = path.join(root, ".tumwater", "worktrees", "cov");
   fs.mkdirSync(wt, { recursive: true });
-  assert.deepEqual(checkBuildCheck(wt), { level: "ok", detail: "npm test in ../../.." });
+  assert.deepEqual(checkBuildCheck(wt), { level: "ok", detail: "npm test in ../../.. · full check in the merge lock" });
 
   // A configured command wins over npm detection and is named verbatim; its cwd (resolved
   // against the start dir) shows when it is not the root itself.
@@ -577,11 +578,18 @@ test("checkBuildCheck names the declared script and walks up from a worktree to 
   fs.mkdirSync(path.join(configured, "node_modules"));
   assert.deepEqual(checkBuildCheck(configured, { check: { command: "pytest -q" } }), {
     level: "ok",
-    detail: "pytest -q",
+    detail: "pytest -q · full check in the merge lock",
   });
   assert.deepEqual(checkBuildCheck(configured, { check: { command: "pytest -q", cwd: "sub" } }), {
     level: "ok",
-    detail: `pytest -q (cwd ${path.join("sub")})`,
+    detail: `pytest -q (cwd ${path.join("sub")}) · full check in the merge lock`,
+  });
+
+  // With a gate command set (and no mergeCommand), the row names the in-lock command and that
+  // the full check runs after merging (Fast merge "Defaults").
+  assert.deepEqual(checkBuildCheck(configured, { check: { command: "pytest -q", gateCommand: "npm run test:gate" } }), {
+    level: "ok",
+    detail: "pytest -q · merge lock runs npm run test:gate, full check after merging",
   });
 });
 
@@ -1310,7 +1318,7 @@ test("checkBuildCheck appends the passing merge check timing from the last 24h",
     logEvent(root, { source: "merge", type: "build_check", scope: "merge", status: "passed", script: "test", durationMs });
   const out = checkBuildCheck(root);
   assert.equal(out.level, "ok");
-  assert.match(out.detail, /^npm test · passing merge checks in the last 24h took .*\(2 runs\)$/);
+  assert.match(out.detail, /^npm test · full check in the merge lock · passing merge checks in the last 24h took .*\(2 runs\)$/);
 });
 
 // --- OpenCode version readiness (part 7/7) --------------------------------------------------

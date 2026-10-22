@@ -139,7 +139,11 @@ export function defaultConfig(): ResolvedModelConfig {
     // explicit user instruction from being discarded by a rejected review — has nothing left
     // to exempt. Removing it also closes the path where a director run could merge a mixed
     // doc-plus-config diff unreviewed.
-    review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
+    // Fast merge "Defaults" (part 14/14): clean, dedupe and coverage are reviewed AFTER they
+    // merge, on their merged commit, instead of holding the merge queue for a reviewer run on
+    // their (usually trivial) diff; a config that omits `review.afterMerge` inherits this, and
+    // `"afterMerge": []` opts out (back to reviewing before merging).
+    review: { enabled: true, exemptPaths: ["*.md", "docs/**"], afterMerge: ["clean", "dedupe", "coverage"] },
     customRoles: [],
     roles,
   };

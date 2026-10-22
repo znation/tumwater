@@ -213,6 +213,12 @@ test("merge queue interlock: a role with a queued merge starts no run until the 
 
 test("restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out", async () => {
   const repo = await makeFastRepo("restart hand-off abort test", ["clean"]);
+  // Fast merge "Defaults" merge clean on its gate alone (reviewed AFTER it lands); this test
+  // pins the restart hand-off aborting an IN-FLIGHT merge held by a pre-merge reviewer, so opt
+  // clean back into pre-merge review (review.afterMerge [] — the merge must be held by a review
+  // that the hand-off can then abort).
+  const cfg = loadConfig(repo);
+  saveConfig(repo, { ...cfg, review: { ...cfg.review, afterMerge: [] } });
   const reviewing = path.join(tmpdir(), "handoff-abort-reviewing");
   // The queued change's reviewer run holds the merge in flight (a minute-long review); the
   // interlock keeps clean itself from running, so the verify is the only work the hand-off waits

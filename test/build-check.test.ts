@@ -570,7 +570,9 @@ test("runScopedBuildCheck remaps a configured command's merge-scope timeout exac
 test("runScopedBuildCheck runs check.gateCommand at the gate scope only; merge and batch keep check.command", async () => {
   const { root, wt } = buildCheckFixture();
   // The full check is red and the gate command green, so each scope's verdict names which ran.
-  const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only" } };
+  // mergeCommand: "" opts back into the full check in the merge lock despite the gate command
+  // (Fast merge "Defaults" — absent mergeCommand would otherwise fall back to the gate command).
+  const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only", mergeCommand: "" } };
   const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, config, 30_000);
   assert.equal(gate!.outcome.status, "passed");
   assert.deepEqual(gate!.check, { kind: "command", command: "echo gate-only", cwd: wt, timeoutMs: 300_000 });
@@ -587,6 +589,20 @@ test("runScopedBuildCheck runs check.gateCommand at the gate scope only; merge a
     ["merge", "echo full; exit 1"],
     ["batch", "echo full; exit 1"],
   ]);
+});
+
+test("an absent check.mergeCommand falls back to the gate command at merge and batch scopes (Fast merge Defaults)", async () => {
+  const { root, wt } = buildCheckFixture();
+  // The full check is red and the gate command green, so each scope's verdict names which ran:
+  // with no mergeCommand, merge and batch inherit the gate command instead of the full check.
+  const config = { check: { command: "echo full; exit 1", gateCommand: "echo gate-only" } };
+  const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, config, 30_000);
+  assert.equal(gate!.outcome.status, "passed");
+  for (const scope of ["merge", "batch"] as const) {
+    const result = await runScopedBuildCheck(root, ROLE, scope, wt, config, 30_000);
+    assert.equal(result!.outcome.status, "passed", `${scope}: falls back to the gate command`);
+    assert.equal(result!.outcome.script, "echo gate-only");
+  }
 });
 
 test("runScopedBuildCheck runs check.mergeCommand at the merge and batch scopes, marks them full: false, and leaves the gate alone", async () => {
@@ -631,7 +647,9 @@ test("check.gateCommand shares the check's cwd and timeout, and overrides the np
   });
   // No check.command (an npm repo — validation allows the key to be absent): the gate runs the gate
   // command, the merge scope the npm walk-up exactly as before.
-  const npmRepo = { check: { gateCommand: "echo gate-only" } } as { check: { command: string; gateCommand: string } };
+  // mergeCommand: "" keeps the full check in the merge lock — an absent key would fall back
+  // to the gate command under Fast merge "Defaults" and run it at merge scope too.
+  const npmRepo = { check: { gateCommand: "echo gate-only", mergeCommand: "" } } as { check: { command: string; gateCommand: string; mergeCommand: string } };
   const gate = await runScopedBuildCheck(root, ROLE, "gate", wt, npmRepo, 30_000);
   assert.equal(gate!.outcome.script, "echo gate-only");
   const mergeResult = await runScopedBuildCheck(root, ROLE, "merge", wt, npmRepo, 30_000);

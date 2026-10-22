@@ -184,7 +184,9 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   commitIn(wt, "branch work");
   const head = headSha(wt);
   const { ctx } = makeCtx(root);
-  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
+  // mergeCommand: "" opts back into the full check in the lock despite the gate command
+  // (Fast merge "Defaults" — an absent key would fall back to the gate command).
+  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true", mergeCommand: "" } };
   const mainBefore = mainSha(root);
 
   // The gate's pre-check (the gateCommand) ran green on exactly this head.
@@ -261,7 +263,8 @@ test("with check.gateCommand set, doc-only drift still runs the full check", asy
   const { root, wt, head } = await verifiedCodeChange();
   advanceMain(root, "NOTES.md", "docs\n");
   const { ctx } = makeCtx(root);
-  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true" } };
+  // mergeCommand: "" keeps the full check in the lock — absent merges on the gate command now.
+  ctx.config = { ...ctx.config, check: { command: "exit 1", gateCommand: "true", mergeCommand: "" } };
 
   const result = await mergeToMain(ctx, wt, "branch work", head);
 

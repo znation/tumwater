@@ -232,8 +232,10 @@ the full `npm test` (142–330 s per merge). Both become defaults instead:
 - **`review.afterMerge` defaults to `["clean", "dedupe", "coverage"]`** for every project. `[]` opts
   out, so every role is reviewed before it merges.
 
-A config that leaves either key out gets the default; tumwater never writes a default into the
-file.
+A config that leaves `check.mergeCommand` out gets the gate-command fallback: it is a reading-time
+fallback in `mergeCommandOf`, never a default, so tumwater never writes it into the file (an
+unrelated-key write leaves an absent key absent). `review.afterMerge` IS a default in
+`defaultConfig()`, so, like every other default, any config write expands it into the file.
 
 ## What stays
 

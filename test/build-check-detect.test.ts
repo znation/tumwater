@@ -327,9 +327,13 @@ test("resolveFromNodeModules climbs to an ancestor's install and gives up past t
   assert.equal(resolveFromNodeModules(nested, "nonesuch"), null, "nothing to find");
 });
 
-test("mergeCommandOf: on for a real string, off for blank or missing", () => {
+test("mergeCommandOf: on for a real or gate-fallback string, off for blank or absent-without-gate", () => {
   assert.equal(mergeCommandOf({ check: { command: "npm test", mergeCommand: "npm run test:gate" } }), "npm run test:gate");
   assert.equal(mergeCommandOf({ check: { command: "npm test", mergeCommand: "  " } }), undefined);
+  // Absent mergeCommand falls back to the gate command (Fast merge "Defaults").
+  assert.equal(mergeCommandOf({ check: { command: "npm test", gateCommand: "npm run test:gate" } }), "npm run test:gate");
+  // A blank string with a gate command set is the explicit opt-out: full check in the lock.
+  assert.equal(mergeCommandOf({ check: { command: "npm test", gateCommand: "npm run test:gate", mergeCommand: "" } }), undefined);
   assert.equal(mergeCommandOf({ check: { command: "npm test" } }), undefined);
   assert.equal(mergeCommandOf({}), undefined);
   assert.equal(mergeCommandOf(), undefined);

@@ -130,23 +130,28 @@ export function detectBuildCheck(
 }
 
 /** The configured per-change gate command (`check.gateCommand`, PLANS.md Land-queue speed 3e) when
- * it is a non-blank string, else undefined — off. Opt-in: a repo that sets it trades a cheaper
- * review-gate pre-check for a full check.command run that happens once per stack at the batch/merge
- * scope instead. One reading shared by runScopedBuildCheck (which runs it at scope "gate") and
- * merge-to-main.ts's verifyMerge (which must then never treat the gate's green as the full
- * check's), so the two cannot disagree about whether it is on. */
+ * it is a non-blank string, else undefined — off. Opt-in: when no `mergeCommand` is declared, a
+ * project that sets one merges on it, not the full check (mergeCommandOf's fallback, PLANS.md
+ * "Fast merge" "Defaults"). One reading shared by runScopedBuildCheck (which runs it at scope
+ * "gate") and merge-to-main.ts's verifyMerge (which must then never treat the gate's green as the
+ * full check's), so the two cannot disagree about whether it is on. */
 export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
   const g = config?.check?.gateCommand;
   return isNonBlankString(g) ? g : undefined;
 }
 
 /** The configured in-lock merge command (`check.mergeCommand`, PLANS.md "Fast merge" part 6/14)
- * when it is a non-blank string, else undefined — off. With it set, the merge and batch scopes
- * run it instead of the full check, and main's full-check verdict comes from the main watch.
- * One reading shared by runScopedBuildCheck, the merge paths and the main-red verdict reads, so
- * they cannot disagree about whether it is on. */
+ * when it is a non-blank string, else undefined — off. An absent `mergeCommand` falls back to
+ * the gate command (`gateCommandOf`, PLANS.md "Fast merge" "Defaults"): a project that declared
+ * a `check.gateCommand` merges on it. With it set, the merge and batch scopes run it instead of
+ * the full check, and main's full-check verdict comes from the main watch. A blank string
+ * (`""`) is the explicit opt-out that keeps the full check in the merge lock even when a gate
+ * command is set. One reading shared by runScopedBuildCheck, the merge paths and the main-red
+ * verdict reads, so they cannot disagree about whether it is on. */
 export function mergeCommandOf(config?: CheckConfigSlice): string | undefined {
-  const m = config?.check?.mergeCommand;
+  const c = config?.check;
+  const m = c?.mergeCommand;
+  if (m === undefined) return gateCommandOf(config);
   return isNonBlankString(m) ? m : undefined;
 }
 

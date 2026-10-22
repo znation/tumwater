@@ -385,7 +385,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     // gateCommand is a string like command, but blank means off: falling back from it runs
     // the FULL check at the gate — the stronger check, never a silently weaker one.
     checkString(o, "check.", "gateCommand");
-    // mergeCommand likewise: blank means off, which runs the full check in the merge lock.
+    // mergeCommand likewise: an absent key falls back to the gate command (Fast merge
+    // "Defaults"), and a blank string means off, which runs the full check in the merge lock.
     checkString(o, "check.", "mergeCommand");
     checkString(o, "check.", "cwd");
     checkNumber(o, "check.", "timeoutSeconds", DURATION_POSITIVE);

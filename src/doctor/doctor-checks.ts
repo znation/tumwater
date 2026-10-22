@@ -11,7 +11,7 @@ import {
   slotCount,
 } from "../config/config.js";
 import { exampleConfigProblem, exampleDrift } from "../config/config-example.js";
-import { detectBuildCheck } from "../build/build-check-detect.js";
+import { detectBuildCheck, mergeCommandOf } from "../build/build-check-detect.js";
 import { isPassingFullCheck } from "../build/build-check-events.js";
 import { CUSTOM_NAME_RE, type CheckConfigSlice, type TumwaterConfig } from "../config/config-schema.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
@@ -1074,8 +1074,20 @@ export function checkBuildCheck(
   const check = detectBuildCheck(root, config ?? undefined);
   if (!check)
     return warnOutcome("none declared — the review gate's build pre-check, the red-main baseline, and redeploy's green check are all off (set `check.command` in tumwater.json for a non-npm repo)");
+  // The in-lock command from mergeCommandOf (absent mergeCommand falls back to the gate
+  // command): the row names which command the merge lock runs and where the full check lands,
+  // facts a reader cannot get from detectBuildCheck alone. The after-merge roles are not named
+  // here — they live under `review`, which this slice does not hold, and the `review` row in
+  // docs/config.md documents them.
+  const lockPhrase = (() => {
+    const mc = mergeCommandOf(config ?? undefined);
+    return mc !== undefined
+      ? `merge lock runs ${mc}, full check after merging`
+      : "full check in the merge lock";
+  })();
   const phrase = checkDurationPhrase(readEventsSince(root, DAY_MS).events);
-  const withTiming = (detail: string) => okOutcome(phrase ? `${detail} · ${phrase}` : detail);
+  const withTiming = (detail: string) =>
+    okOutcome(`${detail} · ${lockPhrase}${phrase ? ` · ${phrase}` : ""}`);
   if (check.kind === "command") {
     const where = path.relative(root, check.cwd);
     return withTiming(where ? `${check.command} (cwd ${where})` : check.command);

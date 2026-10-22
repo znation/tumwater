@@ -38,12 +38,12 @@ own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` se
 The team's review gate runs `npm run test:gate` before each model review
 (`check.gateCommand` in tumwater.json). It runs the same lint and build as `npm test`, then only
 the test files the change can reach (`test-runner.js --affected`, selection in
-`test/affected-tests.ts`). The full `npm test` still runs once per merge, on the rebased tree,
-and on main's baseline, unless `check.mergeCommand` is set: the lock then runs only that
-command, and the main watch runs the full check after the merge. A dependency the selection
-misses then costs a later rejection, or with `mergeCommand` a red main that the watch finds and
-reverts. Over the team's recent commits the selection averaged about half the suite's
-time.
+`test/affected-tests.ts`). The full `npm test` runs once per merge on the rebased tree and on main's baseline, unless a
+gate or merge command is set (`check.mergeCommand` defaults to `check.gateCommand`): the lock
+then runs only that command, and the main watch runs the full check after the merge. A
+dependency the selection misses then costs a later rejection, or with `mergeCommand` a red main
+that the watch finds and reverts. Over the team's recent commits the selection averaged about
+half the suite's time.
 
 The selection follows the compiled tree. It reads imports, `new URL("…", import.meta.url)` file
 references, and, for the CLI, the command each call to the test harness names. So keep these

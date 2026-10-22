@@ -3687,9 +3687,11 @@ batch check" and "a doc-only stack that breaks backlog structure is blocked, not
 ### INV-BJ4: only a full batch check that passed on exactly the merged tip seeds main's baseline
 
 **Guarantee.** After a merge, `mergeStack` seeds the merged tip green only when the batch check's
-status is `"passed"` and `check.mergeCommand` is unset. A doc-only stack (no check ran), a stack
-whose failures are all main's known failures, and a `check.mergeCommand` green seed nothing, so the
-main watch checks that tip itself.
+status is `"passed"` and there is no in-lock command (`mergeCommandOf` is undefined — no gate or
+merge command; Fast merge "Defaults": an absent `check.mergeCommand` falls back to
+`check.gateCommand`, so a batch check run on the gate command is just as non-full). A doc-only stack
+(no check ran), a stack whose failures are all main's known failures, and an in-lock-command green
+seed nothing, so the main watch checks that tip itself.
 
 **Binds.** `src/merge/merge-stack.ts` (`mergeStack`), `src/baseline/main-baseline.ts`
 (`noteGreenBaseline`).

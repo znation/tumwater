@@ -57,9 +57,10 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * own host-sleep evidence) earns that same one retry at any scope, and a failed run the host slept
  * through does too; each attempt is priced as its own build_check event, carrying when the check
  * itself ran (buildCheckRunFields). A configured `check.gateCommand` replaces the command at scope
- * "gate" only (same cwd and timeout); a configured `check.mergeCommand` replaces it at the merge
- * and batch scopes, and those events then carry `full: false`. Otherwise those scopes — and the
- * red-main baseline, which detects on its own — keep running check.command. `permitWait` hears
+ * "gate" only (same cwd and timeout); the in-lock command (Fast merge "Defaults", mergeCommandOf) —
+ * `check.mergeCommand` when set, else `check.gateCommand`, else the full check — replaces it at the
+ * merge and batch scopes, and those events then carry `full: false`. The red-main baseline, which
+ * detects on its own, keeps running check.command. `permitWait` hears
  * about a wait for the check permit (the merge cell's "waiting for a check slot"). Never throws. */
 export async function runScopedBuildCheck(
   root: string,

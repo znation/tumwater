@@ -816,3 +816,20 @@ test("section keys set, unset and parse one field of a fixed-shape section", () 
   const head = parseConfigKey("bootstarp.untilPlansDone");
   assert.ok(head.kind === "error" && head.error.endsWith("did you mean `bootstrap`?"), JSON.stringify(head));
 });
+
+// Fast merge "Defaults" (parts 6/14, 14/14): the mergeCommand default — fall back to the gate
+// command — is a reading-time fallback in mergeCommandOf, never a key in the file. Unlike
+// afterMerge (which IS a default in defaultConfig().review and so gets expanded by any config
+// write, like every other default), an absent mergeCommand stays absent because it is not a
+// default at all. An unrelated-key write must therefore leave an absent check.mergeCommand out.
+test("an unrelated-key write leaves an absent check.mergeCommand absent", () => {
+  const dir = tmpdir();
+  saveConfig(dir, {
+    ...defaultConfig(),
+    check: { command: "npm test", gateCommand: "npm run test:gate" },
+  });
+  const file = path.join(dir, "tumwater.json");
+  assert.ok(setConfigKey(dir, "minRunIntervalSeconds", "45").ok);
+  const raw = readJson(file) as Record<string, { mergeCommand?: unknown }>;
+  assert.ok(!("mergeCommand" in (raw.check ?? {})), "mergeCommand stays absent from the file");
+});
