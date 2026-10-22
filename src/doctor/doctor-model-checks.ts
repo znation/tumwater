@@ -1,13 +1,7 @@
-import os from "node:os";
-import path from "node:path";
 import { childEnv } from "../process/process.js";
 import { boundedProbe } from "./probe.js";
-import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
-import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
-import { opencodeDbPath } from "../paths.js";
-import { isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole, resolvedBackendConfig } from "../config/config-views.js";
+import { configForRole } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
@@ -22,31 +16,32 @@ import {
   writeImageProbeCache,
   type ImageProbeResult,
 } from "./image-probe.js";
-import { claudeBackend, claudeConfigDir } from "../agent/claude/claude-backend.js";
-import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
-import { claudeEnv } from "../agent/claude/claude-env.js";
+import { readClaudeAccount, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
 import { modelPairName, pairDailyCost } from "../budget/budget.js";
-import { formatBytes, usd, usdCap } from "../text/format.js";
+import { usd, usdCap } from "../text/format.js";
 import { loadRunnerStates } from "./doctor-holds.js";
 import { resolveBackendBin } from "../pi/pi-bin.js";
 import { parsePiModelImages, parsePiModelTable, readPiListedModels, writePiListedModels } from "../pi/pi-listed-models.js";
 import { agree } from "../text/phrases.js";
 import { formatClock, formatDate } from "../text/datetime.js";
-import { belowNodeFloor } from "../version.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { errorMessage, joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
- * repo checks stay there): the cap fallback's price check (checkFallbackModel), the agent
- * binary's own credential probe (piProviderAuth), and the declared-tier resolution check
- * (checkTierModels). These three are the doctor's only checks that read pi's model definitions
- * and, for the credential probe, spawn the agent binary — a distinct concern from the
- * filesystem/git checks beside them, kept together so a change to how doctor reads models does
- * not touch the environment checks. The shared report contract (CheckOutcome) is imported from
- * outcome.ts, exactly as doctor-orphans.ts and doctor-backlog.ts do. */
+ * repo checks stay there): the cap fallback price and fallback-chain checks (checkFallbackModel,
+ * checkFallbackChain), the pi auth/probe checks (piProviderAuth, piListedModels), the seam
+ * framework (seamPairs and the per-backend seam predicates), and the declared-tier and
+ * image-input checks (checkTierModels, checkImageInput). The claude and opencode provider
+ * checks live in their own modules (doctor-claude-checks.ts, doctor-opencode-checks.ts), each
+ * importing this file's shared seam framework and the AUTH_CHECK_* probe budgets rather than
+ * duplicating them. The shared report contract (CheckOutcome) is imported from outcome.ts,
+ * exactly as the other doctor-* modules do. Together these are the doctor's only checks that
+ * read pi's model definitions and, for the probes, spawn an agent binary — a distinct concern
+ * from the filesystem/git checks, kept together so a change to how doctor reads models does not
+ * touch the environment checks. */
 
 /** The config a readiness check reads, or the warn outcome a broken tumwater.json earns:
  * checkInit already fails on a broken config, so a model check only reports that it could not
@@ -55,7 +50,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
  * files). The config or the warn outcome, so each check's one-line guard — `const config =
  * loadConfigForCheck(root); if ("level" in config) return config;` — is all a check needs to
  * read its config instead of repeating a load-and-unwrap prologue. */
-function loadConfigForCheck(root: string): TumwaterConfig | CheckOutcome {
+export function loadConfigForCheck(root: string): TumwaterConfig | CheckOutcome {
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) return warnOutcome(`cannot check — ${error}`);
   return config;
@@ -205,7 +200,7 @@ interface SeamPair {
  * resolver, the director, and each tier's budget/model-failure fallback — so a claude or pi
  * pair that exists only as a fallback is checked exactly like a primary one. Deduplicated by
  * backend/provider/model, so a model reached through several surfaces is checked once. */
-function seamPairs(config: TumwaterConfig): SeamPair[] {
+export function seamPairs(config: TumwaterConfig): SeamPair[] {
   const pairs = new Map<string, SeamPair>();
   for (const seam of seamsInUse(config)) {
     if (seam.model === undefined) continue;
@@ -310,152 +305,6 @@ export async function piListedModels(
     } catch {} // A failed write never changes the check.
   }
   return parsePiModelList(result.stdout);
-}
-
-/** One bounded probe of the resolved `claude` binary under the scrubbed run environment a real
- * run gets: resolve the binary through the claude adapter that would spawn it and run `args`
- * with a short deadline. Null when the probe could not run, the child errored, or the deadline
- * passed. The one home of the resolveBin + claudeEnv pairing the auth and version checks share,
- * so neither probes a different binary or environment than the other. */
-function claudeProbe(
-  config: TumwaterConfig,
-  args: string[],
-  pathEnv: string,
-  timeoutMs: number,
-): Promise<{ code: number | null; stdout: string } | null> {
-  const resolved = claudeBackend.resolveBin(config);
-  // The configured team config dir must reach the probe's env the way a real run's does, or
-  // the auth/version rows would look in claude's default dir (usually ~/.claude) while a run
-  // with backends.claude.configDir writes and reads elsewhere — the very mismatch doctor exists
-  // to surface. Mirror backends.run's expansion: only claude accepts configDir, and unset leaves
-  // today's env byte-identical.
-  const configDir = resolvedBackendConfig(config, "claude").configDir;
-  const expandedConfigDir =
-    configDir !== undefined ? claudeConfigDir(process.env, os.homedir(), configDir) : undefined;
-  const env = claudeEnv(childEnv({ PATH: pathEnv }), {
-    quietTimeoutSeconds: 0,
-    ...(expandedConfigDir !== undefined ? { configDir: expandedConfigDir } : {}),
-  });
-  return boundedProbe(resolved.bin, args, env, timeoutMs, AUTH_CHECK_MAX_OUTPUT_BYTES);
-}
-
-/** Run `claude auth status` under the same scrubbed environment a real run gets (claudeEnv),
- * or null when the probe could not run or its reply was unreadable. */
-async function claudeAuthProbe(
-  config: TumwaterConfig,
-  pathEnv: string,
-  timeoutMs: number,
-): Promise<ClaudeAuthStatus | null> {
-  const result = await claudeProbe(config, ["auth", "status"], pathEnv, timeoutMs);
-  if (result?.code !== 0) return null;
-  return parseClaudeAuthStatus(result.stdout);
-}
-
-/** claude credential readiness (plans/agent-backends.md "Every seam, checked"): a claude seam
- * whose login is gone fails every run before it can work, so doctor runs `claude auth status`
- * under the scrubbed run environment and fails when it reports `loggedIn: false`. An ok detail
- * names the billing the reply implies — the subscription type, or an API key — so an operator
- * telling subscription spend from API spend does not have to run the command themselves. A
- * probe that could not run or a reply this cannot read warns rather than guesses. Stands down
- * (ok) when no seam routes to claude, so a pi-only team spawns nothing. */
-export async function checkClaudeAuth(
-  root: string,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
-  const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
-  if (auth === null)
-    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
-  if (!auth.loggedIn)
-    return failOutcome("claude reports logged in: false — run `claude auth login`");
-  const subscription = claudeAuthUsesSubscription(auth);
-  const billing = subscription
-    ? `subscription${auth.subscriptionType !== undefined ? ` (${auth.subscriptionType})` : ""}`
-    : "API key";
-  return okOutcome(`logged in — billing: ${billing}`);
-}
-
-/** The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): an operator
- * who exports `ANTHROPIC_API_KEY` for pi's `anthropic` provider will silently move every claude
- * seam to API billing — claude prefers the key over a claude.ai login — and subscription seams
- * stop counting as free. Doctor warns when the key is set, some seam routes to claude, and
- * `claude auth status` reports a claude.ai login (the subscription the key would override). It
- * stays silent (ok) when no seam runs on claude, when the key is unset, or when claude reports
- * an API-key login (then there is no subscription to lose). `env` is injectable so the check
- * stays hermetic; a probe that cannot run warns rather than guesses like checkClaudeAuth. */
-export async function checkAnthroApiKey(
-  root: string,
-  env: NodeJS.ProcessEnv = process.env,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
-  const apiKey = env.ANTHROPIC_API_KEY;
-  if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
-  const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
-  if (auth === null)
-    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
-  if (!auth.loggedIn || !claudeAuthUsesSubscription(auth))
-    return okOutcome("ANTHROPIC_API_KEY is set, but claude reports no claude.ai login");
-  return warnOutcome(
-    "ANTHROPIC_API_KEY is set while claude reports a claude.ai login — model jobs on claude will bill the API key, not the subscription; unset it or route every anthropic model job on pi explicitly",
-  );
-}
-
-/** The dotted version in `claude --version`'s output, or undefined when it names none. */
-function parseClaudeCliVersion(output: string): string | undefined {
-  return /(\d+\.\d+\.\d+)/.exec(output)?.[1];
-}
-
-/** claude CLI-version readiness (plans/agent-backends.md finding 9): an installed CLI below a
- * configured model's minimum fails or misprices that model, and team runs disable the
- * auto-updater, so the version an operator has is the version agent runs use. Fails below the
- * highest floor among the claude-routed models, naming which model needs it; an ok detail
- * prints the installed version and the floor it satisfied (or no floor when none applies).
- * The `off`/`minimal` thinking clamp is noted here too, since this check already has the
- * claude seams in hand. Stands down when no seam routes to claude. */
-export async function checkClaudeVersion(
-  root: string,
-  pathEnv: string = envPath(),
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
-  if (seams.length === 0) return okOutcome("no model jobs run on claude");
-  // The floor each configured model needs; a model the adapter does not gate contributes none.
-  const floors = new Map<string, string>();
-  for (const seam of seams) {
-    const min = claudeBackend.minVersion?.(seam.model!);
-    if (min !== undefined) floors.set(seam.model!, min);
-  }
-  const result = await claudeProbe(config, ["--version"], pathEnv, timeoutMs);
-  const found = result !== null && result.code === 0 ? parseClaudeCliVersion(result.stdout) : undefined;
-  if (found === undefined)
-    return warnOutcome("could not check — `claude --version` did not run or its output was unreadable");
-  const clamped = seams.some((seam) => seam.thinking === "off" || seam.thinking === "minimal");
-  const clampNote = clamped
-    ? "; `off`/`minimal` thinking clamps to `--effort low` (claude has no lower setting)"
-    : "";
-  if (floors.size === 0) return okOutcome(`claude ${found}${clampNote}`);
-  // The highest floor decides: whichever model needs the newest CLI. Below it, fail and name
-  // that model; at or above, print the version against the floor.
-  let required = "";
-  let neededBy = "";
-  for (const [model, min] of floors) {
-    if (required === "" || belowNodeFloor(required, `>=${min}`)) {
-      required = min;
-      neededBy = model;
-    }
-  }
-  if (belowNodeFloor(found, `>=${required}`))
-    return failOutcome(`claude ${found} is older than ${required} required by ${neededBy} — run \`claude update\``);
-  return okOutcome(`claude ${found} (>= ${required} for ${neededBy})${clampNote}`);
 }
 
 /** Declared model readiness — plans/model-tiers.md "Doctor" (part 7c/8): every model the config can
@@ -781,161 +630,4 @@ export async function checkImageInput(
     level: outcome.level === "ok" ? "warn" : outcome.level,
     detail: `${outcome.detail} — could not save the image-probe cache (${saveProblem}), so the next doctor probes again`,
   };
-}
-
-/** The provider of a non-gateway opencode model id (`opencode/<provider>/<model>`), or
- * undefined for a gateway id (a bare `opencode/<model>` or `<model>`, served by OpenCode's
- * own gateway with no credential). A model id with more than the `opencode/` namespace prefix
- * is provider-qualified and needs a credential OpenCode lists. */
-function opencodeProviderOf(model: string): string | undefined {
-  const parts = model.split("/");
-  if (parts[0] === "opencode" && parts.length >= 3) return parts[1];
-  if (parts[0] !== "opencode" && parts.length >= 2) return parts[0];
-  return undefined;
-}
-
-/** Whether `opencode auth list --format json` (bounded) lists `provider` exactly. A probe that
- * cannot run, exits nonzero, or omits the provider reads as NOT listed — the safe direction,
- * since doctor is warning the operator to add the credential, never confirming one it did not
- * see. The list is matched EXACTLY, not as a raw substring: when the output parses as an array
- * (of names or of per-credential objects), a credential listed as `anthropic` must never vouch
- * for `anthropic-foo` twice over; when it cannot be parsed as JSON (a shape the CLI may change),
- * the text is matched word-bounded so a truncated or prose line still reads. */
-async function opencodeAuthLists(
-  config: TumwaterConfig,
-  provider: string,
-  pathEnv: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  const resolved = opencodeBackend.resolveBin(config);
-  const result = await boundedProbe(
-    resolved.bin,
-    ["auth", "list", "--format", "json"],
-    childEnv({ PATH: pathEnv }),
-    timeoutMs,
-    AUTH_CHECK_MAX_OUTPUT_BYTES,
-  );
-  if (result?.code !== 0) return false;
-  const text = result.stdout;
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.some((item) => {
-        if (typeof item === "string") return item === provider;
-        return (
-          item !== null &&
-          typeof item === "object" &&
-          Object.values(item as Record<string, unknown>).some((v) => v === provider)
-        );
-      });
-    }
-  } catch {
-    // Not an array-shaped JSON payload — fall through to the word-bounded text match.
-  }
-  const esc = provider.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|$)`).test(text);
-}
-
-/** Whether a JSON-ish key (optionally quoted, followed by a colon) appears in a config file's
- * text — a loose match that tolerates JSONC comments without parsing them. */
-function jsonKeyPresent(text: string, key: string): boolean {
-  return new RegExp(`["']?${key}["']?\\s*:`).test(text);
-}
-
-/** The operator's global opencode config files and AGENTS.md (plans/opencode-backend.md §7
- * "Leaks", part 7/7): the operator's own config and instructions still load into team runs,
- * so each MCP server (disabled for team runs) or plugin/agent/instructions entry or the
- * AGENTS.md file itself produces one warning naming the file and what leaks in: an MCP server
- * is switched off by the harness, while a plugin/agent/instructions entry or AGENTS.md is NOT
- * switched off and still loads. `configHome` is the config root to scan — the XDG config home
- * (when set) or `~/.config`, the SAME folder opencode's own operatorMcpNames reads, so the leak
- * scan matches the config a run actually loads. Config files
- * are JSON/C, so the keys are matched loosely (a word followed by a colon) rather than fully
- * parsed — enough to name what still loads before a run inherits it. */
-function opencodeConfigLeaks(configHome: string): string[] {
-  const dir = path.join(configHome, "opencode");
-  const warns: string[] = [];
-  for (const file of ["config.json", "opencode.json", "opencode.jsonc"]) {
-    const text = readTextOrNull(path.join(dir, file));
-    if (text === null) continue;
-    const parts: string[] = [];
-    let mcp = false;
-    if (jsonKeyPresent(text, "mcp") && jsonKeyPresent(text, "servers")) {
-      parts.push("an MCP server");
-      mcp = true;
-    }
-    for (const key of ["plugin", "agent", "instructions"]) {
-      if (jsonKeyPresent(text, key)) parts.push(`a ${key} entry`);
-    }
-    if (parts.length === 0) continue;
-    const joined = parts.join(" and ");
-    // Only the MCP server is disabled for team runs; everything else still loads.
-    const verdict = mcp && parts.length === 1 ? " — disabled for team runs" : " — still loads into team runs";
-    warns.push(`${path.join(dir, file)} carries ${joined}${verdict}`);
-  }
-  const agentsMd = path.join(dir, "AGENTS.md");
-  if (statOrNull(agentsMd)?.isFile() === true) warns.push(`${agentsMd} still loads into team runs`);
-  return warns;
-}
-
-/** OpenCode model, credential and leak readiness (plans/opencode-backend.md §7, part 7/7):
- * every model routed to opencode must be in the catalog cache — an unknown model fails, a
- * cached one reads "free" or its per-M prices and context window, and a thinking level with no
- * catalog effort is noted as dropped; a non-gateway provider (`opencode/<provider>/…`) must
- * have a credential `opencode auth list` lists, else warns; and the operator's global opencode
- * config and AGENTS.md must not leak an MCP server or a plugin/agent/instructions entry into
- * team runs, else warns naming the file and key. Reports the team's opencode database and spill
- * sizes as information. Stands down (ok) when no seam routes to opencode, so a pi-only team
- * spawns nothing and reads nothing. `pathEnv` and `home` are injectable so tests need no real
- * PATH or HOME. The version half of the opencode pre-flight is the sibling checkOpencodeVersion
- * in doctor-checks.ts. */
-export async function checkOpencode(
-  root: string,
-  pathEnv: string = envPath(),
-  home: string = os.homedir(),
-  xdgConfigHome: string = process.env.XDG_CONFIG_HOME ?? "",
-  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
-): Promise<CheckOutcome> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
-  const models = seamPairs(config).filter((p) => p.agent === "opencode" && p.model !== undefined);
-  const cache = readOpencodeCache(root);
-  const fails: string[] = [];
-  const warns: string[] = [];
-  const notes: string[] = [];
-  for (const pair of models) {
-    const key = opencodeModelKey(pair.model!);
-    const entry = cache.models[key];
-    if (entry === undefined) {
-      fails.push(`${pair.model} is not in the opencode catalog cache`);
-      continue;
-    }
-    const price = entry.free ? "free" : `$${entry.inputPerM ?? 0}/$${entry.outputPerM ?? 0} per M`;
-    const window = entry.context !== undefined ? `, ${entry.context.toLocaleString("en-US")}-token window` : "";
-    notes.push(`${pair.model} — ${price}${window}`);
-    // A model with no effort list at all supports no thinking level, so a requested level is
-    // dropped just the same as one the list omits.
-    if (
-      pair.thinking !== undefined &&
-      pair.thinking !== "" &&
-      !entry.efforts?.includes(pair.thinking)
-    ) {
-      warns.push(`${pair.model} has no ${pair.thinking} effort — that thinking level is dropped`);
-    }
-    const provider = opencodeProviderOf(pair.model!);
-    if (provider !== undefined && !(await opencodeAuthLists(config, provider, pathEnv, timeoutMs))) {
-      warns.push(`${pair.model} is a non-gateway provider opencode does not list a credential for`);
-    }
-  }
-  warns.push(...opencodeConfigLeaks(xdgConfigHome !== "" ? xdgConfigHome : path.join(home, ".config")));
-  const db = statOrNull(opencodeDbPath(root));
-  const spillDir = opencodeSpillDir(root);
-  const spill = spillDir !== "" && isDirectory(spillDir) ? treeBytes(spillDir) : null;
-  const sizeNotes = `db ${formatBytes(db?.size ?? 0)}${spill !== null ? `, spill ${formatBytes(spill)}` : ", no spill dir"}`;
-  const found = [...fails, ...warns];
-  const base =
-    found.length === 0 ? `opencode ready — ${notes.join("; ")}; ${sizeNotes}` : found.join("; ");
-  if (fails.length > 0) return failOutcome(base);
-  return (warns.length > 0 ? warnOutcome : okOutcome)(base);
 }

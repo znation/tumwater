@@ -44,7 +44,9 @@ import {
   checkWorkInstances,
   checkWorktreePool,
 } from "./doctor-contention-checks.js";
-import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkOpencode, checkTierModels } from "./doctor-model-checks.js";
+import { checkFallbackChain, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
+import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "./doctor-claude-checks.js";
+import { checkOpencode } from "./doctor-opencode-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueueFiles, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleQueuedMerges, checkStaleBugs, checkStalePrompts, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkValidationGaps, checkWaitingBugs } from "./doctor-backlog.js";
@@ -59,7 +61,8 @@ import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkMergeQueu
  * verdicts on the environment. Every check is read-only against .tumwater/ (works with or
  * without a running harness) and none runs the project's build/test: that can take minutes and
  * belongs in the review gate / red-main check, not a pre-flight. The individual checks live in
- * doctor-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts and doctor-backlog.ts;
+ * doctor-checks.ts, doctor-contention-checks.ts, doctor-model-checks.ts, doctor-claude-checks.ts,
+ * doctor-opencode-checks.ts and doctor-backlog.ts;
  * this module composes them into the report. */
 
 /** Run one doctor check, turning a throw or rejection into a fail row: a check that crashed

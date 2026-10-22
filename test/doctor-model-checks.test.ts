@@ -3,18 +3,16 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  checkAnthroApiKey,
-  checkClaudeAuth,
-  checkClaudeVersion,
   checkFallbackChain,
   checkFallbackModel,
   checkImageInput,
-  checkOpencode,
   checkTierModels,
   parsePiModelList,
   piListedModels,
   piProviderAuth,
 } from "../src/doctor/doctor-model-checks.js";
+import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "../src/doctor/doctor-claude-checks.js";
+import { checkOpencode } from "../src/doctor/doctor-opencode-checks.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -37,7 +35,8 @@ import { readPiListedModels } from "../src/pi/pi-listed-models.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 
-// Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
+// Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts,
+// src/doctor/doctor-claude-checks.ts, src/doctor/doctor-opencode-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
 // credential probe. Every branch is exercised with an injected `modelsPath`/`auth` stub, and
 // the probe with a fake pi on PATH — never a real model or network call. The environment and

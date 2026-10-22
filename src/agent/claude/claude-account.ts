@@ -175,7 +175,7 @@ export interface ClaudeAuthStatus {
 
 /** Parse `claude auth status` stdout, returning null when it is not a JSON object or does not
  * report a boolean `loggedIn` — the one home of the read, shared by this module's
- * probeAuthStatus and doctor's claudeAuthProbe (doctor-model-checks.ts). An optional string
+ * probeAuthStatus and doctor's claudeAuthProbe (doctor-claude-checks.ts). An optional string
  * field reads as absent when the reply names something else. */
 export function parseClaudeAuthStatus(stdout: string): ClaudeAuthStatus | null {
   const doc = parseJsonObject(stdout);
@@ -189,7 +189,7 @@ export function parseClaudeAuthStatus(stdout: string): ClaudeAuthStatus | null {
 
 /** True when an auth-status reply names claude.ai subscription billing — a subscription type
  * (its presence alone signals one) or the explicit claude.ai auth method — rather than API
- * billing. Shared by seedBilling below and doctor's checkClaudeAuth (doctor-model-checks.ts),
+ * billing. Shared by seedBilling below and doctor's checkClaudeAuth (doctor-claude-checks.ts),
  * which must not disagree about which seams are subscription-billed. */
 export function claudeAuthUsesSubscription(auth: ClaudeAuthStatus): boolean {
   return auth.subscriptionType !== undefined || auth.authMethod === "claude.ai";
