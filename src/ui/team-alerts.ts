@@ -153,6 +153,7 @@ export function teamAlerts(
   roles: readonly AlertRole[],
   now: number,
   refused: readonly RefusedEntry[] = [],
+  operatorHeld: readonly RefusedEntry[] = [],
   staleBugs: readonly StaleBug[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
@@ -337,6 +338,23 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
       detail: `Refused ${first.file === "bugs" ? "bug" : "plan"}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      // The action lands the operator on the named entry: open the backlog card on the
+      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
+      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+    });
+  }
+  // A Needs-review/Needs-replan plan whose held count reached the operator threshold parks
+  // until a human releases it (tumwater plan --release, part 2/3); amber because only the
+  // operator can clear it, right after the refused alert, naming the entry like the refused
+  // alert does. Unlike refused, a held-for-operator entry is still in the normal review
+  // cycle below the threshold — only the at-past-threshold list reaches here (operatorHeldEntries).
+  if (operatorHeld.length) {
+    const first = operatorHeld[0]!;
+    out.push({
+      key: "operator-held", // vocabulary-ok: the operator-held amber alert's key
+      tone: "amber",
+      title: `${plural(operatorHeld.length, "plan is held", "plans are held")} for you to release`,
+      detail: `Plan ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater plan --release`,
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],

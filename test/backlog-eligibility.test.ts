@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -556,6 +556,56 @@ test("refusedEntries lists the refused plans then the refused bugs, and [] with 
     { file: "plans", index: 1, title: "Dead plan (planned 2026-10-03)" },
     { file: "bugs", index: 1, title: "Dead bug (reported 2026-10-02)" },
   ]);
+});
+
+test("operatorHeldEntries lists the plans whose note held count reached the threshold, and [] with none", () => {
+  assert.deepEqual(operatorHeldEntries(tmpdir()), []);
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Ready (planned 2026-10-04)",
+      "body",
+      "### Held up (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
+      "### Below (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run (held 2)**",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  assert.deepEqual(operatorHeldEntries(dir), [
+    { file: "plans", index: 1, title: "Held up (planned 2026-10-03)" },
+  ]);
+});
+
+test("withoutHeldForOperatorNotes drops an at-threshold note and its previously-held line, and nothing else", () => {
+  const held = [
+    "### Plan (planned 2026-10-03)",
+    "",
+    "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
+    "**Previously held 2**",
+    "",
+    "**Goal.** g",
+  ];
+  assert.deepEqual(withoutHeldForOperatorNotes(held), [
+    "### Plan (planned 2026-10-03)",
+    "",
+    "**Goal.** g",
+  ]);
+  // A below-threshold note and an untagged note survive untouched.
+  const below = [
+    "### Plan (planned 2026-10-03)",
+    "**Needs review 2026-10-07 by feature: x (held 2)**",
+    "**Previously held 2**",
+    "",
+    "**Needs replan 2026-10-07 by feature: rejected (held 2)**",
+  ];
+  assert.deepEqual(withoutHeldForOperatorNotes(below), below);
+  const untagged = ["### Plan (planned 2026-10-03)", "**Needs review 2026-10-07 by feature: x**"];
+  assert.deepEqual(withoutHeldForOperatorNotes(untagged), untagged);
 });
 
 test("plansReleasedBy lists only direct dependents of a cancelled part, by post-cancel position", () => {

@@ -50,28 +50,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### Backlog hold convergence, part 2/3: The operator sees a held-for-operator entry and `--release` clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alerts.ts src/ui/status-model.ts and their tests)
-
-**Goal.** A held-for-operator entry is visible to the operator with `tumwater plan --release` as the way out, and release actually lifts it — today `--release` lifts only Refused and Waiting notes and deliberately leaves Needs-review alone.
-
-**Approach.**
-- src/backlog/backlog-eligibility.ts: add `operatorHeldEntries(root): RefusedEntry[]` beside `refusedEntries`, returning the planned plans whose hold is `"held-for-operator"`, each with `file: "plans"`, its 0-based index and title (reuse the `RefusedEntry` shape and the `backlogHolds` + `plannedPlanEntries` pairing).
-- src/backlog/backlog-eligibility.ts: add `withoutHeldForOperatorNotes(lines)` (through `withoutNoteLines`) dropping a `**Needs review … (held N)**`/`**Needs replan … (held N)**` line and its `**Previously held N**` line together. It drops nothing when the note's count is below the threshold, so `--release` still cannot lift a live first/second Needs-review hold.
-- src/backlog/backlog-release.ts: `liftRefusal` gains a third branch after Refused and Waiting — when the entry's `entryHold` is `"held-for-operator"`, splice out the held note and prior-held line via `withoutHeldForOperatorNotes`; otherwise `not_refused` as today.
-- src/doctor/doctor-backlog-plans.ts: `checkStalledPlans` keeps its needs-review/replan branch and adds a held-for-operator branch whose warn names the entry, its `(held N)`, and `tumwater plan --release` as the recovery (the plan role does not resolve this one).
-- src/ui/team-alerts.ts: a new amber alert (key `"operator-held"`) listing `operatorHeldEntries` through `entryListDetail`, with the refused alert's "Open backlog" action and text naming `tumwater plan --release`; add the input to `buildAlerts`'s params (default `[]`) and pass `operatorHeldEntries(root)` from src/ui/status-model.ts beside `refusedEntries(root)`.
-
-**Tests.**
-- test/backlog-eligibility.test.ts: `operatorHeldEntries` returns a `(held 3)` plan and not a `(held 2)` one.
-- test/backlog-release-holds.test.ts: `--release` on a `(held 3)` entry removes both the note and `**Previously held 3**`; on a `(held 2)` entry it reports `not_refused` and writes nothing.
-- test/doctor-backlog.test.ts: `checkStalledPlans` warns for a held-for-operator entry naming `tumwater plan --release`.
-- test/team-alerts.test.ts: an `operator-held` amber alert names the entry; no such alert when the list is empty.
-
-**Acceptance criteria.**
-- The dashboard alerts and the doctor both name a held-for-operator entry and `tumwater plan --release`; a Needs-review entry below the threshold surfaces exactly as today.
-- `tumwater plan --release` on a held-for-operator entry leaves no Needs-review and no `**Previously held` line behind, and the entry becomes eligible; on any other Needs-review entry it refuses without writing.
-- `npm run test:gate` passes.
-
 ### Backlog hold convergence, part 3/3: Feature increments the count; the plan role carries it across a split and release clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/roles/role-guidance.ts src/roles/role-catalog.ts test/role-guidance.test.ts)
 
 **Goal.** The held count part 1/3 reads is actually written and maintained: feature appends `(held N)` with N one past the surviving prior count; the plan role carries `**Previously held N**` onto each child of a split.

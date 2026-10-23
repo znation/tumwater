@@ -1,25 +1,28 @@
 /** The hold-lifting and reordering writes of `tumwater bug|plan --release <n>` and `--top <n>`:
- * lift an entry's Refused or Waiting-for-the-next-failure note, or move it to the head of its open
+ * lift an entry's Refused, Waiting-for-the-next-failure, or held-for-operator note, or move
+ * it to the head of its open
  * section. Each comes as an exiting writer (the CLI) and a non-exiting `try…` core that refuses as
  * data (the TUI and dashboard); entry lookup and the section's file target are
  * backlog-write.ts's. */
 import path from "node:path";
 import { backlogTarget, findEntry, readEntryLines } from "./backlog-write.js";
 import type { ActionableEntryRange } from "./backlog-structure.js";
-import { withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.js";
+import { withoutHeldForOperatorNotes, withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.js";
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { fail } from "../cli/cli-output.js";
 import { trimTrailingBlankLines } from "../text/text.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 
 /** Drop the Refused note from `entry`'s slice of `lines`, in place; an entry with none loses its
- * Waiting-for-the-next-failure note instead. False (and `lines` untouched) when the entry
- * carries neither; shared by releaseEntry and tryReleaseEntry so they cannot
- * drift. */
+ * Waiting-for-the-next-failure note instead, and one with neither loses its held-for-operator
+ * Needs-review/Needs-replan note (the `(held N)` count at/above threshold, plus its
+ * **Previously held N** line). False (and `lines` untouched) when the entry carries none of the
+ * three, shared by releaseEntry and tryReleaseEntry so they cannot drift. */
 function liftRefusal(lines: string[], entry: ActionableEntryRange): boolean {
   const slice = lines.slice(entry.start - 1, entry.end);
   let kept = withoutRefusalNotes(slice);
   if (kept.length === slice.length) kept = withoutWaitingNotes(slice);
+  if (kept.length === slice.length) kept = withoutHeldForOperatorNotes(slice);
   if (kept.length === slice.length) return false;
   lines.splice(entry.start - 1, slice.length, ...kept);
   return true;
@@ -55,7 +58,7 @@ export function tryReleaseEntry(
   });
 }
 
-/** Lift the Refused or Waiting for the next failure note from the
+/** Lift the Refused, Waiting for the next failure, or held-for-operator note from the
  * `n`th entry (1-based, as `--list` numbers them) of the kind's open section and write the
  * file, under the same lock the cancel and edit writers hold.
  * An out-of-range position fails with locateEntry's wording; an entry with neither note
@@ -64,7 +67,7 @@ export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { f
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withPrimaryWorktreeLock(root, () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused or Waiting for the next failure note`);
+    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused, Waiting for the next failure, or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
     writeTextAtomic(file, lines.join("\n"));
     return { file: fileName, title: entry.title };
   });

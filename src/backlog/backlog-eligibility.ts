@@ -51,6 +51,18 @@ export function heldCount(body: string): number {
   return 0;
 }
 
+/** The `(held N)` count on a single Needs-review or Needs-replan note line, or undefined when the
+ * line is not such a note or carries no numeric tag. The per-line form of heldCount, so a writer
+ * that drops notes (withoutHeldForOperatorNotes) can gate on the same threshold without scanning
+ * the whole body. */
+function lineHeldCount(line: string): number | undefined {
+  const trimmed = line.trimStart();
+  const isNote = trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(NEEDS_REPLAN_PREFIX);
+  if (!isNote) return undefined;
+  const tag = new RegExp(`${HELD_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)\\)`).exec(trimmed);
+  return tag === null ? undefined : Number(tag[1]);
+}
+
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
  * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the role
  * reads by, exactly as the `<backlog-index>` block shows it. */
@@ -120,6 +132,47 @@ export function withoutRefusalNotes(lines: string[]): string[] {
  * withoutRefusalNotes does. */
 export function withoutWaitingNotes(lines: string[]): string[] {
   return withoutNoteLines(lines, WAITING_FOR_FAILURE_PREFIX);
+}
+
+/** `lines` with every Needs-review/Needs-replan note whose `(held N)` count reached
+ * OPERATOR_HOLD_THRESHOLD removed, together with its `**Previously held N−1**` line (the prior
+ * count the increment rule recorded beside the live `(held N)`), so a `--release` lift leaves
+ * neither behind and the entry becomes eligible. Drops nothing when no note is at or past the
+ * threshold, so release still cannot lift a live first/second Needs-review hold. Consecutive
+ * dropped lines are collapsed to one blank line, the same rule withoutNoteLines applies to a
+ * single dropped note. */
+export function withoutHeldForOperatorNotes(lines: string[]): string[] {
+  const drop = new Set<number>();
+  const priorHeld = new Set<number>();
+  lines.forEach((raw, i) => {
+    const c = lineHeldCount(raw);
+    if (c !== undefined && c >= OPERATOR_HOLD_THRESHOLD) {
+      priorHeld.add(c - 1);
+      drop.add(i);
+    }
+  });
+  if (priorHeld.size === 0) return lines;
+  lines.forEach((raw, i) => {
+    if (drop.has(i)) return;
+    const trimmed = raw.trimStart();
+    if (!trimmed.startsWith(PRIOR_HELD_PREFIX)) return;
+    const count = /\d+/.exec(trimmed.slice(PRIOR_HELD_PREFIX.length));
+    if (count !== null && priorHeld.has(Number(count[0]))) drop.add(i);
+  });
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!drop.has(i)) {
+      out.push(lines[i] as string);
+      continue;
+    }
+    let j = i;
+    while (j < lines.length && drop.has(j)) j++;
+    // A dropped run between two blank lines drops the blank after it too, so the lift leaves
+    // one blank line where the note was (the same rule withoutNoteLines applies to one).
+    if (j < lines.length && (lines[i - 1] ?? "x").trim() === "" && (lines[j] ?? "x").trim() === "") j++;
+    i = j - 1;
+  }
+  return out;
 }
 
 /** The Done entries of the parts `title` requires, in the order its requires clause names them:
@@ -317,6 +370,21 @@ export interface RefusedEntry {
   file: "plans" | "bugs";
   index: number;
   title: string;
+}
+
+/** The planned plans whose hold is `"held-for-operator"`, in file order: the plans parked
+ * until the operator lifts them with `tumwater plan --release` (the `operator-held` team
+ * alert's input), each carrying the backlog file and its 0-based position so a surface
+ * opening the row can land on it, the same RefusedEntry shape refusedEntries returns. Only
+ * plans — Needs-review/Needs-replan notes are a plan note, so a bug is never held this way.
+ * A missing file yields `[]`. */
+export function operatorHeldEntries(root: string): RefusedEntry[] {
+  const holds = backlogHolds(root);
+  const out: RefusedEntry[] = [];
+  plannedPlanEntries(root).forEach((e, i) => {
+    if (holds.plans[i] === "held-for-operator") out.push({ file: "plans", index: i, title: e.title }); // vocabulary-ok: the held-for-operator hold's key
+  });
+  return out;
 }
 
 /** The planned plans, then the open bugs, whose hold is `"refused"`, in file order: the

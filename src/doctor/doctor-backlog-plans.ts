@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { donePlans, plannedPlanEntries } from "../backlog/backlog.js";
-import { entryHold } from "../backlog/backlog-eligibility.js";
+import { entryHold, heldCount } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
@@ -187,22 +187,26 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
  * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
  * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
  * already classifies the notes, so this check adds no parsing: only the planned entries whose
- * hold is exactly needs-review or needs-replan are collected. A warn, never a fail — the
- * checkRefusedEntries precedent: a parked plan is operator signal, not a broken environment,
- * and the plan role resolves it itself. */
+ * hold is exactly needs-review, needs-replan, or held-for-operator are collected. A warn, never
+ * a fail — the checkRefusedEntries precedent: a parked plan is operator signal, not a broken
+ * environment; the plan role resolves the first two itself, and a held-for-operator plan is
+ * the operator's to release (`tumwater plan --release`). */
 export function checkStalledPlans(root: string): CheckOutcome {
   const planned = plannedPlanEntries(root);
   const stalled = planned.filter((entry) => {
     const hold = entryHold(entry, planned);
-    return hold === "needs-review" || hold === "needs-replan";
+    return hold === "needs-review" || hold === "needs-replan" || hold === "held-for-operator"; // vocabulary-ok: the held-for-operator hold's key
   });
   const [first, ...rest] = stalled;
-  if (!first) return okOutcome("no planned plan is held by a Needs-review or Needs-replan note");
+  if (!first) return okOutcome("no planned plan is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
   const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
   const hold = entryHold(first, planned);
   const note = (first.body.split(/\n/).find(
     (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
+  if (hold === "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
+    return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.body)} times${more} — release it with tumwater plan --release`); // vocabulary-ok: a held-for-operator plan is the operator's to release
+  }
   return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }

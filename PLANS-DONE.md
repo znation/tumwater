@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backlog hold convergence, part 2/3: The operator sees a held-for-operator entry and `--release` clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alerts.ts src/ui/tui/tui.tsx src/ui/status-payload.ts src/ui/status-render.ts and their tests) — done 2026-10-23 by the feature role
+
+**Goal.** A held-for-operator entry is visible to the operator with `tumwater plan --release` as the way out, and release actually lifts it — today `--release` lifts only Refused and Waiting notes and deliberately leaves Needs-review alone.
+
+**Approach.**
+- src/backlog/backlog-eligibility.ts: add `operatorHeldEntries(root): RefusedEntry[]` beside `refusedEntries`, returning the planned plans whose hold is `"held-for-operator"`, each with `file: "plans"`, its 0-based index and title (reuse the `RefusedEntry` shape and the `backlogHolds` + `plannedPlanEntries` pairing).
+- src/backlog/backlog-eligibility.ts: add `withoutHeldForOperatorNotes(lines)` (through `withoutNoteLines`) dropping a `**Needs review … (held N)**`/`**Needs replan … (held N)**` line and its `**Previously held N**` line together. It drops nothing when the note's count is below the threshold, so `--release` still cannot lift a live first/second Needs-review hold.
+- src/backlog/backlog-release.ts: `liftRefusal` gains a third branch after Refused and Waiting — when the entry's `entryHold` is `"held-for-operator"`, splice out the held note and prior-held line via `withoutHeldForOperatorNotes`; otherwise `not_refused` as today.
+- src/doctor/doctor-backlog-plans.ts: `checkStalledPlans` keeps its needs-review/replan branch and adds a held-for-operator branch whose warn names the entry, its `(held N)`, and `tumwater plan --release` as the recovery (the plan role does not resolve this one).
+- src/ui/team-alerts.ts: a new amber alert (key `"operator-held"`) listing `operatorHeldEntries` through `entryListDetail`, with the refused alert's "Open backlog" action and text naming `tumwater plan --release`; add the input to `teamAlerts`'s params (default `[]`) and pass `operatorHeldEntries(root)` beside `refusedEntries(root)` from the three callers (src/ui/tui/tui.tsx, src/ui/status-payload.ts, src/ui/status-render.ts).
+
+**Tests.**
+- test/backlog-eligibility.test.ts: `operatorHeldEntries` returns a `(held 3)` plan and not a `(held 2)` one.
+- test/backlog-release-holds.test.ts: `--release` on a `(held 3)` entry removes both the note and `**Previously held 3**`; on a `(held 2)` entry it reports `not_refused` and writes nothing.
+- test/doctor-backlog.test.ts: `checkStalledPlans` warns for a held-for-operator entry naming `tumwater plan --release`.
+- test/team-alerts.test.ts: an `operator-held` amber alert names the entry; no such alert when the list is empty.
+
+**Acceptance criteria.**
+- The dashboard alerts and the doctor both name a held-for-operator entry and `tumwater plan --release`; a Needs-review entry below the threshold surfaces exactly as today.
+- `tumwater plan --release` on a held-for-operator entry leaves no Needs-review and no `**Previously held` line behind, and the entry becomes eligible; on any other Needs-review entry it refuses without writing.
+- `npm run test:gate` passes.
+
 ### Cancel a waiting merge from the dashboard Pending card: each merge-queue row gains a two-click Cancel, the browser twin of `tumwater queue --cancel <n>` (planned 2026-10-23 by the plan role; independent of every eligible plan — Interlock relief 1/2 edits `queuedMergeRoles` in src/merge/merge-queue.ts and src/orchestrator, the pollRunnerReasons split edits src/orchestrator, the Codex parts edit src/agent and src/prompt, `start --once --json` edits src/cli/cli-start.ts, and the Backlog hold parts edit src/backlog and src/roles; none touches src/merge/merge-cancel.ts, src/gui or src/ui/gui/gui-client-pending.ts, and this plan leaves docs/cli.md to the `start --once --json` entry; touches src/merge/merge-cancel.ts src/gui/gui-operator-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-pending.ts docs/how-it-works.md test/merge-cancel.test.ts test/gui-queue-cancel.test.ts (new) test/gui-client-pending.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** An operator who sees an unwanted change in the dashboard's Pending merge-queue card can only watch it. `tumwater queue --cancel <n>` (just landed) gives the terminal operator a way to stop it, but the browser — the surface the README leads with — has no twin: the queues on the card are read-only and a cancel means reaching for a shell. Add a two-click Cancel to each merge-queue row, backed by `POST /api/queue-cancel` on the same domain core the CLI uses, so the browser, the CLI, and the TUI cannot drift on what cancelling means.

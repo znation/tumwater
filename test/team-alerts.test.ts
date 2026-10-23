@@ -478,9 +478,27 @@ test("refused entries raise a standing amber alert right after the questions ale
   assert.deepEqual(teamAlerts(base, [], [], now), []);
 });
 
+test("operator-held entries raise an amber alert naming the entry and tumwater plan --release", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [{ file: "plans", index: 2, title: "Held (planned 2026-10-14 by plan)" }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["operator-held", "amber", "1 plan is held for you to release"]]);
+  assert.ok(one[0]!.detail.includes("Held"));
+  assert.ok(one[0]!.detail.includes("--release"));
+  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:2" }]);
+  const two = teamAlerts(base, [], [], now, [], [
+    { file: "plans", index: 0, title: "A (planned 2026-10-14)" },
+    { file: "plans", index: 1, title: "B (planned 2026-10-14)" },
+  ]);
+  assert.equal(two[0]!.title, "2 plans are held for you to release");
+  assert.ok(two[0]!.detail.includes("— and 1 more"));
+  assert.deepEqual(two[0]!.actions[0]?.arg, "plans:0");
+  // An empty list raises no operator-held alert; an empty list on the extra param is fine.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], []), []);
+});
+
 test("stale open bugs raise a standing amber alert right after the refused alert", () => {
   const now = Date.now();
-  const one = teamAlerts(base, [], [], now, [], [{ index: 2, position: 3, title: "Bug hangs on shutdown", days: 3 }]);
+  const one = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs on shutdown", days: 3 }]);
   assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stale-bugs", "amber", "1 open bug waited 3+ days for a fix"]]);
   assert.ok(one[0]!.detail.startsWith('#3 "Bug hangs on shutdown" has waited 3d for a fix'));
   assert.ok(one[0]!.detail.includes("tumwater bug --cancel 3"));
@@ -488,7 +506,7 @@ test("stale open bugs raise a standing amber alert right after the refused alert
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "bugs:2" }]);
   // Callers feed oldest-first (staleOpenBugs sorts most-days-waited first), so the first entry
   // is the most-stale bug and the one the alert names.
-  const three = teamAlerts(base, [], [], now, [], [
+  const three = teamAlerts(base, [], [], now, [], [], [
     { index: 4, position: 5, title: "B", days: 5 },
     { index: 6, position: 7, title: "C", days: 4 },
     { index: 0, position: 1, title: "A", days: 3 },
@@ -496,7 +514,7 @@ test("stale open bugs raise a standing amber alert right after the refused alert
   assert.equal(three[0]!.title, "3 open bugs waited 3+ days for a fix");
   assert.match(three[0]!.detail ?? "", /— and 1 more/);
   assert.equal(three[0]!.actions[0]?.arg, "bugs:4");
-  const afterRefused = teamAlerts(base, ["Q?"], [], now, [{ file: "bugs", index: 0, title: "A" }], [{ index: 9, position: 10, title: "Z", days: 6 }]);
+  const afterRefused = teamAlerts(base, ["Q?"], [], now, [{ file: "bugs", index: 0, title: "A" }], [], [{ index: 9, position: 10, title: "Z", days: 6 }]);
   assert.deepEqual(afterRefused.map((a) => a.key), ["questions", "refused", "stale-bugs"]);
   assert.deepEqual(teamAlerts(base, [], [], now), []);
   assert.deepEqual(teamAlerts(base, [], [], now, [], []), []);

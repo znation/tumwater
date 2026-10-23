@@ -411,8 +411,18 @@ test("checkStalledPlans warns once when both kinds are present, naming the rest 
   assert.match(out.detail, /"Second \(planned 2026-10-14\)"/);
 });
 
+test("checkStalledPlans warns on a held-for-operator plan, naming tumwater plan --release", () => {
+  const dir = tmpdir("doctor-stalled-held-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n### Parked plan (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run (held 3)**\n`);
+  const out = checkStalledPlans(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /is held for the operator 3 times/);
+  assert.match(out.detail, /tumwater plan --release/);
+});
+
 test("checkStalledPlans reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
-  const ok = { level: "ok", detail: "no planned plan is held by a Needs-review or Needs-replan note" };
+  const ok = { level: "ok", detail: "no planned plan is held by a Needs-review, Needs-replan, or held-for-operator note" };
   assert.deepEqual(checkStalledPlans(tmpdir("doctor-stalled-none-")), ok);
   const dir = tmpdir("doctor-stalled-closed-");
   const note = "**Needs review 2026-10-14 by feature: too large for one run**";
