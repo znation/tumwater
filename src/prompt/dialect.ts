@@ -57,15 +57,17 @@ export const OPENCODE_DIALECT: PromptDialect = {
 
 /** codex's dialect (plans/codex-backend.md §6): it has no read tool (so the reading-budget
  * rule names only `sed -n`/`head`/`tail`), its oversized tool output comes truncated around a
- * `…N tokens truncated…` marker (finding 18), and one backend rule tells the model how a
+ * `…N tokens truncated…` marker (finding 18), and two backend rules tell the model how a
  * longer command works: codex returns a session id to poll with `write_stdin`, and ends the
- * command when the turn ends (finding 19). */
+ * command when the turn ends (finding 19); and all file edits go through `apply_patch` (finding
+ * 6), because the write guard checks only that tool (plans/codex-write-guard.md). */
 export const CODEX_DIALECT: PromptDialect = {
   readRange: "`sed -n 'A,Bp'` (or `head` / `tail`)",
   oversizedOutput: `Oversized command output comes back as its head and tail around a \`…N tokens truncated…\`
   marker — narrow the command (grep, \`sed -n\`, \`head\`/\`tail\`) instead of re-running it whole.`,
   backendRules: [
     "A command that runs longer than 30 seconds returns a session id while it keeps running. Keep calling `write_stdin` with that session id until it reports an exit code, and never end your turn while a command is still running: Codex kills it when you finish, and its result is lost.",
+    "Edit and create files with the `apply_patch` tool, not shell redirection (`>`, `>>`, `tee`) or `sed -i`.",
   ],
 };
 

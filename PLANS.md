@@ -50,23 +50,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### Write guard on Codex, part 7/9: Codex's prompt dialect sends file edits through `apply_patch` (planned 2026-10-23 by user; requires part 6/9 landed; design in plans/codex-write-guard.md "Coverage (part 7)" and finding 6; touches src/prompt/dialect.ts test/prompt-dialect.test.ts)
-
-**Goal.** The guard sees only `apply_patch`. plans/codex-backend.md's probes saw codex models edit through the shell (`printf >>`) unless the prompt asked for `apply_patch`, so ask for it.
-
-**Approach.**
-- src/prompt/dialect.ts: `CODEX_DIALECT.backendRules` gains one rule: "Edit and create files with the `apply_patch` tool, not shell redirection (`>`, `>>`, `tee`) or `sed -i`."
-- Update the `CODEX_DIALECT` doc comment to say why: the write guard checks only `apply_patch` (plans/codex-write-guard.md).
-
-**Tests.** test/prompt-dialect.test.ts:
-- a codex run prompt contains the rule exactly once;
-- the pi, claude and OpenCode run prompts do not contain it;
-- the codex prompt's other backend rule (the `write_stdin` polling rule) is still present.
-
-**Acceptance criteria.**
-- Only codex prompts change, by exactly that rule.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 8/9: Doctor's codex group reports whether codex runs carry the write guard (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9a/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)"; touches src/doctor/doctor-model-checks.ts test/doctor-model-checks.test.ts)
 
 **Goal.** An operator can see from `tumwater doctor` whether codex edits are guarded, and why not when they are not.

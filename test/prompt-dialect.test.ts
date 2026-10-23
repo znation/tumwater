@@ -11,7 +11,7 @@ import {
   roleNotesInstruction,
 } from "../src/prompt/prompt.js";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
-import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT, dialectFor } from "../src/prompt/dialect.js";
+import { CLAUDE_DIALECT, CODEX_DIALECT, OPENCODE_DIALECT, PI_DIALECT, dialectFor } from "../src/prompt/dialect.js";
 import { roleById } from "../src/roles/roles.js";
 
 test("pi's reading-budget rule is pinned byte for byte", () => {
@@ -59,6 +59,23 @@ test("every backend's run prompt names the tumwater-notes command, and none name
   }
   const claude = buildRunPrompt({ role, agent: "claude" });
   assert.match(claude, /saved to a file the tool names/);
+});
+
+test("codex's dialect carries both backend rules, and pi/claude/opencode never see the file-edit rule", () => {
+  assert.equal(dialectFor("codex"), CODEX_DIALECT);
+
+  const role = roleById("feature")!;
+  const codex = buildRunPrompt({ role, agent: "codex" });
+  // Part 7: the codex prompt asks for `apply_patch` file edits exactly once.
+  const rule = "Edit and create files with the `apply_patch` tool, not shell redirection (`>`, `>>`, `tee`) or `sed -i`.";
+  assert.equal(codex.split(rule).length - 1, 1, "the apply_patch rule appears exactly once");
+  // The other backend rule (the write_stdin polling rule) is still present.
+  assert.match(codex, /Keep calling `write_stdin` with that session id/);
+  // pi, claude and opencode never see the apply_patch rule.
+  for (const agent of ["pi", "claude", "opencode"] as const) {
+    const prompt = buildRunPrompt({ role, agent });
+    assert.ok(!prompt.includes("apply_patch"), `${agent} never sees the apply_patch file-edit rule`);
+  }
 });
 
 test("the notes instruction is backend-independent and names only the command", () => {
