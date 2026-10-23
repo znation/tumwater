@@ -89,6 +89,7 @@ export function collectReportSince(
     mergeFailedByReason: {},
     costByProvider: {},
     notionalByProvider: {},
+    notionalByBackend: {},
     runsByModel: {},
     deferredByReason: {},
   };
@@ -114,6 +115,7 @@ export function collectReportSince(
           commits: acc.commits,
           costUsd: acc.costUsd + (acc.mergeCostUsd ?? 0),
           ...(acc.notionalCostUsd > 0 ? { notionalCostUsd: acc.notionalCostUsd } : {}),
+          ...(Object.keys(acc.notionalByBackend).length > 0 ? { notionalByBackend: acc.notionalByBackend } : {}),
           mergeRuns: acc.mergeRuns ?? 0,
           mergeTokens: acc.mergeTokens ?? 0,
           mergeCostUsd: acc.mergeCostUsd ?? 0,
@@ -167,6 +169,11 @@ export function collectReportSince(
     // gates the provider lines to the team report anyway. Always present, empty when none.
     costByProvider: scopedByRole(acc.costByProvider, bases),
     notionalByProvider: scopedByRole(acc.notionalByProvider, bases),
+    // Backend spend is a team attribution (a backend is not a role), so a role-scoped window
+    // omits it — the same absent-when-empty rule the day collector applies.
+    ...(Object.keys(scopedByRole(acc.notionalByBackend, bases)).length > 0
+      ? { notionalByBackend: scopedByRole(acc.notionalByBackend, bases) }
+      : {}),
     // Model attribution is team-only (a model is not a role, so no model folds to the
     // scoped role), the same full-map-for-team / empty-for-scoped rule costByProvider
     // follows. Always present so the render can gate on the window's own events.
@@ -252,6 +259,11 @@ export function collectReport(root: string, days: number, role?: string | readon
       if (Object.keys(fold.costByProvider).length > 0) day.costByProvider = fold.costByProvider;
       if (Object.keys(fold.notionalByProvider).length > 0)
         day.notionalByProvider = fold.notionalByProvider;
+      // Backends are a team attribution (a backend is not a role), so only the team series
+      // carries the map; only set when a backend actually spent (zero means absent), so a
+      // backend-free day keeps its exact pre-feature shape.
+      if (Object.keys(fold.notionalByBackend).length > 0)
+        day.notionalByBackend = fold.notionalByBackend;
       // Models are a team attribution (a model is not a role), so only the team series
       // carries the map; only set when a modelled start happened (zero means absent), so a
       // model-less day keeps its exact pre-feature shape.
@@ -401,6 +413,7 @@ export function collectReport(root: string, days: number, role?: string | readon
   let mergeFailed = 0;
   let plansAdded = 0;
   let bugsFiled = 0;
+  const notionalByBackend: Record<string, number> = {};
   for (const d of series) {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.runsByRole)) totals.runs += n;
@@ -410,6 +423,8 @@ export function collectReport(root: string, days: number, role?: string | readon
     totals.maintenanceCommits += d.maintenanceCommits ?? 0;
     totals.costUsd += d.costUsd;
     notionalCostUsd += d.notionalCostUsd ?? 0;
+    for (const [backend, c] of Object.entries(d.notionalByBackend ?? {}))
+      addTo(notionalByBackend, backend, c);
     totals.featuresDone += d.featuresDone;
     totals.bugsFixed += d.bugsFixed;
     plansAdded += d.plansAdded ?? 0;
@@ -442,6 +457,7 @@ export function collectReport(root: string, days: number, role?: string | readon
     totals: {
       ...totals,
       ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
+      ...(Object.keys(notionalByBackend).length > 0 ? { notionalByBackend } : {}),
       ...(mergeFailed > 0 ? { mergeFailed } : {}),
       ...(plansAdded > 0 ? { plansAdded } : {}),
       ...(bugsFiled > 0 ? { bugsFiled } : {}),

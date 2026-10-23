@@ -6,21 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Codex backend, part 3d/9: The report's API-equivalent line names each subscription backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/events/events.ts src/run/run-finalize.ts src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts test/report.test.ts test/report-data.test.ts)
-
-**Goal.** The report prints one "<label> subscription, API-equivalent: $X estimated" line per subscription backend with notional spend, instead of one hardcoded "claude subscription" line.
-
-**Approach.**
-- src/run/run-finalize.ts: the `run_end` event carries `agent: usage.agent` when the run reported billing or rate windows (the same condition that writes the account file), so the fold can attribute notional spend to a backend; document the new field in src/events/events.ts's `run_end` comment.
-- src/report/report-fold.ts: a `notionalByBackend` map beside `notionalByProvider`, accumulated from each `run_end`'s `agent` — falling back to `"claude"` when `agent` is absent and `billing === "subscription"`, the same legacy default old window events get.
-- src/report/report-types.ts and src/report/report-data.ts: carry `notionalByBackend` through the fold → day → totals exactly as `notionalByProvider` is carried; absent when empty.
-- src/report/report-render.ts: `notionalLine` becomes one line per backend with notional spend, `${backendDisplayName(backend)} subscription, API-equivalent: $X estimated`; keep a single generic line for the total when only old-log totals are known.
-
-**Acceptance criteria.**
-- A report over runs of two subscription backends prints two labeled notional lines; a claude-only report's line is byte-identical to today; the totals' `notionalCostUsd` still equals the sum.
-- Old `run_end` events without `agent` still count their notional under claude (the legacy default).
-- `npm test` passes.
-
 ### Codex backend, part 3e/9: Doctor's window row names each subscription backend, the reserve labels name the key, and docs say the display is per backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/doctor/doctor-holds.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/backends.md test/doctor-holds.test.ts test/doctor.test.ts test/gui-client-settings.test.ts)
 
 **Goal.** `tumwater doctor` reports one window row per subscription backend in use (a codex team gets a `codex window` row), the reserve editors name the `backends.<id>.windowReserve` key, and docs/backends.md states the display is per backend.

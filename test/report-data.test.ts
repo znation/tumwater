@@ -960,6 +960,94 @@ test("a subscription merge's spend is notional, never in the cost totals", () =>
   assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$2\.00 estimated/);
 });
 
+// A run_end's notional spend is keyed by its backend (its `agent`, plans/codex-backend.md
+// part 3d/9), so a report over two subscription backends renders one labeled line each; when
+// the window's spend decomposes fully into backends, no generic "claude" line remains.
+test("collectReport carries notionalByBackend and names each backend on the notional line", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "plan", type: "run_end", run: 2, result: "changed", notionalCostUsd: 2, agent: "codex", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const data = collectReport(root, 1);
+  assert.equal(data.totals.notionalCostUsd, 5, "both runs are subscription spend");
+  assert.deepEqual(data.totals.notionalByBackend, { claude: 3, codex: 2 });
+  assert.deepEqual(data.series[0]?.notionalByBackend, { claude: 3, codex: 2 });
+  const md = renderReportMarkdown(data);
+  assert.match(md, /Claude subscription, API-equivalent: \$3\.00 estimated/);
+  assert.match(md, /Codex subscription, API-equivalent: \$2\.00 estimated/);
+  assert.ok(!md.includes("claude subscription, API-equivalent: $5.00"), "a fully-decomposed window names each backend, not a generic total");
+});
+
+// A legacy window event (billing subscription, no `agent`) attributes its notional to claude
+// — the old default backend — and still renders the byte-identical generic line, because a
+// single backend is not labeled apart.
+test("notionalByBackend falls back to claude for a legacy subscription run_end", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3, billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const data = collectReport(root, 1);
+  assert.deepEqual(data.totals.notionalByBackend, { claude: 3 });
+  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$3\.00 estimated/);
+});
+
+// A codex-only subscription window is not mislabeled: a single, fully-attributed non-claude
+// backend still names itself — the generic claude line is only for a claude account, an
+// old-log window, or unattributed merge spend (plans/codex-backend.md part 3d/9).
+test("a codex-only window names its own backend, not the generic claude line", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "plan", type: "run_end", run: 1, result: "changed", notionalCostUsd: 2, agent: "codex", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const data = collectReport(root, 1);
+  assert.deepEqual(data.totals.notionalByBackend, { codex: 2 });
+  const md = renderReportMarkdown(data);
+  assert.match(md, /Codex subscription, API-equivalent: \$2\.00 estimated/);
+  assert.ok(!md.includes("claude subscription"), "a codex-only window is not mislabeled claude");
+});
+
+// A subscription merge's notional spend is keyed by the backend that ran it (merge-slot.ts
+// emits notionalByBackend on the event), so a codex merge's spend folds to codex and names
+// codex on the notional line instead of the generic claude one (plans/codex-backend.md part 3d/9).
+test("a codex subscription merge's notional is attributed to codex, not claude", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2, notionalByBackend: { codex: 2 } }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const data = collectReport(root, 1);
+  assert.equal(data.totals.notionalCostUsd, 2);
+  assert.deepEqual(data.totals.notionalByBackend, { codex: 2 });
+  const md = renderReportMarkdown(data);
+  assert.match(md, /Codex subscription, API-equivalent: \$2\.00 estimated/);
+  assert.ok(!md.includes("claude subscription"), "a codex merge is not mislabeled claude");
+});
+
+// The per-day total and the per-backend sums accumulate in different orders, so a fully
+// attributed window's float traces need not coincide exactly (`0.1`-style math leaves a
+// ~1e-16 gap even for whole-cent repeats). The render compares them tolerantly, so that
+// rounding noise does not collapse the labeled per-backend lines back to the generic one.
+test("a fully-attributed window names each backend even when float rounding separates the sums", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 0.1, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "plan", type: "run_end", run: 2, result: "changed", notionalCostUsd: 0.1, agent: "codex", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 3, result: "changed", notionalCostUsd: 0.1, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 4, result: "changed", notionalCostUsd: 0.1, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "plan", type: "run_end", run: 5, result: "changed", notionalCostUsd: 0.1, agent: "codex", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 6, result: "changed", notionalCostUsd: 0.2, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const data = collectReport(root, 2);
+  const md = renderReportMarkdown(data);
+  assert.match(md, /Claude subscription, API-equivalent: \$0\.50 estimated/);
+  assert.match(md, /Codex subscription, API-equivalent: \$0\.20 estimated/);
+});
+
 // Role scoping carries a role's OWN notional spend (its run_end events), so `report --role`
 // does not misreport a subscription role as $0; the merge slot's notional stays team-wide
 // and omitted, exactly like its real cost (plans/agent-backends.md part 6a).

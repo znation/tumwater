@@ -835,6 +835,24 @@ test("tumwater report --since prints Commits/Estimated by role and --json carrie
   assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
 });
 
+test("report --since names each subscription backend on the notional line", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", notionalCostUsd: 3, agent: "claude", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "plan", type: "run_end", run: 2, result: "changed", notionalCostUsd: 2, agent: "codex", billing: "subscription" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const md = await runCli(root, "report", "--since", "6h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /Claude subscription, API-equivalent: \$3\.00 estimated/);
+  assert.match(md.out, /Codex subscription, API-equivalent: \$2\.00 estimated/);
+
+  const json = await runCli(root, "report", "--json", "--since", "6h");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out);
+  assert.deepEqual(parsed.totals.notionalByBackend, { claude: 3, codex: 2 }, "the since totals carry notionalByBackend");
+});
+
 // --- report through the real CLI entry point: main()'s wiring that the in-process pins
 // above cannot see — report runs WITHOUT a readiness gate (it degrades to zeros in any
 // directory) and --days shares /api/report's window bound: above it the command fails fast

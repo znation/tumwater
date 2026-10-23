@@ -179,6 +179,10 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
     // The billing answer the run's runs reported, so the report can tell notional spend from
     // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
     ...(usage.billing !== undefined ? { billing: usage.billing } : {}),
+    // The backend that reported the billing/rate windows (plans/codex-backend.md part 3d/9):
+    // carried under the same condition the account file is written (observeAccount above), so
+    // the report folds a run's notional spend to the subscription backend whose runs made it.
+    ...(usage.billing !== undefined || usage.rateWindows !== undefined ? { agent: usage.agent } : {}),
     // Per-run prompt-token telemetry: how many prompt
     // tokens the run sent, how many were cache reads, and how many went out before its first
     // edit. Omitted when zero like usageFragment's fields, so a run that sent no prompt — and

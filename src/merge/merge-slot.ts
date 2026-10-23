@@ -416,6 +416,13 @@ export function writeMergeOutcome(
     // sees a merge's spend under its reviewer's provider. Omitted when empty (a merge
     // whose runs carried no provider), the same omit-when-empty idiom the usage fields use.
     ...(Object.keys(usage.providerCost).length > 0 ? { providerCost: usage.providerCost } : {}),
+    // The merge's notional spend per backend (plans/codex-backend.md part 3d/9): the
+    // subscription seam whose runs made the merge's API-equivalent cost, so a codex merge's
+    // subscription spend names codex, not a generic claude line. Omitted when the merge spent
+    // no notional, the same omit-when-empty idiom the usage fields use.
+    ...(Object.keys(usage.notionalByBackend ?? {}).length > 0
+      ? { notionalByBackend: usage.notionalByBackend }
+      : {}),
   });
   dropMerge(file);
 }
@@ -434,6 +441,11 @@ export interface MergeUsage {
    * reporting fold can attribute a merge's costs to the provider that ran them. The same
    * seam key the author-side foldMergeUsage charges. */
   providerCost: Record<string, { costUsd: number; notionalCostUsd: number }>;
+  /** The merge's notional spend per backend, keyed by each subscription run's agent (the
+   * backend whose runs made it) — a parallel tally beside providerCost, emitted on the
+   * merge_done/merge_failed event so the report can name each backend on the notional line.
+   * Optional, absent when the merge spent no notional (no subscription runs). */
+  notionalByBackend?: Record<string, number>;
 }
 
 /** A fresh usage accumulator for one merge plus the foldUsage callback that charges each of
@@ -459,11 +471,20 @@ function addProviderCost(usage: MergeUsage, provider: string, amount: number, no
   usage.providerCost[provider] = e;
 }
 
+/** Add a subscription run's notional spend to the merge's per-backend tally, keyed by the
+ * run's agent (falling back to the claude default, like the run-end fold), so the merge event
+ * names the backend whose runs made its API-equivalent cost (plans/codex-backend.md part 3d/9). */
+function addBackendNotional(usage: MergeUsage, agent: string | undefined, amount: number): void {
+  const backend = agent && agent !== "" ? agent : "claude";
+  usage.notionalByBackend = usage.notionalByBackend ?? {};
+  usage.notionalByBackend[backend] = (usage.notionalByBackend[backend] ?? 0) + amount;
+}
+
 export function mergeUsage(author: RoleRunner, root: string): {
   usage: MergeUsage;
   foldUsage: (run: PiRunResult) => void;
 } {
-  const usage: MergeUsage = { tokens: 0, cost: 0, providerCost: {} };
+  const usage: MergeUsage = { tokens: 0, cost: 0, providerCost: {}, notionalByBackend: {} };
   const reviewConfig = reviewRunConfig(author.config);
   const reviewProvider = seamHoldKey(reviewConfig);
   const reviewPair = seamPairName(reviewConfig);
@@ -494,6 +515,7 @@ export function mergeUsage(author: RoleRunner, root: string): {
         }
       } else {
         usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;
+        addBackendNotional(usage, run.agent, run.costUsd);
         if (reviewProvider !== undefined) {
           addProviderCost(usage, reviewProvider, run.costUsd, true);
         }

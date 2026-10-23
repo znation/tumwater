@@ -15,6 +15,7 @@ import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { markdownTable } from "../text/markdown.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
+import { backendDisplayName } from "../agent/backend-traits.js";
 
 /** Bar width for one day: up to 20 blocks scaled to the window's max tokensOut —
  * round(20·v/max), min 1 when v > 0. */
@@ -101,13 +102,41 @@ function mergeShareLine(t: ReportTotals): string {
   return `of which merge runs: ${t.mergeRuns} runs${failed} · ${compactTokens(t.mergeTokens)} tokens · ${usd(t.mergeCostUsd)} (reviewer + conflict resolution)`;
 }
 
-/** The notional-spend line (plans/agent-backends.md part 6a): the API-equivalent cost of
- * claude.ai subscription runs folded into the window. Never part of the totals' costUsd,
- * because a subscription run is exempt from the daily dollar cap; the caller prints it only
- * when a subscription run actually folded in (zero means absent, like the merge line), so
- * an API-only team's report is unchanged. */
-function notionalLine(t: ReportTotals): string {
-  return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} estimated`;
+/** A float-robust "the per-backend notional sums account for the window's total" check: the two
+ * numbers fold in different orders (per-event vs per-backend-then-summed), so their float traces
+ * need not coincide exactly even when every subscription event is attributed — the gap lands
+ * around machine epsilon. A small relative slack absorbs that reordering noise, while a genuinely
+ * partial map (an unattributed subscription merge, or a legacy event with no agent) is off by a
+ * real, much larger amount and must fall back to the generic line. */
+function notionalSumsCoverTotal(summed: number, total: number): boolean {
+  return Math.abs(summed - total) <= 1e-9 * Math.max(1, Math.abs(total));
+}
+
+/** The notional-spend line(s) (plans/agent-backends.md part 6a, codex-backend.md part 3d/9):
+ * the API-equivalent cost of subscription runs folded into the window. Never part of the
+ * totals' costUsd, because a subscription run is exempt from the daily dollar cap; the caller
+ * prints it only when a subscription run actually folded in (zero means absent, like the merge
+ * line), so an API-only team's report is unchanged. When the window's notional spend fully
+ * decomposes into backends, one labeled line names each backend — including a single non-claude
+ * backend (a codex-only window), so a codex team's line never reads "claude". A claude-only
+ * account, an old-log window, or unattributed merge spend keeps one generic lowercase "claude
+ * subscription" line — byte-identical to the pre-codex render. */
+function notionalLines(t: ReportTotals): string[] {
+  const total = t.notionalCostUsd ?? 0;
+  const byBackend = t.notionalByBackend ?? {};
+  const backends = Object.entries(byBackend).filter(([, c]) => c > 0);
+  const summed = backends.reduce((n, [, c]) => n + c, 0);
+  // A single fully-attributed claude account collapses to the generic line (its true or
+  // fallback backend is claude, and the capitalization keeps old/byte-identical output);
+  // every other fully-attributed window — multi-backend, or a single codex/other backend —
+  // names each backend on its own line.
+  const singleClaude = backends.length === 1 && backends[0]?.[0] === "claude";
+  if (notionalSumsCoverTotal(summed, total) && !singleClaude) {
+    return backends.map(
+      ([backend, c]) => `${backendDisplayName(backend)} subscription, API-equivalent: ${usd(c)} estimated`,
+    );
+  }
+  return [`claude subscription, API-equivalent: ${usd(total)} estimated`];
 }
 
 /** The scope note a `--role` report prints: merge runs belong to the merge slot and the
@@ -126,7 +155,7 @@ const ROLE_SCOPE_NOTE =
 function pushReportSummary(lines: string[], t: ReportTotals, tail = "", scoped = false): void {
   lines.push(totalsLine(t, tail));
   if (t.mergeRuns > 0) lines.push(mergeShareLine(t));
-  if ((t.notionalCostUsd ?? 0) > 0) lines.push(notionalLine(t));
+  if ((t.notionalCostUsd ?? 0) > 0) lines.push(...notionalLines(t));
   if (scoped) lines.push(ROLE_SCOPE_NOTE);
 }
 

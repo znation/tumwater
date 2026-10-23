@@ -124,6 +124,11 @@ export interface UsageFold {
   /** The notional share per provider (a subscription seam's API-equivalent spend), the same
    * parallel age as costByProvider but on the notional line. */
   notionalByProvider: Record<string, number>;
+  /** The notional share per backend (a subscription seam's API-equivalent spend), keyed by
+   * the run_end event's `agent` — the backend whose runs spent it — the same parallel age as
+   * notionalByProvider but on the notional line. Team-only like a provider: a backend is not
+   * a role. Absent when empty. */
+  notionalByBackend: Record<string, number>;
   /** run_start events per model selector (the agent-qualified name every run starts on —
    * `run #N started on <model>`), a parallel tally to runsByRole keyed by model instead of
    * role. A run_start whose `model` is absent or empty contributes no key. Team-only: a
@@ -194,6 +199,20 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
+    // The notional spend's backend (plans/codex-backend.md part 3d/9): the subscription seam
+    // whose runs made the run's API-equivalent cost, from the run_end's `agent` (run-finalize
+    // carries it when the run reported billing/rate windows) — falling back to "claude" when
+    // a legacy window event (no agent, subscription billing) attributed its spend, so the old
+    // default stays the report's only backend. A run with no backend and no subscription
+    // billing is unattributed and adds no key, so the render keeps its generic line for it.
+    const notionalBackend =
+      typeof ev.agent === "string" && ev.agent !== ""
+        ? ev.agent
+        : ev.billing === "subscription"
+          ? "claude"
+          : undefined;
+    if (notionalBackend !== undefined && notionalCostUsd !== 0)
+      addTo(target.notionalByBackend, notionalBackend, notionalCostUsd);
     // The agent runs' per-provider spend (run-finalize.ts emits providerCost on run_end)
     // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
     // line names the expensive seam.
@@ -291,6 +310,13 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // A subscription merge's API-equivalent spend joins the notional line, never the
     // budgeted cost totals (plans/agent-backends.md part 6a).
     target.notionalCostUsd += notionalCostUsd;
+    // The merge's notional spend per backend (merge-slot.ts emits it on the event, keyed by
+    // each subscription run's agent) — folded beside the run-end per-backend map, so a codex
+    // merge's subscription spend names codex instead of falling back to the generic line.
+    for (const [backend, c] of Object.entries(ev.notionalByBackend ?? {})) {
+      const amt = finiteNumber(c, 0);
+      if (amt !== 0) addTo(target.notionalByBackend, backend, amt);
+    }
     // The merge's per-provider spend (merge-slot.ts keys it to its reviewer seam), so a
     // merge's costs appear under the provider that ran the reviewer, matching the author
     // side's foldMergeUsage charge.
@@ -344,6 +370,7 @@ interface DayFold {
   mergeFailedByReason: Record<string, number>;
   costByProvider: Record<string, number>;
   notionalByProvider: Record<string, number>;
+  notionalByBackend: Record<string, number>;
   runsByModel: Record<string, number>;
   deferredByReason: Record<string, number>;
 }
@@ -494,6 +521,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       mergeFailedByReason: {},
       costByProvider: {},
       notionalByProvider: {},
+      notionalByBackend: {},
       runsByModel: {},
       deferredByReason: {},
     };

@@ -93,6 +93,9 @@ export interface ReportDay {
   costByProvider?: Record<string, number>;
   /** Per-provider notional spend, parallel to notionalByRole; absent when the day had none. */
   notionalByProvider?: Record<string, number>;
+  /** Per-backend notional spend, keyed by the backend whose runs spent it; absent when the day
+   * had none (zero means absent). A backend is not a role, so only the team series carries it. */
+  notionalByBackend?: Record<string, number>;
   /** run_start events per model selector, parallel to costByProvider's team-only rule: a
    * model is not a role, so only the team series carries it (absent when the day had no
    * modelled start, zero means absent). */
@@ -120,6 +123,9 @@ export interface ReportTotals {
   /** Subscription spend, API-equivalent: never in costUsd, shown on its own line
    * (plans/agent-backends.md part 6a). Optional so pre-feature test literals still typecheck. */
   notionalCostUsd?: number;
+  /** Per-backend subscription spend, keyed by the backend whose runs spent it; absent when
+   * empty (a claude-only or old-log window keeps today's single generic line). */
+  notionalByBackend?: Record<string, number>;
   mergeRuns: number; // the merge share of the above, named for itself
   mergeTokens: number;
   mergeCostUsd: number;
@@ -215,6 +221,10 @@ export interface SinceReport {
   costByProvider: Record<string, number>;
   /** Per-provider notional spend; always present (empty map when none). */
   notionalByProvider: Record<string, number>;
+  /** Per-backend notional spend; absent when the window had none (a backend is not a role, so
+   * a scoped window never carries it — the same absent-when-empty rule the day collector
+   * applies). */
+  notionalByBackend?: Record<string, number>;
   /** run_start events per model selector; always present (empty map when none, like
    * costByProvider), so the --since render can gate its `Runs by model` line on the
    * window's own events. A model is not a role, so a scoped report carries an empty map. */
