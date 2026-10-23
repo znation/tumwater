@@ -387,6 +387,32 @@ export function operatorHeldEntries(root: string): RefusedEntry[] {
   return out;
 }
 
+/** A planned plan held by a Needs-review/Needs-replan note, plus the 0-based PLANS.md index
+ * and hold that let a surface land on its row (`plans:<index>`) and tell the note kinds apart. */
+export interface StalledPlan {
+  index: number;
+  title: string;
+  hold: "needs-review" | "needs-replan";
+}
+
+/** The planned plans whose hold is exactly `"needs-review"` or `"needs-replan"`, in file
+ * order: the plans parked by a Needs-review/Needs-replan note until the plan role splits or
+ * replans them (the `stalled-plans` team alert's input), each carrying the 0-based PLANS.md
+ * index and the hold. Same `backlogHolds(root)` + `plannedPlanEntries(root)` pair
+ * `operatorHeldEntries` uses, so the alert and the doctor's `stalled plans` row classify
+ * through the same `entryHold` and cannot disagree on which holds are role-resolvable. A
+ * held-for-operator plan (a note at the held threshold) is excluded — it feeds
+ * `operatorHeldEntries` and the `operator-held` alert instead. A missing file yields `[]`. */
+export function stalledPlanEntries(root: string): StalledPlan[] {
+  const holds = backlogHolds(root);
+  const out: StalledPlan[] = [];
+  plannedPlanEntries(root).forEach((e, i) => {
+    const hold = holds.plans[i];
+    if (hold === "needs-review" || hold === "needs-replan") out.push({ index: i, title: e.title, hold });
+  });
+  return out;
+}
+
 /** The planned plans, then the open bugs, whose hold is `"refused"`, in file order: the
  * entries that wait on an operator decision (the `refused` team alert's input), each carrying
  * the backlog file and its 0-based position so a surface opening the row can land on it.

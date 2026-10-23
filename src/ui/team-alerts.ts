@@ -9,7 +9,7 @@
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
-import type { RefusedEntry } from "../backlog/backlog-eligibility.js";
+import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -180,7 +180,8 @@ function localizeInstants(text: string): string {
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a pause, a stopped team.
+ * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
+ * review or Needs replan note, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -214,6 +215,7 @@ export function teamAlerts(
   planDependency: PlanDependencyProblem | null = null,
   staleWaitingBugs: readonly StaleWaitingBug[] = [],
   skippedMergeFiles: readonly string[] = [],
+  stalledPlans: readonly StalledPlan[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -417,6 +419,24 @@ export function teamAlerts(
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+    });
+  }
+  // A plan parked by a Needs-review/Needs-replan note (the doctor's `stalled plans` row, behind
+  // the held threshold) sits until the plan role splits or replans it — amber because the plan
+  // role is the only one that can clear it, right after the operator-held alert, naming the first
+  // such plan in file order, its note kind, and the fix. Same `entryHold` classification as
+  // `operatorHeldEntries` and `checkStalledPlans`, so the always-on alert and the doctor cannot
+  // disagree on which holds are role-resolvable. A held-for-operator plan is excluded here.
+  if (stalledPlans.length) {
+    const first = stalledPlans[0]!;
+    out.push({
+      key: "stalled-plans",
+      tone: "amber",
+      title: `${plural(stalledPlans.length, "plan is stalled", "plans are stalled")} in review`,
+      detail: `Plan ${entryListDetail(stalledPlans.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans it, so a plan that keeps sitting here means the plan role is not running or keeps deferring`,
+      // The action lands the operator on the named entry: open the backlog card on the
+      // plans tab and open that row (the dashboard's backlog arm reads `file:index`).
+      actions: [{ label: "Open backlog", act: "backlog", arg: `plans:${first.index}` }],
     });
   }
   // A broken plan-dependency clause (the doctor's `plan dependencies` rule,

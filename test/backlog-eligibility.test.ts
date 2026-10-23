@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledPlanEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -578,6 +578,32 @@ test("operatorHeldEntries lists the plans whose note held count reached the thre
   );
   assert.deepEqual(operatorHeldEntries(dir), [
     { file: "plans", index: 1, title: "Held up (planned 2026-10-03)" },
+  ]);
+});
+
+test("stalledPlanEntries lists the needs-review and needs-replan plans, excluding eligible and held-for-operator ones", () => {
+  assert.deepEqual(stalledPlanEntries(tmpdir()), []);
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### Ready (planned 2026-10-04)",
+      "body",
+      "### Needs review (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run**",
+      "### Needs replan (planned 2026-10-03)",
+      "**Needs replan 2026-10-07 by feature: rejected after 1 review round**",
+      "### At threshold (planned 2026-10-03)",
+      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  assert.deepEqual(stalledPlanEntries(dir), [
+    { index: 1, title: "Needs review (planned 2026-10-03)", hold: "needs-review" },
+    { index: 2, title: "Needs replan (planned 2026-10-03)", hold: "needs-replan" },
   ]);
 });
 
