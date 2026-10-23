@@ -317,6 +317,26 @@ hyphens in the name" and "extractFlow returns null when absent, empty, or only m
 the signal and real duration"; `test/build-stage.test.ts` — "compileStaged reads a tsc that died
 by signal as a rejection even with output attached".
 
+### INV-D3: a malformed FILED line and a cut-off run record no filing, and a failed ledger write never fails the run
+
+**Guarantee.** A malformed or truncated `FILED:` line yields no `FiledResult` — `extractFiled`
+requires the issue number and a non-empty title — so the feedback per-install ledger records
+nothing rather than latching a filing a run never declared, and recording is bookkeeping that
+never fails the run: a non-cut-off fulfilled `feedback` filing writes the ledger and logs
+`issue_filed` best-effort, while a cut-off run (the `diagnosis.cutOff` guard, as for the FLOW
+line) and a failed ledger write record nothing and warn at most.
+
+**Binds.** `src/verdict/reply-contract.ts` (`extractFiled`), `src/run/feedback-filings.ts`
+(`readFeedbackFilings`, `recordFiled`), `src/run/run-verdict.ts` (the
+`ctx.filed && !diagnosis.cutOff` guard), `src/run/run-stage.ts` (the changed-branch `ctx.filed`
+recording), `src/events/event-format.ts` (the `issue_filed` line).
+
+**Pinned by.** `test/reply-contract.test.ts` — "extractFiled requires the number and a non-empty
+title" and "extractFiled returns null when absent, empty, or only mid-sentence";
+`test/feedback-filings.test.ts` — "a malformed ledger reads as empty"; `test/run-verdict.test.ts`
+— "a cut-off feedback run with filed records nothing" and "a failed feedback ledger write warns
+and the no_change run stands".
+
 ## Bounded waits: a step that produces no verdict cannot hold its caller forever
 
 A wait on something outside tumwater — a spawned child, a probe — is bounded so a hang is

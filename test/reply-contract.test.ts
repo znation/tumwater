@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   NOTHING_TO_DO,
   REFUSED_SENTINEL,
+  extractFiled,
   extractFlow,
   extractRefusal,
   hasVerdictLine,
@@ -319,4 +320,27 @@ test("extractFlow returns null when absent, empty, or only mid-sentence", () => 
   assert.equal(extractFlow("no flow line here\nSUMMARY: did it"), null);
   assert.equal(extractFlow("FLOW:"), null);
   assert.equal(extractFlow("I considered FLOW: status but did not run it"), null);
+});
+
+// The feedback observer ends each fulfilled filing run with a result-carrying FILED line
+// (plans/feedback-role.md 2/2); the harness parses it to persist this install's per-run
+// filing ledger. Anchored at line start through labeledLine, and the issue number plus a
+// non-empty title are required: a truncated or malformed line records nothing, exactly like
+// the FLOW verdict (BUGS.md 2026-09-23).
+
+test("extractFiled parses a result-carrying FILED line", () => {
+  assert.deepEqual(extractFiled("filed it\nFILED: #12 — title"), { issue: 12, title: "title" });
+  assert.deepEqual(extractFiled("FILED: #3 - A hyphenated-title"), { issue: 3, title: "A hyphenated-title" });
+});
+
+test("extractFiled requires the number and a non-empty title", () => {
+  // A bare or truncated `FILED:` line is not a filing the run declared (BUGS.md 2026-09-23).
+  assert.equal(extractFiled("FILED: title"), null); // no number
+  assert.equal(extractFiled("FILED: #12 — tit"), null); // truncated mid-title
+  assert.equal(extractFiled("FILED:"), null);
+});
+
+test("extractFiled returns null when absent, empty, or only mid-sentence", () => {
+  assert.equal(extractFiled("no filed line here\nSUMMARY: did it"), null);
+  assert.equal(extractFiled("I considered FILED: #12 — retry but did not file"), null);
 });

@@ -20,6 +20,7 @@ import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 import { readEventsSince } from "../events/event-window.js";
 import { selfcheckDigest } from "./selfcheck-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
+import { readFeedbackFilings, renderFilingsBlock } from "./feedback-filings.js";
 import { roleNotesPath } from "../paths.js";
 import * as path from "node:path";
 import { pathTokens } from "../text/text.js";
@@ -199,6 +200,20 @@ export function assembleRunPrompt(
         coverage = undefined;
       }
     }
+    // The `feedback` observer's per-install filing ledger: what this install already filed as
+    // GitHub issues on znation/tumwater, so the fresh session's charter dedupes against a
+    // "previously filed" block instead of the network alone. Runtime state, and a missing or
+    // unreadable ledger degrades to no block (plans/feedback-role.md 2/2).
+    // The render returns undefined for an empty ledger, so the prompt is unchanged in the common
+    // first-run case.
+    let filings: string | undefined;
+    if (base === "feedback") {
+      try {
+        filings = renderFilingsBlock(readFeedbackFilings(root));
+      } catch {
+        filings = undefined;
+      }
+    }
     // The clean role's deterministic backlog repair: stranded plan headings in the primary
     // checkout's PLANS.md (plans, part 3/4), rendered like the digest and coverage blocks.
     // An unreadable or clean file gives no block, so the prompt is unchanged in the common case.
@@ -245,6 +260,7 @@ export function assembleRunPrompt(
       principles,
       digest,
       coverage,
+      filings,
       backlogStructure,
       backlogIndex: assigned ? undefined : backlogIndex,
       notes,

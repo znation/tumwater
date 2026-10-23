@@ -313,6 +313,9 @@ interface RunPromptInput {
   digest?: string;
   /** Rendered flow-coverage block (see run/qa-coverage.ts); qa only, omitted when unreadable. */
   coverage?: string;
+  /** Rendered previously-filed block (see run/feedback-filings.ts); feedback only, omitted when
+   * the ledger is empty or unreadable. */
+  filings?: string;
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
@@ -401,7 +404,7 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildRunPrompt(input: RunPromptInput): string {
-  const { role, rejectedReview, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
+  const { role, rejectedReview, principles, digest, coverage, filings, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -417,6 +420,7 @@ your role's rules and the merge gate still apply unchanged. If the request is ou
 role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n${userRequest.trim()}\n</user-request>`,
     );
   if (coverage) parts.push(coverage);
+  if (filings) parts.push(filings);
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
   if (backlogIndex) parts.push(backlogIndex);

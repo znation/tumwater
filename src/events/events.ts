@@ -47,6 +47,7 @@ export interface HarnessEvent {
     | "merge_failed" // the merge slot finished without merging (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary, and notionalByBackend) — retry rides next-run leftover recovery, never the queue
     | "merged" // merged; carries commit and summary, plus patchId when the merged commit's patch-id could be computed (src/git/git.ts patchId, -U0 diff against its parent) — the fast-merge guardrail G2 matches it against a main_revert's to spot a change that landed again unchanged
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
+    | "issue_filed" // a feedback run filed one GitHub issue on znation/tumwater (plans/feedback-role.md 2/2); carries issue (the number) and title
     | "entry_refused" // a refusal run's objection note merged on main (src/verdict/refusal.ts handleRefusal); carries reason, files and entries (the stamp-free titles of the plans and bugs whose Refused note is new) — the entry stays held until a human or the director lifts it
     | "wake"
     | "run_deferred" // need-based prioritization: a due maintenance run was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change run), or "plans-full" (the plan role's PLANS.md already holds its eligible-plan target); one per deferral episode

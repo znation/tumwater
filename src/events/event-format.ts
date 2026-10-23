@@ -247,6 +247,11 @@ export function eventMessage(e: HarnessEvent): string {
       if (titles.length === 0) return `entry refused: ${textOr(e.reason)} (${files})`;
       const more = titles.length > 1 ? ` (and ${titles.length - 1} more)` : "";
       return `entry refused: "${truncate(titles[0]!, 80)}"${more}: ${textOr(e.reason)} (${files})`;
+    case "issue_filed":
+      // The feedback observer's filing (plans/feedback-role.md 2/2) is a visible, auditable
+      // result — routine operation like question_posted, not a warning. The number is the
+      // issue the operator can open; a torn event without it reads "?" never "undefined".
+      return `filed issue #${typeof e.issue === "number" ? e.issue : "?"} ${textOr(e.title)} on znation/tumwater`;
     case "wake":
       return `woke (${textOr(e.reason)})`;
     case "run_deferred":

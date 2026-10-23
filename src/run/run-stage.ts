@@ -21,6 +21,7 @@ import { enqueueMerge, entryRevisionFields } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
 import { errorMessage, squash } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
+import { recordFiled } from "./feedback-filings.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/runner-ids.js";
 import { stagedMovedEntries } from "../scheduling/claims.js";
 import { entryKey } from "../backlog/backlog-parts.js";
@@ -61,6 +62,13 @@ interface RunFlow {
   result: "passed" | "bug";
 }
 
+/** The pi reply's feedback filing record, as extracted by reply-contract.ts's extractFiled
+ * (its type is module-private there; this mirrors it so the run staging needs no export). */
+interface RunFiled {
+  issue: number;
+  title: string;
+}
+
 /** The shared role wiring a changed worktree's staging needs (src/runner/runner-run.ts):
  * the per-run authoring-run counters as a snapshot, plus the callbacks that touch the
  * role — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
@@ -96,6 +104,8 @@ interface RunStageContext {
   piStartedAt: number;
   /** The `qa` observer's FLOW record, or null for every other role. */
   flow: RunFlow | null;
+  /** The `feedback` observer's FILED record, or null for every other role. */
+  filed: RunFiled | null;
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
@@ -386,6 +396,21 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
       );
     } catch (err) {
       ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
+    }
+  }
+  // A feedback run that somehow changed the tree still records its filing, exactly as the
+  // qa flow does above — a filing is a result independent of the run leaving files behind.
+  if (ctx.filed) {
+    logEventBestEffort(ctx.root, {
+      source: ctx.role,
+      type: "issue_filed",
+      issue: ctx.filed.issue,
+      title: ctx.filed.title,
+    });
+    try {
+      recordFiled(ctx.root, ctx.filed.issue, ctx.filed.title);
+    } catch (err) {
+      ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
     }
   }
   return { result: "queued", summary: finalSummary, commit, highFriction };

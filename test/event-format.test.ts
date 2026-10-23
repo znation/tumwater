@@ -413,6 +413,15 @@ test("formatEvent renders entry_refused with the reason and files and no warning
   assert.ok(!line.includes("warning"), line);
 });
 
+test("formatEvent renders issue_filed with the issue number, title and target repo", () => {
+  const line = formatEvent({ ts: 0, source: "feedback", type: "issue_filed", issue: 12, title: "a bug" } as never);
+  assert.match(line, /filed issue #12 a bug on znation\/tumwater/);
+  assert.ok(!line.includes("warning"), `a filing is routine, not a warning: ${line}`);
+  // A torn event without a number reads "?" never "undefined".
+  const torn = formatEvent({ ts: 0, source: "feedback", type: "issue_filed", title: "a bug" } as never);
+  assert.match(torn, /filed issue #\? a bug on znation\/tumwater/);
+});
+
 test("formatEvent names the refused entry, with a count when several are held", () => {
   const two = formatEvent({ ts: 0, source: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"], entries: ["Add X", "Add Y"] } as never);
   assert.match(two, /entry refused: "Add X" \(and 1 more\): too risky \(PLANS\.md\)/);

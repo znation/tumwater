@@ -11,7 +11,7 @@ import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
 import { briefTemplate, readmeTemplate } from "../src/brief/brief.js";
 import { enqueuePrompt, enqueueRolePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
+import { qaCoveragePath, roleNotesPath, feedbackFilingsPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { applyMergeOutcome } from "../src/run/run-apply.js";
@@ -481,6 +481,34 @@ test("the feedback role's prompt carries the failure digest rendered from its ev
   assert.ok(result);
   assert.match(result.prompt, /Runtime failure digest of tumwater's own event log/);
   assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
+});
+
+test("the feedback role's prompt carries the previously-filed block from the ledger", () => {
+  const dir = root();
+  fs.mkdirSync(path.join(dir, ".tumwater", "state"), { recursive: true });
+  fs.writeFileSync(
+    feedbackFilingsPath(dir),
+    JSON.stringify({ filings: [{ issue: 12, title: "a bug", filedAt: 1_800_000_000_000 }] }),
+  );
+  const result = promptFor(dir, "feedback");
+  assert.ok(result);
+  assert.match(result.prompt, /Previously filed from this install:/);
+  assert.match(result.prompt, /#12 a bug \(\d+[mhd]\)/);
+});
+
+test("no role other than feedback carries the previously-filed block", () => {
+  const dir = root();
+  fs.mkdirSync(path.join(dir, ".tumwater", "state"), { recursive: true });
+  // A populated ledger present for every role, so only the feedback gate can be the difference.
+  fs.writeFileSync(
+    feedbackFilingsPath(dir),
+    JSON.stringify({ filings: [{ issue: 12, title: "a bug", filedAt: 1_800_000_000_000 }] }),
+  );
+  for (const role of ["qa", "selfcheck", "coverage", "feature"]) {
+    const result = promptFor(dir, role);
+    assert.ok(result);
+    assert.doesNotMatch(result.prompt, /Previously filed from this install:/, role);
+  }
 });
 
 test("a role other than qa, selfcheck or feedback gets neither evidence block", () => {

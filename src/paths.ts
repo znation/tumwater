@@ -165,6 +165,15 @@ export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
 
+/** The `feedback` observer's per-install filing ledger (run/feedback-filings.ts): which GitHub
+ * issues this install already filed on znation/tumwater, so the next fresh session's prompt can
+ * render a "previously filed" block without re-deriving its dedupe from the network alone.
+ * Runtime state under .tumwater/state/, never committed — a filing must leave the repo untouched
+ * (the role's only write is `gh`), and the worktree resets to main each run. */
+export function feedbackFilingsPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "feedback-filings.json");
+}
+
 /** A role's notes (.tumwater/state/notes/<role>.md): the bounded note the role's own earlier
  * runs wrote, carried into the next fresh session. Runtime state under .tumwater/state/, never
  * committed — the worktree resets to main each run, so a committed note would move main. The

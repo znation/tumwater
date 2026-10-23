@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Feedback role, part 2/2: the FILED reply line, the per-install filing ledger, and the issue_filed event (planned 2026-10-23 by user; requires part 1/2 landed; design in plans/feedback-role.md "Shape" → "Part 2" and "Invariants" 3-5; touches src/verdict/reply-contract.ts src/runner/runner-run.ts src/run/feedback-filings.ts (new) src/paths.ts src/prompt/prompt.ts src/run/run-prompt.ts src/run/run-verdict.ts src/run/run-stage.ts src/events/events.ts src/events/event-format.ts src/events/event-labels.ts src/roles/role-catalog.ts test/reply-contract.test.ts test/feedback-filings.test.ts (new) test/run-prompt.test.ts test/run-verdict.test.ts test/event-format.test.ts test/event-labels.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Every feedback run starts a fresh session, so the only durable record of what this install already filed must live in harness state — exactly the qa flow-coverage problem (plans/observer-roles.md 2/2). Add the model-reported result line, the ledger it persists to, the next run's injected "previously filed" block, and the event that makes a filing visible in the operator's activity feed.
+
+**Approach.**
+- src/verdict/reply-contract.ts: `extractFiled(text)` beside `extractFlow` — `labeledLine(text, "FILED")`, then `/^#(\d+)\s*[—-]\s*(.+)$/`; null on no match, a missing number, or an empty title, so a truncated run never records a result it never declared.
+- src/runner/runner-run.ts: `const filed = ctx.baseRole === "feedback" ? extractFiled(pi.finalText) : null;` beside the qa flow extraction (line 731), threaded into the verdict context.
+- src/run/feedback-filings.ts (new, mirroring qa-coverage.ts): the `{ filings: [{ issue, title, filedAt }] }` ledger capped at the newest 100; read (malformed → empty), atomic record, and a `renderFilingsBlock` that returns undefined when empty and renders `#<n> <title> (<age>)` newest-first otherwise.
+- src/paths.ts: `feedbackFilingsPath(root)` = `.tumwater/state/feedback-filings.json` with the qaCoveragePath-style doc comment.
+- src/prompt/prompt.ts: `RunPromptInput.filings?: string` rendered beside the digest block; src/run/run-prompt.ts injects it for feedback only, in the qa coverage block's try/catch shape.
+- src/run/run-verdict.ts + src/run/run-stage.ts: record beside qa's `recordFlow` — a non-cut-off `ctx.filed` writes the ledger and logs the `issue_filed` event (best-effort; a failed ledger write warns and never fails the run); a feedback run that also changed the tree still records its filing.
+- src/events: `issue_filed` joins the event type union, rendered `filed issue #<n> <title> on znation/tumwater` in the feed, label `issue filed`.
+- src/roles/role-catalog.ts: the charter's dedupe step names the injected "previously filed" block.
+
+**Tests.**
+- test/reply-contract.test.ts: `extractFiled` parses `FILED: #12 — title`; a line without a number, a mid-sentence mention, and a truncated `FILED: #12 — tit` yield null.
+- test/feedback-filings.test.ts (new): ledger round-trip, the 100-entry cap keeps the newest, a malformed file reads empty, an empty ledger renders no block, the block renders newest-first with ages.
+- test/run-prompt.test.ts: a feedback prompt over a non-empty ledger carries the filings block; no other role ever does.
+- test/run-verdict.test.ts: a no_change feedback run with `filed` records the ledger entry and a cut-off run records nothing, mirroring the qa flow tests' shape (lines 156-183); a failed ledger write warns without failing the run.
+- test/event-format.test.ts and test/event-labels.test.ts: the `issue_filed` rendering and label.
+
+**Acceptance criteria.**
+- A fulfilled feedback run's reply carrying `FILED: #<n> — <title>` persists to `.tumwater/state/feedback-filings.json`, renders in the next run's prompt as the previously-filed block, and logs `issue_filed` to the event feed; a truncated or malformed line records nothing.
+- The run's outcome is unchanged (`no_change`, clean worktree, no warning): recording is bookkeeping that never fails the run.
+- `npm run test:gate` passes.
+
 ### Codex backend, part 9b/9: Session retention — prune expired Codex sessions with `codex delete --force` (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9c/9 and 9d/9; design in plans/codex-backend.md "CODEX_HOME and sessions"; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/retention.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** The team's Codex sessions age out on `sessionRetentionDays` like every other backend's, so a team's `CODEX_HOME` does not grow forever; the same prune reports what it deleted.

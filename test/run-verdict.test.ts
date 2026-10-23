@@ -8,8 +8,9 @@ import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import { loadConfig } from "../src/config/config.js";
-import { configRequestPath, qaCoveragePath } from "../src/paths.js";
+import { configRequestPath, qaCoveragePath, feedbackFilingsPath } from "../src/paths.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
+import { readFeedbackFilings } from "../src/run/feedback-filings.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { writeConfig } from "./fixtures/repo-fixtures.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -37,6 +38,7 @@ function makeCtx(root: string, wt: string, role: string, over: Record<string, un
     userPrompt: null,
     pi: piRunResult({ nothingToDo: true }),
     flow: null,
+    filed: null,
     warn: (m: string) => warns.push(m),
     merge: async (w: string, summary: string) => {
       merges.push({ wt: w, summary });
@@ -181,6 +183,55 @@ test("a failed qa coverage write warns and the no_change run stands", async () =
   assert.deepEqual(readQaCoverage(root), {});
   assert.equal(warns.length, 1);
   assert.match(warns[0]!, /qa flow "status" not recorded: EACCES fake/);
+});
+
+test("a no_change feedback run with filed records the ledger entry", async () => {
+  const { root, wt } = await initializedWorktree("feedback");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx } = makeCtx(root, wt, "feedback", { pi, filed: { issue: 12, title: "a bug" } });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  const filings = readFeedbackFilings(root);
+  assert.equal(filings.length, 1);
+  assert.equal(filings[0]!.issue, 12);
+  assert.equal(filings[0]!.title, "a bug");
+});
+
+test("a cut-off feedback run with filed records nothing", async () => {
+  const { root, wt } = await initializedWorktree("feedback");
+  // A cut-off run was truncated before declaring its outcome: the FILED line it left mid-stream
+  // is not a filing the run declared, exactly like the FLOW line (BUGS.md 2026-09-23).
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: false,
+    finalMessageContentless: true,
+    finalText: "FILED: #12 — a bug",
+  });
+  const { ctx } = makeCtx(root, wt, "feedback", { pi, filed: { issue: 12, title: "a bug" } });
+  const outcome = await resolveRunVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.deepEqual(readFeedbackFilings(root), [], "a cut-off run records no filing");
+});
+
+test("a failed feedback ledger write warns and the no_change run stands", async () => {
+  const { root, wt } = await initializedWorktree("feedback");
+  const pi: PiRunResult = piRunResult({ nothingToDo: true, finalText: "TUMWATER_NOTHING_TO_DO" });
+
+  const { ctx, warns } = makeCtx(root, wt, "feedback", { pi, filed: { issue: 12, title: "a bug" } });
+  const undo = failRenameSyncOn(feedbackFilingsPath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await resolveRunVerdict(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome?.result, "no_change");
+  assert.deepEqual(readFeedbackFilings(root), []);
+  assert.equal(warns.length, 1);
+  assert.match(warns[0]!, /feedback filing #12 not recorded: EACCES fake/);
 });
 
 test("a blind image read fails the run with an error naming the file and the model", async () => {

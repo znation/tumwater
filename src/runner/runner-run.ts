@@ -55,7 +55,7 @@ import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../merge/merge-to-main.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { resolveRunVerdict } from "../run/run-verdict.js";
-import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
+import { extractFlow, type FlowResult, extractFiled, type FiledResult } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
  * tier's fallback pair (null when the feature is off), whether this run is the due probe, and
@@ -729,8 +729,13 @@ async function runWithWorktreePhase(
   // 2/2). Extracted once here, recorded only at the success returns below — an interrupted or
   // failed run must not advance the rotation. The harness records it, never pi.
   const flow = ctx.baseRole === "qa" ? extractFlow(pi.finalText) : null;
+  // The `feedback` observer's reply ends with a result-carrying `FILED: #<n> — <title>` line
+  // (plans/feedback-role.md 2/2). Extracted once here, recorded only at the success returns
+  // below — an interrupted or failed run must not record a filing it never declared. The
+  // harness records it, never pi.
+  const filed = ctx.baseRole === "feedback" ? extractFiled(pi.finalText) : null;
 
-  return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
+  return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, filed, piStartedAt, cfg);
 }
 
 /** Merge the worktree branch on main (see src/merge/merge-to-main.ts for the
@@ -765,7 +770,7 @@ async function mergePhase(ctx: RunnerRunContext, wt: string, summary: string): P
  * stays here. `userPrompt` is the raw director prompt this run is executing (null for role
  * runners) so unfulfilled outcomes can re-queue it; `revisionRound` is the revision this run holds
  * (undefined when it is not a revision); `flow` is the qa observer's FLOW line (null for every
- * other role). */
+ * other role); `filed` is the feedback observer's FILED line (null for every other role). */
 export async function handlePiResultPhase(
   ctx: RunnerRunContext,
   pi: PiRunResult,
@@ -773,6 +778,7 @@ export async function handlePiResultPhase(
   revisionRound: number | undefined,
   wt: string,
   flow: FlowResult | null,
+  filed: FiledResult | null,
   piStartedAt: number,
   cfg: ResolvedModelConfig,
 ): Promise<RunOutcome> {
@@ -793,6 +799,7 @@ export async function handlePiResultPhase(
     wt,
     pi,
     flow,
+    filed,
     // The image-reroute arm resolves its target from the live config and the current
     // regime, and names the model this run ran on as the handoff's `from`.
     config: ctx.config,
@@ -828,6 +835,7 @@ export async function handlePiResultPhase(
     wt,
     finalText: pi.finalText,
     flow,
+    filed,
     piStartedAt,
     warn: (message) => ctx.warn(message),
     requestSummary: (w, n) => ctx.pi.requestSummary(w, cfg, n),

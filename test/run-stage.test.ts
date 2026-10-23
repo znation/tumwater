@@ -11,7 +11,8 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/run/qa-coverage.js";
-import { qaCoveragePath } from "../src/paths.js";
+import { readFeedbackFilings } from "../src/run/feedback-filings.js";
+import { qaCoveragePath, feedbackFilingsPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
@@ -48,6 +49,7 @@ interface CtxOverrides {
   role?: string;
   finalText?: string;
   flow?: { flow: string; result: "passed" | "bug" } | null;
+  filed?: { issue: number; title: string } | null;
   followUp?: PiRunResult | null;
   /** When true, requestSummary commits every change in the worktree before it replies. */
   followUpCommits?: boolean;
@@ -124,6 +126,7 @@ function buildCtx(
     finalText: over.finalText ?? "",
     piStartedAt: over.piStartedAt ?? Date.now(),
     flow: over.flow ?? null,
+    filed: over.filed ?? null,
     warn: (message: string) => calls.warnings.push(message),
     requestSummary: async (requestWt: string, overLength?: number) => {
       calls.summaryRequests.push(requestWt);
@@ -717,6 +720,45 @@ test("a passed qa flow records no summary", async () => {
     lastRunAt: coverage["unit tests"]!.lastRunAt,
     result: "passed",
   });
+});
+
+test("a changed-branch feedback run still records its filing", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("feedback");
+  const { ctx } = makeCtx(root, wt, state, {
+    role: "feedback",
+    finalText: "SUMMARY: still changed files\n",
+    filed: { issue: 12, title: "a bug" },
+  });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  const filings = readFeedbackFilings(root);
+  assert.equal(filings.length, 1);
+  assert.deepEqual(filings[0], { issue: 12, title: "a bug", filedAt: filings[0]!.filedAt });
+});
+
+test("a failed feedback ledger write warns and the run still ends queued", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("feedback");
+  const { ctx, calls } = makeCtx(root, wt, state, {
+    role: "feedback",
+    finalText: "SUMMARY: still changed files\n",
+    filed: { issue: 12, title: "a bug" },
+  });
+  const undo = failRenameSyncOn(feedbackFilingsPath(root), "EACCES fake");
+  let outcome;
+  try {
+    outcome = await stageRunMerge(ctx);
+  } finally {
+    undo();
+  }
+
+  assert.equal(outcome.result, "queued");
+  assert.deepEqual(readFeedbackFilings(root), []);
+  assert.equal(calls.warnings.length, 1);
+  assert.match(calls.warnings[0]!, /feedback filing #12 not recorded: EACCES fake/);
 });
 
 test("a failed qa coverage write warns and the run still ends queued", async () => {

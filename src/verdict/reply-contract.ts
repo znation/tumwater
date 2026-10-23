@@ -199,6 +199,37 @@ export function extractFlow(text: string): FlowResult | null {
   return { flow: match[1].trim(), result: match[2]!.toLowerCase() as "passed" | "bug" };
 }
 
+/** The result of one `feedback` run's filing: which GitHub issue it filed, and its title. */
+export interface FiledResult {
+  issue: number;
+  title: string;
+}
+
+/** The shortest a filed title may be to count as a declared result. A truncated `FILED:` line
+ * cuts the title off mid-word (`FILED: #12 — tit` where the run meant `title`); requiring a
+ * title of at least this many characters keeps a torn line from being latched as a filing the
+ * run never completed, while real titles — the charter composes them from a cluster key and its
+ * count — are far longer. */
+const MIN_FILED_TITLE_LENGTH = 4;
+
+/** Extract the `feedback` run's result-carrying `FILED: #<n> — <title>` line (plans/feedback-
+ * role.md 2/2); null when absent. Built on `labeledLine`, so the label is anchored at line
+ * start and a mid-sentence mention is ignored. The issue number and a non-empty, non-truncated
+ * title are required: a bare `FILED:`, a line with no number (`FILED: title`), or a reply
+ * truncated mid-title (`FILED: #12 — tit`) is not a filing, and returning null leaves the
+ * per-install ledger unadvanced rather than latching a record the run never declared (the same
+ * lesson as qa's FLOW line, BUGS.md 2026-09-23). Splits on the dash/em-dash token before the
+ * title so a title that itself contains a hyphen stays intact. */
+export function extractFiled(text: string): FiledResult | null {
+  const value = labeledLine(text, "FILED");
+  if (!value) return null;
+  const match = /^#(\d+)\s*[—-]\s*(.+)$/.exec(value);
+  if (!match?.[1] || !match[2]) return null;
+  const title = match[2].trim();
+  if (title.length < MIN_FILED_TITLE_LENGTH) return null;
+  return { issue: Number(match[1]), title };
+}
+
 // The review gate's verdict line as stated in buildReviewPrompt (prompt.ts): the reviewer
 // ends with exactly `VERDICT: approve` or `VERDICT: reject`. Anchored at line start so prose
 // that merely mentions "VERDICT:" mid-sentence cannot set the outcome, but leading horizontal

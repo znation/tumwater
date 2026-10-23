@@ -18,3 +18,8 @@ test("eventTypeLabel serves both families and falls back to spaced words", () =>
   assert.equal(eventTypeLabel("some_new_type"), "some new type");
   assert.equal(eventTypeLabel("constructor"), "constructor");
 });
+
+test("issue_filed labels as a lowercase phrase", () => {
+  assert.equal(EVENT_TYPE_LABELS.issue_filed, "issue filed");
+  assert.equal(eventTypeLabel("issue_filed"), "issue filed");
+});

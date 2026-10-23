@@ -10,7 +10,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { imageReroute } from "../agent/image-input.js";
 import type { RunOutcome } from "./run-outcome.js";
-import type { FlowResult } from "../verdict/reply-contract.js";
+import type { FlowResult, FiledResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty, deleteRef } from "../git/git.js";
@@ -20,6 +20,7 @@ import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { errorMessage } from "../text/text.js";
 import { recordFlow } from "./qa-coverage.js";
+import { recordFiled } from "./feedback-filings.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { rejectedRefName } from "../paths.js";
@@ -60,6 +61,8 @@ interface RunVerdictContext {
   wt: string;
   pi: PiRunResult;
   flow: FlowResult | null;
+  /** The `feedback` observer's FILED record, or null for every other role. */
+  filed: FiledResult | null;
   warn(message: string): void;
   /** Merge the worktree branch on main with the role's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<RunOutcome["result"]>;
@@ -342,6 +345,24 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
         );
       } catch (err) {
         ctx.warn(`qa flow "${ctx.flow.flow}" not recorded: ${errorMessage(err)}`);
+      }
+    }
+    // A fulfilled feedback run that filed records its per-install ledger entry and logs the
+    // issue_filed event so the filing is visible in the operator's activity feed. Recording is
+    // bookkeeping that never fails the run: a failed ledger write warns and the no_change
+    // outcome stands. A cut-off run records nothing — truncation is not a filing the run
+    // declared (the same guard the FLOW line carries).
+    if (ctx.filed && !diagnosis.cutOff) {
+      logEventBestEffort(ctx.root, {
+        source: ctx.role,
+        type: "issue_filed",
+        issue: ctx.filed.issue,
+        title: ctx.filed.title,
+      });
+      try {
+        recordFiled(ctx.root, ctx.filed.issue, ctx.filed.title);
+      } catch (err) {
+        ctx.warn(`feedback filing #${ctx.filed.issue} not recorded: ${errorMessage(err)}`);
       }
     }
     // A prompt-driven (director) run that answers a question in prose ends `no_change` with
