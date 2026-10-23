@@ -144,6 +144,19 @@ export function createPendingPane(session: TuiPaneSession) {
     if (retry) lines.push("", retry);
     return lines.join("\n");
   };
+  // Guard the cancel/top actions against racing a merge that just entered the slot: the
+  // selected entry (or one its changes touch) is heading into the merge right now, so acting
+  // on it would race the drain. Flash the pane's "being merged" message and return true so
+  // the caller aborts; otherwise false.
+  const guardMergeInFlight = (row: { entry: MergeEntry; position: number }): boolean => {
+    const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
+    if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
+      session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
+      session.requestRender();
+      return true;
+    }
+    return false;
+  };
   // Re-read the pane's rows after the queue or the Ctrl+G scope changed (the same traversal
   // queueHead painted) and clamp the row selection to the new list — a selection past the new
   // end lands on the last remaining entry, never on a stale role/position; an emptied queue
@@ -330,12 +343,7 @@ export function createPendingPane(session: TuiPaneSession) {
             session.requestRender();
             return;
           }
-          const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
-          if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
-            session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
-            session.requestRender();
-            return;
-          }
+          if (guardMergeInFlight(row)) return;
           const outcome = await cancelQueuedMerge(session.root, row.position);
           if (outcome.status === "cancelled") {
             selectedQueue = null;
@@ -385,12 +393,7 @@ export function createPendingPane(session: TuiPaneSession) {
           session.requestRender();
           return;
         }
-        const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
-        if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
-          session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
-          session.requestRender();
-          return;
-        }
+        if (guardMergeInFlight(row)) return;
         const outcome = moveQueuedMergeToTop(session.root, row.position);
         if (outcome.status === "topped") {
           selectedQueue = null;
