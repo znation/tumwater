@@ -17,8 +17,8 @@ import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
-import { formatTimestamp, humanUntil } from "../text/datetime.js";
-import { joinWithMore } from "../text/text.js";
+import { formatTimestamp, humanAgo, humanUntil } from "../text/datetime.js";
+import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 
 /** A stale open bug the doctor's 3-day rule warns about (src/doctor/doctor-backlog-bugs.ts
@@ -86,6 +86,20 @@ export interface StaleWaitingBug {
   position: number;
   title: string;
   days: number;
+}
+
+/** A stale or oversized flake quarantine the doctor's G3 rule warns about
+ * (src/baseline/main-guardrails.ts `quarantineWarning`, QUARANTINE_WARN_COUNT, QUARANTINE_AGE_MS):
+ * more than 10 quarantined tests, or any test first seen more than 3 days ago — an old entry is
+ * a failure the team has stopped seeing, and an unfiled one never leaves quarantine. Computed in
+ * src/ui/status-payload.ts's quarantineAlert from the same function the doctor's `flaky checks`
+ * row calls, so the alert and the doctor cannot drift on the trigger or the thresholds. `warning`
+ * is the doctor's exact phrase; `oldestFirstSeen` is the age the alert names. */
+export interface QuarantinedTests {
+  count: number;
+  oldestTest: string;
+  oldestFirstSeen: number;
+  warning: string;
 }
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
@@ -181,7 +195,7 @@ function localizeInstants(text: string): string {
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, a pause, a stopped team.
+ * review or Needs replan note, a stale or oversized flake quarantine, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -216,6 +230,7 @@ export function teamAlerts(
   staleWaitingBugs: readonly StaleWaitingBug[] = [],
   skippedMergeFiles: readonly string[] = [],
   stalledPlans: readonly StalledPlan[] = [],
+  quarantined: QuarantinedTests | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -570,6 +585,23 @@ export function teamAlerts(
         `the queue reader skips ${first} — a torn or foreign file never clears itself, so its merge is stranded; remove it (a crashed enqueue's merge ref still recovers on the next run)` +
         (rest.length > 0 ? ` · ${joinWithMore(rest, 3)}` : ""),
       actions: [],
+    });
+  }
+  // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
+  // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
+  // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
+  // fleet is merging on a suite whose red is being excused. status-payload.ts's quarantineAlert
+  // feeds it from the same quarantineWarning the doctor calls, so the alert and the doctor
+  // cannot drift on when the list is a problem; the warning phrase and the oldest test's age
+  // are shown, folded through squash like other long names.
+  if (quarantined) {
+    out.push({
+      key: "quarantine",
+      tone: "amber",
+      title: `${plural(quarantined.count, "test")} in the flake quarantine — the gate is excusing their failures`,
+      detail:
+        `${quarantined.warning} · oldest: ${squash(quarantined.oldestTest, 80)} (${humanAgo(quarantined.oldestFirstSeen, now)}) — a quarantined test counts as a known failure until its filed bug leaves BUGS.md \`## Open\`, so fix the test or file the missing bug`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:

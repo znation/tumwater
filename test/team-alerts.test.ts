@@ -5,13 +5,13 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, quarantineAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { mergeQueueDir } from "../src/paths.js";
+import { mergeQueueDir, quarantinePath } from "../src/paths.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
@@ -842,6 +842,53 @@ test("skippedMergeFiles and the surfaces carry a skipped-merge alert from the qu
   assert.deepEqual(skippedMergeFiles(empty), []);
   assert.doesNotMatch(renderStatus(empty, snapshot(empty, undefined, now)), /merge-queue file/);
 });
+test("a stale flake quarantine raises a standing amber alert after the skipped-merge alert", () => {
+  const now = Date.now();
+  const quarantined = { count: 12, oldestTest: "test/old.test.ts", oldestFirstSeen: now - 4 * 24 * 3_600_000, warning: "quarantine holds 12 tests — over the 10-test ceiling" };
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], quarantined);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["quarantine", "amber", "12 tests in the flake quarantine — the gate is excusing their failures"]]);
+  assert.match(one[0]!.detail ?? "", /quarantine holds 12 tests/);
+  assert.match(one[0]!.detail ?? "", /test\/old\.test\.ts/);
+  assert.match(one[0]!.detail ?? "", /4d ago/);
+  assert.match(one[0]!.detail ?? "", /BUGS\.md/);
+  assert.deepEqual(one[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A null argument adds no alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null), []);
+  // With both a stale bug and a quarantine, stale-bugs precedes quarantine.
+  const withBug = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs", days: 3 }], [], [], null, [], [], [], quarantined);
+  assert.deepEqual(withBug.map((a) => a.key), ["stale-bugs", "quarantine"]);
+  // The skipped-merge alert precedes the quarantine one when both are present.
+  const withSkip = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], ["000-torn.json"], [], quarantined);
+  assert.deepEqual(withSkip.map((a) => a.key), ["skipped-merges", "quarantine"]);
+});
+
+test("quarantineAlert and the surfaces carry a quarantine alert from an old or oversized list, and none from a fresh one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
+  fs.writeFileSync(quarantinePath(root), JSON.stringify({ tests: [{ test: "test/old.test.ts", firstSeen: now - 4 * 24 * 3_600_000, lastSeen: now, count: 1, bug: "A hidden flake" }] }));
+  assert.equal(quarantineAlert(root, now)?.count, 1);
+  assert.equal(quarantineAlert(root, now)?.oldestTest, "test/old.test.ts");
+  assert.match(quarantineAlert(root, now)?.warning ?? "", /test\/old\.test\.ts/);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string; actions?: Array<{ label: string }> }> };
+  const alert = payload.alerts.find((a) => a.key === "quarantine");
+  assert.equal(alert?.title, "1 test in the flake quarantine — the gate is excusing their failures");
+  assert.match(alert?.detail ?? "", /oldest: test\/old\.test\.ts/);
+  assert.equal(alert?.actions?.[0]?.label, "See failures");
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /flake quarantine/);
+  // A fresh small list and an absent quarantine file each produce null and no alert.
+  const fresh = makeRepo();
+  fs.mkdirSync(path.dirname(quarantinePath(fresh)), { recursive: true });
+  fs.writeFileSync(quarantinePath(fresh), JSON.stringify({ tests: [{ test: "test/ok.test.ts", firstSeen: now, lastSeen: now, count: 1 }] }));
+  assert.equal(quarantineAlert(fresh, now), null);
+  assert.equal((statusPayload(fresh, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "quarantine"), undefined);
+  assert.doesNotMatch(renderStatus(fresh, snapshot(fresh, undefined, now)), /flake quarantine/);
+  const empty = makeRepo();
+  assert.equal(quarantineAlert(empty, now), null);
+  assert.equal((statusPayload(empty, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "quarantine"), undefined);
+  assert.doesNotMatch(renderStatus(empty, snapshot(empty, undefined, now)), /flake quarantine/);
+});
+
 test("root install drift raises one amber install alert naming up to five packages", () => {
   const installs = (rootInstallDrift?: string[]) =>
     teamAlerts({ ...base, rootInstallDrift }, [], [], Date.now()).filter((a) => a.key === "install");
