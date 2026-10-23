@@ -2766,6 +2766,28 @@ test("a Pending cancel of a merge the running team is mid-merging is refused wit
   assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
 });
 
+test("a Pending cancel is refused when the queued entry is a merge record name but not the marker's own sha", async () => {
+  const { root, featureSha } = await pendingCancelRoot();
+  // A live team whose marker's own sha differs from the queued feature entry, but whose changes
+  // record names it: only the mergeChanges(...).some branch can refuse, not the inFlight.sha match.
+  writeOrchestratorMarker(root, ["feature"]);
+  writeMergeMarker(root, {
+    role: "feature",
+    sha: "f".repeat(40),
+    summary: "add one",
+    startedAt: Date.now() - 120_000,
+    stage: "reviewing",
+    changes: [{ role: "feature", sha: featureSha, summary: "add one", status: "merging", startedAt: Date.now() - 120_000, stage: "reviewing" }],
+  });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm → record-name in-flight guard
+  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
+  assert.equal(queuedMerges(root).length, 2, "the recorded in-flight entry is not removed");
+  assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
+});
+
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {
   assert.equal(
     pendingOverlapsText({ mainBranch: "main", state: "ready", overlaps: [] }),

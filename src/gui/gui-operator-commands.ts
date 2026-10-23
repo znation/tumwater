@@ -201,12 +201,10 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
   if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
     return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
   const view = readMergeQueue(root);
+  const sha = body.sha.toLowerCase();
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  if (inFlight) {
-    const markers = new Set(mergeChanges(inFlight).map((c) => c.sha.toLowerCase()));
-    if ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === body.sha.toLowerCase()) || markers.has(body.sha.toLowerCase()))
-      return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
-  }
+  if (inFlight && ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === sha) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === sha)))
+    return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
   const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status !== "cancelled") return;

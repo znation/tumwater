@@ -218,12 +218,9 @@ async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
   // reviewed or merged), so cancelling it would race the slot that owns it.
   const view = readMergeQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  if (inFlight) {
-    const target = view.entries[position - 1];
-    const markers = new Set(mergeChanges(inFlight).map((c) => c.sha));
-    if (target && (target.sha === inFlight.sha || markers.has(target.sha))) {
-      fail(`queue entry ${position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(target.sha)}\``);
-    }
+  const target = view.entries[position - 1];
+  if (inFlight && target && (target.sha === inFlight.sha || mergeChanges(inFlight).some((c) => c.sha === target.sha))) {
+    fail(`queue entry ${position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(target.sha)}\``);
   }
   const outcome: CancelQueuedOutcome = await cancelQueuedMerge(root, position);
   if (outcome.status === "out-of-range") {
