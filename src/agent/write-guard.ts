@@ -79,6 +79,15 @@ function runCheckoutOf(dir: string): RunCheckout | null {
   return { root, checkout: path.join(worktreesDir(root), name) };
 }
 
+/** `s` single-quoted for sh (the `'…'` quoting every hook command in both backends embeds a path
+ * in). The one home of a POSIX-shell single-quote, shared by the claude and codex write-guard
+ * settings builders (src/agent/claude/claude-write-guard.ts, src/agent/codex/codex-write-guard.ts)
+ * so the escape cannot drift between the backends. A path with a single quote becomes
+ * `'…'\''…'`, which sh assembles back into the original. */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 /** The refusal text for a write to `target` from a run whose checkout holds `runDir`, or null when
  * the write may go ahead. A relative `target` resolves from `resolveFrom` (default `runDir`): pi
  * resolves from the run's directory, while claude resolves from its shell's current directory,

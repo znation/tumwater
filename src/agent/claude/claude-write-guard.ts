@@ -10,7 +10,7 @@
  * write-guard-hook.ts beside this file. */
 
 import { fileURLToPath } from "node:url";
-import { strayWriteRefusal } from "../write-guard.js";
+import { shellQuote, strayWriteRefusal } from "../write-guard.js";
 
 /** claude's file-writing tools a team run has: claude-args.ts's `--tools` allows only these two,
  * and `--tools` is a reserved flag, so no passthrough can add another. */
@@ -18,11 +18,6 @@ const WRITE_TOOLS = ["Edit", "Write"] as const;
 
 /** Seconds claude waits for the hook before running the tool anyway. */
 const HOOK_TIMEOUT_SECONDS = 30;
-
-/** `s` single-quoted for sh. */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
 
 /** The `--settings` value for a run in `cwd`: one PreToolUse hook on the file-writing tools that
  * runs the compiled write-guard-hook.js with this process's node, falling back to `node` on PATH

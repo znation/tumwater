@@ -10,7 +10,7 @@
  * the patch run. */
 
 import { fileURLToPath } from "node:url";
-import { strayWriteRefusal } from "../write-guard.js";
+import { shellQuote, strayWriteRefusal } from "../write-guard.js";
 import { patchWritePaths } from "./codex-patch-paths.js";
 
 /** The tool a codex PreToolUse hook sees for file edits; anything else is not this hook's
@@ -44,11 +44,6 @@ const HOOK_TIMEOUT_SECONDS = 30;
 
 /** The matcher the PreToolUse hook is registered with; codex sends only `apply_patch` here. */
 const HOOK_MATCHER = "^apply_patch$";
-
-/** `s` single-quoted for sh, as claude-write-guard.ts's shellQuote does. */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
 
 /** `s` as a TOML basic string, escaping `\`, `"` and every control character (U+0000–U+001F
  * and DEL), so a nodeBin or hook path with any of them still round-trips through a `-c` value. */
