@@ -11,7 +11,7 @@
  * deadline, kills the group whether it succeeds, times out, or fails, and makes no model
  * request and needs no login (an empty `CODEX_HOME` is enough — finding 3). Part 5/9 wires it
  * into a run before the codex adapter's synchronous invocation. */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { codexHookArg } from "./codex-write-guard.js";
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { releaseChildHandles, signalTree } from "../../process/process.js";
@@ -175,21 +175,36 @@ export function lookupCodexHookTrust(opts: CodexHookLookupOptions): Promise<Code
 }
 
 /** The trimmed output of `<bin> --version`, or "" when the probe fails or prints nothing. It
- * keys the trust cache, so a codex upgrade re-looks-up the guard's trust for the new build. */
-function codexVersion(bin: string, env: NodeJS.ProcessEnv, cwd: string): string {
-  try {
-    const result = spawnSync(bin, ["--version"], {
+ * keys the trust cache, so a codex upgrade re-looks-up the guard's trust for the new build.
+ * Async (spawn, not spawnSync): a hung binary's probe must not block the event loop — every
+ * run's `prepare` awaits this, and a blocking probe would freeze the whole agent while waiting
+ * out its deadline. The child's group is killed whether it succeeds or times out. */
+function codexVersion(bin: string, env: NodeJS.ProcessEnv, cwd: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn(bin, ["--version"], {
       env,
       cwd,
-      encoding: "utf8",
-      timeout: 10_000,
-      killSignal: "SIGKILL",
+      stdio: ["ignore", "pipe", "ignore"],
     });
-    if (result.status !== 0) return "";
-    return (typeof result.stdout === "string" ? result.stdout : "").trim();
-  } catch {
-    return "";
-  }
+    let out = "";
+    let done = false;
+    const finish = (value: string) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      signalTree(child, "SIGKILL");
+      releaseChildHandles(child);
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(""), timeoutMs);
+    timer.unref?.();
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string) => {
+      out += chunk;
+    });
+    child.on("error", () => finish(""));
+    child.on("close", () => finish(out.trim()));
+  });
 }
 
 /** Whether a cached value is a usable `{key, hash}` entry. */
@@ -218,14 +233,25 @@ export async function codexHookTrust(
   root: string | undefined,
   opts: CodexHookLookupOptions,
 ): Promise<CodexHookTrust> {
+  const timeoutMs = opts.timeoutMs ?? 15_000;
   if (root === undefined) return lookupCodexHookTrust(opts);
   const file = codexHookTrustPath(root);
-  const version = codexVersion(opts.bin, opts.env, opts.cwd);
+  // The version probe and the app-server lookup share one deadline (timeoutMs): a failed
+  // lookup — a hung binary, an app-server that never answers — never delays a run past the
+  // bound, and the probe never blocks the event loop (it is async, not spawnSync). The probe
+  // is a quick identity read, so its own slice is capped at a third of the deadline — a slow
+  // probe never starves the app-server lookup of its budget, and the sum of the two always
+  // stays within the one deadline.
+  const deadline = Date.now() + timeoutMs;
+  const version = await codexVersion(opts.bin, opts.env, opts.cwd, Math.floor(timeoutMs / 3));
   const cacheKey = `${version}${JSON.stringify(opts.definition)}`;
   const cache = readJsonFile<Record<string, unknown>>(file);
   const hit = cache?.[cacheKey];
   if (isTrust(hit)) return { key: hit.key, hash: hit.hash };
-  const trust = await lookupCodexHookTrust(opts);
+  const trust = await lookupCodexHookTrust({
+    ...opts,
+    timeoutMs: Math.max(1, deadline - Date.now()),
+  });
   const next = { ...(cache ?? {}) };
   next[cacheKey] = { key: trust.key, hash: trust.hash, checkedAt: Date.now() };
   try {

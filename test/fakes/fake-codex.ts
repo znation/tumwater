@@ -8,7 +8,9 @@ import { tmpdir } from "../fixtures/repo-fixtures.js";
 // lines, records each run's argv and stdin, records the thread id the stream names in a
 // per-test ledger file, and writes a matching rollout under `$CODEX_HOME/sessions/…` so the
 // adapter's rollout read (the authority for this run's usage) runs against the same fake the
-// test controls. No test reaches a real codex (see PRINCIPLES.md).
+// test controls. Since part 5/9, the adapter's async `prepare` asks the same binary for the
+// write guard's trust through `--version` and `-c … app-server` before each run, so the shim
+// answers those too (see appServerJs below). No test reaches a real codex (see PRINCIPLES.md).
 
 // A shim on PATH runs only when nothing outranks PATH in resolveBinFrom, and
 // TUMWATER_CODEX_BIN does. The test runner drops it (suiteEnv in test/test-runner.ts); this
@@ -17,14 +19,16 @@ delete process.env.TUMWATER_CODEX_BIN;
 
 /** One installed fake-codex replay. `argvFile`/`stdinFile` accumulate one `RUN_MARKER`-
  * delimited block per run; `ledgerFile` holds the thread ids the runs' streams named, one per
- * run; `envFile` holds the CODEX_* env of the last run. A test deletes a written rollout to
- * exercise the not-resumable path (it knows the `configDir` it pointed `backends.codex` at).
- * `restore` removes the shim from PATH. */
+ * run; `envFile` holds the CODEX_* env of the last run; `serverCallsFile` counts `app-server`
+ * starts (a run's `prepare` warms trust — a cache hit spawns none). A test deletes a written
+ * rollout to exercise the not-resumable path (it knows the `configDir` it pointed
+ * `backends.codex` at). `restore` removes the shim from PATH. */
 interface FakeCodexReplay {
   argvFile: string;
   stdinFile: string;
   ledgerFile: string;
   envFile: string;
+  serverCallsFile: string;
   restore: () => void;
 }
 
@@ -39,147 +43,41 @@ const DEFAULT_ROLLOUT = [
   '{"type":"event_msg","payload":{"type":"token_count","turn_id":"@THREAD@","rate_limits":{"plan_type":"plus","primary":{"used_percent":50,"window_minutes":300,"resets_at":1792555493},"secondary":{"used_percent":40,"window_minutes":10080,"resets_at":1793142293},"rate_limit_reached_type":null}}}',
 ].join("\n");
 
-/** Install a fake `codex` that runs in the worktree as cwd, records each run's argv, stdin and
- * CODEX_* env, replays `lines` (native `exec --json`) on stdout, records the stream's thread
- * id, and writes a rollout under `$CODEX_HOME/sessions/…/rollout-…-<id>.jsonl` whose records
- * carry that thread id. `opts.cannedRollout` (a JSONL string with `@THREAD@` as the turn id)
- * replaces the default rollout, so a test can pin a specific usage/window reading; `opts` may
- * name a day directory to write under (defaults to `2026-10-21`), which the filler ignores.
- * `opts.exitCode` makes the `exec` command exit nonzero after replaying. Sets no env; a caller
- * that needs a temp `$HOME` overrides it itself and points `backends.codex.configDir` at it. */
-function fakeCodexReplay(
-  lines: readonly string[],
-  opts: { cannedRollout?: string; exitCode?: number } = {},
-): FakeCodexReplay {
-  const dir = tmpdir("fake-codex-");
-  const streamFile = path.join(dir, "stream.ndjson");
-  fs.writeFileSync(streamFile, lines.length > 0 ? `${lines.join("\n")}\n` : "");
-  const argvFile = path.join(dir, "runs.argv");
-  const stdinFile = path.join(dir, "runs.stdin");
-  const ledgerFile = path.join(dir, "threads");
-  const envFile = path.join(dir, "runs.env");
-  const rolloutTemplate = path.join(dir, "rollout-template.jsonl");
-  fs.writeFileSync(rolloutTemplate, opts.cannedRollout ?? DEFAULT_ROLLOUT);
-  const exitTail = opts.exitCode !== undefined ? `exit ${opts.exitCode}` : `cat "$streamFile"`;
-  const body = [
-    `argvFile="${argvFile}"`,
-    `stdinFile="${stdinFile}"`,
-    `ledgerFile="${ledgerFile}"`,
-    `envFile="${envFile}"`,
-    `streamFile="${streamFile}"`,
-    `rolloutTemplate="${rolloutTemplate}"`,
-    `cmd="$1"`,
-    `case "$cmd" in`,
-    `  exec)`,
-    `    { printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "$argvFile"`,
-    `    cat >> "$stdinFile"; echo "${RUN_MARKER}" >> "$stdinFile"`,
-    `    env | grep -E '^(CODEX(_|$)|PATH=|TUMWATER_NOTES_PATH=)' | sort > "$envFile"`,
-    `    # The thread id the stream names (its first thread.started), used to name and key the rollout.`,
-    `    thread=$(sed -n 's/.*"thread_id":"\\([^"]*\\)".*/\\1/p' "$streamFile" | head -1)`,
-    `    if [ -n "$thread" ]; then`,
-    `      printf '%s\\n' "$thread" >> "$ledgerFile"`,
-    `      if [ -n "$CODEX_HOME" ]; then`,
-    `        mkdir -p "$CODEX_HOME/sessions/2026-10-21"`,
-    `        sed "s/@THREAD@/$thread/g" "$rolloutTemplate" > "$CODEX_HOME/sessions/2026-10-21/rollout-0000-$thread.jsonl"`,
-    `      fi`,
-    `    fi`,
-    exitTail,
-    `    ;;`,
-    `esac`,
-  ].join("\n");
-  writeScript(path.join(dir, "codex"), body);
-  const restore = pathPrepend(dir);
-  return { argvFile, stdinFile, ledgerFile, envFile, restore };
-}
-
-/** Run one async block with a fake codex replay installed for its duration, restoring
- * afterwards even when the block throws — the codex twin of withOpencodeReplay. The block
- * receives the installed replay. `opts` is fakeCodexReplay's own options. */
-export async function withCodexReplay<T>(
-  lines: readonly string[],
-  optsOrFn: FakeCodexOptions | ((fake: FakeCodexReplay) => Promise<T>),
-  maybeFn?: (fake: FakeCodexReplay) => Promise<T>,
-): Promise<T> {
-  const opts = typeof optsOrFn === "function" ? undefined : optsOrFn;
-  const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn!;
-  const fake = fakeCodexReplay(lines, opts);
-  try {
-    return await fn(fake);
-  } finally {
-    fake.restore();
-  }
-}
-
-interface FakeCodexOptions {
-  cannedRollout?: string;
-  exitCode?: number;
-}
-
-/** Read back a run-block log written by the fake's RUN_MARKER: fake-commands' readRunBlocks,
- * re-exported for the codex tests that import it beside fakeCodexReplay. */
-export { readRunBlocks } from "./fake-commands.js";
-
-/** Something the test can hand the trust lookup as its `bin` directly, plus the ledger files
- * the lookup's probes write: `callsFile` counts app-server starts (a cache hit spawns none);
- * `pidFile` records the app-server's pid before it hangs, so the timeout test can prove the
- * child is gone afterwards. `restore` removes the fake's directory. */
-interface FakeCodexServer {
-  bin: string;
+/** The node script that serves the trust lookup's `app-server`: answers `--version`, and for
+ * `-c … app-server` reads the JSON-RPC lines and answers `initialize` with `{}` and
+ * `hooks/list` with one sessionFlags preToolUse hook whose `command` is parsed from the `-c`
+ * argument and whose `currentHash` is `sha256:` of it (plans/codex-write-guard.md "Trust
+ * (parts 4–5)"). Each app-server start appends to `callsFile`; `hang` leaves it alive (writing
+ * its pid to `pidFile`) for the timeout test; `mismatch` lists the hook under a `user` source
+ * so the session-flag match fails. Shared by the run replay and the standalone server fake. */
+function appServerJs(opts: {
   callsFile: string;
   pidFile: string;
-  restore: () => void;
-}
-
-/** Options for fakeCodexAppServer: the version `--version` prints (a different one makes the
- * trust cache look up again), whether the app-server hangs (the timeout case), and whether the
- * listed hook should not match the guard's command (so the no-match rejection can be tested). */
-interface FakeCodexServerOptions {
-  version?: string;
-  hang?: boolean;
-  mismatch?: boolean;
-  /** hooks/list answers with this JSON-RPC `error` value instead of a result — a string or a
-   * `{message}` object, the two shapes lookupCodexHookTrust's describeError handles. */
+  version: string;
+  mismatch: boolean;
+  hang: boolean;
   errorReply?: unknown;
-  /** The app-server prints one non-JSON line before answering anything, to exercise the
-   * lookup's ignore-noise branch (a notice or prompt on the stream is not its reply). */
   noise?: boolean;
-  /** The app-server answers the initialize handshake and then exits 0 without answering
-   * hooks/list, to exercise the early-exit rejection. */
   exitEarly?: boolean;
-}
-
-/** A fake `codex` that answers the trust lookup (plans/codex-write-guard.md "Trust (parts
- * 4–5)"): `--version` prints the configured version, and `-c … app-server` serves the
- * JSON-RPC handshake — `initialize` answered with `{}`, `hooks/list` answered with one
- * sessionFlags preToolUse hook whose `command` is parsed from the `-c hooks.PreToolUse=…`
- * argument and whose `currentHash` is `sha256:` plus the sha256 of that command, and `key` the
- * fixed session-flag key. Each app-server start appends a line to `callsFile`; `opts.hang`
- * leaves it alive (writing its pid to `pidFile`) for the timeout test; `opts.mismatch` lists
- * the hook under a `user` source so the lookup's session-flag match fails; `opts.errorReply`
- * answers hooks/list with a JSON-RPC error instead of a result, `opts.noise` prints a non-JSON
- * line before answering (ignored), and `opts.exitEarly` exits after the handshake, before
- * hooks/list. The bin is returned
- * as an absolute path the test passes as `bin`, never installed on PATH. */
-export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodexServer {
-  const dir = tmpdir("fake-codex-server-");
-  const callsFile = path.join(dir, "server.calls");
-  const pidFile = path.join(dir, "server.pid");
-  const version = opts.version ?? "0.163.0";
-  const source = opts.mismatch ? "user" : "sessionFlags";
-  const script = path.join(dir, "app-server.js");
-  const js = [
+  versionHang?: boolean;
+}): string {
+  const { callsFile, pidFile, version, mismatch, hang, errorReply, noise, exitEarly, versionHang } = opts;
+  const source = mismatch ? "user" : "sessionFlags";
+  return [
     'const fs = require("node:fs");',
     'const crypto = require("node:crypto");',
     `const CALLS = ${JSON.stringify(callsFile)};`,
     `const PID = ${JSON.stringify(pidFile)};`,
     `const VERSION = ${JSON.stringify(version)};`,
     `const SOURCE = ${JSON.stringify(source)};`,
-    `const HANG = ${opts.hang === true};`,
-    `const ERROR = ${JSON.stringify(opts.errorReply ?? null)};`,
-    `const NOISE = ${opts.noise === true};`,
-    `const EXIT_EARLY = ${opts.exitEarly === true};`,
+    `const HANG = ${hang};`,
+    `const ERROR = ${JSON.stringify(errorReply ?? null)};`,
+    `const NOISE = ${noise === true};`,
+    `const EXIT_EARLY = ${exitEarly === true};`,
+    `const VERSION_HANG = ${versionHang === true};`,
     "const args = process.argv.slice(2);",
     'if (args[0] === "--version") {',
+    "  if (VERSION_HANG) { setTimeout(function () {}, 60000); return; }",
     '  process.stdout.write(VERSION + "\\n");',
     "  process.exit(0);",
     "}",
@@ -240,7 +138,152 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
     "  return out;",
     "}",
   ].join("\n");
-  fs.writeFileSync(script, js);
+}
+
+/** Install a fake `codex` that runs in the worktree as cwd, records each run's argv, stdin and
+ * CODEX_* env, replays `lines` (native `exec --json`) on stdout, records the stream's thread
+ * id, and writes a rollout under `$CODEX_HOME/sessions/…/rollout-…-<id>.jsonl` whose records
+ * carry that thread id. The same binary also answers the trust lookup's `--version` and
+ * `-c … app-server` (appServerJs), so a part-5/9 run's `prepare` warms the guard's trust.
+ * `opts.cannedRollout` (a JSONL string with `@THREAD@` as the turn id) replaces the default
+ * rollout, so a test can pin a specific usage/window reading; `opts.exitCode` makes the `exec`
+ * command exit nonzero after replaying. Sets no env; a caller that needs a temp `$HOME`
+ * overrides it itself and points `backends.codex.configDir` at it. */
+function fakeCodexReplay(
+  lines: readonly string[],
+  opts: { cannedRollout?: string; exitCode?: number } = {},
+): FakeCodexReplay {
+  const dir = tmpdir("fake-codex-");
+  const streamFile = path.join(dir, "stream.ndjson");
+  fs.writeFileSync(streamFile, lines.length > 0 ? `${lines.join("\n")}\n` : "");
+  const argvFile = path.join(dir, "runs.argv");
+  const stdinFile = path.join(dir, "runs.stdin");
+  const ledgerFile = path.join(dir, "threads");
+  const envFile = path.join(dir, "runs.env");
+  const serverCallsFile = path.join(dir, "server.calls");
+  const pidFile = path.join(dir, "server.pid");
+  const rolloutTemplate = path.join(dir, "rollout-template.jsonl");
+  fs.writeFileSync(rolloutTemplate, opts.cannedRollout ?? DEFAULT_ROLLOUT);
+  const appScript = path.join(dir, "app-server.js");
+  fs.writeFileSync(appScript, appServerJs({ callsFile: serverCallsFile, pidFile, version: "0.163.0", mismatch: false, hang: false }));
+  const exitTail = opts.exitCode !== undefined ? `exit ${opts.exitCode}` : `cat "$streamFile"`;
+  const body = [
+    `argvFile="${argvFile}"`,
+    `stdinFile="${stdinFile}"`,
+    `ledgerFile="${ledgerFile}"`,
+    `envFile="${envFile}"`,
+    `streamFile="${streamFile}"`,
+    `rolloutTemplate="${rolloutTemplate}"`,
+    `appScript="${appScript}"`,
+    `case "$1" in`,
+    `  exec)`,
+    `    { printf '%s\\n' "$@"; echo "${RUN_MARKER}"; } >> "$argvFile"`,
+    `    cat >> "$stdinFile"; echo "${RUN_MARKER}" >> "$stdinFile"`,
+    `    env | grep -E '^(CODEX(_|$)|PATH=|TUMWATER_NOTES_PATH=)' | sort > "$envFile"`,
+    `    # The thread id the stream names (its first thread.started), used to name and key the rollout.`,
+    `    thread=$(sed -n 's/.*"thread_id":"\\([^"]*\\)".*/\\1/p' "$streamFile" | head -1)`,
+    `    if [ -n "$thread" ]; then`,
+    `      printf '%s\\n' "$thread" >> "$ledgerFile"`,
+    `      if [ -n "$CODEX_HOME" ]; then`,
+    `        mkdir -p "$CODEX_HOME/sessions/2026-10-21"`,
+    `        sed "s/@THREAD@/$thread/g" "$rolloutTemplate" > "$CODEX_HOME/sessions/2026-10-21/rollout-0000-$thread.jsonl"`,
+    `      fi`,
+    `    fi`,
+    exitTail,
+    `    ;;`,
+    `  --version)`,
+    `    printf '%s\\n' "0.163.0"`,
+    `    ;;`,
+    `  -c)`,
+    `    exec node "$appScript" "$@"`,
+    `    ;;`,
+    `esac`,
+  ].join("\n");
+  writeScript(path.join(dir, "codex"), body);
+  const restore = pathPrepend(dir);
+  return { argvFile, stdinFile, ledgerFile, envFile, serverCallsFile, restore };
+}
+
+/** Run one async block with a fake codex replay installed for its duration, restoring
+ * afterwards even when the block throws — the codex twin of withOpencodeReplay. The block
+ * receives the installed replay. `opts` is fakeCodexReplay's own options. */
+export async function withCodexReplay<T>(
+  lines: readonly string[],
+  optsOrFn: FakeCodexOptions | ((fake: FakeCodexReplay) => Promise<T>),
+  maybeFn?: (fake: FakeCodexReplay) => Promise<T>,
+): Promise<T> {
+  const opts = typeof optsOrFn === "function" ? undefined : optsOrFn;
+  const fn = typeof optsOrFn === "function" ? optsOrFn : maybeFn!;
+  const fake = fakeCodexReplay(lines, opts);
+  try {
+    return await fn(fake);
+  } finally {
+    fake.restore();
+  }
+}
+
+interface FakeCodexOptions {
+  cannedRollout?: string;
+  exitCode?: number;
+}
+
+/** Read back a run-block log written by the fake's RUN_MARKER: fake-commands' readRunBlocks,
+ * re-exported for the codex tests that import it beside fakeCodexReplay. */
+export { readRunBlocks } from "./fake-commands.js";
+
+/** Something the test can hand the trust lookup as its `bin` directly, plus the ledger files
+ * the lookup's probes write: `callsFile` counts app-server starts (a cache hit spawns none);
+ * `pidFile` records the app-server's pid before it hangs, so the timeout test can prove the
+ * child is gone afterwards. `restore` removes the fake's directory. */
+interface FakeCodexServer {
+  bin: string;
+  callsFile: string;
+  pidFile: string;
+  restore: () => void;
+}
+
+/** Options for fakeCodexAppServer: the version `--version` prints (a different one makes the
+ * trust cache look up again), whether the app-server hangs (the timeout case), and whether the
+ * listed hook should not match the guard's command (so the no-match rejection can be tested).
+ * `errorReply` answers hooks/list with a JSON-RPC `error` instead of a result — a string or a
+ * `{message}` object, the two shapes lookupCodexHookTrust's describeError handles; `noise`
+ * prints one non-JSON line before answering (the lookup's ignore-noise branch); `exitEarly`
+ * answers the initialize handshake and exits 0 before hooks/list (the early-exit rejection);
+ * `versionHang` makes the `--version` probe hang (so the whole lookup's deadline is tested). */
+interface FakeCodexServerOptions {
+  version?: string;
+  hang?: boolean;
+  mismatch?: boolean;
+  /** hooks/list answers with this JSON-RPC `error` value instead of a result — a string or a
+   * `{message}` object, the two shapes lookupCodexHookTrust's describeError handles. */
+  errorReply?: unknown;
+  /** The app-server prints one non-JSON line before answering anything, to exercise the
+   * lookup's ignore-noise branch (a notice or prompt on the stream is not its reply). */
+  noise?: boolean;
+  /** The app-server answers the initialize handshake and then exits 0 without answering
+   * hooks/list, to exercise the early-exit rejection. */
+  exitEarly?: boolean;
+  /** The `--version` probe hangs (never prints, never exits), for the test that the whole
+   * lookup — version probe plus app-server — settles within the one deadline. */
+  versionHang?: boolean;
+}
+
+/** A fake `codex` that answers the trust lookup (plans/codex-write-guard.md "Trust (parts
+ * 4–5)"): `--version` prints the configured version, and `-c … app-server` serves the
+ * JSON-RPC handshake (appServerJs). Each app-server start appends a line to `callsFile`;
+ * `opts.hang` leaves it alive (writing its pid to `pidFile`) for the timeout test; `opts.mismatch`
+ * lists the hook under a `user` source so the lookup's session-flag match fails; `opts.errorReply`
+ * answers hooks/list with a JSON-RPC error instead of a result, `opts.noise` prints a non-JSON
+ * line before answering (ignored), `opts.exitEarly` exits after the handshake, before
+ * hooks/list, and `opts.versionHang` makes the `--version` probe hang. The bin is returned as
+ * an absolute path the test passes as `bin`, never installed on PATH. */
+export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodexServer {
+  const dir = tmpdir("fake-codex-server-");
+  const callsFile = path.join(dir, "server.calls");
+  const pidFile = path.join(dir, "server.pid");
+  const version = opts.version ?? "0.163.0";
+  const script = path.join(dir, "app-server.js");
+  fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang }));
   // The pid is stamped in the shim before node starts, so the timeout test can read it the
   // moment the lookup settles, however slowly node itself cold-starts under parallel load.
   writeScript(path.join(dir, "codex"), `echo $$ > "${pidFile}"; exec node ${script} "$@"`);

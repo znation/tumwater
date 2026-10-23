@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.
+
+**Approach.**
+- src/agent/agent-backend.ts: `AgentBackend` gains optional `prepare?(run: AgentRunSpec): Promise<void>`, documented as "work the invocation needs that cannot be synchronous; never throws a run away".
+- src/agent/run-agent.ts: right before `backend.invocation(runSpec)` (today around line 304), `await backend.prepare?.(runSpec)` inside a try/catch. A throw is logged as a `warning` (source `tumwater`) through `logEventBestEffort` on the run's root (`nearestTumwaterRoot(opts.sessionDir)`, skipped with no root), and the run continues.
+- src/agent/codex/codex-backend.ts: `prepare(run)` resolves the guard's trust for `codexWriteGuardDefinition()` under the run's codex env (`CODEX_HOME` as `invocation` computes it).
+  - It goes through `codexHookTrust` with `root = nearestTumwaterRoot(run.sessionDir)` and `cwd = run.cwd`.
+  - It is single-flight: one in-flight promise per process per (home, definition), shared by concurrent runs.
+  - The result is a module-level state that `invocation` reads synchronously: `{ trust }` or `{ off: reason }`.
+  - A failed lookup records `off` and logs one `warning` per process per (home, definition): `codex write guard off: <reason>`.
+- Nothing uses the stored trust yet. This part only warms it, so a codex run now starts one `app-server` per new build and Codex version, and none on a cache hit.
+
+**Tests.**
+- test/agent-backend.test.ts (or a run-agent test beside it): a backend whose `prepare` throws still spawns its run and logs one warning; a backend without `prepare` behaves as before.
+- test/codex-run.test.ts, on the fake:
+  - two codex runs started together start one `app-server`;
+  - a hanging `app-server` lets both runs start after the bounded wait and logs `codex write guard off:` once across three runs;
+  - a pi run and a claude run start no `app-server`.
+
+**Acceptance criteria.**
+- No backend's argv changes.
+- A failing lookup never fails or delays a run beyond the 15 s bound.
+- `npm run test:gate` passes.
+
 ### The day report's merge-slot median: how long the merge slot held each change it landed (planned 2026-10-23 by the plan role; independent of every eligible plan — the queue-cancel plan touches src/merge, src/cli and src/events, the interlock and split series touch src/orchestrator, and this adds one folded field and one line beside the report's other per-day medians; touches src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts) — done 2026-10-23 by the feature role
 **Goal.** The team day report and the dashboard Usage view print a per-day `Merge wait median` (a `merge_done`'s enqueue-to-merged `queuedMs`), but nothing says how much of that wait the merge slot itself spent: `merge_done.durationMs` runs from the verification's start to the outcome (`writeMergeOutcome`, src/merge/merge-slot.ts) and is folded nowhere. Add a per-day `Merge slot median` — the lower median of the day's `merge_done.durationMs` — beside the merge-wait median, so an operator reads the queue backlog (the merge wait minus the slot time) apart from the slot's own review/check/rebase/merge work.
 

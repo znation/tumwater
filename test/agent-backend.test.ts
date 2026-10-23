@@ -101,6 +101,50 @@ test("an over-long native line with no newline is dropped, not buffered without 
   assert.equal(warnings.length, 1, "the discarded line is warned about exactly once");
 });
 
+test("a backend whose prepare throws still spawns its run and warns once", async () => {
+  // The optional async `prepare` seam (plans/codex-write-guard.md "Trust (parts 4–5)"): its
+  // work is warm-up the synchronous invocation needs, so a throw must never fail a run — the
+  // runner warns on the run's own root and proceeds. The run must still spawn its child.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const root = dir;
+  const sessionDir = path.join(root, ".tumwater", "sessions", "t");
+  const rawLogFile = path.join(dir, "raw.jsonl");
+  const fake: AgentBackend = {
+    id: "fake-prepare-throw",
+    label: "fake",
+    defaultBin: "fake",
+    binEnv: "TUMWATER_FAKE_BIN",
+    resolveBin: () => ({ bin: "/bin/sh", source: "config" }),
+    invocation: () => ({ args: ["-c", "cat"], stdin: "ran\n", env: process.env }),
+    prepare: async () => {
+      throw new Error("prepare boom");
+    },
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+  };
+  registerAgentBackend(fake);
+  const result = await runAgent({
+    cwd: dir,
+    prompt: "p",
+    config: { ...defaultConfig(), agent: "fake-prepare-throw" },
+    sessionDir,
+    sessionName: "t",
+    rawLogFile,
+    nativeLogFile: path.join(dir, "native.jsonl"),
+    kind: "author",
+  });
+  assert.equal(result.ok, true, "a prepare throw never fails the run");
+  // The run's child ran despite the throw, and the warning reached the root's event feed.
+  const events = fs.readFileSync(path.join(root, ".tumwater", "log", "events.jsonl"), "utf8");
+  const lines = events.trim().split("\n").filter((l) => l !== "");
+  assert.equal(lines.length, 1, "the prepare failure is warned exactly once");
+  const event = JSON.parse(lines[0]!);
+  assert.equal(event.source, "tumwater");
+  assert.equal(event.type, "warning");
+  assert.match(event.message, /agent prepare failed, run continues: prepare boom/);
+});
+
 test("a failed spawn never calls a backend's afterRun", async () => {
   // The afterRun seam hook (part 5/7) must not spend a reconciling export on a session that
   // was never created. The spawn `error` handler calls finish(), which sets settled, before

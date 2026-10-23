@@ -22,7 +22,9 @@ import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
-import { teamRootOf } from "../../paths.js";
+import { teamRootOf, nearestTumwaterRoot } from "../../paths.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../../events/events.js";
+import { errorMessage } from "../../text/text.js";
 import { codexHome, readCodexCatalog, type CodexCatalogEntry } from "./codex-catalog.js";
 import type {
   AgentBackend,
@@ -35,6 +37,8 @@ import type {
 import { resumableSession } from "../session-ledger.js";
 import { codexArgs, codexEffort } from "./codex-args.js";
 import { codexEnv } from "./codex-env.js";
+import { codexHookTrust } from "./codex-hook-trust.js";
+import { codexWriteGuardDefinition } from "./codex-write-guard.js";
 import { findRollout, rolloutLines } from "./codex-rollout.js";
 import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
 
@@ -50,6 +54,49 @@ const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  * below this floor (plans/codex-backend.md "Hand steps", H1). */
 export const CODEX_MIN_VERSION = "0.163.0";
 
+/** The wall-clock bound `prepare` gives each trust lookup, mirroring lookupCodexHookTrust's
+ * own 15 s default (plans/codex-write-guard.md "Trust (parts 4–5)"). Settable so a test can
+ * shorten the bound (to 500 ms) without waiting out the real 15 s; a hand run keeps the
+ * default. */
+let codexTrustLookupTimeoutMs = 15_000;
+
+/** The test seam for the trust lookup bound: a test sets it to 500 ms and returns it to the
+ * 15 s default in a finally, so a hanging app-server case stays fast without a config knob. */
+export function setCodexTrustLookupTimeoutMs(ms: number): void {
+  codexTrustLookupTimeoutMs = ms;
+}
+
+/** One resolved write-guard trust for a (home, definition) key, held for `invocation` to read
+ * synchronously (part 6/9 installs the trusted hook; nothing reads it yet — part 5/9 only
+ * warms it). `off` records a lookup failure and its reason, `trust` a resolved key and hash. */
+type CodexWriteGuardTrust = { kind: "trust"; trust: { key: string; hash: string } } | { kind: "off"; reason: string };
+
+/** The write-guard trust `prepare` has resolved, keyed by home and hook definition, so one
+ * process looks each up at most once and a run's invocation never spawns `app-server` again. */
+const writeGuardTrust = new Map<string, CodexWriteGuardTrust>();
+/** One in-flight resolution per (home, definition) key, so concurrent runs share a single
+ * `app-server` instead of starting one each (plans/codex-write-guard.md "Trust (parts 4–5)"). */
+const writeGuardInFlight = new Map<string, Promise<void>>();
+/** The (home, definition) keys whose `off` warning has already been logged, so a failed lookup
+ * warns once per process instead of once per run. */
+const writeGuardWarned = new Set<string>();
+
+/** Warn once per process per (home, definition) that the write guard is off. The warning rides
+ * the best-effort event feed on the run's root, skipped when there is no root (a hand run's
+ * prepared look-up must not mint a `.tumwater`). A `trust` result logs nothing. */
+function warnGuardOffOnce(key: string, root: string | undefined, state: CodexWriteGuardTrust): void {
+  if (state.kind !== "off") return;
+  if (writeGuardWarned.has(key)) return;
+  writeGuardWarned.add(key);
+  if (root !== undefined) {
+    warnEventBestEffort(root, TUMWATER_SOURCE, `codex write guard off: ${state.reason}`);
+  }
+}
+
+/** The (home, definition) cache key shared by the single-flight and the resolved-trust map. */
+function writeGuardKey(home: string | undefined, definition: { matcher: string; command: string; timeout: number }): string {
+  return `${home ?? ""}|${JSON.stringify(definition)}`;
+}
 /** The session this run uses: for a continue, the ledger's newest record of this kind when it
  * is codex's, has this cwd, carries a UUID thread id, and `findRollout` finds its rollout
  * under the run's home; otherwise the run is fresh (no pre-minted id — the stream names it).
@@ -123,6 +170,53 @@ export const codexBackend: AgentBackend = {
     // A resumed run returns its id so the runner's pre-spawn ledger record carries it; a fresh
     // run has none until the stream names it (the runner's stream-mint pass appends it).
     return { args, stdin, env, ...(resumed && sessionId !== undefined ? { sessionId } : {}) };
+  },
+
+  async prepare(run: AgentRunSpec): Promise<void> {
+    // Resolve the write guard's trust under the same env and home invocation will use (the
+    // run's CODEX_HOME, plans/codex-write-guard.md "Trust (parts 4–5)"), so the trust an
+    // invocation later reads was looked up under the run's own config. It never throws a run
+    // away: a failed lookup records `off` (and warns once) and the run continues without the
+    // guard's trust.
+    const base = withNotesPath(backendBaseEnv(run.runMarker, undefined, run.binDir), run.notesPath);
+    const home = codexHome(resolvedBackendConfig(run.config, "codex"));
+    const env = codexEnv(base, { home });
+    const root = nearestTumwaterRoot(run.sessionDir);
+    const definition = codexWriteGuardDefinition();
+    const key = writeGuardKey(home, definition);
+    // Single-flight per (home, definition): a run whose key is being resolved (or already
+    // resolved) shares the one in-flight lookup, so concurrent runs start one `app-server`.
+    const settled = writeGuardTrust.get(key);
+    if (settled !== undefined) {
+      warnGuardOffOnce(key, root, settled);
+      return;
+    }
+    const inFlight = writeGuardInFlight.get(key);
+    if (inFlight !== undefined) {
+      await inFlight;
+      const after = writeGuardTrust.get(key);
+      if (after !== undefined) warnGuardOffOnce(key, root, after);
+      return;
+    }
+    const promise = (async (): Promise<void> => {
+      try {
+        const trust = await codexHookTrust(root, {
+          bin: run.agentBin,
+          env,
+          cwd: run.cwd,
+          definition,
+          timeoutMs: codexTrustLookupTimeoutMs,
+        });
+        writeGuardTrust.set(key, { kind: "trust", trust });
+      } catch (error) {
+        writeGuardTrust.set(key, { kind: "off", reason: errorMessage(error) });
+      }
+    })();
+    writeGuardInFlight.set(key, promise);
+    await promise;
+    writeGuardInFlight.delete(key);
+    const state = writeGuardTrust.get(key);
+    if (state !== undefined) warnGuardOffOnce(key, root, state);
   },
 
   translator() {

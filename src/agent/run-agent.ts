@@ -23,6 +23,7 @@ import type { PiRunResult } from "../pi/pi-run-result.js";
 import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentRunSpec } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
 import { errorMessage } from "../text/text.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { codexBackend } from "./codex/codex-backend.js";
@@ -202,7 +203,13 @@ function setupFailureResult(agent: string, message: string): PiRunResult {
  * Never throws: a setup failure (session dir, log file, scratch dir) resolves as a failed run
  * whose errorMessage names it. */
 export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
-  return new Promise((resolve) => {
+  // An async executor so a backend's `prepare` step (the codex write guard resolving its trust
+  // by spawning app-server) can be awaited before the synchronous invocation is built. A
+  // `prepare` throw is caught and warned, never rejecting the run; a synchronous throw in the
+  // build-and-spawn stage below (e.g. claude's invocation rejecting a run with no model)
+  // rejects the run, matching what the Promise constructor did for a throw from a synchronous
+  // executor.
+  return new Promise(async (resolve, reject) => {
     // The `agent` selector is optional: default to pi, the historical backend. An unregistered
     // id also falls back to pi rather than rejecting the run.
     const backend = backendById(opts.config.agent ?? DEFAULT_BACKEND) ?? piBackend;
@@ -229,78 +236,128 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       resolve(setupFailureResult(backend.id, `could not prepare the agent run: ${errorMessage(err)}`));
       return;
     }
-    // The marker precedes this run's first event in file order — written to the same stream
-    // stdout lines flow through, before spawn, so ordering is exact by construction; on a
-    // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
-    // kind, agent and start time are always there, the label only when the caller set one
-    // (`history <role> <n> --transcript` selects a run's segments by this ts).
-    {
-      const marker: { type: "tumwater_run"; kind: PiRunKind; agent: string; ts: number; label?: string } = {
-        type: "tumwater_run",
-        kind: opts.kind,
-        agent: backend.id,
-        ts: Date.now(),
-      };
-      if (opts.label) marker.label = opts.label;
-      rawLog.stream.write(JSON.stringify(marker) + "\n");
-    }
-    // The first blind image read an authoring run made (plans/image-input.md "Detecting a
-    // blind read"): the path, plus an indirection to the child so the parser's parse-time
-    // callback (which fires during feed, after spawn) can kill it. Unset for a gate run,
-    // which only records the read. Declared before the parser so its onBlindRead closure
-    // (which assigns them at parse time, after spawn) can reference them.
+    // The pre-spawn setup below may throw synchronously (a broken marker write, parser
+    // construction, backend.resolveBin). An async executor's own rejection is swallowed by the
+    // Promise constructor, so a throw here would otherwise leave the run's promise pending
+    // forever and emit an unhandled rejection — a synchronous executor used to reject directly.
+    // The try/catch below restores that rejection. A known-recoverable failure (the notes
+    // shim) warns and goes on inside its own guard, so it is deliberately not covered here.
     let blindRead: string | undefined;
     let terminateRun: (() => void) | undefined;
-    const parser = new PiStreamParser(opts.onToolCallStart, {
-      // The seam's effective image input (src/agent/image-input.ts): a text-only seam makes
-      // every image read blind even when pi adds no note — a claim its doctor probe proved
-      // false — which the parser checks against its own note rule.
-      imageInput: seamImageInput(opts.config, readPiProviders(piModelsPath())),
-      onBlindRead: (path) => {
-        // Kill an authoring run at once, before the agent goes on working from a picture it
-        // never saw (terminateChild is what the watchdogs use). Gate runs (reviewer,
-        // resolver) only record the read and keep going.
-        if (opts.kind === "author") {
-          blindRead = path;
-          terminateRun?.();
-        }
-      },
-    });
-    // The run's cross-group attribution mark, minted before the spawn so the environment can
-    // carry it and the exit sweep can name it.
-    const runMarker = makeRunMarker();
-    const resolved = backend.resolveBin(opts.config);
-    // Install the notes shim under the team root's `.tumwater/bin` so every backend's run finds
-    // `tumwater-notes` first on PATH (notes-shim.ts). A failure to write it logs one warning and
-    // the run goes on without it — notes would then be unwritable by the command, but the run
-    // itself is not blocked.
+    let parser: PiStreamParser;
+    let runMarker: string;
+    let resolved: ResolvedBackendBin;
     let binDir: string | undefined;
+    let runSpec: AgentRunSpec;
     try {
-      // Install the shim only under a real team root — the nearest ancestor holding a
-      // `.tumwater`. A session dir with no such ancestor (a lab script, a smoke run, a
-      // prompt-lab replay) must never mint one: nearestTumwaterRoot is undefined then, and the
-      // run goes on without the shim, exactly as if the install had failed — writing
-      // `<fallback>/.tumwater` from a run created a phantom harness root in a shared directory
-      // and broke every other suite on the host (BUGS.md 2026-10-18).
-      const root = nearestTumwaterRoot(opts.sessionDir);
-      if (root !== undefined) binDir = ensureNotesShim(root);
-    } catch {
-      opts.onAgentWarning?.("could not install the tumwater-notes shim; this run will not find tumwater-notes on PATH");
+      // The marker precedes this run's first event in file order — written to the same stream
+      // stdout lines flow through, before spawn, so ordering is exact by construction; on a
+      // failed spawn finish() still ends the stream and flushes it. Exactly one per run: the
+      // kind, agent and start time are always there, the label only when the caller set one
+      // (`history <role> <n> --transcript` selects a run's segments by this ts).
+      {
+        const marker: { type: "tumwater_run"; kind: PiRunKind; agent: string; ts: number; label?: string } = {
+          type: "tumwater_run",
+          kind: opts.kind,
+          agent: backend.id,
+          ts: Date.now(),
+        };
+        if (opts.label) marker.label = opts.label;
+        rawLog.stream.write(JSON.stringify(marker) + "\n");
+      }
+      // The first blind image read an authoring run made (plans/image-input.md "Detecting a
+      // blind read"): the path, plus an indirection to the child so the parser's parse-time
+      // callback (which fires during feed, after spawn) can kill it. Unset for a gate run,
+      // which only records the read. Declared before the parser so its onBlindRead closure
+      // (which assigns them at parse time, after spawn) can reference them.
+      parser = new PiStreamParser(opts.onToolCallStart, {
+        // The seam's effective image input (src/agent/image-input.ts): a text-only seam makes
+        // every image read blind even when pi adds no note — a claim its doctor probe proved
+        // false — which the parser checks against its own note rule.
+        imageInput: seamImageInput(opts.config, readPiProviders(piModelsPath())),
+        onBlindRead: (path) => {
+          // Kill an authoring run at once, before the agent goes on working from a picture it
+          // never saw (terminateChild is what the watchdogs use). Gate runs (reviewer,
+          // resolver) only record the read and keep going.
+          if (opts.kind === "author") {
+            blindRead = path;
+            terminateRun?.();
+          }
+        },
+      });
+      // The run's cross-group attribution mark, minted before the spawn so the environment can
+      // carry it and the exit sweep can name it.
+      runMarker = makeRunMarker();
+      resolved = backend.resolveBin(opts.config);
+      // Install the notes shim under the team root's `.tumwater/bin` so every backend's run
+      // finds `tumwater-notes` first on PATH (notes-shim.ts). A failure to write it logs one
+      // warning and the run goes on without it — notes would then be unwritable by the command,
+      // but the run itself is not blocked.
+      try {
+        // Install the shim only under a real team root — the nearest ancestor holding a
+        // `.tumwater`. A session dir with no such ancestor (a lab script, a smoke run, a
+        // prompt-lab replay) must never mint one: nearestTumwaterRoot is undefined then, and
+        // the run goes on without the shim, exactly as if the install had failed — writing
+        // `<fallback>/.tumwater` from a run created a phantom harness root in a shared
+        // directory and broke every other suite on the host (BUGS.md 2026-10-18).
+        const root = nearestTumwaterRoot(opts.sessionDir);
+        if (root !== undefined) binDir = ensureNotesShim(root);
+      } catch {
+        opts.onAgentWarning?.("could not install the tumwater-notes shim; this run will not find tumwater-notes on PATH");
+      }
+      runSpec = {
+        cwd: opts.cwd,
+        prompt: opts.prompt,
+        config: opts.config,
+        sessionDir: opts.sessionDir,
+        sessionName: opts.sessionName,
+        continueSession: opts.continueSession,
+        kind: opts.kind,
+        agentBin: resolved.bin,
+        runMarker,
+        notesPath: opts.notesPath,
+        ...(binDir !== undefined ? { binDir } : {}),
+        ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
+      };
+    } catch (err) {
+      // A synchronous throw in the run's pre-spawn setup (marker, parser construction,
+      // resolveBin) rejects the run, restoring the rejection a synchronous executor's throw
+      // used to get from the Promise constructor.
+      reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
+      return;
     }
-    const runSpec: AgentRunSpec = {
-      cwd: opts.cwd,
-      prompt: opts.prompt,
-      config: opts.config,
-      sessionDir: opts.sessionDir,
-      sessionName: opts.sessionName,
-      continueSession: opts.continueSession,
-      kind: opts.kind,
-      agentBin: resolved.bin,
-      runMarker,
-      notesPath: opts.notesPath,
-      ...(binDir !== undefined ? { binDir } : {}),
-      ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
-    };
+    // A backend's asynchronous pre-run work (the codex write guard resolving its trust by
+    // spawning `app-server`, plans/codex-write-guard.md "Trust (parts 4–5)"): awaited just
+    // before the synchronous invocation, so trust is settled before invocation reads it. It
+    // never throws a run away — a throw is a warm-up failure, warned about on the run's own
+    // root (skipped with no root) and the run goes on; a codex trust lookup failure already
+    // records `off` and warns from prepare itself, so this catch is the guard for a backend
+    // whose prepare throws unexpectedly. The call itself is also guarded: a synchronous
+    // `prepare` throw would otherwise escape the async executor (leaving the run's promise
+    // pending and emitting an unhandled rejection), so it is warned-and-continued like an
+    // async rejection.
+    const warnRoot = nearestTumwaterRoot(opts.sessionDir);
+    let prepared: Promise<void> | undefined;
+    try {
+      prepared = backend.prepare?.(runSpec);
+    } catch (error) {
+      if (warnRoot !== undefined) {
+        warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
+      }
+    }
+    // Only a backend with a `prepare` step (codex) awaits it; for every other backend the run
+    // spawns synchronously, preserving the pre-`prepare` timing a logical-clock watchdog test
+    // relies on (pi-watchdogs advances a fake clock immediately after runPi returns).
+    if (prepared !== undefined) {
+      try {
+        await prepared;
+      } catch (error) {
+        if (warnRoot !== undefined) {
+          warnEventBestEffort(warnRoot, TUMWATER_SOURCE, `agent prepare failed, run continues: ${errorMessage(error)}`);
+        }
+      }
+    }
+    try {
     const invocation = backend.invocation(runSpec);
     // The id the pre-spawn ledger record carries: a backend that mints one ahead of the run
     // (claude, a codex resume), else the session name (pi, a fresh codex run — its id is born
@@ -688,7 +745,13 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
           errorMessage,
         }),
       );
-    });
+      });
+    } catch (err) {
+      // A synchronous throw in the run's build-and-spawn stage (claude's invocation rejects a
+      // run with no resolved model) rejects the run, preserving the contract a synchronous
+      // executor's throw used to get from the Promise constructor.
+      reject(err instanceof Error ? err : new Error(`runAgent: ${String(err)}`));
+    }
   });
 }
 

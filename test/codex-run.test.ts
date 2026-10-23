@@ -9,15 +9,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
-import { codexBackend } from "../src/agent/codex/codex-backend.js";
+import { codexBackend, setCodexTrustLookupTimeoutMs } from "../src/agent/codex/codex-backend.js";
 import { codexTranslator } from "../src/agent/codex/codex-stream.js";
 import { defaultConfig } from "../src/config/config.js";
 import { suiteRerunWarning, type ToolCallStart } from "../src/review/suite-rerun.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
-import type { AgentBackend } from "../src/agent/agent-backend.js";
+import { backendById, type AgentBackend, type AgentRunSpec } from "../src/agent/agent-backend.js";
 import { withCwd } from "./helpers/env.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { withCodexReplay, readRunBlocks } from "./fakes/fake-codex.js";
+import { withCodexReplay, readRunBlocks, fakeCodexAppServer } from "./fakes/fake-codex.js";
 import { codexCaptures } from "./fixtures/codex-events.js";
 
 /** A run against `dir` with codex selected and a concrete model resolved, whose team config
@@ -53,6 +53,97 @@ function argLines(block: string): string[] {
 function rolloutPath(run: PiRunOptions, id: string): string {
   return path.join(run.config.backends!.codex!.configDir!, "sessions", "2026-10-21", `rollout-0000-${id}.jsonl`);
 }
+
+/** A minimal AgentRunSpec shaped for the codex adapter's `prepare` (part 5/9): a team root
+ * under `dir` with `.tumwater` (so the trust lookup writes its cache there and its warnings
+ * land on the run's own root), a configured codex home, and the given codex `bin`.
+ * `prepare` reads only config, cwd, sessionDir and agentBin, so this covers it. */
+function prepareRunSpec(dir: string, opts: { bin: string }): AgentRunSpec {
+  return {
+    cwd: fs.realpathSync(dir),
+    prompt: "p",
+    config: {
+      ...defaultConfig(),
+      agent: "codex",
+      model: "gpt-6-luna",
+      backends: { codex: { configDir: path.join(dir, "codex-home") } },
+    },
+    sessionDir: path.join(dir, ".tumwater", "sessions", "t"),
+    sessionName: "t",
+    kind: "author",
+    agentBin: opts.bin,
+    runMarker: "mark",
+  };
+}
+
+test("two codex runs started together share one app-server (prepare single-flight)", async () => {
+  // The async `prepare` step (plans/codex-write-guard.md "Trust (parts 4–5)"): resolves the
+  // guard's trust by spawning `app-server`, single-flighted per (home, definition), so two
+  // concurrent runs start one `app-server`, and a third after the fact starts none.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const fake = fakeCodexAppServer();
+  try {
+    const spec = prepareRunSpec(dir, { bin: fake.bin });
+    await Promise.all([codexBackend.prepare!(spec), codexBackend.prepare!(spec)]);
+    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1, "concurrent runs share one app-server");
+    // A third prepare reads the resolved trust and starts no app-server (cache hit).
+    await codexBackend.prepare!(spec);
+    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1);
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a real codex run warms the write guard trust once per build", async () => {
+  // Every codex run's `prepare` (part 5/9) resolves the write guard's trust from the same
+  // binary it then runs, so a real run starts one app-server and a repeat run on the same
+  // build (same home and version) spawns none.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  await withCodexReplay(codexCaptures.editRun, async (fake) => {
+    const run = codexRun(dir);
+    const first = await runAgent(run);
+    assert.equal(first.ok, true, `${first.errorMessage}`);
+    assert.equal(fs.readFileSync(fake.serverCallsFile, "utf8").trim().split("\n").length, 1, "a real run warms trust with one app-server");
+    const second = await runAgent(run);
+    assert.equal(second.ok, true, `${second.errorMessage}`);
+    assert.equal(fs.readFileSync(fake.serverCallsFile, "utf8").trim().split("\n").length, 1, "a repeat run on the same build spawns no app-server");
+  });
+});
+
+test("pi, claude and opencode backends have no prepare, so they start no app-server", () => {
+  // Only the codex adapter needs the async trust lookup; pi, claude and opencode resolve their
+  // runs synchronously, so they register no `prepare` and can never spawn an app-server.
+  for (const id of ["pi", "claude", "opencode"]) {
+    assert.equal(backendById(id)!.prepare, undefined, `${id} has no prepare hook`);
+  }
+});
+
+test("a hanging app-server resolves off after the bound and warns once across three runs", async () => {
+  // A trust lookup that hangs turns the write guard off: prepare never throws (both concurrent
+  // runs still start after the bounded wait), the off state and the warning are recorded once
+  // per process per (home, definition), and a third run reads the recorded off state without
+  // starting another app-server or warning again.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const eventsFile = path.join(dir, ".tumwater", "log", "events.jsonl");
+  const fake = fakeCodexAppServer({ hang: true });
+  setCodexTrustLookupTimeoutMs(4000);
+  try {
+    const spec = prepareRunSpec(dir, { bin: fake.bin });
+    await Promise.all([codexBackend.prepare!(spec), codexBackend.prepare!(spec)]);
+    await codexBackend.prepare!(spec);
+    const events = fs.readFileSync(eventsFile, "utf8").trim().split("\n").filter((l) => l !== "");
+    const off = events.filter((l) => l.includes("codex write guard off:"));
+    assert.equal(off.length, 1, "the write-guard-off warning is logged exactly once");
+    assert.match(JSON.parse(off[0]!).message, /codex write guard off: codex hook trust lookup timed out/);
+    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1, "the three runs shared one (hanging) lookup");
+  } finally {
+    setCodexTrustLookupTimeoutMs(15_000);
+    fake.restore();
+  }
+});
 
 test("a fresh codex run replays the fake, reads the rollout, and folds its usage", async () => {
   const dir = tmpdir();

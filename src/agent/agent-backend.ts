@@ -139,6 +139,14 @@ export interface AgentBackend {
   resolveBin(config: BackendBinConfig): ResolvedBackendBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;
+  /** Async work the run needs before its invocation that cannot be synchronous — e.g. the codex
+   * adapter resolving the write guard's trust by spawning `app-server`, whose result `invocation`
+   * reads synchronously (plans/codex-write-guard.md "Trust (parts 4–5)"). The runner awaits it
+   * just before `invocation`, with a single-flight that shares one lookup across concurrent runs.
+   * It never throws a run away: a throw (and a codex look-up failure, which `prepare` records as
+   * `off`) is warned about and the run continues without the warm-up. Optional — a backend that
+   * resolves everything synchronously omits it. */
+  prepare?(run: AgentRunSpec): Promise<void>;
   /** A fresh, per-run native-to-canonical line translator. */
   translator(): StreamTranslator;
   /** Observe one stderr chunk (with the runner's carried tail for a match that straddles two

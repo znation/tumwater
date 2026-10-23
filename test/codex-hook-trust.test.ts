@@ -117,6 +117,29 @@ test("a hanging fake rejects within timeoutMs and its child is gone afterwards",
   }
 });
 
+test("a hanging --version probe settles the WHOLE codexHookTrust within the one deadline", async () => {
+  const root = tmpdir();
+  const cwd = tmpdir();
+  // Both halves hang: --version (the probe) and app-server (the lookup), so this proves the
+  // whole failing lookup stays within the ONE deadline rather than adding the probe's bound on
+  // top of the lookup's.
+  const fake = fakeCodexAppServer({ versionHang: true, hang: true });
+  try {
+    const def = definition();
+    const started = Date.now();
+    await assert.rejects(
+      codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 500 }),
+      /timed out after/,
+    );
+    assert.ok(
+      Date.now() - started < 5_000,
+      `codexHookTrust did not settle within the bound (${Date.now() - started} ms)`,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
 test("a fake whose list holds no matching hook rejects with the message", async () => {
   const cwd = tmpdir();
   const fake = fakeCodexAppServer({ mismatch: true });
