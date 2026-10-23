@@ -163,13 +163,12 @@ export function fairOrder(runners: RoleRunner[]): RoleRunner[] {
  * by need".) A commit counts when its subject starts with `tumwater(feature):`,
  * `tumwater(bugfix):`, `tumwater(director):`, or `tumwater(operator):` — the harness stamps
  * that prefix itself (buildCommitMessage), so attribution needs no new metadata; a director
- * commit is user-directed
- * work, and after a pure-director burst the maintenance roles must resync. Or the subject
- * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
- * team cannot generate itself. An operator commit (the stamp the CLI, TUI and dashboard
- * backlog/brief edits write) is the human's own change made through tumwater, so it counts like
- * an unstamped human commit. Every other role's merge is markdown or hygiene; waking
- * maintenance roles on it is exactly the cascade deferral removes.
+ * commit is user-directed work, and after a pure-director burst the maintenance roles must
+ * resync. Or the subject carries no `tumwater(` prefix at all: a human commit, where the world
+ * changed in a way the team cannot generate itself. An operator commit (the stamp the CLI, TUI
+ * and dashboard backlog/brief edits write) is the human's own change made through tumwater, so
+ * it counts like an unstamped human commit. Every other role's merge is markdown or hygiene;
+ * waking maintenance roles on it is exactly what the need-based deferral removes.
  */
 export function workMerged(subjects: string[]): boolean {
   return subjects.some(
