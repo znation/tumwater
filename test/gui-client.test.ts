@@ -595,13 +595,13 @@ test("the cap editor refuses text the browser rejected instead of silently remov
   await scope.saveBudget();
   assert.deepEqual(posts.shift(), { path: "/api/budget", body: { maxDailyCostUsd: 25 } });
   assert.equal(flashes.shift(), "Daily cap set to $25");
-  // Non-plain-decimal spellings the type=number input accepts but the TUI's editor refuses
-  // must not reach the server: exponent notation reads as 100 and a 25-digit run stays finite
-  // yet is past MAX_SAFE_INTEGER.
+  // Non-plain-decimal spellings the type=number input accepts but the editor refuses must
+  // not reach the server: exponent notation reads as 100 (shape rejection) and a 25-digit
+  // run stays finite yet is past MAX_SAFE_INTEGER (bounds rejection). Each names its own rule.
   input.value = "1e2";
   await scope.saveBudget();
   assert.equal(posts.length, 0, "exponent notation must not set a cap");
-  assert.match(flashes.shift() ?? "", /^error: the cap must be a number of 0 or more, at most \d+/);
+  assert.match(flashes.shift() ?? "", /^error: the cap must be a plain dollar amount/);
   input.value = "9".repeat(25);
   await scope.saveBudget();
   assert.equal(posts.length, 0, "a run past MAX_SAFE_INTEGER must not set a cap");

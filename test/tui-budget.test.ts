@@ -39,7 +39,7 @@ test("Ctrl+B edits the daily budget; Enter saves, invalid stays open, Esc and Ct
     tui.key(undefined, "backspace");
     for (const ch of "abc") tui.key(ch, ch);
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /budget must be a number/);
+    assert.match(tui.lastFrame(), /budget must be a plain dollar amount/);
     assert.equal(tui.lines().at(-1), "daily cap $ abc", "still in edit mode with the text kept");
 
     // Esc cancels back to prompt mode with the previous text restored.

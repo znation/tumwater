@@ -184,29 +184,34 @@ test("parseBudgetInput maps empty to disabled and validates the rest", () => {
   assert.deepEqual(parseBudgetInput("12.34"), { ok: true, value: 12.34 }, "fractional dollars allowed");
   assert.deepEqual(parseBudgetInput(".5"), { ok: true, value: 0.5 }, "leading-dot decimals stay admitted");
   for (const bad of [
+    // Shape rejections: not a plain decimal — Number() would misread hex (0x10 → 16) or
+    // exponent notation (1e2 → 100) as a cap, so the shape error names the decimal rule.
     "abc",
     "-1",
     "Infinity",
     "1e999",
-    // Non-decimal notations must not set a cap: Number() would read hex as 16 and finite
-    // exponent notation as 100 — regression for the TUI accepting both as dollar amounts.
     "0x10",
     "1e2",
     "+5",
-    // Absurd digit counts overflow to Infinity: the isFinite backstop still rejects them.
-    "9".repeat(410),
-    // A 25-digit run stays finite (1e24), so isFinite passes it — but the value is past
-    // Number.MAX_SAFE_INTEGER and no longer an exactly representable dollar amount, the same
+  ]) {
+    const r = parseBudgetInput(bad);
+    assert.equal(r.ok, false, bad);
+    if (!r.ok) assert.match(r.error, /plain dollar amount/);
+  }
+  for (const bad of [
+    // Bounds rejections: a plain decimal that is past the representable cap. A 410-digit
+    // run overflows to Infinity (the isFinite backstop); a 25-digit run stays finite (1e24)
+    // yet is past Number.MAX_SAFE_INTEGER and no longer exactly representable, the same
     // overflow rule text.ts's parseDecimalInt applies to every count/position input and
-    // checkDailyBudgetUsd enforces on the write path. parseBudgetInput bounds it too so the
-    // TUI's cap editor shows its own inline error before the write. Regression:
-    // parseBudgetInput returned { ok: true, value: 1e24 } on the unfixed tree.
+    // checkDailyBudgetUsd enforces on the write path. Regression: parseBudgetInput returned
+    // { ok: true, value: 1e24 } on the unfixed tree.
+    "9".repeat(410),
     "9".repeat(25),
   ]) {
     const r = parseBudgetInput(bad);
     assert.equal(r.ok, false, bad);
-    // The one message names the MAX_SAFE_INTEGER bound as well: a 25-digit run IS "a number
-    // of 0 or more", so a bounds rejection that omitted the cap would name the wrong rule.
+    // The bounds message names the MAX_SAFE_INTEGER bound too: a 25-digit run IS "a number
+    // of 0 or more", so a rejection that omitted the cap would name the wrong rule.
     if (!r.ok) assert.match(r.error, new RegExp(`number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}`));
   }
 });

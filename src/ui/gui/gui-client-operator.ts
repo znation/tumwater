@@ -208,7 +208,19 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const t = String(raw).trim();
     if (t === "") return { ok: true, value: 0 };
     const n = Number(t);
-    if (!/^\d*\.?\d+$/.test(t) || !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER) {
+    // The two rejections are genuinely different rules, so they name their own one, mirroring
+    // the TUI's parseBudgetInput: the shape rejection (a fine number like "1e2" or "0x10"
+    // that is within the bound but that no one means as USD) names the plain-decimal rule,
+    // while the bounds rejection names the bound because a 25-digit run IS "a number of 0 or
+    // more". A single message would mislead: "1e2" is rejected as shape, yet would be told
+    // it is not a number of 0 or more.
+    if (!/^\d*\.?\d+$/.test(t)) {
+      return {
+        ok: false,
+        error: "the cap must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation — leave it empty for no cap",
+      };
+    }
+    if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER) {
       return {
         ok: false,
         error: "the cap must be a number of 0 or more, at most " + Number.MAX_SAFE_INTEGER + " — leave it empty for no cap",

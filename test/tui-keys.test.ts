@@ -100,7 +100,7 @@ test("budget mode opens pre-filled, saves the cap on Enter, and Esc cancels unch
   for (const ch of "abc") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().budgetMode, true, "invalid input keeps edit mode open");
-  assert.match(keys.state().flash!, /must be a number/);
+  assert.match(keys.state().flash!, /plain dollar amount/);
 });
 
 test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team budget", () => {
@@ -178,7 +178,7 @@ test("Ctrl+B on a role's Transcript edits that role's daily cap, not the team bu
   for (const ch of "abc") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().budgetMode, true, "invalid input keeps edit mode open");
-  assert.match(keys.state().flash!, /must be a number/);
+  assert.match(keys.state().flash!, /plain dollar amount/);
   keys.handleKey(undefined, { name: "escape" });
 
   // On the director's Transcript, Ctrl+B opens nothing and names the exemption.

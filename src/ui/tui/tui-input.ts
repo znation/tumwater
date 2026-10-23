@@ -152,15 +152,16 @@ export function parseBudgetInput(
   // yet is no longer an exactly representable dollar amount. This editor bounds it too so the
   // inline error appears before the write, in the editor's own wording.
   const n = Number(t);
-  // Both guards return the one error message below, so the wording cannot drift between the
-  // shape rejection and the bounds rejection (a prior copy pasted the same line twice). The
-  // message names the MAX_SAFE_INTEGER bound too — a 25-digit run IS a number of 0 or more, so
-  // the bounds rejection must say which bound it broke, mirroring config-field-checks'
-  // DOLLAR_CAP wording ("a number of 0 or more, at most …").
-  if (
-    !/^\d*\.?\d+$/.test(t) ||
-    !Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER
-  )
+  // The two rejections are genuinely different rules, so they name their own one: the shape
+  // rejection (a value that is not a plain decimal like "1e2" or "0x10" — a fine number that
+  // is within the bound but that no one means as USD) says the decimal-shape rule, while the
+  // bounds rejection names the bound, as config-field-checks' DOLLAR_CAP wording does ("a
+  // number of 0 or more, at most …") because a 25-digit run IS such a number. A single
+  // message would mislead: "1e2" is rejected as shape, yet would be told it is not a number
+  // of 0 or more.
+  if (!/^\d*\.?\d+$/.test(t))
+    return fail(`budget must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation${gotSuffix(text)}`);
+  if (!Number.isFinite(n) || n < 0 || n > Number.MAX_SAFE_INTEGER)
     return fail(`budget must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}${gotSuffix(text)}`);
   return { ok: true, value: n };
 }
