@@ -14,6 +14,7 @@
  * the CLI's one error path. */
 import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
+import type { BacklogCommitReport } from "./doctor/doctor-backlog.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -44,10 +45,12 @@ import {
   REPROBE_FLAG,
   PROBLEMS_FLAG,
   KILL_ORPHANS_FLAG,
+  COMMIT_BACKLOG_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli/cli-repo-gate.js";
+import { loadConfigSafe } from "./config/config.js";
 import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
@@ -201,7 +204,7 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG]);
+      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG]);
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
       let orphanKill: OrphanKillReport | undefined;
@@ -211,6 +214,19 @@ async function main(): Promise<void> {
         // The text form prints the kill before the report; --json keeps stdout one document.
         if (!args.includes("--json")) {
           for (const line of orphanKillLines(orphanKill)) say(line);
+          say("");
+        }
+      }
+      let backlogCommit: BacklogCommitReport | undefined;
+      if (args.includes("--commit-backlog")) {
+        const { commitUncommittedBacklog } = await import("./doctor/doctor-backlog.js");
+        const { config } = loadConfigSafe(root); // the report's own config, so base resolution and the off-base skip match the `uncommitted backlog` row's
+        backlogCommit = await commitUncommittedBacklog(root, config);
+        // The text form prints the commits before the report; --json keeps stdout one document.
+        if (!args.includes("--json")) {
+          for (const file of backlogCommit.committed) say(`committed ${file} on ${backlogCommit.base}`);
+          for (const file of backlogCommit.failed) say(`could not commit ${file} — commit it by hand`);
+          if (backlogCommit.skipped) say(backlogCommit.skipped);
           say("");
         }
       }
@@ -229,9 +245,11 @@ async function main(): Promise<void> {
       // hands --json the filtered one; the exit code below reads the full report either way.
       // --kill-orphans adds the kill result to the JSON object as `orphanKill`.
       const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
+      const withBacklogCommit = <T extends object>(payload: T) =>
+        backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
       if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? withKill(problemsOnly(report)) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, args.includes("--json") ? withKill(report) : report, renderDoctor);
+        sayJsonOrRender(args, args.includes("--json") ? withBacklogCommit(problemsOnly(report)) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, args.includes("--json") ? withBacklogCommit(report) : report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

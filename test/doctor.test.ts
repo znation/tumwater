@@ -9,7 +9,7 @@ import type { ProcessProbe } from "../src/process/process-table.js";
 import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
-import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
@@ -588,6 +588,22 @@ test("doctor --kill-orphans reports an unreadable process table, then the report
   assert.ok(!prob.checks.some((c: { level: string }) => c.level === "ok"));
   const plain = JSON.parse((await cliWithEnv(tmpdir(), env, ["doctor", "--json"])).stdout);
   assert.ok(!("orphanKill" in plain));
+});
+
+test("doctor --commit-backlog commits a dirty backlog file before the report; with --json it is the report's backlogCommit field", async () => {
+  const repo = await diskHermeticRepo("cli doctor commit backlog");
+  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit\n");
+  const json = await cli(repo, "doctor", "--commit-backlog", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.deepEqual(doc.backlogCommit.committed, ["PLANS.md"]);
+  assert.equal(doc.checks.find((c: { name: string }) => c.name === "uncommitted backlog").level, "ok");
+  assert.equal(sh(repo, "git", "status", "--porcelain", "--", "PLANS.md"), "");
+  fs.appendFileSync(path.join(repo, "PLANS.md"), "edit2\n");
+  const r = await cli(repo, "doctor", "--commit-backlog");
+  assert.match(r.stdout, /^committed PLANS\.md on main\n/m);
+  assert.ok(r.stdout.indexOf("committed PLANS.md on main") < r.stdout.indexOf("uncommitted backlog"));
+  const plain = JSON.parse((await cli(repo, "doctor", "--json")).stdout);
+  assert.ok(!("backlogCommit" in plain));
 });
 
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {

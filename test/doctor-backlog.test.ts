@@ -5,7 +5,8 @@ import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase, skippedMergeQueueFiles } from "../src/doctor/doctor-backlog.js";
+import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles } from "../src/doctor/doctor-backlog.js";
+import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -14,6 +15,7 @@ import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { mergeQueueDir } from "../src/paths.js";
 import { shortSpanPhrase } from "../src/text/phrases.js";
+import { stampedSubject } from "../src/git/commit-message.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -691,6 +693,88 @@ test("checkUncommittedBacklog counts the brief file", async () => {
   const r = await checkUncommittedBacklog(root, undefined);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /README\.md has uncommitted/);
+});
+
+// commitUncommittedBacklog — the `doctor --commit-backlog` recovery, sharing the dirty-file
+// discovery and branch precedence above.
+
+test("dirtyBacklogFiles lists the modified tracked backlog files with the base branch", async () => {
+  const root = backlogRepo();
+  fs.appendFileSync(path.join(root, "PLANS.md"), "edit\n");
+  const d: DirtyBacklogFiles = await dirtyBacklogFiles(root, undefined);
+  assert.equal(d.base, "main");
+  assert.equal(d.primary, "main");
+  assert.ok(d.watched.includes("PLANS.md"));
+  assert.deepEqual(d.dirty, ["PLANS.md"]);
+});
+
+test("commitUncommittedBacklog commits each dirty backlog file and the check reads ok afterwards", async () => {
+  const root = backlogRepo();
+  fs.appendFileSync(path.join(root, "PLANS.md"), "edit\n");
+  fs.appendFileSync(path.join(root, "QUESTIONS.md"), "edit\n");
+  const r = await commitUncommittedBacklog(root, { baseBranch: "main" } as never);
+  assert.deepEqual(r.committed, ["PLANS.md", "QUESTIONS.md"]);
+  assert.deepEqual(r.failed, []);
+  assert.equal(r.skipped, null);
+  assert.equal(sh(root, "git", "status", "--porcelain", "--", "PLANS.md", "QUESTIONS.md"), "");
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), stampedSubject("operator", "Commit uncommitted QUESTIONS.md"));
+  const check = await checkUncommittedBacklog(root, undefined);
+  assert.equal(check.level, "ok", check.detail);
+});
+
+test("commitUncommittedBacklog skips a primary that is not on the base branch", async () => {
+  const root = backlogRepo();
+  sh(root, "git", "checkout", "-b", "other");
+  fs.appendFileSync(path.join(root, "BUGS.md"), "edit\n");
+  const r = await commitUncommittedBacklog(root, { baseBranch: "main" } as never);
+  assert.deepEqual(r.committed, []);
+  assert.deepEqual(r.failed, []);
+  assert.match(r.skipped as string, /not on/);
+  assert.match(sh(root, "git", "status", "--porcelain", "--", "BUGS.md"), /BUGS\.md/);
+});
+
+test("commitUncommittedBacklog reports a failed commit and keeps going", async () => {
+  const root = backlogRepo();
+  fs.appendFileSync(path.join(root, "PLANS.md"), "edit\n");
+  fs.appendFileSync(path.join(root, "QUESTIONS.md"), "edit\n");
+  fs.writeFileSync(path.join(root, ".git", "index.lock"), "");
+  const r = await commitUncommittedBacklog(root, { baseBranch: "main" } as never);
+  assert.deepEqual(r.committed, []);
+  assert.ok(r.failed.includes("PLANS.md"), JSON.stringify(r.failed));
+  assert.ok(r.failed.includes("QUESTIONS.md"), JSON.stringify(r.failed));
+  assert.match(sh(root, "git", "status", "--porcelain", "--", "PLANS.md"), /PLANS\.md/);
+});
+
+test("an unreadable brief off the base branch neither throws nor commits", async () => {
+  const root = backlogRepo();
+  seedCommit(root, "README.md", "# x\n<!-- tumwater:prompt:start -->\nidea\n<!-- tumwater:prompt:end -->\n", "readme");
+  sh(root, "git", "checkout", "-b", "other");
+  const undo = vanishOnReadFile(path.join(root, "README.md"));
+  try {
+    const c = await checkUncommittedBacklog(root, { baseBranch: "main" } as never);
+    assert.equal(c.level, "ok");
+    const r = await commitUncommittedBacklog(root, { baseBranch: "main" } as never);
+    assert.deepEqual(r.committed, []);
+    assert.deepEqual(r.failed, []);
+    assert.match(r.skipped as string, /not on/);
+  } finally {
+    undo();
+  }
+});
+
+test("an unreadable brief on the base branch is skipped, not fatal", async () => {
+  const root = backlogRepo();
+  seedCommit(root, "README.md", "# x\n<!-- tumwater:prompt:start -->\nidea\n<!-- tumwater:prompt:end -->\n", "readme");
+  const undo = vanishOnReadFile(path.join(root, "README.md"));
+  try {
+    const c = await checkUncommittedBacklog(root, undefined);
+    assert.equal(c.level, "ok", c.detail);
+    const r = await commitUncommittedBacklog(root, undefined);
+    assert.deepEqual(r.committed, []);
+    assert.equal(r.skipped, null);
+  } finally {
+    undo();
+  }
 });
 
 // checkPlanDependencies: cycles, dangling refs and unparsed requires clauses.

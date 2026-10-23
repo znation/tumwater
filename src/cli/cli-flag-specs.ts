@@ -320,6 +320,12 @@ export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };
  * orphans check lists, each with its descendants. Value-less, like PROBLEMS_FLAG. */
 export const KILL_ORPHANS_FLAG: FlagSpec = { names: ["--kill-orphans"] };
 
+/** The `--commit-backlog` flag spec, accepted by `doctor`: first commit each dirty tracked backlog
+ * or brief file on the base branch before the report, under the primary-worktree lock, through the
+ * operator backlog commit path. The second mutating doctor flag, after `--kill-orphans`.
+ * Value-less, like KILL_ORPHANS_FLAG. */
+export const COMMIT_BACKLOG_FLAG: FlagSpec = { names: ["--commit-backlog"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };

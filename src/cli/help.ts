@@ -87,12 +87,15 @@ Usage:
                                    (merge runs and backlog tallies omitted); --until <duration>
                                    ends that window the given duration ago (requires --since);
                                    not combinable with --days
-  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans]
+  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans] [--commit-backlog]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
-                                   (read-only unless --kill-orphans, which first kills the
-                                   orphaned processes the orphans check lists, each with
-                                   its descendants; exit 0/1; --json prints the report object —
+                                   (read-only unless --kill-orphans or --commit-backlog:
+                                   --kill-orphans first kills the orphaned processes the orphans
+                                   check lists, each with its descendants; --commit-backlog first commits each uncommitted tracked
+                                   backlog or brief file (PLANS.md, BUGS.md, QUESTIONS.md, their archives, the
+                                   brief) on the base branch under the primary-worktree lock, so a merge the
+                                   dirty file blocks can proceed; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict; probes image-input models — --reprobe
                                    re-probes every one, bypassing the 7-day cache; --problems prints only the warn

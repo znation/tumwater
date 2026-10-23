@@ -14,6 +14,8 @@ import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbo
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
+import { stampedSubject } from "../git/commit-message.js";
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { briefFile } from "../brief/brief.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
@@ -238,6 +240,45 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
   return `merges in the last 24h waited ${shortSpanPhrase(median)} median, ${shortSpanPhrase(longest)} longest (${plural(waits.length, "merge")})`;
 }
 
+/** The dirty tracked backlog/brief files in the primary checkout, factored out of
+ * checkUncommittedBacklog so the `doctor --commit-backlog` recovery acts on exactly the set the
+ * check warns about. `base` is the target base branch, `primary` the checkout's current branch
+ * (null when it cannot be read), `watched` the tracked backlog/brief files, and `dirty` the
+ * non-untracked names among them (null when the `git status` read fails). */
+export interface DirtyBacklogFiles {
+  base: string;
+  primary: string | null;
+  watched: string[];
+  dirty: string[] | null;
+}
+
+/** Discover the tracked backlog/brief files with uncommitted edits in the primary checkout (the
+ * shared discovery behind checkUncommittedBacklog and commitUncommittedBacklog). A primary off
+ * the base branch is skipped by its callers: the ref-push merge arm leaves its working tree
+ * alone. Untracked files are not edits of a tracked file and are ignored. */
+export async function dirtyBacklogFiles(root: string, config: TumwaterConfig | undefined): Promise<DirtyBacklogFiles> {
+  const primary = await currentBranch(root);
+  const base = targetBranch(config?.baseBranch, primary);
+  // A primary off the base branch is skipped by every caller before it reads `watched`/`dirty`, so
+  // the brief is not touched here either: an unreadable brief must not turn that skip into a throw
+  // (the ref-push merge arm leaves an off-base working tree alone).
+  if (primary === null || primary !== base) return { base, primary, watched: [], dirty: [] };
+  let brief: string | null = null;
+  try {
+    brief = briefFile(root);
+  } catch {
+    // An unreadable brief is a doctor finding of its own; it must not abort the uncommitted-backlog
+    // check or `--commit-backlog`, so the tracked backlog set is watched without it.
+  }
+  const watched = [...new Set([...BACKLOG_FILES, ...(brief ? [brief] : [])])];
+  const out = await gitTry(root, "status", "--porcelain", "--", ...watched);
+  if (out === null) return { base, primary, watched, dirty: null };
+  const dirtySet = new Set(out.split("\n")
+    .filter((line) => line.length > 3 && !line.startsWith("??"))
+    .map((line) => line.slice(3)));
+  return { base, primary, watched, dirty: watched.filter((f) => dirtySet.has(f)) };
+}
+
 /** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout. An
  * operator write is meant to be committed on the base branch by commitOperatorBacklogEdit; when
  * that commit does not happen the edit is invisible to every role worktree (they branch from main)
@@ -245,25 +286,51 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
  * the base branch is skipped: the ref-push merge arm leaves its working tree alone. Untracked files
  * are not edits of a tracked file and are ignored. */
 export async function checkUncommittedBacklog(root: string, config: TumwaterConfig | undefined): Promise<CheckOutcome> {
-  const primary = await currentBranch(root);
-  const base = targetBranch(config?.baseBranch, primary);
+  const { base, primary, watched, dirty } = await dirtyBacklogFiles(root, config);
   if (primary === null || primary !== base) {
     return okOutcome(`your checkout is not on ${base}; backlog writes from you are not committed from it`);
   }
-  const brief = briefFile(root);
-  const files = [...new Set([...BACKLOG_FILES, ...(brief ? [brief] : [])])];
-  const out = await gitTry(root, "status", "--porcelain", "--", ...files);
-  if (out === null) return okOutcome("could not read git status; skipped");
-  const dirty = new Set(out.split("\n")
-    .filter((line) => line.length > 3 && !line.startsWith("??"))
-    .map((line) => line.slice(3)));
-  const named = files.filter((f) => dirty.has(f));
-  if (named.length === 0) {
-    const list = files.slice(0, -1).join(", ");
-    return okOutcome(`${list} and ${files[files.length - 1]} are committed`);
+  if (dirty === null) return okOutcome("could not read git status; skipped");
+  if (dirty.length === 0) {
+    const list = watched.slice(0, -1).join(", ");
+    return okOutcome(`${list} and ${watched[watched.length - 1]} are committed`);
   }
-  const list = named.join(", ");
-  return warnOutcome(`${list} ${named.length > 1 ? "have" : "has"} uncommitted changes in your checkout — ` +
+  const list = dirty.join(", ");
+  return warnOutcome(`${list} ${dirty.length > 1 ? "have" : "has"} uncommitted changes in your checkout — ` +
     `roles branch from main and do not see them, and a merge that touches one cannot fast-forward the checkout ` +
     `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base}`);
+}
+
+/** What `doctor --commit-backlog` did: the base branch it committed on, the files it committed,
+ * the ones whose commit failed (still dirty — already staged, already committed by a concurrent
+ * write, or a git error), and a skip sentence when the primary is off the base branch or the git
+ * status could not be read. */
+export interface BacklogCommitReport {
+  base: string;
+  committed: string[];
+  failed: string[];
+  skipped: string | null;
+}
+
+/** Commit every dirty tracked backlog or brief file in the primary checkout on the base branch,
+ * through the same commitOperatorBacklogEdit core every operator backlog write uses, running
+ * under the primary-worktree lock it takes. The dirtyBacklogFiles discovery and branch precedence
+ * are checkUncommittedBacklog's own, so a `tumwater doctor --commit-backlog` unblocks exactly the
+ * merges the `uncommitted backlog` row warns would be blocked. When the primary is off the base
+ * branch or the status cannot be read it commits nothing and reports a skip sentence; a file whose
+ * commit fails stays dirty and lands in `failed` while the other listed files are still attempted.
+ * Never throws. */
+export async function commitUncommittedBacklog(root: string, config: TumwaterConfig | undefined): Promise<BacklogCommitReport> {
+  const d = await dirtyBacklogFiles(root, config);
+  if (d.primary === null || d.primary !== d.base)
+    return { base: d.base, committed: [], failed: [], skipped: `your checkout is not on ${d.base}; nothing committed` };
+  if (d.dirty === null)
+    return { base: d.base, committed: [], failed: [], skipped: "could not read git status; nothing committed" };
+  const committed: string[] = [];
+  const failed: string[] = [];
+  for (const name of d.dirty) {
+    const ok = await commitOperatorBacklogEdit(root, name, stampedSubject("operator", `Commit uncommitted ${name}`)); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+    (ok ? committed : failed).push(name);
+  }
+  return { base: d.base, committed, failed, skipped: null };
 }
