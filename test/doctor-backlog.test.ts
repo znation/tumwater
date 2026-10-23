@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "../src/doctor/doctor-backlog-plans.js";
+import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
@@ -723,7 +724,7 @@ test("checkPlanDependencies names a cycle first and counts the other kinds", () 
   assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\), 0 misworded dependency\(ies\)\)/);
 });
 
-const WAIT = "**Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**";
+const WAIT = `**Waiting for the next failure ${daysAgoStamp(0)} by bugfix: the message names the pid**`;
 
 test("checkStaleBugs skips a bug held by a Waiting for the next failure note", () => {
   const dir = tmpdir("doctor-stale-bugs-waiting-");
@@ -807,6 +808,45 @@ test("checkWaitingBugs stays ok for a same-day failure and for an unrelated flak
   const unrelated = checkWaitingBugs(recurrenceRoot(2, "✖ some other test entirely"));
   assert.equal(unrelated.level, "ok");
   assert.match(unrelated.detail, /is held until it fails again/);
+});
+
+test("checkWaitingBugs warns when a hold outlives the expiry without a recurrence", () => {
+  // A held bug whose quoted test never fails again must not park indefinitely; after
+  // STALE_WAIT_DAYS (7) with no recurrence the check escalates from ok to a release nudge.
+  const dir = tmpdir("doctor-waiting-expiry-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### Fresh (found by bugfix ${daysAgoStamp(0)})\n\n${WAIT}\n\n` +
+    `### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
+    `**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: the message names the pid**\n`);
+  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ some other test entirely` });
+  const out = checkWaitingBugs(dir);
+  assert.equal(out.level, "warn");
+  // ageInDays parses the stamp as UTC midnight, so the computed age shifts with the time of
+  // day — assert the same formula the check uses, never a hard-coded day count.
+  assert.match(out.detail, new RegExp(`has waited ${ageInDays(daysAgoStamp(8))} d for its next failure without one`));
+  assert.match(out.detail, /tumwater bug --release 2/);
+  // the fresh hold stays ok even in the same tree
+  const freshOnly = tmpdir("doctor-waiting-expiry-fresh-");
+  fs.writeFileSync(path.join(freshOnly, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(0)})\n\n${WAIT}\n`);
+  assert.equal(checkWaitingBugs(freshOnly).level, "ok");
+});
+
+test("checkWaitingBugs warns an undated hold whose filing stamp has lapsed", () => {
+  // A Waiting note without a date has no hold-start marker, and checkStaleBugs skips any bug
+  // carrying a waiting note, so without a fallback such a hold would park indefinitely too;
+  // the filing stamp anchors its age.
+  const dir = tmpdir("doctor-waiting-undated-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(8)})\n\n` +
+    `**Waiting for the next failure by bugfix: the message names the pid**\n`);
+  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ some other test entirely` });
+  assert.equal(checkWaitingBugs(dir).level, "warn");
+  // a fresh undated hold (recently filed) stays ok, since its filing stamp is not lapsed
+  const freshOnly = tmpdir("doctor-waiting-undated-fresh-");
+  fs.writeFileSync(path.join(freshOnly, "BUGS.md"),
+    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(0)})\n\n` +
+    `**Waiting for the next failure by bugfix: the message names the pid**\n`);
+  assert.equal(checkWaitingBugs(freshOnly).level, "ok");
 });
 
 function fixedRoot(fixedHeadings: string[], failures: string[], open = ""): string {

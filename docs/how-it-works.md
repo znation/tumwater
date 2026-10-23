@@ -192,7 +192,9 @@ discards a role's in-flight merge.
   A bugfix run that adds a Progress note to an open bug without writing the note is asked to
   write it in its staging fix-up turn.
   `tumwater doctor` warns when the held bug's quoted test has failed again in a gate or merge
-  check since the day after the note.
+  check since the day after the note, and — because the flake may never come back — also warns
+  when a hold has stood a week without a recurrence, so a bug that stops failing stops parking
+  in the backlog as an innocuous ok.
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has

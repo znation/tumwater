@@ -54,6 +54,14 @@ export const STALE_QUESTION_DAYS = 7;
  * bug filed late one evening and fixed the next day never warns. */
 export const STALE_BUG_DAYS = 3;
 
+/** The whole days a bug may stay held by a Waiting for the next failure note before the
+ * waiting-bugs check warns that its flake has not come back. A note parks a bug until it fails
+ * again, but the failure may never come, so a hold has to lapse or the entry parks indefinitely;
+ * one week without a recurrence is long enough that a recurring flake would almost surely have
+ * shown up, and short enough that a bug which never returns stops squatting in the backlog as
+ * an ok. An opinionated default with no knob, like STALE_BUG_DAYS. */
+export const STALE_WAIT_DAYS = 7;
+
 /** The `(and N more …)` suffix three one-line doctor details append after naming their first
  * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
  * shortened, since a doctor check renders one line. `render` makes each extra item's short

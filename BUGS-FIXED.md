@@ -5,6 +5,13 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### A `Waiting for the next failure` bug hold has no expiry or operator nudge, so entries park indefinitely on an event that may never come (found by operator session 2026-10-23 from the flow audit of `.tumwater/log/events.jsonl` and BUGS.md) — fixed 2026-10-23 by the bugfix role
+
+- **Symptom:** several BUGS.md `## Open` entries (the 10-16 supervisor guard, the 10-19 `logs -f` leak, the 10-23 quarantines) have sat under a `**Waiting for the next failure …**` note for a week or more. `checkWaitingBugs` (src/doctor/doctor-backlog-bugs.ts) only escalates to a warn when the held test fails again since the note's day; a bug whose flake never comes back is reported as the neutral ok "is held until it fails again" forever, so the entry parks indefinitely.
+- **Cause:** a Waiting hold had no expiry: no time distinguished a fresh hold from one that had outlived any reasonable wait, so nothing ever nudged the operator to release or re-verify a bug that stopped recurring.
+- **Fix:** `checkWaitingBugs` now also escalates a hold that has stood `STALE_WAIT_DAYS` (7, an opinionated default with no knob like `STALE_BUG_DAYS`) without a recurrence to a warn naming the days waited and the `tumwater bug --release <n>` command, so a bug whose failure never comes back stops squatting in the backlog as an ok. The recurrence warn still takes precedence (a bug that fails again is the urgent case); a fresh hold keeps the existing ok message.
+- **Validation gap:** no-repro — the indefinite parking was confirmed by inspecting BUGS.md's held entries across weeks, not by a failing test, so the fix carries the only regression test (test/doctor-backlog.test.ts "checkWaitingBugs warns when a hold outlives the expiry without a recurrence").
+
 ### The phase cell reads "due — starts on the next poll" for two runners the poll just declined and will decline again: the multi-instance cap and the yield-scaled gap record no `skipReason` (found by operator session 2026-10-21 from the GUI's Due chip, `rolePhase` in src/ui/status-model.ts and `phaseInfo` in src/ui/gui/gui-client-model.ts) — fixed 2026-10-23 by the bugfix role
 
 - **Symptom:** `rolePhase` renders the plain `due` cell whenever `nextRunAt <= now` and `skipReason` names none of its five values (src/ui/status-model.ts:283-284, the `default:` arm), and `phaseInfo` renders that as "Due — starts on the next poll" (src/ui/gui/gui-client-model.ts:56). Two scheduling-pass declinations land a runner there although the poll has already decided against it and the same cause holds on the next pass, so the cell promises a start that does not come for the length of the episode:

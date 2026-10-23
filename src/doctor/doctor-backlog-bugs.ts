@@ -1,4 +1,4 @@
-import { andMore, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS } from "./doctor-backlog.js";
+import { andMore, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { ageInDays, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
@@ -131,7 +131,7 @@ export function checkWaitingBugs(root: string): CheckOutcome {
     const name = quotedTestName(entry.title);
     const date = waitingNoteDate(note);
     const since = name !== null && date !== null ? dayAfterMs(date) : null;
-    return [{ position: index + 1, title: entry.title, note, name, since }];
+    return [{ position: index + 1, title: entry.title, note, name, since, date }];
   });
   const [first, ...rest] = held;
   if (!first) return okOutcome("no open bug is waiting for its next failure");
@@ -151,6 +151,24 @@ export function checkWaitingBugs(root: string): CheckOutcome {
         `(${formatTimestamp(again.newest.ts)}: ${truncate(again.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
         `record the occurrence under the entry and release it with \`tumwater bug --release ${again.position}\``);
     }
+  }
+  /* A Waiting hold has no expiry of its own, so a bug whose flake never comes back parks
+   * indefinitely; a hold that has outlived STALE_WAIT_DAYS without a recurrence is escalated
+   * from the ok below to a warn so the operator is nudged to release or re-hold it. */
+  const lapsed = held.flatMap((b) => {
+    /* An undated note (no YYYY-MM-DD in its text) has no hold-start marker, and checkStaleBugs
+     * skips any bug carrying a waiting note, so without a fallback it would park indefinitely
+     * too; the filing stamp anchors it — the hold cannot be younger than the bug it dates from. */
+    const anchor = b.date ?? filingDate(b.title);
+    if (anchor === null) return [];
+    const days = ageInDays(anchor);
+    return days >= STALE_WAIT_DAYS ? [{ ...b, days }] : [];
+  });
+  const [firstLapsed, ...restLapsed] = lapsed;
+  if (firstLapsed) {
+    const more = andMore(restLapsed, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
+    return warnOutcome(`BUGS.md bug #${firstLapsed.position} "${truncate(firstLapsed.title, FIX_CLAIM_HEADING_MAX)}" has waited ${firstLapsed.days} d for its next failure without one ` +
+        `— its flake likely never comes back, so it parks indefinitely; release it with \`tumwater bug --release ${firstLapsed.position}\`${more}`);
   }
   const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
   return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
