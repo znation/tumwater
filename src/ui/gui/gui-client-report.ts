@@ -331,6 +331,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         (seriesHasMainRedMs(d) ? block("Main red time", chartMainRedMs(d), "per day · no passing full check") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
         (seriesHasRunMedian(d) ? block("Run duration median", chartRunMedian(d), "per day · run_start to run_end") : "") +
+        (seriesHasReviewMedian(d) ? block("Review duration median", chartReviewMedian(d), "per day · reviewer runs that reached a verdict") : "") +
         (seriesHasProviderWaitMedian(d) ? block("Provider wait median", chartProviderWaitMedian(d), "per day · waits of 30s or more for a provider slot") : "") +
         (seriesHasSlotWaitMedian(d) ? block("Workspace wait median", chartSlotWaitMedian(d), "per day · waits of 30s or more for a workspace") : "") +
         (seriesHasCheckWaitMedian(d) ? block("Check wait median", chartCheckWaitMedian(d), "per day · waits of 30s or more for a check slot") : "") +

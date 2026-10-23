@@ -74,6 +74,7 @@ export function collectReportSince(
     providerWaitsMs: [],
     slotWaitsMs: [],
     checkWaitsMs: [],
+    reviewDurationsMs: [],
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -246,6 +247,9 @@ export function collectReport(root: string, days: number, role?: string | readon
       if (fold.slotWaitsMs.length > 0) day.slotWaitMedianMs = lowerMedian(fold.slotWaitsMs);
       // A check permit is the team's, not a role's, so only the team series carries it.
       if (fold.checkWaitsMs.length > 0) day.checkWaitMedianMs = lowerMedian(fold.checkWaitsMs);
+      // A review belongs to the merge slot/reviewer, not the author role, so only the team
+      // series carries the median, mirroring checkMedianMs.
+      if (fold.reviewDurationsMs.length > 0) day.reviewMedianMs = lowerMedian(fold.reviewDurationsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;

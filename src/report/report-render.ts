@@ -438,6 +438,10 @@ export function renderReportMarkdown(data: ReportData): string {
     if (waits !== undefined) lines.push(waits);
     const runDurations = medianLine(data.series, "Run duration median", (d) => d.runMedianMs);
     if (runDurations !== undefined) lines.push(runDurations);
+    // How long the review gate ran per day — how long the reviewer's verdict run(s) took —
+    // beside the run/merge-wait medians; medianLine omits the line when no day carries one.
+    const reviewDurations = medianLine(data.series, "Review duration median", (d) => d.reviewMedianMs);
+    if (reviewDurations !== undefined) lines.push(reviewDurations);
     const providerWaits = medianLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
     if (providerWaits !== undefined) lines.push(providerWaits);
     const slotWaits = medianLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);

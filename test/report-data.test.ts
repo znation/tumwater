@@ -1277,6 +1277,25 @@ test("collectReport gives each day the lower median of its check_wait waitedMs, 
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("checkWaitMedianMs" in d));
 });
 
+test("collectReport gives each day the lower median of its reviewer-run durations, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    ev(at(0), "review_verdict", { durationMs: 2 * 60_000 }),
+    ev(at(0), "review_verdict", { durationMs: 4 * 60_000 }),
+    ev(at(0), "review_verdict", { durationMs: 6 * 60_000 }),
+    ev(at(0), "review_rejected", { durationMs: 5 * 60_000 }), // a rejection that ran joins the median
+    ev(at(1), "review_rejected", {}), // duration-less rejection: no reviewer actually ran
+    ev(at(1), "review_failed", { durationMs: 60_000 }), // failed review: no verdict, stays out
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.reviewMedianMs, 240_000);
+  assert.ok(!("reviewMedianMs" in data.series[1]!), "a day with only a duration-less rejection and a review_failed has none");
+  assert.ok(!("reviewMedianMs" in data.series[0]!), "a review-free day has none");
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("reviewMedianMs" in d));
+});
+
 test("collectReport and collectReportSince tally run_start per model, zero meaning absent, team scope only", () => {
   const start = (ts: number, model?: string) =>
     JSON.stringify({ ts, loop: "feature", type: "run_start", run: 1, ...(model === undefined ? {} : { model }) }); // retired-name-ok: legacy event field in a fixture

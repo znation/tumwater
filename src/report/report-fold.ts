@@ -74,6 +74,10 @@ export interface UsageFold {
   /** ms of each check_wait event that carries a positive waitedMs (a scoped check's wait for a
    * check permit), unsorted. */
   checkWaitsMs: number[];
+  /** ms of each reviewer run that reached a verdict that day (a `review_verdict` approval or a
+   * `review_rejected` that carried a positive durationMs — the times the review gate actually
+   * ran), unsorted. */
+  reviewDurationsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
    * runs that burned agent time and merged nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
@@ -222,6 +226,18 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // One rejection per event, on the day it happened, per role. Zero-means-absent: a role
     // that never rejected stays absent, like costByRole.
     addTo(target.rejectionsByRole, eventRole(ev), 1);
+    // A rejection that carried a positive durationMs means a reviewer actually ran the gate
+    // and reached a verdict (post-merge rejections do; the build pre-check contributes no
+    // duration), so it joins the review-duration median beside approvals. durationMs: 0 and
+    // a duration-less event contribute nothing.
+    const rejectionMs = finiteNumber(ev.durationMs, 0);
+    if (rejectionMs > 0) target.reviewDurationsMs.push(rejectionMs);
+  } else if (ev.type === "review_verdict") {
+    // An approval that reached a verdict. Every reviewer run that reached a verdict, approval
+    // or rejection, is one entry in the review-duration median; review_failed stays out — it
+    // has no verdict. Mirrors the rejection branch above, on the same-day count.
+    const verdictMs = finiteNumber(ev.durationMs, 0);
+    if (verdictMs > 0) target.reviewDurationsMs.push(verdictMs);
   } else if (ev.type === "revision") {
     // One rework round per event, on the day it happened, per role. Zero-means-absent: a role
     // that never reworked a rejected change stays absent, like rejectionsByRole.
@@ -356,6 +372,9 @@ interface DayFold {
   slotWaitsMs: number[];
   /** ms of each that-day check_wait event that carries positive waitedMs, unsorted. */
   checkWaitsMs: number[];
+  /** ms of each reviewer run that reached a verdict that day (a `review_verdict` approval or
+   * a `review_rejected` that carried a positive durationMs), unsorted. */
+  reviewDurationsMs: number[];
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
@@ -514,6 +533,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       providerWaitsMs: [],
       slotWaitsMs: [],
       checkWaitsMs: [],
+      reviewDurationsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
       imageReroutesByRole: {},

@@ -60,6 +60,10 @@ export interface ReportDay {
   /** Lower median of the day's check-slot waits (a scoped check's wait for a maxConcurrentChecks
    * permit, ms); absent when the day has no check_wait that carried a positive waitedMs. */
   checkWaitMedianMs?: number;
+  /** Lower median of the day's reviewer-run durations (`review_verdict` approvals and
+   * `review_rejected` rejections that carried a positive `durationMs` — how long the review
+   * gate took, ms); team-only like the other per-day medians, absent when the day has none. */
+  reviewMedianMs?: number;
   /** error-class run_end events per role id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
