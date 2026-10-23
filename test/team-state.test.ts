@@ -185,10 +185,13 @@ test("simultaneous cross-process pauseRole calls all survive in the marker", asy
   const children = roles.map((role) => pauseOnceProcess(root, role, startFile));
   fs.writeFileSync(startFile, "go"); // release all eight writers at once
   await Promise.all(children);
+  const expected = [...seeded, ...roles].sort();
+  const actual = [...pausedRoles(root)].sort();
   assert.deepEqual(
-    [...pausedRoles(root)].sort(),
-    [...seeded, ...roles].sort(),
-    "every simultaneous pause survives (order is whichever writer landed first)",
+    actual,
+    expected,
+    `every simultaneous pause survives (order is whichever writer landed first); ` +
+      `missing ${expected.filter((r) => !actual.includes(r)).join(",") || "none"}`,
   );
 });
 

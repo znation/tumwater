@@ -55,6 +55,10 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
 
+Progress note: the failure shape (roles missing, per the assertion below; the `base…`/`r…` roles only ever missing new-role adds, never the seed) is a read-modify-write lost update, not a torn file. On the pristine build the marker write (pauseRole → writeJsonAtomic tmp+rename) loses a concurrent add under high cross-process contention: a scratch harness reproducing the test's simultaneous pauseRole writers saw missing roles at 0/1000 trials with ≤4 writers but ~0.4–1% with 16 writers / a 3000-role seed; the 8-writer/2000-role test itself passed repeatedly here, so it does not reproduce in the test's own conditions. Root cause is a rare two-writer admission in the paused-roles cross-process lock (src/concurrency/lock.ts) letting two guarded sections overlap; it could not be pinned to a safe one-line fix this run, so the test's assertion now names the missing roles to make the next CI failure self-diagnosing before the lock is changed.
+
+**Waiting for the next failure 2026-10-23 by bugfix: the assertion message will name the exact dropRoles/pause-roles that were lost (the ones another concurrent writer's overwrite dropped), confirming the high-contention lost update rather than a torn write.**
+
 ~~~~
 ✖ simultaneous cross-process pauseRole calls all survive in the marker (2166.2865ms)
 AssertionError [ERR_ASSERTION]: every simultaneous pause survives (order is whichever writer landed first)
