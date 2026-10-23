@@ -464,7 +464,8 @@ validation, and atomic write, so you never have to hand-edit the file.
 - `gui --all-interfaces` has no authentication unless you pass `--token <secret>`. Clients send the
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
-  failing check on main, a spent budget, an available update, open questions, a pause), the prompt
+  failing check on main, a spent budget, an available update, open questions, refused entries,
+  a stale bug, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's

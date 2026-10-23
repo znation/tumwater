@@ -672,6 +672,22 @@ test("open questions raise an attention line under the header", async () => {
     assert.equal(ls[1], "? 1 question needs your answer — Q1: which database?");
   });
 });
+test("a stale open bug raises an attention line under the header", async () => {
+  const repo = await makeTuiRepo();
+  // A bug filed 3 days ago, over the doctor's STALE_BUG_DAYS threshold: the stale-bugs alert.
+  const stamp = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+  writeBacklogFile(repo, "BUGS.md", [
+    { heading: "## Open", body: `### Crashes on empty input (found by bugfix ${stamp})\n\nRepro.` },
+    { heading: "## Fixed" },
+  ]);
+  await withTui(repo, async (tui) => {
+    // Any keypress re-renders with a fresh snapshot: the driver's attention line under the
+    // header — the dashboard's alert wording — sits right under the role header.
+    tui.key(undefined, "left");
+    const ls = tui.lines();
+    assert.match(ls[1] ?? "", /1 open bug waited 3\+ days for a fix/);
+  });
+});
 test("queued prompts render numbered above the activity pane and shrink its budget", async () => {
   const repo = await makeTuiRepo();
   // Seed enough events that the recent-activity pane is full at the default budget, so a

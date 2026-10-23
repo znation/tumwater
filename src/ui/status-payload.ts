@@ -1,7 +1,7 @@
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
-import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
-import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries } from "../backlog/backlog-eligibility.js";
-import { finishedTitle, groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
+import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, openBugEntries, filingDate, ageInDays, type BacklogEntry } from "../backlog/backlog.js";
+import { backlogHolds, backlogInProgress, backlogMarks, refusedEntries, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
+import { finishedTitle, groupBlockedSeries, partsLabel, stripEntryStamp } from "../backlog/backlog-structure.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -11,7 +11,8 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts } from "./team-alerts.js";
+import { teamAlerts, type StaleBug } from "./team-alerts.js";
+import { STALE_BUG_DAYS } from "../doctor/doctor-backlog.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -26,6 +27,28 @@ export const DASHBOARD_RECENT_FINISHED = 5;
 /** The newest finished entries (sections are newest first), titles cleaned of their stamp. */
 export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
+}
+
+/** The open bugs the doctor's 3-day rule (src/doctor/doctor-backlog-bugs.ts checkStaleBugs,
+ * STALE_BUG_DAYS) calls stale: an unrefused, non-waiting open bug whose filing stamp is at
+ * least STALE_BUG_DAYS old. This is the always-on feed for the stale-bugs team alert — the
+ * doctor's check is the same rule at the same threshold, so the two cannot drift. An entry
+ * carrying a Refused note or a Waiting-for-the-next-failure note is skipped (the refused and
+ * waiting alerts name those), and so is an undated heading (like the doctor's check). The
+ * returned objects carry the 0-based index (for the drawer address `bugs:<index>`), the
+ * 1-based position (for `bug --cancel <position>`), the stamp-stripped title, and the whole-
+ * day age. Returned oldest-first — most days waited, ties in file order — so a caller naming
+ * the first element names the most-stale bug. */
+export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
+  return openBugEntries(root)
+    .flatMap((entry, index) => {
+      if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
+      const stamp = filingDate(entry.title);
+      if (stamp === null) return [];
+      const days = ageInDays(stamp, now);
+      return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
+    })
+    .sort((a, b) => b.days - a.days || a.index - b.index);
 }
 
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
@@ -339,6 +362,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), staleOpenBugs(root, now)),
   };
 }

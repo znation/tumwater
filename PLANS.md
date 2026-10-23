@@ -223,7 +223,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The dashboard renders the `Backlog lag median` chart only when a day carries the field.
 - The existing per-day lines render unchanged (their tests pass untouched); `npm run test:gate` passes.
 
-
 ### Write guard on Codex, part 3/9: The hook's definition and its two `-c` flags, and `hooks` keys reserved from the passthrough (planned 2026-10-23 by user; requires part 2/9 landed; design in plans/codex-write-guard.md "The flags (part 3)" and findings 1–2; touches src/agent/codex/codex-write-guard.ts src/agent/codex/codex-args.ts src/config/config-validation.ts test/codex-write-guard.test.ts test/codex-args.test.ts test/config-validation.test.ts)
 
 **Goal.** Build the exact `-c` values that install the hook and trust it, without wiring them into runs yet. Make sure an operator's `backends.codex.args` cannot replace either.
@@ -392,23 +391,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Acceptance criteria.**
 - `npm run smoke:codex -- --help` (or the script's dry-run flag) lists the `write guard` step.
 - The docs name codex among the guarded backends and its `apply_patch`-only coverage.
-- `npm run test:gate` passes.
-
-### The stale-bug alert: the dashboard, the TUI and `tumwater status` name each open bug the doctor's 3-day rule warns about (planned 2026-10-23 by the plan role; independent of every eligible plan — it edits only src/ui and test/team-alerts.test.ts, which no waiting entry touches; reuses the doctor's existing `STALE_BUG_DAYS`; touches src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx test/team-alerts.test.ts docs/how-it-works.md)
-
-**Goal.** `tumwater doctor`'s `checkStaleBugs` (src/doctor/doctor-backlog-bugs.ts) warns when an unrefused, non-waiting open bug has waited at least `STALE_BUG_DAYS` (3) days for a fix, but the operator sees it only by running the doctor or opening the dashboard's Health card. The always-on alert surfaces the dashboards already raise for open questions and refused entries (`teamAlerts`, src/ui/team-alerts.ts) say nothing about a stale bug, so a team whose bugfix role is disabled or failing shows no banner while its bugs rot. Add a stale-bug alert built from the same rule and threshold, naming the oldest such bug, its age, and how to retract it.
-
-**Approach.**
-- src/ui/status-payload.ts: export `staleOpenBugs(root: string, now = Date.now())`: over `openBugEntries(root)`, skip an entry whose body carries a `refusalNote` or a `waitingNote` (src/backlog/backlog-eligibility.ts) and one with no `filingDate`; keep `ageInDays(stamp) >= STALE_BUG_DAYS`, each as `{ index, position: index + 1, title: stripEntryStamp(title), days }` (index zero-based for the drawer address, position 1-based for `bug --cancel`). In `statusPayload`, pass it as the new `staleBugs` argument to `teamAlerts` beside `refusedEntries(root)`.
-- src/ui/team-alerts.ts: add an optional sixth parameter `staleBugs: readonly StaleBug[] = []` (defaulted, so existing callers and tests compile unchanged) and one branch after the `refused` one: `key: "stale-bugs"`, amber tone, title `${plural(n, "open bug waited", "open bugs waited")} 3+ days for a fix`, detail naming the first `#<position> "<title>" has waited <days>d for a fix` plus the doctor's `check that the bugfix role is enabled and not failing, or retract it with `tumwater bug --cancel <position>`` clause and `entryListDetail` for the rest, and the `{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }` action the refused alert uses.
-- src/ui/status-render.ts and src/ui/tui/tui.tsx: import `staleOpenBugs` and pass it into their `teamAlerts` calls, so `tumwater status`'s alerts line and the TUI attention line show it too.
-- Import `STALE_BUG_DAYS` from src/doctor/doctor-backlog.ts (ui already imports doctor modules); define no second literal for the threshold.
-- docs/how-it-works.md: add stale bugs to the dashboard-alert sentence ("alerts for whatever needs you") and the matching TUI sentence.
-
-**Acceptance criteria.**
-- A fixture with one open bug stamped 3 days ago yields exactly one `stale-bugs` alert in `teamAlerts`, naming its 1-based position, its age in days and its stamp-stripped title; a bug stamped 2 days ago, one carrying a Refused note and one carrying a Waiting-for-the-next-failure note each yield none (the doctor's skip rules), and an empty `staleBugs` yields no alert.
-- The alert's `Open backlog` action carries `bugs:<zero-based index>` addressing the same entry `bug --list` numbers.
-- `statusPayload`'s `alerts`, the `tumwater status` alerts line and the TUI attention line all carry the alert for the same fixture and none when the backlog has no stale bug.
 - `npm run test:gate` passes.
 
 ### Feedback role, part 1/2: the opt-in `feedback` observer — files one tumwater bug per run as a GitHub issue on znation/tumwater (planned 2026-10-23 by user; independent of every Planned entry; design in plans/feedback-role.md "The decision", "Invariants" and "Shape" → "Part 1"; touches src/roles/role-catalog.ts src/roles/roles.ts src/run/run-prompt.ts src/run/selfcheck-digest.ts src/config/config.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/fakes/fake-gh.ts (new) README.md docs/config.md docs/glossary.md docs/how-it-works.md test/roles.test.ts test/config.test.ts test/prompt-roles.test.ts test/run-prompt.test.ts test/doctor-checks.test.ts)

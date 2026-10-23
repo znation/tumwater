@@ -21,6 +21,20 @@ import { formatTimestamp, humanUntil } from "../text/datetime.js";
 import { joinWithMore } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 
+/** A stale open bug the doctor's 3-day rule warns about (src/doctor/doctor-backlog-bugs.ts
+ * checkStaleBugs, STALE_BUG_DAYS): an unrefused, non-waiting open bug whose filing stamp is at
+ * least 3 days old. Computed in src/ui/status-payload.ts's staleOpenBugs from the same
+ * threshold the doctor's check uses, so the alert and the doctor cannot drift on the rule. Its
+ * 0-based position addresses the drawer (`bugs:<index>`); its 1-based position is the
+ * `bug --list`/`bug --cancel` number; its title is stamp-stripped for prose; days is its whole-
+ * day age. */
+export interface StaleBug {
+  index: number;
+  position: number;
+  title: string;
+  days: number;
+}
+
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -113,8 +127,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, a pause, a stopped team. `now` is passed so a timed pause's
- * countdown agrees with the rest of the frame. */
+ * questions, refused entries, stale bugs, a pause, a stopped team. `now` is passed so a timed
+ * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
   snap: Pick<
     StatusSnapshot,
@@ -139,6 +153,7 @@ export function teamAlerts(
   roles: readonly AlertRole[],
   now: number,
   refused: readonly RefusedEntry[] = [],
+  staleBugs: readonly StaleBug[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -310,6 +325,29 @@ export function teamAlerts(
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+    });
+  }
+  // A stale bug (doctor's STALE_BUG_DAYS rule, src/doctor/doctor-backlog-bugs.ts) sits when no
+  // role fixes it — the bugfix role is disabled or failing — so it asks (amber) the way the
+  // refused alert does, naming the oldest, its age, and the doctor's retract advice. Its
+  // callers pass it oldest-first (status-payload.ts staleOpenBugs sorts most-days-waited first),
+  // so the first element is the most-stale bug and is named with its position and age; the rest
+  // are folded through entryListDetail like the questions and refused alerts, so the wording and
+  // counts cannot drift.
+  if (staleBugs.length) {
+    const first = staleBugs[0]!;
+    const rest = staleBugs.slice(1);
+    out.push({
+      key: "stale-bugs",
+      tone: "amber",
+      title: `${plural(staleBugs.length, "open bug waited", "open bugs waited")} 3+ days for a fix`,
+      detail:
+        `#${first.position} "${first.title}" has waited ${first.days}d for a fix` +
+        (rest.length > 0 ? ` · ${entryListDetail(rest.map((r) => r.title))}` : "") +
+        ` · check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``,
+      // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
+      // `bugs:index` with a 0-based row, matching the drawer address.
+      actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
