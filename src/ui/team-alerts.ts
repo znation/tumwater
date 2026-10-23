@@ -8,7 +8,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status/status-data.js";
-import { stripEntryStamp } from "../backlog/backlog-structure.js";
+import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -195,7 +195,8 @@ function localizeInstants(text: string): string {
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, a stale or oversized flake quarantine, a pause, a stopped team.
+ * review or Needs replan note, a stale or oversized flake quarantine, a plan filed under the
+ * wrong backlog section, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -231,6 +232,7 @@ export function teamAlerts(
   skippedMergeFiles: readonly string[] = [],
   stalledPlans: readonly StalledPlan[] = [],
   quarantined: QuarantinedTests | null = null,
+  strandedPlans: readonly StrandedPlanEntry[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -473,6 +475,30 @@ export function teamAlerts(
       title: titles[planDependency.kind],
       detail: planDependency.message,
       // The fix is editing PLANS.md, and the message names the heading and ref.
+      actions: [],
+    });
+  }
+  // A plan heading filed under the wrong ## section (the doctor's `plans stuck in Planned`
+  // rule, checkStrandedPlans, src/doctor/doctor-backlog-plans.ts, via the shared
+  // strandedPlanEntriesFor) sits invisible to every reader that scans the right section: a
+  // `(planned …)` heading under ## Done never enters a Planned reader, and a done-dated heading
+  // still under ## Planned invites a second implementation. The clean role repairs it only when
+  // it happens to run and the doctor warns only on request, so it asks (amber) the way the
+  // plan-dependency alert does, naming the first stranded heading, its file, its section, and
+  // the section it belongs under; the rest are folded through joinWithMore.
+  if (strandedPlans.length) {
+    const first = strandedPlans[0]!;
+    const rest = strandedPlans.slice(1);
+    const more = rest.length
+      ? ` · ${joinWithMore(rest.map((e) => `"${e.title}" in ${e.file ?? "PLANS.md"} ## ${e.section}`), 3)}`
+      : "";
+    out.push({
+      key: "stranded-plans",
+      tone: "amber",
+      title: `${strandedPlans.length === 1 ? "A plan sits" : "Plans sit"} under the wrong backlog section`,
+      detail:
+        `${first.file ?? "PLANS.md"} has a plan stranded under ## ${first.section}: "${first.title}"${more} — move it under ## ${first.section === "Done" ? "Planned" : "Done"}${first.file === undefined || first.file === "PLANS.md" ? "" : " in PLANS.md"} (the clean role repairs these)`,
+      // The fix is editing a backlog file, and a PLANS-DONE.md entry has no PLANS.md drawer index.
       actions: [],
     });
   }

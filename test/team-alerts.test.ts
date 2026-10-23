@@ -6,6 +6,7 @@ import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 import { planDependencyAlert, quarantineAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -1020,3 +1021,59 @@ test("stalledPlanEntries and the surfaces carry a stalled-plans alert from PLANS
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /plans are stalled in review/);
 });
 
+test("plans filed under the wrong backlog section raise a standing amber alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [
+    { title: "Split me (planned 2026-10-20)", section: "Done" },
+  ]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [
+    ["stranded-plans", "amber", "A plan sits under the wrong backlog section"],
+  ]);
+  assert.ok((one[0]!.detail ?? "").includes("PLANS.md"));
+  assert.ok((one[0]!.detail ?? "").includes("## Done"));
+  assert.ok((one[0]!.detail ?? "").includes("Split me"));
+  assert.ok((one[0]!.detail ?? "").includes("move it under ## Planned"));
+  assert.ok((one[0]!.detail ?? "").includes("clean role"));
+  assert.deepEqual(one[0]!.actions, []);
+  // A two-entry list, the first in PLANS-DONE.md, titles plural and names archive + fix file.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [
+    { title: "Carry on (done 2026-10-01)", section: "Done", file: "PLANS-DONE.md" },
+    { title: "Split me (planned 2026-10-20)", section: "Done" },
+  ]);
+  assert.equal(two[0]!.title, "Plans sit under the wrong backlog section");
+  assert.ok((two[0]!.detail ?? "").includes("PLANS-DONE.md"));
+  assert.ok((two[0]!.detail ?? "").includes("in PLANS.md"));
+  // No stranded plans add no alert; a plan-dependency problem precedes a stranded plan.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, []), []);
+  const both = teamAlerts(base, [], [], now, [], [], [], [], [], { kind: "misworded", message: "m" }, [], [], [], null, [
+    { title: "Split me (planned 2026-10-20)", section: "Done" },
+  ]);
+  assert.deepEqual(both.map((a) => a.key), ["plan-dependencies", "stranded-plans"]);
+});
+
+test("strandedPlanEntriesFor and the surfaces carry a stranded-plans alert from PLANS.md, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Planned" },
+    { heading: "## Done", body: "### Stray plan (planned 2026-10-20)\n\nbody" },
+  ]);
+  assert.equal(strandedPlanEntriesFor(root).some((e) => e.title.includes("Stray plan")), true);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  assert.equal(payload.alerts.find((a) => a.key === "stranded-plans")?.title, "A plan sits under the wrong backlog section");
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /A plan sits under the wrong backlog section/);
+  // A correctly-sectioned PLANS.md (planned under ## Planned) yields none.
+  const clean = makeRepo();
+  writeBacklogFile(clean, "PLANS.md", [
+    { heading: "## Planned", body: "### Pocket plan (planned 2026-10-20)\n\nbody" },
+    { heading: "## Done", body: "### Finished plan (done 2026-10-01)\n" },
+  ]);
+  assert.deepEqual(strandedPlanEntriesFor(clean), []);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "stranded-plans"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /under the wrong backlog section/);
+  // A missing PLANS.md also yields none.
+  const bare = makeRepo();
+  assert.deepEqual(strandedPlanEntriesFor(bare), []);
+  assert.equal((statusPayload(bare, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "stranded-plans"), undefined);
+});
