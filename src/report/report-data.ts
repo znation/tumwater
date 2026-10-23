@@ -191,6 +191,24 @@ export function collectReportSince(
   };
 }
 
+/** A `ReportDay`'s per-day lower-median fields — the seven `…MedianMs` cells in
+ * report-types.ts, each set from one folded ms list. */
+type DayMedianKey =
+  | "checkMedianMs"
+  | "mergeWaitMedianMs"
+  | "runMedianMs"
+  | "providerWaitMedianMs"
+  | "slotWaitMedianMs"
+  | "checkWaitMedianMs"
+  | "reviewMedianMs";
+
+/** Set one per-day median cell only when the day actually has samples (`ms` non-empty), so a
+ * medians-free day keeps its exact pre-feature shape (the field stays absent). The single home
+ * of that guard — the day collector's seven `…MedianMs` cells all followed it inline before. */
+function setLowerMedian(day: ReportDay, key: DayMedianKey, ms: number[]): void {
+  if (ms.length > 0) day[key] = lowerMedian(ms);
+}
+
 /** Aggregate team usage over exactly `days` local calendar days ending today, from the event
  * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
  * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
@@ -235,21 +253,18 @@ export function collectReport(root: string, days: number, role?: string | readon
       if (Object.keys(fold.revertsByRole).length > 0)
         day.revertsByRole = fold.revertsByRole;
       // Checks belong to the merge slot, so only the team series carries the median.
-      if (fold.checkDurationsMs.length > 0) {
-        day.checkMedianMs = lowerMedian(fold.checkDurationsMs);
-      }
+      setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
-      if (fold.mergeWaitsMs.length > 0) day.mergeWaitMedianMs = lowerMedian(fold.mergeWaitsMs);
-      if (fold.runDurationsMs.length > 0) day.runMedianMs = lowerMedian(fold.runDurationsMs);
-      if (fold.providerWaitsMs.length > 0)
-        day.providerWaitMedianMs = lowerMedian(fold.providerWaitsMs);
+      setLowerMedian(day, "mergeWaitMedianMs", fold.mergeWaitsMs);
+      setLowerMedian(day, "runMedianMs", fold.runDurationsMs);
+      setLowerMedian(day, "providerWaitMedianMs", fold.providerWaitsMs);
       // A workspace wait is the pool's, not a role's, so only the team series carries it.
-      if (fold.slotWaitsMs.length > 0) day.slotWaitMedianMs = lowerMedian(fold.slotWaitsMs);
+      setLowerMedian(day, "slotWaitMedianMs", fold.slotWaitsMs);
       // A check permit is the team's, not a role's, so only the team series carries it.
-      if (fold.checkWaitsMs.length > 0) day.checkWaitMedianMs = lowerMedian(fold.checkWaitsMs);
+      setLowerMedian(day, "checkWaitMedianMs", fold.checkWaitsMs);
       // A review belongs to the merge slot/reviewer, not the author role, so only the team
       // series carries the median, mirroring checkMedianMs.
-      if (fold.reviewDurationsMs.length > 0) day.reviewMedianMs = lowerMedian(fold.reviewDurationsMs);
+      setLowerMedian(day, "reviewMedianMs", fold.reviewDurationsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;
