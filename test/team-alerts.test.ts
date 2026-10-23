@@ -1094,8 +1094,7 @@ test("duplicated backlog headings raise one amber alert folded like stranded pla
     { file: "BUGS.md", heading: "Fixed" },
   ]);
   assert.equal(two[0]!.title, "2 duplicated backlog headings");
-  assert.match(two[0]!.detail ?? "", /— and 1 more/);
-  assert.ok((two[0]!.detail ?? "").includes('"## Fixed" in BUGS.md'));
+  assert.match(two[0]!.detail ?? "", /· "## Fixed" in BUGS.md/);
   // An empty list and the default add none.
   assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], []), []);
   assert.deepEqual(teamAlerts(base, [], [], now), []);
