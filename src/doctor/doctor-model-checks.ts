@@ -434,16 +434,21 @@ export async function checkTierModels(
   const resolvedPi = `${pairs.size} declared ${agree(pairs.size, "model", "models")} resolve${readyProviders.size > 0 ? ` and ${agree(readyProviders.size, "provider", "all providers")} ${[...readyProviders].sort().join(", ")} report ready` : ""}`;
   // One routing note per non-pi backend in use, so an opencode-routed model is never labeled
   // as claude's. The opencode note also carries the design §2 caveat that a bare `opencode/…`
-  // id always means the OpenCode CLI, never pi's built-in `opencode` gateway.
+  // id always means the OpenCode CLI, never pi's built-in `opencode` gateway. Every note opens
+  // with the same `<n> <agent>-routed model[s] — ` frame — one phrase in one place (routedNote)
+  // so the branches cannot drift on it; the count prints beside the label, so the number form
+  // needs agree (not plural, which prints the count).
+  const routedNote = (agent: string, n: number, tail: string) =>
+    `${n} ${agent}-routed ${agree(n, "model", "models")} — ${tail}`;
   const routedNotes: string[] = [];
   for (const [agent, models] of routedModels) {
     const n = models.size;
     routedNotes.push(
       agent === "opencode"
-        ? `${n} opencode-routed ${agree(n, "model", "models")} — \`opencode/…\` ids run on the OpenCode CLI, and pi's built-in \`opencode\` provider is not reachable from tumwater`
+        ? routedNote(agent, n, "`opencode/…` ids run on the OpenCode CLI, and pi's built-in `opencode` provider is not reachable from tumwater")
         : agent === "codex"
-          ? `${n} codex-routed ${agree(n, "model", "models")} — resolved by the codex backend, not pi's definitions`
-          : `${n} claude-routed ${agree(n, "model", "models")} — resolved by the claude backend, not pi's definitions`,
+          ? routedNote(agent, n, "resolved by the codex backend, not pi's definitions")
+          : routedNote(agent, n, "resolved by the claude backend, not pi's definitions"),
     );
   }
   const routedText = routedNotes.length > 0 ? routedNotes.join("; ") : "";
