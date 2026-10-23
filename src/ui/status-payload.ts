@@ -13,7 +13,7 @@ import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { teamAlerts, type PlanDependencyProblem, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
+import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
 import { staleWaitingBugRows } from "../doctor/doctor-backlog-bugs.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
@@ -96,6 +96,14 @@ export function planDependencyAlert(root: string): PlanDependencyProblem | null 
  * names the longest-held bug. */
 export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBug[] {
   return staleWaitingBugRows(root, now);
+}
+
+/** The merge-queue files `readMergeQueue` skips as checkout-relative paths — the always-on feed
+ * for the `skipped-merges` team alert (src/ui/team-alerts.ts), sharing the doctor's one list
+ * (doctor-backlog.ts skippedMergeQueueFiles), so the alert and the doctor's `merge-queue files`
+ * row cannot drift on the selection or the named paths. */
+export function skippedMergeFiles(root: string): string[] {
+  return skippedMergeQueueFiles(root);
 }
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -408,6 +416,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root)),
   };
 }

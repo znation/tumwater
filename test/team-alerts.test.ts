@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -775,6 +775,50 @@ test("staleWaitingBugs and the surfaces carry a waiting-bug alert from BUGS.md, 
   const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
   assert.equal(cleanPayload.alerts.find((a) => a.key === "waiting-bugs"), undefined);
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /waiting bug held/);
+});
+
+test("a skipped merge-queue file raises a standing amber alert right after the stale-merge alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], ["000-torn.json"]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["skipped-merges", "amber", "1 merge-queue file is unreadable"]]);
+  assert.match(one[0]!.detail ?? "", /000-torn\.json/);
+  assert.match(one[0]!.detail ?? "", /crashed enqueue's merge ref/);
+  assert.deepEqual(one[0]!.actions, []);
+  // Two paths fold the second through joinWithMore and switch the title to plural.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], ["000-torn.json", "999-foreign.json"]);
+  assert.match(two[0]!.title ?? "", /merge-queue files are unreadable/);
+  assert.match(two[0]!.detail ?? "", /999-foreign\.json/);
+  // An empty argument adds none.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], []), []);
+  // The stale-merge alert precedes the skipped-merge alert when both are present.
+  const both = teamAlerts(base, [], [], now, [], [], [], [], [{ role: "feature", summary: "S", waitedMs: 7 * 3600_000 }], null, [], ["000-torn.json"]);
+  assert.deepEqual(both.map((a) => a.key), ["stale-merges", "skipped-merges"]);
+});
+
+test("skippedMergeFiles and the surfaces carry a skipped-merge alert from the queue, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  fs.mkdirSync(mergeQueueDir(root), { recursive: true });
+  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
+  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
+  assert.deepEqual(skippedMergeFiles(root).map((f) => path.basename(f)).sort(), ["000-torn.json", "999-foreign.json"]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "skipped-merges");
+  assert.equal(alert?.title, "2 merge-queue files are unreadable");
+  assert.match(alert?.detail ?? "", /000-torn\.json/);
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /merge-queue files are unreadable/);
+  // A queue holding only a readable entry (and an absent queue) yield none.
+  const clean = makeRepo();
+  fs.mkdirSync(mergeQueueDir(clean), { recursive: true });
+  enqueueMerge(clean, { role: "feature", summary: "add the parser", enqueuedAt: now, sha: "abc1234", run: 1 });
+  assert.deepEqual(skippedMergeFiles(clean), []);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "skipped-merges"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /merge-queue file/);
+  const empty = makeRepo();
+  assert.deepEqual(skippedMergeFiles(empty), []);
+  assert.doesNotMatch(renderStatus(empty, snapshot(empty, undefined, now)), /merge-queue file/);
 });
 test("root install drift raises one amber install alert naming up to five packages", () => {
   const installs = (rootInstallDrift?: string[]) =>

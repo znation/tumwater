@@ -5,7 +5,7 @@ import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase } from "../src/doctor/doctor-backlog.js";
+import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase, skippedMergeQueueFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -992,4 +992,16 @@ test("unreadableMergeQueueFiles matches readMergeQueue's count", () => {
   const files = unreadableMergeQueueFiles(root);
   assert.equal(files.length, readMergeQueue(root).unreadable);
   for (const f of files) assert.ok(f.endsWith(".json"));
+});
+
+test("skippedMergeQueueFiles names checkout-relative paths for every skipped file and none for an all-readable queue", () => {
+  const root = queueRoot();
+  enqueueMerge(root, advice("improve", "tidy parser"));
+  fs.writeFileSync(path.join(mergeQueueDir(root), "000-torn.json"), '{"role":');
+  fs.writeFileSync(path.join(mergeQueueDir(root), "999-foreign.json"), '{"nope":true}');
+  const names = skippedMergeQueueFiles(root).map((f) => f.replace(/\\/g, "/"));
+  assert.deepEqual(names, [".tumwater/merge-queue/000-torn.json", ".tumwater/merge-queue/999-foreign.json"]);
+  const clean = queueRoot();
+  enqueueMerge(clean, advice("improve", "tidy parser"));
+  assert.deepEqual(skippedMergeQueueFiles(clean), []);
 });

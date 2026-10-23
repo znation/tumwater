@@ -180,7 +180,7 @@ function localizeInstants(text: string): string {
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
- * waiting bug held a week, a pause, a stopped team.
+ * waiting bug held a week, a merge-queue file the reader skips, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -213,6 +213,7 @@ export function teamAlerts(
   staleMerges: readonly StaleMerge[] = [],
   planDependency: PlanDependencyProblem | null = null,
   staleWaitingBugs: readonly StaleWaitingBug[] = [],
+  skippedMergeFiles: readonly string[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -528,6 +529,26 @@ export function teamAlerts(
         (rest.length > 0 ? ` · ${joinWithMore(rest.map((m) => roleLabel(m.role)), 3)}` : "") +
         ` — the merge queue has stopped moving; run \`tumwater queue\` to see it, or drop the entry with \`tumwater queue --cancel <n>\``,
       // The header's `merge queue: N` badge and the Pending view already carry the drill-in.
+      actions: [],
+    });
+  }
+  // A merge-queue file `readMergeQueue` skips (torn, foreign, or vanished mid-listing) is the
+  // always-on twin of the doctor's `merge-queue files` row (doctor-backlog.ts
+  // skippedMergeQueueFiles, feeding this from status-payload.ts's skippedMergeFiles): it sits
+  // in .tumwater/merge-queue/ forever because the drain drops only an unreadable head, so a
+  // skipped file after a healthy entry strands its merge until someone removes it. The stale-
+  // merges alert above reads only readable entries, so it can never cover one. The doctor's row
+  // and this alert share the one relative-path list, so they name the same files; the count and
+  // the first skipped file are shown, the rest folded through joinWithMore.
+  if (skippedMergeFiles.length) {
+    const [first, ...rest] = skippedMergeFiles;
+    out.push({
+      key: "skipped-merges",
+      tone: "amber",
+      title: `${plural(skippedMergeFiles.length, "merge-queue file is", "merge-queue files are")} unreadable`,
+      detail:
+        `the queue reader skips ${first} — a torn or foreign file never clears itself, so its merge is stranded; remove it (a crashed enqueue's merge ref still recovers on the next run)` +
+        (rest.length > 0 ? ` · ${joinWithMore(rest, 3)}` : ""),
       actions: [],
     });
   }

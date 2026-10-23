@@ -157,6 +157,14 @@ export function staleQueuedMergeRows(root: string, now: number): Array<{ role: s
     .map((e) => ({ role: e.role, summary: e.summary, waitedMs: now - e.enqueuedAt }));
 }
 
+/** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing — as
+ * checkout-relative paths. One traversal shared by the doctor's `checkMergeQueueFiles` row and
+ * the always-on `skipped-merges` team alert (src/ui/status-payload.ts skippedMergeFiles), so
+ * the two surfaces select the same files and name the same paths and cannot drift. */
+export function skippedMergeQueueFiles(root: string): string[] {
+  return unreadableMergeQueueFiles(root).map((f) => path.relative(root, f));
+}
+
 /** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing —
  * named so a stranded queue entry is a health signal instead of only a number on `tumwater
  * queue`'s output. It exists because `tumwater queue` counts the skips but does not name them,
@@ -166,11 +174,11 @@ export function staleQueuedMergeRows(root: string, now: number): Array<{ role: s
  * fail, like the module's other document checks: a foreign file is operator signal, not a
  * broken environment. */
 export function checkMergeQueueFiles(root: string): CheckOutcome {
-  const files = unreadableMergeQueueFiles(root);
+  const files = skippedMergeQueueFiles(root);
   if (files.length === 0) return okOutcome("the queue reader skips no merge-queue file");
   const [first, ...rest] = files;
-  const more = andMore(rest, (f) => path.relative(root, f), "file(s)");
-  return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${path.relative(root, first!)}${more}; ` +
+  const more = andMore(rest, (f) => f, "file(s)");
+  return warnOutcome(`the merge queue holds ${plural(files.length, "file")} the reader skips — ${first!}${more}; ` +
     `a torn or foreign file is never cleared, so nothing ages it or surfaces its merge — remove it (a crashed enqueue's merge ref still recovers on the next run)`);
 }
 
