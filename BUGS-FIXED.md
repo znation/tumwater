@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `three T-long reviews run at once at cap 4, so all three merge in about T, not 3T` failed, then passed on the same tree (quarantined by tumwater 2026-10-23) — fixed 2026-10-23 by the bugfix role
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+three T-long reviews run at once at cap 4, so all three merge in about T, not 3T
+~~~~
+
+**Progress 2026-10-23 by bugfix: not reproduced in ~25 runs — alone, under four-way and merge-heavy parallel load, and one full 7090-test suite run (all green). The test's three failure assertions already name their cause: `one review per change`, `all three reviews overlapped (in flight at each start: <samples>)`, and the span check `review to last merge took <X> ms, no less than the reviews' <Y> ms sum`. Two candidate paths, both driven by full-suite load: (a) a review's 15 s shell-loop wait (300 × 0.05 s) for three in-flight run files times out, so that review's sample counts < 3 and overlap is reported missed; (b) the span bound's floor (the measured review_verdict durationMs sum) excludes the three serialized git merges, so a loaded host's merge time pushes `lastMerged - firstStart` past that floor even when the reviews did overlap. The samples mechanism already forces overlap deterministically for staggered starts, so (a) needs a >15 s start gap and (b) needs > ~4 s of merge time — both plausible only under the full suite's contention.**
+
+**Progress 2026-10-23 (bugfix): the next failure arrived — main red at 6363e2be fired the span check (`review to last merge took 9397 ms, no less than the reviews' 8545 ms sum`) with the in-flight samples all 3, confirming candidate (b): the serial floor summed only each `review_verdict`'s durationMs, omitting the git merge tail that the measured span (`firstStart` → `lastMerged`) includes, so a loaded host's merge plumbing pushed the span past the floor even while the reviews overlapped. Fixed in test/merge-drain-verify.test.ts by making the floor each change's whole [review start → merge outcome] interval — `merge_done`'s durationMs is written as `Date.now() - v.startedAt` from the merge's start in `startMerge` — so span and floor stretch together with merge time; the bound now holds whenever the reviews overlapped (which the in-flight samples assertion already pins), and a schedule that serialized its reviews fails the strict bound instead of slipping past on load.**
+
+**Validation gap:** no-repro — the failure only fires under the full suite's merge-time load and could not be reproduced on demand (12 concurrent runs under CPU+git churn here, plus the ~25 earlier documented attempts); the corrected floor is guaranteed to hold whenever the reviews overlap, which the in-flight samples assertion verifies.
+
 ### `tumwater config get/unset maxConcurrentPerProvider.<provider>` reject the provider as an "unknown role", while `config set` on the same key writes it (found by the qa role 2026-10-23) — fixed 2026-10-23 by the bugfix role
 
 - **Symptom:** `maxConcurrentPerProvider` is a map keyed by provider, but `config get` and `config unset` on a dotted entry validate the entry name against the role catalog, so a provider name that is not a role id is rejected as an "unknown role". `config set` on the same key accepts the provider and writes it, so set and get/unset disagree about the key.

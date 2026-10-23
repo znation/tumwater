@@ -207,8 +207,12 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
   // can still happen not to, and the overlap a working pipeline allows is made certain rather than
   // left to a long hold — and then holds T. As in merger.test.ts's timing tests, the span is read
   // off the harness's own timeline — first review_start to last `merged` — and held against the
-  // reviews' own summed durations (the floor of any one-after-another schedule), so a loaded host's
-  // git plumbing cannot swamp the bound.
+  // floor of any one-after-another schedule: each change's whole [review start → merge outcome]
+  // interval summed. merge_done's durationMs spans exactly that (written as `Date.now() -
+  // v.startedAt` from the merge's start in startMerge), so the span (which already includes the
+  // git merges) and the floor stretch together with merge load — only the reviews missing their
+  // overlap can breach it, and the in-flight samples assertion below already pins that they
+  // overlapped.
   const T = 2;
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
@@ -236,11 +240,11 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
       const firstStart = Math.min(...events.filter((e) => e.type === "review_start").map((e) => e.ts));
       const lastMerged = Math.max(...events.filter((e) => e.type === "merged").map((e) => e.ts));
       const serialFloorMs = events
-        .filter((e) => e.type === "review_verdict")
+        .filter((e) => e.type === "merge_done")
         .reduce((sum, e) => sum + Number(e.durationMs), 0);
       assert.ok(
         lastMerged - firstStart < serialFloorMs,
-        `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
+        `review to last merge took ${lastMerged - firstStart} ms, no less than the changes' ${serialFloorMs} ms sum — they ran one after another`,
       );
       assert.equal(events.filter((e) => e.type === "merge_done").length, 3, "each change's outcome written once");
       assert.equal(readMergeMarker(root), null, "the marker is gone once nothing is in flight");
