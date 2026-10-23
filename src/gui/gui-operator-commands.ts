@@ -1,8 +1,9 @@
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
- * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, and brief-edit — every POST
- * handler that is not prompt/backlog/config/team. Each handler adapts HTTP onto the domain work
+ * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit, and
+ * queue-cancel — every POST handler that is not prompt/backlog/config/team. Each handler
+ * adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
  */
@@ -15,6 +16,11 @@ import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
+import { cancelQueuedMergeBySha, type CancelQueuedByShaOutcome } from "../merge/merge-cancel.js";
+import { readMergeQueue } from "../merge/merge-queue.js";
+import { mergeChanges } from "../merge/merge-slot.js";
+import { queueInFlight } from "../status/status-polls.js";
+import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { shortSha } from "../text/format.js";
 import { editBriefText } from "../brief/brief-edit.js";
 import { requireStringField, validRoleIds } from "./gui-args.js";
@@ -180,6 +186,37 @@ export async function handleRevert(req: http.IncomingMessage, res: http.ServerRe
     beforeSha: result.beforeSha,
     subject: result.subject,
     message: `main is now ${shortSha(result.headSha)}${followUp === null ? "" : ` — ${followUp}`}`,
+  });
+}
+/** Handle POST /api/queue-cancel: the Merge queue card row's two-click Cancel — the browser
+ * twin of `tumwater queue --cancel <n>`, resolving by pinned sha (the same removal
+ * `cancelQueuedMergeBySha` the CLI's position variant shares). A `sha` that is not 4-64 hex
+ * digits is a 400 and runs nothing. A sha a live merge marker names mid-merge is a 409 with the
+ * wait-then-revert wording and changes nothing; a sha no longer queued (a concurrent drain
+ * raced the click) is a 200 `{ status: "gone" }` data, not an error. Otherwise it answers the
+ * cancelled entry's role/commit/summary and removes the queue file and pin. */
+export async function handleQueueCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
+  if (!body) return;
+  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
+    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
+  const view = readMergeQueue(root);
+  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
+  if (inFlight) {
+    const markers = new Set(mergeChanges(inFlight).map((c) => c.sha.toLowerCase()));
+    if ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === body.sha.toLowerCase()) || markers.has(body.sha.toLowerCase()))
+      return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
+  }
+  const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, body.sha);
+  if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
+  if (outcome.status !== "cancelled") return;
+  sendJson(res, 200, {
+    ok: true,
+    status: "cancelled",
+    role: outcome.role,
+    commit: outcome.sha,
+    summary: outcome.summary,
+    message: `cancelled the merge of ${shortSha(outcome.sha)} — ${outcome.summary}`,
   });
 }
 /** Handle POST /api/brief: replace the brief text through editBriefText — the same

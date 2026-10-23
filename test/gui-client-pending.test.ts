@@ -364,3 +364,41 @@ test("pendingOverlapsHtml's Folder picker keeps only the files at or under the c
     assert.doesNotMatch(pendingOverlapsHtml(v), /pendingoverlapdir/);
   }
 });
+
+test("pendingQueueHtml gives each Merge queue row a cancel button, armed only on the matching row", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string, cancelArmedSha?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", run: 1, summary: "a", enqueuedAt: now },
+    { role: "bugfix", sha: "0123456789abcdef", run: 2, summary: "b", enqueuedAt: now },
+  ] };
+  // No fifth argument: every row carries a Cancel button, none armed.
+  const plain = pendingQueueHtml(q, now);
+  assert.equal(plain.split("data-cancel='abcdef1234567890'>Cancel</").length - 1, 1);
+  assert.equal(plain.split("data-cancel='0123456789abcdef'>Cancel</").length - 1, 1);
+  assert.doesNotMatch(plain, /Confirm cancel/);
+  // Armed on one sha: exactly that row reads Confirm cancel, the rest stay Cancel.
+  const armed = pendingQueueHtml(q, now, [], "", "0123456789abcdef");
+  assert.equal(armed.split("data-cancel='0123456789abcdef'>Confirm cancel</").length - 1, 1);
+  assert.equal(armed.split("data-cancel='abcdef1234567890'>Cancel</").length - 1, 1);
+  assert.doesNotMatch(armed, /data-cancel='abcdef1234567890'>Confirm cancel/);
+  assert.equal(armed, pendingQueueHtml(q, now, [], "", "0123456789abcdef"), "the armed call is stable");
+});
+
+test("queue buttons carry no data-cancel in the drawer, and a malformed row renders no undefined", () => {
+  const { pendingQueueHtml, drawerQueueHtml } = clientScope<{
+    pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string, cancelArmedSha?: string): string;
+    drawerQueueHtml(q: unknown, role: string, now: number, labels?: unknown): string;
+  }>(["format", "labels", "pending-table"], ["pendingQueueHtml", "drawerQueueHtml"]);
+  const now = 1_000_000_000_000;
+  const q = { depth: 1, entries: [{ role: "feature", sha: "abcdef12", run: 1, summary: "a", enqueuedAt: now }] };
+  // The drawer's queue section renders no cancel button at all.
+  assert.doesNotMatch(drawerQueueHtml(q, "feature", now), /data-cancel|Cancel/);
+  // A malformed entry (no sha) renders no button and no undefined.
+  const bad = pendingQueueHtml({ depth: 1, entries: [{ role: "qa", run: 1, summary: "s", enqueuedAt: now }] }, now, [], "", "anything");
+  assert.doesNotMatch(bad, /data-cancel|undefined|NaN/);
+  assert.match(bad, /qa/);
+});

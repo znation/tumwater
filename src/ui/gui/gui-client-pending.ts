@@ -15,6 +15,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlapRole = "";
   let pendingOverlapDir = "";
   let pendingQueueRole = "";
+  let pendingCancelSha = "";
+  // The Merge queue card's per-row cancel, armed by a first click and fired by a second within
+  // 5 s — the same confirmSlot two-click factory the drawer's note-clear/entry-cancel use, so a
+  // stray click cannot remove an entry. Repaints the card (an armed row reads Confirm cancel).
+  const queueCancelSlot = confirmSlot(() => renderPendingQueue(lastStatus));
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -58,15 +63,22 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // One queued merge's line: the 1-based whole-queue position, role, run, short sha, age, an
   // optional merge label, and summary. Shared by the Merge queue card and the role drawer so
   // the two cannot drift; a malformed entry renders stand-ins rather than undefined/NaN.
-  function queueEntryLineHtml(e, position, now, label) {
+  function queueEntryLineHtml(e, position, now, label, cancel) {
     const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
     const run = Number.isFinite(e.run) ? e.run : "?";
     const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
-    return "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
+    const line = "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
       " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
       " ago" + (label && typeof label === "string" ? " · [" + esc(label) + "]" : "") +
       note +
       " · " + esc(e.summary || "—") + "</div>";
+    // A two-click cancel: armed by the first click, fired by the second within 5 s (the
+    // confirmSlot guard), so a stray click cannot remove an entry. A malformed entry carries
+    // no sha, so it renders no button.
+    if (cancel && typeof cancel.sha === "string") {
+      return line + "<button type='button' class='btn btn-sm' data-cancel='" + esc(cancel.sha) + "'>" + (cancel.armed ? "Confirm cancel" : "Cancel") + "</button>";
+    }
+    return line;
   }
   // The role drawer's Merge queue section: only this role's waiting merges, each under its
   // whole-queue position (labels run parallel to the whole queue). "" when it has none.
@@ -91,7 +103,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // than undefined/NaN. Null/absent/zero-depth reads as empty. Its Role picker keeps only the
   // chosen role's waiting merges, each under its position in the whole queue (the
   // tumwater queue --role twin); "All roles" (the default) shows every line.
-  function pendingQueueHtml(mergeQueue, now, labels, role = "") {
+  function pendingQueueHtml(mergeQueue, now, labels, role = "", cancelArmedSha = "") {
     const depth = mergeQueue && Number.isFinite(mergeQueue.depth) ? mergeQueue.depth : 0;
     const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
     const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
@@ -108,7 +120,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
           roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
       }
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => ({ e, i })).filter(({ e }) => !active || (e && e.role === active)).map(({ e, i }) =>
-        queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined)).join("") + "</div>";
+        queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined, { sha: e && e.sha, armed: e && e.sha === cancelArmedSha })).join("") + "</div>";
     }
     return head + body;
   }
@@ -189,7 +201,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const entries = status && status.mergeQueue && Array.isArray(status.mergeQueue.entries) ? status.mergeQueue.entries : [];
     const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
     if (!roles.has(pendingQueueRole)) pendingQueueRole = "";
-    card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels, pendingQueueRole);
+    card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels, pendingQueueRole, queueCancelSlot.armed(pendingCancelSha) ? pendingCancelSha : "");
   }
   function paintPendingOverlaps() {
     const card = $("pendingoverlaps");
@@ -230,6 +242,24 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       "<div class='card' id='pendingoverlaps'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
+    // A Merge queue row's Cancel: the first click on an unarmed sha arms it (repainting the
+    // button as Confirm cancel), a second on the armed sha within 5 s posts /api/queue-cancel
+    // then clears the arm and refetches so the removed row disappears at once.
+    $("pendingqueue").addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-cancel]");
+      if (!b) return;
+      const sha = b.getAttribute("data-cancel");
+      if (!sha) return;
+      if (queueCancelSlot.armed(sha)) {
+        await postAction("/api/queue-cancel", { sha }, (d) => d && d.status === "cancelled" ? "cancelled the merge of " + shortSha(d.commit) : "that merge already left the queue");
+        pendingCancelSha = "";
+        queueCancelSlot.disarm();
+        fetchPending();
+      } else {
+        pendingCancelSha = sha;
+        queueCancelSlot.arm(sha);
+      }
+    });
     $("pendingqueue").addEventListener("change", (e) => {
       if (e.target.id === "pendingqueuerole") {
         pendingQueueRole = e.target.value;

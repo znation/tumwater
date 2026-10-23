@@ -70,6 +70,7 @@ import {
   handleRoleNotes,
   handleRetire,
   handleRevert,
+  handleQueueCancel,
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
@@ -267,6 +268,7 @@ export function startGui(
     "POST /api/role-notes": (req, res) => handleRoleNotes(req, res, root),
     "POST /api/retire": (req, res) => handleRetire(req, res, root),
     "POST /api/revert": (req, res) => handleRevert(req, res, root),
+    "POST /api/queue-cancel": (req, res) => handleQueueCancel(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
     "POST /api/stop-schedule": (req, res) => handleStopSchedule(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),

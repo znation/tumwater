@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cancelQueuedMerge } from "../src/merge/merge-cancel.js";
+import { cancelQueuedMerge, cancelQueuedMergeBySha } from "../src/merge/merge-cancel.js";
 import { enqueueMerge, queuedMergeFiles, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
@@ -79,13 +79,42 @@ test("an out-of-range position returns out-of-range with the readable depth and 
   assert.deepEqual(await cancelQueuedMerge(empty, 1), { status: "out-of-range", depth: 0 });
 });
 
-test("cancelling logs one merge_cancelled event naming the role, commit and summary", async () => {
+test("cancelQueuedMergeBySha removes only that file, keeps the others, deletes that role's pin, and logs one event", async () => {
   const root = await threeQueued();
-  const sha = queuedMerges(root)[1]!.sha;
-  await cancelQueuedMerge(root, 2);
+  const targetSha = queuedMerges(root)[1]!.sha;
+
+  const outcome = await cancelQueuedMergeBySha(root, targetSha);
+  assert.deepEqual(outcome, { status: "cancelled", role: "organize", sha: targetSha, summary: "add organize" });
+
+  const remaining = queuedMerges(root).map((e) => e.role);
+  assert.deepEqual(remaining, ["improve", "feature"], "positions 1 and 3 keep their order");
+  assert.equal(await refSha(root, mergeRefName("organize")), null, "the cancelled role's pin is deleted");
+  assert.ok(await refSha(root, mergeRefName("improve")), "improve's pin survives");
+  assert.ok(await refSha(root, mergeRefName("feature")), "feature's pin survives");
   const cancelled = eventsOfType(root, "merge_cancelled");
   assert.equal(cancelled.length, 1);
   assert.equal(cancelled[0]!.source, "organize");
-  assert.equal(cancelled[0]!.commit, sha);
-  assert.equal(cancelled[0]!.summary, "add organize");
+  assert.equal(cancelled[0]!.commit, targetSha);
+});
+
+test("cancelQueuedMergeBySha leaves a pin naming a different sha alone", async () => {
+  const root = await threeQueued();
+  const entries = queuedMerges(root);
+  const role = entries[1]!.role;
+  const newer = entries[0]!.sha;
+  assert.ok(await setRef(root, mergeRefName(role), newer));
+
+  await cancelQueuedMergeBySha(root, entries[1]!.sha);
+  assert.equal(await refSha(root, mergeRefName(role)), newer, "the newer pin is left alone");
+  assert.equal(queuedMerges(root).length, 2, "the entry file still drops");
+});
+
+test("cancelQueuedMergeBySha with an unknown sha returns gone and removes nothing", async () => {
+  const root = await threeQueued();
+  const before = queuedMergeFiles(root).length;
+  const outcome = await cancelQueuedMergeBySha(root, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+  assert.deepEqual(outcome, { status: "gone" });
+  assert.equal(queuedMergeFiles(root).length, before, "nothing is removed");
+  for (const role of ["improve", "organize", "feature"]) assert.ok(await refSha(root, mergeRefName(role)), `${role}'s pin survives`);
+  assert.equal(eventsOfType(root, "merge_cancelled").length, 0, "no event is logged");
 });

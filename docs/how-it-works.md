@@ -561,6 +561,11 @@ validation, and atomic write, so you never have to hand-edit the file.
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
   label (`[merging 2m · reviewing]`, `[approved, waiting to merge]`) on an entry a running team
   is merging.
+  Each Merge queue row carries a two-click Cancel (the first click arms it, a second within 5 s
+  posts) through `POST /api/queue-cancel`, the browser twin of `tumwater queue --cancel <n>` —
+  the same removal, so the browser, the CLI, and the TUI cannot drift on what cancelling means.
+  A row the running team is mid-merge is refused with the wait-then-revert wording (wait for it
+  to land, then `tumwater revert <sha>`), and a sha that raced a drain reports gone rather than an error.
   Below the roster it lists the files two or more roles' pending changes touch, through the same
   `collectChangeOverlaps`/`renderChangeOverlaps` pair `tumwater diff --overlaps` prints.
   Ctrl+N steps through those files, showing each holding role's change limited to the file (the
