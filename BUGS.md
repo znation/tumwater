@@ -51,23 +51,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Considered and excluded:** the maintenance allowance's admission (src/orchestrator/orchestrator-scheduling.ts:453) also calls `noteSkip(..., undefined)`, but its headroom is recomputed from in-flight roles every pass (`maintenanceQuotaOverLine` at :259-262 owns the "used has reached the allowance" case, which already reads `waiting: maintenance allowance used …` through `maintenanceQuotaHold`), so a role declined only by the one-poll reservation is normally admitted on the next pass and the label's promise holds there. Left alone rather than adding a third state for a promise that keeps itself.
 - **Out of scope, deliberately:** the 2 s poll and the start latency it costs stay as they are — this entry makes the label tell the truth, it does not add a wake mechanism. The multiplier/clock split stays too, since `yieldMultiplierSuffix`'s own comment already declares a `now`-due cell at ×N to be "a role waiting out its gap, not a broken clock"; only the phase cell contradicts it.
 
-### dedupe's and selfcheck's runner state is saved under their retired ids and reloaded from frozen 10-16 copies on every start: the role-id migration renamed the files but left `role` inside (found by operator session 2026-10-23 from the GUI's "dry" and "telemetry" rows)
-
-- **Symptom:** `.tumwater/state/dedupe.json` holds `"role": "dry"` (1023 runs, last run 10-17 03:24Z) and `selfcheck.json` holds `"role": "telemetry"` (140 runs, last run 10-17 04:52Z). Neither has changed since 10-16 20:25 and 21:52. Meanwhile the live runners write `dry.json` (1035 runs, last 10-21 15:16) and `telemetry.json` (142 runs, last 10-22 23:48).
-  - Every start reloads the frozen copies. The runners lose `lastReview` (the reasons fed to the next run), cost totals, backoff and error streaks.
-  - The reloaded `nextRunAt` is from 10-17, so the role is due at once: selfcheck ran 3 min after the 10-22 21:42 restart despite its 2 h interval.
-  - `status --json` and the dashboards show rows named "dry" and "telemetry" carrying the 10-16 data. dedupe was breaker-paused from 10-21 15:16 to 10-23 00:22, but its row read "deferred (backlog open)" and no alert named it.
-- **Reproduce:** deterministic, no model. Write `state/dedupe.json` with `{"role":"dry"}`. Then `loadRunnerState(root, "dedupe").role` is `"dry"`, and `saveRunnerState` on that state writes `state/dry.json`.
-- **Cause:**
-  - `migrateLegacyRoleIds` (src/roles/legacy-role-migration.ts) renames `state/<old>.json` to `state/<new>.json` without rewriting the `role` field.
-  - `loadRunnerState` (src/runner/runner-state-load.ts) spreads the saved object over `freshRunnerState(role)`, so the saved `role` wins. `saveRunnerState` (src/runner/runner-state.ts) then writes `statePath(root, state.role)`, the old file name.
-  - On later starts the migration finds both files and keeps both ("both exist"), so the split persists.
-- **Expected / fix sketch:**
-  - `loadRunnerState` sets the loaded state's `role` to the id it was asked for: the file name is the identity.
-  - The migration rewrites `role` when it moves a state file.
-  - A one-time heal: when both `<old>.json` and `<new>.json` exist, keep the one with the newer `lastRunEndedAt` under the new name. On this instance that means `dry.json` → `dedupe.json` and `telemetry.json` → `selfcheck.json`.
-  - Test: a loaded legacy-shaped state saves under the requested id, and the dashboards then show `dedupe`/`selfcheck` rows.
-
 ### organize added its plan as a `## ` heading in PLANS.md, outside `## Planned`, and the structure check then rejects the correction as dropping that section (found by operator session 2026-10-23 from PLANS.md and two organize rejections)
 
 - **Symptom:** a975135a8 (10-22 19:24, md-only, so exempt from review) added "## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)" as a second-level heading after the Planned entries and before `## Done`. No section reader treats it as a Planned entry. Two later organize changes were then rejected: `PLANS.md drops the "## Split validateConfig's …" section the base had — entries filed under it would be invisible to every section reader; restore "## Split …"`. The misplaced heading is now locked in.

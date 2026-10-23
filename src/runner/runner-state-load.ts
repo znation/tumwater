@@ -92,6 +92,13 @@ export function loadRunnerState(root: string, role: string): RunnerState {
   const saved = readJsonFile<Partial<RunnerState>>(statePath(root, role));
   if (saved !== undefined && saved !== null && isJsonObject(saved)) migrateLegacyStateKeys(saved);
   const s: RunnerState = { ...freshRunnerState(role), ...(saved ?? {}) };
+  // The file name is the identity: a state file written by an older build (or moved by
+  // migrateLegacyRoleIds) can carry a stale `role` inside, and saveRunnerState writes
+  // statePath(root, state.role) — so letting the saved value win would save the file back
+  // under a retired id and leak a frozen copy for every later start to reload. Force the
+  // role the caller asked for, whatever the file says. (Retired-name-ok: legacy role id read
+  // from an old state file.)
+  s.role = role;
   s.runs = healNumber(s.runs, 0);
   s.commits = healNumber(s.commits, 0);
   s.nextRunAt = healNumber(s.nextRunAt, 0);

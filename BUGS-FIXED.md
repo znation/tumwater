@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### dedupe's and selfcheck's runner state is saved under their retired ids and reloaded from frozen 10-16 copies on every start: the role-id migration renamed the files but left `role` inside (found by operator session 2026-10-23 from the GUI's "dry" and "telemetry" rows) — fixed 2026-10-23 by the bugfix role
+
+**Validation gap:** none — the whole chain was reproducible offline (write `state/dedupe.json` with `{"role":"dry"}`, or lay down both files); the existing suite simply had no such file. The load-force, the migration role rewrite, and the both-exist heal each have a regression test.
+
+- **Symptom:** `.tumwater/state/dedupe.json` holds `"role": "dry"` (1023 runs, last run 10-17 03:24Z) and `selfcheck.json` holds `"role": "telemetry"` (140 runs, last run 10-17 04:52Z). Neither has changed since 10-16 20:25 and 21:52. Meanwhile the live runners write `dry.json` (1035 runs, last 10-21 15:16) and `telemetry.json` (142 runs, last 10-22 23:48).
+  - Every start reloads the frozen copies. The runners lose `lastReview` (the reasons fed to the next run), cost totals, backoff and error streaks.
+  - The reloaded `nextRunAt` is from 10-17, so the role is due at once: selfcheck ran 3 min after the 10-22 21:42 restart despite its 2 h interval.
+  - `status --json` and the dashboards show rows named "dry" and "telemetry" carrying the 10-16 data. dedupe was breaker-paused from 10-21 15:16 to 10-23 00:22, but its row read "deferred (backlog open)" and no alert named it.
+- **Reproduce:** deterministic, no model. Write `state/dedupe.json` with `{"role":"dry"}`. Then `loadRunnerState(root, "dedupe").role` is `"dry"`, and `saveRunnerState` on that state writes `state/dry.json`.
+- **Cause:**
+  - `migrateLegacyRoleIds` (src/roles/legacy-role-migration.ts) renames `state/<old>.json` to `state/<new>.json` without rewriting the `role` field.
+  - `loadRunnerState` (src/runner/runner-state-load.ts) spreads the saved object over `freshRunnerState(role)`, so the saved `role` wins. `saveRunnerState` (src/runner/runner-state.ts) then writes `statePath(root, state.role)`, the old file name.
+  - On later starts the migration finds both files and keeps both ("both exist"), so the split persists.
+- **Fixed:** three changes close the loop end to end.
+  - `loadRunnerState` (src/runner/runner-state-load.ts) forces the loaded state's `role` to the id it was asked to load — the file name is the identity — so a stale `role` can no longer route a save back to the retired file.
+  - `migrateLegacyRoleIds` (src/roles/legacy-role-migration.ts) rewrites a state file's `role` to the new id when it moves it, so a future role-id migration cannot recreate a stale-role file.
+  - When both `<old>.json` and `<new>.json` exist, the migration keeps the one with the newer `lastRunEndedAt` under the new id. On this instance that means the live `dry.json` (10-21) replaces the frozen `dedupe.json` (10-17) and `telemetry.json` (10-22) replaces the frozen `selfcheck.json` (10-17) during the next start, before any load — so the first post-fix load already returns the live copy.
+
 ### The dashboards hide an extra feature/bugfix runner even while it is paused with an error streak: feature-6 and feature-7 sat breaker-paused for 33 h with no row and no alert (found by operator session 2026-10-23 comparing /api/status rows with paused-roles.json) — fixed 2026-10-23 by the bugfix role
 
 - **Symptom:** with `roles.feature.instances: 5`, runner ids feature-6 to feature-10 exist (`RUNNERS_PER_INSTANCE = 2`, src/roles/runner-ids.ts). On 10-23, feature-6 and feature-7 had `consecutiveErrors` 10 and had been in `paused-roles.json` since 10-21 15:10 and 10-22 00:30. `/api/status` had no row for either, and the "failing run after run" alert named only feature #3, feature #5 and steward. The operator could neither see nor resume them from the dashboard.

@@ -58,6 +58,24 @@ test("pauseTeam and resumeTeam write the pause marker and report whether state c
   assert.equal(resumeTeam(dir), false, "resume without a marker is a no-op");
 });
 
+test("a state file carrying a stale legacy role id loads under the requested id and saves there", () => {
+  // migrateLegacyRoleIds renamed state/dry.json to state/dedupe.json without rewriting the
+  // `role` field, so the file holds `"role": "dry"`. loadRunnerState must treat the file
+  // name as the identity — otherwise the saved role wins, saveRunnerState writes back under
+  // the retired id, and every start reloads the frozen copy.
+  const dir = tmpdir();
+  const file = statePath(dir, "dedupe");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "dry", runs: 3, commits: 1 })); // retired-name-ok: legacy role id
+  const s = loadRunnerState(dir, "dedupe");
+  assert.equal(s.role, "dedupe");
+  assert.equal(s.runs, 3, "the stale-role file's data still loads");
+  // The next save must land under the requested id, not the stale id.
+  fs.writeFileSync(statePath(dir, "dry"), JSON.stringify({ role: "dry", runs: 0 }));
+  saveRunnerState(dir, s);
+  assert.equal(JSON.parse(fs.readFileSync(statePath(dir, "dedupe"), "utf8")).role, "dedupe");
+});
+
 test("saveRunnerState creates the state dir and round-trips without leaving a temp file", () => {
   const dir = tmpdir();
   const s = freshRunnerState("feature");
