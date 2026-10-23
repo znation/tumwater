@@ -460,6 +460,10 @@ export function renderReportMarkdown(data: ReportData): string {
     // red time, not any role's) and zero-absent: no line when no day was red.
     pushDayCameoLine(lines, data.series, "Main red", (d) => d.mainRedMs, durationLabel);
     pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
+    // How long the merge slot itself held each change it landed, beside the merge-wait median:
+    // the queue backlog (merge wait minus slot time) apart from the slot's own review/check/
+    // rebase/merge work. Team-only (the slot is the team's), omitted when no day carries one.
+    pushDayCameoLine(lines, data.series, "Merge slot median", (d) => d.mergeSlotMedianMs);
     pushDayCameoLine(lines, data.series, "Run duration median", (d) => d.runMedianMs);
     // How long the review gate ran per day — how long the reviewer's verdict run(s) took —
     // beside the run/merge-wait medians; pushDayCameoLine omits the line when no day carries one.

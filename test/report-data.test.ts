@@ -1242,6 +1242,25 @@ test("collectReport gives each day the lower median of its merge_done queuedMs, 
   for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeWaitMedianMs" in d));
 });
 
+test("collectReport gives each day the lower median of its merge_done durationMs, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    ev(at(0), "merge_done", { queuedMs: 60_000, durationMs: 60_000 }),
+    ev(at(0), "merge_done", { queuedMs: 300_000, durationMs: 240_000 }),
+    ev(at(0), "merge_done", { queuedMs: 120_000, durationMs: 120_000 }),
+    ev(at(0), "merge_done", { queuedMs: 5_000 }), // logged before durationMs existed: skipped, not counted as zero
+    ev(at(0), "merge_failed", { queuedMs: 9_000_000, durationMs: 9_000_000 }), // a failed merge's duration is not a slot duration
+    ev(at(2), "merge_done", { queuedMs: 5_000, durationMs: 0 }), // a 0 duration contributes nothing
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.mergeSlotMedianMs, 120_000);
+  assert.ok(!("mergeSlotMedianMs" in data.series[1]!), "a day with only non-qualifying merges has none");
+  assert.ok(!("mergeSlotMedianMs" in data.series[0]!), "a day with only a merge_failed has none");
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeSlotMedianMs" in d));
+});
+
 test("collectReport gives each day the lower median of its run_end durationMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>

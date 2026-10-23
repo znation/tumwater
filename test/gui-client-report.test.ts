@@ -589,6 +589,45 @@ test("the Merge wait median chart draws one bar per timed day and seriesHasMerge
   assert.equal(seriesHasMergeWaitMedian(data), true);
 });
 
+test("the Merge slot median chart draws one bar per timed day and seriesHasMergeSlotMedian gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartMergeSlotMedian(d: ReportData): string;
+    seriesHasMergeSlotMedian(d: ReportData): boolean;
+  }
+  const { chartCommits, chartMergeSlotMedian, seriesHasMergeSlotMedian } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartMergeSlotMedian", "seriesHasMergeSlotMedian"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { mergeSlotMedianMs: 95_000 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { mergeSlotMedianMs: 180_000 }),
+  ]);
+  const svg = chartMergeSlotMedian(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles, ["2026-09-01: 95s median merge slot", "2026-09-03: 3m median merge slot"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasMergeSlotMedian(mk([mkDay("2026-09-01", { checkMedianMs: 5_000 }), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasMergeSlotMedian(data), true);
+});
+
+test("the Usage render chain gates the Merge slot median chart right after Merge wait median", () => {
+  const chain = GUI_CLIENT_REPORT_JS;
+  const wait = chain.indexOf('block("Merge wait median"');
+  const slot = chain.indexOf('block("Merge slot median", chartMergeSlotMedian(d)');
+  assert.ok(wait >= 0, "the Merge wait median term exists");
+  assert.ok(slot > wait, "Merge slot median sits after Merge wait median in the chain");
+  assert.match(chain, /seriesHasMergeSlotMedian\(d\) \? block\("Merge slot median", chartMergeSlotMedian\(d\), "per day · verification start to outcome"\) : ""/);
+  assert.equal((chain.match(/block\("Merge slot median", chartMergeSlotMedian\(d\), "per day · verification start to outcome"\)/g) || []).length, 1);
+});
+
 test("the Run duration median chart draws one bar per timed day and seriesHasRunMedian gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

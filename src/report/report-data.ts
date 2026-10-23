@@ -71,6 +71,7 @@ export function collectReportSince(
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
+    mergeDurationsMs: [],
     runDurationsMs: [],
     providerWaitsMs: [],
     slotWaitsMs: [],
@@ -192,11 +193,12 @@ export function collectReportSince(
   };
 }
 
-/** A `ReportDay`'s per-day lower-median fields — the seven `…MedianMs` cells in
+/** A `ReportDay`'s per-day lower-median fields — the eight `…MedianMs` cells in
  * report-types.ts, each set from one folded ms list. */
 type DayMedianKey =
   | "checkMedianMs"
   | "mergeWaitMedianMs"
+  | "mergeSlotMedianMs"
   | "runMedianMs"
   | "providerWaitMedianMs"
   | "slotWaitMedianMs"
@@ -205,7 +207,7 @@ type DayMedianKey =
 
 /** Set one per-day median cell only when the day actually has samples (`ms` non-empty), so a
  * medians-free day keeps its exact pre-feature shape (the field stays absent). The single home
- * of that guard — the day collector's seven `…MedianMs` cells all followed it inline before. */
+ * of that guard — the day collector's eight `…MedianMs` cells all followed it inline before. */
 function setLowerMedian(day: ReportDay, key: DayMedianKey, ms: number[]): void {
   if (ms.length > 0) day[key] = lowerMedian(ms);
 }
@@ -257,6 +259,7 @@ export function collectReport(root: string, days: number, role?: string | readon
       setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
       setLowerMedian(day, "mergeWaitMedianMs", fold.mergeWaitsMs);
+      setLowerMedian(day, "mergeSlotMedianMs", fold.mergeDurationsMs);
       setLowerMedian(day, "runMedianMs", fold.runDurationsMs);
       setLowerMedian(day, "providerWaitMedianMs", fold.providerWaitsMs);
       // A workspace wait is the pool's, not a role's, so only the team series carries it.

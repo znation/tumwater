@@ -5,6 +5,28 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### The day report's merge-slot median: how long the merge slot held each change it landed (planned 2026-10-23 by the plan role; independent of every eligible plan — the queue-cancel plan touches src/merge, src/cli and src/events, the interlock and split series touch src/orchestrator, and this adds one folded field and one line beside the report's other per-day medians; touches src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts) — done 2026-10-23 by the feature role
+**Goal.** The team day report and the dashboard Usage view print a per-day `Merge wait median` (a `merge_done`'s enqueue-to-merged `queuedMs`), but nothing says how much of that wait the merge slot itself spent: `merge_done.durationMs` runs from the verification's start to the outcome (`writeMergeOutcome`, src/merge/merge-slot.ts) and is folded nowhere. Add a per-day `Merge slot median` — the lower median of the day's `merge_done.durationMs` — beside the merge-wait median, so an operator reads the queue backlog (the merge wait minus the slot time) apart from the slot's own review/check/rebase/merge work.
+
+**Approach.**
+- src/report/report-fold.ts: `UsageFold` and `DayFold` each gain `mergeDurationsMs: number[]` beside `mergeWaitsMs`, seeded `[]` in `dayFoldFor` and in `collectReportSince`'s accumulator (src/report/report-data.ts). In `foldUsageEvent`'s `merge_done` branch, after the `mergeWaitsMs` push, add `pushPositiveMs(target.mergeDurationsMs, finiteNumber(ev.durationMs, 0))`. Only `merge_done` feeds it: like `mergeWaitsMs`, a `merge_failed` is an attempt that never reached main, and a pre-`durationMs` event (or 0) contributes nothing, so the median is over landed merges only.
+- src/report/report-types.ts: `ReportDay` gains `mergeSlotMedianMs?: number` beside `mergeWaitMedianMs`, its doc comment saying it is the lower median of the day's `merge_done.durationMs` (verification start to outcome, ms), team-only, absent when the day has none.
+- src/report/report-data.ts: add `"mergeSlotMedianMs"` to the `DayMedianKey` union (and its doc comment's "seven `…MedianMs` cells" count), and in `collectReport`'s team branch beside the `mergeWaitMedianMs` line: `setLowerMedian(day, "mergeSlotMedianMs", fold.mergeDurationsMs);`.
+- src/report/report-render.ts: in the team-only block, after the `Merge wait median` line, add `pushDayCameoLine(lines, data.series, "Merge slot median", (d) => d.mergeSlotMedianMs);`.
+- src/ui/gui/gui-client-report-chart.ts: add `chartMergeSlotMedian(data)` returning `medianBarChart(data, "mergeSlotMedianMs", "#64748b", "merge slot")`, and `seriesHasMergeSlotMedian(data)` returning `seriesHasScalar(data, "mergeSlotMedianMs")`; update the shared `medianBarChart` comment's chart count (it now serves one more median).
+- src/ui/gui/gui-client-report.ts: add a block beside `Merge wait median`: `(seriesHasMergeSlotMedian(d) ? block("Merge slot median", chartMergeSlotMedian(d), "per day · verification start to outcome") : "")`.
+- docs/cli.md, the `tumwater report` row: in the sentence naming each day's median merge wait, add each day's median merge-slot time (verification start to outcome, from `merge_done.durationMs`; team report only).
+
+**Tests.**
+- test/report-data.test.ts, a new test mirroring "collectReport gives each day the lower median of its merge_done queuedMs, team scope only": `merge_done` events on one day with `durationMs` 60_000, 120_000 and 240_000 (lower median 120_000); a `merge_done` with `queuedMs` but no `durationMs` (skipped, not zero); a `merge_failed` with a large `durationMs` (not counted); assert the first day's `mergeSlotMedianMs` is 120_000, a day with only non-qualifying merges omits the key, and every day of `collectReport(root, 3, "feature")` omits it.
+- test/report.test.ts: the rendered team report contains `Merge slot median` when a day carries one, and no such line when no day does.
+- test/gui-client-report.test.ts: the Usage view renders the `Merge slot median` block when the series carries the field and omits it otherwise, mirroring the existing `Merge wait median` case.
+
+**Acceptance criteria.**
+- A day whose landed merges carry `durationMs` shows one `Merge slot median` line in `tumwater report` and one chart block in the dashboard Usage view; a merge-free (or duration-less) window prints no line and no block, so its output is unchanged.
+- The field and line are team-only: a role-scoped day report and `report --json --role <id>` carry no `mergeSlotMedianMs`, and the `--since` totals report is unchanged.
+- `npm run test:gate` passes.
+
 ### Split orchestrator-scheduling.ts's pollRunnerReasons, part 2/3: the per-runner skip decision in scheduling-skip.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 3/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts (new) test/orchestrator-scheduling.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** Lift every gate that decides whether a runner is due or skipped into one function, so the WHY-due policy reads on its own screen.

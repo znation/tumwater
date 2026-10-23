@@ -48,6 +48,10 @@ export interface ReportDay {
   /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
    * day has no merge that carried queuedMs. */
   mergeWaitMedianMs?: number;
+  /** Lower median of the day's merge_done.durationMs (verification start to outcome, ms) — how
+   * long the merge slot itself held each change it landed; team-only like the other per-day
+   * medians, absent when the day has none. */
+  mergeSlotMedianMs?: number;
   /** Lower median of the day's run durations (`run_end.durationMs`, ms); team-only like the
    * other per-day medians, absent when the day has none. */
   runMedianMs?: number;

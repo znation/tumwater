@@ -133,10 +133,10 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     ], countAxis, true);
   }
 
-  // The lower-median bar for a duration field (check/merge-wait/provider-wait/slot-wait): one
-  // bar per day from that day's median ms, its hover chip in the bar's color. Shared by the four
-  // duration-median charts so the field/color/label triple cannot drift when a fifth median
-  // joins.
+  // The lower-median bar for a duration field (check/merge-wait/merge-slot/run/review/
+  // provider-wait/slot-wait/check-wait): one bar per day from that day's median ms, its hover
+  // chip in the bar's color. Shared by the duration-median charts so the field/color/label
+  // triple cannot drift.
   function medianBarChart(data, field, color, label) {
     return reportSvg(data.series, (d) => [{ value: Number(d[field]) || 0, color, title: d.date + ": " + fmtSpan(Number(d[field]) || 0) + " median " + label }],
       (v) => fmtSpan(v), false);
@@ -164,6 +164,12 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // The lower median of the day's merge waits, enqueue to merged on main, from mergeWaitMedianMs.
   function chartMergeWaitMedian(data) {
     return medianBarChart(data, "mergeWaitMedianMs", "#f59e0b", "merge wait");
+  }
+
+  // The lower median of the day's merge_done.durationMs, verification start to outcome, from
+  // mergeSlotMedianMs: how long the merge slot itself held each change it landed.
+  function chartMergeSlotMedian(data) {
+    return medianBarChart(data, "mergeSlotMedianMs", "#64748b", "merge slot");
   }
 
   // The lower median of the day's run durations, from runMedianMs.
@@ -422,6 +428,10 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // True when some day carries a merge-wait median; the element renders only then.
   function seriesHasMergeWaitMedian(data) {
     return seriesHasScalar(data, "mergeWaitMedianMs");
+  }
+  // True when some day carries a merge-slot median; the element renders only then.
+  function seriesHasMergeSlotMedian(data) {
+    return seriesHasScalar(data, "mergeSlotMedianMs");
   }
   // True when some day carries a run-duration median; the element renders only then.
   function seriesHasRunMedian(data) {

@@ -61,6 +61,10 @@ export interface UsageFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** Verification-start-to-outcome ms of each merge_done that carries positive durationMs
+   * (writeMergeOutcome), unsorted — how long the merge slot itself held each change it landed,
+   * the day report's merge-slot median beside its merge-wait median. */
+  mergeDurationsMs: number[];
   /** ms of each run_end that carried a positive durationMs, unsorted — the day report's
    * run-duration median beside its merge-wait median. */
   runDurationsMs: number[];
@@ -308,6 +312,10 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
       addTo(target.mergedByRole, role, 1);
       // Events logged before queuedMs existed carry none: skipped, not counted as zero.
       pushPositiveMs(target.mergeWaitsMs, finiteNumber(ev.queuedMs, 0));
+      // How long the merge slot itself held the change, from the verification's start to the
+      // outcome. Like mergeWaitsMs, only a landed merge feeds it, and a pre-durationMs event
+      // (or 0) contributes nothing.
+      pushPositiveMs(target.mergeDurationsMs, finiteNumber(ev.durationMs, 0));
     } else {
       addTo(target.mergeFailedByRole, role, 1);
       // The event's result (writeMergeOutcome's RunResult) names WHY the merge bounced
@@ -359,6 +367,10 @@ interface DayFold {
   checkFailures: number;
   /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
   mergeWaitsMs: number[];
+  /** Verification-start-to-outcome ms of each that-day merge_done that carries positive
+   * durationMs (writeMergeOutcome), unsorted — how long the merge slot itself held each
+   * change it landed. */
+  mergeDurationsMs: number[];
   /** ms of each that-day run_end that carried a positive durationMs, unsorted. */
   runDurationsMs: number[];
   /** ms of each that-day provider_wait event that carries positive waitedMs, unsorted. */
@@ -524,6 +536,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       checkDurationsMs: [],
       checkFailures: 0,
       mergeWaitsMs: [],
+      mergeDurationsMs: [],
       runDurationsMs: [],
       providerWaitsMs: [],
       slotWaitsMs: [],
