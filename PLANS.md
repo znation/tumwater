@@ -19,21 +19,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A test merges N=10 changes across 4 roles with fake reviews resolving on a controlled clock: every merged commit is eventually reviewed, none reviewed twice, and the per-role pending count never exceeds one.
 - The archive-race test above passes; `npm run test:gate` passes.
 
-### Reviewer as a regular role, part 3/4: The convergence rule — an objection that survives its revisions blocks the entry for the operator instead of rounds 3–6 (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 3; evidence in plans/revise-rejected.md's motivation (a 14% reject rate consumed 21% of authoring spend) and the 2026-10-21→23 audit (21 items exhausted the cap; bugfix-2 exhausted the round-6 cap twice on one entry — the cap stops one cycle, the entry re-picked starts another); touches src/runner/revision.ts src/runner/runner-run.ts src/backlog/backlog-eligibility.ts and their tests)
-
-**Goal.** The reject→revise loop converges. Today REVISION_BACKSTOP (6) bounds one cycle and REVISION_FINAL_ON_REPEAT (2) ends a chain early only when a reason is tagged `(prior N)`; nothing stops the re-pick that restarts an exhausted entry's cycle from scratch. End state: an objection that survives its revisions converts the entry to `[blocked: needs review]`-style operator handoff, and the author moves to other work.
-
-**Approach.**
-- src/runner/revision.ts: on exhaustion (round cap or repeated-objection final), instead of leaving the entry eligible for a fresh pick, mark it held. The hold lifts the same ways `needs-review` does today: the plan role (for PLANS.md) or a rewrite; for BUGS.md, the operator (`tumwater bug --release`) or the plan role's split — the existing `EntryHold` machinery (src/backlog/backlog-eligibility.ts) carries the new kind.
-- The hold's reason text names the surviving objections verbatim (they are already in `RunnerState.lastReview`), so the operator or plan role sees exactly what would not converge.
-- Keep the revision path itself unchanged for converging chains: each round fixes the last objection, the re-review sees the prior objections and the interdiff (plans/revise-rejected.md part 2/2), and a converging chain still lands.
-- Considered and left out: teaching the *reviewer* to weight a repeated objection lower. That is verdict-quality work on the model side, not process; the hold is the process answer.
-
-**Acceptance criteria.**
-- A chain whose objection survives its revisions ends with the entry held and the surviving reasons in the hold text, not with a fresh unheld pick; the author's next run takes a different entry.
-- A converging chain (each round fixes the last objection) still lands through the normal revision path — its tests pass unchanged.
-- `npm run test:gate` passes.
-
 ### Reviewer as a regular role, part 4/4: Reviewer feedback the author cannot miss — the rejection note leads the next run, and the commit body acknowledges each reason (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 4; evidence: the same reason text recurring across 27 consecutive rejections of bugfix-2 (10-22T08:29→14:35Z), so the injected `lastReview` note is not changing the author's next run; touches src/prompt/prompt.ts src/git/commit-message.ts src/runner/runner-run.ts and their tests)
 
 **Goal.** Close the broken feedback loop that makes rejections cheap to repeat: when a run starts with a rejected change's reasons, those reasons — not the general charter — organize the run; and the resulting commit's body says, per numbered reason, what was done about it, so the re-review's prior-objection check (plans/revise-rejected.md) reads an answer, not a shrug.

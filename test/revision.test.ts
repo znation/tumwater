@@ -8,6 +8,7 @@ import { verifyRequest } from "../src/merge/merge-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { entryKey } from "../src/backlog/backlog-parts.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import { assembleRunPrompt } from "../src/run/run-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -310,6 +311,45 @@ test("a rejection whose objection has survived two revisions is final and delete
     assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
     assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
     assert.equal(eventsOfType(root, "revision").length, 1, "the exhaustion is logged");
+  });
+});
+
+test("an exhausted chain holds the entry with the surviving objections, not a fresh pick", async () => {
+  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
+    const { root, sha } = await pinnedFixture();
+    // A backend entry the author is revising, still under ## Planned.
+    fs.writeFileSync(
+      path.join(root, "PLANS.md"),
+      "# Plans\n\nIntro.\n\n## Planned\n\n### The convergence plan (planned 2026-10-01)\n\nBody.\n",
+    );
+    const state = freshRunnerState(ROLE);
+    state.claim = {
+      file: "PLANS.md",
+      key: entryKey("The convergence plan (planned 2026-10-01)"),
+      title: "The convergence plan (planned 2026-10-01)",
+      at: Date.now(),
+      source: "assigned",
+    };
+    const { ctx } = makeCtx(root, state);
+    const w = batchWiring(ctx);
+    await setRef(root, rejectedRefName(ROLE), sha);
+    const verdict = await verifyRequest(
+      ctx,
+      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
+      w,
+    );
+    assert.equal(verdict.kind, "result");
+    assert.equal(state.lastReview?.exhausted, true, "the rejection is final");
+    // The surviving objection is now a needs-review hold under the entry's heading, so no role
+    // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
+    const md = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+    // The surviving objection is now a needs-review hold under the entry's heading, so no role
+    // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
+    const noteLine = md.split("\n").find((l) => l.startsWith("**Needs review"));
+    const holdsObjection = noteLine?.includes("still wrong") === true;
+    if (!holdsObjection) {
+      assert.fail("the needs-review hold note is missing or lacks the surviving objection:\n" + (noteLine ?? md));
+    }
   });
 });
 

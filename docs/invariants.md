@@ -3660,16 +3660,24 @@ open objection is kept whole".
 **Guarantee.** An untagged reason counts 0. A tagged one counts 1 plus the prior round's count for
 objection N, taking that count as 0 when the prior list has no entry N. The rejection is final,
 with the ref deleted and `exhausted` set, when any count reaches `REVISION_FINAL_ON_REPEAT` or the
-round reaches `REVISION_BACKSTOP`. Otherwise the ref points at the judged head and the round
+round reaches `REVISION_BACKSTOP`. On that final rejection, when the role holds a claim to a
+PLANS.md entry, the plan is held for the plan role with a `**Needs review …**` note whose text
+names the surviving objections verbatim, so it is not left re-pickable to restart the same
+non-converging cycle (the convergence rule); the hold is committed on main by
+`commitOperatorBacklogEdit`, like every other backlog write, and is best-effort, never turning
+the already-terminal exhaustion into a throw. A BUGS.md claim is never held — no role resolves a
+Needs-review hold on a bug (`tumwater bug --release` keeps the note, INV-AT1), so holding one
+would be a permanent dead-end. Otherwise the ref points at the judged head and the round
 advances. The director never revises.
 
 **Binds.** `src/merge/merge-core.ts` (`recordRejectedChange`); `src/runner/revision.ts`
-(`REVISION_FINAL_ON_REPEAT`, `REVISION_BACKSTOP`).
+(`REVISION_FINAL_ON_REPEAT`, `REVISION_BACKSTOP`, `holdEntryAfterExhaustion`).
 
 **Pinned by.** `test/revision.test.ts` — "a gate rejection points the rejected ref at the judged
 head and records round 1", "a rejection whose objection has survived two revisions is final and
 deletes the rejected ref", "a converging chain whose revisions raise only new objections keeps
-revising", "a chain whose objections never repeat ends at the backstop" and "the director never
+revising", "a chain whose objections never repeat ends at the backstop", "an exhausted chain holds
+the entry with the surviving objections, not a fresh pick" and "the director never
 gets a revision: a rejection leaves no revision state"; `test/revision-prior-tags.test.ts` — "a
 (prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".
 

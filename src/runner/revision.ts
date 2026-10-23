@@ -1,10 +1,18 @@
 import path from "node:path";
-import { readTextOrNull } from "../files/files.js";
+import { readTextIfExists, readTextOrNull, writeTextAtomic } from "../files/files.js";
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { gitTry, gitTryStarted } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
 import { shortSha } from "../text/format.js";
+import { formatDate } from "../text/datetime.js";
+import { stampedSubject } from "../git/commit-message.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
+import { entryKey } from "../backlog/backlog-parts.js";
+import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
+import { logEventBestEffort } from "../events/events.js";
 
 /** What applying a hand-back diff with markers left in place did: whether the diff is now in
  * the worktree, and which paths still carry conflict markers. `applied` is true for a clean
@@ -30,6 +38,67 @@ export const REVISION_FINAL_ON_REPEAT = 2;
  * `REVISION_LIMIT = 2`, which ended a converging chain at its third rejection whenever each
  * round raised a new objection. */
 export const REVISION_BACKSTOP = 6;
+
+/** The convergence rule (PLANS.md "Reviewer as a regular role, part 3/4"): when a rejection is
+ * final — the round cap or an objection that survived its revisions — the author could not
+ * converge, so the PLANS.md plan it was revising is held for the plan role instead of being left
+ * eligible for a fresh author pick that would restart the same cycle (plans/revise-rejected.md's
+ * motivation: the cap stops one cycle, the re-pick starts another). The hold is a
+ * **Needs review …** note under the entry's heading — the same needs-review hold every surface
+ * renders `[blocked: needs review]` and that the plan role resolves by splitting or replanning
+ * the plan (doctor-backlog-plans' checkStalledPlans names it) — whose text names the surviving
+ * objections verbatim (they are already in `RunnerState.lastReview.reasons`), so the plan role
+ * sees exactly what would not converge. PLANS.md plans only: no role clears a Needs-review note
+ * on a BUGS.md entry (`tumwater bug --release` keeps it, INV-AT1, and no role resolves one for
+ * a bug), so holding a bug would be a permanent dead-end; a bug that cannot converge stays with
+ * the existing re-pick behaviour (reviewer-feedback delivery, part 4/4, addresses that churn).
+ * Written through the primary worktree lock, as every other backlog write is, and then committed
+ * on main by commitOperatorBacklogEdit — the commit every other backlog writer makes — so the
+ * primary checkout stays clean for the next fast-forward and the hold reaches the worktrees
+ * that branch from main. Best-effort (write and commit each avoid throwing), so a non-converged
+ * but already-final rejection can never throw on the terminal-exhaustion path. No-op when the
+ * entry is gone (already moved or done), the role carries no claim, or the claim is a bug. */
+export async function holdEntryAfterExhaustion(
+  root: string,
+  role: string,
+  claim: { file: "PLANS.md" | "BUGS.md"; key: string } | undefined,
+  reasons: readonly string[],
+): Promise<void> {
+  if (claim?.file !== "PLANS.md") return;
+  const note =
+    `**Needs review ${formatDate(new Date())} by ${baseRoleOf(role)}: could not converge` +
+    (reasons.length === 0 ? "" : ` — ${reasons.join("; ")}`) +
+    `**`;
+  try {
+    withPrimaryWorktreeLock(root, () => {
+      const file = path.join(root, claim.file);
+      const md = readTextIfExists(file) ?? "";
+      const entry = actionableEntryRanges(md, "Planned").find((e) => entryKey(e.title) === claim.key);
+      if (entry === undefined) return;
+      const lines = md.split("\n");
+      // The entry's 0-based line span is [start-1, end-1] inclusive (a non-last entry's range
+      // carries its trailing separator blank; the last entry's ends at its last content line).
+      // Find the last non-blank line inside that span, then rebuild the file with the note,
+      // one blank on each side, directly after the body and before whatever follows (the next
+      // heading, or EOF) — never inside the following entry.
+      let lastContent = entry.end - 1;
+      while (lastContent > entry.start - 1 && (lines[lastContent] ?? "").trim() === "") lastContent--;
+      const rebuilt = [...lines.slice(0, lastContent + 1), "", note, "", ...lines.slice(entry.end)];
+      writeTextAtomic(file, rebuilt.join("\n"));
+    });
+    // Commit the hold on the base branch so the primary stays clean for ff-only and the note
+    // reaches the worktrees that branch from main — the same best-effort commit every other
+    // backlog writer makes (a primary not on the base branch just skips the commit).
+    await commitOperatorBacklogEdit(root, claim.file, stampedSubject("operator", `Hold converged plan: ${claim.key}`)); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+  } catch (err) {
+    logEventBestEffort(root, {
+      source: role,
+      type: "revision",
+      action: "hold-failed",
+      message: `could not hold the entry after a final rejection: ${String(err)}`,
+    });
+  }
+}
 
 /** What pickSettlingBacklog did: the whole range is in the worktree with no markers (`clean`),
  * it stopped on conflicts the backlog settler could not settle (`conflicted`, those files still

@@ -12,7 +12,7 @@ import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../runner/runner-pi.js";
 import { saveRunnerStateBestEffort, type RunnerState } from "../runner/runner-state.js";
-import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../runner/revision.js";
+import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP, holdEntryAfterExhaustion } from "../runner/revision.js";
 import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gitTry } from "../git/git-run.js";
@@ -378,6 +378,13 @@ async function recordRejectedChange(
     // The next run gets the plain rejected note, not a revision note; mark it final so that
     // note says the rejected diff is gone rather than inviting another revision.
     if (state.lastReview) state.lastReview.exhausted = true;
+    // The convergence rule (PLANS.md "Reviewer as a regular role, part 3/4"): the reject→revise
+    // loop has stopped converging, so hold the PLANS.md plan for the plan role instead of
+    // leaving it for a fresh author pick that would restart the cycle. The surviving
+    // objections go verbatim into the hold text, which is then committed on main. Best-effort:
+    // it must never make the already-terminal exhaustion throw (a BUGS.md claim is never held
+    // — no role resolves a Needs-review hold on a bug).
+    await holdEntryAfterExhaustion(root, role, state.claim, reasons);
     logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
     return;
   }
