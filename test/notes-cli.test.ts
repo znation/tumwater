@@ -73,6 +73,19 @@ test("show prints nothing for a missing note", () => {
   assert.equal(res.stdout, "");
 });
 
+test("show strips terminal controls so a note cannot drive the operator's terminal", () => {
+  const notesPath = path.join(tmpdir(), "feature.md");
+  const hostile = "plain\x1b[2J\x1b]0;GOTCHA\x07\x1b[31mRED\x00";
+  writeRoleNote(notesPath, hostile);
+  const res = run(["show"], notesPath);
+  assert.equal(res.status, 0, res.stderr);
+  // The prose survives, and the bytes actually emitted to the terminal contain no C0/C1/DEL
+  // control (ESC, BEL, NUL all stripped) — so a hostile note cannot drive the operator's
+  // terminal when they run `tumwater-notes show`.
+  assert.ok(res.stdout.includes("plain"));
+  assert.ok(!/[\u0000-\u0008\u000b-\u001f\u007f\u0080-\u009f]/.test(res.stdout));
+});
+
 test("tumwater-notes clear empties the note", () => {
   const notesPath = path.join(tmpdir(), "feature.md");
   run(["write"], notesPath, "something");

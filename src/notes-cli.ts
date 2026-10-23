@@ -19,7 +19,7 @@
 
 import fs from "node:fs";
 import { readTextIfExists } from "./files/files.js";
-import { errorMessage } from "./text/text.js";
+import { errorMessage, stripTerminalControls } from "./text/text.js";
 import { validateRoleNote, writeRoleNote } from "./agent/role-notes-write.js";
 
 /** The note's path, read ONLY from the environment — never from an argument. */
@@ -93,7 +93,12 @@ function main(): number {
       } catch (err) {
         return refuse(`could not read the note: ${errorMessage(err)}`);
       }
-      process.stdout.write(note);
+      // The note is model-authored text, so strip terminal controls at this display
+      // boundary — the same treatment say()/fail()/the TUI frame give every untrusted
+      // string, so a prompt-injected note with an ANSI escape (cursor move, title set,
+      // OSC 52 clipboard write, carriage-return overwrite) cannot drive the operator's
+      // terminal when they run `tumwater-notes show`.
+      process.stdout.write(stripTerminalControls(note));
       return 0;
     case "clear":
       if (flag !== undefined) return refuse(USAGE);
