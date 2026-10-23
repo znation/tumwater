@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 9/9: The live `smoke:codex` step for the guard, and the docs (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9c/9 and Codex backend 9d/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)" and "Risks"; touches scripts/smoke-codex.mjs docs/how-it-works.md docs/backends.md plans/codex-backend.md) — done 2026-10-23 by the feature role
+
+**Goal.** After a Codex upgrade, one live command proves the guard still blocks. Session-flag trust could stop working while the `hooks/list` lookup still succeeds ("Risks"). The docs should say which backends are guarded and how.
+
+**Approach.**
+- scripts/smoke-codex.mjs (added by Codex backend part 9d/9) gains a `write guard` step.
+  - Build a throwaway team layout: a git repo `<T>/repo`, its worktree `<T>/repo/.tumwater/worktrees/_slot-1`, and the same `notes.md` text in both. Keep the session dir under `<T>/repo/.tumwater/sessions`, never outside a `.tumwater` root.
+  - Run the production invocation through `runAgent`, asking the model to use `apply_patch` to change `notes.md` at the primary's absolute path, and to follow any refusal.
+  - Assert three things: the primary's `notes.md` is unchanged, the worktree's `notes.md` changed, and the run's rollout holds "blocked by PreToolUse hook".
+  - The step is listed by the script's `--help`/dry-run.
+- docs/how-it-works.md, "A run" step 2: the guarded tools name codex's `apply_patch`, through a trusted hook. Shell writes stay unchecked on every backend.
+- docs/backends.md, Codex section:
+  - the guard is a PreToolUse hook passed with `-c`, trusted through the same session-flag layer with the hash Codex reports;
+  - `codex-hook-trust.json` caches the hash;
+  - `--dangerously-bypass-hook-trust` is never used.
+- plans/codex-backend.md: under "never passes `--dangerously-bypass-hook-trust`", add one sentence: tumwater trusts only its own write-guard hook, through the session-flag layer (plans/codex-write-guard.md).
+
+**Tests.** None beyond the script's dry-run listing. The live step runs by hand: `npm run smoke:codex`.
+
+**Acceptance criteria.**
+- `npm run smoke:codex -- --help` (or the script's dry-run flag) lists the `write guard` step.
+- The docs name codex among the guarded backends and its `apply_patch`-only coverage.
+- `npm run test:gate` passes.
+
 ### Backlog hold convergence, part 1/3: The held count and the held-for-operator hold (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; the read half of the convergence backstop — parts 2/3 and 3/3 surface and write the count; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/prompt/notes-backlog.ts test/backlog-eligibility.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** A Needs-review/Needs-replan note gains a held count, and an entry whose count reaches three becomes `held-for-operator`: `entryHold` classifies it as its own hold, the plan role no longer takes it, and every surface can see why. This part is the data layer only.

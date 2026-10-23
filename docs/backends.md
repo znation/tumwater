@@ -349,6 +349,14 @@ session, the worktree kept, a bridge prompt). Session retention (`sessionRetenti
 prunes the ledger's expired Codex sessions with `codex delete --force <id>`, and doctor reports
 the home's `sessions/` size.
 
+**The write guard.** Codex's `apply_patch` is wired through the same write guard pi, claude and
+OpenCode runs carry: a PreToolUse hook passed with `-c` refuses an `apply_patch` that lands under
+the team root but outside the run's worktree. The hook is trusted through the same session-flag
+layer, keyed by a hash of its definition that Codex itself reports, cached in
+`codex-hook-trust.json`. Shell writes are not `apply_patch` and stay unchecked, as on every
+backend; only `apply_patch` is guarded. tumwater never passes `--dangerously-bypass-hook-trust`,
+which would run the target repo's own `.codex` hooks unreviewed.
+
 See [plans/codex-backend.md](../plans/codex-backend.md) for the series' full design.
 
 ## Worked example: one machine's measurements, 2026-09

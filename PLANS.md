@@ -87,30 +87,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Both rows render as above.
 - `npm run test:gate` passes.
 
-### Write guard on Codex, part 9/9: The live `smoke:codex` step for the guard, and the docs (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9c/9 and Codex backend 9d/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)" and "Risks"; touches scripts/smoke-codex.mjs docs/how-it-works.md docs/backends.md plans/codex-backend.md)
-
-**Goal.** After a Codex upgrade, one live command proves the guard still blocks. Session-flag trust could stop working while the `hooks/list` lookup still succeeds ("Risks"). The docs should say which backends are guarded and how.
-
-**Approach.**
-- scripts/smoke-codex.mjs (added by Codex backend part 9d/9) gains a `write guard` step.
-  - Build a throwaway team layout: a git repo `<T>/repo`, its worktree `<T>/repo/.tumwater/worktrees/_slot-1`, and the same `notes.md` text in both. Keep the session dir under `<T>/repo/.tumwater/sessions`, never outside a `.tumwater` root.
-  - Run the production invocation through `runAgent`, asking the model to use `apply_patch` to change `notes.md` at the primary's absolute path, and to follow any refusal.
-  - Assert three things: the primary's `notes.md` is unchanged, the worktree's `notes.md` changed, and the run's rollout holds "blocked by PreToolUse hook".
-  - The step is listed by the script's `--help`/dry-run.
-- docs/how-it-works.md, "A run" step 2: the guarded tools name codex's `apply_patch`, through a trusted hook. Shell writes stay unchecked on every backend.
-- docs/backends.md, Codex section:
-  - the guard is a PreToolUse hook passed with `-c`, trusted through the same session-flag layer with the hash Codex reports;
-  - `codex-hook-trust.json` caches the hash;
-  - `--dangerously-bypass-hook-trust` is never used.
-- plans/codex-backend.md: under "never passes `--dangerously-bypass-hook-trust`", add one sentence: tumwater trusts only its own write-guard hook, through the session-flag layer (plans/codex-write-guard.md).
-
-**Tests.** None beyond the script's dry-run listing. The live step runs by hand: `npm run smoke:codex`.
-
-**Acceptance criteria.**
-- `npm run smoke:codex -- --help` (or the script's dry-run flag) lists the `write guard` step.
-- The docs name codex among the guarded backends and its `apply_patch`-only coverage.
-- `npm run test:gate` passes.
-
 ### `tumwater start --once --json` prints the round's per-role outcomes as one JSON object, so a cron/CI caller does not parse the prose summary (planned 2026-10-23 by the plan role; independent of every eligible plan — the interlock and pollRunnerReasons-split series touch src/orchestrator and src/merge, the Codex write-guard parts touch src/agent, src/prompt and docs/backends, and the merge-slot median touches src/report and src/ui/gui; the only shared file is docs/cli.md, where this edits the `Start the team` once block and that plan edits the `tumwater report` row, so whichever lands second rebases there; touches src/cli/cli-start.ts src/cli/cli-flag-specs.ts src/cli/help.ts docs/cli.md test/cli-start.test.ts test/cli-start-once.test.ts)
 
 **Goal.** `tumwater start --once` is the README's cron/CI command: it does one round, prints a one-line prose summary (`onceSummary`) plus a `once: failed — …` line when the round failed, and exits 3 on such a failure. A CI step that wants per-role outcomes — which role merged, which errored, which was skipped and why — has to scrape that prose. Add `--json`, valid only with `--once`, that prints the same round facts as one JSON document on stdout with the banner and the event stream suppressed, so the caller parses the round directly.

@@ -28,6 +28,8 @@ const { defaultConfig } = await import("../dist/src/config/config.js");
 const { routeModel } = await import("../dist/src/config/model-selector.js");
 const { readSessions } = await import("../dist/src/agent/session-ledger.js");
 const { codexBackend } = await import("../dist/src/agent/codex/codex-backend.js");
+const { findRollout } = await import("../dist/src/agent/codex/codex-rollout.js");
+const { codexHome } = await import("../dist/src/agent/codex/codex-catalog.js");
 
 /** A named check that aborts the run on failure, so the first FAIL is the last output. */
 class SmokeFailure extends Error {}
@@ -296,6 +298,73 @@ try {
       "the rollout reports a seven_day window",
       types.includes("seven_day"),
       `windows=${types.join(",") || "<none>"} ${read.errorMessage ?? ""}`,
+    );
+  });
+
+  step("the write guard refuses a stray apply_patch into the primary", async () => {
+    // A throwaway TEAM: a git repo `<T>/repo` and its one worktree
+    // `<T>/repo/.tumwater/worktrees/_slot-1`, with the same notes.md text in both. The run's
+    // cwd is the worktree, so an apply_patch to the primary's absolute path lands under the
+    // team root but outside the worktree and must be refused by the trusted PreToolUse hook
+    // (part 6/9); the sessions go under the team root's own `.tumwater`, never outside one.
+    const team = path.join(ROOT, "team");
+    const repo = path.join(team, "repo");
+    fs.mkdirSync(repo, { recursive: true });
+    spawnSync("git", ["init", "-q"], { cwd: repo });
+    const idem = (a) => ["-c", "user.email=smoke@tumwater", "-c", "user.name=smoke", ...a];
+    const notesText = "hello\n";
+    fs.writeFileSync(path.join(repo, "notes.md"), notesText);
+    spawnSync("git", idem(["add", "."]), { cwd: repo });
+    spawnSync("git", idem(["commit", "-qm", "init"]), { cwd: repo });
+    const worktree = path.join(repo, ".tumwater", "worktrees", "_slot-1");
+    fs.mkdirSync(path.dirname(worktree), { recursive: true });
+    spawnSync("git", ["worktree", "add", "--detach", worktree], { cwd: repo });
+    fs.writeFileSync(path.join(worktree, "notes.md"), notesText);
+    const teamSessions = path.join(repo, ".tumwater", "sessions");
+    fs.mkdirSync(teamSessions, { recursive: true });
+
+    logSeq += 1;
+    const guard = await runAgent({
+      cwd: worktree,
+      prompt: [
+        "This is an isolated smoke test of the write guard.",
+        `Use apply_patch to append the line \`smoke guard reached\` to the file at the absolute path ${path.join(repo, "notes.md")}.`,
+        "That write is refused by a trust hook. After the refusal, make the SAME edit with apply_patch to the file `notes.md` in your current directory instead.",
+        "Then reply with exactly SMOKE_GUARD_DONE and nothing else.",
+      ].join("\n"),
+      config: BASE,
+      sessionDir: teamSessions,
+      sessionName: "guard",
+      rawLogFile: path.join(ROOT, `raw-${logSeq}.jsonl`),
+      nativeLogFile: path.join(ROOT, `native-${logSeq}.jsonl`),
+      kind: "author",
+    });
+    check(
+      "the write guard refuses the stray apply_patch and the run finishes",
+      guard.ok === true && guard.finalText.includes("SMOKE_GUARD_DONE"),
+      guard.errorMessage ?? guard.finalText,
+    );
+    check(
+      "the primary notes.md is unchanged",
+      fs.readFileSync(path.join(repo, "notes.md"), "utf8") === notesText,
+      fs.readFileSync(path.join(repo, "notes.md"), "utf8"),
+    );
+    check(
+      "the worktree notes.md changed instead",
+      fs.readFileSync(path.join(worktree, "notes.md"), "utf8").includes("smoke guard reached"),
+      fs.readFileSync(path.join(worktree, "notes.md"), "utf8"),
+    );
+    // The refusal travels through the codex session's rollout, so an upgrade that keeps the
+    // hook lookup but stops trusting the session flag turns this check red (the lookup's
+    // success is what part 5/9 and 8/9 watch; this is the older, sharper one).
+    const guardSession = readSessions(teamSessions).at(-1);
+    const rollout =
+      guardSession !== undefined ? findRollout(codexHome(BASE.backends?.codex ?? {}), guardSession.id) : null;
+    const rolloutText = rollout === null ? "" : fs.readFileSync(rollout, "utf8");
+    check(
+      "the run's rollout records the blocked PreToolUse patch",
+      rollout !== null && rolloutText.includes("blocked by PreToolUse hook"),
+      rollout === null ? "no rollout for the guard session" : "rollout lacks the blocked-hook wording",
     );
   });
 

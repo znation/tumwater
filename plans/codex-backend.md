@@ -402,7 +402,8 @@ codex exec resume <ledger id> --json <the same flags, with -m again> -   # findi
 - **Always pass `-m`, on a resume too.** Without it a resume silently changes the model.
 - **The target repo's own `.codex/config.toml` is honored,** as claude honors the repo's
   `.claude/settings.json` (plans/agent-backends.md decision 3). Its hooks still need Codex's own
-  trust: tumwater never passes `--dangerously-bypass-hook-trust`.
+  trust: tumwater never passes `--dangerously-bypass-hook-trust`. It trusts only its own write-
+  guard hook, through the session-flag layer (plans/codex-write-guard.md).
 - **Environment.** It is layered on `backendBaseEnv` (the run marker, the macOS preload, the notes
   path and the notes shim on PATH), as the other adapters' envs are.
   - **Removed:**

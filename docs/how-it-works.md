@@ -31,10 +31,10 @@ team for that long and then stops it.
    over between runs except the role's own notes (see Prompts); durable knowledge lives in
    the repo's markdown files. The workspace sits inside your checkout, so a path that drops
    `.tumwater/worktrees/<name>` names a real file there. The run's edit and write tools (pi's,
-   claude's through a hook, and OpenCode's through a plugin) refuse a path inside the project but
-   outside the run's workspace, and name the same file inside the workspace instead. Shell
-   commands and codex runs are not checked; a run that leaves new changes in your checkout gets
-   a `wrote outside the worktree` warning.
+   claude's through a hook, OpenCode's through a plugin, and codex's `apply_patch` through a
+   trusted hook) refuse a path inside the project but outside the run's workspace, and name the
+   same file inside the workspace instead. Shell writes stay unchecked on every backend; a run
+   that leaves new changes in your checkout gets a `wrote outside the worktree` warning.
 3. If pi changed files, commit and put the change in the merge queue, where the merge pipeline
    reviews it and fast-forwards main. A rejection resets the branch and passes the reasons to the
    author's next run. Right before the commit, a plan or bug the run pasted under PLANS.md's
