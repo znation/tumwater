@@ -118,3 +118,117 @@ interface FakeCodexOptions {
 /** Read back a run-block log written by the fake's RUN_MARKER: fake-commands' readRunBlocks,
  * re-exported for the codex tests that import it beside fakeCodexReplay. */
 export { readRunBlocks } from "./fake-commands.js";
+
+/** Something the test can hand the trust lookup as its `bin` directly, plus the ledger files
+ * the lookup's probes write: `callsFile` counts app-server starts (a cache hit spawns none);
+ * `pidFile` records the app-server's pid before it hangs, so the timeout test can prove the
+ * child is gone afterwards. `restore` removes the fake's directory. */
+interface FakeCodexServer {
+  bin: string;
+  callsFile: string;
+  pidFile: string;
+  restore: () => void;
+}
+
+/** Options for fakeCodexAppServer: the version `--version` prints (a different one makes the
+ * trust cache look up again), whether the app-server hangs (the timeout case), and whether the
+ * listed hook should not match the guard's command (so the no-match rejection can be tested). */
+interface FakeCodexServerOptions {
+  version?: string;
+  hang?: boolean;
+  mismatch?: boolean;
+}
+
+/** A fake `codex` that answers the trust lookup (plans/codex-write-guard.md "Trust (parts
+ * 4–5)"): `--version` prints the configured version, and `-c … app-server` serves the
+ * JSON-RPC handshake — `initialize` answered with `{}`, `hooks/list` answered with one
+ * sessionFlags preToolUse hook whose `command` is parsed from the `-c hooks.PreToolUse=…`
+ * argument and whose `currentHash` is `sha256:` plus the sha256 of that command, and `key` the
+ * fixed session-flag key. Each app-server start appends a line to `callsFile`; `opts.hang`
+ * leaves it alive (writing its pid to `pidFile`) for the timeout test; `opts.mismatch` lists
+ * the hook under a `user` source so the lookup's session-flag match fails. The bin is returned
+ * as an absolute path the test passes as `bin`, never installed on PATH. */
+export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodexServer {
+  const dir = tmpdir("fake-codex-server-");
+  const callsFile = path.join(dir, "server.calls");
+  const pidFile = path.join(dir, "server.pid");
+  const version = opts.version ?? "0.163.0";
+  const source = opts.mismatch ? "user" : "sessionFlags";
+  const script = path.join(dir, "app-server.js");
+  const js = [
+    'const fs = require("node:fs");',
+    'const crypto = require("node:crypto");',
+    `const CALLS = ${JSON.stringify(callsFile)};`,
+    `const PID = ${JSON.stringify(pidFile)};`,
+    `const VERSION = ${JSON.stringify(version)};`,
+    `const SOURCE = ${JSON.stringify(source)};`,
+    `const HANG = ${opts.hang === true};`,
+    "const args = process.argv.slice(2);",
+    'if (args[0] === "--version") {',
+    '  process.stdout.write(VERSION + "\\n");',
+    "  process.exit(0);",
+    "}",
+    'fs.appendFileSync(CALLS, "start\\n");',
+    "fs.writeFileSync(PID, String(process.pid));",
+    "if (HANG) { setTimeout(function () {}, 60000); }",
+    'const toml = args[1] ?? "";',
+    "const command = parseCommand(toml);",
+    'const key = "/<session-flags>/config.toml:pre_tool_use:0:0";',
+    'const currentHash = "sha256:" + crypto.createHash("sha256").update(command).digest("hex");',
+    "const hook = { source: SOURCE, eventName: \"preToolUse\", command: command, key: key, currentHash: currentHash };",
+    'process.stdin.setEncoding("utf8");',
+    'let buf = "";',
+    'process.stdin.on("data", function (chunk) {',
+    "    if (HANG) return; // Hang mode answers nothing, so the lookup times out and kills us.",
+    "  buf += chunk;",
+    '  let nl = buf.indexOf("\\n");',
+    "  while (nl >= 0) {",
+    '    const line = buf.slice(0, nl).trim();',
+    '    buf = buf.slice(nl + 1);',
+    "    if (line) {",
+    "      let msg;",
+    '      try { msg = JSON.parse(line); } catch (e) { nl = buf.indexOf("\\n"); continue; }',
+    '      if (msg.method === "initialize") {',
+    '        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");',
+    '      } else if (msg.method === "hooks/list") {',
+    '        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { data: [{ hooks: [hook] }] } }) + "\\n");',
+    "      }",
+    "    }",
+    '    nl = buf.indexOf("\\n");',
+    "  }",
+    "});",
+    "function parseCommand(toml) {",
+    '  const idx = toml.indexOf("command=");',
+    '  if (idx < 0) return "";',
+    '  const open = toml.indexOf(\'"\', idx);',
+    '  if (open < 0) return "";',
+    '  let out = "";',
+    "  let i = open + 1;",
+    "  while (i < toml.length) {",
+    "    const c = toml[i];",
+    '    if (c === \'"\') return out;',
+    '    if (c === "\\\\") {',
+    "      const n = toml[i + 1];",
+    '      if (n === "\\\\") { out += "\\\\"; i += 2; continue; }',
+    '      if (n === \'"\') { out += \'"\'; i += 2; continue; }',
+    '      if (n === "u") { out += String.fromCodePoint(parseInt(toml.slice(i + 2, i + 6), 16)); i += 6; continue; }',
+    "      out += n; i += 2; continue;",
+    "    }",
+    "    out += c; i += 1;",
+    "  }",
+    "  return out;",
+    "}",
+  ].join("\n");
+  fs.writeFileSync(script, js);
+  // The pid is stamped in the shim before node starts, so the timeout test can read it the
+  // moment the lookup settles, however slowly node itself cold-starts under parallel load.
+  writeScript(path.join(dir, "codex"), `echo $$ > "${pidFile}"; exec node ${script} "$@"`);
+  return {
+    bin: path.join(dir, "codex"),
+    callsFile,
+    pidFile,
+    restore: () => {
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}

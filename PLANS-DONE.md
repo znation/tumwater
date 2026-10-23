@@ -5,6 +5,37 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 4/9: Ask codex for the hook's trust key and hash through `hooks/list`, and cache them per build and Codex version (planned 2026-10-23 by user; requires part 3/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)" and finding 3; touches src/agent/codex/codex-hook-trust.ts (new) src/paths.ts test/fakes/fake-codex.ts docs/invariants.md test/codex-hook-trust.test.ts (new)) — done 2026-10-23 by the feature role
+
+**Goal.** Codex runs a session-flag hook only with the right `trusted_hash`. The hash is opaque: no simple digest of the definition matched (finding 3). So tumwater asks Codex for it, once per build and Codex version.
+
+**Approach.**
+- src/agent/codex/codex-hook-trust.ts (new): `lookupCodexHookTrust({ bin, env, cwd, definition, timeoutMs = 15_000 }): Promise<{ key: string; hash: string }>`.
+  - It spawns `<bin> -c <codexHookArg(definition)> app-server` in `cwd` with `env`, using the harness's own spawn helper with process-group kill. It kills the group when done, on timeout and on error.
+  - Over stdio, one JSON object per line, it sends `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"tumwater","version":<tumwater version>}}}`, then `{"jsonrpc":"2.0","method":"initialized"}`, then `{"jsonrpc":"2.0","id":2,"method":"hooks/list","params":{"cwds":[cwd]}}`.
+  - It reads the reply to id 2 and returns the first hook in `result.data[*].hooks` with `source: "sessionFlags"`, `eventName: "preToolUse"` and `command` equal to `definition.command`, giving `{ key, hash: currentHash }`. It never hardcodes the key, which was `/<session-flags>/config.toml:pre_tool_use:0:0` on 0.163.0.
+  - It rejects on timeout, on child exit before the reply, on a JSON-RPC error, and on "codex listed no session-flag PreToolUse hook with this command". It needs no login and makes no model request (verified with an empty `CODEX_HOME`).
+- `codexHookTrust({ root, bin, env, cwd, definition })` caches in `codexHookTrustPath(root)` (new in src/paths.ts: `.tumwater/state/codex-hook-trust.json`).
+  - The cache key is the trimmed output of `<bin> --version` plus `JSON.stringify(definition)`, each entry `{ key, hash, checkedAt }`.
+  - A hit returns without spawning `app-server`. A miss looks up and writes the entry through `writeJsonAtomic`.
+  - With `root` undefined (a hand run with no `.tumwater` root) it looks up and caches nothing. It never creates a `.tumwater` directory: a hand run once minted a phantom `$TMPDIR/.tumwater` and reddened every suite on the host (plans/codex-write-guard.md "Visibility").
+- test/fakes/fake-codex.ts: the shim answers `app-server`.
+  - It reads the JSON-RPC lines and answers `initialize` with `{}` and `hooks/list` with one sessionFlags preToolUse hook whose `command` is parsed from the `-c hooks.PreToolUse=` argument and whose `currentHash` is `sha256:` plus the sha256 of that command.
+  - It appends each app-server start to a calls file the test can count. A test switch makes it hang, for the timeout case.
+- docs/invariants.md: the next free `INV-CW` id. It is "the trust key and hash come from Codex's own `hooks/list` for the exact definition, are cached per Codex version and definition, and a lookup that times out leaves no child behind", pinned by the tests below.
+
+**Tests.** test/codex-hook-trust.test.ts, on the fake:
+- a lookup returns the fake's key and `sha256:` hash;
+- a second `codexHookTrust` with the same version and definition starts no `app-server` (the calls file has one line);
+- a changed `timeout` or a changed `--version` output looks up again;
+- a hanging fake rejects within `timeoutMs` (set to 500 ms in the test), and the child's pid is gone afterwards;
+- a fake whose list holds no matching hook rejects with the message above;
+- `root` undefined writes no file.
+
+**Acceptance criteria.**
+- No Codex run's argv changes yet, and no code path calls the lookup outside the tests.
+- `npm run test:gate` passes.
+
 ### Codex backend, part 9d/9: The opt-in `smoke:codex` live check (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9c/9; design in plans/codex-backend.md "Hand steps" and "Risks"; touches scripts/smoke-codex.mjs (new) package.json) — done 2026-10-23 by the feature role
 
 **Goal.** After a Codex upgrade, one live command proves the production invocation still works — the same hand check `smoke:claude` and `smoke:opencode` give.

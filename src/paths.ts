@@ -116,6 +116,14 @@ export function claudeAccountPath(root: string): string {
   return accountPath(root, "claude");
 }
 
+/** The codex write guard's trust cache (.tumwater/state/codex-hook-trust.json;
+ * codex-hook-trust.ts): the `{key, hash}` codex itself reports through `hooks/list`, keyed by
+ * codex version and hook definition so the lookup runs once per build and Codex version, not
+ * once per run. Runtime state under .tumwater/state/, never committed. */
+export function codexHookTrustPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "codex-hook-trust.json");
+}
+
 /** The worktree-use registry (plans/disk-floor.md, part 2/4; git/worktree-use.ts): which
  * worktrees are in use and when each was last used, so pressure reclaim can order candidates
  * least-recently-used first across restarts. Runtime state under .tumwater/state/. */
