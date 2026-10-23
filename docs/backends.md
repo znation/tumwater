@@ -295,6 +295,62 @@ and its old spill files, same window as every other session file.
 
 See [plans/opencode-backend.md](../plans/opencode-backend.md) for the series' full design.
 
+## Codex (`backend: "codex"`)
+
+A selector with `backend: "codex"` runs the job on OpenAI's Codex CLI, paid by the operator's
+ChatGPT subscription (Plus today), instead of pi:
+
+```json
+{
+  "backend": "codex",
+  "backends": { "codex": { "configDir": "~/.codex-tumwater", "windowReserve": { "seven_day": 0.7 } } },
+  "maxConcurrentPerProvider": { "codex": 2 }
+}
+```
+
+With no `model`, each tier runs Codex's model for that tier: `gpt-6-astra` strong,
+`gpt-6.1-sol` default, `gpt-6-luna` small. There is no `codex/<id>` spelling — write the bare
+model id (`gpt-6.1-sol`): a whole `codex/<id>` parses to a `codex` provider that codex, like pi,
+drops, leaving the model half. A suspended run resumes on the same session (`codex exec
+resume <session id>`).
+
+**The team home and its one login.** An optional `backends.codex.configDir` points Codex at a
+home of the team's own; it becomes `CODEX_HOME` for every codex process tumwater spawns, keeping
+the team's trust entries, sessions and any skills out of `~/.codex`. It needs one login in that
+dir: `CODEX_HOME=~/.codex-tumwater codex login --device-auth`. Never copy an `auth.json` between
+homes: ChatGPT refresh tokens rotate, so two homes sharing one token family log each other out —
+login a second home separately. Unset, runs use the operator's `CODEX_HOME`. Doctor warns when
+the team has no dir of its own.
+
+**Subscription billing only.** A ChatGPT login is subscription billing: codex runs report no cost,
+their tokens are shown in the report, and they feed the message-cap, not the USD cap. API-key
+billing is refused: doctor and the startup gate fail a codex job when `codex login status`
+reports an API key, and `OPENAI_API_KEY` / `CODEX_API_KEY` are scrubbed from runs — codex reports
+no price, so per-token billing would spend money the cap cannot see.
+
+**The windows and reserve.** Codex reads two usage windows from each run's session file — a
+five-hour and a weekly — and a rejected (or reserved) window moves codex jobs down their tier's
+fallback chain until it resets, exactly as on a claude subscription. `backends.codex.windowReserve`
+is a per-window-type fraction (0–1] left for you, on the same `five_hour` / `seven_day` type
+names claude uses, so one reserve reads the same on both subscriptions. With every codex job on a
+subscription, the badge shows the windows, not the spend.
+
+**What is disabled, and why.** Codex runs with no sandbox: `--dangerously-bypass-approvals-and-
+sandbox`, the same trust pi and claude (`bypassPermissions`) get. Under Codex's `workspace-write`
+sandbox, git is read-only, the role's notes file is unwritable and the check has no network, and
+the isolation that matters stays the worktree and the process marker. Sub-agents are off
+(`agents.enabled=false`), and every tool tumwater does not need — plugins, apps, goals, image
+generation, browser and computer use, web search — is disabled to keep the base prompt small.
+
+**Sessions.** Each codex run is one thread-id session. A continue takes the newest resumable
+ledger record of this run's kind on this cwd and runs `codex exec resume <id>`; a missing rollout
+in the session's home means "not resumable", and the existing handoff path takes over (a fresh
+session, the worktree kept, a bridge prompt). Session retention (`sessionRetentionDays`) also
+prunes the ledger's expired Codex sessions with `codex delete --force <id>`, and doctor reports
+the home's `sessions/` size.
+
+See [plans/codex-backend.md](../plans/codex-backend.md) for the series' full design.
+
 ## Worked example: one machine's measurements, 2026-09
 
 The configuration and measurements below are one operator's rig, recorded as a concrete example

@@ -5,6 +5,19 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 9c/9: Codex docs — a backends.md section, the config keys and the README backend list (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9d/9; design in plans/codex-backend.md "The decisions" and "Hand steps"; touches docs/backends.md docs/config.md README.md) — done 2026-10-23 by the feature role
+
+**Goal.** The Codex backend is documented where the other backends are, so an operator can configure and trust it from the docs alone.
+
+**Approach.**
+- docs/backends.md: a "Codex (`backend: "codex"`)" section — what it runs, the home and its one login, subscription-only billing, the windows and reserve, what is disabled and why (no sandbox, API-key login refused), sessions, and the sandbox choice — naming `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
+- docs/config.md: the `backends.codex` keys (`configDir`, `windowReserve`, `args`).
+- README.md: add Codex to the backends list (the Backends paragraph; never the brief block between the `tumwater:prompt` markers).
+
+**Acceptance criteria.**
+- docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`; docs/config.md names the `backends.codex` keys; README's backend list names Codex.
+- `npm run test:gate` passes.
+
 ### Feedback role, part 1/2: the opt-in `feedback` observer — files one tumwater bug per run as a GitHub issue on znation/tumwater (planned 2026-10-23 by user; independent of every Planned entry; design in plans/feedback-role.md "The decision", "Invariants" and "Shape" → "Part 1"; touches src/roles/role-catalog.ts src/roles/roles.ts src/run/run-prompt.ts src/run/selfcheck-digest.ts src/config/config.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/fakes/fake-gh.ts (new) README.md docs/config.md docs/glossary.md docs/how-it-works.md test/roles.test.ts test/config.test.ts test/prompt-roles.test.ts test/run-prompt.test.ts test/doctor-checks.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** Bring back the telemetry concept with the destination fixed: a new default-off observer role `feedback` that reads the same injected `<failure-digest>` selfcheck reads, applies the same response-was-wrong and rank-by-loss rules, and files ONE bug per run as a GitHub issue on github.com/znation/tumwater via the model's own shell running `gh` — never into the local BUGS.md, never editing the repo. Enabling is the operator's config choice (`roles.feedback.enabled`), selfcheck's exact opt-in precedent; nothing leaves the machine until then.

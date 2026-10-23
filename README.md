@@ -86,12 +86,13 @@ same list, and `tumwater completion bash|zsh|fish` prints shell completion. Sett
 **Backends:** any OpenAI-compatible model pi can reach works, chosen by `model` in `tumwater.json`
 with a `fallback` that a failing role switches to. `backend` beside `model` picks who runs it:
 `"backend": "claude"` runs a model id on Claude Code, `"backend": "opencode"` on the OpenCode CLI — its free
-DeepSeek tier needs no login or API key. Requirements, the fallback, free-ness, and usage-window
+DeepSeek tier needs no login or API key — and `"backend": "codex"` on the Codex CLI's ChatGPT subscription
+(no API key; its two usage windows behave like a claude subscription's). Requirements, the fallback, free-ness, and usage-window
 behavior, and how subscription runs are billed (as estimated spend, outside the daily cap) are in
 [docs/backends.md](docs/backends.md).
 
 **Mixing providers:** `model` says which model, `backend` says which program runs it (`pi`, the
-default, `claude` or `opencode`). A tier entry, a role, a review and a fallback step each take an
+default, `claude`, `opencode` or `codex`). A tier entry, a role, a review and a fallback step each take an
 object with both, so one config can mix a Claude strong tier with pi providers:
 
 ```json
@@ -109,7 +110,8 @@ role, the reviewer, and the conflict resolver) run on the claude CLI's included 
 oMLX — all concurrently, under each provider's cap (set it with `maxConcurrentPerProvider`;
 `tumwater status` shows how many runs each key has going out of its cap). An OpenCode tier is
 `{ "backend": "opencode", "model": "deepseek-v4.1-flash-free" }`, so its free tier can sit beside pi
-and claude in one config; a Claude model that should stay on pi (billed per token) is the plain
+and claude in one config; a codex tier is `{ "backend": "codex", "model": "gpt-6.1-sol" }`, so a ChatGPT
+subscription can cover the team's default tier beside pi and claude. A Claude model that should stay on pi (billed per token) is the plain
 `anthropic/claude-…` selector. See [plans/agent-backends.md §3](plans/agent-backends.md).
 
 For how the roles, review gate, scheduling, and updates work, see

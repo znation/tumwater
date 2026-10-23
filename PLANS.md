@@ -114,19 +114,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A fake codex whose delete exits nonzero leaves that session's rollout removed by the fallback.
 - `npm run test:gate` passes.
 
-### Codex backend, part 9c/9: Codex docs — a backends.md section, the config keys and the README backend list (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9d/9; design in plans/codex-backend.md "The decisions" and "Hand steps"; touches docs/backends.md docs/config.md README.md)
-
-**Goal.** The Codex backend is documented where the other backends are, so an operator can configure and trust it from the docs alone.
-
-**Approach.**
-- docs/backends.md: a "Codex (`backend: "codex"`)" section — what it runs, the home and its one login, subscription-only billing, the windows and reserve, what is disabled and why (no sandbox, API-key login refused), sessions, and the sandbox choice — naming `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
-- docs/config.md: the `backends.codex` keys (`configDir`, `windowReserve`, `args`).
-- README.md: add Codex to the backends list (the Backends paragraph; never the brief block between the `tumwater:prompt` markers).
-
-**Acceptance criteria.**
-- docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`; docs/config.md names the `backends.codex` keys; README's backend list names Codex.
-- `npm run test:gate` passes.
-
 ### Codex backend, part 9d/9: The opt-in `smoke:codex` live check (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9c/9; design in plans/codex-backend.md "Hand steps" and "Risks"; touches scripts/smoke-codex.mjs (new) package.json)
 
 **Goal.** After a Codex upgrade, one live command proves the production invocation still works — the same hand check `smoke:claude` and `smoke:opencode` give.
