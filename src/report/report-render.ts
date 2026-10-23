@@ -68,6 +68,22 @@ function dayCameoLine(
   return cells.length > 0 ? `**${title}:** ${cells.join(" · ")}` : undefined;
 }
 
+/** Push a day-cameo line onto `lines` only when some day carries a value — the “compute a
+ * cameo line, push it when present” boilerplate every per-day cell repeats. Renders via
+ * dayCameoLine (the one cameo shape), so the date+cell shape and title line cannot drift.
+ * Zero-means-absent: a day whose field is undefined renders no cell, and a series with no such
+ * day pushes no line. */
+function pushDayCameoLine(
+  lines: string[],
+  series: ReportDay[],
+  title: string,
+  pick: (d: ReportDay) => number | undefined,
+  fmt: (v: number) => string = shortSpanPhrase,
+): void {
+  const line = dayCameoLine(series, title, pick, fmt);
+  if (line !== undefined) lines.push(line);
+}
+
 /** Push the `Cost by provider` and `Estimated by provider` lines of the per-provider spend
  * breakdown (plans: per-provider spend), from the caller's already-ranked real- and notional-
  * spend pairs. Role scoping is the caller's `role === undefined` gate — this helper only
@@ -421,31 +437,22 @@ export function renderReportMarkdown(data: ReportData): string {
       lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
-    const medians = dayCameoLine(data.series, "Merge check median", (d) => d.checkMedianMs);
-    if (medians !== undefined) lines.push(medians);
+    pushDayCameoLine(lines, data.series, "Merge check median", (d) => d.checkMedianMs);
     // Per-day count of red full-suite checks, beside the passing medians above; a day whose
     // suite went red before passing shows here. Zero-absent: no line when no day fails.
-    const reds = dayCameoLine(data.series, "Red merge checks", (d) => d.checkFailures, (n) => `×${n}`);
-    if (reds !== undefined) lines.push(reds);
+    pushDayCameoLine(lines, data.series, "Red merge checks", (d) => d.checkFailures, (n) => `×${n}`);
     // Per-day main red wall-clock, beside the red-check counts above: how long each day main
     // had no passing full check (the span every code role was held). Team-only (main's own
     // red time, not any role's) and zero-absent: no line when no day was red.
-    const mainReds = dayCameoLine(data.series, "Main red", (d) => d.mainRedMs, durationLabel);
-    if (mainReds !== undefined) lines.push(mainReds);
-    const waits = dayCameoLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
-    if (waits !== undefined) lines.push(waits);
-    const runDurations = dayCameoLine(data.series, "Run duration median", (d) => d.runMedianMs);
-    if (runDurations !== undefined) lines.push(runDurations);
+    pushDayCameoLine(lines, data.series, "Main red", (d) => d.mainRedMs, durationLabel);
+    pushDayCameoLine(lines, data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
+    pushDayCameoLine(lines, data.series, "Run duration median", (d) => d.runMedianMs);
     // How long the review gate ran per day — how long the reviewer's verdict run(s) took —
-    // beside the run/merge-wait medians; dayCameoLine omits the line when no day carries one.
-    const reviewDurations = dayCameoLine(data.series, "Review duration median", (d) => d.reviewMedianMs);
-    if (reviewDurations !== undefined) lines.push(reviewDurations);
-    const providerWaits = dayCameoLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
-    if (providerWaits !== undefined) lines.push(providerWaits);
-    const slotWaits = dayCameoLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
-    if (slotWaits !== undefined) lines.push(slotWaits);
-    const checkWaits = dayCameoLine(data.series, "Check wait median", (d) => d.checkWaitMedianMs);
-    if (checkWaits !== undefined) lines.push(checkWaits);
+    // beside the run/merge-wait medians; pushDayCameoLine omits the line when no day carries one.
+    pushDayCameoLine(lines, data.series, "Review duration median", (d) => d.reviewMedianMs);
+    pushDayCameoLine(lines, data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
+    pushDayCameoLine(lines, data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
+    pushDayCameoLine(lines, data.series, "Check wait median", (d) => d.checkWaitMedianMs);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
