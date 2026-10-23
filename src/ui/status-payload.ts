@@ -97,8 +97,8 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // stays up while the role's next run is in progress (phase reads "working") and clears only
       // when the streak resets (BUGS.md 2026-10-14).
       errorStreak: onErrorStreak(s),
-      // User-defined-role marker (computed in snapshot — see StatusSnapshot.loops): the GUI
-      // renders it as an asterisk beside the role name.
+      // User-defined-role marker (computed in snapshot — see StatusSnapshot.roles[].custom):
+      // the GUI renders it as an asterisk beside the role name.
       custom: s.custom,
       // The role's resolved selector, present whenever a model resolves (a single string
       // `model` or a tier map); the seam tier tag (part 7a, model-tiers.md
@@ -106,7 +106,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
       // the role name and the selector in the sub line.
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
-      // pi's own saved default (see StatusSnapshot.loops.modelFromPi): ships beside `model` so
+      // pi's own saved default (see StatusSnapshot.roles[].modelFromPi): ships beside `model` so
       // the dashboard can mark a row whose model tumwater.json did not name. Same conditional
       // spread as `model`, present on exactly the rows that carry the flag.
       ...(s.modelFromPi ? { modelFromPi: true } : {}),
