@@ -78,22 +78,43 @@ export interface TeamChangeView {
   roles: TeamRoleChange[];
 }
 
+/** The repo-wide half of a change collection, resolved once and shared by every role instead
+ * of re-computed per role: the main-branch name (a configured baseBranch wins, else the
+ * primary checkout's current branch, else "main") and whether that branch exists are team-wide
+ * facts — they do not depend on which role's worktree is being asked, and every role in a
+ * roster used to recompute the same two values through the same two git reads. A 6-role roster
+ * therefore ran 2×N repo-level git reads a single pass covers; the per-role work (that role's
+ * own worktree diffs) is unchanged and still runs in the loop. */
+interface ChangeScope {
+  mainBranch: string;
+  mainPresent: boolean;
+}
+
+/** Resolve the team-wide scope both collection entry points share: read the config once for a
+ * configured baseBranch, ask the primary checkout for its current branch once, and check the
+ * resolved main branch exists once. */
+async function resolveChangeScope(root: string): Promise<ChangeScope> {
+  const { config } = loadConfigSafe(root);
+  const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
+  return { mainBranch, mainPresent: await branchExists(root, mainBranch) };
+}
+
 /** Collect the pending change of every known role (built-in plus custom role ids, config
  * order — disabled roles included, since a role stopped mid-flight still holds its branch).
- * Each entry goes through collectRoleChange, which keeps the absent/no-base degradation
- * logic single-homed and only computes the patch git-diffs for roles actually holding work
- * (both are "" when a role holds nothing); the team view then drops the patch fields. */
+ * Each entry goes through collectRoleChangeAt with the team-wide scope resolved once up
+ * front, which keeps the absent/no-base degradation logic single-homed and only computes
+ * the patch git-diffs for roles actually holding work (both are "" when a role holds
+ * nothing); the team view then drops the patch fields. */
 export async function collectTeamChanges(root: string): Promise<TeamChangeView> {
+  const scope = await resolveChangeScope(root);
   const roles = await Promise.all(
     knownRoleIdsCached(root).map(async (role) => {
-      const view = await collectRoleChange(root, role);
+      const view = await collectRoleChangeAt(root, role, scope);
       const { diff: _diff, uncommittedDiff: _uncommittedDiff, ...team } = view;
       return team;
     }),
   );
-  // mainBranch is team-wide: collectRoleChange resolves it once per role through the same
-  // targetBranch call, so the first entry's value is every entry's value.
-  return { mainBranch: roles[0]?.mainBranch ?? "main", roles };
+  return { mainBranch: scope.mainBranch, roles };
 }
 
 /** The per-role views of several roles: the list form of `tumwater diff --role`. */
@@ -104,8 +125,9 @@ export interface RoleChangesView {
 
 /** Collect each listed role's full change view, entries in the caller's order. */
 export async function collectRoleChanges(root: string, roles: string[], opts: { stat?: boolean; path?: string } = {}): Promise<RoleChangesView> {
-  const views = await Promise.all(roles.map((role) => collectRoleChange(root, role, opts)));
-  return { mainBranch: views[0]?.mainBranch ?? "main", roles: views };
+  const scope = await resolveChangeScope(root);
+  const views = await Promise.all(roles.map((role) => collectRoleChangeAt(root, role, scope, opts)));
+  return { mainBranch: scope.mainBranch, roles: views };
 }
 
 /** The uncommitted patch's cap, matching aheadOfMainDiff's — one shared bound so neither
@@ -120,9 +142,20 @@ export async function collectRoleChange(
   role: string,
   opts: { stat?: boolean; path?: string } = {},
 ): Promise<RoleChangeView> {
+  return collectRoleChangeAt(root, role, await resolveChangeScope(root), opts);
+}
+
+/** One role's change against a pre-resolved team scope: the per-role body of every entry point.
+ * Shared so the team-wide mainBranch/branch-exists reads are spent once per collection instead
+ * of once per role (the roster and list forms pass a scope resolved before the Promise.all). */
+async function collectRoleChangeAt(
+  root: string,
+  role: string,
+  scope: ChangeScope,
+  opts: { stat?: boolean; path?: string } = {},
+): Promise<RoleChangeView> {
   const branch = branchName(role);
-  const { config } = loadConfigSafe(root);
-  const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
+  const mainBranch = scope.mainBranch;
   const empty: Omit<RoleChangeView, "state"> = {
     role,
     branch,
@@ -134,7 +167,7 @@ export async function collectRoleChange(
     dirtyFiles: [],
     uncommittedDiff: "",
   };
-  if (!(await branchExists(root, mainBranch))) return { ...empty, state: "no-base" };
+  if (!scope.mainPresent) return { ...empty, state: "no-base" };
   // The role's checkout comes from the pool resolver (slots-state.ts): a slot leased for its
   // run or pinned for it, else the legacy worktree. A null or unusable directory is the same
   // operator situation — this role holds nothing inspectable yet — so worktree.ts's shared
@@ -264,9 +297,8 @@ export function scopeChangeOverlapsToPath(view: ChangeOverlapsView, path: string
 /** Collect the files two or more roles hold, committed ahead of main or uncommitted. Computes
  * file names only — no patch — and skips a role with no usable checkout. */
 export async function collectChangeOverlaps(root: string): Promise<ChangeOverlapsView> {
-  const { config } = loadConfigSafe(root);
-  const mainBranch = targetBranch(config?.baseBranch, await currentBranch(root));
-  if (!(await branchExists(root, mainBranch))) return { mainBranch, state: "no-base", overlaps: [] };
+  const { mainBranch, mainPresent } = await resolveChangeScope(root);
+  if (!mainPresent) return { mainBranch, state: "no-base", overlaps: [] };
   const held = await Promise.all(
     knownRoleIdsCached(root).map(async (role) => {
       const wt = await roleWorktreeDir(root, role);

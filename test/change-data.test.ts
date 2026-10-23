@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { collectChangeOverlaps, collectTeamChanges, collectRoleChange } from "../src/change/change-data.js";
+import { collectChangeOverlaps, collectTeamChanges, collectRoleChange, collectRoleChanges } from "../src/change/change-data.js";
 import { loadConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { ensureDetachedWorktree, ensureWorktree } from "../src/git/worktree.js";
@@ -20,6 +20,17 @@ import { dropLooseObject } from "./helpers/git-faults.js";
 // had no test anywhere before this file. (test/change-render.test.ts pins the renderer beside
 // the collector's absent-worktree and truncation paths; this file is the collector's
 // remaining half.)
+
+test("an empty role list still resolves the shared main branch", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "change-data empty roster");
+  const cfg = loadConfig(repo);
+  cfg.baseBranch = "ghost";
+  writeConfig(repo, cfg);
+  const view = await collectRoleChanges(repo, []);
+  assert.equal(view.mainBranch, "ghost");
+  assert.deepEqual(view.roles, []);
+});
 
 test("a configured base branch that does not exist degrades to no-base", async () => {
   const repo = makeRepo();
