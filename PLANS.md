@@ -178,20 +178,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The docs name codex among the guarded backends and its `apply_patch`-only coverage.
 - `npm run test:gate` passes.
 
-### Split orchestrator-scheduling.ts's pollRunnerReasons, part 2/3: the per-runner skip decision in scheduling-skip.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 3/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts (new) test/orchestrator-scheduling.test.ts)
-
-**Goal.** Lift every gate that decides whether a runner is due or skipped into one function, so the WHY-due policy reads on its own screen.
-
-**Approach.**
-- New `src/orchestrator/scheduling-skip.ts`: `export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict>` with `SkipVerdict = { skip: true } | { skip: false; reason: string }`.
-- Move the loop head and skip gates verbatim: once-mode settlement (the pre-gate `once.settle` and the `once.isSettled` continue), `holdForRestart`/`diskHeld`, per-role pause, `capPaused`, `maintenanceQuotaOverLine`, `bootstrapHeldNow`, `operatorPauseBlocks`, the director window hold, the `reviewHeld`/provider holds, the `isEligible` call with its `leftoverPending`/`planBacklogOpen` inputs, the not-due branch (`deferredDue` reset, `once.settleSkipped`, `noteSkip`, continue), the merge-queue interlock, the `instances` limit, the need-based deferral block (still awaiting `scope.workMergedSince.since` and updating `scope.deferredDue`), and the maintenance-allowance admission (mutating `scope.quotaAdmitted`). `noteSkip` is the one from `scheduling-scope.ts`.
-- `orchestrator-scheduling.ts`'s loop becomes `const verdict = await skipRunner(scope, runner); if (verdict.skip) continue;` and passes `verdict.reason` to the still-inline admit tail (part 3/3 moves that tail).
-
-**Acceptance criteria.**
-- No gate predicate or once/deferral bookkeeping remains in `orchestrator-scheduling.ts`'s loop; the skip path is one function in `scheduling-skip.ts`.
-- `test/orchestrator-scheduling.test.ts` passes unchanged (the exported `pollRunnerReasons` behavior is identical).
-- `npm run test:gate` passes.
-
 ### Split orchestrator-scheduling.ts's pollRunnerReasons, part 3/3: multi-runner claim assignment and stand-down in scheduling-admit.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 2/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-admit.ts (new) test/orchestrator-scheduling.test.ts)
 
 **Goal.** Lift the post-gate admission — the stand-down turn-down and the parallel-work-instance claim assignment — into one function.

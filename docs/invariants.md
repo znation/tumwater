@@ -1289,7 +1289,7 @@ an instance role's bare id) `<role>-1`. A `<role>-1` pause therefore stops insta
 siblings.
 
 **Binds.** `src/roles/runner-ids.ts` (`instancePauseKey`, `runnerPaused`); callers include
-`src/orchestrator/orchestrator-scheduling.ts` (`runnerPaused`).
+`src/orchestrator/scheduling-skip.ts` (`runnerPaused`).
 
 **Pinned by.** `test/runner-ids.test.ts` — "instancePauseKey and runnerPaused give instance 1 its
 own pause key only while the role has siblings".
@@ -4109,7 +4109,8 @@ window are pruned, waiting or kept".
 and the poll goes on with the in-memory state; the next successful save writes it.
 
 **Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`),
-`src/orchestrator/scheduling-scope.ts` (`noteSkip`) and
+`src/orchestrator/scheduling-scope.ts` (`noteSkip`),
+`src/orchestrator/scheduling-skip.ts` (the skip path's `noteSkip` calls) and
 `src/orchestrator/orchestrator-scheduling.ts` (`pollRunnerReasons`).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a skip reason that cannot be saved warns and

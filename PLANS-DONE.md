@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split orchestrator-scheduling.ts's pollRunnerReasons, part 2/3: the per-runner skip decision in scheduling-skip.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 3/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-skip.ts (new) test/orchestrator-scheduling.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Lift every gate that decides whether a runner is due or skipped into one function, so the WHY-due policy reads on its own screen.
+
+**Approach.**
+- New `src/orchestrator/scheduling-skip.ts`: `export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict>` with `SkipVerdict = { skip: true } | { skip: false; reason: string }`.
+- Move the loop head and skip gates verbatim: once-mode settlement (the pre-gate `once.settle` and the `once.isSettled` continue), `holdForRestart`/`diskHeld`, per-role pause, `capPaused`, `maintenanceQuotaOverLine`, `bootstrapHeldNow`, `operatorPauseBlocks`, the director window hold, the `reviewHeld`/provider holds, the `isEligible` call with its `leftoverPending`/`planBacklogOpen` inputs, the not-due branch (`deferredDue` reset, `once.settleSkipped`, `noteSkip`, continue), the merge-queue interlock, the `instances` limit, the need-based deferral block (still awaiting `scope.workMergedSince.since` and updating `scope.deferredDue`), and the maintenance-allowance admission (mutating `scope.quotaAdmitted`). `noteSkip` is the one from `scheduling-scope.ts`.
+- `orchestrator-scheduling.ts`'s loop becomes `const verdict = await skipRunner(scope, runner); if (verdict.skip) continue;` and passes `verdict.reason` to the still-inline admit tail (part 3/3 moves that tail).
+
+**Acceptance criteria.**
+- No gate predicate or once/deferral bookkeeping remains in `orchestrator-scheduling.ts`'s loop; the skip path is one function in `scheduling-skip.ts`.
+- `test/orchestrator-scheduling.test.ts` passes unchanged (the exported `pollRunnerReasons` behavior is identical).
+- `npm run test:gate` passes.
+
 ### `tumwater queue --cancel <n>` cancels a waiting merge before it lands (planned 2026-10-23 by the plan role; independent of the waiting series — it adds src/merge/merge-cancel.ts and the queue stanzas of src/cli, src/events and docs, while Interlock relief part 1/2 edits src/merge/merge-queue.ts's queued-roles read and the split series edits src/orchestrator; whichever lands later rebases; touches src/merge/merge-cancel.ts (new) src/cli/cli-query-commands.ts src/cli/help.ts src/events/events.ts src/events/event-labels.ts src/events/event-format.ts docs/cli.md test/merge-cancel.test.ts (new) test/cli-queue.test.ts test/event-format.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** An operator who sees an unwanted change waiting in the durable merge queue has no way to stop it. `tumwater queue` only reads; the alternatives are to let the change merge and then `tumwater revert`, or `tumwater retire --force` — which deletes the branch and merge ref but leaves the queue entry, so the pinned sha can still merge. Add `tumwater queue --cancel <n>`, the merge-queue twin of `tumwater prompt --cancel <n>`: it removes the Nth entry `tumwater queue` lists and deletes that entry's merge pin, so next-run leftover recovery cannot silently re-enqueue the change, and it logs a `merge_cancelled` event naming the role, commit and summary.
