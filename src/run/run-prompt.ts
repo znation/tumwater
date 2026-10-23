@@ -183,9 +183,10 @@ export function assembleRunPrompt(
     const entry = preview ? null : dequeueRolePromptEntry(root, role);
     const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
-    // The selfcheck role's evidence is the harness's own event log, one level outside this
-    // worktree, so its evidence module renders it (selfcheckDigest) and the run injects it.
-    const digest = base === "selfcheck" ? selfcheckDigest(root) : undefined;
+    // The selfcheck and feedback observers' evidence is the harness's own event log, one level
+    // outside this worktree, so its evidence module renders it (selfcheckDigest) and the run
+    // injects it.
+    const digest = base === "selfcheck" || base === "feedback" ? selfcheckDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every run
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
     // runtime state, and a missing or unreadable one degrades to no block

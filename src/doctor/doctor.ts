@@ -46,7 +46,7 @@ import {
   checkWorkInstances,
   checkWorktreePool,
 } from "./doctor-contention-checks.js";
-import { checkFallbackChain, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
+import { checkFallbackChain, checkFallbackModel, checkFeedbackFiling, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
 import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "./doctor-claude-checks.js";
 import { checkOpencode } from "./doctor-opencode-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
@@ -150,6 +150,7 @@ export async function runDoctor(
     { name: "opencode version", run: () => checkOpencodeVersion(root, pathEnv) },
     { name: "opencode", run: () => checkOpencode(root, pathEnv) },
     { name: "backend binary", run: () => checkBackendBinary(root, pathEnv) },
+    { name: "feedback filing", run: () => checkFeedbackFiling(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", run: () => checkClaudeTranscripts(config) },
     // The receive-side guards name what a running team skips, so an operator tool meant for the

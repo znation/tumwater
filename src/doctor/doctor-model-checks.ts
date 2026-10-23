@@ -651,3 +651,42 @@ export async function checkImageInput(
     detail: `${outcome.detail} — could not save the image-probe cache (${saveProblem}), so the next doctor probes again`,
   };
 }
+
+/** `gh` readiness for the opt-in `feedback` observer (plans/feedback-role.md "Shape" → "Part 1"):
+ * the role files issues as the operator's GitHub login through `gh`, so doctor confirms `gh`
+ * resolves and `gh auth status` exits 0 before a run tries to file — the codex-login pattern
+ * (plans/codex-backend.md part 9/9). Shown only when the role is enabled: on a default install
+ * nothing files upstream, so there is nothing to check and the row is omitted (null). `probe`
+ * is injectable so tests use a fake gh (test/fakes/fake-gh.ts); the real probe runs `gh` under
+ * the scrubbed run environment with a bounded deadline. */
+export async function checkFeedbackFiling(
+  root: string,
+  pathEnv: string = envPath(),
+  probe: (
+    args: string[],
+  ) => Promise<{ code: number | null; stdout: string } | null> = (args) =>
+    boundedProbe(
+      "gh",
+      args,
+      childEnv({ PATH: pathEnv }),
+      AUTH_CHECK_TIMEOUT_MS,
+      AUTH_CHECK_MAX_OUTPUT_BYTES,
+    ),
+): Promise<CheckOutcome | null> {
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
+  if (!config.roles.feedback?.enabled) return null;
+  const version = await probe(["--version"]);
+  if (version?.code !== 0)
+    return failOutcome(
+      "gh is missing or unusable — install GitHub CLI (https://cli.github.com) so the feedback role can file issues as your login",
+    );
+  const auth = await probe(["auth", "status"]);
+  if (auth?.code !== 0)
+    return failOutcome(
+      "gh is not authenticated — run `gh auth login` — the feedback role files issues as your GitHub login",
+    );
+  return okOutcome(
+    "gh present and authenticated — the feedback role can file issues on znation/tumwater",
+  );
+}

@@ -472,7 +472,18 @@ test("the selfcheck role's prompt carries the failure digest rendered from its e
   assert.doesNotMatch(result.prompt, /Flow coverage/);
 });
 
-test("a role other than qa or selfcheck gets neither evidence block", () => {
+test("the feedback role's prompt carries the failure digest rendered from its event log", () => {
+  const dir = root();
+  writeEvents(dir, [
+    { ts: Date.now(), loop: "feature", type: "run_end", result: "error", error: "pi exited null" }, // retired-name-ok: legacy event field in a fixture
+  ]);
+  const result = promptFor(dir, "feedback");
+  assert.ok(result);
+  assert.match(result.prompt, /Runtime failure digest of tumwater's own event log/);
+  assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
+});
+
+test("a role other than qa, selfcheck or feedback gets neither evidence block", () => {
   const result = promptFor(root(), "coverage");
   assert.ok(result);
   assert.doesNotMatch(result.prompt, /Flow coverage/);

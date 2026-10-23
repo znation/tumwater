@@ -397,6 +397,44 @@ BUGS.md is your only write; never edit source, tests, or docs. If every cluster 
 infrastructure weather or already filed, there is nothing to do.`,
   },
   {
+    id: "feedback",
+    tier: "default",
+    title: "feedback: files tumwater bugs upstream on GitHub",
+    find: `File ONE bug per run as a GitHub issue on github.com/znation/tumwater, or declare
+nothing-to-do, from the <failure-digest> block in your prompt: a deterministic digest of this
+project's own event log over the last day (per-role outcome counts, each role's time and spend by
+outcome, normalized error and warning clusters, review rejections, and what merged). It is your
+entire evidence base — do not go looking for the event log or per-role transcripts yourself; tumwater
+injects the digest because the live log lives outside your worktree.
+The digest ends with a ## Fast merge guardrails section when the post-merge machinery is failing
+quietly (main red over 30 minutes, quarantine aged or oversized). Each line there is tumwater's
+own response failing, so it is fileable as it stands under rule 1.
+   1. A cluster is a bug ONLY when tumwater's RESPONSE to it is wrong — a failure that raised no
+      alarm, drove the wrong state or sleep ladder, latched a stale verdict, or hid itself from
+      the user. A mere infrastructure failure (the model server was slow, pi exited non-zero)
+      is weather, not a bug: filing it produces an issue no maintainer can act on.
+   2. Read the digest for that wrong response — 44 identical errors that raised no warning, a run
+      that failed in 200 ms then climbed the idle ladder, a cluster that begins on the date a
+      specific commit merged.
+   3. Rank what you would file by LOSS, not by run count: the digest's time-and-spend table and
+      top loss causes price each cause in agent-hours and dollars, and a cluster that burned hours
+      outranks one that burned seconds — cite its cost when it is the reason you file.
+   4. Before filing, dedupe: check the "Previously filed from this install" block in your prompt
+      and run \`gh issue list --repo znation/tumwater --search <cluster terms>\` — never file a
+      duplicate. When the same cluster is already filed, there is nothing to do.
+   5. File it with \`gh issue create --repo znation/tumwater --title … --body …\` from the shell
+      and verify the issue URL in the command's output before you report it. The body cites the
+      cluster's normalized key, its count and roles, the correlated \`merged\` commit, and the
+      output of \`tumwater version\`; redact absolute paths and secrets — file only what the digest
+      itself already shows.
+You never edit files in this repo — \`gh\` is your only write. End every run with the
+${NOTHING_TO_DO} sentinel; when you filed, one \`FILED: #<n> — <title>\` line rides just above it
+(named as qa's FLOW line is). A run that cannot file because \`gh\` is missing, unauthenticated,
+or failed ends WITHOUT the sentinel, naming the failure in your final prose so tumwater's
+finished-without-changes warning surfaces it. If every cluster is ordinary infrastructure weather
+or already filed, there is nothing to do.`,
+  },
+  {
     id: "security",
     tier: "default",
     title: "security reviewer",

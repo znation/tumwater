@@ -39,9 +39,11 @@ test("GET /api/retire lists every disabled role and omits enabled roles", async 
   assert.ok(selfcheck);
   assert.deepEqual(selfcheck!.wouldRemove, []);
   assert.deepEqual(selfcheck!.objections, []);
-  // A repo with nothing disabled (the opt-in selfcheck re-enabled) answers empty.
+  // A repo with nothing disabled (the opt-in selfcheck and feedback re-enabled) answers empty.
   const enabled = await initializedWorktree();
-  writeConfig(enabled.root, { roles: { selfcheck: { enabled: true } } });
+  writeConfig(enabled.root, {
+    roles: { selfcheck: { enabled: true }, feedback: { enabled: true } },
+  });
   const again = await captureJson((res) => handleRetireList(res, enabled.root));
   assert.deepEqual(again.data, { roles: [] });
 });

@@ -83,6 +83,7 @@ test("security and robustness sit between the observers and improve in catalog o
   const ids = ROLES.map((r) => r.id);
   assert.deepEqual(ids.slice(ids.indexOf("selfcheck"), ids.indexOf("improve") + 1), [
     "selfcheck",
+    "feedback",
     "security",
     "robustness",
     "improve",
@@ -264,6 +265,28 @@ test("a selfcheck prompt renders the injected digest in a <failure-digest> block
   assert.match(prompt, /your evidence base/);
   // The block is the rendered digest, never a raw event dump.
   assert.ok(!prompt.includes(".tumwater/log/events.jsonl"));
+});
+test("the feedback role exists after selfcheck in catalog order", () => {
+  assert.ok(feedback, "roleById('feedback') returns a role");
+  const ids = ROLES.map((r) => r.id);
+  assert.equal(ids[ids.indexOf("selfcheck") + 1], "feedback", "feedback sits right after selfcheck (both observers)");
+  assert.equal(feedback.title, "feedback: files tumwater bugs upstream on GitHub");
+});
+test("the feedback find text files upstream via gh, never into BUGS.md, and never edits the repo", () => {
+  const find = oneLine(feedback!.find);
+  assert.match(find, /File ONE bug per run as a GitHub issue on github\.com\/znation\/tumwater/);
+  assert.match(find, /ONLY when tumwater's RESPONSE to it is wrong/);
+  assert.match(find, /gh issue create --repo znation\/tumwater/);
+  assert.match(find, /gh issue list --repo znation\/tumwater --search/);
+  assert.match(find, /You never edit files in this repo/);
+  assert.match(find, /redact absolute paths and secrets/);
+});
+test("a feedback prompt renders the injected digest in a <failure-digest> block", () => {
+  const prompt = buildRunPrompt({
+    role: feedback!,
+    digest: "# Failure digest\n- cluster",
+  });
+  assert.ok(prompt.includes("<failure-digest>\n# Failure digest\n- cluster\n</failure-digest>"));
 });
 test("prompts omit the <failure-digest> block when no digest is injected", () => {
   for (const id of ["qa", "feature"]) {
@@ -457,6 +480,7 @@ test("the director investigates only enough to route", () => {
 });
 const qa = roleById("qa");
 const selfcheck = roleById("selfcheck");
+const feedback = roleById("feedback");
 const readme = roleById("readme");
 // Sweep completeness (2026-10-01): the budgeted model's dedupe/organize/clean rejections were
 // mostly a refactor or rename left half-swept — call sites unconverted, a stale path in a doc

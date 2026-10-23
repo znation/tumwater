@@ -97,8 +97,8 @@ test("snapshot resolves a per-role quiet window through the base role for instan
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  // Baseline: every catalog role but the opt-in selfcheck enabled by default.
-  assert.equal(snapshot(repo).roles.length, allRoleIds().length - 1);
+  // Baseline: every catalog role but the opt-in selfcheck and feedback enabled by default.
+  assert.equal(snapshot(repo).roles.length, allRoleIds().length - 2);
 
   // A valid config that disables one role becomes the last known-good one.
   const cfg = loadConfig(repo);
@@ -191,7 +191,7 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   let snap = snapshot(repo);
   assert.ok(snap.roles.some((l) => l.role === "nightly" && l.custom), "listed custom is marked");
   assert.ok(
-    snap.roles.filter((l) => !l.custom).length >= allRoleIds().length - 1,
+    snap.roles.filter((l) => !l.custom).length >= allRoleIds().length - 2,
     "every enabled built-in stays unmarked",
   );
 

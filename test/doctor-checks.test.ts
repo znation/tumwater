@@ -37,6 +37,8 @@ import {
   checkWorktreePool,
 } from "../src/doctor/doctor-contention-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
+import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
+import { fakeGh } from "./fakes/fake-gh.js";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
@@ -301,10 +303,10 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
   assert.equal(notInit.level, "fail");
   assert.match(notInit.detail, /not initialized/);
 
-  // An empty config enables every catalog role but the opt-in selfcheck by default.
+  // An empty config enables every catalog role but the opt-in selfcheck and feedback by default.
   const defaults = checkInit(readyRepo());
   const enabledByDefault = Object.values(defaultConfig().roles).filter((r) => r.enabled).length;
-  assert.equal(enabledByDefault, allRoleIds().length - 1);
+  assert.equal(enabledByDefault, allRoleIds().length - 2);
   assert.deepEqual(defaults, { level: "ok", detail: `${enabledByDefault} roles enabled` });
 
   // The count reflects only the enabled entries: disable every role but one.
@@ -313,6 +315,38 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
   for (const id of allRoleIds()) roles[id] = { enabled: id === "feature" };
   writeConfig(oneEnabled, { roles });
   assert.deepEqual(checkInit(oneEnabled), { level: "ok", detail: "1 roles enabled" });
+});
+
+test("checkFeedbackFiling omits its row when feedback is disabled, ok when gh is present and authenticated", async () => {
+  const dir = makeRepo(); // feedback disabled by default
+  assert.equal(await checkFeedbackFiling(dir, envPath(), fakeGh().probe), null);
+
+  // Enable feedback: the check runs gh and reports a usable install.
+  const enabled = makeRepo();
+  writeConfig(enabled, { roles: { feedback: { enabled: true } } });
+  const okGh = fakeGh();
+  const ok = await checkFeedbackFiling(enabled, envPath(), okGh.probe);
+  assert.equal(ok?.level, "ok");
+  assert.match(ok!.detail, /gh present and authenticated/);
+  assert.deepEqual(okGh.calls, [["--version"], ["auth", "status"]]);
+});
+
+test("checkFeedbackFiling fails with actionable text when gh is missing or unauthenticated", async () => {
+  const enabled = makeRepo();
+  writeConfig(enabled, { roles: { feedback: { enabled: true } } });
+
+  const missing = fakeGh({ version: false });
+  const missOutcome = await checkFeedbackFiling(enabled, envPath(), missing.probe);
+  assert.equal(missOutcome?.level, "fail");
+  assert.match(missOutcome!.detail, /install GitHub CLI/);
+  // A missing gh never reaches the auth probe.
+  assert.deepEqual(missing.calls, [["--version"]]);
+
+  const unauth = fakeGh({ auth: false });
+  const authOutcome = await checkFeedbackFiling(enabled, envPath(), unauth.probe);
+  assert.equal(authOutcome?.level, "fail");
+  assert.match(authOutcome!.detail, /gh auth login/);
+  assert.deepEqual(unauth.calls, [["--version"], ["auth", "status"]]);
 });
 
 test("checkInit carries the config error verbatim — invalid JSON and validation problems alike", () => {

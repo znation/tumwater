@@ -50,13 +50,17 @@ export function defaultConfig(): ResolvedModelConfig {
   roles.steward = { enabled: true, minRunIntervalSeconds: 21600 };
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
   roles.qa = { enabled: true, minRunIntervalSeconds: 7200 };
-  // Selfcheck reads the event log on the same slow clock: the digest is a windowed view, so a
-  // run a couple of hours apart reads a new window rather than re-filing the same cluster.
-  // It is the one opt-in role: its evidence is this harness's own event log and its charter
-  // files only harness misbehavior, so on any other project every finding is a tumwater bug
-  // filed into the wrong backlog, which that project's bugfix role rightly rejects. Tumwater's
-  // own tumwater.example.json enables it, so this repo's checkouts still get it at `init`.
+  // Selfcheck and feedback are the two opt-in roles, both on the same ~2 h clock: the digest is
+  // a windowed view, so a run a couple of hours apart reads a new window rather than re-filing
+  // the same cluster. Selfcheck's evidence is this harness's own event log and its charter files
+  // only harness misbehavior, so on any other project every finding is a tumwater bug filed into
+  // the wrong backlog, which that project's bugfix role rightly rejects — that is why it is
+  // opt-in. Feedback files the same digest's findings as GitHub issues on znation/tumwater, so
+  // nothing leaves the machine until the operator opts in (plans/feedback-role.md). Tumwater's
+  // own tumwater.example.json keeps selfcheck (dogfood) and not feedback, so this repo's
+  // checkouts still get their findings at `init` and file nothing upstream.
   roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 };
+  roles.feedback = { enabled: false, minRunIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every run: readme woke on every merge to restamp one line, and plan re-audited plans

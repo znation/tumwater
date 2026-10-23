@@ -35,6 +35,7 @@ export const DOCTOR_CHECK_NAMES = [
   "opencode version",
   "opencode",
   "backend binary",
+  "feedback filing",
   "claude transcripts",
   "pi extensions",
   "funes",

@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Feedback role, part 1/2: the opt-in `feedback` observer — files one tumwater bug per run as a GitHub issue on znation/tumwater (planned 2026-10-23 by user; independent of every Planned entry; design in plans/feedback-role.md "The decision", "Invariants" and "Shape" → "Part 1"; touches src/roles/role-catalog.ts src/roles/roles.ts src/run/run-prompt.ts src/run/selfcheck-digest.ts src/config/config.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/fakes/fake-gh.ts (new) README.md docs/config.md docs/glossary.md docs/how-it-works.md test/roles.test.ts test/config.test.ts test/prompt-roles.test.ts test/run-prompt.test.ts test/doctor-checks.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Bring back the telemetry concept with the destination fixed: a new default-off observer role `feedback` that reads the same injected `<failure-digest>` selfcheck reads, applies the same response-was-wrong and rank-by-loss rules, and files ONE bug per run as a GitHub issue on github.com/znation/tumwater via the model's own shell running `gh` — never into the local BUGS.md, never editing the repo. Enabling is the operator's config choice (`roles.feedback.enabled`), selfcheck's exact opt-in precedent; nothing leaves the machine until then.
+
+**Approach.**
+- src/roles/role-catalog.ts: the `feedback` entry after `selfcheck` and before `security`, tier "default", title `feedback: files tumwater bugs upstream on GitHub`. The charter mirrors selfcheck's five rules verbatim where shared (rule 1 — a cluster is a bug ONLY when tumwater's RESPONSE to it is wrong; rank by loss; dedupe via `gh issue list --repo znation/tumwater --search` before every create) with the destination swapped: file with `gh issue create --repo znation/tumwater --title … --body …`, verify the issue URL in the command's output, cite the cluster key, the correlated merged commit, and `tumwater version` in the body, and redact absolute paths and secrets. Closing rule: "You never edit files in this repo — `gh` is your only write"; a fulfilled run ends with the nothing-to-do sentinel; a run that cannot file (gh missing/unauthenticated/failed) ends without the sentinel so the existing finished-without-changes warning (src/run/run-verdict.ts:321-326) surfaces the failure in the digest.
+- src/roles/roles.ts: `OBSERVER_ROLES` gains `"feedback"`; the DEFERRABLE_ROLES/BASELINE_BLOCKED_ROLES doc comments name the role (excluded by construction, no code change).
+- src/run/run-prompt.ts: the digest injection (line 177) covers `base === "feedback"` too; src/run/selfcheck-digest.ts's doc comment names both consumers of the shared trailing-24h window.
+- src/config/config.ts: `roles.feedback = { enabled: false, minRunIntervalSeconds: 7200 }` beside the selfcheck entry, with the opt-in comment rewritten for the two roles. tumwater.example.json stays selfcheck-only (dogfood).
+- Doctor gains a `feedback filing` check, shown only when the role is enabled: `gh` resolves and `gh auth status` exits 0, else fail with the `gh auth login` instruction (the codex-login pattern).
+- Docs: README status line names two opt-in roles and 16 catalog roles; docs/config.md (enabled default, 7200 clock list, the selfcheck-or-feedback alternatives sentence), docs/glossary.md observer group, docs/how-it-works.md observer mentions.
+- test/fakes/fake-gh.ts (new): records create/list invocations; a switch to simulate missing auth.
+
+**Tests.**
+- test/roles.test.ts: the `exempt` set, the OBSERVER_ROLES membership assertion and its message gain `feedback`.
+- test/config.test.ts: the default-enabled loop skips both opt-in roles and asserts `roles.feedback?.enabled === false`; feedback's 7200 joins the interval assertions and the `slow` clock set.
+- test/prompt-roles.test.ts: a feedback charter contract test, oneLine-anchored like selfcheck's.
+- test/run-prompt.test.ts: a feedback prompt carries `<failure-digest>`; the "neither evidence block" test's role set gains feedback.
+- test/doctor-checks.test.ts: the enabled-by-default count becomes `allRoleIds().length - 2`; the gh check's pass/fail cases on the fake.
+
+**Acceptance criteria.**
+- A default install has `feedback` disabled; the digest is rendered for it only when enabled.
+- An opted-in install's feedback run files exactly one issue per run on znation/tumwater via `gh`, and a run with nothing to file ends no_change with the sentinel; the repo is never edited and main never moves.
+- Doctor's `feedback filing` check reports gh missing/unauthenticated with actionable text, only when the role is enabled.
+- `npm run test:gate` passes.
+
 ### Reviewer as a regular role, part 4/4: Reviewer feedback the author cannot miss — the rejection note leads the next run, and the commit body acknowledges each reason (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 4; evidence: the same reason text recurring across 27 consecutive rejections of bugfix-2 (10-22T08:29→14:35Z), so the injected `lastReview` note is not changing the author's next run; touches src/prompt/prompt.ts src/prompt/gate-notes.ts src/run/run-prompt.ts src/git/commit-message.ts and their tests) — done 2026-10-23 by the feature role
 
 **Goal.** Close the broken feedback loop that makes rejections cheap to repeat: when a run starts with a rejected change's reasons, those reasons — not the general charter — organize the run; and the resulting commit's body says, per numbered reason, what was done about it, so the re-review's prior-objection check (plans/revise-rejected.md) reads an answer, not a shrug.

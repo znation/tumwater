@@ -199,7 +199,7 @@ discards a role's in-flight merge.
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has
   work a feature or bugfix instance can take (refused, needs-review/replan, waiting-for-the-next-failure and blocked entries do
-  not count). `qa` is never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
+  not count). `qa`, `selfcheck` and `feedback` are never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
   open bugs it has nothing assigned and defers like one — with the difference that any
   feature, bugfix, director, you or another human wakes it (your own `tumwater brief`, `plan`, `bug`
   and `questions answer` edits count) (a deferral only holds while no qualifying work has merged),
@@ -238,7 +238,7 @@ discards a role's in-flight merge.
   free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
   once assigned.
   A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the
-  selfcheck digest's `## Fast merge guardrails` section report how long main has had no passing full
+  selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report how long main has had no passing full
   check, the sha it has been red since, and its newest failing test. The same row and section warn
   on a `main_revert` in the last 24 h that looks false — a test it names has been quarantined
   since (or a later `main_check`'s `quarantined` list names it), or its change later merged again

@@ -99,13 +99,13 @@ The fields of a `roles.<id>` entry:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `enabled` | `true` (`false` for selfcheck) | Whether the role runs. |
+| `enabled` | `true` (`false` for selfcheck and feedback) | Whether the role runs. `feedback` and `selfcheck` are alternatives: selfcheck files tumwater bugs into the local BUGS.md on the tumwater repo itself (dogfood), while `feedback` files them as GitHub issues on znation/tumwater from any other install that opts in; nothing leaves the machine until `roles.feedback.enabled` is true. |
 | `instructions` | none | Extra instructions appended to this role's prompt. The director's entry is honored like any role's (its notes stay unset, the `role` command's `--clear-notes` refusal). |
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; a value one or two letters off a tier name (in any case) is rejected as a misspelled tier; unset uses the role's catalog tier. |
 | `backend` | none | The backend (`pi`, `claude`, `opencode`, `codex`) that runs this role's `model`; the id passes to it as written. Alone, it inherits the tier's model only when that tier already routes to the same backend, otherwise the backend's tier default applies. See [backends.md](backends.md). |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
-| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and selfcheck, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan loop's eligible-plan target, or holding a plan that needs review/needs replan), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan loop defers (`plans-full`) and this interval applies. |
+| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa, selfcheck and feedback, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. While PLANS.md's `## Planned` still has planning room (`planBacklogFull` false — below the plan loop's eligible-plan target, or holding a plan that needs review/needs replan), the plan role schedules with a zero gap instead, so a productive plan run reruns on the next poll and an unproductive one drops to the idle backoff; once the target is met the plan loop defers (`plans-full`) and this interval applies. |
 | `instances` | `1` | How many runs of the role may write code at once, 1–8; accepted only for feature and bugfix. Above 1, tumwater keeps up to twice as many runners (`feature` … `feature-10` at 5), so a runner waiting on its change does not hold a place. |
 
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in

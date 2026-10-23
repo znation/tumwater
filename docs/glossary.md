@@ -58,7 +58,7 @@ current one, so history, old logs and old scripts stay readable.
 | estimated spend | Cost computed from token counts, not billed. |
 | main's check is failing | The check fails on main. |
 | send later | Hold a message until a chosen time (`prompt --at`). |
-| TUI | The terminal interface. "Observer" names only the qa and selfcheck role group. |
+| TUI | The terminal interface. "Observer" names the qa, selfcheck and feedback role group. |
 
 ## In the code
 

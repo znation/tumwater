@@ -1,6 +1,6 @@
-/** The `selfcheck` role's run-time evidence: the failure digest rendered over the role's own
- * trailing 24 h window. Split out of src/failure/failure-render.ts — which stays the pure
- * renderer — so every observer role's evidence builder has its own module the way
+/** The `selfcheck` and `feedback` observers' run-time evidence: the failure digest rendered
+ * over the trailing 24 h window both share. Split out of src/failure/failure-render.ts — which
+ * stays the pure renderer — so every observer role's evidence builder has its own module the way
  * qa-coverage.ts and backlog-structure.ts do, and the run lifecycle (run-prompt.ts) injects
  * it from there instead of reaching into a report module. */
 import { DAY_MS } from "../text/datetime.js";
@@ -8,17 +8,18 @@ import { collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { guardrailWarnings } from "../baseline/main-guardrails.js";
 
-/** The `selfcheck` role's own digest window: the trailing 24 h ending now, not the local
- * calendar day. A calendar day starts at midnight, so a run at 06:32 would never see the
- * previous evening. The CLI keeps the usage report's 14-day default; the role reads 24 h so a
- * cluster re-surfaces only while it is live. The collector's equal-length prior window is what
- * makes the delta line meaningful. */
+/** The `selfcheck` and `feedback` observers' shared digest window: the trailing 24 h ending now,
+ * not the local calendar day. A calendar day starts at midnight, so a run at 06:32 would never
+ * see the previous evening. The CLI keeps the usage report's 14-day default; the role reads 24 h
+ * so a cluster re-surfaces only while it is live. The collector's equal-length prior window is
+ * what makes the delta line meaningful. */
 export const SELFCHECK_DIGEST_MS = DAY_MS;
 
-/** The `selfcheck` role's run-time evidence: the failure digest rendered over its own
- * trailing 24 h window. A missing or corrupt log omits the block (undefined) and never fails the
- * run — an observer must not break on bookkeeping (plans/telemetry-role.md). The window and
- * the swallow-errors policy live with the digest, not in the run lifecycle that injects it. */
+/** The `selfcheck` and `feedback` observers' run-time evidence: the failure digest rendered over
+ * their shared trailing 24 h window. A missing or corrupt log omits the block (undefined) and
+ * never fails the run — an observer must not break on bookkeeping (plans/telemetry-role.md). The
+ * window and the swallow-errors policy live with the digest, not in the run lifecycle that
+ * injects it. */
 export function selfcheckDigest(root: string): string | undefined {
   let digest: string;
   try {

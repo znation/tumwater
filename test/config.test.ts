@@ -37,15 +37,18 @@ test("the shipped run budget clears the longest legitimate observed run", () => 
   );
 });
 
-test("defaultConfig enables every role including director, except the opt-in selfcheck", () => {
+test("defaultConfig enables every role including director, except the opt-in selfcheck and feedback", () => {
   const config = defaultConfig();
   for (const id of allRoleIds()) {
-    if (id === "selfcheck") continue;
+    if (id === "selfcheck" || id === "feedback") continue;
     assert.equal(config.roles[id]?.enabled, true, `role ${id} should default enabled`);
   }
   // Selfcheck files only harness bugs from the harness's own event log, so on any other project
   // its findings land in the wrong backlog; tumwater's own tumwater.example.json opts in.
+  // Feedback files the same digest's findings as GitHub issues upstream, so nothing leaves the
+  // machine until the operator opts in (plans/feedback-role.md).
   assert.equal(config.roles.selfcheck?.enabled, false);
+  assert.equal(config.roles.feedback?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
   // Merge queue 5/5: the batch cap defaults to 3 — the team's realistic concurrent-role count.
   assert.equal(config.mergeBatchMax, 3);
@@ -61,6 +64,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
   assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
   assert.equal(configForRole(config, "selfcheck").minRunIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "feedback").minRunIntervalSeconds, 7200);
   // The bookkeeping roles: readme batches merges into one sync per half hour, plan re-audits
   // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
   assert.equal(configForRole(config, "readme").minRunIntervalSeconds, 1800);
@@ -68,7 +72,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   // Organize restructures at most hourly — at the global clock it reorganized the whole tree
   // one directory per run.
   assert.equal(configForRole(config, "organize").minRunIntervalSeconds, 3600);
-  const slow = new Set(["steward", "qa", "selfcheck", "readme", "plan", "organize"]);
+  const slow = new Set(["steward", "qa", "selfcheck", "feedback", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
     if (slow.has(id)) continue;
     // Every other role falls back to the global interval.
