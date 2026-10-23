@@ -29,9 +29,9 @@ export const SUPERVISOR_PID_ENV = "TUMWATER_SUPERVISOR_PID";
  * orchestrator generation, so a self-redeploy continues the window instead of opening a new one. */
 export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START";
 
-/** The exit code of a `run --once` round that finished and found failed runs (cli-start.ts's
- * onceFailures): an asked-for ending, so the supervisor passes it through without paging the
- * team-down hook. */
+/** The exit code of a `run --once` round that finished and found failed runs
+ * (onceFailures in src/cli/cli-start-summary.ts): an asked-for ending, so the supervisor
+ * passes it through without paging the team-down hook. */
 export const ONCE_FAILED_EXIT_CODE = 3;
 
 /** How often the supervised generation checks that its supervisor still lives (ms). */
