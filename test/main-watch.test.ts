@@ -258,3 +258,35 @@ test("a filing whose quarantine.json write failed is not filed again on the next
   const bug = loadQuarantine(root)[0]?.bug ?? "";
   assert.ok(bug.startsWith("`flaky one` failed"), bug);
 });
+
+test("a quarantined test whose filed bug leaves ## Open is released with a warning on the next poll", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  quarantineTests(root, ["flaky one"], "boom");
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root); // poll 1 files the pending quarantine into BUGS.md on main
+  assert.notEqual(loadQuarantine(root)[0]?.bug, "");
+  const file = path.join(root, "BUGS.md");
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("## Open", "## Fixed"));
+  await watchAt(watch, root); // poll 2's housekeeping releases it with a warning
+  assert.deepEqual(quarantinedTests(root), []);
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("quarantine released") && m.includes("flaky one")),
+    warnings.join("|"),
+  );
+});
+
+test("a quarantine the primary checkout cannot file warns once for the reason and stays pending", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  change(root, "BUGS.md", "# tumwater\n\n## Open\n\n_None yet._\n"); // track BUGS.md on main
+  quarantineTests(root, ["flaky one"], "boom");
+  fs.appendFileSync(path.join(root, "BUGS.md"), "# dirty\n"); // a tracked modification refuses the filing
+  const watch = createMainWatch(root, "main");
+  await watchAt(watch, root);
+  assert.equal(loadQuarantine(root)[0]?.bug, "");
+  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
+  assert.ok(
+    warnings.some((m) => m.includes("not filed in BUGS.md yet") && m.includes("BUGS.md has uncommitted changes")),
+    warnings.join("|"),
+  );
+});
