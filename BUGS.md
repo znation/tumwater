@@ -101,6 +101,25 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Cause:** `backlogStructureReason` (src/backlog/backlog-structure.ts) rejects a duplicated or dropped `## ` heading but accepts a new one, and treats every `## ` the base has as a section to keep, whether or not it is one of the file's known sections.
 - **Expected / fix sketch:** reject an added `## ` heading that is not one of the file's known sections (PLANS.md: Planned and Done; BUGS.md: Open, Fixed and Verified), and allow dropping an unknown one, so demoting it to `### ` passes. Then demote this heading to a `### ` entry at the end of `## Planned`.
 
+### `simultaneous cross-process pauseRole calls all survive in the marker` failed, then passed on the same tree (quarantined by tumwater 2026-10-23)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+✖ simultaneous cross-process pauseRole calls all survive in the marker (2166.2865ms)
+AssertionError [ERR_ASSERTION]: every simultaneous pause survives (order is whichever writer landed first)
+'base1065', 'base1066', 'base1067', 'base1068', 'base1069',
+'base107',  'base1070', 'base1071', 'base1072', 'base1073',
+'base1074', 'base1075', 'base1076', 'base1077', 'base1078',
+'base1079', 'base108',  'base1080', 'base1081', 'base1082',
+'base1083', 'base1084', 'base1085', 'base1086', 'base1087',
+... 1908 more items
+],
+operator: 'deepStrictEqual',
+diff: 'simple'
+}
+~~~~
+
 ## Fixed
 
 ## Verified
