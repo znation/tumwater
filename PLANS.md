@@ -176,6 +176,37 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The updated run-detail-data and run-detail render tests, plus the new operator-revert and event-format tests, pass; `docs/invariants.md` is edited only if its run-trail/revert section pins the match (check INV-L1 before finishing).
 - `npm run test:gate` passes.
 
+### `tumwater report` gains a `Reverts by role` line and per-day series: which role's merged changes the main watch took back off main (planned 2026-10-23 by the plan role; independent of every eligible plan — it folds the existing `main_revert` event and no waiting entry touches src/report; touches src/report/report-types.ts src/report/report-fold.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report.ts src/ui/gui/gui-client-report-chart.ts docs/cli.md test/report.test.ts test/report-data.test.ts test/gui-client-report.test.ts)
+
+**Goal.** The usage report names whose merged changes had to be reverted off main. Today `renderReportMarkdown` / `renderSinceReportMarkdown` count rejections, revisions, refusals, failed runs, fallbacks and image reroutes per role, but a revert — the most expensive merge outcome — appears nowhere in `src/report` (a grep for `main_revert` under it finds nothing); only doctor's `checkMainReverts`-family warnings and the selfcheck digest read `main_revert`. After this plan the day report and `report --since` print `Reverts by role: feature — 2 · bugfix — 1`, `report --json` carries the per-day/per-window map, and the dashboard's Usage view gains a `Reverts by role` chart gated like its siblings.
+
+**Approach.**
+- `src/report/report-types.ts`: `ReportDay` gains `revertsByRole?: Record<string, number>` (doc comment: `main_revert` events per base role, keyed by the culprit's `runner`; absent when the day has none — zero means absent, like its siblings). `SinceReport` gains `revertsByRole: Record<string, number>` (always present, empty when none, like `mergeFailedByRole`), so the `--since` render can gate on the window's own reverts.
+- `src/report/report-fold.ts`: add `revertsByRole: Record<string, number>` to `UsageFold` and `DayFold`, seed `{}` in `dayFoldFor`, and fold the event in `foldUsageEvent`:
+  - `else if (ev.type === "main_revert") { if (typeof ev.runner === "string" && ev.runner !== "") addTo(target.revertsByRole, baseRoleOf(ev.runner), 1); }`
+  - Read `ev.runner` directly: `eventRole(ev)` returns `ev.source`, and a `main_revert` is written by the harness (`source: TUMWATER_SOURCE`, `src/baseline/main-revert.ts`), so the role that merged the culprit is only in `runner`. A revert with no `runner` (a hand-made or director commit) adds nothing — no `(unknown)` key — matching the zero-means-absent rule of the other role maps.
+  - Key by `baseRoleOf(ev.runner)` so `feature-2`'s revert counts under `feature`, the same base-role rule `commitsByRole`/`mergedByRole` follow (a revert is a commit/merge outcome, not a run).
+- `src/report/report-data.ts`: seed `revertsByRole: {}` in `collectReportSince`'s `acc`, return `revertsByRole: scopedByRole(acc.revertsByRole, bases)`; in `collectReport` set `day.revertsByRole = fold.revertsByRole` in the team branch when non-empty, and `narrowToRole(fold.revertsByRole, bases)` when non-empty in the role-scoped branch, beside the rejections/refusals pair.
+- `src/report/report-render.ts`: one `Reverts by role` line in each render, beside `Refusals by role` and formatted with `String` like the other count lines:
+  - `renderSinceReportMarkdown`: `rankedRoleLine("Reverts by role", rankedRoleMap(data.revertsByRole).filter(([, n]) => n > 0), String)`.
+  - `renderReportMarkdown`: `rankedRoleLine("Reverts by role", rankedRoleTotals(data.series, (d) => d.revertsByRole ?? {}).filter(([, n]) => n > 0), String)`.
+- `src/ui/gui/gui-client-report-chart.ts`: add `chartRevertsByRole(data)` = `roleStackChart(data, "revertsByRole", (n) => plural(n, "revert"), countAxis, true)` beside `chartRefusalsByRole`, and add `"revertsByRole"` to the `reportRoleOrder` fallback list so the legend order matches the other role charts.
+- `src/ui/gui/gui-client-report.ts`: add `(seriesHasAny(d, "revertsByRole") ? block("Reverts by role", chartRevertsByRole(d)) : "") +` beside the refusals block in the day-report section list.
+- `docs/cli.md`, the `tumwater report` row: after the refusals clause add each role's reverted merges (`Reverts by role`, from `main_revert` events), so the docs name the line.
+
+**Tests.**
+- `test/report-data.test.ts`: seed a `main_revert` with `runner: "feature"` and one without a `runner`; assert `collectReport(...).series` carries `revertsByRole: { feature: 1 }` only on that day (absent on a revert-free day), and `collectReportSince(...).revertsByRole` sums it; a `runner: "feature-2"` event folds to `feature`.
+- `test/report.test.ts`: assert the day and `--since` Markdown carry the `Reverts by role` line, and the `--json` day carries `revertsByRole`; a role-scoped report narrows it.
+- `test/gui-client-report.test.ts`: assert `seriesHasAny(d, "revertsByRole")` is false for a revert-free series and true for one carrying a nonzero map, and that the day-report block chain contains the new gated `block("Reverts by role", chartRevertsByRole(d))` call, mirroring the existing refusals-chart case.
+
+**Acceptance criteria.**
+- A day with one `main_revert` whose `runner` is `feature` renders `**Reverts by role:** feature — 1` in both the day report and `report --since`; that day's `--json` carries `revertsByRole: { feature: 1 }`; a revert-free day carries no `revertsByRole` key (zero means absent).
+- A `main_revert` with no `runner` adds no entry, and a `runner` of `feature-2` counts under `feature`.
+- `report --role feature` narrows `revertsByRole` to `feature`; a role with no reverts renders `-`.
+- The dashboard Usage view shows a `Reverts by role` chart only when some day carries a nonzero `revertsByRole`.
+- Operator reverts are deliberately not folded here (that event does not exist yet); a later entry can add `operator_revert` to the same branch.
+- `npm run test:gate` passes.
+
 ## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
 
 src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
