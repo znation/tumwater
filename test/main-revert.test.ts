@@ -22,6 +22,7 @@ import { logEvent } from "../src/events/events.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 import { patchId } from "../src/git/git.js";
+import { shortSha } from "../src/text/format.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
 
@@ -77,6 +78,23 @@ test("a successful revert logs main_revert with the culprit's patch-id", async (
   const reverts = eventsOfType(root, "main_revert");
   assert.equal(reverts.length, 1);
   assert.equal(reverts[0]?.patchId, expected, "main_revert carries the culprit's patch-id");
+});
+
+test("a failing gate on the revert keeps main red and queues the heal prompt naming the verdict", async () => {
+  const { root, b, found } = await redMain("improve");
+  const before = headSha(root);
+  const config = { ...defaultConfig(), check: { command: "", gateCommand: "false", mergeCommand: "" } };
+  await runMainRevert(root, "main", config, found[0]!);
+  assert.equal(headSha(root), before, "a red gate on the revert must not fast-forward main");
+  assert.equal(eventsOfType(root, "main_revert").length, 0);
+  const files = queuedFiles(root, "bugfix");
+  assert.equal(files.length, 1);
+  const sha = shortSha(b);
+  const warnings = warningMessages(root);
+  assert.equal(
+    warnings.filter((m) => m.includes(`could not revert ${sha}`) && m.includes("the gate command was failed on the revert") && m.includes("queued the heal prompt for bugfix")).length,
+    1,
+  );
 });
 
 test("a revert that conflicts leaves main alone and queues the heal prompt naming the culprit", async () => {
