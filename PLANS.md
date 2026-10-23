@@ -135,20 +135,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The docs name codex among the guarded backends and its `apply_patch`-only coverage.
 - `npm run test:gate` passes.
 
-### Split orchestrator-scheduling.ts's pollRunnerReasons, part 3/3: multi-runner claim assignment and stand-down in scheduling-admit.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 2/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-admit.ts (new) test/orchestrator-scheduling.test.ts)
-
-**Goal.** Lift the post-gate admission — the stand-down turn-down and the parallel-work-instance claim assignment — into one function.
-
-**Approach.**
-- New `src/orchestrator/scheduling-admit.ts`: `export function admitRunner(scope: SchedulingScope, runner: RoleRunner, reason: string): "admitted" | "skipped"`.
-- Move verbatim the stand-down block (the feature/bugfix `reason === "scheduled" || reason === "main moved"`, the `freshlyWoken`/claim/outstanding guards, the `eligibleMemo`-backed empty-eligible skip with `no-free-entry` and `once.settle`) and the claim-group block (keeps its claim; finishes its unrecorded entry; the group-hold skip; `assignNext` over the free entries; `heldElsewhere`; the `source: "assigned"` claim write and its `claim` event; the extra-instance/held-titles skip; the no-group `heldElsewhere` clear). It imports `noteSkip` from `scheduling-scope.ts`.
-- `orchestrator-scheduling.ts`'s loop calls `admitRunner(scope, runner, verdict.reason)`; when it returns `"admitted"` the binder does its final `noteSkip(root, runner, undefined)`, `reasons.set(runner, reason)` and the `writing` increment.
-
-**Acceptance criteria.**
-- No claim-assignment or stand-down logic remains in `orchestrator-scheduling.ts`.
-- `test/orchestrator-scheduling.test.ts` passes unchanged (the exported `pollRunnerReasons` behavior is identical).
-- `npm run test:gate` passes.
-
 ### `tumwater start --once --json` prints the round's per-role outcomes as one JSON object, so a cron/CI caller does not parse the prose summary (planned 2026-10-23 by the plan role; independent of every eligible plan — the interlock and pollRunnerReasons-split series touch src/orchestrator and src/merge, the Codex write-guard parts touch src/agent, src/prompt and docs/backends, and the merge-slot median touches src/report and src/ui/gui; the only shared file is docs/cli.md, where this edits the `Start the team` once block and that plan edits the `tumwater report` row, so whichever lands second rebases there; touches src/cli/cli-start.ts src/cli/cli-flag-specs.ts src/cli/help.ts docs/cli.md test/cli-start.test.ts test/cli-start-once.test.ts)
 
 **Goal.** `tumwater start --once` is the README's cron/CI command: it does one round, prints a one-line prose summary (`onceSummary`) plus a `once: failed — …` line when the round failed, and exits 3 on such a failure. A CI step that wants per-role outcomes — which role merged, which errored, which was skipped and why — has to scrape that prose. Add `--json`, valid only with `--once`, that prints the same round facts as one JSON document on stdout with the banner and the event stream suppressed, so the caller parses the round directly.

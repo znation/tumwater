@@ -669,7 +669,7 @@ busy base runner with no claim holds the group. `eligibleEntries` drops an entry
 base role, but keeps the queried base's own claims.
 
 **Binds.** `src/scheduling/claims.ts` (`assignNext`, `heldKeys`), `src/backlog/backlog-eligibility.ts`
-(`eligibleEntries`), `src/orchestrator/orchestrator-scheduling.ts` (the scheduling poll that calls
+(`eligibleEntries`), `src/orchestrator/scheduling-admit.ts` (the scheduling poll's admit tail that calls
 `assignNext`).
 
 **Pinned by.** `test/claims.test.ts` — "assignNext takes the first free entry in file order" and
@@ -4110,8 +4110,9 @@ and the poll goes on with the in-memory state; the next successful save writes i
 
 **Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`),
 `src/orchestrator/scheduling-scope.ts` (`noteSkip`),
-`src/orchestrator/scheduling-skip.ts` (the skip path's `noteSkip` calls) and
-`src/orchestrator/orchestrator-scheduling.ts` (`pollRunnerReasons`).
+`src/orchestrator/scheduling-skip.ts` (the skip path's `noteSkip` calls),
+`src/orchestrator/orchestrator-scheduling.ts` (`pollRunnerReasons`) and
+`src/orchestrator/scheduling-admit.ts` (`admitRunner`'s skip paths).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a skip reason that cannot be saved warns and
 leaves the poll running" and "a claim release that cannot be saved warns and leaves the poll running";

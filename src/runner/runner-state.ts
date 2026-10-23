@@ -441,8 +441,9 @@ export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePend
  * the need-based deferral stands the runner down. The single home of the "freshly woken since
  * the last run end" test, previously repeated inline by the due-check, plan deferral, and
  * need-based deferral (scheduling.ts's isEligible, planDeferral, and deferRunReason) and by
- * the orchestrator's fresh-demand and plans-full stand-down tests (orchestrator-scheduling.ts's
- * per-runner demand and its stand-down guard), so those surfaces cannot drift on what counts
+ * the orchestrator's fresh-demand and plans-full stand-down tests (scheduling-skip.ts's
+ * per-runner demand and scheduling-admit.ts's stand-down guard), so those surfaces cannot drift
+ * on what counts
  * as a fresh wake. */
 export function freshlyWoken(s: RunnerState): boolean {
   return s.wokenAt !== undefined && s.wokenAt > (s.lastRunEndedAt ?? 0);

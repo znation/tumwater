@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split orchestrator-scheduling.ts's pollRunnerReasons, part 3/3: multi-runner claim assignment and stand-down in scheduling-admit.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 2/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-admit.ts (new) test/orchestrator-scheduling.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Lift the post-gate admission — the stand-down turn-down and the parallel-work-instance claim assignment — into one function.
+
+**Approach.**
+- New `src/orchestrator/scheduling-admit.ts`: `export function admitRunner(scope: SchedulingScope, runner: RoleRunner, reason: string | undefined): "admitted" | "skipped"`.
+- Move verbatim the stand-down block (the feature/bugfix `reason === "scheduled" || reason === "main moved"`, the `freshlyWoken`/claim/outstanding guards, the `eligibleMemo`-backed empty-eligible skip with `no-free-entry` and `once.settle`) and the claim-group block (keeps its claim; finishes its unrecorded entry; the group-hold skip; `assignNext` over the free entries; `heldElsewhere`; the `source: "assigned"` claim write and its `claim` event; the extra-instance/held-titles skip; the no-group `heldElsewhere` clear). It imports `noteSkip` from `scheduling-scope.ts`.
+- `orchestrator-scheduling.ts`'s loop calls `admitRunner(scope, runner, reason)` with `reason = verdict.reason` from `skipRunner` (the isEligible due reason; `baseRoleOf` imports from `runner-ids.ts`, and the reason is `string | undefined`); when it returns `"admitted"` the binder does its final `noteSkip(root, runner, undefined)`, `reasons.set(runner, reason)` and the `writing` increment.
+
+**Acceptance criteria.**
+- No claim-assignment or stand-down logic remains in `orchestrator-scheduling.ts`.
+- `test/orchestrator-scheduling.test.ts` passes unchanged (the exported `pollRunnerReasons` behavior is identical).
+- `npm run test:gate` passes.
+
 ### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.

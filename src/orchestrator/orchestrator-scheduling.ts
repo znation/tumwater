@@ -13,12 +13,11 @@ import { fallbackProbeDuePair } from "../budget/fallback-breaker.js";
 import { modelPairName } from "../budget/budget.js";
 import type { pollTeamGates, TeamGateStates } from "../gates/gate-polls.js";
 import type { RoleRunner } from "../runner/runner.js";
-import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf, instanceIndex } from "../roles/runner-ids.js";
-import { freshlyWoken, hasOutstandingWork } from "../runner/runner-state.js";
-import { logEventBestEffort } from "../events/events.js";
+import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
-import { assignNext, planBacklogFull } from "../scheduling/claims.js";
+import { planBacklogFull } from "../scheduling/claims.js";
+import { admitRunner } from "./scheduling-admit.js";
 import { skipRunner } from "./scheduling-skip.js";
 import {
   buildSchedulingScope,
@@ -36,104 +35,24 @@ export async function pollRunnerReasons(
   ctx: SchedulingPassCtx,
 ): Promise<Map<RoleRunner, string | undefined>> {
   const scope: SchedulingScope = await buildSchedulingScope(ctx);
-  const { root, once, now, claimGroups, writing, eligibleMemo, reasons, openBugsNow } = scope;
+  const { root, writing, reasons } = scope;
   for (const runner of scope.ordered) {
     // The WHY-due policy: every gate that decides this runner is due or skipped, and the
     // once/deferral bookkeeping that travels with them, lives in scheduling-skip.ts's
-    // skipRunner. What follows keeps only the claim-admission tail (part 3/3 lifts it).
+    // skipRunner. What follows is only the claim-admission tail (part 3/3, scheduling-admit.ts).
     const verdict = await skipRunner(scope, runner);
     if (verdict.skip) continue;
     const reason = verdict.reason;
-    // Parallel work instances (part 4/7): a multi-runner base role's claim assignment, after
-    // every gate has admitted this runner. A runner that already holds a claim proceeds — its
-    // revision, resume or retry is the same entry. An unclaimed runner with outstanding work
-    // (a revision) is the mid-entry runner the group hold waits on: it proceeds unassigned —
-    // holding it too would deadlock the whole group, since only its run can settle the hold.
-    // Otherwise, when the run is not an inbox/resume run, it takes the first free entry; an
-    // extra instance with none free is skipped without touching its backoff, and the primary
-    // stands down too while siblings hold every eligible entry, unless an operator wake is fresh
-    // (then it runs unassigned).
-    // Stand-down: the feature charter says "If PLANS.md is empty or everything is done, there is
-    // nothing to do" and the bugfix charter says "when every open entry carries [a Refused note],
-    // there is nothing to do", so a feature runner (primary included) with no eligible plan at all,
-    // or a bugfix runner whose open bugs are all held (no open bugs at all is search mode, which
-    // still runs), skips its scheduled and main-moved runs instead of paying a model run that
-    // can only end in
-    // nothing-to-do. Startup, inbox and resume runs, a fresh operator wake, and a runner with a
-    // claim or outstanding work still run. nextRunAt and backoff stay put, so the first poll
-    // after a plan turns eligible starts a run for it.
-    const standDownBase = baseRoleOf(runner.role);
-    if (
-      (standDownBase === "feature" || (standDownBase === BUGFIX_ROLE && openBugsNow)) &&
-      (reason === "scheduled" || reason === "main moved") &&
-      !freshlyWoken(runner.state) &&
-      runner.state.claim === undefined &&
-      !hasOutstandingWork(runner.state)
-    ) {
-      let eligible = eligibleMemo.get(standDownBase);
-      if (eligible === undefined) {
-        eligible = claimGroups.get(standDownBase)?.eligible ?? eligibleEntries(root, standDownBase);
-        eligibleMemo.set(standDownBase, eligible);
-      }
-      if (eligible.length === 0) {
-        noteSkip(root, runner, "no-free-entry");
-        runner.state.heldElsewhere = undefined;
-        if (once.active) once.settle(runner.role, "no free entry");
-        continue;
-      }
+    // Post-gate admission (part 3/3, scheduling-admit.ts): the stand-down turn-down and the
+    // parallel-work-instance claim assignment, after every skip gate has admitted this runner.
+    // Returns "skipped" having recorded its skip reason and settled its once answer; "admitted"
+    // runs the binder: the final noteSkip, the reasons entry and the writing increment.
+    if (admitRunner(scope, runner, reason) === "admitted") {
+      noteSkip(root, runner, undefined);
+      reasons.set(runner, reason);
+      if (scope.claimGroups.has(baseRoleOf(runner.role)) && !runner.state.running)
+        increment(writing, baseRoleOf(runner.role));
     }
-    const claimGroup = claimGroups.get(baseRoleOf(runner.role));
-    if (claimGroup) {
-      if (runner.state.claim) {
-        // keeps its claim
-      } else if (hasOutstandingWork(runner.state)) {
-        // finishes its own unrecorded entry
-      } else if (reason !== "inbox" && reason !== "resume") {
-        // The group holds an unclaimed mid-entry sibling: assign nothing this poll, or a
-        // sibling could be handed that same entry (the reported `feature-2`/`bugfix-2`
-        // duplication). It resolves the moment the sibling settles.
-        if (claimGroup.hold) {
-          noteSkip(root, runner, "claim-hold");
-          continue;
-        }
-        const free = claimGroup.eligible.filter((e) => !claimGroup.held.has(e.key));
-        const pick = assignNext(free);
-        // An unassigned runner is told which entries its siblings hold (cleared when none).
-        const heldTitles = claimGroup.eligible.filter((e) => claimGroup.held.has(e.key)).map((e) => e.title);
-        runner.state.heldElsewhere = !pick && heldTitles.length > 0 ? heldTitles : undefined;
-        if (pick) {
-          runner.state.claim = {
-            file: baseRoleOf(runner.role) === BUGFIX_ROLE ? "BUGS.md" : "PLANS.md",
-            key: pick.key,
-            title: pick.title,
-            at: now,
-            source: "assigned",
-          };
-          claimGroup.held.add(pick.key);
-          logEventBestEffort(root, {
-            source: runner.role,
-            type: "claim",
-            action: "assigned",
-            key: pick.key,
-            title: pick.title,
-          });
-        } else if (
-          instanceIndex(runner.role) >= 2 ||
-          (heldTitles.length > 0 && !freshlyWoken(runner.state))
-        ) {
-          // An idle extra instance, or a primary whose eligible entries siblings all hold
-          // (unless an operator wake is fresh): no run, no backoff climb.
-          noteSkip(root, runner, "no-free-entry");
-          if (once.active) once.settle(runner.role, "no free entry");
-          continue;
-        }
-      }
-    } else {
-      runner.state.heldElsewhere = undefined; // no claim group (e.g. instances lowered to 1)
-    }
-    noteSkip(root, runner, undefined);
-    reasons.set(runner, reason);
-    if (claimGroup && !runner.state.running) increment(writing, baseRoleOf(runner.role));
   }
   return reasons;
 }

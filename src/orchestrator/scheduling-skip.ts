@@ -23,8 +23,8 @@ type SkipVerdict =
 
 /** Decide whether this runner is due this poll, running every skip gate and the once/deferral
  * bookkeeping against scheduling-scope.ts's scope. Returns skip:true when a gate declined the
- * run, and skip:false with the due reason otherwise (the admit tail, still in
- * orchestrator-scheduling.ts until part 3/3, consumes the reason). Mutates the shared scope —
+ * run, and skip:false with the due reason otherwise (the admit tail in scheduling-admit.ts
+ * consumes the reason). Mutates the shared scope —
  * deferredDue, quotaAdmitted, once-mode settlement — and writes skip reasons as its only
  * side effects. */
 export async function skipRunner(scope: SchedulingScope, runner: RoleRunner): Promise<SkipVerdict> {
