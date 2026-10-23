@@ -35,7 +35,9 @@ claude backend: it drives the real CLI through a throwaway repo (a few cents of 
 spend on a subscription) and is not part of `npm test`, which stays green without claude. `npm run
 smoke:opencode` is the same live check for the opencode backend, driving the real `opencode` CLI
 against its free DeepSeek tier; it needs an OpenCode V2 install (`brew install opencode`) and is
-also outside `npm test`.
+also outside `npm test`. `npm run smoke:codex` is the same live check for the codex backend,
+driving the real `codex` CLI against a logged-in ChatGPT subscription; it needs a Codex install
+and is also outside `npm test`.
 
 ## Status
 
