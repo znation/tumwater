@@ -4529,3 +4529,21 @@ alone.
 
 **Pinned by.** `test/merge-diff.test.ts` — "a resolution whose diff git cannot produce throws
 instead of skipping its re-review".
+
+## Write guard: a run's file-writing tools never write under the team root outside its worktree
+
+### INV-CW1: a write under the team root but outside the run's worktree is refused, naming the same file inside the worktree
+
+**Guarantee.** `strayWriteRefusal` finds the run's checkout from its directory's path, the innermost `<root>/.tumwater/worktrees/<name>`, never from the nearest `.tumwater`, so a `.tumwater` a run left inside its checkout cannot hide the primary checkout. It resolves the target as pi's tools do (`@` dropped, `~` expanded, relative to the run) and through realpath, and refuses a path under the root outside the checkout. The refusal names the same file inside the checkout for the primary checkout or another checkout. The primary's `node_modules` and tumwater's own state get no such path, and a role note points at `tumwater-notes write`. A path inside the checkout or outside the root passes, as does every path from a run that is in no team checkout. pi's bundled `write-guard` extension blocks `edit` and `write` through `tool_call` with the refusal as the reason, and lets the call run if it fails itself.
+
+**Binds.** `src/agent/write-guard.ts` (`strayWriteRefusal`, `runCheckoutOf`), `src/pi-extension/write-guard.ts` and `src/pi/pi-args.ts` (`bundledExtensionPaths`).
+
+**Pinned by.** `test/write-guard.test.ts` — "a write that drops the worktree's path infix is refused and names the same file inside the worktree", "writes inside the worktree, outside the team root, and from outside any worktree pass", "a write into another run's checkout is refused and pointed at the same path in the run's own", "tumwater's state and the primary's node_modules are refused with no twin path to write", "a .tumwater directory or a symlink inside the worktree does not let a primary write through" and "the pi extension blocks a stray edit or write and lets other tools and in-worktree writes run"; `test/pi-args.test.ts` — "piArgs loads the context-shake extension right after bounded-output".
+
+### INV-CW2: every claude run carries the write guard as a PreToolUse hook that denies a stray write
+
+**Guarantee.** `claudeArgs` passes `--settings` with one PreToolUse hook on `Edit|Write` that runs the compiled `write-guard-hook.js` with the run's worktree as its argument, and `--settings` is a reserved passthrough flag. The hook prints a `deny` decision whose reason is `strayWriteRefusal`'s text, resolving a relative path from the payload's `cwd`, and prints nothing for any other write or for input it cannot read.
+
+**Binds.** `src/agent/claude/claude-args.ts` (`claudeArgs`, `HARNESS_CLAUDE_FLAGS`), `src/agent/claude/claude-write-guard.ts` (`writeGuardSettings`, `claudeWriteRefusal`) and `src/agent/claude/write-guard-hook.ts`.
+
+**Pinned by.** `test/write-guard.test.ts` — "claudeWriteRefusal refuses a stray Edit or Write and resolves relative paths from claude's cwd" and "the hook claude runs denies a stray write with the refusal as its reason and stays silent otherwise"; `test/claude-args.test.ts` — "claudeArgs builds the design's argv in order and pairs the prompt with stdin" and "claudeArgs rejects a passthrough arg that repeats a flag tumwater sets".

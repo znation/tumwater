@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { claudeArgs, type ClaudeArgOptions } from "../src/agent/claude/claude-args.js";
+import { writeGuardSettings } from "../src/agent/claude/claude-write-guard.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function opts(overrides: Partial<ClaudeArgOptions> = {}): ClaudeArgOptions {
@@ -41,6 +42,8 @@ test("claudeArgs builds the design's argv in order and pairs the prompt with std
     "Bash,Read,Edit,Write,Glob,Grep",
     "--setting-sources",
     "project",
+    "--settings",
+    writeGuardSettings(cwd),
     "--strict-mcp-config",
     "--disable-slash-commands",
     "--exclude-dynamic-system-prompt-sections",
@@ -117,4 +120,6 @@ test("claudeArgs rejects a passthrough arg that repeats a flag tumwater sets", (
   // `--mcp-config` stays reserved even though claudeArgs no longer emits it (part 3/4): a
   // passthrough must not smuggle an MCP server into a run that --strict-mcp-config keeps out.
   assert.throws(() => claudeArgs(opts({ args: ["--mcp-config", "/evil"] })), /repeats a flag tumwater sets/);
+  // A passthrough `--settings` would replace the write guard's hook, claude being last-wins.
+  assert.throws(() => claudeArgs(opts({ args: ["--settings", "{}"] })), /repeats a flag tumwater sets/);
 });

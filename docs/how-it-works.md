@@ -29,7 +29,12 @@ team for that long and then stops it.
    otherwise. The director instead keeps its own `.tumwater/worktrees/director`.
 2. Run pi in a fresh session with a role-specific "find one thing to do" prompt. Nothing carries
    over between runs except the role's own notes (see Prompts); durable knowledge lives in
-   the repo's markdown files.
+   the repo's markdown files. The workspace sits inside your checkout, so a path that drops
+   `.tumwater/worktrees/<name>` names a real file there. The run's edit and write tools (pi's,
+   and claude's through a hook) refuse a path inside the project but outside the run's
+   workspace, and name the same file inside the workspace instead. Shell commands are not
+   checked; a run that leaves new changes in your checkout gets a `wrote outside the worktree`
+   warning.
 3. If pi changed files, commit and put the change in the merge queue, where the merge pipeline
    reviews it and fast-forwards main. A rejection resets the branch and passes the reasons to the
    author's next run. Right before the commit, a plan or bug the run pasted under PLANS.md's

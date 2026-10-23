@@ -265,7 +265,7 @@ Back-compat:
 
 Reserved flags: claude's `HARNESS_*_FLAGS` set covers `-p/--print`, `--output-format`,
 `--verbose`, `--model`, `--effort`, `--session-id`, `--resume/-r`, `--continue/-c`,
-`--permission-mode`, `--tools`, `--setting-sources`, `--strict-mcp-config`, `--mcp-config`,
+`--permission-mode`, `--tools`, `--setting-sources`, `--settings`, `--strict-mcp-config`, `--mcp-config`,
 `--disable-slash-commands` and `--max-budget-usd`. Repeating any of them in `agents.claude.args` is
 a validation
 error.
@@ -308,6 +308,7 @@ claude -p --output-format stream-json --verbose
   --permission-mode bypassPermissions          # parity with pi, which has no permission system
   --tools Bash,Read,Edit,Write,Glob,Grep       # no Task (sub-agents), Web*, Cron, Monitor, Workflow…
   --setting-sources project                    # repo CLAUDE.md + .claude/settings.json; never ~/.claude
+  --settings <write-guard hook JSON>           # PreToolUse hook refusing writes outside the run's worktree (2026-10-23)
   --strict-mcp-config                          # §6: old role-notes MCP server is gone; no MCP server reaches a claude run
   --disable-slash-commands                     # no skills
   --exclude-dynamic-system-prompt-sections     # cwd/git status move out of the system prompt → one cache prefix across pool slots

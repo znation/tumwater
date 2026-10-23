@@ -17,6 +17,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { appendPassthroughArgs } from "../agent-args.js";
+import { writeGuardSettings } from "./claude-write-guard.js";
 
 /** Flags the harness passes itself. A passthrough arg equal to one of these is appended AFTER
  * the harness's own copy, and claude's argument parser is last-wins — so it would silently
@@ -40,6 +41,7 @@ export const HARNESS_CLAUDE_FLAGS: ReadonlySet<string> = new Set([
   "--permission-mode",
   "--tools",
   "--setting-sources",
+  "--settings",
   "--strict-mcp-config",
   "--mcp-config",
   "--disable-slash-commands",
@@ -65,7 +67,8 @@ const EFFORT_BY_THINKING: Record<string, string> = {
  * resolved before the seam, exactly as piArgs's config view is). Exactly one of `sessionId`
  * (fresh) and `resumeSessionId` (continue) is required; part 3c's ledger decides which. */
 export interface ClaudeArgOptions {
-  /** The worktree the run starts in; read only to decide `--append-system-prompt-file`. */
+  /** The worktree the run starts in: decides `--append-system-prompt-file` and is the write
+   * guard's worktree. */
   cwd: string;
   /** The resolved concrete model id, e.g. `claude-sonnet-5-5`. */
   model: string;
@@ -120,6 +123,9 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
     "Bash,Read,Edit,Write,Glob,Grep",
     "--setting-sources",
     "project",
+    // The write guard's PreToolUse hook (claude-write-guard.ts).
+    "--settings",
+    writeGuardSettings(opts.cwd),
     "--strict-mcp-config",
   );
   args.push("--disable-slash-commands", "--exclude-dynamic-system-prompt-sections");
