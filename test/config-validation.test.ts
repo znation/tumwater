@@ -10,7 +10,9 @@ import { validationError } from "./fixtures/config-fixtures.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // Tests for src/config/config-validation.ts — validateConfig's core rules (top-level keys,
-// scalars, the model/agent selectors, review, roles) — plus the load and save paths that enforce
+// scalars, the model/agent selectors, review, roles; the model/agent section rules themselves
+// live in config-validation-model.ts and config-validation-agents.ts under the gate) — plus the
+// load and save paths that enforce
 // it (loadConfig's actionable rejections, loadConfigSafe's message form, saveConfig's
 // refuse-to-persist). The section-specific suites split from this file live in
 // test/config-validation-check.test.ts (the `check` section), test/config-validation-limits.test.ts

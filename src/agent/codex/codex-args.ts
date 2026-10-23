@@ -15,7 +15,7 @@
  * parser is last-wins, so it would silently override the model, the isolation or the run
  * location the harness resolved. Each is rejected with the offending arg named. This is the
  * design's reserved set (§2 "Reserved passthrough flags"); config validation
- * (config-validation.ts) mirrors it for `backends.codex.args`, so a value that passes
+ * (config-validation-agents.ts) mirrors it for `backends.codex.args`, so a value that passes
  * validation is never accepted there and then thrown in the builder.
  *
  * Operators keep `-c`, `--enable` and `--disable` for their own settings — those keys are

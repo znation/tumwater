@@ -65,7 +65,7 @@ export function didYouMean(suggestion: string | null): string {
  * `input` against `candidates`, the empty string when nothing is close enough to suggest. The
  * unknown-X error sites (roles.ts's unknownRoleMessage, config-write.ts's
  * unknownConfigKeyError and its role-field error, config-field-checks.ts's checkKnownKeys,
- * checkKnownRoleId and its thinking-level problem, config-validation.ts's backend problem,
+ * checkKnownRoleId and its thinking-level problem, config-validation-agents.ts's backend problem,
  * gui/gui-args.ts's rejectBadRole, init-templates.ts's
  * unknownTemplateError) render the hint
  * through this one composition so the two-step pairing cannot drift; callers still print the

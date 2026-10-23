@@ -1,24 +1,15 @@
 import {
-  BACKEND_IDS,
   MODEL_TIERS,
-  SELECTOR_ENTRY_KEYS,
-  THINKING_LEVELS,
-  BACKEND_KEYS,
-  CLAUDE_AGENT_KEYS,
-  CODEX_BACKEND_KEYS,
   BACKOFF_KEYS,
   BOOTSTRAP_KEYS,
   CHECK_KEYS,
   CUSTOM_ROLE_KEYS,
   CUSTOM_NAME_RE,
   CUSTOM_TASK_MAX_CHARS,
-  HARNESS_PI_FLAGS,
-  MODEL_TRIPLE_KEYS,
   REVIEW_KEYS,
   ROLE_ENTRY_KEYS,
   TOP_LEVEL_KEYS,
   ROLE_INSTRUCTIONS_MAX_CHARS,
-  TIER_MAP_KEYS,
 } from "./config-schema.js";
 import { DIRECTOR_ROLE, allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
@@ -28,12 +19,10 @@ import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
 import path from "node:path";
 import { isNonBlankString, tooLongMessage } from "../text/text.js";
-import { typoSuffix } from "../text/suggest.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { isBackendId } from "./model-selector.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
-import { reservedPassthroughFlag } from "../agent/backend-traits.js";
 import {
   AT_LEAST_ONE,
   type NumberRule,
@@ -43,7 +32,6 @@ import {
   checkModelTripleField,
   checkNumberField,
   checkObjectSection,
-  checkReservedArgs,
   codexConfigKey,
   checkStringArrayField,
   checkStringField,
@@ -58,12 +46,14 @@ import {
 } from "./config-field-checks.js";
 import {
   checkEntryBackend,
-  checkFallbackList,
-  checkFallbackStep,
   checkRetiredSelector,
   checkSelectorHalves,
-  checkSelectorValue,
 } from "./config-selector-checks.js";
+import { validateAgentsBlock } from "./config-validation-agents.js";
+import {
+  validateFallbackBlock,
+  validateModelBlock,
+} from "./config-validation-model.js";
 
 /** Schema validation for tumwater.json: validateConfig, the gate every load and save passes
  * through (config.ts's load/save, config-write.ts's budget editing and
@@ -221,8 +211,6 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // The top level's `model` may be a selector string or a map by tier (plans/model-tiers.md);
   // provider/thinking validate as before. A string selector that parses to an empty provider
   // or model half is reported separately (checkSelectorHalves).
-  checkModelTriple(r, "", "tier-map");
-  checkSelectorHalves(r, "", "model", r.provider, problems);
   // The backend a selector with no `backend` of its own resolves to (retired-spelling checks).
   const topBackend = typeof r.backend === "string" ? r.backend : "pi";
   // The backend a tier's primary resolves to, which that tier's fallback steps inherit.
@@ -238,7 +226,6 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     for (const b of new Set(MODEL_TIERS.map(tierBackend))) check(b, out);
     for (const m of new Set(out)) problems.push(m);
   };
-  if (r.provider === undefined) checkRetiredSelector("model", r.model, topBackend, problems);
   // The retired spelling doubled a backend id as the provider namespace, so a `provider` that IS
   // a backend id other than `pi` on a section that otherwise runs on pi is the old back-compat
   // form: configForRole still resolves the section to pi and hands the bare provider name to
@@ -251,92 +238,14 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         `${at}provider "${provider}" is the retired backend namespace but this section runs on pi — write backend: "${provider}" beside the model and drop the provider`,
       );
   };
-  checkLegacyProvider(r.provider, "", topBackend);
-  // A map's entries are selector strings too, resolved by config-views' topTierSelector with
-  // parseModelSelector; the keyed check above sees only the object, so each entry runs the
-  // same empty-half check (the map form cannot coexist with a legacy provider, so it parses
-  // as a pure selector).
-  if (isJsonObject(r.model))
-    for (const [tier, sel] of Object.entries(r.model)) {
-      if (!isJsonObject(sel)) {
-        checkSelectorValue(`model.${tier}`, sel, undefined, problems);
-        checkRetiredSelector(`model.${tier}`, sel, topBackend, problems);
-        continue;
-      }
-      // An object tier entry: the model written beside the backend that runs it.
-      const at = `model.${tier}`;
-      checkKnownKeys(sel, SELECTOR_ENTRY_KEYS, at, problems);
-      checkString(sel, `${at}.`, "model", false);
-      const t = sel.thinking;
-      if (t !== undefined && !(isNonBlankString(t) && THINKING_LEVELS.has(t)))
-        problems.push(`${at}.thinking must be one of ${[...THINKING_LEVELS].join(", ")} (got ${show(t)})`);
-      checkEntryBackend(sel, at, problems);
-      checkSelectorValue(`${at}.model`, sel.model, undefined, problems);
-      checkRetiredSelector(`${at}.model`, sel.model, typeof sel.backend === "string" ? sel.backend : topBackend, problems);
-    }
-  // An empty baseBranch would silently fall back to the checked-out branch — the one value
-  // the operator's explicit setting must never degrade to unannounced.
-  checkString(r, "", "baseBranch", false);
-  // An empty agentBin would silently fall back to "pi" — the same silent-ignore class: the
-  // operator named a binary, so a blank value must fail validation, not run the default.
-  checkString(r, "", "agentBin", false);
-  // The agent backend for bare/no-model selectors (plans/agent-backends.md "Config"): a
-  // non-blank id from the schema's reserved set. An unknown id would fall back to pi at run
-  // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
-  checkString(r, "", "backend", false);
-  if (typeof r.backend === "string" && !isBackendId(r.backend))
-    problems.push(`backend must name a backend (${BACKEND_IDS.join(", ")}; got ${show(r.backend)})${typoSuffix(r.backend, BACKEND_IDS)}`);
-  checkStringArray(r, "", "piArgs");
-  // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
-  // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the
-  // position and the flag so one edit removes it.
-  if (Array.isArray(r.piArgs))
-    checkReservedArgs(problems, r.piArgs as unknown[], "piArgs", (flag) =>
-      HARNESS_PI_FLAGS.get(flag),
-    );
-  // Agent backends (plans/agent-backends.md "Config"): each entry is an object with an
-  // optional non-empty `bin` string and an optional array-of-strings `args`. A passthrough arg
-  // that repeats a flag the backend's own harness invocation sets is appended last and wins,
-  // so it silently overrides the harness — refused here for the backends whose reserved sets
-  // are known (claude-args.ts HARNESS_CLAUDE_FLAGS, opencode-args.ts HARNESS_OPENCODE_FLAGS,
-  // codex-args.ts HARNESS_CODEX_FLAGS, config-schema.ts HARNESS_PI_FLAGS).
-  checkObjectSection(r, "backends", problems, (o) => {
-    for (const [id, entry] of Object.entries(o)) {
-      const prefix = `backends.${id}`;
-      if (!isJsonObject(entry)) {
-        problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
-        continue;
-      }
-      checkKnownKeys(entry, id === "claude" ? CLAUDE_AGENT_KEYS : id === "codex" ? CODEX_BACKEND_KEYS : BACKEND_KEYS, prefix, problems);
-      checkString(entry, `${prefix}.`, "bin", false);
-      checkStringArray(entry, `${prefix}.`, "args");
-      if (id === "claude" || id === "codex") checkBackendConfig(entry, prefix);
-      if (id === "codex" && Array.isArray(entry.args)) checkCodexConfigKeys(entry, prefix);
-      if (!Array.isArray(entry.args)) continue; // Already reported by checkStringArray.
-      checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
-        reservedPassthroughFlag(id, flag),
-      );
-    }
+  validateModelBlock(r, problems, { checkModelTriple, checkString, topBackend, checkLegacyProvider });
+  validateAgentsBlock(r, problems, rawFile, {
+    checkString,
+    checkStringArray,
+    checkKnownKeys,
+    checkBackendConfig,
+    checkCodexConfigKeys,
   });
-  // Legacy back-compat (plans/agent-backends.md "Back-compat"): a file must not spell one pi
-  // field both ways. This is a property of the FILE's own keys — the merged config always
-  // carries a default `piArgs`, so only the raw pass (rawFile) can tell an explicit legacy
-  // value from the default. The effective value resolves through config-views.ts
-  // resolvedBackendConfig; a load-time mirror into `agents` would instead leak a duplicate
-  // spelling into every later config write.
-  if (rawFile && isJsonObject(r.backends)) {
-    const pi = r.backends.pi;
-    if (isJsonObject(pi)) {
-      if (r.agentBin !== undefined && pi.bin !== undefined)
-        problems.push(
-          "agentBin and backends.pi.bin set the same value — keep one (backends.pi.bin is the current spelling; agentBin is its old name)",
-        );
-      if (r.piArgs !== undefined && pi.args !== undefined)
-        problems.push(
-          "piArgs and backends.pi.args set the same value — keep one (backends.pi.args is the current spelling; piArgs is its old name)",
-        );
-    }
-  }
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
   checkNumber(r, "", "mergeBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
@@ -461,59 +370,11 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
   });
 
-  // The free fallback model (plans/fallback-model.md): shape only — whether the named pair is
-  // actually cost-free is a question about pi's models.json, not about this file, so it is
-  // answered at run time (src/pi/pi-models.ts) rather than failing a load here. An empty object is
-  // rejected: it names nothing, so it would silently never engage.
-  // The selector-string shorthand `fallback` (plans/model-tiers.md) validates as one non-empty
-  // string; the map form takes per-tier entries whose values are selector strings or "pause"
-  // (each tier's entry is consulted when that tier runs at the cap; part 5a/8). Setting both
-  // forms — or the map form and `fallbackModel` — is an error naming both keys, since which
-  // one wins is not a question the file should ever pose.
-  if ("fallback" in r && r.fallback !== undefined) {
-    const f = r.fallback;
-    if (isJsonObject(f)) {
-      checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
-      for (const [tier, v] of Object.entries(f)) {
-        if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems, tierBackend(tier));
-        else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems, tierBackend(tier));
-        else if (!isNonBlankString(v))
-          problems.push(
-            `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
-          );
-        else if (v !== "pause")
-          // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
-          // no legacy provider in scope); "pause" names no model and stays valid.
-          {
-            checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
-            checkRetiredSelector(`fallback.${tier}`, v, tierBackend(tier), problems);
-          }
-      }
-    } else if (Array.isArray(f)) {
-      eachTierBackend((b, out) => checkFallbackList("fallback", f, out, b));
-    } else if (!isNonBlankString(f)) {
-      problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
-    } else if (f === "pause") {
-      problems.push(
-        `fallback "pause" is only valid as a tier map value — a string fallback must name a model id`,
-      );
-    } else {
-      // A selector-string fallback still parses to halves: report an empty one.
-      checkSelectorHalves({ fallback: f }, "", "fallback", undefined, problems);
-      eachTierBackend((b, out) => checkRetiredSelector("fallback", f, b, out));
-    }
-  }
-  if ("fallback" in r && "fallbackModel" in r)
-    problems.push(`fallback and fallbackModel both name the budget fallback — keep only one (got fallback ${show(r.fallback)} and fallbackModel ${show(r.fallbackModel)})`);
-  checkObjectSection(r, "fallbackModel", problems, (o) => {
-    checkKnownKeys(o, MODEL_TRIPLE_KEYS, "fallbackModel", problems);
-    checkModelTriple(o, "fallbackModel.");
-    // legacyFallbackPair (config-fallbacks.ts) forces a fallbackModel that names its own
-    // provider onto backend pi whatever the team's backend, so a legacy provider that is a
-    // backend id there is the same silent-pi-pair flaw the checks above reject.
-    checkLegacyProvider(o.provider, "fallbackModel.", "pi");
-    if (!("provider" in o) && !("model" in o))
-      problems.push(`fallbackModel must name a provider or a model (got ${show(o)})`);
+  validateFallbackBlock(r, problems, {
+    checkModelTriple,
+    checkLegacyProvider,
+    tierBackend,
+    eachTierBackend,
   });
 
   // Custom roles (plans/user-defined-loops.md): names become worktree dirs and git refs, so

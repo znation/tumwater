@@ -4,7 +4,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
 import { validationError } from "./fixtures/config-fixtures.js";
 
-// validateConfig's model-selection forms (src/config/config-validation.ts): the budget
+// validateConfig's model-selection forms (src/config/config-validation-model.ts): the budget
 // `fallback` selector/object/tier-map and the `model` tier-map and tier-name forms
 // (plans/model-tiers.md). Split from test/config-validation.test.ts (2026-10-11).
 
