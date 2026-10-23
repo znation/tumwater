@@ -37,6 +37,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A recovery run with a branch commit ahead of main, no pin, and `mainRedRetry` (or `mergeReviewError`) set creates or repoints no `refs/tumwater/merge/<role>`, leaves the branch commit in place, and ends on the held/`main_red` path (test in test/leftover.test.ts) — the review's repro.
 - `npm run test:gate` passes.
 
+**Needs review 2026-10-23 by feature: could not converge — (new) A held relief run returns `result: "queued"` with its fresh commit but logs no `merge_queued`, violating the queued-row join's precondition and causing `resolveQueuedResult`/`failure/time-spend.ts` to attribute the earlier queued change's merge verdict to the relief run's row (and strand the…; (new) The archived PLANS-DONE entry describes a `merge-queue.ts`/`queuedMergeRoles` stage field the implementation never used, leaving the done record's approach and touched-files list inaccurate.**
+
 ### Interlock relief, part 2/2: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 1/2 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
 
 **Goal.** An operator reading the merge-pipeline section can predict which roles author through a queued change and which park, and why the split follows `review.afterMerge`.
