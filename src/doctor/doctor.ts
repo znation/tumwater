@@ -3,7 +3,7 @@ import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { type ProcessProbe, systemProcessProbe } from "../process/process-table.js";
 import { checkOrphans } from "./doctor-orphans.js";
-import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "./doctor-holds.js";
+import { checkBudget, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours, checkSubscriptionWindow } from "./doctor-holds.js";
 import { checkRootInstall } from "./doctor-install.js";
 import { checkNotify } from "./doctor-notify.js";
 import { checkLaunchServicesPorts } from "./doctor-launch-services.js";
@@ -131,7 +131,8 @@ export async function runDoctor(
     { name: "pause", run: () => checkPause(root) },
     { name: "quiet hours", run: () => checkQuietHours(config) },
     { name: "budget", run: () => checkBudget(root, config, (orchestratorAlive(root, info) && info?.budget) || null) },
-    { name: "claude window", run: () => checkClaudeWindow(root, undefined, (orchestratorAlive(root, info) && info?.chain) || undefined, config) },
+    { name: "claude window", run: () => checkSubscriptionWindow("claude", root, undefined, (orchestratorAlive(root, info) && info?.chain) || undefined, config) },
+    { name: "codex window", run: () => checkSubscriptionWindow("codex", root, undefined, (orchestratorAlive(root, info) && info?.chain) || undefined, config) },
     { name: "provider waits", run: () => checkProviderHolds(root) },
     { name: "maintenance allowance", run: () => checkMaintenanceQuota(root, config, orchestratorAlive(root, info)) },
     { name: "provider concurrency", run: () => checkProviderConcurrency(config, root) },
@@ -154,7 +155,8 @@ export async function runDoctor(
     // The receive-side guards name what a running team skips, so an operator tool meant for the
     // team (a pi package, an extension file, an mcp.json server, or funes) does not vanish
     // silently. Each check returns null to omit its row: the pi row for a team with no pi seam,
-    // the funes row when funes is not on PATH.
+    // the funes row when funes is not on PATH, and the claude/codex window rows when that backend
+    // has no subscription account.
     { name: "pi extensions", run: () => checkPiExtensions(config, undefined, pathEnv) },
     { name: "funes", run: () => checkFunes(config, pathEnv) },
     { name: "state dir", run: () => checkStateDir(root) },

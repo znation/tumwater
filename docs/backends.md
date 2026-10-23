@@ -179,7 +179,7 @@ cut off by the window keeps its worktree and continues on the fallback as a hand
 subscription Claude job with no overage is free to the budget gate too: at the cap it stays
 put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
 budget `fallback` for a priced pi primary; an account spending into overage counts like API
-spend. The window is shown in place of the daily spend on a subscription-only team, and a run
+spend. The subscription window is shown in place of the daily spend on a subscription-only team, one row per subscription backend in use (`tumwater doctor` prints a `claude window` row for a claude subscription and a `codex window` row for a codex one; a team with no such account prints neither), and a run
 cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.

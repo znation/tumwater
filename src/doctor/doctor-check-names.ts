@@ -1,8 +1,9 @@
 /** Every row name `tumwater doctor` can print, in report order — the names `tumwater doctor
  * <check>...` accepts. A leaf with no imports: cli.ts loads doctor.ts with a dynamic import()
  * while cli-command-args.ts is imported eagerly, so the argument parser reads the names from
- * here instead of pulling every check module into each CLI start. `pi extensions` and `funes`
- * are the two conditional rows (a named one whose check returns null leaves no row). */
+ * here instead of pulling every check module into each CLI start. `pi extensions`, `funes`, and
+ * the `claude window`/`codex window` subscription rows are conditional: a named one whose check
+ * returns null leaves no row. */
 export const DOCTOR_CHECK_NAMES = [
   "node",
   "node binary",
@@ -16,6 +17,7 @@ export const DOCTOR_CHECK_NAMES = [
   "quiet hours",
   "budget",
   "claude window",
+  "codex window",
   "provider waits",
   "maintenance allowance",
   "provider concurrency",

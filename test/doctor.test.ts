@@ -45,11 +45,12 @@ test("runDoctor composes the full report — fixed check order, not-running head
   assert.equal(report.header, "tumwater doctor — not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "root install", "flaky checks", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
+    ["node", "node binary", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "provider waits", "maintenance allowance", "provider concurrency", "provider contention", "check contention", "repeated failures", "main's check", "over-cap model", "fallback chain", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "opencode version", "opencode", "backend binary", "claude transcripts", "pi extensions", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "leftover role branches", "tumwater pins", "disk space", "check", "root install", "flaky checks", "claimed bugs", "validation gaps", "plans stuck in Planned", "backlog headings", "backlog archive", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "waiting bugs", "regressed fixes", "stale merge-queue entries", "merge-queue files", "stale prompts", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
-  // funes is absent: the fake PATH has no funes.
+  // funes is absent: the fake PATH has no funes; and the two subscription-window rows are
+  // conditional (a ready repo has no claude or codex subscription account, so both are omitted).
   assert.deepEqual(
-    DOCTOR_CHECK_NAMES.filter((n) => n !== "funes"),
+    DOCTOR_CHECK_NAMES.filter((n) => n !== "funes" && n !== "claude window" && n !== "codex window"),
     report.checks.map((c) => c.name),
   );
   // The node check reflects the runtime running the suite, which is at or above the declared

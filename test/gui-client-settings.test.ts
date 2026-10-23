@@ -74,7 +74,7 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   assert.match(html, /id='set-backends' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
   assert.match(html, /<label for='set-maxConcurrentChecks'>Max concurrent checks<span class='settings-key'>maxConcurrentChecks<\/span><\/label>/);
   // The claudeWindowReserve row renders under its curated label.
-  assert.match(html, /<label for='set-claudeWindowReserve'>Claude window reserve \(JSON\)<span class='settings-key'>claudeWindowReserve<\/span><\/label>/);
+  assert.match(html, /<label for='set-claudeWindowReserve'>Claude window reserve \(backends\.claude\.windowReserve\)<span class='settings-key'>claudeWindowReserve<\/span><\/label>/);
 });
 
 test("fetchSettings builds the panel and fills it from GET /api/config; a failure renders the error panel", async () => {

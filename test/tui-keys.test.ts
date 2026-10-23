@@ -2086,7 +2086,7 @@ test("Ctrl+Y opens the claude-reserve editor on Activity, flashes the busy messa
   assert.equal(keys.state().claudeReserveMode, true, "Ctrl+Y on Activity opens the claude-reserve editor");
   assert.equal(keys.state().historySummary, null, "the History Summary flag is unchanged");
   assert.equal(keys.state().input, "", "unset claudeWindowReserve pre-fills empty");
-  assert.match(keys.state().flash!, /claudeWindowReserve/);
+  assert.match(keys.state().flash!, /backends\.claude\.windowReserve/);
   keys.handleKey(undefined, { ctrl: true, name: "y" });
   assert.equal(keys.state().claudeReserveMode, false, "Ctrl+Y again cancels the claude-reserve editor");
 
