@@ -10,7 +10,7 @@ import { parseCodexLoginStatus } from "../agent/codex/codex-account.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
-import { formatBytes } from "../text/format.js";
+import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import { belowNodeFloor } from "../version.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
@@ -141,7 +141,7 @@ export async function checkCodexModels(root: string): Promise<CheckOutcome | nul
       warns.push(`${pair.model} is not in the codex catalog (models_cache.json) — thinking levels and the window are unknown`);
       continue;
     }
-    const window = `${entry.contextWindow.toLocaleString("en-US")}-token window`;
+    const window = tokenWindowLabel(entry.contextWindow);
     notes.push(`${pair.model} — ${window}`);
     // A level is dropped when the run path would send no effort for it: `codexEffort` maps the
     // thinking through EFFORT_BY_THINKING (off/minimal clamp to low) and yields undefined when

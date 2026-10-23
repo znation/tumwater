@@ -6,7 +6,7 @@ import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-ba
 import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
 import { opencodeDbPath } from "../paths.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
-import { formatBytes } from "../text/format.js";
+import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
@@ -157,7 +157,7 @@ export async function checkOpencode(
       continue;
     }
     const price = entry.free ? "free" : `$${entry.inputPerM ?? 0}/$${entry.outputPerM ?? 0} per M`;
-    const window = entry.context !== undefined ? `, ${entry.context.toLocaleString("en-US")}-token window` : "";
+    const window = entry.context !== undefined ? `, ${tokenWindowLabel(entry.context)}` : "";
     notes.push(`${pair.model} — ${price}${window}`);
     // A model with no effort list at all supports no thinking level, so a requested level is
     // dropped just the same as one the list omits.

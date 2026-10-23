@@ -98,3 +98,13 @@ export function formatBytes(n: number): string {
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
 }
+
+/** A token-count context window with its unit, thousands-separated (`128,000-token window`) —
+ * the single home of this format shared by the doctor's codex and opencode model checks
+ * (doctor-codex-checks.ts, doctor-opencode-checks.ts), each of which renders a cataloged
+ * model's window this way, so the separator and the "-token window" unit cannot drift per
+ * consumer. The separating comma is the caller's to add when the label follows a price
+ * (opencode's `, ${tokenWindowLabel(…)}`). */
+export function tokenWindowLabel(n: number): string {
+  return `${n.toLocaleString("en-US")}-token window`;
+}
