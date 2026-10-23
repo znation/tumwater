@@ -355,6 +355,29 @@ test("backlogStructureReason passes a first-time backlog file whose headings the
   assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
 });
 
+test("backlogStructureReason passes demoting an unknown ## heading to ### under a known section", async () => {
+  // The repair the rejected-merge cycle needs: a base whose unknown `## Split` heading (already
+  // on main, invisible to every reader) is demoted to a `### ` entry at the end of ## Planned,
+  // so the unknown section is dropped and its content becomes readable. The known-section guard
+  // on rule (b) must not reject the drop (BUGS.md 2026-10-23).
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### A (planned 2026-09-25)\n\n## Split some rules (planned 2026-09-26)\n\n### B (planned 2026-09-27)\n\n## Done\n",
+    "## Planned\n\n### A (planned 2026-09-25)\n\n### Split some rules (planned 2026-09-26)\n\n### B (planned 2026-09-27)\n\n## Done\n",
+  );
+  assert.equal(await backlogStructureReason(wt, "main", ["PLANS.md"]), undefined);
+});
+
+test("backlogStructureReason keeps rejecting a head that drops a known section the base had", async () => {
+  const wt = await structureFixture(
+    "PLANS.md",
+    "## Planned\n\n### A (planned 2026-09-25)\n\n## Done\n\n### B (planned 2026-09-01, done 2026-09-02)\n",
+    "## Planned\n\n### A (planned 2026-09-25)\n",
+  );
+  const reason = await backlogStructureReason(wt, "main", ["PLANS.md"]);
+  assert.match(reason!, /drops the "## Done" section/);
+});
+
 test("backlogStructureReason ignores files outside the backlog set", async () => {
   assert.equal(await backlogStructureReason(".", "main", ["docs/notes.md", "src/foo.ts"]), undefined);
 });

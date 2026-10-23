@@ -22,6 +22,23 @@ import { seriesPart, type PartRef } from "./backlog-parts.js";
 const PLANS_ARCHIVE = FINISHED_ARCHIVES[0].archive;
 const BUGS_ARCHIVE = FINISHED_ARCHIVES[1].archive;
 
+/** The `## ` section titles each backlog file is allowed to carry, keyed by file name. A `## `
+ * title outside its file's list is an unknown heading — quoted in no reader's section, so every
+ * entry under it would be invisible. backlogStructureReason treats known sections as load-bearing
+ * (dropping one is rejected) but unknown ones as mistakes: ADDING one stays a legitimate project
+ * extension (this repo grew `## Verified`; a doc-only stack can grow `## Notes`), while DROPPING
+ * one is allowed — demoting a misplaced `## ` heading to `### ` under a known section is how such
+ * a heading is repaired (BUGS.md 2026-10-23). BUGS.md's Verified section is a real section this
+ * repo grew beyond its template; the archive and questions files keep the one section their
+ * template seeds. */
+const KNOWN_SECTIONS: Readonly<Record<string, readonly string[]>> = {
+  "PLANS.md": ["Planned", "Done"],
+  "PLANS-DONE.md": ["Done"],
+  "BUGS.md": ["Open", "Fixed", "Verified"],
+  "BUGS-FIXED.md": ["Fixed"],
+  "QUESTIONS.md": ["Open", "Answered"],
+};
+
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) — the
  * same files roles edit and readers parse, but read here for states no reader wants: an entry filed
  * under the wrong `## ` section. This module holds PLANS.md's stranding rules (plans:
@@ -241,9 +258,13 @@ export function doubleBlockFixedEntries(md: string): string[] {
  * against, so a stacked batch is judged change by change — and rejects when (a) the head carries
  * MORE of a title than the base carried (a duplicate `## Done` added, or a second one where the
  * base had none), or (b) a title present on the base is gone from the head (a whole section
- * dropped). The rule is deliberately about heading sets, not section names: a project whose BUGS.md
- * adds `## Verified` (this repo's does) or a fresh repo seeded from src/init/init.ts's templates
- * passes unchanged. A base that already carries a duplicate never blocks unrelated edits — rule (a)
+ * dropped). Dropping is judged against the file's KNOWN_SECTIONS — PLANS.md Planned and Done,
+ * its archive Done, BUGS.md Open, Fixed and Verified, its archive Fixed, QUESTIONS.md Open and
+ * Answered: an unknown `## ` heading (a misplaced one) is free to be dropped — demoting it to
+ * `### ` under a known section is the repair (BUGS.md 2026-10-23) — while dropping a known
+ * section stays rejected. ADDING a `## ` heading is still a legitimate project extension (this
+ * repo's `## Verified`, a doc-only stack's `## Notes`), so the rule stays about heading sets, not
+ * section names. A base that already carries a duplicate never blocks unrelated edits — rule (a)
  * fires only when the head's count EXCEEDS the base's, so a change that removes a duplicate always
  * passes. For PLANS.md there is a third rule (part 4/4): a head that ADDS a `### ` entry directly
  * under `## Done` whose joined heading metadata carries `(planned YYYY-MM-DD` but no `done
@@ -281,8 +302,14 @@ export async function backlogStructureReason(
           `${file} adds another "## ${title}" heading — readers take the first section of a ` +
           `name, so anything under the duplicate is invisible; keep one "## ${title}" per file`
         );
+    // A `## ` title that is not one of this file's known sections (KNOWN_SECTIONS) is not
+    // load-bearing: ADDING one is a legitimate project extension (this repo grew `## Verified`,
+    // a doc-only stack can grow `## Notes`), so a new one passes — but DROPPING one is the repair
+    // for a misplaced heading, so rule (b) guards only known sections and leaves an unknown one
+    // free to be demoted to `### ` under a known section (BUGS.md 2026-10-23).
+    const known = KNOWN_SECTIONS[file] ?? [];
     for (const title of baseCounts.keys())
-      if (!headCounts.has(title))
+      if (!headCounts.has(title) && known.includes(title))
         return (
           `${file} drops the "## ${title}" section the base had — entries filed under it would ` +
           `be invisible to every section reader; restore "## ${title}"`
