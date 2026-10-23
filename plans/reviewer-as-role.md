@@ -69,9 +69,11 @@ but the interlock exists to preserve the `state.lastReview` feedback contract
 
 ## What lands, in order
 
-1. **Config + dogfood (part 1/4):** widen `review.afterMerge` in tumwater.json; the machinery
-   needs no change. Update docs/config.md's `review.afterMerge` section with the tiering
-   rationale.
+1. **Config + dogfood (part 1/4):** widen the `review.afterMerge` default in
+   src/config/config.ts and the tracked dogfood example (tumwater.example.json), so a fresh
+   project inherits the tiering; the gitignored live tumwater.json is left to the operator
+   (config changes no longer ride the commit path, plans/portability.md). The machinery needs no
+   change. Update docs/config.md's `review.afterMerge` section with the tiering rationale.
 2. **Post-merge review hardening (part 2/4):** the revert slot and `POST_REVIEW_FAILURE_LIMIT`
    were built for three slow maintenance roles. At fleet scale (bugfix's volume), the
    one-at-a-time review when a permit is free and the revert-after-merge path need capacity and

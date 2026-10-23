@@ -77,7 +77,8 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   const c = defaultConfig();
   if (model) c.model = model;
   c.minRunIntervalSeconds = 0;
-  // Fast merge "Defaults": defaultConfig().review.afterMerge is ["clean","dedupe","coverage"],
+  // Fast merge "Defaults": defaultConfig().review.afterMerge is
+  // ["bugfix","clean","coverage","dedupe","organize","readme"],
   // which merges those roles once the gate passes and reviews their merged commit AFTER it lands.
   // Most of these e2e tests drive a role through a pre-merge review (a reviewer run holds the
   // merge in flight), which afterMerge would skip — so opt every role back into pre-merge review.

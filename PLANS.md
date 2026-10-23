@@ -6,20 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Reviewer as a regular role, part 1/4: Widen `review.afterMerge` to the low-blast-radius roles and document the tiering (planned 2026-10-23 by user, from the flow audit; design in plans/reviewer-as-role.md "The decision" and "What lands"; no code — the post-merge review machinery (src/review/post-merge-review.ts) already exists for clean/dedupe/coverage; touches tumwater.json docs/config.md)
-
-**Goal.** The reviewer stops being a pre-merge gatekeeper for the high-volume, low-blast-radius roles. bugfix, readme and organize join clean, dedupe and coverage in `review.afterMerge`: their changes merge on the deterministic gates (build pre-check, conflict markers, protected edits, secret leaks, backlog structure — all unchanged, all fail-closed) and the reviewer examines the merged commit when a permit is free, routing a rejection through the revert slot back to the author as a revision. feature, director, perf, improve and custom roles keep the pre-merge verdict. The 58-h audit (events.jsonl 2026-10-21→23) shows the cost of the current shape: 213 rejections vs 185 approvals, 21 items exhausted the revision cap unlanded, and serial reject streaks of 27 and 18 rounds on single small md-only entries — hours of reviewer and gate capacity against minutes-long edits.
-
-**Approach.**
-- tumwater.json: `"review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"], "afterMerge": ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] }` — the default (src/config/config.ts) and this dogfood config both carry the widened list, so a fresh project inherits the tiering.
-- docs/config.md: the `review.afterMerge` section gains the tiering rationale (post-merge for high-volume low-blast-radius roles, pre-merge for feature/director and by default for custom roles) and the tradeoff named: at the fleet's reject rate, roughly half of the listed roles' changes land-then-revert before a fix lands — the main baseline watcher and fast-merge's "a red main stops nobody" carry that churn.
-- No src/ change in this part. Parts 2/4–4/4 (post-merge review hardening for fleet scale, the convergence rule, reviewer-feedback delivery) land separately and are pickable in any order after this one.
-
-**Acceptance criteria.**
-- A bugfix change to a non-exempt file merges without a reviewer run first, and the merged commit's review (review_start with afterMerge, then verdict or rejection with reasons) appears in the event log; the rejection routes to the revert slot and back to bugfix as a revision with the prior objections carried.
-- A feature change to the same kind of file still runs the pre-merge reviewer (review before merge_queued/merge_done, no afterMerge events for feature).
-- `npm run test:gate` passes (config validation accepts the widened list; a list naming the director still fails as today).
-
 ### Reviewer as a regular role, part 2/4: Post-merge review at fleet scale — the merge poll keeps up and the revert path holds under bugfix volume (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; touches src/review/post-merge-review.ts src/merge/merge-slot.ts and their tests)
 
 **Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moves bugfix's volume onto it. The merge poll's one-at-a-time when-a-permit-is-free cadence and the revert-after-merge path must hold: no unreviewed merged commit waits indefinitely, and a rejection of an already-archived entry does not strand the entry.

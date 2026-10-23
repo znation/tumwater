@@ -25,10 +25,23 @@ import { sleep } from "./helpers/wait.js";
 import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
 
 test("review.afterMerge accepts known base role ids and rejects the director and unknown ids", () => {
-  assert.doesNotThrow(() => validateConfig({ review: { afterMerge: ["clean", "dedupe", "coverage"] } }));
+  // The widened default (reviewer-as-regular-role part 1/4): the post-merge list now carries
+  // the low-blast-radius maintenance roles alongside the original trio, so a fresh project
+  // (and the gitignored live config, which inherits the default) gets the tiering.
+  assert.deepEqual(defaultConfig().review.afterMerge, ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"]);
+  assert.doesNotThrow(() => validateConfig({ review: { afterMerge: ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] } }));
   assert.throws(() => validateConfig({ review: { afterMerge: ["director"] } }), /review\.afterMerge\[0\] must not be "director"/);
   assert.throws(() => validateConfig({ review: { afterMerge: ["cleen"] } }), /review\.afterMerge\.cleen is not a known role/);
   assert.throws(() => validateConfig({ review: { afterMerge: [""] } }), /review\.afterMerge\[0\] must not be blank/);
+});
+
+test("the tracked tumwater.example.json carries the widened afterMerge default", () => {
+  // The example (not defaultConfig() alone) is what seedConfig overlays onto a fresh project, so
+  // it must not drift from the widened default: a fresh project inherits the tiering from BOTH.
+  const example = JSON.parse(fs.readFileSync(path.join(process.cwd(), "tumwater.example.json"), "utf8")) as {
+    review?: { afterMerge?: string[] };
+  };
+  assert.deepEqual(example.review?.afterMerge, defaultConfig().review.afterMerge);
 });
 
 test("a listed role's change passes the gate with no reviewer run; an unlisted role's is reviewed", async () => {

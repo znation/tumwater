@@ -215,9 +215,9 @@ after merging. Without a gate command the wording is unchanged. This was 12% of 
 
 A new `review.afterMerge` list names roles whose changes merge once the gate passes, without a
 review first. The reviewer then reviews the merged commit (`C^..C`); a rejection reverts C through
-part 4's revert path and hands it back as a revision. It defaults to `clean`, `dedupe` and
-`coverage`, the high-volume small-diff code roles (see "Defaults"; readme's changes are Markdown,
-which `review.exemptPaths` already skips). Every other role keeps review before merge.
+part 4's revert path and hands it back as a revision. It defaults to the high-volume,
+low-blast-radius roles — `bugfix`, `readme`, `organize`, plus `clean`, `dedupe` and `coverage` (see
+"Defaults"). Every other role keeps review before merge.
 
 ## Defaults
 
@@ -229,7 +229,7 @@ the full `npm test` (142–330 s per merge). Both become defaults instead:
   check merges on it, and its full check runs after the merge. A project with no gate command keeps
   the full check in the lock, because tumwater cannot guess a cheaper check for an arbitrary
   project. `"mergeCommand": ""` opts out and keeps the full check in the lock.
-- **`review.afterMerge` defaults to `["clean", "dedupe", "coverage"]`** for every project. `[]` opts
+- **`review.afterMerge` defaults to `["bugfix", "clean", "coverage", "dedupe", "organize", "readme"]`** for every project. `[]` opts
   out, so every role is reviewed before it merges.
 
 A config that leaves `check.mergeCommand` out gets the gate-command fallback: it is a reading-time
