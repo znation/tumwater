@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, staleMerges, statusPayload, stalePrompts } from "../src/ui/status-payload.js";
+import { planDependencyAlert, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -701,6 +701,81 @@ test("staleMerges and the surfaces carry a stale-merge alert from the queue, and
   assert.doesNotMatch(renderStatus(empty, snapshot(empty, undefined, now)), /queued merge waited/);
 });
 
+test("waiting bugs held a week raise a standing amber alert right after the stale-bug alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [{ index: 2, position: 3, title: "Bug hangs on shutdown", days: 7 }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["waiting-bugs", "amber", "1 waiting bug held 7+ days"]]);
+  assert.match(one[0]!.detail ?? "", /^#3 "Bug hangs on shutdown" has waited 7d/);
+  assert.match(one[0]!.detail ?? "", /tumwater bug --release 3/);
+  assert.match(one[0]!.detail ?? "", /keep the hold/);
+  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "bugs:2" }]);
+  // Callers feed most-days-first (staleWaitingBugs sorts days descending, ties in file order, so
+  // the first element is the longest-held bug and the one the alert names; the rest are folded
+  // like the refused and questions alerts (three entries give the "— and 1 more" fold).
+  const three = teamAlerts(base, [], [], now, [], [], [], [], [], null, [
+    { index: 4, position: 5, title: "B", days: 9 },
+    { index: 6, position: 7, title: "C", days: 8 },
+    { index: 0, position: 1, title: "A", days: 7 },
+  ]);
+  assert.equal(three[0]!.title, "3 waiting bugs held 7+ days");
+  assert.match(three[0]!.detail ?? "", /— and 1 more/);
+  assert.equal(three[0]!.actions[0]?.arg, "bugs:4");
+  // With both a stale bug and a waiting bug, the stale-bug alert precedes the waiting-bug one.
+  const withBugs = teamAlerts(base, [], [], now, [], [], [{ index: 0, position: 1, title: "B", days: 3 }], [], [], null, [{ index: 2, position: 3, title: "A", days: 7 }]);
+  assert.deepEqual(withBugs.map((a) => a.key), ["stale-bugs", "waiting-bugs"]);
+  assert.deepEqual(teamAlerts(base, [], [], now), []);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], []), []);
+});
+
+test("staleWaitingBugs and the surfaces carry a waiting-bug alert from BUGS.md, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: [
+        `### Held bug (found by bugfix ${daysAgo(9, now)})`,
+        "",
+        `**Waiting for the next failure ${daysAgo(8, now)} by bugfix: flaked once**`,
+      ].join("\n"),
+    },
+    { heading: "## Fixed" },
+  ]);
+  assert.deepEqual(staleWaitingBugs(root, now).map((b) => ({ position: b.position, title: b.title, days: b.days })), [{ position: 1, title: "Held bug", days: 8 }]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string; actions?: Array<{ arg?: string }> }> };
+  const alert = payload.alerts.find((a) => a.key === "waiting-bugs");
+  assert.equal(alert?.title, "1 waiting bug held 7+ days");
+  assert.match(alert?.detail ?? "", /Held bug/);
+  assert.match(alert?.detail ?? "", /8d/);
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /waiting bug held 7\+ days/);
+  // The doctor's skip rules: a hold fresh under STALE_WAIT_DAYS, a refused held bug, and a bug
+  // with no waiting note each yield no waiting-bug alert, on every surface.
+  const clean = makeRepo();
+  writeBacklogFile(clean, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: [
+        `### Fresh (found by bugfix ${daysAgo(9, now)})`,
+        "",
+        `**Waiting for the next failure ${daysAgo(2, now)} by bugfix: flaked once**`,
+        "",
+        `### Refused (found by bugfix ${daysAgo(9, now)})`,
+        "",
+        `**Waiting for the next failure ${daysAgo(8, now)} by bugfix: flaked once**`,
+        "",
+        "**Refused 2026-10-10 by bugfix: not a bug**",
+        "",
+        `### No note (found by bugfix ${daysAgo(9, now)})`,
+      ].join("\n"),
+    },
+    { heading: "## Fixed" },
+  ]);
+  assert.deepEqual(staleWaitingBugs(clean, now).map((b) => ({ position: b.position, title: b.title, days: b.days })), []);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "waiting-bugs"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /waiting bug held/);
+});
 test("root install drift raises one amber install alert naming up to five packages", () => {
   const installs = (rootInstallDrift?: string[]) =>
     teamAlerts({ ...base, rootInstallDrift }, [], [], Date.now()).filter((a) => a.key === "install");

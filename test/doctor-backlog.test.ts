@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
-import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
+import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -778,6 +778,22 @@ test("checkWaitingBugs is quiet without an Open waiting bug, and without BUGS.md
   fs.writeFileSync(path.join(dir, "BUGS.md"),
     `## Open\n\n### Both\n\n**Refused 2026-10-10 by bugfix: no**\n${WAIT}\n\n## Fixed\n\n### Old\n\n${WAIT}\n`);
   assert.deepEqual(checkWaitingBugs(dir), none);
+});
+
+test("staleWaitingBugRows shares the doctor's held selection and STALE_WAIT_DAYS anchor", () => {
+  const now = Date.now();
+  const dir = tmpdir("doctor-stale-waiting-rows-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n` +
+    `### Held (found by bugfix ${daysAgoStamp(9)})\n\n**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: flaked once**\n\n` +
+    `### Fresh (found by bugfix ${daysAgoStamp(1)})\n\n**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: flaked once**\n\n` +
+    `### Refused (found by bugfix ${daysAgoStamp(9)})\n\n**Waiting for the next failure ${daysAgoStamp(8)} by bugfix: flaked once**\n\n**Refused 2026-10-10 by bugfix: no**\n\n` +
+    `### No note (found by bugfix ${daysAgoStamp(9)})\n`);
+  // See the checkStaleQuestions/checkStaleBugs age suffix: ageInDays parses the stamp as UTC
+  // midnight, so the exact age drifts with the time of day/timezone and is computed, never
+  // hard-coded.
+  assert.deepEqual(staleWaitingBugRows(dir, now).map((b) => ({ position: b.position, title: b.title, days: b.days })),
+    [{ position: 1, title: "Held", days: ageInDays(daysAgoStamp(8)) }]);
 });
 
 const FLAKY_TEST = "startParentDeathWatch takes a grandchild down";

@@ -73,6 +73,20 @@ export interface PlanDependencyProblem {
   message: string;
 }
 
+/** An open bug a Waiting-for-the-next-failure note has held for STALE_WAIT_DAYS or more — the
+ * always-on twin of the doctor's `waiting bugs` rule (src/doctor/doctor-backlog-bugs.ts
+ * checkWaitingBugs, STALE_WAIT_DAYS). Computed in src/ui/status-payload.ts's staleWaitingBugs
+ * from the same threshold, selection and anchor as the doctor's check, so the alert and the
+ * doctor cannot drift on the rule; the alert omits the doctor's recurrence scan by design (the
+ * reader's doc comment says why). Its 0-based index addresses the drawer (`bugs:<index>`); its
+ * 1-based position is the `bug --release`/`bug --list` number; its title is stamp-stripped for
+ * prose; days is its whole-day hold age. */
+export interface StaleWaitingBug {
+  index: number;
+  position: number;
+  title: string;
+  days: number;
+}
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -166,7 +180,7 @@ function localizeInstants(text: string): string {
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
- * pause, a stopped team.
+ * waiting bug held a week, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -198,6 +212,7 @@ export function teamAlerts(
   stalePrompts: readonly StalePrompt[] = [],
   staleMerges: readonly StaleMerge[] = [],
   planDependency: PlanDependencyProblem | null = null,
+  staleWaitingBugs: readonly StaleWaitingBug[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -445,6 +460,30 @@ export function teamAlerts(
         ` · check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``,
       // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
       // `bugs:index` with a 0-based row, matching the drawer address.
+      actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
+    });
+  }
+  // A waiting bug (doctor's STALE_WAIT_DAYS rule, src/doctor/doctor-backlog-bugs.ts
+  // checkWaitingBugs) whose flake has not come back parks indefinitely, so a hold that has
+  // outlived a week asks (amber) the way the stale-bug alert does, naming the oldest hold, its
+  // age, and the release-or-keep advice. Its callers pass it most-days-first (status-payload.ts
+  // staleWaitingBugs sorts by days descending, ties in file order), so the first element is the
+  // longest-held bug and is named with its position and days; the rest are folded through
+  // entryListDetail like the questions and refused alerts, so the wording and counts cannot
+  // drift.
+  if (staleWaitingBugs.length) {
+    const first = staleWaitingBugs[0]!;
+    const rest = staleWaitingBugs.slice(1);
+    out.push({
+      key: "waiting-bugs", // vocabulary-ok: the waiting-bugs amber alert's key
+      tone: "amber",
+      title: `${plural(staleWaitingBugs.length, "waiting bug held", "waiting bugs held")} 7+ days`,
+      detail:
+        `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
+        (rest.length > 0 ? ` · ${entryListDetail(rest.map((r) => `#${r.position} "${r.title}"`))}` : "") +
+        ` · its flake has not come back — release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
+      // The action lands the operator on the first stale waiting bug: the dashboard's backlog arm
+      // reads `bugs:index` with a 0-based row, matching the drawer address.
       actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
     });
   }

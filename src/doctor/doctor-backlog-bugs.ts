@@ -2,6 +2,7 @@ import { andMore, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REF
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { ageInDays, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
@@ -115,6 +116,22 @@ function sinceWindowMs(sinces: readonly number[]): number {
   return Math.max(0, Date.now() - Math.min(...sinces));
 }
 
+/** Open BUGS.md bugs held by a **Waiting for the next failure …** note, in file order: the
+ * doctor's `checkWaitingBugs` selection and anchor, factored out so the always-on stale-wait
+ * feed (staleWaitingBugRows) reads the same held set and cannot drift from the doctor's rule.
+ * A bug that is also Refused is left to checkRefusedEntries. `since` is the day-after the
+ * note's date — the recurrence scan's boundary; `date` the note's own `YYYY-MM-DD` or null. */
+function heldWaitingBugs(root: string): Array<{ index: number; position: number; title: string; note: string; name: string | null; since: number | null; date: string | null }> {
+  return openBugEntries(root).flatMap((entry, index) => {
+    const note = waitingNote(entry.body);
+    if (note === null || refusalNote(entry.body) !== null) return [];
+    const name = quotedTestName(entry.title);
+    const date = waitingNoteDate(note);
+    const since = name !== null && date !== null ? dayAfterMs(date) : null;
+    return [{ index, position: index + 1, title: entry.title, note, name, since, date }];
+  });
+}
+
 /** Waiting bugs — open BUGS.md bugs held by a **Waiting for the next failure …** note, which
  * parks a bug until it fails again. Positions are the 1-based `bug --list` numbers; a bug that
  * is also Refused is left to checkRefusedEntries. Ok when the hold is undisturbed — doctor
@@ -125,14 +142,7 @@ function sinceWindowMs(sinces: readonly number[]): number {
 export function checkWaitingBugs(root: string): CheckOutcome {
   const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if (typeof doc !== "string") return doc;
-  const held = openBugEntries(root).flatMap((entry, index) => {
-    const note = waitingNote(entry.body);
-    if (note === null || refusalNote(entry.body) !== null) return [];
-    const name = quotedTestName(entry.title);
-    const date = waitingNoteDate(note);
-    const since = name !== null && date !== null ? dayAfterMs(date) : null;
-    return [{ position: index + 1, title: entry.title, note, name, since, date }];
-  });
+  const held = heldWaitingBugs(root);
   const [first, ...rest] = held;
   if (!first) return okOutcome("no open bug is waiting for its next failure");
   const sinces = held.flatMap((b) => (b.since !== null && !Number.isNaN(b.since) ? [b.since] : []));
@@ -174,6 +184,27 @@ export function checkWaitingBugs(root: string): CheckOutcome {
   return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +
       `release it now with \`tumwater bug --release ${first.position}\``);
+}
+
+/** The always-on rows behind the dashboard/TUI/`tumwater status` waiting-bug alert: open BUGS.md
+ * bugs held by a **Waiting for the next failure …** note whose anchor (the note's `YYYY-MM-DD`,
+ * else the heading's filing stamp) is at least STALE_WAIT_DAYS old. Shares the doctor's
+ * STALE_WAIT_DAYS threshold and the heldWaitingBugs selection/anchor, so the alert and the
+ * doctor's `waiting bugs` row cannot drift on the rule; an undated note-and-heading is skipped.
+ * The returned objects carry the 0-based index (drawer address `bugs:<index>`), the 1-based
+ * position (`bug --release <position>`), the stamp-stripped title, and the whole-day age.
+ * Returned most-days-waited-first, ties in file order, like staleOpenBugs. This deliberately
+ * omits `checkWaitingBugs`'s recurrence scan, because that scan reads events back to the oldest
+ * hold and is too costly on the status poll path; the doctor still reports a recurrence first. */
+export function staleWaitingBugRows(root: string, now = Date.now()): Array<{ index: number; position: number; title: string; days: number }> {
+  return heldWaitingBugs(root)
+    .flatMap((b) => {
+      const anchor = b.date ?? filingDate(b.title);
+      if (anchor === null) return [];
+      const days = ageInDays(anchor, now);
+      return days >= STALE_WAIT_DAYS ? [{ index: b.index, position: b.position, title: stripEntryStamp(b.title), days }] : [];
+    })
+    .sort((a, b) => b.days - a.days || a.index - b.index);
 }
 
 /** Regressed fixes — a newest-10 BUGS.md Fixed record whose heading quotes a test name that a

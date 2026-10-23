@@ -11,9 +11,10 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type PlanDependencyProblem, type StaleBug, type StaleMerge, type StalePrompt } from "./team-alerts.js";
+import { teamAlerts, type PlanDependencyProblem, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
+import { staleWaitingBugRows } from "../doctor/doctor-backlog-bugs.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -86,6 +87,16 @@ export function planDependencyAlert(root: string): PlanDependencyProblem | null 
   return planDependencyProblem(root);
 }
 
+/** The open bugs a Waiting-for-the-next-failure note has held for STALE_WAIT_DAYS (7) or more —
+ * the always-on feed for the waiting-bugs team alert, sharing the doctor's threshold, held-bug
+ * selection and anchor through staleWaitingBugRows so the alert and `checkWaitingBugs` cannot
+ * drift. The returned objects carry the 0-based index (drawer `bugs:<index>`), the 1-based
+ * position (`bug --release <position>`), the stamp-stripped title, and the whole-day age.
+ * Returned most-days-waited-first — ties in file order — so a caller naming the first element
+ * names the longest-held bug. */
+export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBug[] {
+  return staleWaitingBugRows(root, now);
+}
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
  * newer build and reload), while `tumwater status --json` (cli.ts) prints it verbatim — every
@@ -397,6 +408,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now)),
   };
 }
