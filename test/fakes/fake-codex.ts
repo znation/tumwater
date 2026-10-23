@@ -137,6 +137,15 @@ interface FakeCodexServerOptions {
   version?: string;
   hang?: boolean;
   mismatch?: boolean;
+  /** hooks/list answers with this JSON-RPC `error` value instead of a result — a string or a
+   * `{message}` object, the two shapes lookupCodexHookTrust's describeError handles. */
+  errorReply?: unknown;
+  /** The app-server prints one non-JSON line before answering anything, to exercise the
+   * lookup's ignore-noise branch (a notice or prompt on the stream is not its reply). */
+  noise?: boolean;
+  /** The app-server answers the initialize handshake and then exits 0 without answering
+   * hooks/list, to exercise the early-exit rejection. */
+  exitEarly?: boolean;
 }
 
 /** A fake `codex` that answers the trust lookup (plans/codex-write-guard.md "Trust (parts
@@ -146,7 +155,10 @@ interface FakeCodexServerOptions {
  * argument and whose `currentHash` is `sha256:` plus the sha256 of that command, and `key` the
  * fixed session-flag key. Each app-server start appends a line to `callsFile`; `opts.hang`
  * leaves it alive (writing its pid to `pidFile`) for the timeout test; `opts.mismatch` lists
- * the hook under a `user` source so the lookup's session-flag match fails. The bin is returned
+ * the hook under a `user` source so the lookup's session-flag match fails; `opts.errorReply`
+ * answers hooks/list with a JSON-RPC error instead of a result, `opts.noise` prints a non-JSON
+ * line before answering (ignored), and `opts.exitEarly` exits after the handshake, before
+ * hooks/list. The bin is returned
  * as an absolute path the test passes as `bin`, never installed on PATH. */
 export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodexServer {
   const dir = tmpdir("fake-codex-server-");
@@ -163,6 +175,9 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
     `const VERSION = ${JSON.stringify(version)};`,
     `const SOURCE = ${JSON.stringify(source)};`,
     `const HANG = ${opts.hang === true};`,
+    `const ERROR = ${JSON.stringify(opts.errorReply ?? null)};`,
+    `const NOISE = ${opts.noise === true};`,
+    `const EXIT_EARLY = ${opts.exitEarly === true};`,
     "const args = process.argv.slice(2);",
     'if (args[0] === "--version") {',
     '  process.stdout.write(VERSION + "\\n");',
@@ -170,6 +185,7 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
     "}",
     'fs.appendFileSync(CALLS, "start\\n");',
     "fs.writeFileSync(PID, String(process.pid));",
+    'if (NOISE) process.stdout.write("codex: hello from codex\\n");',
     "if (HANG) { setTimeout(function () {}, 60000); }",
     'const toml = args[1] ?? "";',
     "const command = parseCommand(toml);",
@@ -191,7 +207,12 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
     '      if (msg.method === "initialize") {',
     '        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }) + "\\n");',
     '      } else if (msg.method === "hooks/list") {',
-    '        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { data: [{ hooks: [hook] }] } }) + "\\n");',
+    '        if (EXIT_EARLY) { process.exit(0); }',
+    '        if (ERROR !== null) {',
+    '          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: ERROR }) + "\\n");',
+    '        } else {',
+    '          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { data: [{ hooks: [hook] }] } }) + "\\n");',
+    '        }',
     "      }",
     "    }",
     '    nl = buf.indexOf("\\n");',

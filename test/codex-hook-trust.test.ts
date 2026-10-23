@@ -131,6 +131,82 @@ test("a fake whose list holds no matching hook rejects with the message", async 
   }
 });
 
+test("an RPC error reply rejects, naming the string error", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ errorReply: "boom" });
+  try {
+    const def = definition();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex hooks\/list errored: boom/,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
+test("an RPC error reply object rejects with its message", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ errorReply: { message: "nope" } });
+  try {
+    const def = definition();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex hooks\/list errored: nope/,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a non-JSON notice line on the stream is ignored", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ noise: true });
+  try {
+    const def = definition();
+    const trust = await lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    assert.equal(trust.key, "/<session-flags>/config.toml:pre_tool_use:0:0");
+    assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
+  } finally {
+    fake.restore();
+  }
+});
+
+test("an app-server that exits before hooks/list rejects with the early-exit message", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ exitEarly: true });
+  try {
+    const def = definition();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex app-server exited \(code 0\) before answering hooks\/list/,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a corrupted cache entry is ignored and re-looked-up", async () => {
+  const root = tmpdir();
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer();
+  try {
+    const def = definition();
+    const file = codexHookTrustPath(root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ [`0.163.0${JSON.stringify(def)}`]: "not-a-trust" }));
+    const trust = await codexHookTrust(root, { bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    assert.equal(trust.hash, `sha256:${createHash("sha256").update(def.command).digest("hex")}`);
+    // The non-trust cache value did not short-circuit the lookup: exactly one app-server start.
+    assert.equal(fs.readFileSync(fake.callsFile, "utf8").trim().split("\n").length, 1);
+    const cached = JSON.parse(fs.readFileSync(file, "utf8"))[`0.163.0${JSON.stringify(def)}`];
+    assert.equal(cached.key, trust.key);
+    assert.equal(cached.hash, trust.hash);
+  } finally {
+    fake.restore();
+  }
+});
+
 test("root undefined looks up and writes no file", async () => {
   const home = tmpdir();
   const cwd = tmpdir();
