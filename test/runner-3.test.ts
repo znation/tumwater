@@ -54,14 +54,21 @@ test("a rejected change is re-applied on the role's next run and its reasons rid
     assert.equal((await runner.run()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 2, "exactly two author runs were recorded");
-    assert.ok(!runs[0]?.includes("rejected in review"), "run 1's prompt had no rejection note yet");
+    assert.ok(!runs[0]?.includes("it is this run's primary task"), "run 1's prompt had no rejection note yet");
     assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "run 1 had no revision yet");
     const second = runs[1] ?? "";
     assert.match(second, /is already in the worktree as uncommitted edits/);
     assert.match(second, /revision 1\b/);
     assert.match(second, /1\. breaks the zero-dep rule/);
     assert.match(second, /2\. no regression test/);
-    assert.ok(!runs[1]?.includes("was rejected in review"), "the plain rejected note is replaced by the revision note");
+    // part 4/4 verdict-first placement: the revision note opens the run, before the charter, so
+    // the author cannot miss why the diff is already in the worktree (runner-run prepends it).
+    assert.ok(
+      second.indexOf("is already in the worktree as uncommitted edits") <
+        second.indexOf('You are the "improve" role'),
+      "the revision note leads the run prompt, before the charter",
+    );
+    assert.ok(!runs[1]?.includes("it is this run's primary task"), "the plain rejected note is replaced by the revision note");
     assertClean(wt, "a dropped revision leaves the worktree clean at main");
   });
 });

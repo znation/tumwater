@@ -153,7 +153,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       assert.equal((await runner.run()).result, "no_change");
       const runs = readRunBlocks(promptsFile);
       assert.equal(runs.length, 2, "two author runs and nothing from the merge");
-      assert.ok(!runs[0]?.includes("rejected in review"), "run 1's prompt had no rejection note yet");
+      assert.ok(!runs[0]?.includes("it is this run's primary task"), "run 1's prompt had no rejection note yet");
       const second = runs[1] ?? "";
       assert.match(second, /is already in the worktree as uncommitted edits/);
       assert.match(second, /revision 1\b/);

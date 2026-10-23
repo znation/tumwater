@@ -108,6 +108,37 @@ test("formatCommitBody orders WHY, RISK, VERIFIED and skips missing fields", () 
   assert.equal(formatCommitBody({}), "");
 });
 
+// A revision run's closing block teaches one Objection N: line per prior reason, which the
+// commit body carries so the re-review reads a claim per objection (plans/reviewer-as-role.md
+// part 4/4). A non-revision reply never teaches them, so a body without Objection lines is
+// unchanged.
+test("extractCommitBody parses numbered Objection lines out of a reply", () => {
+  const body = extractCommitBody(
+    "done\nSUMMARY: revise\nWHY: fixed the dep\nObjection 1: done\nObjection 2: dropped\nVERIFIED: test:gate\n",
+  );
+  assert.deepEqual(body?.objections, [
+    { n: 1, text: "done" },
+    { n: 2, text: "dropped" },
+  ]);
+  // The Objection lines make it a body even with no WHY/RISK/VERIFIED.
+  assert.equal(extractCommitBody("Objection 3: unchanged-by-design because main moved\n")?.objections?.[0]?.text, "unchanged-by-design because main moved");
+  // Numbered order is preserved even when the author wrote them out of order.
+  assert.deepEqual(
+    extractCommitBody("Objection 2: dropped\nObjection 1: done\n")?.objections?.map((o) => o.n),
+    [1, 2],
+  );
+  // A mid-line mention is prose, not the contract (anchored at line start).
+  assert.equal(extractCommitBody("the Objection 1: was resolved\n")?.objections ?? null, null);
+});
+
+test("formatCommitBody appends Objection lines after VERIFIED, numbered as written", () => {
+  assert.equal(
+    formatCommitBody({ why: "a", verified: "c", objections: [{ n: 1, text: "done" }, { n: 2, text: "dropped" }] }),
+    "WHY: a\nVERIFIED: c\nObjection 1: done\nObjection 2: dropped",
+  );
+  assert.equal(formatCommitBody({ objections: [{ n: 1, text: "done" }] }), "Objection 1: done");
+});
+
 test("appendSelfCheckNotes adds a fix-up's RISK/VERIFIED after the change's own and drops its WHY", () => {
   const base = { why: "original why", risk: "original risk", verified: "original verified" };
   // The fix-up turn answers the self-check's findings, not the change, so it never replaces the

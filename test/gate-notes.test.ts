@@ -6,6 +6,7 @@ import {
   buildMergedPrerequisitesNote,
   buildMainKnownRedNote,
   buildMainRedNote,
+  buildRevisionNote,
   buildWaitingPartsNote,
   buildRejectedReviewNote,
 } from "../src/prompt/gate-notes.js";
@@ -17,15 +18,15 @@ import { NEEDS_REPLAN_NOTE } from "../src/roles/role-guidance.js";
 
 test("buildRejectedReviewNote carries every reason, numbered in order", () => {
   const note = buildRejectedReviewNote({ reasons: ["violates zero-deps principle", "half-done: no tests"] });
-  assert.match(note, /rejected in review/);
+  assert.match(note, /rejected; fix each numbered objection or drop the change/);
+  assert.match(note, /this run's primary task/);
   assert.ok(note.includes("1. violates zero-deps principle\n2. half-done: no tests"), "numbered list");
-  assert.match(note, /Address the objections or take a different approach/);
 });
 
 test("buildRejectedReviewNote degrades to a placeholder when no reasons were recorded", () => {
   const note = buildRejectedReviewNote({ reasons: [] });
   assert.ok(note.includes("(no reasons recorded)"), "says so rather than listing nothing");
-  assert.match(note, /rejected in review/);
+  assert.match(note, /rejected; fix each numbered objection or drop the change/);
 });
 
 // A rejection persists until a later reviewed merge overwrites it, and the paths that never reach a
@@ -35,12 +36,12 @@ test("buildRejectedReviewNote degrades to a placeholder when no reasons were rec
 test("buildRejectedReviewNote dates the verdict and names the reviewed head", () => {
   const at = new Date(2026, 8, 24, 1, 20, 32).getTime();
   const note = buildRejectedReviewNote({ reasons: ["md-only edit"], at, head: "127157a4deadbeef" });
-  assert.match(note, /rejected in review \(2026-09-24 01:20:32, head 127157a4\):/);
+  assert.match(note, /rejected; fix each numbered objection or drop the change — it is this run's primary task \(2026-09-24 01:20:32, head 127157a4\):/);
 });
 
 test("buildRejectedReviewNote omits the context when the review recorded neither time nor head", () => {
   const note = buildRejectedReviewNote({ reasons: ["md-only edit"] });
-  assert.match(note, /rejected in review:/);
+  assert.match(note, /rejected; fix each numbered objection or drop the change — it is this run's primary task:/);
 });
 
 // A change that used its last revision round must not be re-authored from scratch: the same
@@ -79,6 +80,15 @@ test("an exhausted plan-less rejection records the purpose in the notes instead 
   assert.match(note, /notes/);
   assert.match(note, /different theme/);
   assert.doesNotMatch(note, /re-author it from current main/);
+});
+
+// A revision run's closing contract teaches the author to answer each prior objection with its
+// own `Objection N:` line, which commit-message.ts carries into the commit body so the re-review
+// reads a claim per reason (plans/reviewer-as-role.md part 4/4).
+test("buildRevisionNote asks for one Objection closing line per numbered prior reason", () => {
+  const note = buildRevisionNote({ reasons: ["first", "second"] }, 1);
+  assert.match(note, /Objection N: <done\|dropped\|unchanged-by-design because …/);
+  assert.match(note, /each numbered objection above/);
 });
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the

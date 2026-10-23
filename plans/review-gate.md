@@ -200,8 +200,8 @@ in LoopState — see crash path below.
 
 Do not merge. Reset the branch to main (work discarded), log a `review_rejected` event carrying the
 reasons, store them in `LoopState.lastReview`, and inject them into the role's next tick prompt
-("your previous change was rejected in review: … — address the objections or take a different
-approach"). Every tick now starts a fresh pi session (cross-tick `--continue` was removed), so this
+("your previous change was rejected; fix each numbered objection or drop the change — it is this run's
+primary task: …"). Every tick now starts a fresh pi session (cross-tick `--continue` was removed), so this
 injection is the *only* cross-tick memory of what was built and why it failed — keep it complete.
 New
 `TickResult` value `"rejected"` rendered in status/GUI. Scheduling: treat like `changed` (reset

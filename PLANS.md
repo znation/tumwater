@@ -19,21 +19,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A test merges N=10 changes across 4 roles with fake reviews resolving on a controlled clock: every merged commit is eventually reviewed, none reviewed twice, and the per-role pending count never exceeds one.
 - The archive-race test above passes; `npm run test:gate` passes.
 
-### Reviewer as a regular role, part 4/4: Reviewer feedback the author cannot miss — the rejection note leads the next run, and the commit body acknowledges each reason (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 4; evidence: the same reason text recurring across 27 consecutive rejections of bugfix-2 (10-22T08:29→14:35Z), so the injected `lastReview` note is not changing the author's next run; touches src/prompt/prompt.ts src/git/commit-message.ts src/runner/runner-run.ts and their tests)
-
-**Goal.** Close the broken feedback loop that makes rejections cheap to repeat: when a run starts with a rejected change's reasons, those reasons — not the general charter — organize the run; and the resulting commit's body says, per numbered reason, what was done about it, so the re-review's prior-objection check (plans/revise-rejected.md) reads an answer, not a shrug.
-
-**Approach.**
-- src/prompt/prompt.ts: when `buildRejectedReviewNote`'s note is present, it renders at the very top of the run prompt, before the role charter, phrased as the run's primary task: "Your previous change was rejected; fix each numbered objection or drop the change" (the note already carries the reasons verbatim).
-- src/git/commit-message.ts / runner-run's body assembly: when the run is a revision, the body template gains one line per prior reason — `Objection N: <done|dropped|unchanged-by-design because …>` — sourced from the same `lastReview` reasons, so the reviewer's interdiff check has the author's claim beside each objection.
-- No change to the reviewer prompt in this part; the re-review already reads the prior objections first (plans/revise-rejected.md part 2/2).
-
-**Acceptance criteria.**
-- A revision run's prompt test asserts the rejection note precedes the charter and names every reason; a fresh run's prompt is byte-unchanged.
-- A revision commit's body carries one Objection line per prior reason; the existing commit-body tests are updated for the new template, and a non-revision commit body is unchanged.
-- The measurable target (stated in the plan, verified by hand after landing): first-rejection → second-rejection on the *same* reason drops against the 10-21→23 audit baseline.
-- `npm run test:gate` passes.
-
 ### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
 
 **Refused 2026-10-23 by feature: executing the decision now needs one week of post-reviewer-plan `check_wait` data, but reviewer-as-role parts 1/4 and 3/4 are still under `## Planned` (not landed), so no evidence exists and raising the cap 3→4 now would be the theory-knob this plan's "not a knob raised on theory" decision rejects**

@@ -48,13 +48,34 @@ const COMMIT_BODY_FIELD_MAX = 1000;
 
 /** The author's explanation of a change — the WHY/RISK/VERIFIED half of the SUMMARY_BLOCK
  * contract declared by reply-contract.ts. Each field is optional: a non-compliant reply still
- * commits (subject + trailer). Module-private: every consumer — extractCommitBody,
- * formatCommitBody, buildCommitMessage — lives in this file, and run-stage.ts works with the
- * extracted values structurally rather than naming the type. */
+ * commits (subject + trailer). A revision run (plans/reviewer-as-role.md part 4/4) may also
+ * carry Objection lines — numbered answers to the prior review's objections the author wrote
+ * into the closing block, kept beside the body so the re-review reads a claim per objection.
+ * Module-private: every consumer — extractCommitBody, formatCommitBody, buildCommitMessage —
+ * lives in this file, and run-stage.ts works with the extracted values structurally rather than
+ * naming the type. */
 interface CommitBody {
   why?: string;
   risk?: string;
   verified?: string;
+  objections?: { n: number; text: string }[];
+}
+
+/** A numbered `Objection N: <disposition>` line a revision run's reply carries (the closing
+ * contract buildRevisionNote teaches, gate-notes.ts) — the author's answer to the prior
+ * review's Nth numbered objection. Anchored at line start so prose that merely mentions an
+ * objection mid-sentence cannot be read as one. */
+const OBJECTION_LINE = /^\s*Objection (\d+):\s*(.+)\s*$/gm;
+
+/** Pull the numbered Objection lines out of a reply, each capped like a body field. */
+function extractObjections(finalText: string): { n: number; text: string }[] {
+  const out: { n: number; text: string }[] = [];
+  for (const m of finalText.matchAll(OBJECTION_LINE)) {
+    out.push({ n: Number(m[1]), text: truncate(m[2] ?? "", COMMIT_BODY_FIELD_MAX) });
+  }
+  // Preserve the numbered order regardless of where the author placed each line.
+  out.sort((a, b) => a.n - b.n);
+  return out;
 }
 
 /** Pull the WHY:/RISK:/VERIFIED: lines out of a pi final reply via the shared labeled-line
@@ -70,7 +91,9 @@ export function extractCommitBody(finalText: string): CommitBody | null {
     risk: pick("RISK"),
     verified: pick("VERIFIED"),
   };
-  return body.why || body.risk || body.verified ? body : null;
+  const objections = extractObjections(finalText);
+  if (objections.length > 0) body.objections = objections;
+  return body.why || body.risk || body.verified || objections.length > 0 ? body : null;
 }
 
 /** Add the pre-queue self-check fix-up turn's RISK and VERIFIED lines to the run's body, each
@@ -86,14 +109,16 @@ export function appendSelfCheckNotes(base: CommitBody | null, fixUp: CommitBody 
   return { ...base, risk: note(base?.risk, fixUp.risk), verified: note(base?.verified, fixUp.verified) };
 }
 
-/** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …"); "" when the body is
- * empty. */
+/** The body's lines in commit order ("WHY: …\nRISK: …\nVERIFIED: …\nObjection N: …"); "" when
+ * the body has no fields. Objection lines follow the VERIFIED line, numbered as the author
+ * wrote them. Empty when the body is empty. */
 export function formatCommitBody(body: CommitBody): string {
   return joinParts(
     [
       body.why && `WHY: ${body.why}`,
       body.risk && `RISK: ${body.risk}`,
       body.verified && `VERIFIED: ${body.verified}`,
+      ...(body.objections ?? []).map((o) => `Objection ${o.n}: ${o.text}`),
     ],
     "\n",
   );

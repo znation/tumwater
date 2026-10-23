@@ -136,6 +136,23 @@ test("a director's prompt is built from the dequeued request, returned as userPr
   assert.match(result.prompt, /prefer no third-party deps/);
 });
 
+test("a director's standing rejection leads its prompt before the request and the charter", () => {
+  const dir = root();
+  enqueuePrompt(dir, "prefer no third-party deps");
+  const result = promptFor(dir, DIRECTOR_ROLE, {
+    state: { lastReview: { verdict: "reject", reasons: ["violates zero-deps"], at: 1 } },
+  });
+  assert.ok(result);
+  const prompt = result.prompt ?? "";
+  const reject = prompt.indexOf("it is this run's primary task");
+  const charter = prompt.indexOf('You are the "director" role');
+  const request = prompt.indexOf("prefer no third-party deps");
+  assert.ok(
+    reject >= 0 && reject < charter && reject < request,
+    "the rejection leads the director's charter and queued request",
+  );
+});
+
 test("a director run receives its roles.director.instructions override", () => {
   const dir = root();
   enqueuePrompt(dir, "add dark mode");
@@ -520,7 +537,7 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
   const after = promptFor(dir, "feature", { state: s });
   assert.ok(after);
   assert.doesNotMatch(after.prompt, /do not re-author it/);
-  assert.doesNotMatch(after.prompt, /rejected in review/);
+  assert.doesNotMatch(after.prompt, /it is this run's primary task/);
 });
 
 // The note must carry the rejection's timestamp and head: an undated verdict rides every later
@@ -538,7 +555,7 @@ test("the rejected-review note on the next run's prompt is dated and names the r
     },
   });
   assert.ok(result);
-  assert.match(result.prompt, /rejected in review \(2026-09-24 01:20:32, head 8b58124a\):/);
+  assert.match(result.prompt, /rejected; fix each numbered objection or drop the change — it is this run's primary task \(2026-09-24 01:20:32, head 8b58124a\):/);
 });
 
 test("a conflict discard note rides along, with its attempt count", () => {
@@ -556,7 +573,7 @@ test("a cut-off streak appends the cut-off note naming the streak", () => {
   assert.match(result.prompt, /Your previous 2 runs as this role ran out of context/);
 });
 
-test("notes compose in order — review rejection, then discard, then cut-off — after the base prompt", () => {
+test("notes compose in order — the rejection leads, then discard, then cut-off, after the base prompt", () => {
   const dir = root();
   fs.writeFileSync(
     path.join(dir, "PRINCIPLES.md"),
@@ -571,11 +588,13 @@ test("notes compose in order — review rejection, then discard, then cut-off �
   });
   assert.ok(result);
   const prompt = result.prompt;
-  const base = prompt.indexOf("</principles>");
   const reject = prompt.indexOf("reason A");
+  const base = prompt.indexOf("</principles>");
+  const charter = prompt.indexOf("Your task this run");
   const discard = prompt.indexOf("discarded work");
   const cut = prompt.indexOf("previous 2 runs");
-  assert.ok(base >= 0 && reject > base && discard > reject && cut > discard, "notes must follow the base prompt in order");
+  assert.ok(reject >= 0 && reject < base && reject < charter, "the rejection must lead the base prompt and the charter");
+  assert.ok(discard > base && cut > discard, "discard and cut-off notes follow the base prompt in order");
 });
 
 test("a clean state appends none of the cross-run notes", () => {

@@ -365,6 +365,12 @@ interface RunPromptInput {
    * request): the run reads that entry first instead of the whole brief. The caller leaves an
    * assigned run's backlog index out itself, since it supplies it. Omitted: unassigned. */
   assigned?: boolean;
+  /** The rendered rejected-review note (buildRejectedReviewNote, gate-notes.ts), when the role's
+   * last change was rejected in review with no pending revision. Rendered at the very top of the
+   * prompt, before the identity and charter, so the author cannot miss the reasons that organize
+   * this run (plans/reviewer-as-role.md part 4/4). Omitted: no standing rejection — the prompt is
+   * byte-unchanged. */
+  rejectedReview?: string;
 }
 
 /** The retired names a model still meets in code, git history and logs, mapped to today's terms
@@ -395,10 +401,11 @@ from the repo.`,
 
 /** The prompt for one role run. */
 export function buildRunPrompt(input: RunPromptInput): string {
-  const { role, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
+  const { role, rejectedReview, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, notesBacklog, extraInstructions, planTargetNote, flakyChecks, check, gateCommand, briefFile, today, userRequest, agent, assigned } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
+    ...(rejectedReview ? [rejectedReview.trim()] : []),
     `You are the "${role.id}" role (${role.title}) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`,
     ...sharedPreamble(day),
   ];

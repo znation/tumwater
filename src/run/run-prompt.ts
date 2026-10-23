@@ -25,7 +25,7 @@ import * as path from "node:path";
 import { pathTokens } from "../text/text.js";
 import { isDirectory, readTextOrNull, statOrNull } from "../files/files.js";
 import { dayKey } from "../text/datetime.js";
-import { appendPromptNote } from "../text/format.js";
+import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../agent/role-notes-write.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
@@ -130,6 +130,17 @@ export function assembleRunPrompt(
   // per-run `grep -n '^##'` map of the backlog files (BUGS.md 2026-10-06). One render serves
   // both branches; the worktree starts at main at run start, so the ranges hold then.
   const backlogIndex = renderBacklogIndexBlock(root);
+  // A change rejected in review is the only cross-run memory of what was built and why it
+  // failed — every run starts a fresh session, so the full reasons (with the reviewed head and
+  // timestamp) ride along on the next prompt until the role's next reviewed change replaces
+  // them. buildRunPrompt renders it at the very top, before the role charter, so the author
+  // cannot miss it (plans/reviewer-as-role.md part 4/4). A revision run carries the reasons in
+  // buildRevisionNote instead (the rejected diff is already in the worktree), so the note is
+  // suppressed here exactly as it was before this part.
+  const rejectedReview =
+    (state.lastReview?.verdict === "reject" || state.lastReview?.verdict === "reverted") && !state.revision
+      ? buildRejectedReviewNote(state.lastReview, role)
+      : undefined;
   let prompt: string;
   let userPrompt: string | null = null;
   let userPromptFile: string | null = null;
@@ -246,6 +257,7 @@ export function assembleRunPrompt(
       briefFile: brief,
       agent: backend ?? configForRole(config, role).agent,
       assigned,
+      rejectedReview,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
       // request block; its text is also the run's userPrompt,
       // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on merge)
@@ -276,11 +288,11 @@ export function assembleRunPrompt(
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));
   }
-  // A change rejected in review is the only cross-run memory of what was built and why it
-  // failed — every run starts a fresh session, so the full reasons ride along on the next
-  // prompt until the role's next reviewed change replaces them.
-  if ((state.lastReview?.verdict === "reject" || state.lastReview?.verdict === "reverted") && !state.revision) {
-    prompt = appendPromptNote(prompt, buildRejectedReviewNote(state.lastReview, role));
+  // The director builds its prompt through buildDirectorPrompt, which does not take the rejected
+  // note, so the standing rejection leads its prompt here instead (a director-authored change can
+  // be rejected too). Kept uniform with the authoring roles: the reasons open the run.
+  if (rejectedReview !== undefined && role === DIRECTOR_ROLE) {
+    prompt = prependPromptNote(prompt, rejectedReview);
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
   // its next change (the discarding run itself appends it after recovery — see runOnce).

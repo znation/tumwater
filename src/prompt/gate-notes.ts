@@ -16,7 +16,10 @@ import { NO_REASONS } from "./gate-prompts.js";
  * review. Every run starts a fresh pi session, so this is the only cross-run memory of what
  * was built and why it failed — it carries the full reasons, not a summary of them. The whole
  * `lastReview` rides in, not just the reasons: the timestamp and reviewed head let the author
- * weigh a stale objection against main's current state (main may have satisfied it since). */
+ * weigh a stale objection against main's current state (main may have satisfied it since).
+ * buildRunPrompt renders it at the very top of the run prompt, before the role charter, and its
+ * phrasing makes fixing the objections this run's primary task (plans/reviewer-as-role.md part
+ * 4/4) — the inescapable-first note the recurring-reason runs were missing. */
 export function buildRejectedReviewNote(review: {
   reasons: string[];
   at?: number;
@@ -52,7 +55,8 @@ export function buildRejectedReviewNote(review: {
         ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and merge that markdown-only change and nothing else so the plan role can rewrite the plan. Otherwise, redo the change against current main.`
         : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notes, then take a different theme on this run: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }
-  return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
+  const tail = finality === "" ? "" : `\n${finality.trim()}`;
+  return `Your previous change was rejected; fix each numbered objection or drop the change — it is this run's primary task${context}:\n${list}${tail}`;
 }
 
 /** The note injected into a role's run prompt when its rejected change has been re-applied to
@@ -75,6 +79,11 @@ is. When an objection is about a build-check failure in a test the change does n
 cannot reproduce, say so in RISK and keep the change as it is. Rewrite the closing block so it
 describes the WHOLE change as it now stands:
 ${SUMMARY_BLOCK}
+Add one Objection N: <done|dropped|unchanged-by-design because …> line to the closing block for
+each numbered objection above (N is the objection's number): this run's commit body carries them,
+so the re-review reads your answer to each objection beside the diff. Say "done" when the fix is in
+this change, "dropped" when you removed what the objection targeted, or "unchanged-by-design because …"
+when you kept it and why.
 When an objection shows the change should not exist (its premise is disproven, it duplicates main,
 or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and
 tumwater drops the change.`;

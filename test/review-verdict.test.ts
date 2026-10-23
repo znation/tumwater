@@ -140,9 +140,8 @@ test("a leading prior-objection resolution is not recorded as a rejection's firs
   assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
   assert.equal(
     buildRejectedReviewNote({ reasons: v!.reasons }),
-    "Your previous change was rejected in review:\n" +
-      "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js\n" +
-      "Address the objections or take a different approach.",
+    "Your previous change was rejected; fix each numbered objection or drop the change — it is this run's primary task:\n" +
+      "1. plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js",
   );
 });
 
@@ -298,9 +297,8 @@ test("a bold-numbered rejection reaches the author's next-run note numbered once
   assert.equal(v?.verdict, "reject");
   assert.equal(
     buildRejectedReviewNote({ reasons: v!.reasons }),
-    "Your previous change was rejected in review:\n" +
-      "1. The helper drops errors. `run` swallows the throw.\n2. No test covers it.\n" +
-      "Address the objections or take a different approach.",
+    "Your previous change was rejected; fix each numbered objection or drop the change — it is this run's primary task:\n" +
+      "1. The helper drops errors. `run` swallows the throw.\n2. No test covers it.",
   );
 });
 

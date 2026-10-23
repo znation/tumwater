@@ -10,12 +10,24 @@ import { textOr } from "./text.js";
 
 /** Append a section note to a running prompt, separated from what precedes it by a blank line.
  * The run and authoring-run prompt assemblers (run-prompt.ts, runner-run.ts) build a prompt by
- * stacking nameless sections — assignment, held-entry, rejected-review, conflict-discard,
- * conflict-handback, revision and cut-off notes — each appended the same way. This is the single
- * append so the `\n\n` section separator stays in one place. The note is appended unconditionally,
- * exactly as the call sites appended the literal, so behavior is unchanged for any note. */
+ * stacking nameless sections — assignment, held-entry, conflict-discard, conflict-handback and
+ * cut-off notes appended this way. The rejected-review and revision notes deliberately LEAD the
+ * run instead (prependPromptNote, plans/reviewer-as-role.md part 4/4) so the author cannot miss
+ * them. This is the single append so the `\n\n` section separator stays in one place. The note
+ * is appended unconditionally, exactly as the call sites appended the literal, so behavior is
+ * unchanged for any note. */
 export function appendPromptNote(prompt: string, note: string): string {
   return `${prompt}\n\n${note}`;
+}
+
+/** Prepend a section note to a running prompt, separated from what follows by a blank line — the
+ * mirror of appendPromptNote, used where a note must LEAD the charter rather than trail it: the
+ * rejected-review note (run-prompt.ts) and the revision note (runner-run.ts) of
+ * plans/reviewer-as-role.md part 4/4, which the author must not miss. This is the single prepend
+ * so the `\n\n` section separator stays in one place, the same way appendPromptNote owns the
+ * append side. */
+export function prependPromptNote(prompt: string, note: string): string {
+  return `${note}\n\n${prompt}`;
 }
 
 /** Compact token count for tight table cells and commit trailers — bare integers below

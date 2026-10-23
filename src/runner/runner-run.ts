@@ -46,7 +46,7 @@ import { planBacklogFull } from "../scheduling/claims.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeRun } from "../run/run-finalize.js";
 import { errorMessage } from "../text/text.js";
-import { appendPromptNote } from "../text/format.js";
+import { appendPromptNote, prependPromptNote } from "../text/format.js";
 import type { RunUsage } from "../run/run-usage.js";
 import { hasUnmergedPin, recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
@@ -653,12 +653,12 @@ async function runWithWorktreePhase(
         // run-prompt.ts suppresses the rejected-review note whenever state.revision is set,
         // so without this the fresh run would see neither the objections nor the revision
         // instructions. A resume keeps its session context and must not see the note twice.
-        prompt = appendPromptNote(prompt, revisionNote);
+        prompt = prependPromptNote(prompt, revisionNote);
       }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
       logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "applied", round, sha });
-      prompt = appendPromptNote(prompt, revisionNote);
+      prompt = prependPromptNote(prompt, revisionNote);
     } else {
       // The clean re-apply conflicted: re-apply with the markers left in place so the author
       // resolves them rather than losing the revision (PLANS.md "Robust conflict landing, part
@@ -682,13 +682,13 @@ async function runWithWorktreePhase(
           reason: "revision",
           conflicted: withConflicts.conflicted,
         });
-        prompt = appendPromptNote(prompt, revisionNote);
+        prompt = prependPromptNote(prompt, revisionNote);
         prompt = await appendHandbackNote(prompt, wt, ctx.mainBranch, sha, "revision", withConflicts.conflicted);
       } else {
         s.revision = undefined;
         await deleteRef(ctx.root, rejectedRefName(ctx.role));
         logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "conflict", round, sha });
-        prompt = appendPromptNote(prompt, buildRejectedReviewNote(lastReviewOrEmpty, ctx.role));
+        prompt = prependPromptNote(prompt, buildRejectedReviewNote(lastReviewOrEmpty, ctx.role));
         prompt = appendPromptNote(prompt, "The rejected diff no longer applies to current main.");
       }
     }
