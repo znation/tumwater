@@ -4,7 +4,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { withLock } from "../concurrency/lock.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { branchHead, patchId } from "../git/git.js";
+import { branchHead, patchId, subjectOfCommit } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
@@ -41,7 +41,7 @@ const REVERT_PREFIXES = ["tumwater(operator): Revert", "tumwater(tumwater): Reve
 export async function revertSkipReason(root: string, mainBranch: string, c: MainCulprit): Promise<string | null> {
   if (c.runner === undefined) return "no role runner merged it";
   if (baseRoleOf(c.runner) === DIRECTOR_ROLE) return "the director merged it";
-  const subject = ((await gitTry(root, "log", "-1", "--format=%s", c.commit)) ?? "").trim();
+  const subject = await subjectOfCommit(root, c.commit);
   if (REVERT_PREFIXES.some((p) => subject.startsWith(p))) return "it is itself a revert";
   const merged = (await gitTry(root, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(c.commit)}`)) ?? "";
   if (merged.split("\n").some((s) => REVERT_PREFIXES.some((p) => s === `${p} ${shortSha(c.commit)}`)))
@@ -105,7 +105,7 @@ export async function runMainRevert(
       const tip = await branchHead(root, mainBranch);
       if (tip === null) return { reason: `${mainBranch} is unreadable` };
       const wt = await ensureDetachedWorktree(root, mergeWorktreePath(root), tip);
-      const subject = ((await gitTry(wt, "log", "-1", "--format=%s", c.commit)) ?? "").trim();
+      const subject = await subjectOfCommit(wt, c.commit);
       const tests = c.failingTests.length > 0 ? `\n\nFailing tests: ${c.failingTests.join("; ")}` : "";
       const why = c.postReview
         ? `which a post-merge review rejected.\n\nReasons: ${c.postReview.reasons.join("; ")}`

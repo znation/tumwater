@@ -471,6 +471,17 @@ export async function commitMessage(cwd: string, sha: string): Promise<string | 
   return gitTry(cwd, "log", "-1", "--format=%B", sha);
 }
 
+/** The subject (first line) of one commit, trimmed, or "" when it cannot be read — the
+ * non-throwing sibling of `commitMessage` and the one home of the `log -1 --format=%s`
+ * read, so the revert paths that name a culprit's subject cannot drift on its git spelling
+ * or its trim. Both calls its two callers (src/baseline/main-revert.ts) make are through
+ * gitTry, so an unreadable repo yields a "" subject, never a throw; they treat that as an
+ * honest degradation, not an error. (Distinct from commit-message.ts's commitSubject, which
+ * parses a subject out of a message string instead of reading one commit from git.) */
+export async function subjectOfCommit(cwd: string, ref: string): Promise<string> {
+  return ((await gitTry(cwd, "log", "-1", "--format=%s", ref)) ?? "").trim();
+}
+
 /** The number of commits in a `A..B` range: `git rev-list --count <range>` parsed as an
  * integer. The one home of the count idiom, so every surface that measures how far one ref
  * is ahead of another (a branch over main, main over a build) reads identically instead of
