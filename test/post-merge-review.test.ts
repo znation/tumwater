@@ -8,7 +8,7 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { drainPostReviews } from "../src/merge/merge-post-review.js";
 import { drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
-import { addPostReview, readPostReviews } from "../src/review/post-merge-review.js";
+import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT } from "../src/review/post-merge-review.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, rejectedRefName } from "../src/paths.js";
@@ -327,4 +327,117 @@ test("a failed post-review.json write in the revert skip check still logs why it
   } finally {
     undo();
   }
+});
+
+test("the poll drains a fleet-scale queue in FIFO order, reviewing each commit exactly once", async () => {
+  // reviewer-as-regular-role part 2a/4: post-merge review was built for three slow maintenance
+  // roles; bugfix/readme/organize (part 1/4) raise its volume. The one-at-a-time poll must
+  // review every queued commit exactly once, oldest first, and empty the file.
+  const root = makeRepo(); // already has a root "seed" commit
+  const roles = ["bugfix", "readme", "organize", "clean"];
+  const queued: { commit: string; role: string; summary: string }[] = [];
+  for (let i = 0; i < 10; i++) {
+    fs.appendFileSync(path.join(root, "seed.txt"), `change ${i}\n`);
+    sh(root, "git", "add", "--", "seed.txt");
+    sh(root, "git", "commit", "-m", `change ${i}`);
+    queued.push({ commit: headSha(root), role: roles[i % roles.length]!, summary: `change ${i}` });
+  }
+  // seed postReviewPath directly so the queue order is exactly the array order
+  fs.mkdirSync(path.dirname(postReviewPath(root)), { recursive: true });
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: queued }));
+  const runners = roles.map((role) => fakeRunner(role, "VERDICT: approve\n1. fine"));
+  const ctx = {
+    root,
+    mainBranch: "main",
+    liveConfig: defaultConfig(),
+    runners,
+    semaphore: new Semaphore(2),
+    signal: new AbortController().signal,
+    startHeld: () => false,
+  } as unknown as MergePipelineContext;
+  // Drive the poll, one review at a time, until the queue empties; a permit is free right now
+  // so each poll starts the next review.
+  const p = newMergePipeline();
+  for (let i = 0; i < 100 && readPostReviews(root).length > 0; i++) {
+    drainPostReviews(ctx, p);
+    if (p.postReview) await p.postReview.promise;
+    else await sleep(5);
+  }
+  assert.equal(readPostReviews(root).length, 0, "the queue drains");
+  const started = eventsOfType(root, "review_start").map((e) => e.head);
+  assert.deepEqual(started, queued.map((q) => q.commit), "reviews run in queue (FIFO) order");
+  assert.equal(new Set(started).size, 10, "no queued commit is reviewed twice");
+  assert.equal(eventsOfType(root, "review_verdict").length, 10, "every reviewed commit got a verdict");
+});
+
+test("a queued rejection fills the revert slot while the poll reviews the first unreviewed commit", async () => {
+  // The rejected-first branch of drainPostReviews: with an unreviewed entry both ahead of and
+  // behind a rejected one, the rejected commit routes to the revert slot (checked first) and the
+  // review picks the first UNREVIEWED entry in queue order, so it is neither re-reviewed nor
+  // reordered.
+  const root = makeRepo(); // already has a root "seed" commit
+  const commits: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    fs.appendFileSync(path.join(root, "seed.txt"), `change ${i}\n`);
+    sh(root, "git", "add", "--", "seed.txt");
+    sh(root, "git", "commit", "-m", `change ${i}`);
+    commits.push(headSha(root));
+  }
+  const [a, rejectedB, c] = commits;
+  fs.mkdirSync(path.dirname(postReviewPath(root)), { recursive: true });
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({
+      pending: [
+        { commit: a, role: "improve", summary: "a" },
+        { commit: rejectedB, role: "improve", summary: "b", rejected: ["breaks the contract"] },
+        { commit: c, role: "improve", summary: "c" },
+      ],
+    }),
+  );
+  const runner = fakeRunner("improve", "VERDICT: approve\n1. fine");
+  const ctx = {
+    root,
+    mainBranch: "main",
+    liveConfig: defaultConfig(),
+    runners: [runner],
+    semaphore: new Semaphore(2),
+    signal: new AbortController().signal,
+    startHeld: () => false,
+  } as unknown as MergePipelineContext;
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(eventsOfType(root, "review_start")[0]?.head, a, "FIFO: the first unreviewed commit is picked, skipping the rejected one");
+  await drainUntilRevert(ctx, p);
+  assert.equal(p.revert?.commit, rejectedB, "the rejected entry fills the revert slot");
+});
+
+test("a verdict-less review past the failure limit drops the entry, warns, and starts no revert", async () => {
+  // POST_REVIEW_FAILURE_LIMIT runs with no verdict drop the review; the failure is the
+  // reviewer's, not the change's, so the commit stays on main unreviewed and nothing reverts.
+  const { root, runner, ctx } = setup(""); // a reviewer that runs but returns no verdict
+  // setup's commit is the repo's root (no parent), whose diff fails; give the review a real
+  // commit with a parent so the reviewer genuinely runs and just returns no verdict.
+  fs.appendFileSync(path.join(root, "x.txt"), "more\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "more");
+  const commit = headSha(root);
+  const reviews = countReviews(runner);
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "improve", summary: "more", failures: POST_REVIEW_FAILURE_LIMIT - 1 }] }),
+  );
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(reviews.count, 1, "one verdict-less review ran");
+  assert.equal(readPostReviews(root).length, 0, "the entry is dropped");
+  assert.equal(p.revert, null, "dropping a review starts no revert");
+  assert.ok(
+    eventsOfType(root, "warning")
+      .map((e) => String(e.message))
+      .some((m) => m.includes("stays on main unreviewed")),
+    "the drop warns that the commit stays on main unreviewed",
+  );
 });

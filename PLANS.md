@@ -6,21 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Reviewer as a regular role, part 2a/4: The merge poll keeps up at fleet scale — FIFO, exactly-once, and the failure limit (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2; requires part 1/4 landed; independent sibling of part 2b/4 — either may land first; touches src/review/post-merge-review.ts src/merge/merge-post-review.ts test/post-merge-review.test.ts)
-
-**Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moved bugfix's, readme's and organize's volume onto it. The one-at-a-time poll must drain the queue: every merged commit is reviewed exactly once, the oldest unreviewed commit goes first, and a busy permit delays a review rather than dropping or reordering it. A verdict-less review drops its commit after POST_REVIEW_FAILURE_LIMIT runs and leaves it on main, because the failure is the reviewer's, not the change's.
-
-**Approach.**
-- Pin the FIFO guarantee in test/post-merge-review.test.ts: `addPostReview` appends to `readPostReviews`' array order, and `drainPostReviews` (src/merge/merge-post-review.ts) picks `pending.find((e) => e.rejected === undefined)` — the first unreviewed entry. A test queues N=10 merged commits across 4 roles (seed `postReviewPath` directly) and drives the poll with a fake reviewer; assert each commit is reviewed exactly once (count `review_verdict`/`review_rejected` heads), reviews run in queue order, and the file empties.
-- Pin the rejected-first branch: with both an unreviewed entry and a rejected one queued, the revert slot fills before the next review starts (the same file's `drainPostReviews`). Do not add a per-role cap: the merge interlock releases a role once its change merges, so a role can queue more than one review; bounding that is a scheduling decision owned by the interlock entries, not this one.
-- Pin the failure limit the existing tests stop short of: seed an entry with `failures = POST_REVIEW_FAILURE_LIMIT - 1`, run one verdict-less review, and assert the entry is dropped with the "stays on main unreviewed" warning and no revert is started. The git-could-not-start exemption (not counted toward the limit) is already tested.
-- No production change is expected: if a test shows FIFO or exactly-once broken, fix the minimal cause in src/merge/merge-post-review.ts, never by changing `addPostReview`'s write path.
-
-**Acceptance criteria.**
-- The N=10 test passes: every queued commit is reviewed exactly once, in queue order, and `readPostReviews` is empty at the end.
-- The failure-limit test passes: the third verdict-less run drops the entry, logs the warning, and starts no revert.
-- `npm run test:gate` passes.
-
 ### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
 
 **Refused 2026-10-23 by feature: executing the decision now needs one week of post-reviewer-plan `check_wait` data, but reviewer-as-role parts 1/4 and 3/4 are still under `## Planned` (not landed), so no evidence exists and raising the cap 3→4 now would be the theory-knob this plan's "not a knob raised on theory" decision rejects**

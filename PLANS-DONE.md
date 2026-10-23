@@ -5,6 +5,21 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Reviewer as a regular role, part 2a/4: The merge poll keeps up at fleet scale — FIFO, exactly-once, and the failure limit (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2; requires part 1/4 landed; independent sibling of part 2b/4 — either may land first; touches src/review/post-merge-review.ts src/merge/merge-post-review.ts test/post-merge-review.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moved bugfix's, readme's and organize's volume onto it. The one-at-a-time poll must drain the queue: every merged commit is reviewed exactly once, the oldest unreviewed commit goes first, and a busy permit delays a review rather than dropping or reordering it. A verdict-less review drops its commit after POST_REVIEW_FAILURE_LIMIT runs and leaves it on main, because the failure is the reviewer's, not the change's.
+
+**Approach.**
+- Pin the FIFO guarantee in test/post-merge-review.test.ts: `addPostReview` appends to `readPostReviews`' array order, and `drainPostReviews` (src/merge/merge-post-review.ts) picks `pending.find((e) => e.rejected === undefined)` — the first unreviewed entry. A test queues N=10 merged commits across 4 roles (seed `postReviewPath` directly) and drives the poll with a fake reviewer; assert each commit is reviewed exactly once (count `review_verdict`/`review_rejected` heads), reviews run in queue order, and the file empties.
+- Pin the rejected-first branch: with both an unreviewed entry and a rejected one queued, the revert slot fills before the next review starts (the same file's `drainPostReviews`). Do not add a per-role cap: the merge interlock releases a role once its change merges, so a role can queue more than one review; bounding that is a scheduling decision owned by the interlock entries, not this one.
+- Pin the failure limit the existing tests stop short of: seed an entry with `failures = POST_REVIEW_FAILURE_LIMIT - 1`, run one verdict-less review, and assert the entry is dropped with the "stays on main unreviewed" warning and no revert is started. The git-could-not-start exemption (not counted toward the limit) is already tested.
+- No production change is expected: if a test shows FIFO or exactly-once broken, fix the minimal cause in src/merge/merge-post-review.ts, never by changing `addPostReview`'s write path.
+
+**Acceptance criteria.**
+- The N=10 test passes: every queued commit is reviewed exactly once, in queue order, and `readPostReviews` is empty at the end.
+- The failure-limit test passes: the third verdict-less run drops the entry, logs the warning, and starts no revert.
+- `npm run test:gate` passes.
+
 ### Reviewer as a regular role, part 2b/4: The revert path holds — a post-merge rejection of an already-archived entry hands its author a fixable revision (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; independent sibling of part 2a/4 — either may land first; touches src/merge/merge-drain.ts src/baseline/main-revert.ts test/post-merge-review.test.ts — done 2026-10-23 by the feature role)
 
 **Goal.** A post-merge rejection must not strand a change whose PLANS.md/BUGS.md entry was archived on merge. The revert of the merged commit restores the live entry, and `handBackReverted` → `recordRevertedChange` gives the author a revision carrying the reviewer's reasons, so the next run fixes the change instead of re-deriving it.
