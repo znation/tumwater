@@ -66,9 +66,15 @@ export async function pollRunnerReasons(
     maintenanceQuotaOverLine,
     bootstrapHeldNow,
     operatorPauseBlocks,
-    hasDemand,
   } = scope;
   for (const runner of scope.ordered) {
+    // The role's inbox size and operator demand, computed once per runner per poll: every
+    // consumer below (the holds, isEligible's inbox count, the maintenance admission) shares
+    // this one directory listing + per-file stat read instead of each re-scanning the queue.
+    // The queue is append-only while this pass runs (nothing dequeues until launch, after the
+    // pass), so one read per runner is stable, and `now` here matches the poll's own clock.
+    const inboxCount = inboxSize(root, runner.role);
+    const demand = inboxCount > 0 || freshlyWoken(runner.state);
     // Once mode: a paused role gets no run this round and must be reported as skipped,
     // so it settles here — before the gates that would otherwise skip it silently (a
     // once round has to end even when a pause marker is left over; a later resume within
@@ -79,8 +85,8 @@ export async function pollRunnerReasons(
       !runner.state.running &&
       (runnerPaused(pausedRoles, runner.role) ||
         capPaused.has(runner.role) ||
-        maintenanceQuotaOverLine(runner) ||
-        bootstrapHeldNow(runner) ||
+        maintenanceQuotaOverLine(runner, demand) ||
+        bootstrapHeldNow(runner, demand) ||
         operatorPauseBlocks(runner.role))
     ) {
       once.settle(runner.role, "paused");
@@ -106,10 +112,10 @@ export async function pollRunnerReasons(
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): no new maintenance run while
     // the rolling 24 h window is over its line. A fresh operator wake or a queued prompt admits
     // one anyway (maintenanceQuotaOverLine), the same demand override the bootstrap hold honors.
-    if (maintenanceQuotaOverLine(runner)) continue;
+    if (maintenanceQuotaOverLine(runner, demand)) continue;
     // The new-project bootstrap (part 2/2): no new maintenance runs until the plan target is
     // met; a fresh wake or queued prompt admits one anyway (bootstrapHeldNow).
-    if (bootstrapHeldNow(runner)) continue;
+    if (bootstrapHeldNow(runner, demand)) continue;
     if (operatorPauseBlocks(runner.role))
       continue; // no new role runs while either gate holds
     // The director honors only the subscription-window hold: the per-run 429 retry that backs
@@ -125,7 +131,7 @@ export async function pollRunnerReasons(
     // The role's OWN queue decides inbox due-ness: the director counts its historical
     // inbox, every other role its per-role queue (tumwater prompt --role <id>) — so a
     // queued prompt makes its role due by itself, no wake marker needed (isEligible).
-    const { run, reason, skip } = isEligible(runner, now, mainHead, inboxSize(root, runner.role), {
+    const { run, reason, skip } = isEligible(runner, now, mainHead, inboxCount, {
       once: once.active,
       planBacklogOpen: !planBacklogFull,
       // A pin at the conflict cap whose lineage is not yet handed back is owed an authoring run
@@ -233,7 +239,7 @@ export async function pollRunnerReasons(
     // verdict cannot know which roles will be eligible this poll, so the reservation lives in
     // the pass that does; without it two due maintenance roles start in the same poll. Demand
     // spends no slot: it is an explicit operator request, not idle maintenance.
-    if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !hasDemand(runner)) {
+    if (commitTier(baseRoleOf(runner.role)) === "maintenance" && !demand) {
       if (scope.quotaAdmitted >= maintenanceQuota.allowance - maintenanceQuota.used) {
         noteSkip(root, runner, "maintenance-due-cap");
         continue;

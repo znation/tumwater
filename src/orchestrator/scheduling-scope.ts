@@ -11,8 +11,7 @@ import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, runnerEnabled, runnerPaused } from "../roles/runner-ids.js";
-import { freshlyWoken, hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
-import { inboxSize } from "../inbox/inbox.js";
+import { hasOutstandingWork, saveRunnerStateBestEffort, type SkipReason } from "../runner/runner-state.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasUnmergedPin } from "../runner/leftover.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -142,9 +141,8 @@ export interface SchedulingScope {
   quotaAdmitted: number;
   budgetHolds: (role: string) => boolean;
   operatorPauseBlocks: (role: string) => boolean;
-  hasDemand: (runner: RoleRunner) => boolean;
-  bootstrapHeldNow: (runner: RoleRunner) => boolean;
-  maintenanceQuotaOverLine: (runner: RoleRunner) => boolean;
+  bootstrapHeldNow: (runner: RoleRunner, demand: boolean) => boolean;
+  maintenanceQuotaOverLine: (runner: RoleRunner, demand: boolean) => boolean;
 }
 
 /** Record why the poll skipped a due role on its state (RunnerState.skipReason), saving only when
@@ -288,21 +286,21 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
   // Fresh operator demand: a queued prompt or a wake newer than the role's last run end. The
   // same override the need-based deferral honors (an explicit "try again now" is not idle
   // maintenance); shared by the bootstrap and maintenance-allowance holds so the two cannot
-  // drift on what counts as demand.
-  const hasDemand = (runner: RoleRunner): boolean =>
-    inboxSize(root, runner.role) > 0 || freshlyWoken(runner.state);
+  // drift on what counts as demand. Computed ONCE per runner per poll (the scheduling loop's
+  // per-runner `demand`), so a role's queue is listed a single time a poll instead of once per
+  // hold check; every consumer takes the boolean rather than re-calling inboxSize.
   // The new-project bootstrap hold (part 2/2): held unless the role has a fresh operator wake
   // or a queued prompt.
-  const bootstrapHeldNow = (runner: RoleRunner): boolean =>
-    bootstrapHeld.has(runner.role) && !hasDemand(runner);
+  const bootstrapHeldNow = (runner: RoleRunner, demand: boolean): boolean =>
+    bootstrapHeld.has(runner.role) && !demand;
   // The maintenance allowance's team-level hold (part 1b/4): `used` has reached `allowance`,
   // so no maintenance role starts unless it carries demand (`tumwater wake <maintenance-role>`
   // gets exactly one run). The per-poll admission headroom is spent separately, after each
   // role's due check, where the pass knows what actually runs; the verdict alone cannot.
-  const maintenanceQuotaOverLine = (runner: RoleRunner): boolean =>
+  const maintenanceQuotaOverLine = (runner: RoleRunner, demand: boolean): boolean =>
     commitTier(baseRoleOf(runner.role)) === "maintenance" &&
     maintenanceQuota.used >= maintenanceQuota.allowance &&
-    !hasDemand(runner);
+    !demand;
   // Runs writing code per multi-runner base role (plans/fast-merge.md "Lever 1"): a runner in
   // flight, not one whose change waits in the merge queue. `instances` limits this count, so the
   // role's extra runner ids start work only while fewer than `instances` are running; admissions
@@ -363,7 +361,6 @@ export async function buildSchedulingScope(ctx: SchedulingPassCtx): Promise<Sche
     quotaAdmitted: 0,
     budgetHolds,
     operatorPauseBlocks,
-    hasDemand,
     bootstrapHeldNow,
     maintenanceQuotaOverLine,
   };
