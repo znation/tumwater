@@ -1,11 +1,18 @@
-import { readMergeQueue, type MergeQueueView } from "../../merge/merge-queue.js";
-import { renderMergeQueue, scopeMergeQueue } from "../../merge/merge-queue-render.js";
+import { readMergeQueue, queuedMergeFiles, type MergeEntry, type MergeQueueView } from "../../merge/merge-queue.js";
+import { renderMergeQueue, revisionNote, scopeMergeQueue } from "../../merge/merge-queue-render.js";
+import { cancelQueuedMerge } from "../../merge/merge-cancel.js";
+import { mergeChanges } from "../../merge/merge-slot.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { renderChangeOverlaps, renderRoleChanges, renderTeamChange } from "../../change/change-render.js";
 import { scopeChangeOverlaps, type ChangeOverlapsView } from "../../change/change-data.js";
+import { roleLabel } from "../../roles/role-labels.js";
+import { shortSha } from "../../text/format.js";
+import { humanAgo } from "../../text/datetime.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
+import { arrowDir } from "./tui-keymap.js";
+import { moveEntrySelection } from "./tui-backlog.js";
 
 /** The overlapping-files block under the roster: empty for a no-base view (the roster above
  * already says the main branch is missing), else the CLI's renderChangeOverlaps under a
@@ -79,6 +86,19 @@ export function createPendingPane(session: TuiPaneSession) {
   let drillGen = 0;
   let roleScope: string | null = null;
   let head = "";
+  // The Pending pane's row selection (null = list mode): the index into queueRows of the
+  // merge shown in full, cleared on every Ctrl+T cycle like selectedQueued. Each row pairs a
+  // kept entry with its 1-based whole-queue position (or the scope's kept positions when a
+  // Ctrl+G role scope is active), so a cancel addresses the entry `tumwater queue --cancel`
+  // numbers — the position the CLI's queue line printed.
+  let selectedQueue: number | null = null;
+  // The Pending pane's cached rows — the same whole-queue traversal renderMergeQueue painted —
+  // so a selection addresses an entry's position without re-reading the queue on every frame.
+  let queueRows: { entry: MergeEntry; position: number }[] = [];
+  // The rendered detail of the selected row (the header, summary, and when present the
+  // entry's body and revision note); the pane body windows it in place of the queue list
+  // while a row is selected. Empty in list mode.
+  let queueDetail = "";
   const compose = (): void => {
     const block = lastOverlaps ? pendingOverlapsText(lastOverlaps, roleScope ?? undefined) : "";
     base = head + (block ? "\n\n" + block : "");
@@ -90,6 +110,48 @@ export function createPendingPane(session: TuiPaneSession) {
     const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
     return renderMergeQueue(view, session.now(), inFlight, scope);
   };
+  // The rendered detail of one selected queue row — the headline naming the entry with the
+  // position `tumwater queue --cancel` takes and the cancel hint, then the summary and (when
+  // the entry carries them) its body and revision note, so an operator deciding whether to
+  // cancel sees what the entry is about before the second Ctrl+X.
+  const mergeDetail = (row: { entry: MergeEntry; position: number }): string => {
+    const e = row.entry;
+    const note = revisionNote(e);
+    const lines = [
+      `merge #${row.position} (Ctrl+X to cancel): ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${humanAgo(e.enqueuedAt, session.now())}`,
+      e.summary,
+    ];
+    if (e.body) lines.push("", e.body);
+    if (note) lines.push("", note);
+    return lines.join("\n");
+  };
+  // Re-read the pane's rows after the queue or the Ctrl+G scope changed (the same traversal
+  // queueHead painted) and clamp the row selection to the new list — a selection past the new
+  // end lands on the last remaining entry, never on a stale role/position; an emptied queue
+  // clears it back to list mode. The detail is then rebuilt to match the clamped row.
+  const rebuildQueueRows = (): void => {
+    if (lastQueue === null) {
+      queueRows = [];
+      selectedQueue = null;
+      queueDetail = "";
+      return;
+    }
+    if (roleScope === null) {
+      queueRows = lastQueue.entries.map((entry, i) => ({ entry, position: i + 1 }));
+    } else {
+      const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
+      queueRows = view.entries.map((entry, i) => ({ entry, position: scope.positions[i]! }));
+    }
+    if (selectedQueue !== null) {
+      if (queueRows.length === 0) {
+        selectedQueue = null;
+        queueDetail = "";
+      } else {
+        selectedQueue = Math.min(selectedQueue, queueRows.length - 1);
+        queueDetail = mergeDetail(queueRows[selectedQueue]!);
+      }
+    }
+  };
   const refresh = (): void => {
     // Generation guard: each refresh bumps the counter, and a resolution paints only if it
     // is the latest request's — Ctrl+R held twice, or a refresh raced with a re-entry,
@@ -100,6 +162,7 @@ export function createPendingPane(session: TuiPaneSession) {
     ++drillGen;
     lastQueue = readMergeQueue(session.root);
     rosterText = "";
+    rebuildQueueRows();
     const queueText = queueHead();
     head = queueText;
     session.paneCache = base = head;
@@ -144,6 +207,7 @@ export function createPendingPane(session: TuiPaneSession) {
       const roles = [...queueRoles, ...holders.filter((h) => !queueRoles.includes(h))];
       if (roles.length === 0) {
         roleScope = null;
+        rebuildQueueRows();
         head = queueHead() + rosterText;
         compose();
         session.paneCache = base;
@@ -153,6 +217,7 @@ export function createPendingPane(session: TuiPaneSession) {
       const slots = [null, ...roles];
       const at = roleScope === null ? 0 : slots.indexOf(roleScope);
       roleScope = slots[(at + 1) % slots.length] ?? null;
+      rebuildQueueRows();
       overlapIndex = -1;
       ++drillGen;
       head = queueHead() + rosterText;
@@ -198,6 +263,85 @@ export function createPendingPane(session: TuiPaneSession) {
       );
       return true;
     }
+    const arrow = arrowDir(key.name);
+    if (session.view === session.roleIds.length + 5 && arrow !== null && promptLineFree(ctx.es)) {
+      // In the Pending pane, up/down select a queued merge row in full (wrapping, the backlog
+      // pane's rule) instead of editing the prompt; an empty queue has nothing to select, so
+      // moveEntrySelection clears the selection. The selected detail shares paneScroll with the
+      // list, so a newly opened row must start at its head, or it renders scrolled into the
+      // middle of the previous row's body.
+      selectedQueue = moveEntrySelection(queueRows.length, selectedQueue, arrow);
+      const selRow = selectedQueue === null ? undefined : queueRows[selectedQueue];
+      queueDetail = selRow ? mergeDetail(selRow) : "";
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (key.name === "escape" && session.view === session.roleIds.length + 5 && selectedQueue !== null && promptLineFree(ctx.es)) {
+      // Esc on the Pending pane returns it to list mode; the cached list is untouched (nothing
+      // was cancelled), so the pane shows the same renderMergeQueue it entered with. The shared
+      // paneScroll resets with the body switch, like a selection move.
+      selectedQueue = null;
+      queueDetail = "";
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "x" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      if (selectedQueue === null || queueRows.length === 0) {
+        // A list-mode press (or any other view) just tells the operator how to select; the
+        // queue is untouched. The first press of the two-step arm is disarmed by beginKey.
+        session.flashMessage("select a merge with ↑↓ first");
+        session.requestRender();
+        return true;
+      }
+      const row = queueRows[Math.min(selectedQueue, queueRows.length - 1)]!;
+      if (session.armedQueue?.sha === row.entry.sha && session.armedQueue?.position === row.position) {
+        // Second press on the same entry: re-read the queue, guard the in-flight race, then
+        // remove it through the CLI's own core (`tumwater queue --cancel <n>`), so the pane,
+        // the CLI, and the dashboard cancel cannot drift.
+        const confirm = async (): Promise<void> => {
+          const files = queuedMergeFiles(session.root);
+          const target = files[row.position - 1];
+          if (target?.entry.sha !== row.entry.sha) {
+            // A queue that shifted under the selection (a concurrent drain or another cancel)
+            // moved this entry: refuse rather than remove the wrong one.
+            session.flashMessage("the merge queue changed — try again");
+            session.requestRender();
+            return;
+          }
+          const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
+          if (inFlight) {
+            const markers = new Set(mergeChanges(inFlight).map((c) => c.sha));
+            if (inFlight.sha === row.entry.sha || markers.has(row.entry.sha)) {
+              session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
+              session.requestRender();
+              return;
+            }
+          }
+          const outcome = await cancelQueuedMerge(session.root, row.position);
+          if (outcome.status === "cancelled") {
+            selectedQueue = null;
+            queueDetail = "";
+            session.flashMessage(`cancelled queue entry ${row.position}: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
+            refresh();
+            session.requestRender();
+          } else {
+            selectedQueue = null;
+            queueDetail = "";
+            session.flashMessage("that merge already left the queue");
+            refresh();
+            session.requestRender();
+          }
+        };
+        void confirm();
+      } else {
+        session.queueArmed = { position: row.position, sha: row.entry.sha };
+        session.flashMessage(`press Ctrl+X again to cancel merge #${row.position} — any other key keeps it`);
+        session.requestRender();
+      }
+      return true;
+    }
     return false;
   };
 
@@ -209,8 +353,13 @@ export function createPendingPane(session: TuiPaneSession) {
       refresh();
       return true;
     },
+    reset() {
+      // Leaving a view drops any queued-merge selection; re-entering starts at the list.
+      selectedQueue = null;
+      queueDetail = "";
+    },
     state() {
-      return {};
+      return { selectedQueue, queueDetail };
     },
   } satisfies TuiPaneModule;
 }

@@ -49,6 +49,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.killOrphansArmed = false;
     session.armedRevert = session.revertArmed;
     session.revertArmed = null;
+    session.armedQueue = session.queueArmed;
+    session.queueArmed = null;
   };
 
   /** The per-key pane snapshot the editors' open arms read. */
@@ -82,6 +84,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     transcript.reset?.();
     backlog.reset?.();
     history.reset?.();
+    pending.reset?.();
     queued.reset?.();
     // Advance the view: events → each role's transcript → project status → usage report →
     // failures → history → pending → queued → health → brief → events.
@@ -176,11 +179,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     if (key.ctrl && key.name === "x") {
       // The armed-clear Ctrl+X arms: the transcript notes first, then the History model filter,
-      // then the queued cancel, then the backlog cancel — each returns false when its
-      // view/selection does not apply.
+      // then the queued cancel, then the Pending merge cancel, then the backlog cancel — each
+      // returns false when its view/selection does not apply.
       if (transcript.handleKey?.(key, ctx)) return true;
       if (history.handleKey?.(key, ctx)) return true;
       if (queued.handleKey?.(key, ctx)) return true;
+      if (pending.handleKey?.(key, ctx)) return true;
       return backlog.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "r") {
@@ -204,9 +208,11 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     const arrow = arrowDir(key.name);
     if (arrow !== null) {
-      // Entry-browse arrows: the backlog pane then the queued pane; every other view falls
-      // through so the editors' prompt-history recall keeps the arrows.
+      // Entry-browse arrows: the backlog pane, then the Pending pane (merge-row selection),
+      // then the queued pane; every other view falls through so the editors' prompt-history
+      // recall keeps the arrows.
       if (backlog.handleKey?.(key, ctx)) return true;
+      if (pending.handleKey?.(key, ctx)) return true;
       if (queued.handleKey?.(key, ctx)) return true;
       return false;
     }
@@ -222,7 +228,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       if (backlog.handleKey?.(key, ctx)) return true;
       return false;
     }
-    if (key.name === "escape") return queued.handleKey?.(key, ctx) ?? false;
+    if (key.name === "escape") {
+      if (pending.handleKey?.(key, ctx)) return true;
+      return queued.handleKey?.(key, ctx) ?? false;
+    }
     return false;
   };
 
@@ -261,6 +270,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     const rep = report.state?.() ?? {};
     const hist = history.state?.() ?? {};
     const que = queued.state?.() ?? {};
+    const pend = pending.state?.() ?? {};
     const heal = health.state?.() ?? {};
     return {
       view: session.view,
@@ -303,6 +313,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       selectedQueued: que.selectedQueued,
       queuedRows: que.queuedRows,
       queuedGrep: que.queuedGrep,
+      selectedQueue: pend.selectedQueue,
+      queueDetail: pend.queueDetail,
       healthProblems: heal.healthProblems,
     };
   };

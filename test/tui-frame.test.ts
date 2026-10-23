@@ -164,6 +164,8 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.doesNotMatch(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: true }), /earlier window/);
   assert.match(hint({ kind: "pending" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "pending" }), /Ctrl\+R refresh/);
+  assert.match(hint({ kind: "pending" }), /↑↓ select merge/);
+  assert.match(hint({ kind: "pending" }), /Ctrl\+X cancel merge/);
   assert.match(hint({ kind: "health" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "health" }), /Ctrl\+D quit/);
   assert.match(hint({ kind: "health" }), /Ctrl\+R re-run checks/);

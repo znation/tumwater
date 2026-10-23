@@ -145,6 +145,12 @@ interface TuiKeysState {
   /** The Queued pane's row selection (null = list mode): the index into queuedRows of the
    * prompt shown in full, cleared on every Ctrl+T cycle like selectedEntry. */
   selectedQueued: number | null;
+  /** The Pending pane's row selection (null = list mode): the index into queueRows of the
+   * queued merge shown in full, cleared on every Ctrl+T cycle like selectedQueued. */
+  selectedQueue: number | null;
+  /** The Pending pane's rendered detail of the selected queued merge, windowed by paneBody in
+   * place of the queue list while a row is selected; empty in list mode. */
+  queueDetail: string;
   /** The Queued pane's in-place editor (Ctrl+E): the role and queue-file basename of the
    * entry the prompt line is editing, or null when no edit is open. The file address (not a
    * position) is what the write targets, so a concurrent dequeue cannot make a stale

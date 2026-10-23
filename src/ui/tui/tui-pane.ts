@@ -36,6 +36,9 @@ interface TuiPaneState {
    * row's full prompt under a cancel header instead of the numbered list. */
   selectedQueued: number | null;
   queuedRows: QueuedListRow[];
+  /** The Pending pane's rendered detail of a selected queued merge, windowed by this body in
+   * place of the queue list while a row is selected; empty/absent in list mode. */
+  queueDetail?: string;
   /** The Inbox pane's applied `/` search; the pane names it above the filtered list. */
   queuedGrep?: string | null;
   paneCache: string | null;
@@ -228,9 +231,18 @@ export function paneBody(
     };
   }
   if (pane.kind === "pending") {
-    // paneCache stays null until the async collector resolves (the Ctrl+T handler kicks it
-    // off fire-and-forget); like history, return no lines while null so the frame prints the
+    // A selected queued merge shows its detail in place of the queue list; otherwise paneCache
+    // stays null until the async collector resolves (the Ctrl+T handler kicks it off
+    // fire-and-forget); like history, return no lines while null so the frame prints the
     // loading note rather than windowing an empty string into the "no details" placeholder.
+    if (state.queueDetail) {
+      const detail = state.queueDetail;
+      const sel = entryBodyWindow(detail, state.paneScroll, eventBudget, width);
+      return {
+        body: sel.lines.map((l) => toneLine(l, width)),
+        emptyNote: "(loading pending changes…)",
+      };
+    }
     const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
     return {
       body: win.lines.map((l) => toneLine(l, width)),

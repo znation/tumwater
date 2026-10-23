@@ -18,16 +18,18 @@ import { overlapDrillHeading, overlapHolders, mergeQueueRoles } from "../src/ui/
 import { historyWindowBounds } from "../src/ui/tui/tui-pane-history.js";
 import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
-import { enqueueMerge, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
+import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, branchName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
-import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { abortRequestPath, branchName, mergeRefName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { eventsOfType, writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
+import { refSha, setRef } from "../src/git/git.js";
 import { readRunDetail } from "../src/run/run-detail-data.js";
 import { renderRunDetail, runTranscriptLines } from "../src/run/run-detail-render.js";
-import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { disableRole } from "./helpers/disable-role.js";
@@ -2637,6 +2639,131 @@ test("the Pending pane's Ctrl+G scope filters the queue and the overlapping file
   ctrlG(keys);
   assert.ok(cache().startsWith("merge queue (1):"), "the third press returns to the whole queue");
   assert.ok(cache().includes("overlapping files (1):\nsrc/a.ts: feature, clean"), "and to all overlaps");
+});
+
+// The Pending pane's row cancel (PLANS.md's TUI Pending pane Ctrl+X twice entry)
+// needs a real git repo: cancelQueuedMerge deletes the role's merge pin with `git update-ref`.
+// Seed the same pinned-entry shape merge-cancel.test.ts does — enqueueMerge + setRef off main —
+// so the pane's removal path shares the CLI's core and honors the pin.
+async function pendingCancelRoot(): Promise<{ root: string; featureSha: string; cleanSha: string }> {
+  // Pins first, then enqueues — pinOffMain's `git add -A` would otherwise commit an earlier
+  // enqueued .tumwater queue file into a detached commit and its `git checkout main` delete it
+  // (the same ordering merge-cancel.test.ts's threeQueued pins down).
+  const root = makeRepo();
+  let n = 0;
+  const featureSha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `f${n++}.txt`), "one\n"), "add one");
+  assert.ok(await setRef(root, mergeRefName("feature"), featureSha));
+  const cleanSha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `f${n++}.txt`), "two\n"), "add two");
+  assert.ok(await setRef(root, mergeRefName("clean"), cleanSha));
+  enqueueMerge(root, { role: "feature", sha: featureSha, run: 1, summary: "add one", enqueuedAt: Date.now() });
+  enqueueMerge(root, { role: "clean", sha: cleanSha, run: 2, summary: "add two", enqueuedAt: Date.now() + 1 });
+  return { root, featureSha, cleanSha };
+}
+
+/** A Pending-pane handler on a repo whose queue and roster resolve immediately. */
+function openPending(root: string): ReturnType<typeof createTuiKeys> {
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  return keys;
+}
+
+test("the Pending pane selects a queued merge in full and Esc returns to the list", async () => {
+  const { root } = await pendingCancelRoot();
+  const keys = openPending(root);
+  assert.equal(keys.state().selectedQueue, null, "the pane opens in list mode");
+  assert.equal(keys.state().queueDetail, "", "no detail while in list mode");
+
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueue, 0, "Down selects the first (oldest) entry");
+  assert.match(keys.state().queueDetail, /^merge #1 \(Ctrl\+X to cancel\): feature run #1 · /);
+  assert.ok(keys.state().queueDetail.includes("add one"), "the detail shows the summary");
+
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueue, 1, "Down wraps to the second");
+  assert.match(keys.state().queueDetail, /^merge #2 \(Ctrl\+X to cancel\): clean run #2 · /);
+  assert.ok(keys.state().queueDetail.includes("add two"), "the detail shows the second summary");
+
+  keys.handleKey(undefined, { name: "up" });
+  assert.equal(keys.state().selectedQueue, 0, "Up returns to the first");
+
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().selectedQueue, null, "Esc returns to list mode");
+  assert.equal(keys.state().queueDetail, "", "Esc clears the detail");
+});
+
+test("the Pending pane cancels the selected merge with Ctrl+X twice, deleting its pin and logging merge_cancelled", async () => {
+  const { root, featureSha } = await pendingCancelRoot();
+  const keys = openPending(root);
+  // Ctrl+X with no selection just tells the operator how to select; the queue is untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().flash, "select a merge with ↑↓ first");
+  assert.equal(queuedMerges(root).length, 2, "no selection leaves the queue");
+
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // first press arms
+  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #1/);
+  assert.equal(queuedMerges(root).length, 2, "the first press changes nothing");
+
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // second press confirms (async)
+  await untilFlash(() => keys.state().flash ?? "", /cancelled queue entry 1: feature /);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["clean"], "only the selected entry is removed");
+  assert.equal(await refSha(root, mergeRefName("feature")), null, "the cancelled role's pin is deleted");
+  assert.ok(await refSha(root, mergeRefName("clean")), "the other entry's pin is intact");
+  assert.equal(keys.state().selectedQueue, null, "a cancel returns to list mode");
+  assert.equal(keys.state().queueDetail, "", "a cancel clears the detail");
+  const cancelled = eventsOfType(root, "merge_cancelled");
+  assert.equal(cancelled.length, 1, "exactly one merge_cancelled event");
+  assert.equal(cancelled[0]!.commit, featureSha);
+  assert.equal(cancelled[0]!.summary, "add one");
+});
+
+test("a key between the two Pending Ctrl+X presses disarms the cancel", async () => {
+  const { root } = await pendingCancelRoot();
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
+  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #1/);
+  keys.handleKey(undefined, { name: "down" }); // an intermediate key moves the arming; also selects clean (#2)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // now re-arms on the newly selected row, changing nothing
+  assert.equal(queuedMerges(root).length, 2, "the intermediate key disarmed the second press");
+  assert.match(keys.state().flash!, /press Ctrl\+X again to cancel merge #2/, "the press re-arms the now-selected row");
+});
+
+test("a Pending cancel whose queue shifted between arm and confirm refuses without removing", async () => {
+  const { root } = await pendingCancelRoot();
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm #1
+  // Drop feature's queue file externally so the queue shifts: clean is now position 1, so the
+  // armed entry no longer sits at the armed position — the confirm must refuse, not remove.
+  fs.unlinkSync(queuedMergeFiles(root)[0]!.file);
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm
+  await untilFlash(() => keys.state().flash ?? "", /the merge queue changed — try again/);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["clean"], "the shifted queue cancels nothing");
+  assert.ok(await refSha(root, mergeRefName("clean")), "clean's pin is intact");
+});
+
+test("a Pending cancel of a merge the running team is mid-merging is refused with the wait-then-revert wording", async () => {
+  const { root, featureSha } = await pendingCancelRoot();
+  // A live team (process.pid is alive) whose merge marker names the queued feature entry.
+  writeOrchestratorMarker(root, ["feature"]);
+  writeMergeMarker(root, { role: "feature", sha: featureSha, summary: "add one", startedAt: Date.now() - 120_000, stage: "reviewing" });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // arm
+  keys.handleKey(undefined, { ctrl: true, name: "x" }); // confirm → in-flight guard
+  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
+  assert.equal(queuedMerges(root).length, 2, "the in-flight entry is not removed");
+  assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {

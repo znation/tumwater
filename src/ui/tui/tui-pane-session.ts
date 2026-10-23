@@ -171,6 +171,11 @@ export interface TuiPaneSession {
   armedRevert: string | null;
   /** The History pane's pending second Ctrl+V; moved to `armedRevert` by beginKey. */
   revertArmed: string | null;
+  /** The armed queued-merge cancel (first Ctrl+X on a selected Pending row), read by the
+   * second: the armed entry's whole-queue position and sha. */
+  armedQueue: { position: number; sha: string } | null;
+  /** The Pending pane's pending second Ctrl+X; moved to `armedQueue` by beginKey. */
+  queueArmed: { position: number; sha: string } | null;
   root: string;
   now(): number;
   requestRender(): void;
@@ -210,6 +215,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     killOrphansArmed: false,
     armedRevert: null,
     revertArmed: null,
+    armedQueue: null,
+    queueArmed: null,
     root: deps.root,
     now: deps.now,
     requestRender: deps.requestRender,
