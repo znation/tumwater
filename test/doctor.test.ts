@@ -13,7 +13,8 @@ import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
-import { fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { diskHermeticRepo, fakeBins, hermeticHostBins, noProcesses, readyRepo } from "./fixtures/doctor-fixtures.js";
+import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 
 // Composition and CLI-wiring coverage for src/doctor/doctor.ts: runDoctor's fixed check order,
 // header,
@@ -67,8 +68,11 @@ test("runDoctor composes the full report — fixed check order, not-running head
 });
 
 test("runDoctor counts failures in the verdict — plural and singular", async () => {
-  // No tumwater.json (init fails) plus an empty PATH (git and pi fail): three problems.
-  const report = await runDoctor(makeRepo(), "", noProcesses);
+  // No tumwater.json (init fails) plus an empty PATH (git and pi fail): three problems. The
+  // disk sampler is injected (100 GB, the gate-polls tests' ample sample) so the host's real
+  // free space cannot add a fourth — the config is absent by design, so the disk step would
+  // fall back to the 10 GB default.
+  const report = await runDoctor(makeRepo(), "", noProcesses, "never", undefined, () => 100 * BYTES_PER_GB);
   assert.equal(report.verdict, "3 problems");
   assert.deepEqual(
     report.checks.filter((c) => c.level === "fail").map((c) => c.name),
@@ -76,7 +80,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
   );
 
   // A ready repo whose PATH has git but no pi: exactly one problem (singular).
-  const singular = await runDoctor(readyRepo(), fakeBins("git"), noProcesses);
+  const singular = await runDoctor(readyRepo(), fakeBins("git"), noProcesses, "never", undefined, () => 100 * BYTES_PER_GB);
   assert.equal(singular.verdict, "1 problem");
 });
 
@@ -241,29 +245,34 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   // A bare directory with a PATH holding only git (no pi): every check's outcome is
   // deterministic, and the command must not refuse to run like status does. Without the
   // missing-gate regression this would print "not a git repository" to stderr and exit 1
-  // without ever showing the other checks.
+  // without ever showing the other checks. The dir carries a config with both disk
+  // thresholds off: the CLI child reads the host's real free space, and a hosted runner
+  // under the 10 GB default floor would add a disk fail the fixture cannot control (CI's
+  // ubuntu-26.04 image, 2026-10-22). The init check's fail case keeps its own coverage in
+  // the runDoctor counts test above, which injects its disk sample.
   const binDir = gitOnlyBinDir();
+  const dir = tmpdir();
+  writeConfig(dir, { diskHoldGB: 0, diskReclaimGB: 0 });
 
-  const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor"]);
+  const r = await cliWithEnv(dir, { PATH: binDir }, ["doctor"]);
   assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
   // The full report is printed — one line per check in fixed order, not the first error.
   assert.match(r.stdout, /tumwater doctor — not running/);
   assert.match(r.stdout, /ok\s+git binary/);
   assert.match(r.stdout, /fail\s+repo\s+not a git repository/);
-  assert.match(r.stdout, /fail\s+init\s+not initialized/);
+  assert.match(r.stdout, /ok\s+init/);
   assert.match(r.stdout, /fail\s+backend binary\s+pi not found on PATH/);
   assert.match(r.stdout, /ok\s+state dir/);
   assert.match(r.stdout, /ok\s+merge lock/);
   assert.match(r.stdout, /warn\s+check/);
   // No ps on this PATH either: the orphan scan degrades to a warn instead of crashing doctor.
   assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
-  // The verdict counts the fails (repo + init + pi) and nothing else.
-  assert.match(r.stdout, /3 problems/);
+  // The verdict counts the fails (repo + pi) and nothing else.
+  assert.match(r.stdout, /2 problems/);
 });
 
 test("doctor exits 0 on a ready repo; a stale merge lock warns without failing", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli doctor test");
+  const repo = await diskHermeticRepo("cli doctor test");
 
   // A stale merge lock (dead pid) is a warning: it self-heals on the next merge, so it must
   // not flip the exit code — scripts key off 0/1 for real problems only.
@@ -311,8 +320,7 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
 });
 
 test("doctor --json prints the collector's own payload, matching the plain render", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli doctor json");
+  const repo = await diskHermeticRepo("cli doctor json");
 
   // Same hermetic PATH as the plain-render wiring test above: the orphan scan reads the fake
   // empty table (psRan marks that it ran), never the host's real one (BUGS.md 2026-09-30).
@@ -371,23 +379,25 @@ test("doctor --json prints the collector's own payload, matching the plain rende
 });
 
 test("doctor --json keeps the exit-code contract: fail checks exit 1 with no prose", async () => {
-  // The same broken-environment fixture the plain-render test uses: a bare directory whose
-  // PATH holds only git. The JSON form must exit 1 exactly when the prose form does, and its
-  // checks must carry the failing levels a script keys off.
+  // The same broken-environment fixture the outside-a-git-repo test above uses: a bare
+  // directory whose PATH holds only git, carrying the disk-off config so the CLI child's
+  // disk row cannot read the host's real free space. The JSON form must exit 1 exactly
+  // when the prose form does, and its checks must carry the failing levels a script keys off.
   const binDir = gitOnlyBinDir();
+  const dir = tmpdir();
+  writeConfig(dir, { diskHoldGB: 0, diskReclaimGB: 0 });
 
-  const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor", "--json"]);
+  const r = await cliWithEnv(dir, { PATH: binDir }, ["doctor", "--json"]);
   assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
   const report = JSON.parse(r.stdout); // no prose around the document, even on failure
   assert.ok(report.checks.some((c: { level: string }) => c.level === "fail"));
   assert.ok(report.checks.some((c: { level: string }) => c.level === "warn"));
   assert.ok(!report.checks.some((c: { level: string }) => c.level !== c.level.toLowerCase()));
-  assert.match(report.verdict, /3 problems/);
+  assert.match(report.verdict, /2 problems/);
 });
 
 test("doctor --reprobe is accepted and wired — full report, same exit contract", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli doctor reprobe");
+  const repo = await diskHermeticRepo("cli doctor reprobe");
 
   // --reprobe is the one flag the dispatch reads (probeImages "all" instead of "missing") and
   // it must reach runDoctor like any other accepted flag — accepted rather than rejected, and
@@ -474,8 +484,7 @@ test("problemsOnly keeps header, routing and verdict and drops only the ok check
 });
 
 test("doctor --problems is accepted and wired — hides ok rows, JSON holds none, help lists it", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli doctor problems");
+  const repo = await diskHermeticRepo("cli doctor problems");
   // The same hermetic PATH the plain-render wiring test above uses: a fake `pi` so the
   // backend-binary check passes on a host without one (CI), keeping the ready-repo exit-0
   // contract a property of the fixture rather than of the machine.
@@ -530,9 +539,7 @@ test("runDoctor with only runs just the named checks, in report order", async ()
 });
 
 test("doctor <check>... runs the named checks and rejects an unknown name", async () => {
-  const repo = makeRepo();
-  await initProject(repo, "cli doctor check names");
-
+  const repo = await diskHermeticRepo("cli doctor check names");
   const one = await cli(repo, "doctor", "Orphans", "--json");
   assert.equal(one.code, 0, `${one.stdout}\n${one.stderr}`);
   assert.deepEqual(JSON.parse(one.stdout).checks.map((c: { name: string }) => c.name), ["orphans"]);
