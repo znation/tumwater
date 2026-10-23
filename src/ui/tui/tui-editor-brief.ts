@@ -1,7 +1,6 @@
 import { editBriefText } from "../../brief/brief-edit.js";
-import { readTextIfExists } from "../../files/files.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Brief view's Ctrl+E replace-the-brief-from-a-file editor on the shared prompt line, the
  * terminal twin of `tumwater brief --file <path>` and the dashboard's Brief card. It owns its
@@ -71,22 +70,8 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
       // unreadable file, and a refused replacement all flash and STAY in the editor so the
       // operator can pick another file; only a successful replacement exits, repainting the
       // Brief pane in place with the shared outcome wording.
-      const p = session.input.trim();
-      if (p === "") {
-        session.flashMessage("a file path is required");
-        return true;
-      }
-      let text: string | null;
-      try {
-        text = readTextIfExists(p);
-      } catch (err) {
-        session.flashError(err);
-        return true;
-      }
-      if (text === null) {
-        session.flashMessage(`no such file: ${p}`);
-        return true;
-      }
+      const text = readEditorPath(session);
+      if (text === null) return true;
       void editBriefText(session.root, text).then(
         (outcome) => {
           if (!outcome.ok) {

@@ -1,13 +1,12 @@
 import { bodyStructureProblem, fileEntryWithBody, OPERATOR_FILE_KINDS, splitEntryFile, tryEditEntry } from "../../backlog/backlog-write.js";
 import { backlogHolds, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
-import { readTextIfExists } from "../../files/files.js";
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { promptLengthProblem } from "../../inbox/inbox-submit.js";
 import { collapseWhitespace } from "../../text/text.js";
 import { selectedEditableEntry } from "./tui-pane-backlog.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The backlog pane's title editor (Ctrl+N new entry, Ctrl+E on a selected plan or bug) on the
  * shared prompt line. It owns its target (`entryEditFor`), its plan↔bug flip, its saved-draft
@@ -163,22 +162,8 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       // position and its (planned …)/(found by …) stamp. A missing file, an empty path, a
       // file with no title line, and a structurally unsound body all flash and stay here.
       if (entryBodyFile && target.position !== null) {
-        const p = session.input.trim();
-        if (!p) {
-          session.flashMessage("a file path is required");
-          return true;
-        }
-        let text: string | null;
-        try {
-          text = readTextIfExists(p);
-        } catch (err) {
-          session.flashError(err);
-          return true;
-        }
-        if (text === null) {
-          session.flashMessage(`no such file: ${p}`);
-          return true;
-        }
+        const text = readEditorPath(session);
+        if (text === null) return true;
         const { title: rawTitle, body } = splitEntryFile(text);
         const newTitle = stripEntryStamp(rawTitle);
         if (!newTitle) {

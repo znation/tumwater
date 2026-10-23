@@ -1,8 +1,7 @@
 import { saveRoleNote } from "../../agent/role-notes-write.js";
-import { readTextIfExists } from "../../files/files.js";
 import { roleNotesPath } from "../../paths.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The notes view's Ctrl+E replace-notes-from-a-file editor on the shared prompt line, the
  * terminal twin of `tumwater role <id> --notes-file <path>` and the dashboard drawer's
@@ -85,22 +84,10 @@ export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
       // clears the note. On success the notes view repaints the new note without leaving and
       // re-entering, and the editor exits with the shared success wording.
       const role = notesEditFor;
-      const p = session.input.trim();
-      if (p === "") {
-        session.flashMessage("a file path is required");
-        return true;
-      }
-      let text: string | null;
-      try {
-        text = readTextIfExists(p);
-      } catch (err) {
-        session.flashError(err);
-        return true;
-      }
-      if (text === null) {
-        session.flashMessage(`no such file: ${p}`);
-        return true;
-      }
+      // The trim/read/refuse prologue is shared with the brief, instructions and backlog-entry
+      // editors (readEditorPath), which read one typed path the same way.
+      const text = readEditorPath(session);
+      if (text === null) return true;
       try {
         const message = saveRoleNote(roleNotesPath(session.root, role), text);
         session.refreshNotes(role);

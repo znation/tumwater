@@ -1,8 +1,7 @@
 import { setConfigKey, unsetConfigKey } from "../../config/config-write.js";
-import { readTextIfExists } from "../../files/files.js";
 import { baseRoleOf } from "../../roles/runner-ids.js";
 import type { TuiEditorCtx, TuiEditorModule } from "./tui-editor-ctx.js";
-import type { TuiEditorSession } from "./tui-editor-session.js";
+import { readEditorPath, type TuiEditorSession } from "./tui-editor-session.js";
 
 /** The Transcript view's Ctrl+L replace-standing-instructions editor on the shared prompt line,
  * the terminal twin of `tumwater role <id> --instructions-file` and the dashboard role drawer's
@@ -95,22 +94,8 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
       // success the notes repaints the updated `Instructions override` row and the editor
       // exits with the shared success wording.
       const role = instructionsFor;
-      const p = session.input.trim();
-      if (p === "") {
-        session.flashMessage("a file path is required");
-        return true;
-      }
-      let text: string | null;
-      try {
-        text = readTextIfExists(p);
-      } catch (err) {
-        session.flashError(err);
-        return true;
-      }
-      if (text === null) {
-        session.flashMessage(`no such file: ${p}`);
-        return true;
-      }
+      const text = readEditorPath(session);
+      if (text === null) return true;
       const base = baseRoleOf(role);
       const cfgKey = `roles.${base}.instructions`;
       if (text.trim() === "") {

@@ -5,6 +5,7 @@ import {
   type PromptHistory,
 } from "./tui-prompt-history.js";
 import type { PromptImageInput } from "../../inbox/inbox-attachments.js";
+import { readTextIfExists } from "../../files/files.js";
 import type { TuiEditorsDeps } from "./tui-editors.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
@@ -256,4 +257,31 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     },
   };
   return session;
+}
+
+/** Read the shared prompt line's path as a whole-file text through the same readTextIfExists the
+ * CLI's non-interactive replacements use, flashing the shared wording and returning null when the
+ * line must stay in the editor: no path at all, a missing file, or an unreadable one. Shared by the
+ * notes, brief, instructions and backlog-entry editors, whose Enter arms all read one typed path
+ * and replace whole text through it; the flashed messages live here so the four editors cannot
+ * drift on the wording. Only the read settles; each caller still owns its own success/failure
+ * write and its own "stay in the editor" return after a null. */
+export function readEditorPath(session: TuiEditorSession): string | null {
+  const p = session.input.trim();
+  if (p === "") {
+    session.flashMessage("a file path is required");
+    return null;
+  }
+  let text: string | null;
+  try {
+    text = readTextIfExists(p);
+  } catch (err) {
+    session.flashError(err);
+    return null;
+  }
+  if (text === null) {
+    session.flashMessage(`no such file: ${p}`);
+    return null;
+  }
+  return text;
 }
