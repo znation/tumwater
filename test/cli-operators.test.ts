@@ -1076,7 +1076,8 @@ test("role writes report a broken tumwater.json instead of crashing on it", asyn
     ["feature", "--cap", "5"], // the shared six-hold set path (writeRoleConfigKey)
     ["feature", "--clear-cap"], // the shared six-hold unset path
     ["feature", "--enable"], // the enable/disable write
-    ["feature", "--instructions-file", instFile], // the instructions block
+    ["feature", "--instructions-file", instFile], // the instructions set path
+    ["feature", "--clear-instructions"], // the instructions unset path (its own `!result.ok` fail)
   ] as const) {
     const r = await cli(repo, "role", ...args);
     assert.equal(r.code, 1, args.join(" "));
