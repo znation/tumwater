@@ -100,8 +100,11 @@ export function readDocChecked(p: string, file: string, missingDetail: string): 
  * warns: 6 hours, fixed. A verify plus a merge completes in minutes (plans/merge-queue.md), so a
  * full six-hour silence while the team is healthy — not on a hold, which doctor already reports
  * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
- * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
-const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
+ * opinionated default, like STALE_QUESTION_DAYS, so no knob. The always-on `stale-merges` team
+ * alert (src/ui/status-payload.ts staleMerges) reuses this same window through
+ * staleQueuedMergeRows, so the doctor's row and the alert cannot drift on the threshold (the
+ * STALE_PROMPT_MS/STALE_BUG_DAYS precedent). */
+export const MERGE_QUEUE_STALE_MS = 6 * HOUR_MS;
 /** The window of the merge-wait phrase on the stale merge-queue row. */
 const MERGE_WAIT_WINDOW_MS = DAY_MS;
 
@@ -129,17 +132,29 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
     }
     return phrase ? { ...out, detail: `${out.detail} · ${phrase}` } : out;
   };
-  const marker = readMergeMarker(root);
-  const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
-  const stale = queuedMerges(root)
-    .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > MERGE_QUEUE_STALE_MS)
-    .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
+  const stale = staleQueuedMergeRows(root, now).map((e) => ({ ...e, age: humanSeconds(secondsSince(now - e.waitedMs, now)) }));
   const [first, ...rest] = stale;
   if (!first)
     return withWait(okOutcome(`no merge-queue entry has waited more than ${humanSeconds(MERGE_QUEUE_STALE_MS / 1000)} to start`));
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
   return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
+}
+
+/** The one traversal shared by the doctor's `stale merge-queue entries` row
+ * (checkStaleQueuedMerges) and the always-on `stale-merges` team alert
+ * (src/ui/status-payload.ts staleMerges): every queued merge whose role is not in the in-flight
+ * marker and whose wait strictly exceeds MERGE_QUEUE_STALE_MS (6 h), in queue-file order (oldest
+ * first). The in-flight set comes from readMergeMarker via mergeChanges (an absent or
+ * never-throwing unreadable marker contributes the empty set) — a slow review is not a stalled
+ * drain. Each row carries { role, summary, waitedMs }; the doctor's row adds its age phrase and
+ * the alert names the wait, so the rule and its threshold live in one place and cannot drift. */
+export function staleQueuedMergeRows(root: string, now: number): Array<{ role: string; summary: string; waitedMs: number }> {
+  const marker = readMergeMarker(root);
+  const inFlight = new Set(marker ? mergeChanges(marker).map((c) => c.role) : []);
+  return queuedMerges(root)
+    .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > MERGE_QUEUE_STALE_MS)
+    .map((e) => ({ role: e.role, summary: e.summary, waitedMs: now - e.enqueuedAt }));
 }
 
 /** The merge-queue files `readMergeQueue` skips — torn, foreign, or vanished mid-listing —

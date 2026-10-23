@@ -11,8 +11,8 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type StaleBug, type StalePrompt } from "./team-alerts.js";
-import { STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
+import { teamAlerts, type StaleBug, type StaleMerge, type StalePrompt } from "./team-alerts.js";
+import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -62,6 +62,17 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
  * longest-waiting prompt. */
 export function stalePrompts(root: string, now = Date.now()): StalePrompt[] {
   return staleQueuedPromptRows(root, now).map((p) => ({ role: p.role, position: p.position, waitedMs: now - p.queuedAtMs }));
+}
+
+/** The queued merges the doctor's stale-merge rule (src/doctor/doctor-backlog.ts
+ * `staleQueuedMergeRows`, MERGE_QUEUE_STALE_MS) calls stale: a change that has sat in the
+ * merge queue more than 6 h without starting. This is the always-on feed for the stale-merges
+ * team alert — the doctor's check reads the same shared traversal and threshold, so the two
+ * cannot drift. Each returned object carries the role, the summary, and the wait in ms.
+ * Returned oldest-first (queue-file order), so a caller naming the first element names the
+ * longest-waiting merge. */
+export function staleMerges(root: string, now = Date.now()): StaleMerge[] {
+  return staleQueuedMergeRows(root, now).map((m) => ({ role: m.role, summary: m.summary, waitedMs: m.waitedMs }));
 }
 
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
@@ -375,6 +386,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now)),
   };
 }

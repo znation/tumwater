@@ -5,11 +5,14 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { statusPayload, stalePrompts } from "../src/ui/status-payload.js";
+import { staleMerges, statusPayload, stalePrompts } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
+import { mergeQueueDir } from "../src/paths.js";
+import { writeMergeMarker } from "../src/merge/merge-slot.js";
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
@@ -575,6 +578,28 @@ test("staleOpenBugs and the surfaces carry a stale-bug alert from BUGS.md, and n
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /open bug waited/);
 });
 
+test("a stalled merge queue raises a standing amber alert right after the stale-prompt alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [{ role: "feature", summary: "add the parser", waitedMs: 7 * 3600_000 }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stale-merges", "amber", "1 queued merge waited 6+ hours to start"]]);
+  assert.match(one[0]!.detail ?? "", /feature/);
+  assert.match(one[0]!.detail ?? "", /add the parser/);
+  assert.match(one[0]!.detail ?? "", /7h/);
+  assert.match(one[0]!.detail ?? "", /tumwater queue/);
+  assert.deepEqual(one[0]!.actions, []);
+  // Callers feed oldest-first (staleMerges reads queuedMerges in queue-file order), so the
+  // first element is the longest-waiting merge and the one the alert names; an empty list
+  // argument adds none.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [
+    { role: "feature", summary: "A", waitedMs: 7 * 3600_000 },
+    { role: "organize", summary: "B", waitedMs: 6.5 * 3600_000 },
+  ]);
+  assert.match(two[0]!.title ?? "", /queued merges waited/);
+  assert.deepEqual(teamAlerts(base, [], [], now), []);
+  const withBugs = teamAlerts(base, [], [], now, [], [], [{ index: 0, position: 1, title: "B", days: 3 }], [], [{ role: "feature", summary: "S", waitedMs: 7 * 3600_000 }]);
+  assert.deepEqual(withBugs.map((a) => a.key), ["stale-bugs", "stale-merges"]);
+});
+
 test("stale queued prompts raise a standing amber alert right after the stale-bug alert", () => {
   const now = Date.now();
   const one = teamAlerts(base, [], [], now, [], [], [], [{ role: "feature", position: 2, waitedMs: 25 * 60 * 60 * 1000 }]);
@@ -642,6 +667,38 @@ test("stalePrompts and the surfaces carry a stale-prompt alert from the inbox, a
   const fresh = promptRepo(["feature"]);
   stampPrompt(fresh, "feature", now - 5 * 60 * 60 * 1000);
   assert.doesNotMatch(renderStatus(fresh, snapshot(fresh, undefined, now)), /queued prompt waited/);
+});
+
+test("staleMerges and the surfaces carry a stale-merge alert from the queue, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  fs.mkdirSync(mergeQueueDir(root), { recursive: true });
+  enqueueMerge(root, { role: "feature", summary: "add the parser", enqueuedAt: now - 7 * 3600_000, sha: "abc1234", run: 1 });
+  assert.deepEqual(staleMerges(root, now).map((m) => ({ role: m.role, summary: m.summary })), [{ role: "feature", summary: "add the parser" }]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "stale-merges");
+  assert.equal(alert?.title, "1 queued merge waited 6+ hours to start");
+  assert.match(alert?.detail ?? "", /feature/);
+  assert.match(alert?.detail ?? "", /7h/);
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /1 queued merge waited 6\+ hours to start/);
+  // The doctor's skip rules, on every surface: an in-flight marker for the only stale
+  // entry's role yields none, an entry enqueued exactly at the threshold (not strictly past)
+  // yields none, and an empty queue yields none.
+  const inFlightRoot = makeRepo();
+  fs.mkdirSync(mergeQueueDir(inFlightRoot), { recursive: true });
+  enqueueMerge(inFlightRoot, { role: "feature", summary: "add the parser", enqueuedAt: now - 7 * 3600_000, sha: "abc1234", run: 1 });
+  writeMergeMarker(inFlightRoot, { role: "feature", sha: "abc1234", summary: "add the parser", startedAt: now - 60_000, stage: "merging", changes: [{ role: "feature", sha: "abc1234", summary: "add the parser", status: "merging" }] });
+  assert.deepEqual(staleMerges(inFlightRoot, now), []);
+  const fresh = makeRepo();
+  fs.mkdirSync(mergeQueueDir(fresh), { recursive: true });
+  enqueueMerge(fresh, { role: "feature", summary: "add the parser", enqueuedAt: now - 6 * 3600_000, sha: "abc1234", run: 1 });
+  assert.deepEqual(staleMerges(fresh, now), []);
+  const freshPayload = statusPayload(fresh, now) as { alerts: Array<{ key: string }> };
+  assert.equal(freshPayload.alerts.find((a) => a.key === "stale-merges"), undefined);
+  const empty = makeRepo();
+  assert.deepEqual(staleMerges(empty, now), []);
+  assert.doesNotMatch(renderStatus(empty, snapshot(empty, undefined, now)), /queued merge waited/);
 });
 
 test("root install drift raises one amber install alert naming up to five packages", () => {

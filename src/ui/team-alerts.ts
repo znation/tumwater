@@ -48,6 +48,18 @@ export interface StalePrompt {
   waitedMs: number;
 }
 
+/** A queued merge the doctor's stale-merge rule warns about (src/doctor/doctor-backlog.ts
+ * MERGE_QUEUE_STALE_MS): a change that has sat in the merge queue more than 6 h without
+ * starting. Computed in src/ui/status-payload.ts's staleMerges from the same threshold and the
+ * same `queuedMerges`/`readMergeMarker`/`mergeChanges` traversal the doctor's check uses, so the
+ * alert and the doctor cannot drift on the rule. `waitedMs` is the age the alert names. Sorted
+ * oldest-first by the caller, so the first element is the longest-waiting merge. */
+export interface StaleMerge {
+  role: string;
+  summary: string;
+  waitedMs: number;
+}
+
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -140,7 +152,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a stranded inbox prompt, a pause, a stopped team.
+ * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
+ * pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -170,6 +183,7 @@ export function teamAlerts(
   operatorHeld: readonly RefusedEntry[] = [],
   staleBugs: readonly StaleBug[] = [],
   stalePrompts: readonly StalePrompt[] = [],
+  staleMerges: readonly StaleMerge[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -418,6 +432,28 @@ export function teamAlerts(
       // The action lands the operator on the Inbox tab (the dashboard's backlog arm reads `act:
       // "queued"` as the Inbox view), where the stranded prompt is cancellable.
       actions: [{ label: "Open inbox", act: "queued" }],
+    });
+  }
+  // A stalled merge queue (the doctor's MERGE_QUEUE_STALE_MS rule,
+  // src/doctor/doctor-backlog.ts, set by the stale-merges alert) sits when a queued change
+  // never starts — neither verified nor flagged — so a drain that has stopped reads healthy
+  // except for this row. Its callers feed it oldest-first (status-payload.ts staleMerges reads
+  // queuedMerges in queue-file order), so the first element is the longest-waiting merge and is
+  // named with its role, summary and wait; the rest are folded through joinWithMore like the
+  // actions and no-image alerts, so the wording and counts cannot drift.
+  if (staleMerges.length) {
+    const first = staleMerges[0]!;
+    const rest = staleMerges.slice(1);
+    out.push({
+      key: "stale-merges",
+      tone: "amber",
+      title: `${plural(staleMerges.length, "queued merge waited", "queued merges waited")} 6+ hours to start`,
+      detail:
+        `${roleLabel(first.role)} — "${first.summary}" — has waited ${duration(first.waitedMs)} to start` +
+        (rest.length > 0 ? ` · ${joinWithMore(rest.map((m) => roleLabel(m.role)), 3)}` : "") +
+        ` — the merge queue has stopped moving; run \`tumwater queue\` to see it, or drop the entry with \`tumwater queue --cancel <n>\``,
+      // The header's `merge queue: N` badge and the Pending view already carry the drill-in.
+      actions: [],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
