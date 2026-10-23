@@ -78,6 +78,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 three T-long reviews run at once at cap 4, so all three merge in about T, not 3T
 ~~~~
 
+**Progress 2026-10-23 by bugfix: not reproduced in ~25 runs — alone, under four-way and merge-heavy parallel load, and one full 7090-test suite run (all green). The test's three failure assertions already name their cause: `one review per change`, `all three reviews overlapped (in flight at each start: <samples>)`, and the span check `review to last merge took <X> ms, no less than the reviews' <Y> ms sum`. Two candidate paths, both driven by full-suite load: (a) a review's 15 s shell-loop wait (300 × 0.05 s) for three in-flight run files times out, so that review's sample counts < 3 and overlap is reported missed; (b) the span bound's floor (the measured review_verdict durationMs sum) excludes the three serialized git merges, so a loaded host's merge time pushes `lastMerged - firstStart` past that floor even when the reviews did overlap. The samples mechanism already forces overlap deterministically for staggered starts, so (a) needs a >15 s start gap and (b) needs > ~4 s of merge time — both plausible only under the full suite's contention.**
+
+**Waiting for the next failure 2026-10-23 by bugfix: which of the three assertions fires and its numbers — the overlap assertion's `in flight at each start:` list (which sample is < 3), the `one review per change` count (extra samples), or the span check's two ms figures**
+
 ## Fixed
 
 ## Verified
