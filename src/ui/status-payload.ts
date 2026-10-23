@@ -169,7 +169,7 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free team; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
-    budgetBadge: budgetBadge(snap.budget, snap.claudeWindow, now, snap.chain),
+    budgetBadge: budgetBadge(snap.budget, snap.subscriptionWindows, snap.subscriptionOnly, now, snap.chain),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
     // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
     // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
@@ -246,11 +246,12 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // header for the TUI/status). Raw data, like budget.
     ...(snap.claudeWindow ? { claudeWindow: snap.claudeWindow } : {}),
     // The per-backend window blocks (part 3a/9): one entry per subscription backend in use,
-    // machine-readable for `status --json` beside claudeWindow; the preformatted budgetBadge
-    // still folds the claude window alone until part 3b/9 labels each block.
+    // machine-readable for `status --json` beside claudeWindow. As of part 3b/9 the preformatted
+    // budgetBadge above folds the per-backend blocks — the most-constrained first — into the
+    // header, naming each backend's own window.
     ...(snap.subscriptionWindows && snap.subscriptionWindows.length > 0 ? { subscriptionWindows: snap.subscriptionWindows } : {}),
-    // The team-global free-ness answer (part 3a/9); the claude window's `only` shadows it for
-    // one release.
+    // The team-global free-ness answer (part 3a/9); budgetBadge reads it to decide whether the
+    // window lines stand alone (subscription-only) beside the daily spend.
     subscriptionOnly: snap.subscriptionOnly,
     // Each tier's fallback step (fallback chain part 7c/7), raw for the GUI side card.
     ...(snap.chain ? { chain: snap.chain } : {}),

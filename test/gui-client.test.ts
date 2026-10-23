@@ -439,8 +439,8 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   const els: Record<string, unknown> = {};
   const reply: Record<string, unknown> = { ok: true };
   const scope = clientScope<{
-    budgetCardHtml(b: object, cw?: object): string;
-    windowLinesHtml(cw: object): string;
+    budgetCardHtml(b: object, blocks?: object[], only?: boolean): string;
+    windowLinesHtml(blocks: object[], only?: boolean): string;
     parseBudgetField(raw: string): { ok: true; value: number } | { ok: false; error: string };
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
@@ -503,34 +503,40 @@ test("the spend card renders the subscription window in place of or beside the d
   const { scope } = operatorScope();
   // 4h 12m 30s out: the card's relative reading floors to whole minutes.
   const resetsAt = Date.now() + (4 * 3600 + 12 * 60 + 30) * 1000;
-  const cw = {
+  const block = {
+    backend: "claude",
+    label: "Claude",
     windows: [{ type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 }],
     primary: { type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 },
-    only: true,
     heldUntil: null,
   };
-  const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, cw);
+  const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, [block], true);
   assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only team has no cap editor");
   assert.match(only, /Claude window/);
   assert.match(only, /Claude 5h · 64% · resets in 4h 12m/);
 
-  const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, { ...cw, only: false });
+  const onlyFree = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: true, fallback: null }, [], true);
+  assert.match(onlyFree, /Free models/, "an all-free subscription-only team still reads the Free models spend card, not an empty window card");
+  assert.doesNotMatch(onlyFree, /Claude window/, "no window block, no empty window card");
+
+  const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, [block], false);
   assert.match(mixed, /id='budgetbadge'/, "a mixed team keeps the spend editor");
   assert.match(mixed, /\$4\.09 <small>of \$15<\/small>/);
   assert.match(mixed, /Claude 5h · 64% · resets in 4h 12m/);
 
   const heldAt = new Date(2026, 9, 10, 14, 30).getTime();
-  const rejected = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, {
+  const rejected = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, [{
+    backend: "claude",
+    label: "Claude",
     windows: [{ type: "five_hour", status: "rejected", heldAt, utilization: 1 }],
     primary: { type: "five_hour", status: "rejected", heldAt, utilization: 1 },
-    only: false,
     heldUntil: heldAt,
-  });
-  assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · held until 14:30/);
+  }], false);
+  assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · Claude model jobs wait until 14:30/);
 
   const meterOf = (utilization?: number) => {
     const w = { type: "five_hour", status: "allowed", resetsAt, ...(utilization === undefined ? {} : { utilization }) };
-    return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, { windows: [w], primary: w, only: true, heldUntil: null });
+    return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, [{ backend: "claude", label: "Claude", windows: [w], primary: w, heldUntil: null }], true);
   };
   assert.match(meterOf(0.64), /Claude 5h · 64% · resets in 4h 12m[\s\S]*class='meter'><span style='width:64%'>/);
   assert.match(meterOf(1.2), /style='width:100%'/, "over-full clamps the bar");
@@ -543,20 +549,35 @@ test("the window card lists the shortest window first while primary stays the mo
   const { scope } = operatorScope();
   const week = { type: "seven_day", status: "allowed_warning", utilization: 0.9 };
   const five = { type: "five_hour", status: "allowed", utilization: 0.2 };
-  const html = scope.windowLinesHtml({ windows: [week, five], primary: week, only: true, heldUntil: null });
+  const html = scope.windowLinesHtml([{ backend: "claude", label: "Claude", windows: [week, five], primary: week, heldUntil: null }], true);
   assert.ok(html.includes("Claude 5h") && html.indexOf("Claude 5h") < html.indexOf("Claude 7d"), "5h renders above 7d");
 });
 
 test("the window card draws a meter from reported utilization and says when usage is unreported", () => {
   const { scope } = operatorScope();
-  const win = (w: object) => ({ windows: [w], primary: w, only: true, heldUntil: null });
-  const reported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed", utilization: 0.64 }));
+  const win = (w: object) => [{ backend: "claude", label: "Claude", windows: [w], primary: w, heldUntil: null }];
+  const reported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed", utilization: 0.64 }), true);
   assert.match(reported, /Claude 5h · 64%/);
   assert.match(reported, /class='meter'><span style='width:64%'>/);
-  assert.match(scope.windowLinesHtml(win({ type: "five_hour", status: "allowed_warning", utilization: 1.2 })), /class='meter t-amber'><span style='width:100%'>/);
-  const unreported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed" }));
+  assert.match(scope.windowLinesHtml(win({ type: "five_hour", status: "allowed_warning", utilization: 1.2 }), true), /class='meter t-amber'><span style='width:100%'>/);
+  const unreported = scope.windowLinesHtml(win({ type: "five_hour", status: "allowed" }), true);
   assert.match(unreported, /Claude 5h · ok · usage not reported/);
   assert.doesNotMatch(unreported, /meter/);
+});
+
+// Part 3b/9: the budget tile emits one window line per subscription backend, each under its
+// own display label, so a multi-backend team's windows never collapse to claude's alone.
+test("the window card lists one line per subscription block under its own label", () => {
+  const { scope } = operatorScope();
+  const week = { type: "seven_day", status: "allowed", utilization: 0.31 };
+  const five = { type: "five_hour", status: "allowed", utilization: 0.6 };
+  const html = scope.windowLinesHtml([
+    { backend: "claude", label: "Claude", windows: [five], primary: five, heldUntil: null },
+    { backend: "sub", label: "Sub", windows: [week], primary: week, heldUntil: null },
+  ], true);
+  assert.match(html, /Claude 5h/);
+  assert.match(html, /Sub 7d/);
+  assert.ok(html.indexOf("Claude 5h") < html.indexOf("Sub 7d"), "each block's line renders under its own label");
 });
 
 test("the cap editor refuses text the browser rejected instead of silently removing the cap", async () => {

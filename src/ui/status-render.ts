@@ -1,12 +1,13 @@
 import type { RunnerState } from "../runner/runner-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
+import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -194,9 +195,9 @@ function badgeSpans(badge: string, tone?: StatusSpan["tone"]): StatusSpan[] {
  * the seams) wins when it stands beside the daily spend. */
 function budgetTone(
   budget: StatusSnapshot["budget"],
-  claudeWindow?: StatusSnapshot["claudeWindow"],
+  windows?: SubscriptionWindowBlock[],
 ): Tone | undefined {
-  const window = claudeWindowTone(claudeWindow);
+  const window = subscriptionWindowTone(windows);
   if (window !== undefined) return window;
   if (budget.free || !(budget.capUsd > 0)) return undefined;
   const share = budget.spentUsd / budget.capUsd;
@@ -251,7 +252,7 @@ export function renderStatusSpans(
     ...badgeSpans(mergeBadge(snap.mergeQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
-    ...badgeSpans(budgetBadge(snap.budget, snap.claudeWindow, now, snap.chain), budgetTone(snap.budget, snap.claudeWindow)),
+    ...badgeSpans(budgetBadge(snap.budget, snap.subscriptionWindows, snap.subscriptionOnly, now, snap.chain), budgetTone(snap.budget, snap.subscriptionWindows)),
     // The disk floor (plans/disk-floor.md, part 4/4): `disk 8.2 GB free — holding new work`
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.

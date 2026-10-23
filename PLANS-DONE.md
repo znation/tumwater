@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 3b/9: The status header and the GUI budget tile name each backend's window (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/ui/gui/gui-client-operator.ts test/badges.test.ts test/status-header.test.ts test/gui-client.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** The header badge and the GUI budget tile render each subscription backend's window under that backend's name; a claude-only team's text is byte-identical.
+
+**Approach.**
+- src/ui/badges.ts: `claudeWindowBadge(claudeWindow, now, moved)` becomes `subscriptionWindowBadge(blocks, now, moved)`, rendering `${block.label} ${windowLabel(block.primary.type)}` + utilization percent or status word + the "<backend id> model jobs wait until HH:MM" hold clause. The hold clause names the backend by its lowercase id (`block.backend`), not the display label, so a claude-only team keeps the byte-identical `claude model jobs wait` the old badge rendered (the acceptance pins that exact string); the label replaces hardcoded "claude" only in the window's opening `<label> <type>` label. The badge shows `blocks[0]` (the list is already most-constrained-first). `budgetBadge(budget, claudeWindow, now, chain)` becomes `budgetBadge(budget, windows, only, now, chain)`: the `if (only) return window` replacement and the "beside the spend" join are unchanged over the new arguments. `claudeWindowTone(claudeWindow)` becomes `subscriptionWindowTone(blocks)` reading `blocks[0]`.
+- src/ui/status-render.ts and src/ui/status-payload.ts: pass `snap.subscriptionWindows` and `snap.subscriptionOnly` to `budgetBadge` and the tone; the payload's preformatted `budgetBadge` string is that same function's output.
+- src/ui/gui/gui-client-operator.ts: `budgetCardHtml(b, cw, chain)` becomes `budgetCardHtml(b, blocks, only, chain)` and `windowLinesHtml` takes the block list and `only`; they emit one window line per block (same per-line markup), each opening under `block.label`, and the held line names the block's label (`<label> model jobs wait until HH:MM`).
+
+**Acceptance criteria.**
+- Existing badge and status-header tests for a claude-only snapshot pass with byte-identical strings.
+- With a `sub` block ordered first, the header badge reads `Sub 7d · 40%` and the tile lists both `Claude 5h …` and `Sub 7d …`; with claude first, the header keeps `Claude 5h …`.
+- `npm test` passes.
+
 ### An operator `tumwater revert` logs an `operator_revert` event, so the reverted run's trail and history name the revert and the role it undid (planned 2026-10-23 by the plan role; independent of every eligible plan and of the Codex backend series; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/operator/revert.ts src/run/run-detail-data.ts src/run/run-detail-render.ts docs/cli.md test/operator-revert.test.ts test/run-detail-data.test.ts test/run-detail.test.ts test/event-format.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** An operator who runs `tumwater revert` on a merged change leaves a trace the team can read. Today only the automatic main-watch revert logs an event (`main_revert`), and the run trail matches only `main_revert`; `revertedOf`'s doc comment says so in as many words ("an operator `tumwater revert` logs no `main_revert` and stays uncovered"). After this plan, `tumwater history <role> <n>`, the TUI's History trail and the dashboard's History drill-down all show `· reverted <sha> (by operator)` for a change an operator took back, and the event feed names it.
