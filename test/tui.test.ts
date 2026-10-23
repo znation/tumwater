@@ -824,8 +824,8 @@ test("runTui's renderer never emits a screen clear between frames (flicker regre
 });
 
 // PgDn/PgUp in the usage-report view page the cached
-// report within the pane's line budget, clamped at both ends. The 14-day report is 24
-// lines (8 chrome + 14 day rows + 2); a dozen queued prompts each consume one line of
+// report within the pane's line budget, clamped at both ends. The 14-day report is 25
+// lines (8 chrome + 14 day rows + 3); a dozen queued prompts each consume one line of
 // the budget, so the window (≤ ~21 lines at rows=40) is strictly smaller than the report
 // and paging has real room in both directions.
 test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async () => {
@@ -845,7 +845,7 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     // the title has scrolled out of the window.
     for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
     frame = tui.lastFrame();
-    assert.match(frame, /\*\*Cost by role:\*\*/);
+    assert.match(frame, /\*\*Post-merge rejections by role:\*\*/);
     assert.doesNotMatch(frame, /# tumwater usage report/);
     const tailFrame = frame;
     tui.key(undefined, "pagedown");

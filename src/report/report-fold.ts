@@ -38,6 +38,10 @@ export interface UsageFold {
   /** review_rejected events per role id — the review gate's turn-backs, split by role so a
    * role whose every change draws a new objection is visible alongside its runs/cost. */
   rejectionsByRole: Record<string, number>;
+  /** The `review_rejected` events whose `afterMerge` is true, per role id — a subset of
+   * `rejectionsByRole`, kept apart because a post-merge rejection turns back an already-merged
+   * commit (one that must come off main, unlike a rejection of a change the gate held). */
+  postMergeRejectionsByRole: Record<string, number>;
   /** revision events per role id — the rework rounds a rejected change is re-applied through,
    * split by role so a role whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the merge slot's). */
@@ -229,6 +233,10 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // One rejection per event, on the day it happened, per role. Zero-means-absent: a role
     // that never rejected stays absent, like costByRole.
     addTo(target.rejectionsByRole, eventRole(ev), 1);
+    // A rejection that carried afterMerge: true is a post-merge one — the commit had already
+    // landed, so the reviewer's turn-back reaches the revert path off main. Kept as its own
+    // subset of rejectionsByRole because it is a different, costlier kind of rejection.
+    if (ev.afterMerge === true) addTo(target.postMergeRejectionsByRole, eventRole(ev), 1);
     // A rejection that carried a positive durationMs means a reviewer actually ran the gate
     // and reached a verdict (post-merge rejections do; the build pre-check contributes no
     // duration), so it joins the review-duration median beside approvals. durationMs: 0 and
@@ -358,6 +366,9 @@ interface DayFold {
   notionalCostUsd: number;
   runsByRole: Record<string, number>;
   rejectionsByRole: Record<string, number>;
+  /** The day's `review_rejected` events whose `afterMerge` is true, per role id — the subset
+   * of rejectionsByRole whose rejection reached an already-merged commit. */
+  postMergeRejectionsByRole: Record<string, number>;
   revisionsByRole: Record<string, number>;
   refusalsByRole: Record<string, number>;
   revertsByRole: Record<string, number>;
@@ -530,6 +541,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       notionalCostUsd: 0,
       runsByRole: {},
       rejectionsByRole: {},
+      postMergeRejectionsByRole: {},
       revisionsByRole: {},
       refusalsByRole: {},
       revertsByRole: {},

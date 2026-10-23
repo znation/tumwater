@@ -65,6 +65,7 @@ export function collectReportSince(
     runs: 0,
     runsByRole: {},
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -154,6 +155,7 @@ export function collectReportSince(
     runsByRole: scopedByRole(acc.runsByRole, bases),
     costByRole: scopedByRole(acc.costByRole, bases),
     rejectionsByRole: scopedByRole(acc.rejectionsByRole, bases),
+    postMergeRejectionsByRole: scopedByRole(acc.postMergeRejectionsByRole, bases),
     revisionsByRole: scopedByRole(acc.revisionsByRole, bases),
     refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
     revertsByRole: scopedByRole(acc.revertsByRole, bases),
@@ -249,6 +251,8 @@ export function collectReport(root: string, days: number, role?: string | readon
       // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.rejectionsByRole).length > 0)
         day.rejectionsByRole = fold.rejectionsByRole;
+      if (Object.keys(fold.postMergeRejectionsByRole).length > 0)
+        day.postMergeRejectionsByRole = fold.postMergeRejectionsByRole;
       if (Object.keys(fold.revisionsByRole).length > 0)
         day.revisionsByRole = fold.revisionsByRole;
       if (Object.keys(fold.refusalsByRole).length > 0)
@@ -333,6 +337,8 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.costByRole = narrowToRole(fold.costByRole, bases);
       const rejs = narrowToRole(fold.rejectionsByRole, bases);
       if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
+      const pmRejs = narrowToRole(fold.postMergeRejectionsByRole, bases);
+      if (Object.keys(pmRejs).length > 0) day.postMergeRejectionsByRole = pmRejs;
       const revs = narrowToRole(fold.revisionsByRole, bases);
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
       const refusals = narrowToRole(fold.refusalsByRole, bases);

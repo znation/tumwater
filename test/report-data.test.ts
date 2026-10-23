@@ -105,6 +105,29 @@ test("collectReport folds review_rejected events into per-day per-role rejection
   assert.equal(total, 3);
 });
 
+test("collectReport folds post-merge review_rejected events into their own map", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    // A rejection that reached an already-merged commit: afterMerge true.
+    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected", afterMerge: true }), // retired-name-ok: legacy event field in a fixture
+    // A pre-merge rejection: same rejection, never escaped to main.
+    JSON.stringify({ ts: at(0), loop: "clean", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReport(root, 4);
+  const today = data.series[data.series.length - 1];
+  // Both still count as rejections; only the afterMerge one reaches the post-merge map.
+  assert.deepEqual(today?.rejectionsByRole, { feature: 1, clean: 1 });
+  assert.deepEqual(today?.postMergeRejectionsByRole, { feature: 1 });
+  // A day with no afterMerge rejection carries no postMergeRejectionsByRole key (zero means
+  // absent, like its rejectionsByRole sibling).
+  for (const d of data.series) {
+    if (d !== today) {
+      assert.ok(!Object.hasOwn(d, "postMergeRejectionsByRole"), `${d.date} carries no postMergeRejectionsByRole`);
+    }
+  }
+});
+
 test("collectReportSince folds review_rejected events into the window totals", () => {
   const root = tmpdir();
   writeEvents(root, [
@@ -115,6 +138,22 @@ test("collectReportSince folds review_rejected events into the window totals", (
   ]);
   const data = collectReportSince(root, 6 * HOUR);
   assert.deepEqual(data.rejectionsByRole, { feature: 1, qa: 1 });
+});
+
+test("collectReportSince carries the post-merge rejection subset", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "review_rejected", afterMerge: true }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "review_rejected" }), // retired-name-ok: legacy event field in a fixture
+    // Outside the 6 h window — must not count.
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "review_rejected", afterMerge: true }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReportSince(root, 6 * HOUR);
+  assert.deepEqual(data.rejectionsByRole, { feature: 1, clean: 1 });
+  assert.deepEqual(data.postMergeRejectionsByRole, { feature: 1 });
+
+  const empty = collectReportSince(tmpdir(), 6 * HOUR);
+  assert.deepEqual(empty.postMergeRejectionsByRole, {});
 });
 
 test("collectReport folds main_revert events into per-day per-role reverts keyed by the runner", () => {

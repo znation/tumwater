@@ -26,6 +26,10 @@ export interface ReportDay {
   costByRole: Record<string, number>;
   /** review_rejected events per role id; absent when the day has none (zero means absent). */
   rejectionsByRole?: Record<string, number>;
+  /** The `review_rejected` events whose `afterMerge` is true, per role id — the subset of
+   * this day's `rejectionsByRole` whose rejection reached an already-merged commit; absent
+   * when the day has none (zero means absent). */
+  postMergeRejectionsByRole?: Record<string, number>;
   /** revision events per role id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
   /** run_end events per role id (its result is `refused` — a run that deliberately declined
@@ -196,6 +200,10 @@ export interface SinceReport {
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
   /** review_rejected events per role id; empty when the window has none. */
   rejectionsByRole: Record<string, number>;
+  /** The `review_rejected` events whose `afterMerge` is true, per role id — the subset of
+   * this window's `rejectionsByRole` whose rejection reached an already-merged commit;
+   * always present (empty map when none), like the other per-day role maps. */
+  postMergeRejectionsByRole: Record<string, number>;
   /** revision events per role id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
   /** run_end events per role id whose result is `refused` (a run that deliberately declined

@@ -240,8 +240,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // a window main was never red.
   if (data.mainRedMs > 0) lines.push(`**Main red:** ${durationLabel(data.mainRedMs)}`);
   // The same breakdown for review friction: rejections per role from review_rejected events;
-  // a window with none renders "-" like the other lines.
+  // a window with none renders "-" like the other lines. The post-merge line is the
+  // afterMerge: true subset — rejections that reached an already-merged commit.
   pushRankedRoleLine(lines, "Rejections by role", rankedRoleMap(data.rejectionsByRole));
+  pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleMap(data.postMergeRejectionsByRole));
   pushRankedRoleLine(lines, "Revisions by role", rankedRoleMap(data.revisionsByRole));
   pushRankedRoleLine(lines, "Refusals by role", rankedRoleMap(data.refusalsByRole));
   pushRankedRoleLine(lines, "Reverts by role", rankedRoleMap(data.revertsByRole));
@@ -407,8 +409,10 @@ export function renderReportMarkdown(data: ReportData): string {
     if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
   // The same breakdown for review friction: window rejections per role from review_rejected
-  // events, ranked like the runs line; a window with none renders "-".
+  // events, ranked like the runs line; a window with none renders "-". The post-merge line
+  // is the afterMerge: true subset — rejections that reached an already-merged commit.
   pushRankedRoleLine(lines, "Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}));
+  pushRankedRoleLine(lines, "Post-merge rejections by role", rankedRoleTotals(data.series, (d) => d.postMergeRejectionsByRole ?? {}));
   pushRankedRoleLine(lines, "Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}));
   pushRankedRoleLine(lines, "Refusals by role", rankedRoleTotals(data.series, (d) => d.refusalsByRole ?? {}));
   pushRankedRoleLine(lines, "Reverts by role", rankedRoleTotals(data.series, (d) => d.revertsByRole ?? {}));

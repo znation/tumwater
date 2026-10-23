@@ -54,6 +54,7 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[13], "**Tokens by role:** -", "no token spend renders '-' like the cost line");
   assert.equal(lines[14], "**Cost by role:** -");
   assert.equal(lines[15], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
+  assert.equal(lines[16], "**Post-merge rejections by role:** -", "no post-merge rejections renders the line as '-', its sibling's convention");
 });
 
 test("renderReportMarkdown appends the window's newly filed plans and bugs to the totals line", () => {
@@ -82,12 +83,13 @@ test("renderReportMarkdown prints a Rejections by role line ranked by count, onl
     to: "2026-09-10",
     series: [
       { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, postMergeRejectionsByRole: { feature: 2 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
     totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   });
   assert.match(md, /\*\*Rejections by role:\*\* feature — 3 · qa — 1/, "window rejections rank by count desc then name asc");
+  assert.match(md, /\*\*Post-merge rejections by role:\*\* feature — 2/, "the post-merge line ranks its afterMerge subset like its sibling");
 });
 
 test("report folds revision events into Revisions by role, beside Rejections by role", async () => {
@@ -595,6 +597,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -628,6 +631,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     runsByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
+    postMergeRejectionsByRole: { feature: 1 },
     revisionsByRole: { feature: 1 },
     refusalsByRole: {},
     revertsByRole: {},
@@ -652,6 +656,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /\*\*Tokens by role:\*\* clean — 12\.0k · feature — 5000 · bugfix — 800/);
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
   assert.match(data, /\*\*Rejections by role:\*\* clean — 1 · feature — 1/, "equal rejection counts rank by name asc");
+  assert.match(data, /\*\*Post-merge rejections by role:\*\* feature — 1/, "the post-merge line ranks its afterMerge subset");
   assert.match(data, /\*\*Revisions by role:\*\* feature — 1/);
   assert.match(data, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report \(--days\)/);
 });
@@ -665,6 +670,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -691,6 +697,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -719,6 +726,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -747,6 +755,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     runsByRole: { feature: 5 },
     costByRole: { feature: 0.75 },
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: { feature: 3 },
     refusalsByRole: {},
     revertsByRole: {},
@@ -779,6 +788,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     revertsByRole: {},
@@ -809,6 +819,7 @@ test("renderSinceReportMarkdown prints Main red wall-clock for a positive window
     runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    postMergeRejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
     failedRunsByRole: {},
