@@ -131,6 +131,27 @@ test("pendingQueueHtml names a re-submitted change's revision round and prior ob
   assert.doesNotMatch(bad, /revision|undefined|NaN/);
 });
 
+test("pendingQueueHtml names a re-queued entry's retry and its deferral", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", run: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
+    { role: "bugfix", sha: "0123456789abcdef", run: 7, summary: "re-queue the thing", enqueuedAt: now - 5_000, retry: "review_error", notBefore: now + 42_000 },
+  ] };
+  const html = pendingQueueHtml(q, now);
+  assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · add the thing/, "a fresh entry's line is unchanged");
+  assert.match(html, /2\. bugfix run #7 · 01234567 · 5s ago · re-queued after review_error · eligible in 42s · re-queue the thing/);
+  assert.doesNotMatch(html, /undefined|NaN/);
+  // A row without retry/notBefore renders neither clause and no undefined/NaN.
+  const plain = pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now },
+  ] }, now);
+  assert.doesNotMatch(plain, /re-queued|eligible|undefined|NaN/);
+});
+
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],

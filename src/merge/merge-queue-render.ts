@@ -4,7 +4,7 @@
  * collected view and a `now` instant — no I/O, no clock reads — so the age it prints can be
  * pinned by a test. */
 
-import { humanAgo, humanSeconds, secondsSince } from "../text/datetime.js";
+import { humanAgo, humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { plural } from "../text/phrases.js";
@@ -37,6 +37,19 @@ export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorRev
   let note = "revision " + entry.revisionRound;
   const reasons = entry.priorReview?.reasons;
   if (Array.isArray(reasons) && reasons.length > 0) note += " · " + plural(reasons.length, "prior objection");
+  return note;
+}
+
+/** One re-queued entry's what-brought-it-back note:
+ * `re-queued after <result>`, plus ` · eligible in <duration>` while a `review_error` 60 s
+ * deferral still holds (its `notBefore` in the future). "" for a fresh entry with no `retry`
+ * field, so a first submission's queue line is byte-identical. */
+export function retryNote(entry: Pick<MergeEntry, "retry" | "notBefore">, now: number): string {
+  if (entry.retry === undefined) return "";
+  let note = `re-queued after ${entry.retry}`;
+  if (entry.notBefore !== undefined && entry.notBefore > now) {
+    note += ` · eligible in ${humanSeconds(secondsUntil(entry.notBefore, now))}`;
+  }
   return note;
 }
 
@@ -92,7 +105,9 @@ export function renderMergeQueue(
       const tag = label ? ` · [${label}]` : "";
       const note = revisionNote(e);
       const noteTag = note ? ` · ${note}` : "";
-      lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${noteTag} · ${e.summary}`);
+      const retry = retryNote(e, now);
+      const retryTag = retry ? ` · ${retry}` : "";
+      lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${retryTag}${noteTag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

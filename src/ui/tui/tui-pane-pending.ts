@@ -1,5 +1,5 @@
 import { readMergeQueue, queuedMergeFiles, type MergeEntry, type MergeQueueView } from "../../merge/merge-queue.js";
-import { renderMergeQueue, revisionNote, scopeMergeQueue } from "../../merge/merge-queue-render.js";
+import { renderMergeQueue, revisionNote, retryNote, scopeMergeQueue } from "../../merge/merge-queue-render.js";
 import { cancelQueuedMerge } from "../../merge/merge-cancel.js";
 import { mergeChanges } from "../../merge/merge-slot.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
@@ -117,12 +117,14 @@ export function createPendingPane(session: TuiPaneSession) {
   const mergeDetail = (row: { entry: MergeEntry; position: number }): string => {
     const e = row.entry;
     const note = revisionNote(e);
+    const retry = retryNote(e, session.now());
     const lines = [
       `merge #${row.position} (Ctrl+X to cancel): ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${humanAgo(e.enqueuedAt, session.now())}`,
       e.summary,
     ];
     if (e.body) lines.push("", e.body);
     if (note) lines.push("", note);
+    if (retry) lines.push("", retry);
     return lines.join("\n");
   };
   // Re-read the pane's rows after the queue or the Ctrl+G scope changed (the same traversal

@@ -17,7 +17,7 @@ import {
   readMergeQueue,
   staleHeadFile,
 } from "../src/merge/merge-queue.js";
-import { queueEntryMergeLabel, renderMergeQueue, revisionNote } from "../src/merge/merge-queue-render.js";
+import { queueEntryMergeLabel, renderMergeQueue, revisionNote, retryNote } from "../src/merge/merge-queue-render.js";
 import { mergeQueueDir } from "../src/paths.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
 import { dieMidWrite } from "./helpers/fs-faults.js";
@@ -284,6 +284,15 @@ test("revisionNote names a re-submitted change's revision round and prior object
   assert.equal(revisionNote({ revisionRound: 3, priorReview: { sha: "a".repeat(40), reasons: [] } }), "revision 3");
 });
 
+test("retryNote names why a re-queued entry is back and its deferral", () => {
+  const now = 1_000_000;
+  assert.equal(retryNote({}, now), "");
+  assert.equal(retryNote({ retry: "merge_blocked" }, now), "re-queued after merge_blocked");
+  assert.equal(retryNote({ retry: "review_error", notBefore: now + 42_000 }, now), "re-queued after review_error · eligible in 42s");
+  // A notBefore in the past appends no eligibility clause.
+  assert.equal(retryNote({ retry: "review_error", notBefore: now - 1 }, now), "re-queued after review_error");
+});
+
 test("renderMergeQueue prints a re-submitted change's revision note before its summary", () => {
   const now = 1_000_000;
   const view = {
@@ -296,6 +305,22 @@ test("renderMergeQueue prints a re-submitted change's revision note before its s
   const lines = renderMergeQueue(view, now).split("\n");
   assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
   assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · revision 1 · 2 prior objections · revise the thing");
+});
+
+test("renderMergeQueue names why a re-queued entry is back between its merge tag and its summary", () => {
+  const now = 1_000_000;
+  const view = {
+    entries: [
+      { role: "improve", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 },
+      { role: "feature", sha: "b".repeat(40), run: 7, summary: "re-queue the thing", enqueuedAt: now - 4_000, retry: "review_error", notBefore: now + 42_000 },
+      { role: "organize", sha: "c".repeat(40), run: 1, summary: "blocked clean", enqueuedAt: now - 3_000, retry: "merge_blocked" },
+    ],
+    unreadable: 0,
+  };
+  const lines = renderMergeQueue(view, now).split("\n");
+  assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
+  assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · re-queued after review_error · eligible in 42s · re-queue the thing");
+  assert.equal(lines[3], "  3. organize run #1 · cccccccc · 3s ago · re-queued after merge_blocked · blocked clean");
 });
 
 test("readMergeQueue reads a missing queue dir as empty with no skips", () => {

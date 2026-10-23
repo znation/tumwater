@@ -2732,6 +2732,16 @@ test("the Pending pane selects a queued merge in full and Esc returns to the lis
   assert.equal(keys.state().queueDetail, "", "Esc clears the detail");
 });
 
+test("the Pending pane names why a selected re-queued merge is back", async () => {
+  const root = makeRepo();
+  const sha = pinOffMain(root, (d) => fs.writeFileSync(path.join(d, `fq.txt`), "one\n"), "add one");
+  assert.ok(await setRef(root, mergeRefName("feature"), sha));
+  enqueueMerge(root, { role: "feature", sha, run: 1, summary: "add one", enqueuedAt: Date.now(), retry: "review_error", notBefore: Date.now() + 60_000 });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select the single queued merge
+  assert.ok(keys.state().queueDetail.includes("re-queued after review_error"), "the selected-row detail names why it is back");
+});
+
 test("the Pending pane cancels the selected merge with Ctrl+X twice, deleting its pin and logging merge_cancelled", async () => {
   const { root, featureSha } = await pendingCancelRoot();
   const keys = openPending(root);

@@ -89,8 +89,9 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
     { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: snap.mergeQueue.entries![0]!.enqueuedAt },
   ]);
 
-  // Two queued entries list oldest first, in the queue's filename order.
-  enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
+  // Two queued entries list oldest first, in the queue's filename order; the second carries a
+  // re-queue's `retry` and (a review_error) `notBefore`, which the payload forwards.
+  enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now(), retry: "review_error", notBefore: Date.now() + 60_000 });
   snap = snapshot(repo);
   assert.equal(snap.mergeQueue.depth, 2);
   assert.deepEqual(snap.mergeQueue.entries!.map((e) => e.role), ["clean", "feature"]);
@@ -98,6 +99,11 @@ test("snapshot reports the merge queue depth and the in-flight merge", async () 
     snap.mergeQueue.entries!.map((e) => [e.sha, e.run, e.summary, typeof e.enqueuedAt]),
     [["abc1234", 1, "tidy something", "number"], ["def5678", 2, "add a thing", "number"]],
   );
+  // The re-queued entry carries its retry and notBefore; a fresh entry's keys stay absent.
+  assert.equal(snap.mergeQueue.entries![1]!.retry, "review_error");
+  assert.equal(typeof snap.mergeQueue.entries![1]!.notBefore, "number");
+  assert.equal("retry" in snap.mergeQueue.entries![0]!, false);
+  assert.equal("notBefore" in snap.mergeQueue.entries![0]!, false);
   // The entries are shallow copies, not the queue's own objects (the drawer never mutates
   // them, and nothing the queue file held beyond the listed fields leaks into the payload).
   assert.equal("body" in snap.mergeQueue.entries![0]!, false);

@@ -225,8 +225,13 @@ export function eventMessage(e: HarnessEvent): string {
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "merge_queued":
       // Merge queue 3/5: routine state change (the run committed and the merge slot is
-      // ahead) — no warning prefix. The merge's own events follow it.
-      return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
+      // ahead) — no warning prefix. The merge's own events follow it. A retry-bearing event
+      // (a re-queued entry) appends its why-it-is-back suffix; a
+      // fresh enqueue's line stays byte-identical.
+      {
+        const base = `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
+        return `${base}${typeof e.retry === "string" && e.retry ? ` (re-queued after ${textOr(e.retry)})` : ""}`;
+      }
     case "merge_cancelled":
       // Routine operation (the user removed a waiting merge), not a warning — like
       // prompt_cancelled. The merge_cancelled event name carries the payload (commit + summary).

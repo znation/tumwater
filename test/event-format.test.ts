@@ -680,6 +680,9 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Every line starts with the wall-clock time and the padded role name — assert the payload.
   const queued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
   assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `merge_queued must name the sha and summary: ${queued}`);
+  // A retry-bearing merge_queued appends its suffix; a fresh one's line above is unchanged.
+  const requeued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up", retry: "merge_blocked" } as never);
+  assert.match(requeued, /clean\s+waiting to merge abcdef12 — tidy up \(re-queued after merge_blocked\)$/, `a retry-bearing merge_queued names it: ${requeued}`);
 
   // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
   const bare = formatEvent({ ts: 0, source: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
