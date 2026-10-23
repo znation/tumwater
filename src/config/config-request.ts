@@ -6,8 +6,9 @@
  * `unset` verbs (a staged file that must never reach a diff, not direct CLI text), so the
  * runtime (run-verdict.ts) imports this module rather than the whole editor. It
  * still shares the write machinery with the editor — withConfigLock and rawConfigObject from
- * config-write.ts, validateConfig from config-validation.ts, writeJsonAtomic from
- * json-files.js — because a request is a whole-config write too. */
+ * config-write-core.ts (the editor verbs live in config-write.ts), validateConfig from
+ * config-validation.ts, writeJsonAtomic from json-files.js — because a request is a
+ * whole-config write too. */
 import fs from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import type { TumwaterConfig } from "./config-schema.js";
@@ -16,7 +17,7 @@ import { errorMessage } from "../text/text.js";
 import { readTextOrNull } from "../files/files.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
-import { withConfigLock, rawConfigObject } from "./config-write.js";
+import { withConfigLock, rawConfigObject } from "./config-write-core.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { normalizeConfigKeys } from "./config-aliases.js";

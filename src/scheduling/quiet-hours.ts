@@ -31,8 +31,8 @@ type ParsedQuietHours =
 
 /** The error arm of ParsedQuietHours — one home for the `{ ok: false, error }` constructor
  * every parse-failure path of parseQuietHours returns, so the shape cannot drift between
- * the five rejection messages. (The same-named helper in config-write.ts serves the config
- * writers' parallel union; the type here is narrower, so each module owns its own.) */
+ * the five rejection messages. (The same-named helper in config-write-core.ts serves the
+ * config writers' parallel union; the type here is narrower, so each module owns its own.) */
 function fail(error: string): { ok: false; error: string } {
   return { ok: false, error };
 }

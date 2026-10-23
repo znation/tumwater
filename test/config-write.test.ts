@@ -1,6 +1,7 @@
 // Tests for src/config/config-write.ts's key-editing engine (setConfigKey, parseConfigKey) and
-// the module-wide invariants every write path shares (the file's own roles section, one pi
-// spelling, cross-process locking). The budget setter is in test/config-budget.test.ts, the
+// the module-wide invariants the shared write machinery in src/config/config-write-core.ts
+// upholds (the file's own roles section, one pi spelling, cross-process locking). The budget
+// setter is in test/config-budget.test.ts, the
 // config request in test/config-request.test.ts, and unsetConfigKey in
 // test/config-unset-key.test.ts. Tests for src/config/config.ts itself live in
 // test/config.test.ts and for src/config/config-validation.ts in test/config-validation.test.ts.

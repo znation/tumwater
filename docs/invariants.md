@@ -160,8 +160,9 @@ only that field and leaves the file's other role entries untouched. No such edit
 built-in catalog into tumwater.json; `roles` still merges per entry at load, so omission never
 disables a role and the dotted `roles.<id>.enabled false` is the disable verb.
 
-**Binds.** `src/config/config-write.ts` (`setConfigKey`, `unsetConfigKey`, `setDailyBudgetUsd`,
-`preserveFileRoles`) and `src/config/config-request.ts` (`applyConfigRequest`).
+**Binds.** `src/config/config-write.ts` (`setConfigKey`, `unsetConfigKey`, `setDailyBudgetUsd`),
+`src/config/config-write-core.ts` (`preserveFileRoles`) and `src/config/config-request.ts`
+(`applyConfigRequest`).
 
 **Pinned by.** `test/config-write.test.ts` — "a whole-config write preserves the file's own
 roles section", "a whole-config write does not add a roles section the file never had", and

@@ -10,8 +10,8 @@
  * state the harness runs with
  * are two layers, changed for different reasons by different readers: a tumwater.json knob
  * hunt starts here, a run-lifecycle trace starts beside the type it traces. Sibling
- * modules: config.ts (defaults + load), config-validation.ts (validation), config-write.ts
- * and config-request.ts (writes). */
+ * modules: config.ts (defaults + load), config-validation.ts (validation), config-write-core.ts
+ * (machinery) + config-write.ts and config-request.ts (writes). */
 
 import { objectOrEmpty } from "../files/json-object.js";
 

@@ -4,8 +4,9 @@
  * shell completion, doctor's holds and the dashboard controllers all address keys and screen
  * per-key values without performing a write, so burying this in the config-write module made
  * read-side callers import from the "config WRITES" layer. The mutators (the load →
- * validate → atomic-write idiom, the cross-process lock) live in src/config/config-write.ts
- * (the director's staged request in src/config/config-request.ts);
+ * validate → atomic-write idiom, the cross-process lock) live in src/config/config-write-core.ts
+ * (the operator-editor verbs in src/config/config-write.ts;
+ * the director's staged request in src/config/config-request.ts);
  * the per-key validators and key-shape parsing here are the one home of the wording both the
  * writers and the read side show. */
 import { BACKEND_KEYS, BACKOFF_KEYS, BOOTSTRAP_KEYS, CHECK_KEYS, CLAUDE_AGENT_KEYS, CODEX_BACKEND_KEYS, REVIEW_KEYS, ROLE_ENTRY_KEYS, TIER_MAP_KEYS, TOP_LEVEL_KEYS, type ModelTier } from "./config-schema.js";
