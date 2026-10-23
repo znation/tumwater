@@ -50,31 +50,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### `tumwater start --once --json` prints the round's per-role outcomes as one JSON object, so a cron/CI caller does not parse the prose summary (planned 2026-10-23 by the plan role; independent of every eligible plan — the interlock and pollRunnerReasons-split series touch src/orchestrator and src/merge, the Codex write-guard parts touch src/agent, src/prompt and docs/backends, and the merge-slot median touches src/report and src/ui/gui; the only shared file is docs/cli.md, where this edits the `Start the team` once block and that plan edits the `tumwater report` row, so whichever lands second rebases there; touches src/cli/cli-start.ts src/cli/cli-flag-specs.ts src/cli/help.ts docs/cli.md test/cli-start.test.ts test/cli-start-once.test.ts)
-
-**Goal.** `tumwater start --once` is the README's cron/CI command: it does one round, prints a one-line prose summary (`onceSummary`) plus a `once: failed — …` line when the round failed, and exits 3 on such a failure. A CI step that wants per-role outcomes — which role merged, which errored, which was skipped and why — has to scrape that prose. Add `--json`, valid only with `--once`, that prints the same round facts as one JSON document on stdout with the banner and the event stream suppressed, so the caller parses the round directly.
-
-**Approach.**
-- src/cli/cli-start.ts: split `onceSummary` into a structured `onceReport(root, roles, runsBefore, settled, runsDone)` and a `renderOnceSummary(report)` that produces today's exact line; keep `onceSummary` as their composition so its exported signature and every existing test stay unchanged. `onceReport` walks the existing `onceRoundRoles`/`onceFailures` helpers and returns `{ runs, outcomes, skipped, failures }`:
-  - `runs`: the round's total run count (the `ran > 0` sum).
-  - `outcomes`: `{ [result: string]: number }`, one key per result a ran role ended on (`state.lastResult ?? "no_change"`), inserted in the `compareCodeUnits`-sorted order `onceSummary` uses.
-  - `skipped`: `[{ role, reason }]` in role order, one entry per role with `ran === 0`, `reason` resolved exactly as `onceSummary` resolves it (the `settled` map, then the pause marker, then `stateSkipReason`).
-  - `failures`: `onceFailures(...)` verbatim.
-- In `cmdStart`, read `const json = args.includes("--json");` beside `once`, and beside the `--role` guard add `if (json && !once) fail("--json is only valid with --once");`. When `json` is true, skip the three banner `say(...)` lines and the `subscribeEvents((e) => say(formatEvent(e)))` subscription, and after the round print `sayJson(onceReport(...))` instead of the `onceSummary` line; the `onceFailures` line and the `ONCE_FAILED_EXIT_CODE` exit are unchanged. The orchestrator and merge pipeline record events through `logEvent` (file plus subscription), not stdout, and the supervisor prints nothing on stdout for a once round, so stdout then holds exactly the one JSON document.
-- src/cli/cli-flag-specs.ts: add `JSON_FLAG` to `START_FLAG_SPECS` and widen the spec's doc comment to name `--once --json`.
-- src/cli/help.ts: add `[--json]` after `[--once]` in the `tumwater start` synopsis, and under the `--once` stanza add one wrapped line: ``--once --json prints the round's totals, per-result counts, skipped roles and failures as one JSON object on stdout (no banner or event stream); only valid with --once;``.
-- docs/cli.md: in the `Start the team` block, under the `tumwater start --once` comment line, add `# add --json to print the round's totals, per-result counts, skipped roles and failures as one JSON object (only with --once)`.
-
-**Tests.**
-- test/cli-start.test.ts: a new test for `onceReport` over the same seeded state the `onceSummary` tests use — one advanced run and one skipped role — asserting `runs`, the sorted `outcomes`, the `skipped` role/reason pairs, and `failures`; and that `onceSummary(...)` still equals `renderOnceSummary(onceReport(...))`.
-- test/cli-start-once.test.ts: a new test `run --once --json prints one JSON object and no banner or event stream` — `withIdlePi`, `cli(repo, "run", "--once", "--json")`, `JSON.parse(r.stdout)` gives `runs: 1`, `outcomes: { no_change: 1 }`, empty `skipped` and `failures`, and `r.stdout` matches neither `/tumwater once on branch/` nor `/roles:/`; a second test `run --json without --once is refused` — `cli(repo, "run", "--json")` exits 1 with `/--json is only valid with --once/` and boots nothing.
-
-**Acceptance criteria.**
-- `tumwater start --once --json` writes exactly one parseable JSON object to stdout (no banner, no event lines) and exits 0, or 3 when the round failed, carrying `runs`, `outcomes`, `skipped` and `failures`; `--once --role clean --json` carries only clean's work.
-- `tumwater start --json` without `--once` exits 1 with `--json is only valid with --once`; the daemon and `--for` output are unchanged.
-- `tumwater start --once` (no `--json`) prints the same banner, event stream and summary line as before.
-- `npm run test:gate` passes.
-
 ### Backlog hold convergence, part 2/3: The operator sees a held-for-operator entry and `--release` clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alerts.ts src/ui/status-model.ts and their tests)
 
 **Goal.** A held-for-operator entry is visible to the operator with `tumwater plan --release` as the way out, and release actually lifts it — today `--release` lifts only Refused and Waiting notes and deliberately leaves Needs-review alone.

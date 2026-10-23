@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceSummary, parseRunWindow, windowSummary } from "../src/cli/cli-start.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowSummary } from "../src/cli/cli-start.js";
 import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
@@ -230,6 +230,31 @@ test("skip reasons are reported verbatim and in role order", () => {
   );
 
   assert.equal(line, "once: 0 runs — nothing ran, 3 skipped (deferred, disabled, backoff)");
+});
+
+test("onceReport returns the structured round facts, and renderOnceSummary matches onceSummary", () => {
+  const root = makeRepo();
+  // One advanced run per result plus one skipped role: the same seeded shapes the onceSummary
+  // tests use — a round of 2 new runs (clean advanced 2, docs 1 of its 2), a skipped role, and
+  // a failure — collected into the object a `--once --json` caller parses.
+  saveRunnerState(root, state("clean", { runs: 2, lastResult: "changed" }));
+  saveRunnerState(root, state("docs", { runs: 2, lastResult: "error" }));
+  saveRunnerState(root, state("qa", { runs: 1 }));
+
+  const roles = ["clean", "docs", "qa"];
+  const runsBefore = new Map([
+    ["clean", 0],
+    ["docs", 1],
+    ["qa", 1],
+  ]);
+  const settled = new Map([["qa", "idle"]]);
+  const report = onceReport(root, roles, runsBefore, settled);
+
+  assert.equal(report.runs, 3);
+  assert.deepEqual(report.outcomes, { changed: 1, error: 1 });
+  assert.deepEqual(report.skipped, [{ role: "qa", reason: "idle" }]);
+  assert.deepEqual(report.failures, [{ role: "docs", result: "error" }]);
+  assert.equal(onceSummary(root, roles, runsBefore, settled), renderOnceSummary(report));
 });
 
 test("a role the settle map lacks falls back to state, via the pause marker", () => {

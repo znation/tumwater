@@ -428,7 +428,8 @@ const PORT_FLAG: FlagSpec = {
 };
 
 /** `tumwater start`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
- * parseBranchFlag), `--once` (one full round of runs, then exit), `--role <id>`
+ * parseBranchFlag), `--once` (one full round of runs, then exit), `--json` (with `--once`, print
+ * the round's outcomes as one JSON document), `--role <id>`
  * (scope a --once round to one role, parsed by parseRoleFlag), `--gui` (also serve the browser
  * dashboard), and `--port <n>` (choose the dashboard port, shared with `tumwater gui`; the
  * dashboard's --all-interfaces and --token stay on `tumwater gui`). Exported
@@ -439,6 +440,7 @@ const PORT_FLAG: FlagSpec = {
 export const START_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
+  JSON_FLAG,
   // `run --gui` is the one-command form of the dashboard: it boots the team and serves the
   // browser dashboard on its defaults, loopback on port 7180. `--port <n>` (shared with `tumwater
   // gui` via PORT_FLAG) picks another port, exactly like `tumwater gui --port <n>`; the

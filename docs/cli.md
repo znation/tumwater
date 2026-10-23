@@ -26,6 +26,7 @@ tumwater start --tui        # ... and host the TUI in this same terminal (the `t
 tumwater start --for 2h     # run for a bounded window (capped at 90d), then finish current work, print a per-role summary of the window, and exit (one window across updates); shown as `stops in …` on status, the TUI, and the dashboard
 tumwater start --once       # one full round of runs, finishes the merges it produced, and exits (for cron/CI); exits 3 if a run failed;
                             # add --role <id>[,<id>...] to scope the round to the listed roles (enabled roles only)
+                            # add --json to print the round's totals, per-result counts, skipped roles and failures as one JSON object (only with --once)
 tumwater start --branch <name>  # merge into that branch instead of baseBranch in tumwater.json or the checked-out branch; it must exist
 ```
 

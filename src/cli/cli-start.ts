@@ -3,11 +3,11 @@
  * command it dispatches delegates to its own module (operator/operator-commands.ts,
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …). */
 import type { StdioOptions } from "node:child_process";
-import { compareCodeUnits, increment } from "../collections.js";
+import { compareCodeUnits } from "../collections.js";
 import { baseRoleOf, runnerIds, runnerPaused } from "../roles/runner-ids.js";
 import { knownRoleIds } from "../config/config.js";
 import { unknownRoleMessage } from "../roles/roles.js";
-import { fail, say } from "./cli-output.js";
+import { fail, say, sayJson } from "./cli-output.js";
 import {
   durationLabel,
   failOverDurationCap,
@@ -55,6 +55,7 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // half runs it too, so a start that cannot boot fails before any child spawns. The flag
   // vocabulary is validated by the dispatcher (cli.ts, from the same START_FLAG_SPECS).
   const once = args.includes("--once");
+  const json = args.includes("--json");
   // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
   // drains and exits within the same invocation, so the two shapes are refused together before
   // any boot. --for stays allowed — the TUI runs for the window, like the dashboard.
@@ -84,6 +85,7 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // queued that role a prompt. Daemon `run --role` stays an error: scoping is a once-round concept.
   const roleFilter = parseRoleListFlag(args, knownRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
+  if (json && !once) fail("--json is only valid with --once");
   if (roleFilter !== null) {
     const runners = runnerIds(config);
     const missing = roleFilter.find((id) => !runners.includes(id));
@@ -122,7 +124,10 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   const stop = () => {
     if (stopping) process.exit(130);
     stopping = true;
-    say("\nstopping — finishing current runs (Ctrl+C again to force)");
+    // A --once --json round's stdout must hold exactly its one JSON document, so a signal,
+    // parent death, or scheduled stop quietens the stop prose too; the non-zero exit below
+    // is what a cron/CI caller sees instead of the words. Non-json runs keep the prose.
+    if (!json) say("\nstopping — finishing current runs (Ctrl+C again to force)");
     controller.abort();
   };
   process.on("SIGINT", stop);
@@ -137,7 +142,7 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   }) : null;
   const scheduledStopWatch = armScheduledStopWatch(root, () => {
     if (!stopping) stop(); // A drain already under way must not be turned into a force-kill.
-  });
+  }, json);
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
   // generation reparented and running the team unattended. The parent-death watch polls for the
@@ -167,14 +172,20 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
   const forNote = forMs !== null ? ` · for ${durationLabel(forMs)}` : "";
-  say(
-    once
-      ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit`
-      : `tumwater running on branch ${mainBranch}${forNote}${build}${rootNote} — Ctrl+C to stop`,
-  );
-  say(`roles: ${roles.join(", ")}`);
-  say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
-  const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
+  // A --once --json round's stdout must hold exactly its one JSON document, so its banner
+  // and event stream are suppressed: the caller parses the round's facts directly instead
+  // of the prose, and the orchestrator/merge pipeline logs events through logEvent (file
+  // plus subscription), not stdout, with nothing else printed on stdout for a once round.
+  if (!json) {
+    say(
+      once
+        ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit`
+        : `tumwater running on branch ${mainBranch}${forNote}${build}${rootNote} — Ctrl+C to stop`,
+    );
+    say(`roles: ${roles.join(", ")}`);
+    say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
+  }
+  const unsubscribe = json ? () => {} : subscribeEvents((e) => say(formatEvent(e)));
   // Snapshot each role's run counter so the once summary can tell this round's runs from
   // the persisted history (the state file accumulates across rounds).
   await runStartupMigrations(root); // so the snapshot reads a migrated state/<new>.json
@@ -197,17 +208,26 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
     scheduledStopWatch.clear();
     unsubscribe();
   }
-  if (once) say(onceSummary(root, roles, runsBefore, exit.settled, exit.runsDone));
-  else if (forMs !== null && !exit.restart) {
+  if (once) {
+    if (json) sayJson(onceReport(root, roles, runsBefore, exit.settled, exit.runsDone));
+    else say(onceSummary(root, roles, runsBefore, exit.settled, exit.runsDone));
+  } else if (forMs !== null && !exit.restart) {
     const { rows, covered } = readRunRowsSince(root, Date.now() - windowStart, null);
     say(windowSummary(durationLabel(forMs), summarizeRunRows(rows), covered));
   }
   if (once) {
     const failures = onceFailures(root, roles, runsBefore, exit.runsDone);
     if (failures.length > 0) {
-      say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
+      // In --json mode the failure facts already ride in the report's `failures`; the exit
+      // code is the contract a CI caller needs, so only the prose line is suppressed.
+      if (!json) say(`once: failed — ${failures.map((f) => `${f.role} ${f.result}`).join(", ")}`);
       process.exitCode = ONCE_FAILED_EXIT_CODE;
     }
+    // A round a signal, parent death, or scheduled stop cut short before it completed must
+    // not read as success (0) to the CI caller parsing the JSON: the document still carries
+    // the round's partial facts, but the truncated round exits non-zero. Non-json once keeps
+    // its historical behavior (prose + 0 unless a role failed).
+    if (json && stopping) process.exitCode = ONCE_FAILED_EXIT_CODE;
   }
   // A self-redeploy swapped the new build into dist/: hand the terminal back to the supervisor,
   // which respawns this same script — now the new code — as the next generation.
@@ -267,13 +287,15 @@ const SCHEDULED_STOP_POLL_MS = 5000;
 /** Poll for a `tumwater stop --in` marker: once its `until` has passed, consume the marker,
  * stop polling, and call `onStop` (cmdStart's Ctrl+C closure) exactly once. The interval is
  * unref'd; clear() retracts it. Exported for tests. */
-export function armScheduledStopWatch(root: string, onStop: () => void): { clear(): void } {
+export function armScheduledStopWatch(root: string, onStop: () => void, quiet = false): { clear(): void } {
   const timer = setInterval(() => {
     const at = scheduledStopAt(root);
     if (at === undefined || at > Date.now()) return;
     clearInterval(timer);
     cancelScheduledStop(root);
-    say("scheduled stop reached — stopping");
+    // quiet suppresses the "scheduled stop reached" prose for a --once --json round so its
+    // stdout holds exactly the one JSON document; the non-zero exit carries the interruption.
+    if (!quiet) say("scheduled stop reached — stopping");
     onStop();
   }, SCHEDULED_STOP_POLL_MS);
   timer.unref();
@@ -352,6 +374,21 @@ export function onceFailures(
   return out;
 }
 
+/** The once round's structured facts — read from the runners' persisted role state plus the
+ * orchestrator's own settle reasons — that both the one-line summary and the `--json` document
+ * render from, so a cron/CI caller parses the round directly instead of scraping the prose.
+ * `runs` is the round's total run count; `outcomes` maps each result a ran role ended on
+ * (`lastResult ?? "no_change"`) to how many; `skipped` carries each role that made no run this
+ * round with the reason it was settled (`paused`, `resume pending`, `backoff`, `deferred`,
+ * `disabled`, `idle` — the same classification onceSummary derives); and `failures` is
+ * onceFailures verbatim. */
+interface OnceReport {
+  runs: number;
+  outcomes: Record<string, number>;
+  skipped: { role: string; reason: string }[];
+  failures: { role: string; result: RunResult }[];
+}
+
 /** The once round's one-line summary, read from the runners' persisted role state plus the
  * orchestrator's own settle reasons — a cron job's log shows what the round did without parsing
  * events. Roles whose run counter advanced bucket by their last completed result; the rest are
@@ -371,6 +408,39 @@ export function onceFailures(
  * a role enabled mid-round joins the runners array after `runsBefore` was taken, so its
  * whole persisted history must not be counted as this round's work. Without it the old
  * `runsBefore` delta path runs, for callers (and tests) without a round object. */
+export function onceReport(
+  root: string,
+  roles: string[],
+  runsBefore: Map<string, number>,
+  settled: ReadonlyMap<string, string> | undefined,
+  runsDone?: ReadonlyMap<string, number>,
+): OnceReport {
+  const report: OnceReport = {
+    runs: 0,
+    outcomes: {},
+    skipped: [],
+    failures: onceFailures(root, roles, runsBefore, runsDone),
+  };
+  for (const { role, state, ran } of onceRoundRoles(root, roles, runsBefore, runsDone)) {
+    if (ran > 0) {
+      report.runs += ran;
+      const key = state.lastResult ?? "no_change";
+      report.outcomes[key] = (report.outcomes[key] ?? 0) + 1;
+    } else {
+      const reason =
+        settled?.get(role) ??
+        (isTeamPaused(root) || runnerPaused(new Set(pausedRoles(root)), role)
+          ? "paused"
+          : stateSkipReason(state));
+      report.skipped.push({ role, reason });
+    }
+  }
+  return report;
+}
+
+/** The once round's one-line summary — the composition of onceReport and renderOnceSummary,
+ * kept as a single function so its exported signature (and every caller and test) stays
+ * unchanged while the `--json` document renders the same facts structurally. */
 export function onceSummary(
   root: string,
   roles: string[],
@@ -378,32 +448,22 @@ export function onceSummary(
   settled: ReadonlyMap<string, string> | undefined,
   runsDone?: ReadonlyMap<string, number>,
 ): string {
-  let runs = 0;
-  const outcomes = new Map<string, number>();
-  const skipped: string[] = [];
-  for (const { role, state, ran } of onceRoundRoles(root, roles, runsBefore, runsDone)) {
-    if (ran > 0) {
-      runs += ran;
-      const key = state.lastResult ?? "no_change";
-      increment(outcomes, key);
-    } else {
-      const reason =
-        settled?.get(role) ??
-        (isTeamPaused(root) || runnerPaused(new Set(pausedRoles(root)), role)
-          ? "paused"
-          : stateSkipReason(state));
-      skipped.push(reason);
-    }
-  }
-  // Sort by result key only. The comparator makes that explicit: a comparator-less sort
-  // would order `[key, count]` tuples by their "key,count" string form, which happens to
-  // agree only while each key is unique.
-  const counts = [...outcomes.entries()]
+  return renderOnceSummary(onceReport(root, roles, runsBefore, settled, runsDone));
+}
+
+/** Render a OnceReport back to the once round's one-line prose summary — the exact line a
+ * `tumwater start --once` (no `--json`) operator's log keeps. Results are counted in
+ * compareCodeUnits-sorted key order. The comparator makes that explicit: a comparator-less
+ * sort would order key/value pairs by their "key,count" string form, which happens to agree
+ * only while each key is unique. */
+export function renderOnceSummary(report: OnceReport): string {
+  const counts = Object.entries(report.outcomes)
     .sort(([a], [b]) => compareCodeUnits(a, b))
     .map(([k, n]) => `${n} ${k}`)
     .join(", ");
-  const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
-  return `once: ${plural(runs, "run")} — ${counts || "nothing ran"}${skipNote}`;
+  const skipNote =
+    report.skipped.length === 0 ? "" : `, ${report.skipped.length} skipped (${report.skipped.map((s) => s.reason).join(", ")})`;
+  return `once: ${plural(report.runs, "run")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
 /** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
