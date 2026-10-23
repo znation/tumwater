@@ -89,6 +89,30 @@ test("saveRunnerState creates the state dir and round-trips without leaving a te
   assert.deepEqual(loadRunnerState(dir, "feature"), s);
 });
 
+// A state file whose JSON carries a different `role` than its name — the stale-role split
+// BUGS.md 2026-10-23 describes. The legacy role-id migration renames the file (LEGACY_ROLE_IDS
+// maps `telemetry` → `selfcheck`, `dry` → `dedupe`) but cannot rewrite the `role` a saved state
+// already carries, so the file sits under its new name with the old role inside. The file name
+// is the identity: the load keeps the requested id so the state saves back under that name
+// instead of recreating the frozen old-id split on every start.
+test("loadRunnerState treats the file name as the id, even when the JSON's role differs", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "selfcheck");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "telemetry", runs: 9, lastResult: "changed" }));
+  const s = loadRunnerState(dir, "selfcheck");
+  assert.equal(s.role, "selfcheck", "the requested id wins over the persisted role");
+  assert.equal(s.runs, 9, "the rest of the persisted state is still loaded");
+  saveRunnerState(dir, s);
+  assert.ok(fs.existsSync(statePath(dir, "selfcheck")), "saves under the requested new-name path");
+  assert.equal(
+    fs.existsSync(statePath(dir, "telemetry")),
+    false,
+    "no old-id file is recreated by the save",
+  );
+  assert.equal(loadRunnerState(dir, "selfcheck").role, "selfcheck");
+});
+
 // Two processes hammering one role's state file concurrently — the real-world shape: the
 // orchestrator saves at run end and around its review gate while `tumwater reset-counters`
 // rewrites the same file from the CLI process. With per-pid tmp names each writer owns its

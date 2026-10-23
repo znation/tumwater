@@ -1,24 +1,11 @@
 import fs from "node:fs";
+import { readJsonFile } from "../files/json-files.js";
 import { deleteRefIfAt, refSha } from "../git/git.js";
 import { gitTry, runGit } from "../git/git-run.js";
 import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
 import type { MigrationNotes } from "../orchestrator/startup-migrations.js";
 import { errorMessage } from "../text/text.js";
 import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
-
-/** Read the `lastRunEndedAt` stamp out of a JSON state file, or null when the file is not a
- * parseable state object (a hand edit, an older shape, or a non-JSON placeholder). Null means
- * "cannot compare". */
-function stateLastRunEndedAt(file: string): number | null {
-  try {
-    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
-    const v = (parsed as Record<string, unknown>).lastRunEndedAt;
-    return typeof v === "number" ? v : null;
-  } catch {
-    return null;
-  }
-}
 
 /** Rewrite a JSON state file's `role` field to the id its file name now names; a non-JSON file
  * (or one without a `role` field) is left untouched. `role` is the one field that must match
@@ -39,10 +26,14 @@ function rewriteStateRole(file: string, role: string): void {
 
 /** Move each retired role id's branch, refs and files to the new id (plans/terminology.md "Role
  * names"). Returns one line per artifact, sorted into moved, kept (both
- * ids exist) and failed. Each artifact fails alone. Nothing that exists under the new id is
- * overwritten except a state file whose old-id twin is newer by `lastRunEndedAt` (the stale-role
- * split this recorded bug caused) — that one is replaced with the newer copy. pi and native
- * logs stay put as history. */
+ * ids exist) and failed. State files are the one exception to "kept": when both id-named copies
+ * exist and the old-id copy carries the newer end-of-run stamp (`lastRunEndedAt`, or the
+ * pre-rename `lastTickEndedAt` a frozen copy carries), that copy is folded over the stale
+ * new-name one under the new name (the earlier migration renamed only the file list, not the
+ * `role` field inside, so the runner kept writing the old-id name and the two copies drifted —
+ * BUGS.md 2026-10-23); otherwise both are left in place. Nothing other than a state file that
+ * exists under the new id is overwritten, each artifact fails alone, and pi and native logs stay
+ * put as history. */
 export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record<string, string>> = LEGACY_ROLE_IDS): Promise<MigrationNotes> {
   const notes: MigrationNotes = { moved: [], kept: [], failed: [] };
   for (const [oldId, newId] of Object.entries(legacy)) {
@@ -78,28 +69,50 @@ export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record
       });
     }
 
-    for (const pathFor of [statePath, roleNotesPath, roleInboxDir, sessionDir, reviewSessionDir]) {
+    // State files get a one-time heal, not "kept": when both id-named copies exist (a state
+    // object the earlier migration renamed without rewriting `role`, so the runner kept saving
+    // under the old-id name and the two files drifted), fold them into one — when the old-id copy
+    // is the newer one, keep it under the new name and drop the stale new-name copy. A live copy
+    // carries `lastRunEndedAt`; a frozen copy (never saved since the earlier rename) carries only
+    // the pre-rename `lastTickEndedAt`, so the stamp reads either. When either copy is not a state
+    // object (unreadable/torn, or a non-object), their stamps tie, or the new-name copy is the
+    // newer one, keep both untouched, so the heal never fabricates or destroys a file it does not
+    // understand.
+    await attempt(`state ${statePath(root, oldId)}`, async () => {
+      const from = statePath(root, oldId);
+      const to = statePath(root, newId);
+      if (!fs.existsSync(from)) return null;
+      if (!fs.existsSync(to)) {
+        fs.renameSync(from, to);
+        rewriteStateRole(to, newId);
+        return `moved ${from} to ${to}`;
+      }
+      const stamp = (p: string): number => {
+        const j = readJsonFile<Record<string, unknown>>(p);
+        if (typeof j?.lastRunEndedAt === "number") return j.lastRunEndedAt;
+        return typeof j?.lastTickEndedAt === "number" ? j.lastTickEndedAt : -2; // retired-name-ok: legacy state field the frozen copy carries
+      };
+      const oldStamp = stamp(from);
+      const newStamp = stamp(to);
+      if (oldStamp < 0 || newStamp < 0 || oldStamp === newStamp) return `kept ${from} and ${to}: both exist`;
+      if (oldStamp < newStamp) return `kept ${from} and ${to}: both exist`;
+      // The old-id file holds the newer state (the live runner kept saving under the old name
+      // after the earlier migration). Fold it into the new-name path atomically: renameSync
+      // replaces the destination and removes the source in one step, so a crash between the two
+      // cannot leave the new-name file torn over the still-present old copy (which would read as
+      // -2 next time and wedge the heal in "kept").
+      fs.renameSync(from, to);
+      rewriteStateRole(to, newId);
+      return `healed ${from} and ${to}: kept ${from}, newer`;
+    });
+
+    for (const pathFor of [roleNotesPath, roleInboxDir, sessionDir, reviewSessionDir]) {
       const from = pathFor(root, oldId);
       const to = pathFor(root, newId);
-      const isStateFile = pathFor === statePath;
       await attempt(from, async () => {
         if (!fs.existsSync(from)) return null;
-        if (fs.existsSync(to)) {
-          // Both ids hold a file (the stale-role split this bug caused). For the runner's state
-          // file, heal by keeping the one with the newer lastRunEndedAt under the new id; for
-          // every other artifact the new-id file wins unchanged.
-          if (!isStateFile) return `kept ${from} and ${to}: both exist`;
-          const oldLast = stateLastRunEndedAt(from);
-          const newLast = stateLastRunEndedAt(to);
-          if (oldLast === null || (newLast !== null && oldLast <= newLast)) {
-            return `kept ${from} and ${to}: both exist`;
-          }
-          fs.renameSync(from, to); // overwrite the stale new-id copy with the newer old-id one
-          rewriteStateRole(to, newId);
-          return `moved ${from} to ${to}: both existed, kept the newer by lastRunEndedAt`;
-        }
+        if (fs.existsSync(to)) return `kept ${from} and ${to}: both exist`;
         fs.renameSync(from, to);
-        if (isStateFile) rewriteStateRole(to, newId);
         return `moved ${from} to ${to}`;
       });
     }

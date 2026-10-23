@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { refSha } from "../src/git/git.js";
 import { mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
+import { readJsonFile, writeJsonFile } from "../src/files/json-files.js";
 import { migrateLegacyRoleIds } from "../src/roles/legacy-role-migration.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
@@ -108,4 +109,27 @@ test("the real id table moves dry's state file and branch to dedupe", async () =
   assert.equal(await refSha(root, "refs/heads/tumwater/dry"), null);
   assert.equal(fs.readFileSync(statePath(root, "dedupe"), "utf8"), "state");
   assert.equal(fs.existsSync(statePath(root, "dry")), false);
+});
+
+// The split BUGS.md 2026-10-23 describes: the new-id file holds the frozen copy (a state the
+// earlier migration renamed without rewriting `role`, so the runner kept saving under the old-id
+// name) while the old-id file holds the live runner's newer state. The frozen copy is exactly the
+// stranded shape the real selfcheck.json/dedupe.json carry — the pre-rename ticks/lastTickEndedAt
+// fields and no lastRunEndedAt — while the live copy is the modern shape. The migration heals
+// the pair into one file by keeping the copy with the newer end-of-run stamp under the new name;
+// the newer copy lives under the old-id name, so it must win (the load-side fix then reads it
+// under the new id and saves back to the new name).
+test("the state heal folds both id-named files into the newer copy under the new name", async () => {
+  const root = makeRepo();
+  sh(root, "git", "branch", "tumwater/newy");
+  // Frozen copy under the new id name: pre-rename shape (ticks/lastTickEndedAt, no lastRunEndedAt).
+  writeJsonFile(statePath(root, "newy"), { role: "newy", ticks: 9, lastTickEndedAt: 100 });
+  // Live copy under the old id name: the modern shape the live runner actually writes.
+  writeJsonFile(statePath(root, "oldy"), { role: "oldy", runs: 9, lastRunEndedAt: 1000 });
+  const notes = await migrateLegacyRoleIds(root, MAP);
+  assert.ok(notes.moved.some((n) => n.startsWith("healed ")), "the split is healed, not left kept");
+  const healed = readJsonFile(statePath(root, "newy")) as { lastRunEndedAt: number };
+  assert.equal(healed.lastRunEndedAt, 1000, "the newer (old-id) copy wins under the new name");
+  assert.equal(fs.existsSync(statePath(root, "oldy")), false, "the stale old-id copy is dropped");
+  assert.deepEqual(notes.failed, []);
 });
