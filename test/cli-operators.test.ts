@@ -1059,6 +1059,29 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(config().roles.director.thinking, "medium");
 });
 
+test("a valued role write flag followed by another flag refuses with its own needs-a-value wording", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role flag-as-value");
+
+  // `--model` immediately followed by another flag means the model value is missing, so the
+  // refusal names --model and the flag token instead of a downstream, unrelated message.
+  let r = await cli(repo, "role", "feature", "--model", "--json");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--model needs a value \(the next token "--json" is a flag, not a value\)/);
+  r = await cli(repo, "role", "feature", "--model", "--provider", "y");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--model needs a value \(the next token "--provider" is a flag, not a value\)/);
+  r = await cli(repo, "role", "feature", "--thinking", "--cap", "5");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--thinking needs a value \(the next token "--cap" is a flag, not a value\)/);
+
+  // A genuinely valued triple still works, and a genuinely shared (both-valued) one still
+  // reports the share refusal, not the missing-value one.
+  r = await cli(repo, "role", "feature", "--provider", "openai");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: provider set to openai/);
+});
+
 test("role validates its arguments like every other command", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role validation");

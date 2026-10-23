@@ -150,6 +150,21 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // a repo the team never started in — and a torn one — instead of refusing (a team
   // workspace still refuses).
   const { id: positional, rest } = peelRolePositional(args);
+  // A value-taking write flag immediately followed by a `--`-flag means the operator forgot its
+  // value: `role qa --model --json` (or `--model --provider pi`, `--model --thinking high`)
+  // would otherwise take the next flag as the model id and fail later (or in
+  // rejectUnknownArgs) with a confusing message ("--json does not apply to a model write",
+  // "unknown argument: y") instead of naming the actual slip. Refuse up front with the flag's
+  // own needs-a-value wording — the same spirit as `config set`'s flag-looking-value guard.
+  // Only a `--` (double-dash) token reads as a flag: a single-dash token like `-1` is a
+  // negative-number value that must reach the setters' own bound checks, and the file flags'
+  // `-` stdin value is not in this set at all.
+  for (const flag of ["--provider", "--model", "--thinking", "--cap", "--min-run-interval", "--instances", "--quiet-hours"]) {
+    const at = rest.indexOf(flag);
+    const next = at >= 0 ? rest[at + 1] : undefined;
+    if (next?.startsWith("--"))
+      fail(`${flag} needs a value (the next token ${JSON.stringify(next)} is a flag, not a value)`);
+  }
   rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC, CLEAR_QUIET_HOURS_SPEC, QUIET_HOURS_SPEC, ENABLE_SPEC, DISABLE_SPEC, CLEAR_CAP_SPEC, CAP_SPEC, CLEAR_MIN_RUN_INTERVAL_SPEC, MIN_RUN_INTERVAL_SPEC, CLEAR_INSTANCES_SPEC, INSTANCES_SPEC, CLEAR_PROVIDER_SPEC, PROVIDER_SPEC, CLEAR_MODEL_SPEC, MODEL_SPEC, CLEAR_THINKING_SPEC, THINKING_SPEC]);
   refuseTeamWorkspace(root);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
