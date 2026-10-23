@@ -480,6 +480,19 @@ export function renderReportMarkdown(data: ReportData): string {
   const items = t.featuresDone + t.bugsFixed;
   const perItem = items > 0 ? ` · ${(t.commits / items).toFixed(1)} commits per backlog item` : "";
   lines.push(`**Commits:** ${t.workCommits ?? 0} work / ${t.maintenanceCommits ?? 0} maintenance${perItem}`);
+  // How long each finished plan or bug waited from filing to done, per completion day — the
+  // median backlog age at which the day's items closed. Team-only (a lag has no role) and
+  // zero-means-absent: no line when no day carries one. Values are whole days from
+  // daysBetween, so a plain `${n}d` is exact where medianLine's shortSpanPhrase would print
+  // minutes.
+  if (data.role === undefined) {
+    const lags = data.series.flatMap((d) =>
+      d.backlogLagMedianDays === undefined
+        ? []
+        : [`${monthDay(d.date)} ${d.backlogLagMedianDays}d`],
+    );
+    if (lags.length > 0) lines.push(`**Backlog lag median:** ${lags.join(" · ")}`);
+  }
   // Where the bugfix work was hardest to confirm: the window's fixed bugs tallied by their
   // `Validation gap` tag, so the team can see where its own test infrastructure was weakest
   // (recorded first, consumed now). Team-only (a tag has no role) and zero-means-absent: no

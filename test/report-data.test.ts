@@ -348,6 +348,45 @@ Body.
   assert.equal(data.totals.bugsFixed, 3);
 });
 
+test("collectReport folds finished entries' filing-to-done lags into each day's median, team-only", () => {
+  const root = tmpdir();
+  const d1 = dayKey(at(1)); // two lag-carrying completions land here
+  const dNoLag = dayKey(at(2)); // its only completion has no filing stamp
+  const dSolo = dayKey(at(0)); // its only completion carries a filing stamp
+  writeBacklogFile(root, "PLANS.md", [
+    {
+      heading: "## Done",
+      // P1's filing at(5)→done d1 is 4 days; P2's filing at(3)→done d1 is 2 days; P3 closes
+      // dNoLag with no filing stamp (still a featuresDone); P4's filing at(1)→dSolo is 1 day.
+      body: `### P1 (planned ${dayKey(at(5))}; done ${d1})
+
+### P2 (planned ${dayKey(at(3))}; done ${d1})
+
+### P3 (done ${dNoLag})
+
+### P4 (planned ${dayKey(at(1))}; done ${dSolo})`,
+    },
+  ]);
+  const data = collectReport(root, 5);
+  const byDate = new Map(data.series.map((x) => [x.date, x]));
+  const day = byDate.get(d1)!;
+  // P1's 4-day lag and P2's 2-day lag: the lower median is 2 (sorted [2, 4] → index 0).
+  assert.equal(day.backlogLagMedianDays, 2);
+  // P3 still counts toward featuresDone but, as the day's only completion with no filing
+  // stamp, leaves that day's median unset.
+  assert.equal(byDate.get(dNoLag)!.featuresDone, 1);
+  assert.ok(!("backlogLagMedianDays" in byDate.get(dNoLag)!), "a no-filing completion leaves the day's median unset");
+  // P4's sole completion gives the day its single 1-day lag.
+  assert.equal(byDate.get(dSolo)!.backlogLagMedianDays, 1);
+  // No other series day carries the field.
+  for (const x of data.series) {
+    if (x.date !== d1 && x.date !== dSolo) assert.ok(!("backlogLagMedianDays" in x));
+  }
+  // A role-scoped report attributes no lags: every day unset (a lag has no role).
+  const scoped = collectReport(root, 5, "bugfix");
+  for (const d of scoped.series) assert.ok(!("backlogLagMedianDays" in (d as object)));
+});
+
 test("collectReport tallies fixed bugs' Validation gap tags over the window, team-only", () => {
   const root = tmpdir();
   const d0 = dayKey(at(0));

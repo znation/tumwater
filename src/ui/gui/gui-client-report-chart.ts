@@ -176,6 +176,14 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return medianBarChart(data, "reviewMedianMs", "#f43f5e", "review");
   }
 
+  // The lower median of the day's finished-entry filing-to-done lags, from
+  // backlogLagMedianDays (whole days from each finished plan or bug's filing stamp to its
+  // done/fixed stamp). Whole-day values, so a plain Nd label is exact.
+  function chartBacklogLagMedian(data) {
+    return reportSvg(data.series, (d) => [{ value: Number(d.backlogLagMedianDays) || 0, color: "#0891b2", title: d.date + ": " + (Number(d.backlogLagMedianDays) || 0) + "d median backlog lag" }],
+      (v) => Math.round(v) + "d", false);
+  }
+
   // The lower median of the day's provider-slot waits, from providerWaitMedianMs.
   function chartProviderWaitMedian(data) {
     return medianBarChart(data, "providerWaitMedianMs", "#a855f7", "provider wait");
@@ -422,6 +430,13 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // True when some day carries a review-duration median; the element renders only then.
   function seriesHasReviewMedian(data) {
     return seriesHasScalar(data, "reviewMedianMs");
+  }
+
+  // True when some day carries a backlog-lag median (a field that can legitimately hold 0
+  // for a same-day filing and completion), so unlike the millisecond scalars it reads for a
+  // defined value, not a positive one; the element renders only then.
+  function seriesHasBacklogLagMedian(data) {
+    return data.series.some((d) => d.backlogLagMedianDays != null);
   }
   // True when some day carries a provider-wait median; the element renders only then.
   function seriesHasProviderWaitMedian(data) {

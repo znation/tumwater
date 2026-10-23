@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   entryDates,
+  entryLags,
   fenceTracker,
   validationGapTag,
 } from "../src/backlog/backlog-md.js";
@@ -19,6 +20,7 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
   plannedPlans,
+  sectionCompletionLags,
   sectionFilingDates,
 } from "../src/backlog/backlog.js";
 import {
@@ -459,6 +461,63 @@ test("entryDates drops an epitaph whose trailing parenthetical never closes", ()
 - a healthy epitaph (fixed 2026-09-30; commit abc1234)
 `;
   assert.deepEqual(entryDates(md, "Fixed", fixedRe), ["2026-09-30"]);
+});
+
+test("entryLags pairs each finished entry's filing and completion dates into whole-day lags", () => {
+  // The lag read must use the same entry detection (headings + commit-carrying epitaphs) and
+  // the same completion/filing date rules as entryDates: an entry with no filing stamp, or
+  // one whose filing is after its completion, contributes nothing; a wrapped heading's
+  // continuation is joined like headingMetadata does.
+  const doneRe = /done (\d{4}-\d{2}-\d{2})/;
+  const filingRe = /\b(?:planned|reported|found by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/;
+  const md = `## Done
+
+### A (planned 2026-10-01; done 2026-10-04)
+
+### B (planned 2026-10-03; done 2026-10-02)
+
+### C (done 2026-10-04)
+
+- D (planned 2026-10-02, done 2026-10-05; commit abc1234)
+
+- F (planned 2026-09-28) sibling (reported 2026-10-03, done 2026-10-06; commit def5678)
+
+- E (done 2026-10-05; commit def5678)
+
+### Wrapped (planned 2026-10-01, done
+2026-10-06)
+`;
+  assert.deepEqual(entryLags(md, "Done", doneRe, filingRe), [
+    { done: "2026-10-04", lagDays: 3 },
+    { done: "2026-10-05", lagDays: 3 },
+    // The filing comes from the trailing parenthetical, not a description-date mention
+    // before it (planned 2026-09-28 is outside the commit-carrying parenthetical, so it
+    // must not pair): lag is 2026-10-03 to 2026-10-06, the same read sectionFilingDates
+    // makes, not 2026-09-28 to 2026-10-06.
+    { done: "2026-10-06", lagDays: 3 },
+    { done: "2026-10-06", lagDays: 5 },
+  ]);
+});
+
+test("sectionCompletionLags reads finished entries' filing-to-done lags; missing file yields []", () => {
+  const root = tmpdir("tw-lag-");
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    `# Plans
+
+## Done
+
+### P1 (planned 2026-10-01; done 2026-10-04)
+
+### P2 (planned 2026-10-02; done 2026-10-03)
+`,
+  );
+  assert.deepEqual(sectionCompletionLags(root, "PLANS.md", "Done", DONE_DATE_RE), [
+    { date: "2026-10-04", lagDays: 3 },
+    { date: "2026-10-03", lagDays: 1 },
+  ]);
+  // A missing section/file yields [] — a render path must never throw on backlog state.
+  assert.deepEqual(sectionCompletionLags(root, "PLANS.md", "Fixed", FIXED_DATE_RE), []);
 });
 
 test("sectionFilingDates reads each entry's FIRST stamp date, matching filingDate", () => {

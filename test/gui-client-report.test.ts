@@ -648,6 +648,48 @@ test("the Review duration median chart draws one bar per timed day and seriesHas
   assert.equal(seriesHasReviewMedian(mk([mkDay("2026-09-01"), mkDay("2026-09-02")])), false);
 });
 
+test("the Backlog lag median chart draws one bar per lagged day and seriesHasBacklogLagMedian gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartBacklogLagMedian(d: ReportData): string;
+    seriesHasBacklogLagMedian(d: ReportData): boolean;
+  }
+  const { chartCommits, chartBacklogLagMedian, seriesHasBacklogLagMedian } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartBacklogLagMedian", "seriesHasBacklogLagMedian"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { backlogLagMedianDays: 2 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { backlogLagMedianDays: 5 }),
+  ]);
+  const svg = chartBacklogLagMedian(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles, ["2026-09-01: 2d median backlog lag", "2026-09-03: 5d median backlog lag"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasBacklogLagMedian(mk([mkDay("2026-09-01", { checkMedianMs: 5_000 }), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasBacklogLagMedian(mk([mkDay("2026-09-01"), mkDay("2026-09-02")])), false);
+  // A same-day filing and completion is a real 0-day lag, not absence: the gate must keep it.
+  assert.equal(seriesHasBacklogLagMedian(mk([mkDay("2026-09-01", { backlogLagMedianDays: 0 }), mkDay("2026-09-02")])), true);
+  assert.equal(seriesHasBacklogLagMedian(data), true);
+});
+
+test("the Usage render chain gates the Backlog lag median chart right after Backlog items done", () => {
+  const chain = GUI_CLIENT_REPORT_JS;
+  const items = chain.indexOf('block("Backlog items done"');
+  const lag = chain.indexOf('block("Backlog lag median", chartBacklogLagMedian(d)');
+  assert.ok(items >= 0, "the Backlog items done term exists");
+  assert.ok(lag > items, "Backlog lag median sits after Backlog items done in the chain");
+  assert.match(chain, /seriesHasBacklogLagMedian\(d\) \? block\("Backlog lag median", chartBacklogLagMedian\(d\), "per day · filing to done"\) : ""/);
+  assert.equal((chain.match(/block\("Backlog lag median", chartBacklogLagMedian\(d\), "per day · filing to done"\)/g) || []).length, 1);
+});
+
 test("the Provider wait median chart draws one bar per timed day and seriesHasProviderWaitMedian gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

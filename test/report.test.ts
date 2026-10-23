@@ -307,6 +307,30 @@ test("renderReportMarkdown prints the fixed bugs' Validation gaps as a team-only
   assert.ok(!renderReportMarkdown(noTags).includes("**Validation gaps:"));
 });
 
+test("renderReportMarkdown prints the Backlog lag median line per day that carries one, team-only", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    series: [
+      { ...base.series[0]!, backlogLagMedianDays: 3 },
+      base.series[1]!,
+    ],
+  };
+  const md = renderReportMarkdown(data);
+  const lagIdx = md.indexOf("**Backlog lag median:");
+  assert.ok(lagIdx >= 0, "a day carrying the field prints the line");
+  const commitIdx = md.indexOf("**Commits:");
+  assert.ok(lagIdx > commitIdx, "the Backlog lag median line follows the Commits line");
+  assert.match(md, new RegExp("\\*\\*Backlog lag median:\\*\\* " + base.series[0]!.date.slice(5) + " 3d"));
+
+  // No day carrying the field prints no line.
+  const noLag: ReportData = { ...base };
+  assert.ok(!renderReportMarkdown(noLag).includes("**Backlog lag median:"));
+  // A role-scoped report never prints the line (a lag has no role).
+  const scoped: ReportData = { ...base, role: "bugfix" };
+  assert.ok(!renderReportMarkdown(scoped).includes("**Backlog lag median:"));
+});
+
 test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
   const data: ReportData = {
     days: 1,

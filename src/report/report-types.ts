@@ -116,6 +116,11 @@ export interface ReportDay {
    * team-only like its window tally, because a tag has no role (absent when the day has
    * none, zero means absent). */
   validationGapsByTag?: Record<string, number>;
+  /** Lower median of the whole-day filing-to-done spans of the entries completed that day (a
+   * finished plan or bug's span from its filing stamp to its done/fixed stamp, in whole
+   * calendar days); team-only like the other day-granular backlog tallies, absent when the
+   * day has no entry that carries both stamps. */
+  backlogLagMedianDays?: number;
 }
 
 /** The window totals both reports surface — output tokens (the merge share included), the

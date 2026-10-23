@@ -1,3 +1,5 @@
+import { daysBetween } from "../text/datetime.js";
+
 /** The pure markdown layer of the backlog parsers: fence-aware reading of PLANS.md / BUGS.md /
  * QUESTIONS.md text, with no filesystem access — every function here takes the markdown text as
  * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
@@ -298,6 +300,54 @@ export function entryDates(
   return dates;
 }
 
+/** The filing-to-done span of each finished entry inside one `## <sectionTitle>` section,
+ * paired with the day it completed on: `{ done, lagDays }` for every entry `entryDates` counts
+ * (`### ` headings and `- ` epitaphs whose trailing parenthetical carries a commit
+ * reference), an entry's `done` date being its LAST `dateRe` match and `filed` its FIRST
+ * `filingRe` match — the same completion/filing rules `entryDates`/`sectionFilingDates`
+ * apply (a `- ` epitaph reads both from its trailing parenthetical, exactly as entryDates
+ * does), so the report's lag read cannot disagree with the completion and filing reads about
+ * which date belongs to the entry. `filingRe` is a parameter so the backlog module's
+ * STAMP_DATE_RE keeps its one home; `dateRe` is cloned with the g flag (like lastDate) so
+ * matchAll sees every date. An entry with no filing stamp, or a filing later than its
+ * completion, contributes nothing. The span is whole calendar days via `daysBetween`. */
+export function entryLags(
+  md: string,
+  sectionTitle: string,
+  dateRe: RegExp,
+  filingRe: RegExp,
+): { done: string; lagDays: number }[] {
+  const lags: { done: string; lagDays: number }[] = [];
+  const lines = sectionBodyLines(md, sectionTitle);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line.startsWith("### ") && !line.startsWith("- ")) continue;
+    const meta = headingMetadata(lines, i);
+    let done: string | null = null;
+    let filed: string | null = null;
+    if (line.startsWith("- ")) {
+      // Same epitaph guard as entryDates: the completion must live in the trailing
+      // parenthetical beside a commit reference, and the filing read follows the same
+      // rule — sectionFilingDates matches the first stamp inside that same parenthetical
+      // for a `- ` bullet, so a description-date mention before it must not pair.
+      const tail = trailingParenthetical(line);
+      if (/\bcommits?\b/.test(tail)) {
+        done = lastDate(tail, dateRe);
+        filed = firstDate(tail, filingRe);
+      }
+    } else {
+      done = lastDate(meta.text, dateRe);
+      filed = firstDate(meta.text, filingRe);
+    }
+    if (done !== null && filed !== null) {
+      const lagDays = daysBetween(filed, done);
+      if (lagDays >= 0) lags.push({ done, lagDays });
+    }
+    i = meta.next - 1; // The loop's ++ resumes at the first line not consumed as metadata.
+  }
+  return lags;
+}
+
 /** A `### `/`- ` entry start's METADATA, joined for matching: the start line plus, for `### `
  * headings only, continuation lines up to and including the first line ending in `)` (capped
  * at 3 lines) — wrapped headings carry their date on the second line, while `- ` epitaphs are
@@ -386,7 +436,8 @@ export function lastDate(text: string, dateRe: RegExp): string | null {
  * (backlog.ts) applies to a heading line, so the filing read and `plan|bug --list`'s age agree
  * about when an entry opened. dateRe is cloned with the g flag so matchAll sees every date; a
  * text with no date yields null. Module-local: entryDates (its only caller) selects it with
- * `first`, so the walker stays single-homed like lastDate's completion rule. */
+ * `first`, so the walker stays single-homed like lastDate's completion rule (entryLags reads
+ * it directly for an entry's filing stamp). */
 function firstDate(text: string, dateRe: RegExp): string | null {
   const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
   const match = global.exec(text);

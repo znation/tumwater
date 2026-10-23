@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { entryDates, finishedArchiveOf, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { entryDates, entryLags, finishedArchiveOf, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -96,6 +96,36 @@ export function sectionFilingDates(
       file,
       (md) => entryDates(md, sectionTitle, STAMP_DATE_RE, true),
       (dates) => dates.slice(), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
+/** Stat-keyed cache of the completion-lag reads, keyed like the date reads by file + section +
+ * the completion date regex. Bounded inside cachedTextByStat like the others. */
+const lagCache = new Map<string, StatKeyedValue<{ date: string; lagDays: number }[]>>();
+
+/** The filing-to-done span of each finished entry in a live or archive backlog file's finished
+ * section (PLANS.md `## Done`, BUGS.md `## Fixed`), stat-cached like sectionCompletionDates.
+ * One `{ date, lagDays }` per finished entry that carries BOTH a completion stamp (`dateRe`,
+ * the day it completed) and a filing stamp (the module's STAMP_DATE_RE, its first stamp) and
+ * whose filing is not after its completion — read through entryLags, so the lag read pairs
+ * exactly the same entries and dates the completion and filing reads count. `lagDays` is the
+ * whole-day span from filing to done. The date regex is part of the cache key (each section's
+ * completion verbs differ); a missing or unreadable file yields []. */
+export function sectionCompletionLags(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+  dateRe: RegExp,
+): { date: string; lagDays: number }[] {
+  const file = path.join(root, fileName);
+  return (
+    cachedTextByStat(
+      lagCache,
+      `${file}\u0000${sectionTitle}\u0000${dateRe.source}\u0000${dateRe.flags}`,
+      file,
+      (md) => entryLags(md, sectionTitle, dateRe, STAMP_DATE_RE).map((l) => ({ date: l.done, lagDays: l.lagDays })),
+      (lags) => lags.map((l) => ({ date: l.date, lagDays: l.lagDays })), // A copy: callers may treat the result as their own.
     ) ?? []
   );
 }

@@ -19,6 +19,7 @@ import {
   finishedFiles,
   fixedBugEntries,
   sectionCompletionDates,
+  sectionCompletionLags,
   sectionFilingDates,
 } from "../backlog/backlog.js";
 import { validationGapTag } from "../backlog/backlog-md.js";
@@ -433,6 +434,32 @@ export function collectReport(root: string, days: number, role?: string | readon
         addTo((byDate.get(date)!.validationGapsByTag ??= {}), tag, 1);
       }
     }
+  }
+
+  // The per-day backlog lag median: how long each finished plan or bug waited from its filing
+  // stamp to its done/fixed stamp, folded per completion day — the median backlog age at
+  // which the day's items closed. Team-only (a lag has no role, like the validation tally
+  // and the filing stamps above) and zero-means-absent: a day with no lag-carrying completion
+  // keeps its exact pre-feature shape, and an out-of-window completion date drops out (it
+  // must be a byDate key, the same drop countOn applies). The same entry detection and date
+  // rules (sectionCompletionLags / entryLags) the completion and filing reads use, so the
+  // spans pair the days `featuresDone`/`bugsFixed` count.
+  if (role === undefined) {
+    const lagsByDay = new Map<string, number[]>();
+    const foldLag = (date: string, lagDays: number): void => {
+      const list = lagsByDay.get(date);
+      if (list) list.push(lagDays);
+      else lagsByDay.set(date, [lagDays]);
+    };
+    for (const file of finishedFiles("PLANS.md")) {
+      for (const { date, lagDays } of sectionCompletionLags(root, file, "Done", DONE_DATE_RE))
+        if (byDate.has(date)) foldLag(date, lagDays);
+    }
+    for (const file of finishedFiles("BUGS.md")) {
+      for (const { date, lagDays } of sectionCompletionLags(root, file, "Fixed", FIXED_DATE_RE))
+        if (byDate.has(date)) foldLag(date, lagDays);
+    }
+    for (const [date, lags] of lagsByDay) byDate.get(date)!.backlogLagMedianDays = lowerMedian(lags);
   }
 
   const totals = {
