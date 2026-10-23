@@ -311,10 +311,13 @@ export function createPendingPane(session: TuiPaneSession) {
             return;
           }
           const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
-          if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
-            session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
-            session.requestRender();
-            return;
+          if (inFlight) {
+            const markers = new Set(mergeChanges(inFlight).map((c) => c.sha));
+            if (inFlight.sha === row.entry.sha || markers.has(row.entry.sha)) {
+              session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
+              session.requestRender();
+              return;
+            }
           }
           const outcome = await cancelQueuedMerge(session.root, row.position);
           if (outcome.status === "cancelled") {
