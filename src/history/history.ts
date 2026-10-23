@@ -4,7 +4,6 @@ import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HIST
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { followUntilParentGone, type FollowSeams } from "../cli/log-commands.js";
-import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventsLogPath } from "../paths.js";
@@ -101,7 +100,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // against.
   let rows: RunRow[];
   let covered = true;
-  const follow = hasFollowFlag(rest);
+  const follow = rest.includes("-f") || rest.includes("--follow");
   if (follow) {
     if (rest.includes("--since"))
       failRivalShapes("history --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');
