@@ -37,7 +37,7 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
  * (src/team/failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the once-summary outcome tally
- * (cli/cli-start.ts), the logs' per-type tally (cli/log-commands.ts), the flaky-check tally
+ * (cli/cli-start-summary.ts), the logs' per-type tally (cli/log-commands.ts), the flaky-check tally
  * (doctor/doctor-project-checks.ts), and the multi-runner base tally
  * (orchestrator/orchestrator-scheduling.ts), so those sites cannot drift on how a missing key is
  * seeded. */
@@ -133,7 +133,7 @@ export function lowerMedian(values: number[]): number {
 
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
- * src/cli/cli-start.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by
+ * src/cli/cli-start-summary.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by
  * `sortByValueDesc` for its tiebreak. */
 export function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
