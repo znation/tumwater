@@ -2,7 +2,6 @@ import path from "node:path";
 import { readTextIfExists, readTextOrNull, writeTextAtomic } from "../files/files.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { gitTry, gitTryStarted } from "../git/git-run.js";
-import { revertSubjectsOn } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
@@ -161,8 +160,9 @@ async function pickBase(wt: string, mainBranch: string, sha: string): Promise<st
   if (full?.trim() !== base.trim()) return base;
   // A commit main merely fast-forwarded onto keeps the empty range; only one main reverted is
   // handed back to be re-applied.
-  const reverts = await revertSubjectsOn(wt, mainBranch, shortSha(sha));
-  if (!reverts.some((subject) => subject.endsWith(`Revert ${shortSha(sha)}`))) return base;
+  const reverts =
+    (await gitTryStarted(wt, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(sha)}`)) ?? "";
+  if (!reverts.split("\n").some((subject) => subject.endsWith(`Revert ${shortSha(sha)}`))) return base;
   return gitTryStarted(wt, "rev-parse", `${sha}^`);
 }
 
