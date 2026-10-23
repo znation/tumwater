@@ -33,7 +33,7 @@ export const REPORT_SINCE_MAX_MS = 7 * DAY_MS;
 /** Why a trailing-window length is refused, as the rejection text naming the out-of-range
  * value (`sinceMs must be between 1 and 7d (got 604800000)`). The single home of the report
  * window's bound wording, shared by the data-layer guard (assertReportSinceMs) and the
- * dashboard's ?sinceMs= 400 (gui-endpoints.ts) so the two cannot drift apart; the `--since`
+ * dashboard's ?sinceMs= 400 (gui-report-endpoints.ts) so the two cannot drift apart; the `--since`
  * CLI flag uses parseSinceFlag's own distinct wording. */
 export function reportSinceMsg(sinceMs: number): string {
   return `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`;

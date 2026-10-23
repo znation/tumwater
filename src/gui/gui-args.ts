@@ -14,7 +14,7 @@ import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS } from "../events/event-window.js"
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text/text.js";
+import { gotSuffix, parseNonNegativeInt, parsePositiveInt, splitCommaListUnique } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
 import { badRequest, sendJson } from "./http-body.js";
 import type http from "node:http";
@@ -53,6 +53,22 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
     return true;
   }
   return false;
+}
+
+/** Parse the GET endpoints' `?role=` comma-separated list (each id trimmed, deduplicated, and
+ * validated by rejectBadRole; an empty list or unknown id → 400). Returns undefined when
+ * `role` is absent and null once a 400 is sent. Shared by /api/diff and the report endpoints'
+ * reportScope so the role-list rule cannot drift between them. */
+export function roleListQuery(q: URLSearchParams, res: http.ServerResponse, root: string): string[] | undefined | null {
+  const raw = q.get("role");
+  if (raw === null) return undefined;
+  const roles = splitCommaListUnique(raw);
+  if (roles.length === 0) {
+    rejectBadRole(root, res, raw);
+    return null;
+  }
+  for (const r of roles) if (rejectBadRole(root, res, r)) return null;
+  return roles;
 }
 
 /** Validate one request's file-addressed queue name (a queued prompt's basename) through

@@ -1,8 +1,9 @@
 /**
  * The dashboard's POST operator endpoint namespace (src/gui/gui-server.ts routes to these
  * handlers): one file per domain, each adapting HTTP onto the domain work one layer down, all
- * gathered here. The GET data endpoints (transcript, backlog, report, failures, history, run,
- * diff, config) stay in gui/gui-endpoints.ts; the shared request-body helpers
+ * gathered here. The GET data endpoints are barrelled into gui/gui-endpoints.ts from one module
+ * per family (gui-history-endpoints, gui-backlog-endpoints, gui-report-endpoints,
+ * gui-admin-endpoints); the shared request-body helpers
  * (readPostBody, readRoleBody, sendRequestResult) live in gui/gui-endpoint-common.ts. The
  * per-domain command modules, each a thin HTTP adapter touching no socket beyond its own `res`:
  * prompt queueing/cancel/edit (gui/gui-prompt-commands), backlog entry file/cancel/edit +

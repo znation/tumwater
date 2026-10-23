@@ -188,8 +188,8 @@ export function formatEvent(e: HarnessEvent): string {
 /** One event as the dashboard's activity feed consumes it: `result` is a run's outcome, a
  * merge's result, or a build check's status — whichever string the event carries. The event
  * layer owns the event shape's projection, so both the status poll (ui/status-payload.ts) and
- * the slice endpoint (gui/gui-endpoints.ts's handleLogs) read the same fields, and a feed row's
- * shape cannot drift between them. */
+ * the slice endpoint (gui/gui-history-endpoints.ts's handleLogs) read the same fields, and a feed
+ * row's shape cannot drift between them. */
 export function eventFeedItem(e: HarnessEvent): { ts: number; source: string; type: string; result?: string; message: string } {
   const result = eventResult(e);
   // eventRole renders a missing/empty role as "?" like the reports, so a torn or hand-edited

@@ -17,7 +17,8 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 /** The command-layer modules DEVELOPMENT.md's rule lets drive src/ui/ (beside the cli.ts
  * dispatcher): the read-only command bodies (cli/cli-query-commands.ts, log-commands.ts,
  * run/run-detail.ts) and the
- * `tumwater gui` HTTP server layer (gui/gui-server.ts, gui/gui-endpoints.ts) that
+ * `tumwater gui` HTTP server layer (gui/gui-server.ts, gui/gui-endpoints.ts and the per-family
+ * GET endpoint modules it barrells) that
  * gui/gui-command.ts
  * delegates to. Anything else importing src/ui/ is a layering bug. */
 const COMMAND_LAYER = new Set([
@@ -27,6 +28,7 @@ const COMMAND_LAYER = new Set([
   "run/run-detail-render.ts",
   "gui/gui-server.ts",
   "gui/gui-endpoints.ts",
+  "gui/gui-history-endpoints.ts",
 ]);
 
 /** The relative paths (posix-style, under `srcDir`) of `.ts` modules that import src/ui/ without

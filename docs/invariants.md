@@ -66,7 +66,7 @@ the surfaces cannot disagree on a feed row's fields or on what a pattern matches
 
 **Binds.** `src/events/event-format.ts` (`eventFeedItem`, `eventMatchesGrep`),
 `src/ui/status-payload.ts` (`eventItems`), `src/cli/log-commands.ts` (`cmdLogs`),
-`src/gui/gui-endpoints.ts` (`handleLogs`).
+`src/gui/gui-history-endpoints.ts` (`handleLogs`).
 
 **Pinned by.** `test/gui-endpoints.test.ts` — "handleLogs serves the matched tail oldest-first
 as feed items, composing grep and role" (the handler's answer equals
@@ -2569,7 +2569,7 @@ failing queueFileNameProblem, touching nothing".
 ### INV-AH3: the dashboard answers a bad name with the guard's reason as a 400, before any read
 
 **Guarantee.** `rejectBadQueueFileName` sends `queueFileNameProblem`'s reason as the shared 400 and
-tells the handler to stop. On 2026-10-20 it is called once in `src/gui/gui-endpoints.ts` and three
+tells the handler to stop. On 2026-10-20 it is called once in `src/gui/gui-admin-endpoints.ts` and three
 times in `src/gui/gui-prompt-commands.ts`.
 
 **Binds.** `src/gui/gui-args.ts` (`rejectBadQueueFileName`).

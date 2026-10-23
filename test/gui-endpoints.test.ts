@@ -46,9 +46,10 @@ import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
 import { ROLE_INSTRUCTIONS_MAX_CHARS } from "../src/config/config-schema.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
-// The GET data endpoints of the dashboard (src/gui/gui-endpoints.ts), exercised at the unit
-// level: handleReport and handleFailures have no other direct coverage — gui.test.ts drives
-// /api/prompt, /api/transcript, and /api/backlog through the live server but never these two.
+// The GET report/failures endpoints of the dashboard (src/gui/gui-report-endpoints.ts),
+// exercised at the unit level: handleReport and handleFailures have no other direct coverage —
+// gui.test.ts drives /api/prompt, /api/transcript, and /api/backlog through the live server but
+// never these two.
 // Both handlers only read the parsed query (the server threads it down from the one
 // parseRequestTarget call) and write one JSON response, so a fake res that captures
 // writeHead/end is enough; the domain work runs for real against a seeded repo.
