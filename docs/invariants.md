@@ -4571,3 +4571,11 @@ instead of skipping its re-review".
 **Binds.** `src/agent/opencode/opencode-config.ts` (`opencodeConfigContent`, `writeGuardPluginEntry`) and `src/agent/opencode/write-guard-plugin/index.ts` (`guardEvaluate`, the default export's `setup`).
 
 **Pinned by.** `test/opencode-config.test.ts` — "opencodeConfigContent loads the write-guard plugin from a directory holding its compiled index.js"; `test/write-guard.test.ts` — "the opencode plugin denies an edit decision for a stray path and leaves every other decision alone".
+
+### INV-CW4: a codex `apply_patch` outside the run's worktree is denied, and the hook stays silent for every other call
+
+**Guarantee.** `codexWriteRefusal` acts only on a payload whose `tool_name` is `"apply_patch"` and whose `tool_input.command` is a string, taking the run's directory from the payload's `cwd` (codex's session cwd, which a shell `cd` cannot move since every shell call is its own `zsh -lc`). For each path `patchWritePaths` lists from the command, in order, it refuses the first that `strayWriteRefusal` refuses, a relative path resolving from `cwd`; a payload naming no `cwd` returns null. The hook entry (write-guard-hook.ts) prints a `deny` decision whose reason is that refusal, prints nothing for any other call or for input it cannot read, and exits 0 either way.
+
+**Binds.** `src/agent/codex/codex-write-guard.ts` (`codexWriteRefusal`) and `src/agent/codex/write-guard-hook.ts`.
+
+**Pinned by.** `test/codex-write-guard.test.ts` — "codexWriteRefusal refuses an Update at the primary's absolute path and names the same file in the worktree", "an in-worktree relative Update, a Bash call and a payload with no cwd pass", "a patch whose Move leaves the worktree is refused", "a first in-worktree path does not hide a later stray path in the same patch" and "the hook codex runs denies a stray apply_patch with the refusal as its reason and stays silent otherwise".

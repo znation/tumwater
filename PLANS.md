@@ -254,37 +254,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The dashboard renders the `Backlog lag median` chart only when a day carries the field.
 - The existing per-day lines render unchanged (their tests pass untouched); `npm run test:gate` passes.
 
-### Write guard on Codex, part 2/9: The PreToolUse hook refuses an `apply_patch` outside the run's worktree (planned 2026-10-23 by user; requires part 1/9 landed; design in plans/codex-write-guard.md "The hook (parts 1–2)" and findings 4–5; touches src/agent/codex/codex-write-guard.ts (new) src/agent/codex/write-guard-hook.ts (new) docs/invariants.md test/codex-write-guard.test.ts (new))
-
-**Goal.** Add the hook a codex run will call before every `apply_patch`, deciding with the same rule pi, claude and OpenCode use (`strayWriteRefusal`, src/agent/write-guard.ts). This part only adds the hook; part 6/9 makes runs use it.
-
-**Approach.**
-- src/agent/codex/codex-write-guard.ts (new): `codexWriteRefusal(payload: unknown): string | null`.
-  - It acts only when `tool_name` is `"apply_patch"` and `tool_input.command` is a string; anything else returns null.
-  - The run's directory is the payload's `cwd`, which is Codex's session cwd. Every shell call is its own `zsh -lc`, so a `cd` cannot move it. With no `cwd`, it returns null.
-  - For each path from `patchWritePaths(tool_input.command)`, in order, it returns the first non-null `strayWriteRefusal(path, cwd)`. A relative path resolves from `cwd`, as Codex resolves it.
-- src/agent/codex/write-guard-hook.ts (new) is the entry codex runs, with no arguments:
-  - it reads its stdin as JSON and calls `codexWriteRefusal`;
-  - on a refusal it prints `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":<refusal>}}` and a newline;
-  - otherwise it prints nothing, and it exits 0 either way;
-  - any failure of its own (bad JSON, a throw) prints nothing, so a broken hook lets the patch run and the stray-write warning in runner-run.ts still sees a stray write.
-- **Why no argument naming the worktree,** unlike claude's hook: Codex trusts a hook by a hash of its whole definition (plans/codex-write-guard.md finding 3). A per-worktree argument would need a trust lookup per slot, while a command fixed per build needs one.
-- Follow the doc-comment shape of src/agent/claude/claude-write-guard.ts and write-guard-hook.ts.
-- docs/invariants.md: under "Write guard", add the next free `INV-CW` id (INV-CW4 if still free: check `grep -n '^### INV-CW' docs/invariants.md` first). It is "a codex `apply_patch` to a path under the team root but outside the payload's cwd checkout is denied with `strayWriteRefusal`'s text, and the hook prints nothing for any other call or for input it cannot read", pinned by the tests below.
-
-**Tests.** test/codex-write-guard.test.ts, with the same team fixture as test/write-guard.test.ts (a root, `_slot-1` as the worktree, `_slot-2` as another):
-- an Update of `<root>/src/a.ts` from `cwd: <wt>` is refused, and the reason names `<wt>/src/a.ts`;
-- an Update of `src/a.ts` (relative) passes;
-- a patch whose `*** Move to:` leaves the worktree is refused;
-- `tool_name: "Bash"` returns null, and so does a payload with no `cwd`;
-- the compiled hook, spawned as `node dist/src/agent/codex/write-guard-hook.js` with a stray payload on stdin, prints the deny JSON and exits 0;
-- the same with an in-worktree payload prints nothing and exits 0;
-- with `not json` on stdin it prints nothing and exits 0.
-
-**Acceptance criteria.**
-- The hook's output for a refused patch parses as the JSON above, with `permissionDecisionReason` equal to `strayWriteRefusal`'s text.
-- No path is refused when the payload names no `cwd`.
-- `npm run test:gate` passes.
 
 ### Write guard on Codex, part 3/9: The hook's definition and its two `-c` flags, and `hooks` keys reserved from the passthrough (planned 2026-10-23 by user; requires part 2/9 landed; design in plans/codex-write-guard.md "The flags (part 3)" and findings 1–2; touches src/agent/codex/codex-write-guard.ts src/agent/codex/codex-args.ts src/config/config-validation.ts test/codex-write-guard.test.ts test/codex-args.test.ts test/config-validation.test.ts)
 
