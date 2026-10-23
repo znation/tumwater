@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  archiveAtTeamStart,
   archiveFinishedOnMain,
   archiveFinishedText,
   archiveNewFinishedEntries,
@@ -10,6 +11,7 @@ import {
   archiveTemplate,
   liveFinishedHistory,
 } from "../src/backlog/backlog-archive.js";
+import { readEvents } from "../src/events/event-read.js";
 import { finishedArchiveOf } from "../src/backlog/backlog-md.js";
 import { donePlanEntries, donePlans, fixedBugEntries } from "../src/backlog/backlog.js";
 import { conflictedFiles, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
@@ -519,4 +521,40 @@ test("archiveNewFinishedEntries rejects and writes nothing when the archive file
   }
   assert.equal(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), edited);
   assert.equal(fs.readFileSync(path.join(root, "PLANS-DONE.md"), "utf8"), archive);
+});
+
+// archiveAtTeamStart is the team-start sweep (src/orchestrator/orchestrator.ts) — a real
+// behavioural entry point that the archiveFinishedOnMain unit tests reached only through the
+// inner function, never its own event/warn contract. It logs one `state_migrated` event naming
+// the move on success, warns and writes nothing when the sweep is skipped, and never throws.
+
+test("archiveAtTeamStart archives finished entries and logs one state_migrated event naming the move", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
+  seedCommit(root, "BUGS.md", "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n", "seed bugs");
+  ignoreInRepo(root, ".tumwater/");
+  await archiveAtTeamStart(root);
+  assert.match(sh(root, "git", "log", "-1", "--format=%s"), /Archive 2 finished entries to PLANS-DONE\.md and BUGS-FIXED\.md/);
+  const evs = readEvents(root).filter((e) => e.type === "state_migrated" && e.step === "backlogArchive");
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0]?.moved, 2);
+  assert.match(String(evs[0]?.detail), /PLANS\.md → PLANS-DONE\.md: 1 entry/);
+  assert.match(String(evs[0]?.detail), /BUGS\.md → BUGS-FIXED\.md: 1 entry/);
+  // A second team start finds nothing new and logs nothing more.
+  await archiveAtTeamStart(root);
+  assert.equal(readEvents(root).filter((e) => e.type === "state_migrated" && e.step === "backlogArchive").length, 1);
+});
+
+test("archiveAtTeamStart warns on a dirty finished file without throwing and writes nothing", async () => {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", plans("### D1 (planned 2026-10-02, done 2026-10-03)\n\nOne.\n"), "seed plans");
+  seedCommit(root, "BUGS.md", "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n\n### B1 (found 2026-10-01; fixed 2026-10-02)\n\nFix.\n", "seed bugs");
+  ignoreInRepo(root, ".tumwater/");
+  fs.appendFileSync(path.join(root, "BUGS.md"), "\nstray edit\n");
+  await archiveAtTeamStart(root);
+  assert.equal(fs.existsSync(path.join(root, "PLANS-DONE.md")), false, "a refusal writes nothing");
+  const warns = readEvents(root).filter((e) => e.type === "warning" && String(e.message).includes("finished backlog entries were not archived"));
+  assert.equal(warns.length, 1);
+  assert.match(String(warns[0]?.message), /BUGS\.md has uncommitted changes/);
+  assert.match(String(warns[0]?.message), /fix that, then run `tumwater archive`/);
 });
