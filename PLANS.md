@@ -96,4 +96,50 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
 - `npm test` passes.
 
+## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
+
+src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
+200-line median) and ~607 of those lines are one function, `validateConfig`, a single sequential
+pass that walks every section of tumwater.json. The doc already factors the generic machinery
+(schema rules, the NumberRule table, the known-role/unknown-key guards) into
+config-field-checks.ts, but every section's own rules still live inside the one gate, so any
+edit to one section means reading and re-walking the whole pass and lands as one giant diff. The
+gate is a single function, so it cannot be split piecemeal in one run; land this as a plan.
+
+The split preserves `validateConfig` as the one export every caller imports (only four callers:
+config.ts, config-write-core.ts, config-request.ts, config-example.ts; they keep importing it
+unchanged) and keeps behavior and message byte-identical: the section validators only re-locate
+where each today-appended problem is produced, in the same order.
+
+**Target structure** — the two largest, most self-contained blocks move out first, each into a
+new module exporting one function `(r, problems, helpers) => void` that appends problems exactly
+as the gate does today:
+- New src/config/config-validation-model.ts — the model-declaration surface: top-level `model`
+  selector vs map-by-tier and each tier entry's `model`/`provider`/`thinking`, the empty-half
+  selector checks, backend-resolution and `fallback` (string vs map) checks, the retired-is-a-
+  backend spelling, the legacy-provider form, and the free-fallback-model shape.
+- New src/config/config-validation-agents.ts — the agent-execution surface: `agentBin`,
+  `baseBranch`, the claude/codex `configDir` scan, the codex `-c <key>=…` arity-aware scan, the
+  `agents`/`piArgs` passthrough reserved-flag checks, and the legacy piArgs back-compat pair.
+- src/config/config-validation.ts keeps `validateConfig` as the gate: bind the generic checkers
+  once, call the two section validators in the same order their blocks run today, and keep the
+  per-role and cross-field sections (roles.<id> task/instructions/customRoles/instances,
+  review.afterMerge names, per-role caps, per-role quiet hours, maxConcurrentPerProvider,
+  claudeWindowReserve, and the idleBackoff cross-field pair) for a later pass.
+
+**Cost it removes**: a section's rules become findable and testable in isolation instead of being
+one undifferentiated stretch of a 600-line pass; a per-theme diff replaces a whole-gate diff.
+
+**Files touched**: src/config/config-validation.ts; new src/config/config-validation-model.ts and
+src/config/config-validation-agents.ts; docs/invariants.md only if it pins the gate's shape.
+
+**Acceptance criteria.**
+- The two new modules hold exactly the model and agent section rules, nothing else; the gate
+  binds checkers once and calls them in the same order their blocks run today.
+- Behaviour and messages unchanged: `validateConfig` produces identical problems for the same
+  input before and after (the existing config validation tests pass untouched).
+- A file only mentioning a model/backend key still validates identically pre- and post-split.
+- grep over src, tests and docs finds no stale path or name for the moved blocks.
+- `npm run test:gate` and `npm test` pass.
+
 ## Done
