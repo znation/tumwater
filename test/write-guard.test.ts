@@ -172,4 +172,24 @@ test("the opencode plugin denies an edit decision for a stray path and leaves ev
   let registered = false;
   await opencodeWriteGuard.setup({ location: {}, permission: { hook: () => { registered = true; } } });
   assert.equal(registered, false);
+  // So does a context whose directory is an empty string.
+  registered = false;
+  await opencodeWriteGuard.setup({ location: { directory: "" }, permission: { hook: () => { registered = true; } } });
+  assert.equal(registered, false);
+
+  // A decision with no resources array, or a non-array resource, is left exactly as it is: the
+  // hook must never crash a decision it cannot read a path out of.
+  const noResources = { action: "edit", effect: "allow" };
+  guardEvaluate(noResources, wt);
+  assert.deepEqual(noResources, { action: "edit", effect: "allow" });
+  const stringResources = { action: "edit", resources: "not-an-array", effect: "allow" };
+  guardEvaluate(stringResources, wt);
+  assert.deepEqual(stringResources, { action: "edit", resources: "not-an-array", effect: "allow" });
+  const nonString = { action: "edit", resources: [5, stray], effect: "allow" };
+  guardEvaluate(nonString, wt);
+  assert.deepEqual(nonString, { action: "edit", resources: [5, stray], effect: "deny", message: strayWriteRefusal(stray, wt) });
+  // An empty-string resource is skipped, but a stray path after it is still denied.
+  const emptyFirst = { action: "edit", resources: ["", stray], effect: "allow" };
+  guardEvaluate(emptyFirst, wt);
+  assert.deepEqual(emptyFirst, { action: "edit", resources: ["", stray], effect: "deny", message: strayWriteRefusal(stray, wt) });
 });
