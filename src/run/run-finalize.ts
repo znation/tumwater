@@ -174,6 +174,7 @@ export async function finalizeRun(deps: FinalizeRunDeps): Promise<RunOutcome> {
     summary: outcome.summary,
     error: s.lastError,
     durationMs: runDurationMs,
+    ...(outcome.heldOnBranch ? { heldOnBranch: true } : {}),
     ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
     ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
     // The billing answer the run's runs reported, so the report can tell notional spend from

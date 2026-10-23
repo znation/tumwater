@@ -20,25 +20,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
 - `npm run test:gate` passes (config change only; no code).
 
-### Interlock relief, part 1/4: The relief run holds its commit on the branch, and its row does not join the earlier change's verdict (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2 — the scheduler admission is part 3/4, the recovery arms part 2/4; touches src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts test/run-stage.test.ts test/history-data.test.ts)
-
-**Previously held 1**
-
-**Goal.** A post-merge-review role the scheduler admits while its first change is queued (part 3/4) may author a second change. The queue's one-entry-per-role cap must hold: the new commit stays on the branch, unpinned and unqueued, until the first entry drains. Today `stageRunMerge` unconditionally pins and enqueues, which would put two changes on the queue for one role. Stop that, and keep the held run's `run_end` out of the queued-row join so the earlier change's merge verdict is not attributed to it.
-
-**Approach.**
-- src/run/run-stage.ts (`stageRunMerge`): before `pinAndReset`, if the role already has a queued entry (`queuedMerges(ctx.root).some((e) => e.role === ctx.role)`) or an unmerged pin (`hasUnmergedPin(ctx.root, ctx.role)`), pin nothing, enqueue nothing, and leave the commit on the branch. End `{ result: "queued", summary: finalSummary, commit, highFriction, heldOnBranch: true }`. The commit message, events, flow/filed records and friction are unchanged; only the pin/enqueue block is skipped.
-- src/run/run-outcome.ts: add `heldOnBranch?: true` to `RunOutcome`, documented as "the run committed but enqueued nothing because the role already had a queued change; its `run_end` must not join the queued-row verdict".
-- src/run/run-finalize.ts: write `heldOnBranch` onto the `run_end` event when the outcome carries it.
-- src/history/history-queued.ts (`resolveQueuedResult`): return `null` at the top when `end.heldOnBranch === true`, before the window/floor and bucket walks. The one guard covers all three call sites (`history-data.ts`, `time-spend.ts`, `run-detail-data.ts`).
-
-**Acceptance criteria.**
-- With a queued entry already present for the role (`queuedMerges` non-empty), and separately with an unmerged pin and no queue entry, `stageRunMerge` pins nothing, enqueues nothing, leaves the commit on the branch, and ends `queued` with `heldOnBranch: true`; with neither present it pins and enqueues exactly as today.
-- `resolveQueuedResult` returns `null` for a `run_end` carrying `heldOnBranch: true`, and the earlier queued run's row still resolves to its own pin's verdict; a `run_end` without the flag is unaffected.
-- `npm run test:gate` passes.
-
-**Tests.** test/run-stage.test.ts (the held run pins and enqueues nothing, leaves its commit on the branch, and ends `queued` + `heldOnBranch`); test/history-data.test.ts (a `heldOnBranch` `run_end` is not joined, and the earlier queued run keeps its own pin's verdict).
-
 ### Interlock relief, part 2/4: Recovery preserves a held branch commit and lets an approved queued author run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision"; split of the oversized Interlock relief part 1/2; requires part 1/4 landed — the held-on-branch staging; the scheduler admission is part 3/4; touches src/runner/leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts test/leftover.test.ts test/runner-leftover-recovery.test.ts test/runner-recovery.test.ts)
 
 **Previously held 1**

@@ -83,6 +83,13 @@ export function resolveQueuedResult(
   joinStarts: Map<string, number>,
   floorTs: number | null,
 ): QueuedVerdict | null {
+  // Interlock relief (plans/interlock-relief.md): a held run's commit stayed on the branch and
+  // enqueued nothing, so its queued label names the held commit, not a merge this run made.
+  // Returning null keeps that row's raw queued label and, crucially, leaves the earlier change's
+  // merge pins unclaimed, so the verdict that belongs to the queued entry is not credited to the
+  // held run. One guard covers all three call sites (history-data.ts, time-spend.ts,
+  // run-detail-data.ts).
+  if (end.heldOnBranch === true) return null;
   if (floorTs !== null) {
     const startTs = joinStarts.get(`${end.source}#${end.run}`);
     if (startTs !== undefined && startTs < floorTs) return null;

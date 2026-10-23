@@ -14,7 +14,9 @@ import { readQaCoverage } from "../src/run/qa-coverage.js";
 import { readFeedbackFilings } from "../src/run/feedback-filings.js";
 import { qaCoveragePath, feedbackFilingsPath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
-import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
+import { queueDepth, queuedMerges, enqueueMerge } from "../src/merge/merge-queue.js";
+import { setRef, refSha } from "../src/git/git.js";
+import { mergeRefName } from "../src/paths.js";
 import type { RunOutcome } from "../src/run/run-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { StagedDescription } from "../src/prompt/gate-prompts.js";
@@ -1087,4 +1089,65 @@ test("a staged commit carries the Model line the run started on", async () => {
   const lines = sh(wt, "git", "log", "-1", "--format=%B").trimEnd().split("\n");
   assert.match(lines[lines.length - 2]!, /^Run: improve #/);
   assert.equal(lines[lines.length - 1], modelLine);
+});
+
+// ── Interlock relief, part 1/4 (plans/interlock-relief.md) ──
+// A role the scheduler admits while it already has a queued change (part 3/4) or an unmerged
+// pin holds its new commit on the branch instead of queueing it: the queue's one-entry-per-role
+// cap must hold, and a second pin would fight the first for the same merge ref. The run still
+// ends "queued" and marks heldOnBranch so its run_end never joins the earlier change's verdict.
+
+test("with a queued entry already present, stageRunMerge holds the new commit on the branch", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  enqueueMerge(root, {
+    role: "improve",
+    sha: "0123456789abcdef0123456789abcdef01234567",
+    run: 1,
+    summary: "the first change",
+    enqueuedAt: Date.now(),
+  });
+  const { ctx, calls } = makeCtx(root, wt, state, { finalText: "SUMMARY: add the feature\n" });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(outcome.heldOnBranch, true);
+  assert.equal(outcome.summary, "add the feature");
+  assert.equal(calls.pins.length, 0, "nothing was pinned or reset");
+  assert.equal(queueDepth(root), 1, "no second entry was queued");
+  // The commit stays on the branch, ahead of main.
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
+  assert.equal(sh(wt, "git", "rev-parse", "HEAD"), outcome.commit);
+});
+
+test("with an unmerged pin and no queue entry, stageRunMerge holds the new commit on the branch", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const base = sh(wt, "git", "rev-parse", "HEAD");
+  await setRef(root, mergeRefName("improve"), base);
+  const { ctx, calls } = makeCtx(root, wt, state, { finalText: "SUMMARY: add the feature\n" });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(outcome.heldOnBranch, true);
+  assert.equal(calls.pins.length, 0, "nothing was pinned or reset");
+  assert.equal(queueDepth(root), 0, "nothing was queued");
+  assert.equal(await refSha(root, mergeRefName("improve")), base, "the existing pin is untouched");
+  assert.equal(sh(wt, "git", "log", "-1", "--format=%s"), "tumwater(improve): add the feature");
+});
+
+test("with neither a queue entry nor a pin, stageRunMerge pins and enqueues exactly as before", async () => {
+  const { root, wt } = await setup();
+  const state: RunnerState = freshRunnerState("improve");
+  const { ctx, calls } = makeCtx(root, wt, state, { finalText: "SUMMARY: add the feature\n" });
+
+  const outcome = await stageRunMerge(ctx);
+
+  assert.equal(outcome.result, "queued");
+  assert.equal(outcome.heldOnBranch, undefined);
+  assert.equal(calls.pins.length, 1, "the run pins and resets as before");
+  assert.equal(queueDepth(root), 1, "the change is queued as before");
+  assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
 });

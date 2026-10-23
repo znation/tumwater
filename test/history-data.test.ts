@@ -351,6 +351,32 @@ test("a queued run resolves to its change's merge outcome — merged or merge_fa
   );
 });
 
+test("a heldOnBranch run_end is not joined, and the earlier queued run keeps its own verdict (interlock relief 1/4)", () => {
+  const root = tmpdir();
+  const t = (mins: number) => Date.now() - mins * MIN;
+  // The role's first change is queued (merge_queued sha1). While it waits, the scheduler-admitted
+  // relief run (part 1/4) commits but holds on the branch: its run_end carries heldOnBranch and
+  // must not claim sha1's pin or verdict. The first run still resolves to its own merge.
+  writeEvents(root, [
+    { ts: t(50), source: "feature", type: "run_start", run: 1 },
+    { ts: t(49), source: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
+    { ts: t(48), source: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
+    { ts: t(47), source: "feature", type: "run_start", run: 2 },
+    { ts: t(46), source: "feature", type: "run_end", run: 2, result: "queued", summary: "work two", heldOnBranch: true },
+    { ts: t(40), source: "feature", type: "merge_done", commit: "sha1", result: "changed" },
+  ]);
+  const { rows } = readRunRowsSince(root, TWO_HOURS, null);
+  assert.deepEqual(
+    rows.map((r) => [r.run, r.result, r.detail]),
+    [
+      // The held run keeps its raw queued label — it enqueued nothing, so nothing claims the pin.
+      [2, "queued", "work two"],
+      // The earlier queued run still gets its own pin's verdict: a merge is not stolen from it.
+      [1, "changed", "work one"],
+    ],
+  );
+});
+
 test("a queued run resolves past a rebased retriable failure to the recovery's merged verdict (BUGS.md 2026-10-10)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;

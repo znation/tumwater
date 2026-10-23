@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Interlock relief, part 1/4: The relief run holds its commit on the branch, and its row does not join the earlier change's verdict (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2 — the scheduler admission is part 3/4, the recovery arms part 2/4; touches src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts test/run-stage.test.ts test/history-data.test.ts) — done 2026-10-23 by the feature role
+**Previously held 1**
+
+**Goal.** A post-merge-review role the scheduler admits while its first change is queued (part 3/4) may author a second change. The queue's one-entry-per-role cap must hold: the new commit stays on the branch, unpinned and unqueued, until the first entry drains. Today `stageRunMerge` unconditionally pins and enqueues, which would put two changes on the queue for one role. Stop that, and keep the held run's `run_end` out of the queued-row join so the earlier change's merge verdict is not attributed to it.
+
+**Approach.**
+- src/run/run-stage.ts (`stageRunMerge`): before `pinAndReset`, if the role already has a queued entry (`queuedMerges(ctx.root).some((e) => e.role === ctx.role)`) or an unmerged pin (`hasUnmergedPin(ctx.root, ctx.role)`), pin nothing, enqueue nothing, and leave the commit on the branch. End `{ result: "queued", summary: finalSummary, commit, highFriction, heldOnBranch: true }`. The commit message, events, flow/filed records and friction are unchanged; only the pin/enqueue block is skipped.
+- src/run/run-outcome.ts: add `heldOnBranch?: true` to `RunOutcome`, documented as "the run committed but enqueued nothing because the role already had a queued change; its `run_end` must not join the queued-row verdict".
+- src/run/run-finalize.ts: write `heldOnBranch` onto the `run_end` event when the outcome carries it.
+- src/history/history-queued.ts (`resolveQueuedResult`): return `null` at the top when `end.heldOnBranch === true`, before the window/floor and bucket walks. The one guard covers all three call sites (`history-data.ts`, `time-spend.ts`, `run-detail-data.ts`).
+
+**Acceptance criteria.**
+- With a queued entry already present for the role (`queuedMerges` non-empty), and separately with an unmerged pin and no queue entry, `stageRunMerge` pins nothing, enqueues nothing, leaves the commit on the branch, and ends `queued` with `heldOnBranch: true`; with neither present it pins and enqueues exactly as today.
+- `resolveQueuedResult` returns `null` for a `run_end` carrying `heldOnBranch: true`, and the earlier queued run's row still resolves to its own pin's verdict; a `run_end` without the flag is unaffected.
+- `npm run test:gate` passes.
+
+**Tests.** test/run-stage.test.ts (the held run pins and enqueues nothing, leaves its commit on the branch, and ends `queued` + `heldOnBranch`); test/history-data.test.ts (a `heldOnBranch` `run_end` is not joined, and the earlier queued run keeps its own pin's verdict).
+
 ### Root-install re-sync, part 1/2: `tumwater doctor --resync-install` re-syncs the root checkout's install on demand (planned 2026-10-23 by the plan role; independent of every waiting entry — it adds one value-less doctor flag beside `--commit-backlog`, the CLI's doctor arm, and an operator entry point in src/build/dep-install.ts, none of which any waiting entry touches; the two Health surfaces that call it are part 2/2; touches src/build/dep-install.ts src/cli/cli-flag-specs.ts src/cli.ts src/cli/help.ts docs/cli.md test/dep-install.test.ts test/doctor.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** When a post-merge re-sync fails, the always-on `install` amber alert (src/ui/team-alerts.ts, the `install` block) tells the operator to "run npm install in the project's root checkout" — but only the merge path calls `syncRootInstall` (src/build/dep-install.ts), so the repair is manual, and a running team's next merge is the only automatic retry. Add `tumwater doctor --resync-install`: it runs the same `syncInstall` the merge path runs, under the merge lock, and reports the outcome, so the alert's advice is a harness verb that logs its own `dep_install` event.

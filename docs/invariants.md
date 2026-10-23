@@ -1136,20 +1136,22 @@ the authoring rule" and "a retriable verdict is not swept up by the next FRESH c
 ### INV-S4: missing evidence keeps the raw label, and the join never crosses roles
 
 **Guarantee.** `resolveQueuedResult` returns null (the row stays "queued") when the merge has no
-outcome yet, when no outcome matches the pin's sha, or when the row's run_start sits before a
-since-read's `floorTs`. Pins and outcomes are bucketed per role (`bucketMergeEvents`), so a
-`--role` filter or a role list never lends one role's verdict to another. A torn outcome falls
-back to its type's default text.
+outcome yet, when no outcome matches the pin's sha, when the run_end carries `heldOnBranch` (a
+held relief run enqueued nothing, so nothing claims the earlier change's pin), or when the row's
+run_start sits before a since-read's `floorTs`. Pins and outcomes are bucketed per role
+(`bucketMergeEvents`), so a `--role` filter or a role list never lends one role's verdict to
+another. A torn outcome falls back to its type's default text.
 
 **Binds.** `src/history/history-queued.ts` (`resolveQueuedResult`, `attemptVerdict`,
 `bucketMergeEvents`), `src/history/history-data.ts` (`runRows`).
 
 **Pinned by.** `test/history-data.test.ts` — "a queued run whose merge is still in the pipeline
 keeps the raw label", "a queued run stays raw when no merge outcome matches its pinned sha", "a
-queued row whose run_start predates the join read's floor keeps the raw label", "the resolution
-survives the --role filter and never crosses roles", "runRows takes a list of role ids, joining
-each queued row's merge verdict" and "a queued run's torn merge outcome reads as its type default,
-never [object Object]".
+queued row whose run_start predates the join read's floor keeps the raw label", "a heldOnBranch
+run_end is not joined, and the earlier queued run keeps its own verdict (interlock relief 1/4)",
+"the resolution survives the --role filter and never crosses roles", "runRows takes a list of role
+ids, joining each queued row's merge verdict" and "a queued run's torn merge outcome reads as its
+type default, never [object Object]".
 
 ### INV-S5: the --since view holds exactly the window's runs, with a wider read for the join
 

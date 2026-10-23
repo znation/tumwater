@@ -91,6 +91,11 @@ export interface RunOutcome {
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the run as no evidence about the backend. */
   recoveredLeftover?: boolean;
+  /** The run committed but enqueued nothing because the role already had a queued change or an
+   * unmerged pin (interlock relief, plans/interlock-relief.md): its commit stays on the branch,
+   * and its `run_end` must not join the queued-row verdict — resolveQueuedResult returns null
+   * on the flag so the earlier change's merge outcome is not attributed to this held run. */
+  heldOnBranch?: true;
 }
 
 /** Record the review gate's verdict on a HEAD into `lastReview` — the field the author's next
