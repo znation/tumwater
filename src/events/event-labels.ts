@@ -12,6 +12,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   run_start: "run started",
   run_end: "run finished",
   merge_queued: "waiting to merge",
+  merge_cancelled: "merge cancelled",
   merge_done: "merge finished",
   merge_failed: "merge failed",
   merged: "merged",

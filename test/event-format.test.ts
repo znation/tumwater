@@ -712,6 +712,27 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   assert.ok(longReason.includes("…"), "the cut ends in an ellipsis");
 });
 
+// The operator's queue --cancel (PLANS.md): the merge_cancelled event names the sha and
+// summary, routine like prompt_cancelled — no warning prefix — with the "?" fallback on a
+// torn line.
+test("formatEvent renders merge_cancelled plainly with the sha and summary", () => {
+  const line = formatEvent({
+    ts: 0,
+    source: "organize",
+    type: "merge_cancelled",
+    commit: "abcdef1234567890",
+    summary: "split the module",
+  } as never);
+  assert.match(line, /organize\s+cancelled the merge of abcdef12 — split the module$/, `must name the sha and summary: ${line}`);
+  assert.ok(!line.includes("warning"), `a cancelled merge is routine, not a warning: ${line}`);
+
+  // A torn or hand-edited event line could carry no commit or summary; the fallbacks must
+  // render "?", never String(undefined)'s literal "undefined".
+  const bare = formatEvent({ ts: 0, source: "organize", type: "merge_cancelled" } as never);
+  assert.match(bare, /cancelled the merge of \? — \?$/);
+  assert.ok(!bare.includes("undefined"), `corrupt commit/summary must not render undefined: ${bare}`);
+});
+
 // Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or
 // hand-edited line can omit any field. The feed's fallbacks ("?", pi's default provider,
 // "several roles") must render — the operator reading `logs` during an incident sees these

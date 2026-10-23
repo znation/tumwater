@@ -227,6 +227,10 @@ export function eventMessage(e: HarnessEvent): string {
       // Merge queue 3/5: routine state change (the run committed and the merge slot is
       // ahead) — no warning prefix. The merge's own events follow it.
       return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
+    case "merge_cancelled":
+      // Routine operation (the user removed a waiting merge), not a warning — like
+      // prompt_cancelled. The merge_cancelled event name carries the payload (commit + summary).
+      return `cancelled the merge of ${shortSha(e.commit)} — ${textOr(e.summary)}`;
     case "merge_done":
       // The merge slot finished with the change on main; the usage is the merge's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt merges

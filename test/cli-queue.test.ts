@@ -148,3 +148,73 @@ test("scopeMergeQueue keeps the matching entries under their whole-queue positio
   assert.equal(scope.total, 3);
   assert.equal(view.unreadable, 1);
 });
+
+test("queue --cancel <n> removes the entry and prints the cancelled line, leaving an empty queue", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue cancel test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  const r = await cli(repo, "queue", "--cancel", "1");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "cancelled queue entry 1: improve aaaaaaaa — tidy the parser");
+  const after = await cli(repo, "queue");
+  assert.equal(after.code, 0);
+  const lines = after.stdout.trimEnd().split("\n");
+  assert.equal(lines[0], "merge queue (1):");
+  assert.match(lines[1]!, /^  1\. organize run #2 /);
+});
+
+test("queue --cancel --json prints the cancelled object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue cancel json test");
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  const r = await cli(repo, "queue", "--cancel", "1", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { cancelled: { role: string; commit: string; summary: string } };
+  assert.deepEqual(payload.cancelled, { role: "organize", commit: "b".repeat(40), summary: "split the module" });
+  assert.equal((await cli(repo, "queue")).stdout.trim(), "merge queue empty");
+});
+
+test("queue --cancel refuses --role, -f/--follow, and an unknown flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue cancel refuse test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40)));
+  const role = await cli(repo, "queue", "--role", "improve", "--cancel", "1");
+  assert.notEqual(role.code, 0);
+  assert.match(role.stderr, /tumwater queue/);
+  for (const flag of ["-f", "--follow"]) {
+    const follow = await cli(repo, "queue", flag, "--cancel", "1");
+    assert.notEqual(follow.code, 0);
+    assert.match(follow.stderr, /repaints a live view/);
+  }
+  const wat = await cli(repo, "queue", "--cancel", "1", "--wat");
+  assert.notEqual(wat.code, 0);
+  assert.match(wat.stderr, /--wat/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(1\):\n  1\. improve /, "a refused cancel changes nothing");
+});
+
+test("queue --cancel with an out-of-range position fails naming the depth", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue cancel range test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40)));
+  enqueueMerge(repo, entry("organize", "b".repeat(40)));
+  const r = await cli(repo, "queue", "--cancel", "7");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /no queued merge at position 7 \(merge queue holds 2\)/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(2\):\n  1\. improve /, "out-of-range changes nothing");
+});
+
+test("queue --cancel refuses an entry a live merge marker names", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue cancel inflight test");
+  const sha = "a".repeat(40);
+  enqueueMerge(repo, entry("improve", sha, 3, "tidy the parser"));
+  // This test process stands in for a live orchestrator (its pid is alive); the marker names
+  // the queued sha mid-merge.
+  writeFileDeep(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  writeFileDeep(mergeStatePath(repo), JSON.stringify({ role: "improve", sha, summary: "tidy", startedAt: Date.now() - 120_000, stage: "reviewing" }));
+  const r = await cli(repo, "queue", "--cancel", "1");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /queue entry 1 is being merged right now — wait for it to land, then `tumwater revert aaaaaaaa`/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(1\):\n  1\. improve /, "the refusal changes nothing");
+});

@@ -5,8 +5,9 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
+import { cancelQueuedMerge, type CancelQueuedOutcome } from "../merge/merge-cancel.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
-import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
+import { flagValue, parseGrepFlag, parsePositionFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
 import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -19,7 +20,9 @@ import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, 
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
 import { renderMergeQueue, scopeMergeQueue } from "../merge/merge-queue-render.js";
-import type { MergeInFlight } from "../merge/merge-slot.js";
+import { mergeChanges, type MergeInFlight } from "../merge/merge-slot.js";
+import { shortSha } from "../text/format.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { roleInScope } from "../roles/runner-ids.js";
@@ -139,6 +142,12 @@ function diffPathArg(args: string[]): string | undefined {
  * seconds until Ctrl+C or the process that started it exits, so a backgrounded follow does
  * not outlive its parent (the same rule `status -f` uses). */
 export async function cmdQueue(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
+  // `tumwater queue --cancel <n>` is the read-only command's one destructive mode: route it
+  // to its own branch before the read gate, so --cancel never leaks into the view parsing.
+  if (args.includes("--cancel")) {
+    await cmdQueueCancel(root, args);
+    return;
+  }
   // The repo half of requireReadyRepo gates: like every repo-bound query, a directory
   // tumwater cannot read yet has no queue to show. Past the gate an absent queue dir reads
   // as an empty queue (a `merge queue empty` line, exit 0), so no merge ever queued is
@@ -168,6 +177,63 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
   }
   const { view, inFlight, scope } = readQueue();
   sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight, scope));
+}
+
+/** The `tumwater queue --cancel <n>` branch (PLANS.md): remove the Nth queued merge `tumwater
+ * queue` lists and delete its role's merge pin, so next-run leftover recovery cannot silently
+ * re-enqueue the change. Parsed as cancelAndAnnounce parses `--cancel` (backlog-cli.ts):
+ * `--cancel <n>` the one valued flag, `--json` the one boolean (at most once), `--help`/-h
+ * tolerated, anything else refused. --role and -f/--follow are refused by name — a live view
+ * repaints a read, and position numbers come from the whole queue, whose numbering is
+ * `tumwater queue`'s. An entry a live merge marker names for this sha is refused (wait for it
+ * to land, then revert); an out-of-range position fails naming the current depth. */
+async function cmdQueueCancel(root: string, args: string[]): Promise<void> {
+  let position: number | null = null;
+  let json = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (arg === "--cancel") {
+      rejectRepeatFlag(position !== null, "--cancel");
+      position = parsePositionFlag("--cancel", args[i + 1], "--cancel 2");
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg as string);
+  }
+  // The vocabulary a cancel invocation accepts is exactly --cancel and --json, both consumed
+  // above; --role and -f/--follow are refused with the queue-specific wording the tests pin.
+  if (rest.includes("--role")) fail("queue --cancel cancels by whole-queue position from `tumwater queue`; --role scopes a read only — drop it");
+  if (rest.includes("--follow") || rest.includes("-f")) fail("queue --cancel removes one entry; -f/--follow repaints a live view — drop it");
+  rejectUnknownArgs("queue", rest, []);
+  if (position === null) fail("--cancel needs a position (usage: tumwater queue --cancel <n>)");
+  await requireReadyRepo(root);
+  // Refuse the entry a live merge marker names before touching it: it is mid-flight (being
+  // reviewed or merged), so cancelling it would race the slot that owns it.
+  const view = readMergeQueue(root);
+  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
+  if (inFlight) {
+    const target = view.entries[position - 1];
+    const markers = new Set(mergeChanges(inFlight).map((c) => c.sha));
+    if (target && (target.sha === inFlight.sha || markers.has(target.sha))) {
+      fail(`queue entry ${position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(target.sha)}\``);
+    }
+  }
+  const outcome: CancelQueuedOutcome = await cancelQueuedMerge(root, position);
+  if (outcome.status === "out-of-range") {
+    fail(`no queued merge at position ${position} (merge queue holds ${outcome.depth})`);
+  }
+  if (json) {
+    sayJson({ cancelled: { role: outcome.role, commit: outcome.sha, summary: outcome.summary } });
+  } else {
+    say(`cancelled queue entry ${position}: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
+  }
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */
