@@ -1,5 +1,5 @@
 import { fail, say, sayJsonLine } from "./cli-output.js";
-import { LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
+import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
@@ -174,7 +174,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // Empty-match prose: grep/type keep their wording when given; a role-only filter names the roles.
   const roleEmpty = roles === null ? "" : `no events from ${roles.join(", ")}`;
   const filtersGrepOrType = grepPattern !== null || type !== null;
-  const follow = rest.includes("-f") || rest.includes("--follow");
+  const follow = hasFollowFlag(rest);
   // `--json` switches the feed from formatEvent rendering to one JSON.stringify(e) per line —
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
   // schema instead of parsing a rendering that changes shape whenever the formatter evolves.

@@ -7,7 +7,7 @@
 import { fail, say, sayJson, sayJsonOrRender } from "./cli-output.js";
 import { followView, type FollowViewSeams } from "./follow-view.js";
 import { flagValue, parseGrepFlag, parseRoleListScope, rejectRepeatFlag } from "./cli-args.js";
-import { DIFF_PATH_FLAG, FOLLOW_FLAG, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { DIFF_PATH_FLAG, FOLLOW_FLAG, hasFollowFlag, JSON_FLAG, READY_FLAG, grepFlagSpec, rejectUnknownArgs, OVERLAPS_FLAG, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, loadConfigSafe } from "../config/config.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
@@ -112,7 +112,7 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
  * outlive its parent. */
 export async function cmdStatus(root: string, args: string[], seams: FollowViewSeams = {}): Promise<void> {
   rejectUnknownArgs("status", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
-  const follow = args.includes("-f") || args.includes("--follow");
+  const follow = hasFollowFlag(args);
   if (follow && args.includes("--json")) fail("status --json prints one document; -f/--follow repaints a live view — drop one of them");
   await requireReadyRepo(root);
   const scope = parseRoleListScope(root, args);
@@ -152,7 +152,7 @@ export async function cmdDiff(root: string, args: string[], seams: FollowViewSea
   rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG, OVERLAPS_FLAG, DIFF_PATH_FLAG, FOLLOW_FLAG]);
   await requireReadyRepo(root);
   rejectRepeatFlag(args.filter((a) => a === "--path").length > 1, "--path");
-  const follow = args.includes("-f") || args.includes("--follow");
+  const follow = hasFollowFlag(args);
   if (follow && args.includes("--json")) fail("diff --json prints one document; -f/--follow repaints a live view — drop one of them");
   if (args.includes("--overlaps")) {
     if (args.includes("--stat")) fail("diff --overlaps prints paths, not patches; drop --stat");
@@ -228,7 +228,7 @@ export async function cmdQueue(root: string, args: string[], seams: FollowViewSe
   rejectUnknownArgs("queue", args, [ROLE_FLAG, JSON_FLAG, FOLLOW_FLAG]);
   await requireReadyRepo(root);
   const roles = parseRoleListScope(root, args);
-  const follow = args.includes("-f") || args.includes("--follow");
+  const follow = hasFollowFlag(args);
   if (follow && args.includes("--json")) fail("queue --json prints one document; -f/--follow repaints a live view — drop one of them");
   // Scoped read shared by the follow and the one-shot branches, so the render's age and the
   // in-flight marker share one clock read and each frame re-reads the queue. --role keeps
@@ -269,7 +269,7 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   refuseTeamWorkspace(root);
   const { rest, pattern } = parseGrepFlag(args, BACKLOG_GREP_VALUE_ERROR);
   const ready = rest.includes("--ready");
-  const follow = rest.includes("-f") || rest.includes("--follow");
+  const follow = hasFollowFlag(rest);
   if (follow && rest.includes("--json")) fail("backlog --json prints one document; -f/--follow repaints a live view — drop one of them");
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
   // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
