@@ -133,7 +133,7 @@ export function lowerMedian(values: number[]): number {
 
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used directly by
- * src/cli/cli-start-summary.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by
+ * src/cli/cli-start.ts, src/cli/log-commands.ts and src/history/history-data.ts, and by
  * `sortByValueDesc` for its tiebreak. */
 export function compareCodeUnits(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
