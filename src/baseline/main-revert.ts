@@ -4,8 +4,7 @@ import { runScopedBuildCheck } from "../build/build-check-scoped.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { withLock } from "../concurrency/lock.js";
 import { logEventBestEffort, TUMWATER_SOURCE, warnEventBestEffort } from "../events/events.js";
-import { branchHead, patchId, subjectOfCommit } from "../git/git.js";
-import { gitTry } from "../git/git-run.js";
+import { branchHead, patchId, revertSubjectsOn, subjectOfCommit } from "../git/git.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
@@ -43,8 +42,8 @@ export async function revertSkipReason(root: string, mainBranch: string, c: Main
   if (baseRoleOf(c.runner) === DIRECTOR_ROLE) return "the director merged it";
   const subject = await subjectOfCommit(root, c.commit);
   if (REVERT_PREFIXES.some((p) => subject.startsWith(p))) return "it is itself a revert";
-  const merged = (await gitTry(root, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(c.commit)}`)) ?? "";
-  if (merged.split("\n").some((s) => REVERT_PREFIXES.some((p) => s === `${p} ${shortSha(c.commit)}`)))
+  const merged = await revertSubjectsOn(root, mainBranch, shortSha(c.commit));
+  if (merged.some((s) => REVERT_PREFIXES.some((p) => s === `${p} ${shortSha(c.commit)}`)))
     return "a revert of it already merged";
   return null;
 }
