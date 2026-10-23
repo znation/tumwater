@@ -4,6 +4,7 @@ import { openQuestions } from "../../backlog/backlog.js";
 import { operatorHeldEntries, refusedEntries, stalledPlanEntries } from "../../backlog/backlog-eligibility.js";
 import { planDependencyAlert, quarantineAlert, skippedMergeFiles, staleMerges, staleOpenBugs, stalePrompts, staleWaitingBugs } from "../status-payload.js";
 import { strandedPlanEntriesFor } from "../../backlog/backlog-structure.js";
+import { duplicatedBacklogHeadings } from "../../doctor/doctor-backlog-plans.js";
 import { snapshot } from "../../status/status-data.js";
 import { renderStatusSpans, type StatusLine } from "../status-render.js";
 import { teamAlerts } from "../team-alerts.js";
@@ -170,7 +171,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     const view = s.view;
     // What needs the operator — the dashboard's alert banners (team-alerts.ts's teamAlerts), as
     // attention lines under the header. Each consumes one line of the height budget.
-    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root), stalePrompts(root), staleMerges(root), planDependencyAlert(root), staleWaitingBugs(root), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root), strandedPlanEntriesFor(root)), width);
+    const attention = alertLines(teamAlerts(snap, openQuestions(root), status.roles, Date.now(), refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root), stalePrompts(root), staleMerges(root), planDependencyAlert(root), staleWaitingBugs(root), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root)), width);
     const statusLines = [status.lines[0] ?? [], ...attention, ...status.lines.slice(1)];
     // Numbered previews of prompts queued for the director, between the table and the
     // activity pane: what will run next, in execution order. Each line consumes exactly

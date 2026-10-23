@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, planDependencyProblem, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
@@ -291,6 +291,9 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
     path.join(dir, "PLANS.md"),
     "## Done\n\n### A\n\n## Done\n\n### B\n\n## Planned\n\n_None yet._\n",
   );
+  // The always-on alert's structural twin reads the same set from the same scan.
+  const dup: DuplicatedBacklogHeading[] = duplicatedBacklogHeadings(dir);
+  assert.deepEqual(dup, [{ file: "PLANS.md", heading: "Done" }]);
   const warn = checkBacklogHeadings(dir);
   assert.equal(warn.level, "warn");
   assert.match(warn.detail, /PLANS\.md "## Done"/);
@@ -308,6 +311,7 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
     level: "ok",
     detail: "no duplicated ## section headings in the backlog files",
   });
+  assert.deepEqual(duplicatedBacklogHeadings(dir), []);
 
   // Absent files contribute nothing; a fenced duplicate is quoted content, not structure.
   fs.rmSync(path.join(dir, "BUGS.md"));
@@ -328,6 +332,16 @@ test("checkBacklogHeadings names an unreadable backlog file and still scans the 
   const r = checkBacklogHeadings(dir);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /PLANS\.md \(unreadable\)/);
+  // The alert's structural twin scans the same readable files but has no unreadable clause:
+  // it returns the BUGS.md duplicate, and never a PLANS.md (unreadable) row.
+  const dupReadable: DuplicatedBacklogHeading[] = duplicatedBacklogHeadings(dir);
+  assert.deepEqual(dupReadable, [{ file: "BUGS.md", heading: "Open" }]);
+  assert.equal(dupReadable.some((d) => d.file === "PLANS.md"), false);
+  // The doctor's row keeps BACKLOG_FILES order even when an unreadable file coexists with a
+  // duplicate heading: the unreadable PLANS.md (first in BACKLOG_FILES) is named before the
+  // BUGS.md duplicate, both as the named-first row and in the folded rest.
+  assert.match(r.detail, /^PLANS\.md \(unreadable\)/);
+  assert.ok(r.detail.indexOf("PLANS.md (unreadable)") < r.detail.indexOf('BUGS.md "## Open"'));
   assert.match(r.detail, /BUGS\.md "## Open"/);
 });
 

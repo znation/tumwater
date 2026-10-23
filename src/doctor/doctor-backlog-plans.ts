@@ -1,6 +1,6 @@
 import { andMore, readDoc, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
-import fs from "node:fs";
 import path from "node:path";
 import { truncate } from "../text/text.js";
 import { donePlans, plannedPlanEntries } from "../backlog/backlog.js";
@@ -148,6 +148,76 @@ export function checkLiveFinished(root: string): CheckOutcome {
     "`tumwater archive` moves them to the archive files and commits them (a starting team does too)");
 }
 
+/** One `## ` title found more than once in a backlog file by the shared scanBacklogHeadings
+ * loop, with the file that carries it — the structural twin the always-on `backlog-headings`
+ * team alert reads (src/ui/team-alerts.ts, fed via src/ui/status-payload.ts), so the doctor row
+ * and the alert cannot drift on which headings count. */
+export interface DuplicatedBacklogHeading {
+  file: string;
+  heading: string;
+}
+
+/** The always-on `backlog-headings` alert polls this on every observer surface and every
+ * observer tick, so the per-file read must be stat-cached: a steady-state poll pays one stat
+ * per file, not a full re-read of every BACKLOG_FILES member — the archives grow without bound
+ * (PLANS-DONE.md and BUGS-FIXED.md run to MBs), and an uncached read on every poll would copy
+ * them wholesale each time, unlike the stat-cached section readers the rest of the poll path
+ * uses. cachedByStat serves an unchanged file from cache (dev/ino/mtime/size) and re-reads on
+ * a change, so this shares the poll path's freshness contract. The one loop over BACKLOG_FILES
+ * that feeds both checkBacklogHeadings and the always-on `backlog-headings` team alert: absent
+ * files (an early repo) contribute nothing, an existing file that cannot be read adds
+ * `${file} (unreadable)` to `rows` (its duplicate headings, if any, are invisible to every
+ * reader), and each duplicate `## ` title joins both `duplicates` and, as
+ * `${file} "## ${title}"`, `rows` — which therefore keeps BACKLOG_FILES order, the order the
+ * doctor's `backlog headings` row lists its messages in. Two public functions share this so
+ * they cannot drift on the file set, the unreadable clause, or the headings. */
+function scanBacklogHeadings(root: string): { duplicates: DuplicatedBacklogHeading[]; rows: string[] } {
+  const duplicates: DuplicatedBacklogHeading[] = [];
+  const rows: string[] = [];
+  for (const file of BACKLOG_FILES) {
+    const p = path.join(root, file);
+    const scan = cachedByStat(
+      backlogHeadingFileCache,
+      p,
+      p,
+      () => {
+        const read = readDoc(p);
+        if ("error" in read) return { status: "unreadable", headings: [] };
+        return { status: "ok", headings: duplicateHeadings(read.doc) };
+      },
+      (v) => ({ status: v.status, headings: [...v.headings] }),
+    );
+    if (scan === null) continue; // Absent file (early repo): contributes nothing.
+    if (scan.status === "unreadable") {
+      rows.push(`${file} (unreadable)`);
+      continue;
+    }
+    for (const heading of scan.headings) {
+      duplicates.push({ file, heading });
+      rows.push(`${file} "## ${heading}"`);
+    }
+  }
+  return { duplicates, rows };
+}
+
+/** One stat-cached entry of scanBacklogHeadings per backlog file: whether the file was
+ * read as unreadable, or its (otherwise empty) list of duplicated `## ` titles. Keyed by path
+ * in backlogHeadingFileCache; a missing file never gets an entry (cachedByStat deletes it). */
+interface BacklogHeadingFileScan {
+  status: "unreadable" | "ok";
+  headings: string[];
+}
+/** The module-level stat cache backing scanBacklogHeadings, shared by the doctor row and the
+ * always-on alert so the poll path never re-reads an unchanged backlog or archive file. */
+const backlogHeadingFileCache = new Map<string, StatKeyedValue<BacklogHeadingFileScan>>();
+
+/** The duplicated `## ` headings already on main, exported so the always-on `backlog-headings`
+ * team alert (src/ui/team-alerts.ts) renders the same set the doctor's `backlog headings` row
+ * warns about. */
+export function duplicatedBacklogHeadings(root: string): DuplicatedBacklogHeading[] {
+  return scanBacklogHeadings(root).duplicates;
+}
+
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
  * check, src/backlog/backlog-structure.ts): a `## Done` a past merge or conflict resolution added
  * twice leaves every later entry after the first section invisible to the section readers, and
@@ -158,21 +228,10 @@ export function checkLiveFinished(root: string): CheckOutcome {
  * that leaves an existing duplicate alone passes and the duplicate itself needs a deliberate
  * removal edit. */
 export function checkBacklogHeadings(root: string): CheckOutcome {
-  const duplicates: string[] = [];
-  for (const file of BACKLOG_FILES) {
-    const p = path.join(root, file);
-    if (!fs.existsSync(p)) continue; // Absent file (early repo): contributes nothing.
-    const read = readDoc(p);
-    if ("error" in read) {
-      duplicates.push(`${file} (unreadable)`);
-      continue;
-    }
-    const { doc } = read;
-    for (const title of duplicateHeadings(doc)) duplicates.push(`${file} "## ${title}"`);
-  }
-  if (duplicates.length === 0)
+  const { rows } = scanBacklogHeadings(root);
+  if (rows.length === 0)
     return okOutcome("no duplicated ## section headings in the backlog files");
-  const [first, ...rest] = duplicates;
+  const [first, ...rest] = rows;
   const more = andMore(rest, (d) => d);
   return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
       `later entries are invisible; keep one heading per name (the gate blocks only a merge ` +

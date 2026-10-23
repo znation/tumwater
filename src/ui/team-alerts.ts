@@ -101,6 +101,16 @@ export interface QuarantinedTests {
   oldestFirstSeen: number;
   warning: string;
 }
+
+/** One `## ` section heading that appears more than once in a backlog file — the always-on twin
+ * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
+ * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
+ * checkBacklogHeadings). Structural twin: no mapping in status-payload, which just passes
+ * duplicatedBacklogHeadings(root) through as the teamAlerts `duplicatedHeadings` argument. */
+export interface BacklogHeadingDuplicate {
+  file: string;
+  heading: string;
+}
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -210,7 +220,7 @@ function localizeInstants(text: string): string {
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, a stale or oversized flake quarantine, a plan filed under the
- * wrong backlog section, a pause, a stopped team.
+ * wrong backlog section, a duplicated backlog section heading, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -247,6 +257,7 @@ export function teamAlerts(
   stalledPlans: readonly StalledPlan[] = [],
   quarantined: QuarantinedTests | null = null,
   strandedPlans: readonly StrandedPlanEntry[] = [],
+  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -514,6 +525,28 @@ export function teamAlerts(
       detail:
         `${first.file ?? "PLANS.md"} has a plan stranded under ## ${first.section}: "${first.title}"${more} — move it under ## ${first.section === "Done" ? "Planned" : "Done"}${first.file === undefined || first.file === "PLANS.md" ? "" : " in PLANS.md"} (the clean role repairs these)`,
       // The fix is editing a backlog file, and a PLANS-DONE.md entry has no PLANS.md drawer index.
+      actions: [],
+    });
+  }
+  // A duplicated `## ` section heading already on main (the doctor's `backlog headings` row,
+  // checkBacklogHeadings, src/doctor/doctor-backlog-plans.ts, via the shared
+  // duplicatedBacklogHeadings) sits until a deliberate removal edit — the merge gate blocks
+  // only a merge that ADDS another copy, so a duplicate already on main persists and hides
+  // every later entry under its name from the `## ` section readers. It asks (amber) the way
+  // the stranded-plan alert does, naming the first file-heading pair and folding the rest
+  // through joinWithMore; the fix is editing a backlog file, so there are no actions.
+  if (duplicatedHeadings.length) {
+    const first = duplicatedHeadings[0]!;
+    const rest = duplicatedHeadings.slice(1);
+    const more = rest.length
+      ? ` — and ${rest.length} more: ${joinWithMore(rest.map((d) => `"## ${d.heading}" in ${d.file}`), 3)}`
+      : "";
+    out.push({
+      key: "backlog-headings",
+      tone: "amber",
+      title: plural(duplicatedHeadings.length, "duplicated backlog heading", "duplicated backlog headings"),
+      detail:
+        `${first.file} "## ${first.heading}" appears more than once${more} — readers take the first section of a name, so later entries are invisible; remove the duplicate in a deliberate edit`,
       actions: [],
     });
   }

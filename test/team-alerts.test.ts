@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
+import { alertNeedsYou, teamAlerts, type AlertRole, type BacklogHeadingDuplicate } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
 import { planDependencyAlert, quarantineAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
@@ -1076,4 +1076,54 @@ test("strandedPlanEntriesFor and the surfaces carry a stranded-plans alert from 
   const bare = makeRepo();
   assert.deepEqual(strandedPlanEntriesFor(bare), []);
   assert.equal((statusPayload(bare, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "stranded-plans"), undefined);
+});
+
+test("duplicated backlog headings raise one amber alert folded like stranded plans", () => {
+  const now = Date.now();
+  const oneDup: BacklogHeadingDuplicate[] = [{ file: "PLANS.md", heading: "Done" }];
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], oneDup);
+  assert.deepEqual(one.map((a) => [a.key, a.tone]), [["backlog-headings", "amber"]]);
+  assert.equal(one[0]!.title, "1 duplicated backlog heading");
+  assert.ok((one[0]!.detail ?? "").includes('PLANS.md "## Done"'));
+  assert.ok((one[0]!.detail ?? "").includes("appears more than once"));
+  assert.ok((one[0]!.detail ?? "").includes("remove the duplicate"));
+  assert.deepEqual(one[0]!.actions, []);
+  // Two rows title plural and fold the second through joinWithMore.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [
+    { file: "PLANS.md", heading: "Done" },
+    { file: "BUGS.md", heading: "Fixed" },
+  ]);
+  assert.equal(two[0]!.title, "2 duplicated backlog headings");
+  assert.match(two[0]!.detail ?? "", /— and 1 more/);
+  assert.ok((two[0]!.detail ?? "").includes('"## Fixed" in BUGS.md'));
+  // An empty list and the default add none.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], []), []);
+  assert.deepEqual(teamAlerts(base, [], [], now), []);
+  // With both a stranded plan and a duplicate, stranded-plans precedes backlog-headings.
+  const both = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [
+    { title: "Split me (planned 2026-10-20)", section: "Done" },
+  ], [
+    { file: "PLANS.md", heading: "Done" },
+  ]);
+  assert.deepEqual(both.map((a) => a.key), ["stranded-plans", "backlog-headings"]);
+});
+
+test("statusPayload and renderStatus carry a duplicated-heading alert from the backlog files, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeBacklogFile(root, "PLANS.md", [
+    { heading: "## Planned", body: "### A (planned 2026-01-01 by plan)\n\nbody" },
+    { heading: "## Planned" },
+    { heading: "## Done" },
+  ]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "backlog-headings");
+  assert.equal(alert?.title, "1 duplicated backlog heading");
+  assert.ok(alert?.detail?.includes('PLANS.md "## Planned"'));
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /duplicated backlog heading/);
+  // A clean set of backlog files yields none on either surface.
+  const clean = makeRepo();
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "backlog-headings"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /duplicated backlog heading/);
 });
