@@ -11,8 +11,8 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type StaleBug } from "./team-alerts.js";
-import { STALE_BUG_DAYS } from "../doctor/doctor-backlog.js";
+import { teamAlerts, type StaleBug, type StalePrompt } from "./team-alerts.js";
+import { STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -49,6 +49,19 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
       return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
     })
     .sort((a, b) => b.days - a.days || a.index - b.index);
+}
+
+/** The queued inbox prompts the doctor's stale-prompt rule (src/doctor/doctor-backlog.ts
+ * `staleQueuedPromptRows`, STALE_PROMPT_MS) calls stale: a prompt due-but-undelivered for more
+ * than a day. This is the always-on feed for the stale-prompts team alert — the doctor's check
+ * reads the same shared traversal and threshold, so the two cannot drift. A deferred prompt
+ * (its not-before time still in the future) is never stale, and neither is a prompt at or under
+ * the threshold (strictly past STALE_PROMPT_MS). Each returned object carries the role, the
+ * 1-based position (`prompt --cancel <n> --role <id>`), and the wait in ms. Returned
+ * oldest-first (queuedAtMs ascending), so a caller naming the first element names the
+ * longest-waiting prompt. */
+export function stalePrompts(root: string, now = Date.now()): StalePrompt[] {
+  return staleQueuedPromptRows(root, now).map((p) => ({ role: p.role, position: p.position, waitedMs: now - p.queuedAtMs }));
 }
 
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
@@ -362,6 +375,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now)),
   };
 }

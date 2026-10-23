@@ -10,7 +10,7 @@ import { lowerMedian } from "../collections.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { queuedMerges, unreadableMergeQueueFiles } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
-import { listWideScope, queuedListRows } from "../inbox/inbox.js";
+import { listWideScope, queuedListRows, type QueuedListRow } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
@@ -162,8 +162,22 @@ export function checkMergeQueueFiles(root: string): CheckOutcome {
 /** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check
  * warns: a day, fixed. An opinionated default with no knob, like MERGE_QUEUE_STALE_MS: a day is
  * long enough that a healthy role's next run would have dequeued the prompt, and short enough
- * that a paused or disabled role's stranded prompt shows up. */
-const STALE_PROMPT_MS = DAY_MS;
+ * that a paused or disabled role's stranded prompt shows up. The always-on stale-prompt team
+ * alert (src/ui/status-payload.ts stalePrompts) reuses this same threshold, so it cannot drift
+ * from the doctor's check — the STALE_BUG_DAYS precedent. */
+export const STALE_PROMPT_MS = DAY_MS;
+
+/** The queued inbox prompts the doctor's stale-prompt rule calls stale — deliverable now (a
+ * `--at` prompt still counting down is never stale) and queued more than STALE_PROMPT_MS,
+ * oldest-first, `queuedAtMs` narrowed to a number. One traversal shared by the doctor's
+ * `checkStalePrompts` check and the always-on `stalePrompts` team alert (src/ui/status-payload.ts),
+ * so the two surfaces read the same rule at the same threshold and cannot drift. */
+export function staleQueuedPromptRows(root: string, now: number): Array<QueuedListRow & { queuedAtMs: number }> {
+  return queuedListRows(root, null, listWideScope(root))
+    .filter((p) => p.queuedAtMs !== null && deliverableAt(p.notBeforeMs, now) && now - p.queuedAtMs > STALE_PROMPT_MS)
+    .sort((a, b) => (a.queuedAtMs as number) - (b.queuedAtMs as number))
+    .map((p) => ({ ...p, queuedAtMs: p.queuedAtMs as number }));
+}
 
 /** Stale queued prompts — a prompt queued for a role (`tumwater prompt --role <id>`, the
  * dashboard composer, the TUI, a `--at` delay whose time has now passed) that has waited more
@@ -171,16 +185,13 @@ const STALE_PROMPT_MS = DAY_MS;
  * reaches the run that would dequeue the prompt, so it waits indefinitely and only the Inbox
  * views (`tumwater prompt --list`, the dashboard Inbox tab, the TUI Inbox pane) show its age —
  * and only when the operator looks. This names the oldest due-but-undelivered prompt, its role,
- * and the deliver-or-drop commands. Reads the queue with the shared `queuedListRows`/
- * `listWideScope` traversal the Inbox views use (no new reader in src/inbox/), keeping only
+ * and the deliver-or-drop commands. Reads the queue through the shared `staleQueuedPromptRows`
+ * traversal the always-on stale-prompts alert uses (no new reader in src/inbox/), keeping only
  * rows that are deliverable now — a `--at 7d` prompt still counting down is never stale — and
  * stamped more than STALE_PROMPT_MS ago. A warn, never a fail — the checkStaleQueuedMerges
  * precedent: a stranded prompt is operator signal, not a broken environment. */
 export function checkStalePrompts(root: string, now: number): CheckOutcome {
-  const stale = queuedListRows(root, null, listWideScope(root))
-    .filter((p) => p.queuedAtMs !== null && deliverableAt(p.notBeforeMs, now) && now - p.queuedAtMs > STALE_PROMPT_MS)
-    .sort((a, b) => (a.queuedAtMs as number) - (b.queuedAtMs as number))
-    .map((p) => ({ ...p, queuedAtMs: p.queuedAtMs as number }));
+  const stale = staleQueuedPromptRows(root, now);
   const [first, ...rest] = stale;
   if (!first) return okOutcome("no queued prompt has waited more than 1 day for a role to dequeue it");
   const more = andMore(rest, (p) => `${p.role} #${p.position}`);

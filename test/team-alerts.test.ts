@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { statusPayload } from "../src/ui/status-payload.js";
+import { statusPayload, stalePrompts } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
@@ -570,6 +573,75 @@ test("staleOpenBugs and the surfaces carry a stale-bug alert from BUGS.md, and n
   const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
   assert.equal(cleanPayload.alerts.find((a) => a.key === "stale-bugs"), undefined);
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /open bug waited/);
+});
+
+test("stale queued prompts raise a standing amber alert right after the stale-bug alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [{ role: "feature", position: 2, waitedMs: 25 * 60 * 60 * 1000 }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stale-prompts", "amber", "1 queued prompt waited 1+ day for its role"]]);
+  assert.match(one[0]!.detail ?? "", /^inbox prompt for feature #2 has waited/);
+  assert.match(one[0]!.detail ?? "", /paused, disabled, or failing/);
+  assert.match(one[0]!.detail ?? "", /tumwater prompt --cancel 2 --role feature/);
+  assert.deepEqual(one[0]!.actions, [{ label: "Open inbox", act: "queued" }]);
+  // Callers feed oldest-first (stalePrompts sorts by queuedAtMs ascending), so the first entry
+  // is the most-stale prompt and the one the alert names; the rest are folded like the refused
+  // and questions alerts (three entries give the "— and 1 more" fold).
+  const three = teamAlerts(base, [], [], now, [], [], [], [
+    { role: "organize", position: 1, waitedMs: 27 * 60 * 60 * 1000 },
+    { role: "feature", position: 3, waitedMs: 26 * 60 * 60 * 1000 },
+    { role: "feature", position: 1, waitedMs: 25 * 60 * 60 * 1000 },
+  ]);
+  assert.match(three[0]!.title ?? "", /3 queued prompts waited/);
+  assert.match(three[0]!.detail ?? "", /feature #3/);
+  assert.match(three[0]!.detail ?? "", /— and 1 more/);
+  const withBugs = teamAlerts(base, [], [], now, [], [], [{ index: 0, position: 1, title: "B", days: 3 }], [{ role: "feature", position: 1, waitedMs: 25 * 60 * 60 * 1000 }]);
+  assert.deepEqual(withBugs.map((a) => a.key), ["stale-bugs", "stale-prompts"]);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], []), []);
+});
+
+/** A repo whose tumwater.json lists the given roles, so listWideScope resolves them the way the
+ * list-shaped views do (the same fixture the doctor's stale-prompt tests use). */
+function promptRepo(roles: string[]): string {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ roles: Object.fromEntries(roles.map((r) => [r, { enabled: true }])) }));
+  return root;
+}
+
+/** Enqueue a prompt for a role, then rename its queue file to an old 13-digit stamp
+ * (`${stamp}-000000-1.md`, the name queueFileStamp parses into queuedAtMs) so the wait reads
+ * as `stamp` instead of now. */
+function stampPrompt(root: string, role: string, stamp: number, notBefore?: number): void {
+  const file = enqueueRolePrompt(root, role, `prompt for ${role}`, notBefore);
+  fs.renameSync(file, path.join(path.dirname(file), `${stamp}-000000-1.md`));
+}
+
+test("stalePrompts and the surfaces carry a stale-prompt alert from the inbox, and none without one", () => {
+  const now = Date.now();
+  const root = promptRepo(["feature"]);
+  stampPrompt(root, "feature", now - 25 * 60 * 60 * 1000);
+  assert.deepEqual(stalePrompts(root, now).map((p) => ({ role: p.role, position: p.position })), [{ role: "feature", position: 1 }]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string; actions?: Array<{ act?: string }> }> };
+  const alert = payload.alerts.find((a) => a.key === "stale-prompts");
+  assert.equal(alert?.title, "1 queued prompt waited 1+ day for its role");
+  assert.match(alert?.detail ?? "", /feature #1/);
+  assert.equal(alert?.actions?.[0]?.act, "queued");
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /queued prompt waited 1\+ day for its role/);
+  // The doctor's skip rules: a prompt stamped exactly 24 h ago (not strictly past it; the
+  // boundary is exercised under the shared `now`, since renderStatus stales against its own
+  // fresh clock) and a deferred prompt whose not-before time is still in the future each add
+  // no stale-prompt alert.
+  const clean = promptRepo(["feature"]);
+  stampPrompt(clean, "feature", now - 24 * 60 * 60 * 1000);
+  stampPrompt(clean, "feature", now - 25 * 60 * 60 * 1000, now + 60 * 60 * 1000);
+  assert.deepEqual(stalePrompts(clean, now), []);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "stale-prompts"), undefined);
+  // The render surface stales against its own clock (Date.now), so a clearly-fresh prompt
+  // proves the surface stays quiet without depending on the exact-threshold boundary.
+  const fresh = promptRepo(["feature"]);
+  stampPrompt(fresh, "feature", now - 5 * 60 * 60 * 1000);
+  assert.doesNotMatch(renderStatus(fresh, snapshot(fresh, undefined, now)), /queued prompt waited/);
 });
 
 test("root install drift raises one amber install alert naming up to five packages", () => {

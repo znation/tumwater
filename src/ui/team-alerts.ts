@@ -35,6 +35,19 @@ export interface StaleBug {
   days: number;
 }
 
+/** A queued inbox prompt the doctor's stale-prompt rule warns about (src/doctor/doctor-backlog.ts
+ * checkStalePrompts, STALE_PROMPT_MS): a prompt due-but-undelivered for more than a day because
+ * its role is paused, disabled, or failing. Computed in src/ui/status-payload.ts's stalePrompts
+ * from the same threshold and the same `queuedListRows`/`listWideScope`/`deliverableAt` traversal
+ * the doctor's check uses, so the alert, the doctor, and the Inbox views cannot drift on the rule.
+ * `position` is the 1-based `prompt --cancel`/`--edit` number; `waitedMs` is the age the alert
+ * names. Sorted oldest-first by the caller, so the first element is the most-stale prompt. */
+export interface StalePrompt {
+  role: string;
+  position: number;
+  waitedMs: number;
+}
+
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -127,7 +140,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a pause, a stopped team. `now` is passed so a timed
+ * questions, refused entries, stale bugs, a stranded inbox prompt, a pause, a stopped team.
+ * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
   snap: Pick<
@@ -155,6 +169,7 @@ export function teamAlerts(
   refused: readonly RefusedEntry[] = [],
   operatorHeld: readonly RefusedEntry[] = [],
   staleBugs: readonly StaleBug[] = [],
+  stalePrompts: readonly StalePrompt[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -381,6 +396,28 @@ export function teamAlerts(
       // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
       // `bugs:index` with a 0-based row, matching the drawer address.
       actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
+    });
+  }
+  // A stranded inbox prompt (doctor's STALE_PROMPT_MS rule, src/doctor/doctor-backlog.ts) sits
+  // when a role is paused, disabled, or failing and never reaches the run that would dequeue the
+  // prompt, so it asks (amber) the way the stale-bug alert does, naming the oldest prompt, its
+  // wait, and the deliver-or-drop advice. Its callers feed it oldest-first (status-payload.ts
+  // stalePrompts sorts by queuedAtMs ascending), so the first element is the most-stale prompt
+  // and is named with its role, position and wait; the rest are folded through entryListDetail
+  // like the questions and refused alerts, so the wording and counts cannot drift.
+  if (stalePrompts.length) {
+    const first = stalePrompts[0]!;
+    const rest = stalePrompts.slice(1);
+    out.push({
+      key: "stale-prompts",
+      tone: "amber",
+      title: `${plural(stalePrompts.length, "queued prompt waited", "queued prompts waited")} 1+ day for its role`,
+      detail:
+        `inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${duration(first.waitedMs)} — the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with \`tumwater prompt --cancel ${first.position} --role ${first.role}\`` +
+        (rest.length > 0 ? ` · ${entryListDetail(rest.map((p) => `${roleLabel(p.role)} #${p.position}`))}` : ""),
+      // The action lands the operator on the Inbox tab (the dashboard's backlog arm reads `act:
+      // "queued"` as the Inbox view), where the stranded prompt is cancellable.
+      actions: [{ label: "Open inbox", act: "queued" }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
