@@ -6,6 +6,146 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
+### Reviewer as a regular role, part 1/4: Widen `review.afterMerge` to the low-blast-radius roles and document the tiering (planned 2026-10-23 by user, from the flow audit; design in plans/reviewer-as-role.md "The decision" and "What lands"; no code — the post-merge review machinery (src/review/post-merge-review.ts) already exists for clean/dedupe/coverage; touches tumwater.json docs/config.md)
+
+**Goal.** The reviewer stops being a pre-merge gatekeeper for the high-volume, low-blast-radius roles. bugfix, readme and organize join clean, dedupe and coverage in `review.afterMerge`: their changes merge on the deterministic gates (build pre-check, conflict markers, protected edits, secret leaks, backlog structure — all unchanged, all fail-closed) and the reviewer examines the merged commit when a permit is free, routing a rejection through the revert slot back to the author as a revision. feature, director, perf, improve and custom roles keep the pre-merge verdict. The 58-h audit (events.jsonl 2026-10-21→23) shows the cost of the current shape: 213 rejections vs 185 approvals, 21 items exhausted the revision cap unlanded, and serial reject streaks of 27 and 18 rounds on single small md-only entries — hours of reviewer and gate capacity against minutes-long edits.
+
+**Approach.**
+- tumwater.json: `"review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"], "afterMerge": ["bugfix", "clean", "coverage", "dedupe", "organize", "readme"] }` — the default (src/config/config.ts) and this dogfood config both carry the widened list, so a fresh project inherits the tiering.
+- docs/config.md: the `review.afterMerge` section gains the tiering rationale (post-merge for high-volume low-blast-radius roles, pre-merge for feature/director and by default for custom roles) and the tradeoff named: at the fleet's reject rate, roughly half of the listed roles' changes land-then-revert before a fix lands — the main baseline watcher and fast-merge's "a red main stops nobody" carry that churn.
+- No src/ change in this part. Parts 2/4–4/4 (post-merge review hardening for fleet scale, the convergence rule, reviewer-feedback delivery) land separately and are pickable in any order after this one.
+
+**Acceptance criteria.**
+- A bugfix change to a non-exempt file merges without a reviewer run first, and the merged commit's review (review_start with afterMerge, then verdict or rejection with reasons) appears in the event log; the rejection routes to the revert slot and back to bugfix as a revision with the prior objections carried.
+- A feature change to the same kind of file still runs the pre-merge reviewer (review before merge_queued/merge_done, no afterMerge events for feature).
+- `npm run test:gate` passes (config validation accepts the widened list; a list naming the director still fails as today).
+
+### Reviewer as a regular role, part 2/4: Post-merge review at fleet scale — the merge poll keeps up and the revert path holds under bugfix volume (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; touches src/review/post-merge-review.ts src/merge/merge-slot.ts and their tests)
+
+**Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moves bugfix's volume onto it. The merge poll's one-at-a-time when-a-permit-is-free cadence and the revert-after-merge path must hold: no unreviewed merged commit waits indefinitely, and a rejection of an already-archived entry does not strand the entry.
+
+**Approach.**
+- src/review/post-merge-review.ts: verify (and pin with a test) the review schedule under a sustained merge rate — the poll picks the oldest unreviewed merged commit, and a role whose changes merge faster than they are reviewed accrues at most one pending review per role (the per-role key), never an unbounded backlog.
+- The revert slot's routing (`settlePostReview` → revert → author revision) gains a test for the archive race: a change whose PLANS/BUGS entry was archived on merge, then rejected post-merge, re-opens or re-adds its entry so the author has something to fix (today only the clean/dedupe/coverage roles hit this, and their entries are usually self-referential).
+- POST_REVIEW_FAILURE_LIMIT (3) behavior is reviewed, not changed: three verdict-less reviews drop the change with the same exhaustion bookkeeping as the pre-merge path's REVIEW_FAILURE_LIMIT — confirm a dropped post-merge change leaves main holding it (already merged, already green-checked) and only logs, which is correct for a failure of the *reviewer*, not the change.
+
+**Acceptance criteria.**
+- A test merges N=10 changes across 4 roles with fake reviews resolving on a controlled clock: every merged commit is eventually reviewed, none reviewed twice, and the per-role pending count never exceeds one.
+- The archive-race test above passes; `npm run test:gate` passes.
+
+### Reviewer as a regular role, part 3/4: The convergence rule — an objection that survives its revisions blocks the entry for the operator instead of rounds 3–6 (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 3; evidence in plans/revise-rejected.md's motivation (a 14% reject rate consumed 21% of authoring spend) and the 2026-10-21→23 audit (21 items exhausted the cap; bugfix-2 exhausted the round-6 cap twice on one entry — the cap stops one cycle, the entry re-picked starts another); touches src/runner/revision.ts src/runner/runner-run.ts src/backlog/backlog-eligibility.ts and their tests)
+
+**Goal.** The reject→revise loop converges. Today REVISION_BACKSTOP (6) bounds one cycle and REVISION_FINAL_ON_REPEAT (2) ends a chain early only when a reason is tagged `(prior N)`; nothing stops the re-pick that restarts an exhausted entry's cycle from scratch. End state: an objection that survives its revisions converts the entry to `[blocked: needs review]`-style operator handoff, and the author moves to other work.
+
+**Approach.**
+- src/runner/revision.ts: on exhaustion (round cap or repeated-objection final), instead of leaving the entry eligible for a fresh pick, mark it held. The hold lifts the same ways `needs-review` does today: the plan role (for PLANS.md) or a rewrite; for BUGS.md, the operator (`tumwater bug --release`) or the plan role's split — the existing `EntryHold` machinery (src/backlog/backlog-eligibility.ts) carries the new kind.
+- The hold's reason text names the surviving objections verbatim (they are already in `RunnerState.lastReview`), so the operator or plan role sees exactly what would not converge.
+- Keep the revision path itself unchanged for converging chains: each round fixes the last objection, the re-review sees the prior objections and the interdiff (plans/revise-rejected.md part 2/2), and a converging chain still lands.
+- Considered and left out: teaching the *reviewer* to weight a repeated objection lower. That is verdict-quality work on the model side, not process; the hold is the process answer.
+
+**Acceptance criteria.**
+- A chain whose objection survives its revisions ends with the entry held and the surviving reasons in the hold text, not with a fresh unheld pick; the author's next run takes a different entry.
+- A converging chain (each round fixes the last objection) still lands through the normal revision path — its tests pass unchanged.
+- `npm run test:gate` passes.
+
+### Reviewer as a regular role, part 4/4: Reviewer feedback the author cannot miss — the rejection note leads the next run, and the commit body acknowledges each reason (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 4; evidence: the same reason text recurring across 27 consecutive rejections of bugfix-2 (10-22T08:29→14:35Z), so the injected `lastReview` note is not changing the author's next run; touches src/prompt/prompt.ts src/git/commit-message.ts src/runner/runner-run.ts and their tests)
+
+**Goal.** Close the broken feedback loop that makes rejections cheap to repeat: when a run starts with a rejected change's reasons, those reasons — not the general charter — organize the run; and the resulting commit's body says, per numbered reason, what was done about it, so the re-review's prior-objection check (plans/revise-rejected.md) reads an answer, not a shrug.
+
+**Approach.**
+- src/prompt/prompt.ts: when `buildRejectedReviewNote`'s note is present, it renders at the very top of the run prompt, before the role charter, phrased as the run's primary task: "Your previous change was rejected; fix each numbered objection or drop the change" (the note already carries the reasons verbatim).
+- src/git/commit-message.ts / runner-run's body assembly: when the run is a revision, the body template gains one line per prior reason — `Objection N: <done|dropped|unchanged-by-design because …>` — sourced from the same `lastReview` reasons, so the reviewer's interdiff check has the author's claim beside each objection.
+- No change to the reviewer prompt in this part; the re-review already reads the prior objections first (plans/revise-rejected.md part 2/2).
+
+**Acceptance criteria.**
+- A revision run's prompt test asserts the rejection note precedes the charter and names every reason; a fresh run's prompt is byte-unchanged.
+- A revision commit's body carries one Objection line per prior reason; the existing commit-body tests are updated for the new template, and a non-revision commit body is unchanged.
+- The measurable target (stated in the plan, verified by hand after landing): first-rejection → second-rejection on the *same* reason drops against the 10-21→23 audit baseline.
+- `npm run test:gate` passes.
+
+### Check-permit priority, part 1/2: Merge-scope checks jump the permit queue; the cap stays 3 (planned 2026-10-23 by user; design in plans/check-permit-priority.md "The decision" and "What lands"; evidence: 639 suite runs through 3 permits over 58 h at ~20% occupancy yet 6.3 h of check_wait idle, max 24 min (feature-6, 10-21T13:38Z) — synchronized arrivals, not steady-state load; touches src/concurrency/check-permit.ts src/build/build-check-events.ts and their tests)
+
+**Goal.** The most expensive wait in the system is a gate check parking the merge-slot holder: the merge lock is held through the in-lock check (src/merge/merge-to-main.ts, INV-CT1), so every other merge serializes behind it. Give merge-scope checks queue priority over gate-scope checks; within a scope, FIFO stays.
+
+**Approach.**
+- src/concurrency/check-permit.ts: `withCheckPermit` gains a scope argument (`"merge" | "other"`; batch and baseline stay `"other"` — a merge-scope check waiting matters because it holds the lock, the others do not). The semaphore keeps its shrink-preemption and its re-entrancy guard (a nested permit runs inside the held one) — the priority lane routes through the same entry point, so no double-grant.
+- A merge-scope request parks in a priority lane ahead of queued `"other"` waiters; the next released permit grants the lane's head first. At most one priority check per merge batch (mergeBatchMax changes share one), so sustained merge pressure cannot starve gate checks outright.
+- No new event: a priority jump is not a wait worth a `check_wait` (src/events/events.ts's `heldBy` wording is unchanged).
+
+**Acceptance criteria.**
+- A test with 3 held permits and queued gate waiters: a merge-scope request is granted on the first release, ahead of earlier-queued gate requests; with no merge request queued, grants are FIFO as today.
+- A nested permit inside a held one still runs inline without queueing; a config shrink still preempts as today (their existing tests pass untouched).
+- `npm run test:gate` passes.
+
+### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
+
+**Goal.** The 24-min waits were burst-driven and demand-driven; both causes land as fixes elsewhere. This part is the decision procedure that says whether any capacity change is still needed — not a knob raised on theory.
+
+**Approach.**
+- After reviewer-as-role parts 1/4 and 3/4 have run for one week, read the week's `check_wait` events and the day report's `checkWaitMedianMs`: if no `check_wait` carries waitedMs ≥ CHECK_WAIT_EVENT_MS (30 s), the cap stays 3 and this plan's outcome is "no change needed" — recorded in PLANS-DONE when the part closes.
+- Otherwise raise `maxConcurrentChecks` 3 → 4 in tumwater.json and the default stays 2 (src/config/config.ts) — a dogfood decision, not a default change — and watch the load-storm signal: `merge_blocked` events naming "host load average" (as 10-21's feature-7 and bugfix-4 did at load 20 on 18 cores). The doctor's `checkCheckContention` already warns and names the knob; the feedback loop exists.
+
+**Acceptance criteria.**
+- The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
+- `npm run test:gate` passes (config change only; no code).
+
+### Interlock relief, part 1/2: The merge-queue interlock holds only what the feedback contract needs — a queued author whose change is approved may run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; evidence: queue waits before landing ran median 5 min, max 3 h 17 m over 58 h, and the interlock parks the author for the whole window; requires reviewer-as-role part 1/4 landed (one switch: `afterMerge` opts a role into both post-merge review and this relief); touches src/merge/merge-queue.ts src/orchestrator/orchestrator-scheduling.ts and their tests)
+
+**Goal.** plans/merge-queue.md invariant 3 ("a loop with a queued or landing change is not eligible to tick") exists to preserve the `state.lastReview` feedback contract. For post-merge-review roles that contract no longer needs the pre-merge pipeline: scope the interlock per role and per stage, so an author whose change is approved-and-waiting or in the fast-forward is not parked, while the stages that actually race the author's branch stay exclusive.
+
+**Approach.**
+- src/merge/merge-queue.ts: `queuedMergeRoles` (or its scheduler-side caller) gains the entry's stage. The scheduling skip (src/orchestrator/orchestrator-scheduling.ts, the `queuedRoles.has(runner.role)` skip) applies to a role whose entry is pre-approval (under review or checks) or in a conflict/`main_red` hold (`resolve-wait`, `resolving`, a held pin) — not to one approved-and-waiting or in the merge's fast-forward.
+- The per-role tiering follows `review.afterMerge` exactly: a role on that list gets the scoped interlock; a pre-merge-review role keeps today's full interlock (its rejection must reach the runner before it authors again — that is the contract's original case).
+- The queue's own per-runner cap is unchanged: a role with a queued change still cannot queue a second (invariant 3's "no change accumulates more than one commit ahead of main"); an author whose new run finishes while its previous change is queued holds the new commit on the branch until the entry drains. The author's next run starts from `reset --hard main` as always, so a queued-approved change does not block its author's tree.
+- plans/merge-queue.md invariant 3's text is updated to the scoped form with a pointer to plans/interlock-relief.md; docs/glossary.md's `waiting to merge` row keeps its meaning (it names the queue, not the run gate).
+
+**Acceptance criteria.**
+- A post-merge-review role with an approved queued entry starts its next run in the same poll it would have started in with an empty queue; the same role with an entry in `resolve-wait` or under review does not start (test over both stages).
+- A pre-merge-review role (feature) with any queued entry still does not start — today's behavior, test unchanged.
+- `npm run test:gate` passes.
+
+### Interlock relief, part 2/2: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 1/2 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
+
+**Goal.** An operator reading the merge-pipeline section can predict which roles author through a queued change and which park, and why the split follows `review.afterMerge`.
+
+**Approach.**
+- docs/how-it-works.md, the merge-pipeline/scheduling sections: the interlock paragraph states the two tiers and the stage exclusions (pre-approval, conflict, main-red) as behavior, one paragraph, no new terms.
+- docs/glossary.md: the `waiting to merge` status row gains the half-sentence "for pre-merge-review roles, this also holds the role's next run" — the scoped behavior is the row's whole difference.
+- plans/merge-queue.md's invariant text carries the final wording (part 1/2 edits it; this part reconciles any drift from review).
+
+**Acceptance criteria.**
+- The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
+- `npm run test:gate` passes (docs only).
+
+### Cooldown scope: A pending stale-build restart holds the redeploy, not the team (planned 2026-10-23 by user; design in plans/cooldown-scope.md "The decision"; evidence: the live instance paused 2026-10-23T09:51Z with all 30 roles stopped and auto-restart blocked by the cooldown until 13:04Z — 3 h 13 m of full stop over a stale build 15 commits ahead; the team pause and the error-streak breaker are deliberately out of scope (a pause is the operator's explicit command; the streak breaker already pauses only the failing role); touches src/redeploy/redeploy-policy.ts src/redeploy/redeployer.ts src/orchestrator/orchestrator-scheduling.ts and their tests)
+
+**Goal.** The restart cooldown is a rate limit against restart storms, and it should limit restarts — not hold every role's runs and merges while it runs. A team whose build is merely stale (the common case: work landed, build didn't move) keeps working; the redeploy happens when its cooldown lapses or the operator forces it (the dashboard's restart button and `tumwater restart` already waive it — the escape hatch exists).
+
+**Approach.**
+- src/redeploy/redeploy-policy.ts / redeployer.ts: the cooldown's deferral stops feeding the `holdForRestart` reason that orchestrator-scheduling reads to hold all new runs and merges; only the redeploy itself waits. The drain that precedes any actual swap, the red-running-build urgency carve-out (BUGS.md 2026-09-30), and the swap's own safety conditions (green check on the new head, a successful compile, in-flight runs finishing) are unchanged.
+- The build-stale alert's text updates: "restarting when idle" becomes "restarting after cooldown; work continues" — the operator's mental model of what a stale build costs changes from "the team stops" to "the team runs yesterday's code until the swap".
+- docs/how-it-works.md's redeploy section states the narrowed scope; docs/glossary.md's `update available` row gains "work continues while the restart waits".
+
+**Acceptance criteria.**
+- A test with a pending restart inside its cooldown: new runs start and merges proceed on the running build; the restart itself fires at the cooldown's lapse or on `restart_forced`, with the drain as today.
+- The red-running-build carve-out still cuts the cooldown and the swap's preconditions still block a bad swap (existing tests untouched).
+- `npm run test:gate` passes.
+
+### Backlog hold convergence: A needs-review/needs-replan entry that ping-pongs blocks its entry for the operator after three holds (planned 2026-10-23 by user; from the flow audit — feature↔plan is a genuine role-to-role loop with no convergence backstop: feature's `Needs review` note holds the entry until plan splits it, feature can mark it again, and nothing bounds the cycle; the reviewer's reject→revise loop got REVISION_BACKSTOP and REVISION_FINAL_ON_REPEAT (plans/revise-rejected.md), this loop got nothing; touches src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/doctor/doctor-backlog-bugs.ts and their tests)
+
+**Goal.** The `needs-review`/`needs-replan` hold (feature's note that a plan is too large for one run, or must be rewritten) is a hand-off to the plan role, and the plan role's split or rewrite is the lift. The cycle has no backstop: a plan that feature keeps marking and plan keeps splitting unproductively ties up both roles' attention and the entry, invisibly — unlike a rejected change, which visibly exhausts its revision cap. Give it the same convergence the reject loop got: after the third consecutive hold on one entry, the entry blocks for the operator with the history of holds.
+
+**Approach.**
+- src/backlog/backlog-eligibility.ts: `entryHold` already parses the note from the entry body; the hold text gains a counter the way `lastReview`'s reasons carry `(prior N)` tags — the note's writer (feature) appends `(held N)` when re-marking an entry whose previous hold was lifted without a landing (the marker is the entry body, so the count survives like every other note; a re-marked entry whose plan landed in between resets, because the new hold answers a different plan).
+- On `held 3`, the hold renders as blocked-for-operator: the plan role no longer picks it (its charter skips entries the index block marks `[blocked: …]`), and the stale-backlog visibility that already exists surfaces it — the dashboard's refused-entry alert (src/ui/team-alerts.ts) is the model: a held entry with `(held 3)` shows the operator the entry, the surviving disagreement, and `tumwater plan --release` as the way out.
+- The plan role's lift path is unchanged for the first two holds: a split or rewrite that answers the note lifts it as today.
+- Left out deliberately: any prompt-level instruction for feature to mark differently. The counter is harness state, not a behavior ask — the same split between mechanism and verdict that plans/revise-rejected.md drew.
+
+**Acceptance criteria.**
+- An entry marked, lifted by a split, and marked again reads `(held 1)`, not `(held 2)` (the landing reset); marked three times without a landing between, it reads `(held 3)`, the plan role's eligibility test excludes it, and the operator alert names it.
+- `tumwater plan --release` lifts it and clears the counter, as it lifts every other hold today.
+- `npm run test:gate` passes.
+
 ### Codex backend, part 3e/9: Doctor's window row names each subscription backend, the reserve labels name the key, and docs say the display is per backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/doctor/doctor-holds.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/backends.md test/doctor-holds.test.ts test/doctor.test.ts test/gui-client-settings.test.ts)
 
 **Goal.** `tumwater doctor` reports one window row per subscription backend in use (a codex team gets a `codex window` row), the reserve editors name the `backends.<id>.windowReserve` key, and docs/backends.md states the display is per backend.
