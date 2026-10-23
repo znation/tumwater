@@ -1,6 +1,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
+import { formatAge } from "../text/datetime.js";
 
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` run
  * starts a fresh pi session, so the only durable memory of which flow it last exercised is a
@@ -86,15 +87,6 @@ export function recordFlow(
   const coverage = readQaCoverage(root);
   setFlow(coverage, flow, { lastRunAt: now, result, ...(summary ? { summary } : {}) });
   writeJsonAtomic(qaCoveragePath(root), { flows: coverage });
-}
-
-/** A short age: minutes under an hour, hours under a day, days beyond (`12m`, `4h`, `6d`). */
-function formatAge(ms: number): string {
-  const minutes = Math.max(0, Math.floor(ms / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
 }
 
 /** Render the coverage block for the next `qa` prompt. Never-exercised flows lead (age = ∞),

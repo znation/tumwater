@@ -1,6 +1,7 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { feedbackFilingsPath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
+import { formatAge } from "../text/datetime.js";
 
 /** The `feedback` observer's per-install filing ledger (plans/feedback-role.md 2/2). Every
  * `feedback` run starts a fresh pi session, so the only durable record of which GitHub issues
@@ -55,16 +56,6 @@ export function recordFiled(
   writeJsonAtomic(feedbackFilingsPath(root), {
     filings: [entry, ...filings].slice(0, FEEDBACK_FILINGS_MAX),
   });
-}
-
-/** A short age: minutes under an hour, hours under a day, days beyond (`12m`, `4h`, `6d`) —
- * the same idiom qa-coverage.ts's formatAge uses. */
-function formatAge(ms: number): string {
-  const minutes = Math.max(0, Math.floor(ms / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
 }
 
 /** Render the "previously filed" block for the next `feedback` prompt; undefined when the

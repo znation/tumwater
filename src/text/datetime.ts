@@ -186,6 +186,20 @@ export function humanAgo(sinceMs: number, now: number): string {
   return `${humanSeconds(secondsSince(sinceMs, now))} ago`;
 }
 
+/** A compact age clamped at zero and floored to whole units — `12m`, `4h`, `6d` — the bare
+ * (no `ago`) parenthetical the `qa` coverage block and the `feedback` "previously filed" block
+ * render for each ledger entry, which each defined as their own local `formatAge`. Kept
+ * distinct from humanSeconds on purpose: this floors (a sub-minute age reads `0m`, never
+ * `Ns`) and skips the seconds bucket, so the two units/rounding rules cannot drift per
+ * consumer. Lives here beside the other time phrasing. */
+export function formatAge(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 /** The shared "when may this role next act" phrase — the `next run` cell (status-render.ts's
  * nextRunCell) and the `Next run` line (role-render.ts's scheduleLine) render their schedule
  * through it, so the two surfaces cannot drift on the backoff prefix or the humanSeconds
