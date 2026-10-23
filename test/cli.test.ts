@@ -200,6 +200,22 @@ test("init --dry-run in a fresh directory previews the repo seeding and writes n
   assert.deepEqual(fs.readdirSync(named), []);
 });
 
+test("init --template names the seeded template in its report and creates its starter dirs", async () => {
+  // The catalog ids are pinned by init-templates.test.ts; this is the CLI printer's half — the
+  // `template: <id>` line only cmdInit prints, with `--template` reaching it through parseInitArgs
+  // and initProject. No earlier test drives --template through the CLI, so a regression that
+  // dropped the report line (or never passed the id through) would go unseen.
+  const repo = makeRepo();
+  const r = await cli(repo, "init", "--template", "python-cli", "A markdown-to-html converter.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /template: python-cli/);
+  assert.match(r.stdout, /\(committed\)/);
+  assert.ok(fs.statSync(path.join(repo, "src")).isDirectory(), "src starter dir seeded");
+  assert.ok(fs.statSync(path.join(repo, "tests")).isDirectory(), "tests starter dir seeded");
+  // The brief carries the template's preamble first, the operator's words last.
+  assert.ok(readBriefText(repo).endsWith("A markdown-to-html converter."));
+});
+
 test("run --branch fails at startup when the branch does not exist, listing what does", async () => {
   const repo = makeRepo();
   await cli(repo, "init", "Ready repo.");
