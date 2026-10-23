@@ -6,32 +6,84 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Codex backend, part 3/9: Window displays name each subscription backend (planned 2026-10-20 by user; requires part 2e/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/status/status-budget.ts src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/gui/gui-client-operator.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts src/roles/role-view.ts src/roles/role-render.ts src/report/report-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts docs/backends.md and their tests)
+### Codex backend, part 3a/9: The subscription-window block is per backend, and `status --json` gains `subscriptionWindows` (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 2e/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/agent/subscription-account.ts src/agent/backend-traits.ts src/status/status-budget.ts src/status/status-data.ts src/ui/status-payload.ts test/status-budget.test.ts test/status-data-models.test.ts)
 
-**Needs review 2026-10-22 by feature: too large for one run**
-
-**Goal.** Show each subscription backend's windows under that backend's name, so a team with Claude and Codex both on subscriptions shows both. Today every surface prints one `claudeWindow` block labelled "Claude 5h": `claudeWindowBlock` (src/status/status-budget.ts), `claudeWindowBadge` (src/ui/badges.ts), the GUI tile (src/ui/gui/gui-client-operator.ts), the role view's billing line and "Claude window used up" (src/roles/role-render.ts), the report's "claude subscription, API-equivalent" line (src/report/report-render.ts), and doctor's "claude window" row (src/doctor/doctor-holds.ts `checkClaudeWindow`). A claude-only team's output is unchanged, apart from the JSON key added below.
+**Goal.** One status-poll read yields one subscription-window block per subscription backend in use, not only claude's, and hands the ordered list to every display surface. This is the shared model parts 3b/9–3e/9 consume; a claude-only snapshot is unchanged apart from the added list.
 
 **Approach.**
-- src/status/status-budget.ts: `claudeWindowBlock` becomes `windowBlocks(slice, accounts)`, with one block per subscription backend in use, each `{backend, label, …today's fields}`. The `s.agent === "claude"` tests become "the job's backend is this block's".
-- `status --json` (src/ui/status-payload.ts, src/status/status-data.ts): a new `subscriptionWindows` list. `claudeWindow` stays as the claude entry for one release, with a doc comment saying so.
-- src/ui/badges.ts: the badge text comes from the block's label ("Claude 5h · 64%", "Codex 7d · 31%"). The hold text reads "<label> model jobs wait". With two blocks, the badge shows the one nearest its limit (today's rule, now across backends) and the tile lists all of them. src/ui/status-render.ts and src/ui/gui/gui-client-operator.ts follow.
-- Role view (src/roles/role-view.ts, role-render.ts): `claudeInPlay` becomes "the job's backend has an account". The billing line and "window used up" name the backend.
-- Report (src/report/report-render.ts): "<label> subscription, API-equivalent: $X", one line per backend with notional spend.
-- Doctor: `checkClaudeWindow` becomes `checkSubscriptionWindows`. It produces one row per subscription backend in use, named "<id> window". The "claude window" row name is kept for claude.
-- The TUI reserve editor (src/ui/tui/tui-editor-claude-reserve.ts) and the GUI settings label (src/ui/gui/gui-client-settings.ts) say "Claude window reserve (backends.claude.windowReserve)".
-- docs/backends.md: the window display paragraph says it is per backend.
+- src/agent/backend-traits.ts: add `backendDisplayName(id)` = `id.charAt(0).toUpperCase() + id.slice(1)` ("claude" → "Claude", "codex" → "Codex"), the one home of a backend's display name.
+- src/agent/subscription-account.ts: extract the comparator inside `windowEntries` into an exported `compareWindowEntries(a, b)` and call it from `windowEntries` (output byte-identical), so a list of blocks can be ordered by its primary entry the same way.
+- src/status/status-budget.ts: `claudeWindowBlock` becomes `windowBlocks(cfg, providers, accounts, catalog)` returning `{ blocks, only }`. `blocks: SubscriptionWindowBlock[]` (`{ backend, label: backendDisplayName(backend), windows: windowEntries(account), primary: windows[0]!, heldUntil }`) carries one entry for every distinct non-`pi` backend the enabled seams (roles, review, resolver) route to whose `accounts(backend)` reads `billing === "subscription"` with at least one window. Blocks sort by `compareWindowEntries(a.primary, b.primary)` then `backend`. `only` is team-global: `!seams.some((s) => !seamFree(providers, s, accounts, catalog))`.
+  - `BudgetSlice` replaces `claudeWindow` with `subscriptionWindows: SubscriptionWindowBlock[]` and `subscriptionOnly: boolean`. `collectBudget` builds `accounts` as a per-poll memoized `readAccount(root, backend, now)` Map (one read per backend per poll, today's one-claude-read cost) and returns both new fields.
+- src/status/status-data.ts: `StatusSnapshot` gains `subscriptionWindows?: SubscriptionWindowBlock[]` (present only when non-empty) and `subscriptionOnly: boolean`; it derives the existing `claudeWindow?: {windows, primary, only, heldUntil}` from the claude block (`only: subscriptionOnly`), with a doc comment saying it is kept for one release. Its presence rule is unchanged.
+- src/ui/status-payload.ts: the payload spreads `subscriptionWindows` and `subscriptionOnly` beside `claudeWindow` (the preformatted `budgetBadge` stays on `claudeWindow` until part 3b/9).
 
 **Acceptance criteria.**
-- Every existing badge, status, role-view, report and doctor-holds test passes. Their claude-only text is unchanged; a JSON assertion may add `subscriptionWindows`.
-- With a fake second subscription backend `sub` labelled "Sub" whose account has `seven_day` at 40%:
-  - `status --json` lists two `subscriptionWindows` entries;
-  - the TUI badge shows the claude window when it is the nearer one, and "Sub 7d · 40%" when it is;
-  - doctor prints a "sub window" row.
+- With two subscription accounts (`claude` and a fake `sub`): `status --json` lists both `subscriptionWindows` entries, ordered most-constrained-first; each carries `backend`, `label`, `windows`, `primary`, `heldUntil`.
+- A claude-only team: `snap.claudeWindow` is unchanged (same `windows`, `primary`, `heldUntil`; `only` as before), and the only `status --json` delta is the added keys.
+- `snap.claudeWindow` is absent exactly when no claude subscription seam has a window (today's rule).
+- `windowEntries` output is byte-identical to before.
+- `npm test` passes.
+
+### Codex backend, part 3b/9: The status header and the GUI budget tile name each backend's window (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/ui/gui/gui-client-operator.ts test/badges.test.ts test/status-header.test.ts test/gui-client.test.ts)
+
+**Goal.** The header badge and the GUI budget tile render each subscription backend's window under that backend's name; a claude-only team's text is byte-identical.
+
+**Approach.**
+- src/ui/badges.ts: `claudeWindowBadge(claudeWindow, now, moved)` becomes `subscriptionWindowBadge(blocks, now, moved)`, rendering `${block.label} ${windowLabel(block.primary.type)}` + utilization percent or status word + the "<label> model jobs wait until HH:MM" hold clause (the label replaces the hardcoded "claude"). The badge shows `blocks[0]` (the list is already most-constrained-first). `budgetBadge(budget, claudeWindow, now, chain)` becomes `budgetBadge(budget, windows, only, now, chain)`: the `if (only) return window` replacement and the "beside the spend" join are unchanged over the new arguments. `claudeWindowTone(claudeWindow)` becomes `subscriptionWindowTone(blocks)` reading `blocks[0]`.
+- src/ui/status-render.ts and src/ui/status-payload.ts: pass `snap.subscriptionWindows` and `snap.subscriptionOnly` to `budgetBadge` and the tone; the payload's preformatted `budgetBadge` string is that same function's output.
+- src/ui/gui/gui-client-operator.ts: `budgetCardHtml(b, cw, chain)` and `windowLinesHtml` take the block list and `only`; they emit one window line per block (same per-line markup) and name the held block's label in the "held until" line.
+
+**Acceptance criteria.**
+- Existing badge and status-header tests for a claude-only snapshot pass with byte-identical strings.
+- With a `sub` block ordered first, the header badge reads `Sub 7d · 40%` and the tile lists both `Claude 5h …` and `Sub 7d …`; with claude first, the header keeps `Claude 5h …`.
+- `npm test` passes.
+
+### Codex backend, part 3c/9: The role view and its billing line name the job's own subscription backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/roles/role-view.ts src/roles/role-render.ts test/role-view.test.ts)
+
+**Goal.** A role running a subscription backend shows that backend's window label and "window used up" phrase instead of always saying Claude.
+
+**Approach.**
+- src/roles/role-view.ts: `claudeInPlay` becomes "a subscription backend is in play": the role's own seam backend when it is not `pi`, else the reviewer's backend when the review gate is on (today's precedence, generalized off the literal "claude"). Read its account with `readAccount(root, backend)`, keep `billingWindow` as the account's primary window type, and carry the backend id as a new view field beside it.
+- src/roles/role-render.ts: the "window used up" phrase and the billing line use `backendDisplayName(billingBackend)` with `windowLabel(windowType)` ("Codex 7d window"), falling back to today's "Claude" wording when no backend is known.
+
+**Acceptance criteria.**
+- A role on a codex subscription account renders "Codex 7d window" and "Codex window used up"; a claude role's render is byte-identical to today; a pi role with a claude reviewer still shows claude.
+- `npm test` passes.
+
+### Codex backend, part 3d/9: The report's API-equivalent line names each subscription backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/events/events.ts src/run/run-finalize.ts src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts test/report.test.ts test/report-data.test.ts)
+
+**Goal.** The report prints one "<label> subscription, API-equivalent: $X estimated" line per subscription backend with notional spend, instead of one hardcoded "claude subscription" line.
+
+**Approach.**
+- src/run/run-finalize.ts: the `run_end` event carries `agent: usage.agent` when the run reported billing or rate windows (the same condition that writes the account file), so the fold can attribute notional spend to a backend; document the new field in src/events/events.ts's `run_end` comment.
+- src/report/report-fold.ts: a `notionalByBackend` map beside `notionalByProvider`, accumulated from each `run_end`'s `agent` — falling back to `"claude"` when `agent` is absent and `billing === "subscription"`, the same legacy default old window events get.
+- src/report/report-types.ts and src/report/report-data.ts: carry `notionalByBackend` through the fold → day → totals exactly as `notionalByProvider` is carried; absent when empty.
+- src/report/report-render.ts: `notionalLine` becomes one line per backend with notional spend, `${backendDisplayName(backend)} subscription, API-equivalent: $X estimated`; keep a single generic line for the total when only old-log totals are known.
+
+**Acceptance criteria.**
+- A report over runs of two subscription backends prints two labeled notional lines; a claude-only report's line is byte-identical to today; the totals' `notionalCostUsd` still equals the sum.
+- Old `run_end` events without `agent` still count their notional under claude (the legacy default).
+- `npm test` passes.
+
+### Codex backend, part 3e/9: Doctor's window row names each subscription backend, the reserve labels name the key, and docs say the display is per backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/doctor/doctor-holds.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/ui/gui/gui-client-settings.ts src/ui/tui/tui-editor-claude-reserve.ts docs/backends.md test/doctor-holds.test.ts test/doctor.test.ts test/gui-client-settings.test.ts)
+
+**Goal.** `tumwater doctor` reports one window row per subscription backend in use (a codex team gets a `codex window` row), the reserve editors name the `backends.<id>.windowReserve` key, and docs/backends.md states the display is per backend.
+
+**Approach.**
+- src/doctor/doctor-holds.ts: `checkClaudeWindow` becomes `checkSubscriptionWindow(backend, root, now, chain, config)` — the same body over `readAccount(root, backend)` and `windowObservation(backend, …)`, with every "claude" phrase replaced by `backendDisplayName(backend)`.
+- src/doctor/doctor.ts: the one "claude window" step becomes two conditional steps, `claude window` and `codex window`, each returning null when that backend has no subscription account (the same omit-a-row pattern as "pi extensions").
+- src/doctor/doctor-check-names.ts: add `"codex window"` after `"claude window"`, so the closed name union still covers every step and `tumwater doctor codex window` parses.
+- src/ui/gui/gui-client-settings.ts and src/ui/tui/tui-editor-claude-reserve.ts: the label and editor hint read "Claude window reserve (backends.claude.windowReserve)".
+- docs/backends.md: the window-display paragraph says the windows are shown per backend.
+
+**Acceptance criteria.**
+- A codex subscription account makes doctor print a `codex window` row and a claude one makes `claude window`; a pi-only team prints neither; each row's text names its own label.
+- The settings label test asserts the new text; the TUI editor hint names the key.
 - `npm test` passes.
 
 
-### Codex backend, part 8/9: Codex billing, free-ness and windows: the account fed from runs, the API-key refusal, the context window, effort levels and image input from the catalog (planned 2026-10-20 by user; requires parts 3/9 and 7/9 landed; design in plans/codex-backend.md "Spend, free-ness, window, images"; touches src/pi/pi-models.ts src/agent/codex/codex-backend.ts src/agent/codex/codex-catalog.ts (new) src/agent/codex/codex-account.ts (new) src/gates/startup-gate.ts src/config/config-live.ts and their tests)
+### Codex backend, part 8/9: Codex billing, free-ness and windows: the account fed from runs, the API-key refusal, the context window, effort levels and image input from the catalog (planned 2026-10-20 by user; requires parts 3a/9, 3b/9 and 7/9 landed; design in plans/codex-backend.md "Spend, free-ness, window, images"; touches src/pi/pi-models.ts src/agent/codex/codex-backend.ts src/agent/codex/codex-catalog.ts (new) src/agent/codex/codex-account.ts (new) src/gates/startup-gate.ts src/config/config-live.ts and their tests)
 
 **Goal.** A Codex job on a ChatGPT subscription counts as free to the budget gate while its windows serve, moves down its chain when a window is used up or past its reserve, and shows its windows on the badge. That works through parts 1/9–3/9's per-backend machinery with no Codex special case outside src/agent/codex/. An API-key Codex login is refused, because Codex reports no cost.
 
