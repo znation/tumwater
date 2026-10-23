@@ -22,6 +22,8 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
 tumwater start              # start the team (Ctrl+C to stop)
 tumwater start --gui            # ... and serve the browser dashboard at http://127.0.0.1:7180 from the same process
                                 # add --port <n> to serve it on another port (the `tumwater gui --port <n>` twin)
+                                # add --all-interfaces and --token <secret> to serve the LAN behind the
+                                # auth gate — both forward onto the dashboard child, the `tumwater gui` twins
 tumwater start --tui        # ... and host the TUI in this same terminal (the `tumwater tui` view; quitting it stops the team like Ctrl+C)
 tumwater start --for 2h     # run for a bounded window (capped at 90d), then finish current work, print a per-role summary of the window, and exit (one window across updates); shown as `stops in …` on status, the TUI, and the dashboard
                             # (add --json to print that summary as one JSON object — tumwater start --for 2h --json)
@@ -34,8 +36,10 @@ tumwater start --branch <name>  # merge into that branch instead of baseBranch i
 `tumwater gui --port N` serves the dashboard on another port than 7180;
 booting with `tumwater start --gui --port N` serves it the same way from the
 one-command start.
-`gui --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole
-network, so pair it with `--token <secret>`.
+`tumwater start --gui --all-interfaces --token <secret>` forwards both onto the
+dashboard child, exposing the dashboard — and with it the director prompt — to your
+whole network behind the token gate, so the one-command start can serve the LAN as
+`gui --all-interfaces --token <secret>` would on its own.
 
 ## Watch, check, steer, control, audit
 

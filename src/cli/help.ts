@@ -31,10 +31,11 @@ Usage:
                                    and exits like Ctrl+C would (for an overnight
                                    trial, a demo, a CI step);
                                    --gui also serves the browser dashboard at
-                                   http://127.0.0.1:7180 (--port <n> picks another
-                                   port, like \`tumwater gui --port N\`; its
-                                   --all-interfaces and --token stay on that
-                                   command);
+                                   http://127.0.0.1:7180 and forwards to it the
+                                   dashboard flags \`--port <n>\` (pick another
+                                   port), \`--all-interfaces\` (serve the LAN) and
+                                   \`--token <secret>\` (the auth gate), exactly as
+                                   \`tumwater gui\` takes them);
                                    --tui also hosts the TUI in this terminal
                                    (the \`tumwater tui\` view — quitting it stops the
                                    team like Ctrl+C)
@@ -44,8 +45,9 @@ Usage:
                                    localhost only; --all-interfaces serves the whole
                                    network — without --token there is no auth, anyone
                                    reaching it can message the director); booting with
-                                   \`tumwater start --gui --port N\` serves it the same
-                                   way from the one-command start
+                                   \`tumwater start --gui\` serves it the same way from
+                                   the one-command start, forwarding \`--port N\`,
+                                   \`--all-interfaces\` and \`--token <secret>\`
   tumwater status [--role <id>[,<id>...]] [-f/--follow] [--json]
                                    One-shot status table (--json prints machine-readable
                                    team state — the GUI's /api/status payload minus the

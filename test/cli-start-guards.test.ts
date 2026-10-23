@@ -89,6 +89,55 @@ test("run --port without --gui fails before boot with the --port-requires--gui m
   });
 });
 
+// --all-interfaces and --token are dashboard-only flags too: alone they name nothing `run`
+// starts, so each is refused before any boot with the same shape as the --port guard above,
+// naming the one-command form that makes it valid. (A valid --token value already passed the
+// spec's shape gate in the dispatcher.)
+test("run --all-interfaces without --gui fails before boot with the requires--gui message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run all-interfaces");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--all-interfaces");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--all-interfaces is only valid with --gui/);
+  });
+});
+
+test("run --token without --gui fails before boot with the requires--gui message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run token");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--token", "s3cret");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--token is only valid with --gui/);
+  });
+});
+
+// A malformed --token is refused before any boot, so a bad secret never leaves the team running
+// behind a dashboard that exited: a flag-looking value (--token claims the next token even when
+// it is a known flag) fails with tokenValueProblem's shared wording and writes no events, and a
+// valueless trailing --token fails at the dispatcher's spec gate with TOKEN_VALUE_ERROR.
+test("run --gui --token --all-interfaces fails before boot with the flag-looking-value message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run token flag-looking");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--gui", "--token", "--all-interfaces");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--token got the flag-looking value "--all-interfaces" instead of a secret/);
+    assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
+  });
+});
+
+test("run --gui --token fails before boot with the spec's non-empty-secret message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run token valueless");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--gui", "--token");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--token requires a non-empty secret/);
+  });
+});
+
 // A TUI owns the terminal, so `run --tui` refuses before boot when this supervisor's stdin or
 // stdout is not a TTY (piped, as under a script or this harness) — failing fast with the
 // actionable tuiTerminalError instead of pointlessly booting a team and only then crashing on

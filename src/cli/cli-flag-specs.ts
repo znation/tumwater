@@ -427,12 +427,35 @@ const PORT_FLAG: FlagSpec = {
   },
 };
 
+/** The one refusal for a trailing `gui --token` with no value, phrased for what the
+ * flag actually needs — the spec's missingValue (so the gate's early report says it)
+ * and cmdGui's own re-check share this one wording. Declared above START_FLAG_SPECS
+ * (whose TOKEN_FLAG references it at module load), not between the two spec arrays. */
+export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
+
+/** `tumwater gui`'s `--all-interfaces` flag: serve the dashboard on every network
+ * interface instead of loopback, exposing it to the LAN. Value-less. Shared by `gui` and
+ * `start --gui` (START_FLAG_SPECS) so the accepted vocabulary cannot drift between the
+ * two commands. */
+const ALL_INTERFACES_FLAG: FlagSpec = { names: ["--all-interfaces"] };
+
+/** `tumwater gui`'s `--token <secret>` flag: the dashboard auth token, the gate behind
+ * which the dashboard sits when the operator protects it. Shared by `gui` and
+ * `start --gui` (START_FLAG_SPECS); its missing-value wording is TOKEN_VALUE_ERROR, the
+ * same error cmdGui and cmdStart's tokenValueProblem re-check fail with. */
+const TOKEN_FLAG: FlagSpec = {
+  names: ["--token"],
+  value: true,
+  valueName: "<secret>",
+  missingValue: TOKEN_VALUE_ERROR,
+};
+
 /** `tumwater start`'s flag vocabulary: `--branch <name>` (the target branch, parsed by
  * parseBranchFlag), `--once` (one full round of runs, then exit), `--json` (with `--once`, print
  * the round's outcomes as one JSON document), `--role <id>`
  * (scope a --once round to one role, parsed by parseRoleFlag), `--gui` (also serve the browser
- * dashboard), and `--port <n>` (choose the dashboard port, shared with `tumwater gui`; the
- * dashboard's --all-interfaces and --token stay on `tumwater gui`). Exported
+ * dashboard), and `--port <n>`, `--all-interfaces` and `--token <secret>` (forwarded onto the
+ * dashboard child, shared with `tumwater gui`). Exported
  * so the caller's rejectUnknownArgs check and its tests share one definition of what `start`
  * (and its hidden alias `run`) accepts — before this vocabulary existed, run parsed --branch
  * and silently ignored every other flag, so a typo'd option ran the daemon with default
@@ -443,11 +466,14 @@ export const START_FLAG_SPECS: FlagSpec[] = [
   JSON_FLAG,
   // `run --gui` is the one-command form of the dashboard: it boots the team and serves the
   // browser dashboard on its defaults, loopback on port 7180. `--port <n>` (shared with `tumwater
-  // gui` via PORT_FLAG) picks another port, exactly like `tumwater gui --port <n>`; the
-  // dashboard's other flags --all-interfaces and --token stay on `tumwater gui`. `run --gui
-  // --once` and `--port` without `--gui` are refused in cmdStart beside the timer it arms.
+  // gui` via PORT_FLAG) picks another port, and `--all-interfaces`/`--token <secret>` (shared
+  // with `tumwater gui` via ALL_INTERFACES_FLAG/TOKEN_FLAG) forward onto the dashboard child
+  // exactly as a direct `tumwater gui` would serve them. `run --gui --once` and any of the
+  // three dashboard-only flags without `--gui` are refused in cmdStart beside the timer it arms.
   { names: ["--gui"] },
   PORT_FLAG,
+  ALL_INTERFACES_FLAG,
+  TOKEN_FLAG,
   // `run --tui` is the one-command form of the observer TUI: it boots the team and hosts the
   // same in-terminal TUI `tumwater tui` attaches from another terminal. Its flag vocabulary
   // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdStart
@@ -461,21 +487,13 @@ export const START_FLAG_SPECS: FlagSpec[] = [
   ROLE_FLAG,
 ];
 
-/** The one refusal for a trailing `gui --token` with no value, phrased for what the
- * flag actually needs — the spec's missingValue (so the gate's early report says it)
- * and cmdGui's own re-check share this one wording. */
-export const TOKEN_VALUE_ERROR = "--token requires a non-empty secret (e.g. `--token s3cret`)";
-
 /** `tumwater gui`'s flag vocabulary: `--port <n>` (the dashboard port), `--all-interfaces`,
- * and `--token <secret>` (the dashboard auth token). Exported so cli.ts's rejectUnknownArgs
- * check and its tests share one definition of what `gui` accepts, like every other command's
- * spec in this module; cmdGui re-runs parsePortFlag and the token emptiness check on the
- * accepted args, so the gate and the body cannot drift apart. */
-export const GUI_FLAG_SPECS: FlagSpec[] = [
-  PORT_FLAG,
-  { names: ["--all-interfaces"] },
-  { names: ["--token"], value: true, valueName: "<secret>", missingValue: TOKEN_VALUE_ERROR },
-];
+ * and `--token <secret>` (the dashboard auth token), each shared with `start --gui` via the
+ * same module const so the accepted vocabulary cannot drift between the two commands.
+ * Exported so cli.ts's rejectUnknownArgs check and its tests share one definition of what
+ * `gui` accepts, like every other command's spec in this module; cmdGui re-runs parsePortFlag
+ * and the token value check on the accepted args, so the gate and the body cannot drift apart. */
+export const GUI_FLAG_SPECS: FlagSpec[] = [PORT_FLAG, ALL_INTERFACES_FLAG, TOKEN_FLAG];
 
 /** Fail when any argument was not consumed by this command's known flags — a misspelled flag
  * (e.g. `--rol` instead of `--role`) would otherwise be silently ignored and the command runs with

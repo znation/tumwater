@@ -171,7 +171,7 @@ test("run's flag vocabulary accepts --branch, --once, --role, --gui, and --tui a
   assert.match(r.stderr, /unknown argument: --onc/);
   assert.match(
     r.stderr,
-    /valid flags for tumwater run: --branch <name>, --once, --json, --gui, --port <n>, --tui, --for <duration>, --role <id>/,
+    /valid flags for tumwater run: --branch <name>, --once, --json, --gui, --port <n>, --all-interfaces, --token <secret>, --tui, --for <duration>, --role <id>/,
   );
   // --once takes no value: a following token is a stray, not its argument.
   const valued = expectFail(() => rejectUnknownArgs("run", ["--once", "yes"], START_FLAG_SPECS));

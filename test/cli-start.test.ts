@@ -102,6 +102,32 @@ test("guiChildPlan threads --port onto the dashboard child and strips it from th
   });
 });
 
+// `run --gui` also threads --all-interfaces and the --token secret onto the dashboard child
+// (the remaining `tumwater gui` dashboard flags), in the fixed order --port, --all-interfaces,
+// --token — the same flags a direct `tumwater gui` invocation would get — and strips all three
+// from the orchestrator generation (whose cmdStart, seeing any dashboard flag without --gui,
+// would refuse it, and whose self-redeploy must never forward a dashboard flag it is not
+// serving itself). Neither the value-less --all-interfaces nor the secret value survives.
+test("guiChildPlan threads --all-interfaces and --token onto the dashboard child and strips them from the orchestrator", () => {
+  assert.deepEqual(guiChildPlan(["--gui", "--all-interfaces", "--token", "s3cret"]), {
+    spawnGui: true,
+    spawnTui: false,
+    guiArgs: ["--all-interfaces", "--token", "s3cret"],
+    orchestratorArgs: [],
+    childStdio: "inherit",
+  });
+  assert.deepEqual(
+    guiChildPlan(["--branch", "x", "--gui", "--port", "8123", "--all-interfaces", "--token", "s3cret", "--for", "2h"]),
+    {
+      spawnGui: true,
+      spawnTui: false,
+      guiArgs: ["--port", "8123", "--all-interfaces", "--token", "s3cret"],
+      orchestratorArgs: ["--branch", "x", "--for", "2h"],
+      childStdio: "inherit",
+    },
+  );
+});
+
 // `run --tui` gets the same treatment as `--gui`: `--tui` is stripped so a self-redeploy
 // generation never re-attaches a TUI in a terminal the parent owns, and reported so the
 // supervisor hosts it. The two flags together stay allowed (dashboard child + in-terminal TUI

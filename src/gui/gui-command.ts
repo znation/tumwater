@@ -6,8 +6,7 @@ import os from "node:os";
 import { startGui } from "./gui-server.js";
 import { errCode } from "../errno.js";
 import { fail, say } from "../cli/cli-output.js";
-import { flagValue, parsePortFlag } from "../cli/cli-args.js";
-import { TOKEN_VALUE_ERROR } from "../cli/cli-flag-specs.js";
+import { flagValue, parsePortFlag, tokenValueProblem } from "../cli/cli-args.js";
 
 /** External IPv4 addresses of this machine's network interfaces, for printing the URLs a
  * `gui --all-interfaces` server is reachable at. IPv6 and internal (loopback) addresses are
@@ -59,18 +58,12 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
   const port = portRaw !== null ? parsePortFlag(portRaw) : 7180;
   const allInterfaces = args.includes("--all-interfaces");
   // A valueless or empty --token is a CLI error, not an open server: an operator who
-  // asked for protection must never silently get none. A flag-looking value is the
-  // same mistake in disguise — a valued flag claims the next token even when it is a
-  // known flag, so `--token --all-interfaces` would serve with the literal secret
-  // "--all-interfaces" (--all-interfaces still takes effect, since it is read straight
-  // from args) while the real secret sits unreached after another flag.
-  const tokenRaw = flagValue(args, "--token");
-  const token = tokenRaw ?? "";
-  if (tokenRaw !== null && !token) fail(TOKEN_VALUE_ERROR);
-  if (tokenRaw !== null && token.startsWith("--"))
-    fail(
-      `--token got the flag-looking value "${token}" instead of a secret — write the secret as its own argument (e.g. \`tumwater gui --token s3cret --all-interfaces\`)`,
-    );
+  // asked for protection must never silently get none. The validation and its wording
+  // live in tokenValueProblem, shared with `start --gui` so the two callers cannot
+  // drift; its flag-looking-value case names `tumwater gui` here.
+  const problem = tokenValueProblem(args, "tumwater gui");
+  if (problem) fail(problem);
+  const token = flagValue(args, "--token") ?? "";
   try {
     await start(root, port, allInterfaces, token);
   } catch (err) {

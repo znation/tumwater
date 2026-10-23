@@ -17,6 +17,7 @@ import {
   parseDurationFlag,
   parsePortFlag,
   parseRoleListFlag,
+  tokenValueProblem,
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { cancelScheduledStop, isTeamPaused, pausedRoles, scheduledStopAt } from "../team/team-state.js";
@@ -72,6 +73,23 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
     fail(
       "--port is only valid with --gui (e.g. `tumwater start --gui --port 8080`); the standalone dashboard is `tumwater gui --port <n>`",
     );
+  // `--all-interfaces` and `--token` are dashboard-only flags too: without `--gui` each names
+  // nothing this command starts, so refuse them (valid values already passed the spec's shape
+  // gate) before any boot, with the same shape as the --port refusal above and fixing the
+  // copyable one-command form in the message.
+  if (args.includes("--all-interfaces") && !args.includes("--gui"))
+    fail(
+      "--all-interfaces is only valid with --gui (e.g. `tumwater start --gui --all-interfaces`); the standalone dashboard is `tumwater gui --all-interfaces`",
+    );
+  if (args.includes("--token") && !args.includes("--gui"))
+    fail(
+      "--token is only valid with --gui (e.g. `tumwater start --gui --token s3cret`); the standalone dashboard is `tumwater gui --token <secret>`",
+    );
+  // A malformed --token (valueless, empty, or flag-looking) must fail here before any boot, so
+  // a bad secret never leaves the team running behind a dashboard that exited. The same
+  // tokenValueProblem `tumwater gui` runs, named for the one-command form the operator typed.
+  const tokenProblem = tokenValueProblem(args, "tumwater start --gui");
+  if (tokenProblem) fail(tokenProblem);
   const forMs = parseRunWindow(args, once);
   const branchArg = parseBranchFlag(args);
   const startup = await runStartupCheck(root, branchArg);
@@ -500,10 +518,11 @@ export function renderOnceSummary(report: OnceReport): string {
 export function guiChildPlan(runArgs: string[]): {
   spawnGui: boolean;
   spawnTui: boolean;
-  /** The `--port <n>` args the dashboard child gets (`["--port", String(port)]` when `--port`
-   * was given, else `[]`), threaded into spawnGuiChild so a one-command `run --gui --port N`
-   * serves the dashboard on N. The port is parsed here (parsePortFlag has already run its
-   * shape gate on the dispatcher, so this is the same value re-typed for the child). */
+  /** The dashboard flags the child gets (`["--port", N]` then `["--all-interfaces"]` then
+   * `["--token", <secret>]` when given), threaded into spawnGuiChild so a one-command
+   * `run --gui` serves the dashboard exactly as a direct `tumwater gui` invocation would. The
+   * port is parsed here (parsePortFlag has already run its shape gate on the dispatcher, so
+   * this is the same value re-typed for the child). */
   guiArgs: string[];
   orchestratorArgs: string[];
   /** The stdio the supervised children (the run child and, when `--gui`, the dashboard child)
@@ -518,21 +537,33 @@ export function guiChildPlan(runArgs: string[]): {
   const portIdx = runArgs.indexOf("--port");
   const portRaw = portIdx >= 0 ? runArgs[portIdx + 1] : undefined;
   const port = portRaw !== undefined ? parsePortFlag(portRaw) : null;
-  // Drop --port and its value from the supervized orchestrator generation along with --gui/--tui:
-  // the child's own cmdStart would otherwise hit the `--port` requires `--gui` refusal (its
-  // args no longer carry --gui) or supervise a second dashboard, and a self-redeploy hand-off
-  // must never forward the port it is not serving itself.
+  const tokenIdx = runArgs.indexOf("--token");
+  const tokenRaw = tokenIdx >= 0 ? runArgs[tokenIdx + 1] : undefined;
+  // Drop --port/--token and their value tokens from the supervized orchestrator generation
+  // along with --gui/--tui (and --all-interfaces by name): the child's own cmdStart would
+  // otherwise hit the dashboard-only-flag refusals (its args no longer carry --gui) or supervise
+  // a second dashboard, and a self-redeploy hand-off must never forward a dashboard flag it is
+  // not serving itself. --all-interfaces and --token have no value token to skip, so the name
+  // filter below drops them; the valued pair is skipped by index like --port's.
   const skip = new Set<number>();
   if (portIdx >= 0) {
     skip.add(portIdx);
     if (portIdx + 1 < runArgs.length) skip.add(portIdx + 1);
   }
+  if (tokenIdx >= 0) {
+    skip.add(tokenIdx);
+    if (tokenIdx + 1 < runArgs.length) skip.add(tokenIdx + 1);
+  }
+  const guiArgs: string[] = [];
+  if (port !== null) guiArgs.push("--port", String(port));
+  if (runArgs.includes("--all-interfaces")) guiArgs.push("--all-interfaces");
+  if (tokenRaw !== undefined) guiArgs.push("--token", tokenRaw);
   return {
     spawnGui: runArgs.includes("--gui"),
     spawnTui: runArgs.includes("--tui"),
-    guiArgs: port === null ? [] : ["--port", String(port)],
+    guiArgs,
     orchestratorArgs: runArgs.filter(
-      (arg, i) => arg !== "--gui" && arg !== "--tui" && !skip.has(i),
+      (arg, i) => arg !== "--gui" && arg !== "--tui" && arg !== "--all-interfaces" && !skip.has(i),
     ),
     childStdio: runArgs.includes("--tui") ? ["ignore", "ignore", "ignore"] : "inherit",
   };

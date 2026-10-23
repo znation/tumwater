@@ -1,5 +1,5 @@
 import { fail } from "./cli-output.js";
-import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
+import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR, TOKEN_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt, splitCommaList } from "../text/text.js";
@@ -30,6 +30,24 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 export function flagValue(args: string[], flag: string): string | null | undefined {
   const i = args.indexOf(flag);
   return i < 0 ? null : args[i + 1];
+}
+
+/** The one validation of a `--token <secret>` value, shared by `tumwater gui` (cmdGui) and
+ * `tumwater start --gui` (cmdStart) so the value checks and their wording cannot drift
+ * between the two callers. Returns null when the token is fine (or absent), the error text
+ * the caller `fail()`s otherwise: TOKEN_VALUE_ERROR for a valueless or empty `--token`, and a
+ * flag-looking-value message when the value starts with `--` (a valued flag claims the next
+ * token even when it is a known flag, so `--token --all-interfaces` would otherwise serve with
+ * the literal secret "--all-interfaces"). `example` names the command form the operator
+ * typed (e.g. "tumwater gui" or "tumwater start --gui") in the copyable fix, so the
+ * message names whichever command the secret was meant for. */
+export function tokenValueProblem(args: string[], example: string): string | null {
+  const raw = flagValue(args, "--token");
+  if (raw === null) return null;
+  if (raw === undefined || raw === "") return TOKEN_VALUE_ERROR;
+  if (raw.startsWith("--"))
+    return `--token got the flag-looking value "${raw}" instead of a secret — write the secret as its own argument (e.g. \`${example} --token s3cret --all-interfaces\`)`;
+  return null;
 }
 
 /** The "each flag at most once" rule at a flag fold: fail the occurrence after the first with
