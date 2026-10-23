@@ -6,20 +6,34 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Reviewer as a regular role, part 2/4: Post-merge review at fleet scale — the merge poll keeps up and the revert path holds under bugfix volume (planned 2026-10-23 by user; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; touches src/review/post-merge-review.ts src/merge/merge-slot.ts and their tests)
+### Reviewer as a regular role, part 2a/4: The merge poll keeps up at fleet scale — FIFO, exactly-once, and the failure limit (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2; requires part 1/4 landed; independent sibling of part 2b/4 — either may land first; touches src/review/post-merge-review.ts src/merge/merge-post-review.ts test/post-merge-review.test.ts)
 
-**Needs review 2026-10-23 by feature: too large for one run**
-
-**Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moves bugfix's volume onto it. The merge poll's one-at-a-time when-a-permit-is-free cadence and the revert-after-merge path must hold: no unreviewed merged commit waits indefinitely, and a rejection of an already-archived entry does not strand the entry.
+**Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moved bugfix's, readme's and organize's volume onto it. The one-at-a-time poll must drain the queue: every merged commit is reviewed exactly once, the oldest unreviewed commit goes first, and a busy permit delays a review rather than dropping or reordering it. A verdict-less review drops its commit after POST_REVIEW_FAILURE_LIMIT runs and leaves it on main, because the failure is the reviewer's, not the change's.
 
 **Approach.**
-- src/review/post-merge-review.ts: verify (and pin with a test) the review schedule under a sustained merge rate — the poll picks the oldest unreviewed merged commit, and a role whose changes merge faster than they are reviewed accrues at most one pending review per role (the per-role key), never an unbounded backlog.
-- The revert slot's routing (`settlePostReview` → revert → author revision) gains a test for the archive race: a change whose PLANS/BUGS entry was archived on merge, then rejected post-merge, re-opens or re-adds its entry so the author has something to fix (today only the clean/dedupe/coverage roles hit this, and their entries are usually self-referential).
-- POST_REVIEW_FAILURE_LIMIT (3) behavior is reviewed, not changed: three verdict-less reviews drop the change with the same exhaustion bookkeeping as the pre-merge path's REVIEW_FAILURE_LIMIT — confirm a dropped post-merge change leaves main holding it (already merged, already green-checked) and only logs, which is correct for a failure of the *reviewer*, not the change.
+- Pin the FIFO guarantee in test/post-merge-review.test.ts: `addPostReview` appends to `readPostReviews`' array order, and `drainPostReviews` (src/merge/merge-post-review.ts) picks `pending.find((e) => e.rejected === undefined)` — the first unreviewed entry. A test queues N=10 merged commits across 4 roles (seed `postReviewPath` directly) and drives the poll with a fake reviewer; assert each commit is reviewed exactly once (count `review_verdict`/`review_rejected` heads), reviews run in queue order, and the file empties.
+- Pin the rejected-first branch: with both an unreviewed entry and a rejected one queued, the revert slot fills before the next review starts (the same file's `drainPostReviews`). Do not add a per-role cap: the merge interlock releases a role once its change merges, so a role can queue more than one review; bounding that is a scheduling decision owned by the interlock entries, not this one.
+- Pin the failure limit the existing tests stop short of: seed an entry with `failures = POST_REVIEW_FAILURE_LIMIT - 1`, run one verdict-less review, and assert the entry is dropped with the "stays on main unreviewed" warning and no revert is started. The git-could-not-start exemption (not counted toward the limit) is already tested.
+- No production change is expected: if a test shows FIFO or exactly-once broken, fix the minimal cause in src/merge/merge-post-review.ts, never by changing `addPostReview`'s write path.
 
 **Acceptance criteria.**
-- A test merges N=10 changes across 4 roles with fake reviews resolving on a controlled clock: every merged commit is eventually reviewed, none reviewed twice, and the per-role pending count never exceeds one.
-- The archive-race test above passes; `npm run test:gate` passes.
+- The N=10 test passes: every queued commit is reviewed exactly once, in queue order, and `readPostReviews` is empty at the end.
+- The failure-limit test passes: the third verdict-less run drops the entry, logs the warning, and starts no revert.
+- `npm run test:gate` passes.
+
+### Reviewer as a regular role, part 2b/4: The revert path holds — a post-merge rejection of an already-archived entry hands its author a fixable revision (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; independent sibling of part 2a/4 — either may land first; touches src/merge/merge-drain.ts src/baseline/main-revert.ts test/post-merge-review.test.ts)
+
+**Goal.** A post-merge rejection must not strand a change whose PLANS.md/BUGS.md entry was archived on merge. The revert of the merged commit restores the live entry, and `handBackReverted` → `recordRevertedChange` gives the author a revision carrying the reviewer's reasons, so the next run fixes the change instead of re-deriving it.
+
+**Approach.**
+- Extend test/post-merge-review.test.ts with the archive race end to end: make a repo, have the role's commit move a `## Planned` entry to the finished section (the `archiveNewFinishedEntries` shape, src/backlog/backlog-archive.ts), queue it with `addPostReview`, drive a rejecting review, then `drainMerge` through the revert and `handBackReverted`. Assert the heading is back under `## Planned` and absent from the finished section, `runner.state.lastReview` carries the reviewer's reasons, and `runner.state.revision.sha` is the reverted commit.
+- Cover the failed-revert fallback only by asserting the existing path: `runMainRevert`'s `onFailed` → `sendReviewToRole` (src/merge/merge-drain.ts) leaves the commit on main and enqueues a role prompt naming the reviewer's reasons. test/main-revert.test.ts already covers the throwing hand-off; add the archive-free case only if it is cheap, and do not build a second revert harness.
+- If the archive-race test exposes a gap (an entry left only in the finished section, or a revision with nothing to apply), fix the minimal cause in the revert or hand-back path; do not widen the poll.
+
+**Acceptance criteria.**
+- The archive-race test passes: after the revert the live entry is back under `## Planned` and the author holds the revision with the reviewer's reasons.
+- The failed-revert fallback assertion passes: the commit stays on main and the role prompt names the reviewer's reasons.
+- `npm run test:gate` passes.
 
 ### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
 
