@@ -17,6 +17,8 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, grepBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
+import { loadQuarantine } from "../review/known-flakes.js";
+import { quarantineRows, renderQuarantine } from "../review/quarantine-render.js";
 import { collectChangeOverlaps, scopeChangeOverlaps, scopeChangeOverlapsToPath, collectTeamChanges, collectRoleChange, collectRoleChanges, normalizeDiffPath } from "../change/change-data.js";
 import { renderChangeOverlaps, renderTeamChange, renderRoleChange, renderRoleChanges } from "../change/change-render.js";
 import { readMergeQueue, type MergeQueueView } from "../merge/merge-queue.js";
@@ -357,5 +359,17 @@ export async function cmdBacklog(root: string, args: string[], seams: FollowView
   }
   const result = readBacklog();
   sayJsonOrRender(rest, result.view, () => renderBacklogText(result));
+}
+
+// `tumwater quarantine [--json]` — the read-only view of the review gate's flake
+// quarantine. No requireReadyRepo gate: loadQuarantine degrades an absent or malformed
+// file to the empty list (the cmdBacklog rationale), so the command prints the empty line
+// in any directory, and it never writes quarantine.json (a test leaves the list only
+// through releaseQuarantine). --json serves the same positioned rows to scripts.
+export async function cmdQuarantine(root: string, args: string[]): Promise<void> {
+  rejectUnknownArgs("quarantine", args, [JSON_FLAG]);
+  refuseTeamWorkspace(root);
+  const rows = quarantineRows(loadQuarantine(root));
+  sayJsonOrRender(args, { tests: rows }, () => renderQuarantine(rows, Date.now()));
 }
 

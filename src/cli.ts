@@ -294,6 +294,9 @@ async function main(): Promise<void> {
     case "backlog":
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
+    case "quarantine":
+      await (await import("./cli/cli-query-commands.js")).cmdQuarantine(root, args);
+      break;
     case "archive":
       rejectUnknownArgs("archive", args, [JSON_FLAG]);
       await requireReadyRepo(root);

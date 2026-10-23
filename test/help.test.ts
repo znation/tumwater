@@ -18,6 +18,7 @@ const ALL_COMMANDS = [
   "diff",
   "queue",
   "backlog",
+  "quarantine",
   "archive",
   "bug",
   "plan",

@@ -269,7 +269,8 @@ discards a role's in-flight merge.
   (`known-flaky failure, merge kept`) remains for failures that name no test.
   `tumwater doctor`'s `flaky checks` row and the selfcheck digest warn when a quarantined test's
   age passes 3 days (naming the oldest, with its BUGS.md heading or "not filed") or when the list
-  holds more than 10 tests.
+  holds more than 10 tests. `tumwater quarantine [--json]` lists the current list — every entry
+  oldest first with its age, flake count, last sighting and filed bug.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
 - A search role's own recent yield stretches its clock: after ten consecutive counted runs

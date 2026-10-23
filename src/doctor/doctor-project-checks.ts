@@ -262,7 +262,7 @@ export function checkFlakyChecks(root: string, now: number = Date.now()): CheckO
     );
   }
   const q = quarantineWarning(loadQuarantine(root), now);
-  if (q !== null) phrases.push(q);
+  if (q !== null) phrases.push(`${q} — see \`tumwater quarantine\``);
   if (phrases.length === 0)
     return okOutcome("no check flapped more than once in the last 24h");
   return warnOutcome(phrases.join("; "));

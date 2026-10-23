@@ -1290,6 +1290,7 @@ test("checkFlakyChecks warns on an old quarantined test and keeps its flake resu
   assert.match(out.detail, /flapped more than once in the last 24h/);
   assert.match(out.detail, /A hidden flake/);
   assert.match(out.detail, /4d ago/);
+  assert.match(out.detail, /tumwater quarantine/);
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {

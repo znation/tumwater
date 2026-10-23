@@ -83,8 +83,9 @@ export function isKnownFlake(root: string, headline: string): boolean {
 
 /** One quarantined test: it failed, then passed on the same tree. `bug` is the heading of the
  * BUGS.md entry filed for it, empty until the filing is committed; `tail` is the failing output
- * kept only until then. */
-interface QuarantineEntry {
+ * kept only until then. Exported so the read-only `tumwater quarantine` renderer (and its
+ * json feed) can name each entry's fields the operator sees. */
+export interface QuarantineEntry {
   test: string;
   firstSeen: number;
   lastSeen: number;
