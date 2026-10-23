@@ -326,6 +326,12 @@ export const KILL_ORPHANS_FLAG: FlagSpec = { names: ["--kill-orphans"] };
  * Value-less, like KILL_ORPHANS_FLAG. */
 export const COMMIT_BACKLOG_FLAG: FlagSpec = { names: ["--commit-backlog"] };
 
+/** The `--resync-install` flag spec, accepted by `doctor`: re-sync the root checkout's install
+ * on demand, under the merge lock, before the report (part 1/2; the Health surfaces that expose
+ * it are part 2/2). The third mutating doctor flag, after `--kill-orphans` and `--commit-backlog`.
+ * Value-less, like COMMIT_BACKLOG_FLAG. */
+export const RESYNC_INSTALL_FLAG: FlagSpec = { names: ["--resync-install"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };

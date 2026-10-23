@@ -15,6 +15,7 @@
 import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "./cli/cli-args.js";
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import type { BacklogCommitReport } from "./doctor/doctor-backlog.js";
+import type { RootInstallResync } from "./build/dep-install.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -46,6 +47,7 @@ import {
   PROBLEMS_FLAG,
   KILL_ORPHANS_FLAG,
   COMMIT_BACKLOG_FLAG,
+  RESYNC_INSTALL_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -204,7 +206,7 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG]);
+      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG]);
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
       let orphanKill: OrphanKillReport | undefined;
@@ -228,6 +230,17 @@ async function main(): Promise<void> {
           say("");
         }
       }
+      let resyncInstall: RootInstallResync | undefined;
+      if (args.includes("--resync-install")) {
+        const { resyncRootInstall, rootInstallResyncLines } = await import("./build/dep-install.js");
+        resyncInstall = await resyncRootInstall(root);
+        // The text form prints the re-sync outcome before the report; --json keeps stdout one
+        // document, carrying the result as `resyncInstall` on the payload.
+        if (!args.includes("--json")) {
+          for (const line of rootInstallResyncLines(resyncInstall)) say(line);
+          say("");
+        }
+      }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
         "./doctor/doctor-render.js"
       );
@@ -245,9 +258,11 @@ async function main(): Promise<void> {
       const withKill = <T extends object>(payload: T) => (orphanKill === undefined ? payload : { ...payload, orphanKill });
       const withBacklogCommit = <T extends object>(payload: T) =>
         backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
+      const withResyncInstall = <T extends object>(payload: T) =>
+        resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
       if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? withBacklogCommit(problemsOnly(report)) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, args.includes("--json") ? withBacklogCommit(report) : report, renderDoctor);
+        sayJsonOrRender(args, args.includes("--json") ? withResyncInstall(problemsOnly(report)) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, args.includes("--json") ? withResyncInstall(report) : report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

@@ -606,6 +606,39 @@ test("doctor --commit-backlog commits a dirty backlog file before the report; wi
   assert.ok(!("backlogCommit" in plain));
 });
 
+test("doctor --resync-install is accepted and reports nothing to do without a lockfile", async () => {
+  // A bare repo (no package-lock.json) pins nothing, so the re-sync has nothing to do; a
+  // `.tumwater` dir lets the merge lock acquire (a real project always has one).
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, ".tumwater"), { recursive: true });
+  const json = await cli(repo, "doctor", "--resync-install", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.equal(doc.resyncInstall.attempted, false);
+  assert.equal(doc.resyncInstall.ok, true);
+  assert.deepEqual(doc.resyncInstall.packages, []);
+  assert.equal(doc.resyncInstall.pinned, false);
+  const r = await cli(repo, "doctor", "--resync-install");
+  assert.match(r.stdout, /^no package-lock\.json to match — nothing to re-sync\n/m);
+  assert.ok(r.stdout.indexOf("nothing to re-sync") < r.stdout.indexOf("tumwater doctor — not running"));
+  // Without the flag the doctor payload is unchanged — no resyncInstall field.
+  const plain = JSON.parse((await cli(repo, "doctor", "--json")).stdout);
+  assert.ok(!("resyncInstall" in plain));
+});
+
+test("doctor --resync-install on a matched root says the tree already matches the lockfile", async () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, ".tumwater"), { recursive: true });
+  fs.mkdirSync(path.join(repo, "node_modules", "ink"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "package-lock.json"), JSON.stringify({ lockfileVersion: 3, packages: { "": { name: "proj", dependencies: { ink: "7.1.1" } }, "node_modules/ink": { version: "7.1.1" } } }));
+  fs.writeFileSync(path.join(repo, "node_modules/ink/package.json"), JSON.stringify({ name: "ink", version: "7.1.1" }));
+  const json = await cli(repo, "doctor", "--resync-install", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.equal(doc.resyncInstall.attempted, false);
+  assert.equal(doc.resyncInstall.pinned, true);
+  const r = await cli(repo, "doctor", "--resync-install");
+  assert.match(r.stdout, /^node_modules already matches package-lock\.json — nothing to re-sync\n/m);
+});
+
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {
   assert.deepEqual(
     await runDoctorCheck(() => {

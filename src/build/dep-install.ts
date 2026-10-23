@@ -3,8 +3,11 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { readJsonFile } from "../files/json-files.js";
 import { EXEC_MAX_BUFFER } from "../process/process.js";
 import { KILL_GRACE_MS, runScriptGroup } from "../process/process-group.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { withLock } from "../concurrency/lock.js";
+import { mergeLockDir } from "../paths.js";
 import { errorMessage } from "../text/text.js";
+import { shortSpanPhrase } from "../text/phrases.js";
 
 /** Keeping a tree's install in step with its lockfile (BUGS.md 2026-10-01). node_modules is
  * gitignored, so a tumwater worktree has none of its own: its toolchain and every import resolve by
@@ -142,4 +145,84 @@ export async function syncRootInstall(
       role,
       `the root install did not pick up main's dependencies (${r.packages.join(", ")})${r.detail ? `: ${r.detail}` : ""}; checks install into their own trees until a later merge re-syncs it`,
     );
+}
+
+/** What one `tumwater doctor --resync-install` re-sync concluded: `attempted` tells a no-drift
+ * run (nothing to do) from a run that held the lock and tried; `ok` and `detail` describe how the
+ * install went, `packages` the names it re-synced, `durationMs` the install's own wall-clock. */
+export interface RootInstallResync extends InstallResult {
+  attempted: boolean;
+  packages: string[];
+  /** True when a readable package-lock.json pins the install — an `attempted`-false run then
+   * means the tree already matches it; false when there is no lockfile, so nothing pins a
+   * version and there is nothing to match. */
+  pinned: boolean;
+}
+
+/** Re-sync the root checkout's install on demand — the `tumwater doctor --resync-install` verb
+ * (and, in part 2/2, the Health surfaces' button), the always-on `install` alert's advice made a
+ * harness verb. Runs the same `syncInstall` the merge path runs, under the merge lock (the lock
+ * tryMerge holds around its own syncRootInstall, merge-to-main.ts), so a merge and the operator
+ * never run two root installs at once. No drift spawns nothing and logs nothing; a re-sync logs
+ * the same dep_install event syncRootInstall does, under TUMWATER_SOURCE, warning on failure.
+ * Never throws. */
+export async function resyncRootInstall(
+  root: string,
+  install: InstallRunner = npmInstall,
+): Promise<RootInstallResync> {
+  // Nothing is pinned when no readable package-lock.json names a top-level project — that is not
+  // "the tree matches the lockfile" (there is none), so `pinned` tells the two no-drift cases
+  // apart for the renderer.
+  const readPinned = () =>
+    !!readJsonFile<{ packages?: Record<string, unknown> }>(path.join(root, "package-lock.json"))
+      ?.packages?.[""];
+  try {
+    return await withLock(mergeLockDir(root), async () => {
+      // Read inside the lock: a concurrent merge can swap package-lock.json between a read before
+      // the lock and syncInstall, and an `attempted`-false run must match the lockfile the sync
+      // would have aligned the tree against.
+      const pinned = readPinned();
+      const r = await syncInstall(root, install);
+      if (!r) return { attempted: false, ok: true, packages: [], durationMs: 0, pinned };
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "dep_install",
+        packages: r.packages,
+        status: r.ok ? "passed" : "failed",
+        durationMs: r.durationMs,
+        ...(r.detail ? { error: r.detail } : {}),
+      });
+      if (!r.ok)
+        warnEventBestEffort(
+          root,
+          TUMWATER_SOURCE,
+          `the manual root install re-sync did not pick up the root lockfile's dependencies (${r.packages.join(", ")})${r.detail ? `: ${r.detail}` : ""}; checks install into their own trees until a later merge re-syncs it`,
+        );
+      return {
+        attempted: true,
+        ok: r.ok,
+        packages: r.packages,
+        durationMs: r.durationMs,
+        pinned,
+        ...(r.detail ? { detail: r.detail } : {}),
+      };
+    });
+  } catch (err) {
+    // A withLock timeout/throw must not throw to the CLI: report it as a failed re-sync so the
+    // doctor run still renders its verdict rather than crashing.
+    return { attempted: true, ok: false, packages: [], durationMs: 0, pinned: readPinned(), detail: errorMessage(err) };
+  }
+}
+
+/** The one renderer the CLI and part 2/2's Health surfaces share for a RootInstallResync — a
+ * no-drift run (attempted false) says nothing to do, a success names the re-synced packages, and
+ * a failure names its detail. */
+export function rootInstallResyncLines(r: RootInstallResync): string[] {
+  if (!r.attempted)
+    return r.pinned
+      ? ["node_modules already matches package-lock.json — nothing to re-sync"]
+      : ["no package-lock.json to match — nothing to re-sync"];
+  if (r.ok)
+    return [`re-synced the root install (${r.packages.join(", ")}) in ${shortSpanPhrase(r.durationMs)}`];
+  return [`the root install re-sync failed: ${r.detail ?? "unknown error"}`];
 }

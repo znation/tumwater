@@ -6,6 +6,8 @@ import {
   type InstallRunner,
   installDrift,
   npmInstall,
+  resyncRootInstall,
+  rootInstallResyncLines,
   syncInstall,
   syncRootInstall,
 } from "../src/build/dep-install.js";
@@ -252,4 +254,61 @@ test("syncRootInstall resolves when the events feed is unwritable, leaving the p
 
   assert.deepEqual(install.calls, [root], "the awaited root install still ran");
   assert.deepEqual(installDrift(root), [], "the root install was still re-synced");
+});
+
+test("resyncRootInstall reports nothing to do, a re-sync and a failure, logging under tumwater", async () => {
+  // A real root's merge lock lives under `.tumwater` (always present in an initialized project);
+  // give each fixture one so the lock can acquire.
+  const project = (label: string): string => {
+    const dir = tmpdir(label);
+    fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+    return dir;
+  };
+  // No lockfile (nothing pinned): attempted false, nothing spawned, nothing logged, and the line
+  // says there is nothing to match — not that the tree matches a lockfile none exists.
+  const quiet = project("dep-install-resync-quiet-");
+  const still = await resyncRootInstall(quiet, fakeInstaller());
+  assert.equal(still.attempted, false);
+  assert.equal(still.ok, true);
+  assert.deepEqual(still.packages, []);
+  assert.equal(still.pinned, false);
+  assert.deepEqual(readEvents(quiet), []);
+  assert.deepEqual(rootInstallResyncLines(still), ["no package-lock.json to match — nothing to re-sync"]);
+
+  // A lockfile the tree already matches (no drift): attempted false, but pinned true, so the line
+  // says the install already matches the lockfile rather than that there is none to match.
+  const match = project("dep-install-resync-match-");
+  writeLock(match, { ink: "7.1.1" });
+  installPkg(match, "ink", "7.1.1");
+  const matched = await resyncRootInstall(match, fakeInstaller());
+  assert.equal(matched.attempted, false);
+  assert.equal(matched.pinned, true);
+  assert.deepEqual(rootInstallResyncLines(matched), ["node_modules already matches package-lock.json — nothing to re-sync"]);
+
+  // A drifted root: one dep_install under TUMWATER_SOURCE naming the re-synced packages.
+  const root = project("dep-install-resync-");
+  writeLock(root, { ink: "7.1.1", "left-pad": "1.3.0" });
+  const install = fakeInstaller();
+  const r = await resyncRootInstall(root, install);
+  assert.deepEqual(install.calls, [root]);
+  assert.equal(r.attempted, true);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.packages, ["ink", "left-pad"]);
+  const [event] = eventsOfType(root, "dep_install");
+  assert.equal(event?.source, "tumwater");
+  assert.deepEqual(event?.packages, ["ink", "left-pad"]);
+  assert.equal(event?.status, "passed");
+  assert.match(rootInstallResyncLines(r)[0] ?? "", /re-synced the root install \(ink, left-pad\) in/);
+
+  // A failing fake: ok false with its detail, a warn, and no throw.
+  const failRoot = project("dep-install-resync-fail-");
+  writeLock(failRoot, { ink: "7.1.1" });
+  const failed = await resyncRootInstall(failRoot, fakeInstaller("fail"));
+  assert.equal(failed.attempted, true);
+  assert.equal(failed.ok, false);
+  assert.deepEqual(failed.packages, ["ink"]);
+  assert.match(failed.detail ?? "", /ENOTFOUND/);
+  assert.equal(eventsOfType(failRoot, "dep_install")[0]?.status, "failed");
+  assert.ok(warningMessages(failRoot).some((m) => m.includes("root install re-sync did not pick up the root lockfile's dependencies (ink)")));
+  assert.equal(rootInstallResyncLines(failed)[0], "the root install re-sync failed: npm install exited 1: ENOTFOUND registry.npmjs.org");
 });
