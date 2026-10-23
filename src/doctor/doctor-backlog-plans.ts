@@ -1,4 +1,4 @@
-import { andMore, readDoc, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
+import { andMore, readDoc, readBacklogChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX } from "./doctor-backlog.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
@@ -18,7 +18,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * checkValidationGaps) and the PLANS.md / backlog-file integrity checks that read sections and
  * clauses rather than a single document's entries (checkStrandedPlans, checkLiveFinished,
  * checkBacklogHeadings, checkStalledPlans, checkPlanDependencies). They import the shared helpers
- * (readDoc and its checked wrapper readDocChecked, andMore) from doctor-backlog.ts and the
+ * (readDoc and its checked wrapper readBacklogChecked, andMore) from doctor-backlog.ts and the
  * heading-trim bounds,
  * and all of them warn instead of failing: damaged documentation is operator signal, not a
  * broken environment. doctor.ts composes them beside the open-item and queue checks; the shared
@@ -35,7 +35,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * legitimate. A warn, never a fail (the checkFallbackModel precedent): a suspicious record is
  * operator signal, not a broken environment. */
 export function checkFixClaims(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
   // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
@@ -78,7 +78,7 @@ export function checkFixClaims(root: string): CheckOutcome {
  * may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
  * operator signal, not a broken environment. */
 export function checkValidationGaps(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
   const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
@@ -118,7 +118,7 @@ export function checkValidationGaps(root: string): CheckOutcome {
  * the primary checkout IS main's tree — like checkFixClaims. A warn, never a fail: a misplaced
  * heading is operator signal, not a broken environment. */
 export function checkStrandedPlans(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "PLANS.md"), "PLANS.md", "no PLANS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "PLANS.md");
   if (typeof doc !== "string") return doc;
   // PLANS-DONE.md too: finished plans are archived there (plans/backlog-archive.md), and a plan
   // filed under its ## Done is as invisible as one under PLANS.md's. Each entry names its file.

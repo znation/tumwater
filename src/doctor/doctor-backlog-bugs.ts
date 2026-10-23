@@ -1,5 +1,4 @@
-import { andMore, readDocChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
-import path from "node:path";
+import { andMore, readBacklogChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
 import { ageInDays, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
@@ -19,7 +18,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * bugs held for their next failure (checkWaitingBugs, with its quotedTestName / waitingNoteDate /
  * failureMentions helpers), fixed records whose quoted test regressed (checkRegressedFixes), and
  * entries parked by a Refused note (checkRefusedEntries). They import the shared helpers
- * (readDocChecked, andMore) from doctor-backlog.ts, plus the age/trim bounds, and
+ * (readBacklogChecked, andMore) from doctor-backlog.ts, plus the age/trim bounds, and
  * all warn instead of failing: a stale or
  * parked entry is operator signal, not a broken environment. doctor.ts composes them beside the
  * plan-structure and queue checks; the shared CheckOutcome shape is imported from outcome.ts. */
@@ -35,7 +34,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * the checkStalledPlans/checkRefusedEntries precedent: a question awaiting a human is
  * operator signal, not a broken environment. */
 export function checkStaleQuestions(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "QUESTIONS.md"), "QUESTIONS.md", "no QUESTIONS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "QUESTIONS.md");
   if (typeof doc !== "string") return doc;
   const stale = openQuestionEntries(root).flatMap((q) => {
     const stamp = questionFilingDate(q.title);
@@ -56,7 +55,7 @@ export function checkStaleQuestions(root: string): CheckOutcome {
  * (checkRefusedEntries names it), a waiting bug is skipped (checkWaitingBugs names it) and so is
  * an undated heading. A warn, never a fail. */
 export function checkStaleBugs(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   const stale = openBugEntries(root).flatMap((entry, index) => {
     if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
@@ -140,7 +139,7 @@ function heldWaitingBugs(root: string): Array<{ index: number; position: number;
  * date, so a same-day failure cannot be told from the one it was written about). A warn is
  * never a fail, and doctor writes nothing to BUGS.md. */
 export function checkWaitingBugs(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   const held = heldWaitingBugs(root);
   const [first, ...rest] = held;
@@ -213,7 +212,7 @@ export function staleWaitingBugRows(root: string, now = Date.now()): Array<{ ind
  * already quotes the same test, which means the regression is filed. A warn, never a fail, and
  * doctor writes nothing to BUGS.md. */
 export function checkRegressedFixes(root: string): CheckOutcome {
-  const doc = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
   const candidates = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
     const name = quotedTestName(entry.title);

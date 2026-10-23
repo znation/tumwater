@@ -88,14 +88,25 @@ export function readDoc(p: string): { doc: string } | { error: string } {
   }
 }
 
-/** The single-file check's read prologue, shared by checkFixClaims and checkStrandedPlans:
- * an absent file is that check's own "nothing to verify" ok outcome, an unreadable one a warn
- * naming the file. Returns the document, or the outcome the caller should return as-is. */
+/** The single-file check's read prologue: an absent file is that check's own "nothing to
+ * verify" ok outcome, an unreadable one a warn naming the file. Returns the document, or the
+ * outcome the caller should return as-is. The per-file doctor checks go through readBacklogChecked.
+ * */
 export function readDocChecked(p: string, file: string, missingDetail: string): string | CheckOutcome {
   if (!fs.existsSync(p)) return okOutcome(missingDetail);
   const read = readDoc(p);
   if ("error" in read) return warnOutcome(`cannot read ${file} — ${read.error}`);
   return read.doc;
+}
+
+/** The standard single-file check's read prologue for a backlog document at `root`: the
+ * readDocChecked call every per-file doctor check (checkFixClaims, checkValidationGaps,
+ * checkStrandedPlans, checkStaleQuestions, and the stale/waiting bug checks) repeats, with the
+ * `no <file> — nothing to verify` missing-detail derived from the file name so the file triple
+ * (path, display name, message) and the message template cannot drift across the seven call
+ * sites. Returns the document, or the outcome the caller should return as-is. */
+export function readBacklogChecked(root: string, file: string): string | CheckOutcome {
+  return readDocChecked(path.join(root, file), file, `no ${file} — nothing to verify`);
 }
 
 /** How long a queued merge may wait without its change starting before the stale-queued-merge check
