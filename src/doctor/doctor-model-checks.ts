@@ -30,6 +30,13 @@ import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { errorMessage, joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
+/** The one phrase a configured-models check uses when the config declares no models at all:
+ * informational (capability falls to pi's own defaults), not a warning. Shared by
+ * checkTierModels and checkImageInput so the two checks word the same "nothing configured"
+ * stance identically. */
+const PHRASE_NO_MODELS_DECLARED =
+  "no models declared — every model job uses pi's own default";
+
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
  * repo-setup checks stay there, and whose state/disk/build checks live in
  * doctor-project-checks.ts): the cap fallback price and fallback-chain checks (checkFallbackModel,
@@ -368,7 +375,7 @@ export async function checkTierModels(
       ? ""
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
   if (pairs.size === 0 && routedModels.size === 0)
-    return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every model job uses pi's own default${ompNote}`);
+    return (ompVars.length === 0 ? okOutcome : warnOutcome)(`${PHRASE_NO_MODELS_DECLARED}${ompNote}`);
   let providers = readPiProviders(modelsPath);
   if (!providers && [...pairs.values()].some((p) => p.provider !== undefined) && (await listed()))
     providers = new Map();
@@ -610,7 +617,7 @@ export async function checkImageInput(
     const declared =
       pairs.some((p) => p.model !== undefined) ||
       MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
-    if (!declared) return okOutcome("no models declared — every model job uses pi's own default");
+    if (!declared) return okOutcome(PHRASE_NO_MODELS_DECLARED);
     const readsLine =
       readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
     const details = joinParts([readsLine, ...reroutes]);
