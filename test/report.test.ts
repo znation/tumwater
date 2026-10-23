@@ -237,6 +237,53 @@ test("report --since folds refused runs by role and narrows to the scoped base r
   assert.deepEqual(scopedJson.refusalsByRole, { feature: 1 }, "the scoped since JSON narrows refusalsByRole");
 });
 
+test("report folds main_revert events into Reverts by role beside Refusals by role", async () => {
+  const root = makeRepo();
+  // Two reverts today (one keyed feature-2, one bugfix — both fold to their base roles) and
+  // one yesterday, so the --json series carries revertsByRole only on the days that have one
+  // (zero means absent), and a no-runner revert adds nothing.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "a", runner: "feature-2" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "b", runner: "bugfix" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "c" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "tumwater", type: "main_revert", commit: "d", runner: "feature" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Reverts by role:\*\* feature — 2 · bugfix — 1/, "reverts fold as their own line, ranked desc then name asc, base-role keyed");
+  assert.match(md.out, /\*\*Refusals by role:\*\* -/, "reverts and refusals are independent lines");
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const today = json.series[1];
+  const yesterday = json.series[0];
+  assert.deepEqual(today.revertsByRole, { feature: 1, bugfix: 1 }, "--json carries revertsByRole on the day that has them; feature-2 folds to feature");
+  assert.deepEqual(yesterday.revertsByRole, { feature: 1 }, "the yesterday revert lands on its own day");
+});
+
+test("report --since folds reverts by role and narrows to the scoped base role", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "tumwater", type: "main_revert", commit: "a", runner: "feature" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "tumwater", type: "main_revert", commit: "b", runner: "clean" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Reverts by role:\*\* clean — 1 · feature — 1/, "the team window sums both roles' reverts, ranked name asc on a tie");
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Reverts by role:\*\* feature — 1/, "scoping --since narrows reverts to the base role");
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.revertsByRole, { feature: 1 }, "the scoped since JSON narrows revertsByRole");
+
+  const bugfixNone = await runCli(root, "report", "--role", "bugfix", "--since", "6h");
+  assert.equal(bugfixNone.code, 0);
+  assert.match(bugfixNone.out, /\*\*Reverts by role:\*\* -/, "a scoped role with no reverts carries an empty map that renders '-'");
+});
+
 test("renderReportMarkdown prints the fixed bugs' Validation gaps as a team-only line", () => {
   const base = collectReport(tmpdir(), 2);
   const data: ReportData = {
@@ -525,6 +572,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -556,6 +604,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     rejectionsByRole: { feature: 1, clean: 1 },
     revisionsByRole: { feature: 1 },
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -591,6 +640,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -615,6 +665,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -641,6 +692,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -667,6 +719,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
     rejectionsByRole: {},
     revisionsByRole: { feature: 3 },
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -697,6 +750,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},

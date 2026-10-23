@@ -39,7 +39,7 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // Object.prototype key whose inherited value would otherwise seed the counter and satisfy
   // the membership test (the browser twin of addTo's fix; BUGS.md 2026-10-10).
   function reportRoleOrder(data) {
-    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "refusalsByRole", "fallbacksByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
+    return tallyAcross(data.series, ["runsByRole"], ["costByRole", "notionalByRole", "rejectionsByRole", "revisionsByRole", "refusalsByRole", "revertsByRole", "fallbacksByRole", "imageReroutesByRole", "failedRunsByRole", "mergeFailedByRole", "commitsByRole", "mergedByRole"]);
   }
 
   // X-axis labels: MM-DD, thinned to at most seven, counted back from the newest day so today
@@ -298,6 +298,11 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // way as its rejection/revision siblings.
   function chartRefusalsByRole(data) {
     return roleStackChart(data, "refusalsByRole", (n) => plural(n, "refusal"), countAxis, true);
+  }
+  // The day's main_watch reverts per role, drawn the same way as the other role charts: one
+  // segment per (day, role) whose merged change the main watch took back off main.
+  function chartRevertsByRole(data) {
+    return roleStackChart(data, "revertsByRole", (n) => plural(n, "revert"), countAxis, true);
   }
   // The team's model-fallback episodes, per role, on the same count axis: one segment per
   // (day, role) with a fallback.

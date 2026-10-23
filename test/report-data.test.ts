@@ -117,6 +117,40 @@ test("collectReportSince folds review_rejected events into the window totals", (
   assert.deepEqual(data.rejectionsByRole, { feature: 1, qa: 1 });
 });
 
+test("collectReport folds main_revert events into per-day per-role reverts keyed by the runner", () => {
+  const root = tmpdir();
+  // A `main_revert` is written by the harness under its own `loop`/`source`, so the role that
+  // merged the culprit lives only in `runner` — keyed by its base role, so `feature-2` folds
+  // into `feature`. A revert with no `runner` (a hand-made or director commit) adds nothing.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "a", runner: "feature" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "b", runner: "feature-2" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(0), loop: "tumwater", type: "main_revert", commit: "c" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: at(1), loop: "tumwater", type: "main_revert", commit: "d", runner: "bugfix" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReport(root, 4);
+  const today = data.series[data.series.length - 1];
+  const yesterday = data.series[data.series.length - 2];
+  assert.deepEqual(today?.revertsByRole, { feature: 2 }, "runner keyed to base role; no-runner revert adds nothing");
+  assert.deepEqual(yesterday?.revertsByRole, { bugfix: 1 }, "a revert lands on its own day");
+  // A revert-free day carries no revertsByRole key at all (zero means absent).
+  for (const d of data.series.slice(0, 2)) {
+    assert.ok(!Object.hasOwn(d, "revertsByRole"), `${d.date} carries no revertsByRole`);
+  }
+});
+
+test("collectReportSince folds main_revert events into the window's revertsByRole", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "tumwater", type: "main_revert", commit: "a", runner: "feature-2" }), // retired-name-ok: legacy event field in a fixture
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "tumwater", type: "main_revert", commit: "b", runner: "bugfix" }), // retired-name-ok: legacy event field in a fixture
+    // Outside the 6 h window — must not count.
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "tumwater", type: "main_revert", commit: "c", runner: "feature" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  const data = collectReportSince(root, 6 * HOUR);
+  assert.deepEqual(data.revertsByRole, { feature: 1, bugfix: 1 }, "feature-2 folds to feature; the out-of-window revert drops out");
+});
+
 test("collectReport splits merged events by base role and by work/maintenance tier", () => {
   const root = tmpdir();
   writeEvents(root, [

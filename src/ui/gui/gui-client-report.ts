@@ -316,6 +316,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "refusalsByRole") ? block("Refusals by role", chartRefusalsByRole(d)) : "") +
+        (seriesHasAny(d, "revertsByRole") ? block("Reverts by role", chartRevertsByRole(d)) : "") +
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +

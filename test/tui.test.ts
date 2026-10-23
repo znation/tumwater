@@ -829,7 +829,7 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     // the title has scrolled out of the window.
     for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
     frame = tui.lastFrame();
-    assert.match(frame, /\*\*Tokens by role:\*\*/);
+    assert.match(frame, /\*\*Cost by role:\*\*/);
     assert.doesNotMatch(frame, /# tumwater usage report/);
     const tailFrame = frame;
     tui.key(undefined, "pagedown");

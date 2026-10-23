@@ -31,6 +31,10 @@ export interface ReportDay {
   /** run_end events per role id (its result is `refused` — a run that deliberately declined
    * its entry); absent when the day has none (zero means absent). */
   refusalsByRole?: Record<string, number>;
+  /** main_revert events per base role — which role's merged changes the main watch took back
+   * off main, keyed by the culprit's `runner`; absent when the day has none (zero means
+   * absent, like its siblings). */
+  revertsByRole?: Record<string, number>;
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
    * has none. */
   checkMedianMs?: number;
@@ -174,6 +178,10 @@ export interface SinceReport {
   /** run_end events per role id whose result is `refused` (a run that deliberately declined
    * its entry); empty when the window has none. */
   refusalsByRole: Record<string, number>;
+  /** main_revert events per base role, keyed by the culprit's `runner` (which role's merged
+   * changes the main watch took back off main); always present (empty map when none), like
+   * the other per-day role maps. */
+  revertsByRole: Record<string, number>;
   /** error-class run_end events per role id; empty when the window has none. */
   failedRunsByRole: Record<string, number>;
   /** model_fallback_started events per role id; empty when the window has none. */

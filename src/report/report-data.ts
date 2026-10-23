@@ -65,6 +65,7 @@ export function collectReportSince(
     rejectionsByRole: {},
     revisionsByRole: {},
     refusalsByRole: {},
+    revertsByRole: {},
     checkDurationsMs: [],
     checkFailures: 0,
     mergeWaitsMs: [],
@@ -149,6 +150,7 @@ export function collectReportSince(
     rejectionsByRole: scopedByRole(acc.rejectionsByRole, bases),
     revisionsByRole: scopedByRole(acc.revisionsByRole, bases),
     refusalsByRole: scopedByRole(acc.refusalsByRole, bases),
+    revertsByRole: scopedByRole(acc.revertsByRole, bases),
     failedRunsByRole: scopedByRole(acc.failedRunsByRole, bases),
     fallbacksByRole: scopedByRole(acc.fallbacksByRole, bases),
     imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, bases),
@@ -215,6 +217,8 @@ export function collectReport(root: string, days: number, role?: string | readon
         day.revisionsByRole = fold.revisionsByRole;
       if (Object.keys(fold.refusalsByRole).length > 0)
         day.refusalsByRole = fold.refusalsByRole;
+      if (Object.keys(fold.revertsByRole).length > 0)
+        day.revertsByRole = fold.revertsByRole;
       // Checks belong to the merge slot, so only the team series carries the median.
       if (fold.checkDurationsMs.length > 0) {
         day.checkMedianMs = lowerMedian(fold.checkDurationsMs);
@@ -291,6 +295,8 @@ export function collectReport(root: string, days: number, role?: string | readon
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
       const refusals = narrowToRole(fold.refusalsByRole, bases);
       if (Object.keys(refusals).length > 0) day.refusalsByRole = refusals;
+      const reverts = narrowToRole(fold.revertsByRole, bases);
+      if (Object.keys(reverts).length > 0) day.revertsByRole = reverts;
       const fails = narrowToRole(fold.failedRunsByRole, bases);
       if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
       const falls = narrowToRole(fold.fallbacksByRole, bases);
