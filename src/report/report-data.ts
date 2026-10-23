@@ -36,6 +36,7 @@ import {
   zeroMergeCounts,
   type UsageFold,
 } from "./report-fold.js";
+import { mainRedMinutesByDay } from "./report-main-red.js";
 import type { ReportData, ReportDay, ReportTotals, SinceReport } from "./report-types.js";
 
 /** Aggregate team usage over the trailing `sinceMs` window ending now (or `untilMs` ago, which
@@ -179,6 +180,12 @@ export function collectReportSince(
     // follows. Always present so the render can gate on the window's own events.
     runsByModel: scopedByRole(acc.runsByModel, bases),
     ...(Object.keys(deferred).length > 0 ? { deferredByReason: deferred } : {}),
+    // Main's red time is main's own (G1's rule), not any role's, so a role-scoped window
+    // carries 0 — the type's always-present default for the team-only field.
+    mainRedMs:
+      bases === undefined
+        ? [...mainRedMinutesByDay(raw.events, cutoff, end).values()].reduce((a, b) => a + b, 0)
+        : 0,
     coversFullWindow,
   };
 }
@@ -343,6 +350,19 @@ export function collectReport(root: string, days: number, role?: string | readon
   for (const d of series) {
     d.tokensOut += d.mergeTokens ?? 0;
     d.costUsd += d.mergeCostUsd ?? 0;
+  }
+
+  // Main's red wall-clock per day, from G1's rule (main_red_hold / failed ran main_check open a
+  // spell, a passing ran main_check closes it, an open spell runs to now). Team-only: main's
+  // red time is main's own, not any role's, so a role-scoped series leaves every day unset —
+  // exactly as checkFailures is team-only. Only set when a day actually was red (zero-absent,
+  // like checkMedianMs).
+  if (bases === undefined) {
+    const redByDay = mainRedMinutesByDay(foldEntry.redEvents, dayAt(days - 1, now).getTime(), now.getTime());
+    for (const d of series) {
+      const ms = redByDay.get(d.date);
+      if (ms !== undefined) d.mainRedMs = ms;
+    }
   }
 
   const countOn = (

@@ -20,6 +20,30 @@ import type { HarnessEvent } from "../events/events.js";
 /** How long a red main must last before the doctor and the selfcheck digest warn (G1). */
 export const RED_MAIN_WARN_MS = 30 * 60_000;
 
+/** True when the event is a `main_check` whose verdict actually ran the full check (G1's
+ * `relevant` rule): `durationMs` > 0, so a cached or inherited verdict (durationMs 0) is
+ * ignored. Shared by the report's main-red walk (src/report/report-main-red.ts) and
+ * `redMainWarning` below, so the two cannot disagree about whether a check ran. */
+function ranFullMainCheck(ev: HarnessEvent): boolean {
+  return ev.type === "main_check" && typeof ev.durationMs === "number" && ev.durationMs > 0;
+}
+
+/** True when `ev` opens or extends a red spell on main (G1's rule): a `main_red_hold`, or a
+ * `main_check` that ran the full check and failed. The report's per-day main-red walk
+ * (src/report/report-main-red.ts) gates its spell opener on this, so it and G1 share the one
+ * rule for when main is red. */
+export function isRedMain(ev: HarnessEvent): boolean {
+  return ev.type === "main_red_hold" || (ranFullMainCheck(ev) && ev.status === "failed");
+}
+
+/** True when `ev` is a `main_check` that ran the full check and passed — the event that ends a
+ * red spell (G1's rule: a red naming only quarantined tests is recorded passed). Shared with
+ * the report's main-red walk (src/report/report-main-red.ts), so a pass closes a spell the
+ * same way G1 ends its red. */
+export function isPassingMainCheck(ev: HarnessEvent): boolean {
+  return ranFullMainCheck(ev) && ev.status === "passed";
+}
+
 /** A quarantined test's `firstSeen` age past which the doctor and digest warn it is being
  * hidden (G3). */
 export const QUARANTINE_AGE_MS = 3 * DAY_MS;
@@ -43,16 +67,14 @@ export function redMainWarning(events: readonly HarnessEvent[], now: number): st
   const relevant: HarnessEvent[] = [];
   for (const e of events) {
     if (typeof e.ts !== "number" || e.ts < cutoff) continue;
-    if (e.type === "main_red_hold") relevant.push(e);
-    else if (e.type === "main_check" && typeof e.durationMs === "number" && e.durationMs > 0) relevant.push(e);
+    if (isRedMain(e) || isPassingMainCheck(e)) relevant.push(e);
   }
   if (relevant.length === 0) return null;
   let newest = relevant[0]!;
   for (const e of relevant) if (e.ts > newest.ts) newest = e;
-  const red = (e: HarnessEvent): boolean =>
-    e.type === "main_red_hold" || (e.type === "main_check" && e.status === "failed");
-  if (!red(newest)) return null;
-  const passes = relevant.filter((e) => e.type === "main_check" && e.status === "passed");
+  if (!isRedMain(newest)) return null;
+  const passes = relevant.filter(isPassingMainCheck);
+  const red = isRedMain;
   const lastPass = passes.length > 0 ? passes[passes.length - 1] : undefined;
   const reds = relevant.filter(red);
   // No pass bounds the red spell, so the first red in the window opens it: a window with reds

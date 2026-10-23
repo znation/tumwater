@@ -153,6 +153,13 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
     return reportSvg(data.series, (d) => [{ value: Number(d.checkFailures) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.checkFailures) || 0, "red merge check") }],
       countAxis, true);
   }
+  // Main's red wall-clock per day, from mainRedMs (the same main_check/main_red_hold rule G1
+  // uses): the span every code role was held. A day without one keeps its empty slot, like the
+  // median charts; the red color reads beside the red-check-count chart it follows.
+  function chartMainRedMs(data) {
+    return reportSvg(data.series, (d) => [{ value: Number(d.mainRedMs) || 0, color: "#dc2626", title: d.date + ": " + fmtSpan(Number(d.mainRedMs) || 0) + " main red" }],
+      (v) => fmtSpan(v), false);
+  }
 
   // The lower median of the day's merge waits, enqueue to merged on main, from mergeWaitMedianMs.
   function chartMergeWaitMedian(data) {
@@ -394,6 +401,10 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   // seriesHasCheckMedian, the element renders only then.
   function seriesHasCheckFailures(data) {
     return seriesHasScalar(data, "checkFailures");
+  }
+  // True when some day carries main-red wall-clock; the element renders only then.
+  function seriesHasMainRedMs(data) {
+    return seriesHasScalar(data, "mainRedMs");
   }
   // True when some day carries a merge-wait median; the element renders only then.
   function seriesHasMergeWaitMedian(data) {

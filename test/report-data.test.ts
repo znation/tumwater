@@ -1166,6 +1166,24 @@ test("collectReport counts each day's red full-suite merge checks, team scope on
   for (const d of collectReport(root, 2, "feature").series) assert.ok(!("checkFailures" in d));
 });
 
+test("collectReport gives each day main's red wall-clock from a main_red_hold closed by a passing main_check, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, sha: "abc123", ...extra }); // retired-name-ok: legacy event field in a fixture
+  const holdTs = at(1); // yesterday noon
+  writeEvents(root, [
+    ev(holdTs, "main_red_hold", {}),
+    ev(holdTs + 40 * 60_000, "main_check", { status: "passed", durationMs: 2000 }),
+  ]);
+  const data = collectReport(root, 2);
+  assert.equal(data.series[0]!.mainRedMs, 40 * 60_000, "the closed hold prices its 40 min on its day");
+  assert.ok(!("mainRedMs" in data.series[1]!), "a day with no red has none");
+  for (const d of collectReport(root, 2, "feature").series) assert.ok(!("mainRedMs" in d));
+  const since = collectReportSince(root, 2 * 24 * HOUR);
+  assert.equal(since.mainRedMs, 40 * 60_000, "--since sums the closed spell over the window");
+  assert.equal(collectReportSince(root, 2 * 24 * HOUR, "feature").mainRedMs, 0, "a scoped --since window carries 0");
+});
+
 test("collectReport gives each day the lower median of its merge_done queuedMs, team scope only", () => {
   const root = tmpdir();
   const ev = (ts: number, type: string, extra: Record<string, unknown>) =>

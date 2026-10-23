@@ -328,6 +328,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         (!d.role && seriesHasAny(d, "validationGapsByTag") ? block("Validation gaps", chartValidationGaps(d), "per day · what made fixed bugs hard to confirm") : "") +
         (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +
+        (seriesHasMainRedMs(d) ? block("Main red time", chartMainRedMs(d), "per day · no passing full check") : "") +
         (seriesHasMergeWaitMedian(d) ? block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main") : "") +
         (seriesHasRunMedian(d) ? block("Run duration median", chartRunMedian(d), "per day · run_start to run_end") : "") +
         (seriesHasProviderWaitMedian(d) ? block("Provider wait median", chartProviderWaitMedian(d), "per day · waits of 30s or more for a provider slot") : "") +

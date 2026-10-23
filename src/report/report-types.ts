@@ -41,6 +41,10 @@ export interface ReportDay {
   /** Failed full-suite build_check events that day (isRedFullCheck); absent when the day has
    * none (zero means absent). */
   checkFailures?: number;
+  /** Main's red wall-clock that day — how long main had no passing full check (G1's
+   * `main_check`/`main_red_hold` rule), in ms. Main's own red time, not any role's, so
+   * team-only like the other per-day medians; absent when the day has none. */
+  mainRedMs?: number;
   /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
    * day has no merge that carried queuedMs. */
   mergeWaitMedianMs?: number;
@@ -211,6 +215,10 @@ export interface SinceReport {
    * none), so the render can gate its reason line on the window's own merge_failed events.
    * A result code is not a role, so a role-scoped window carries an empty map. */
   mergeFailedByReason: Record<string, number>;
+  /** Main's red wall-clock over the window (G1's `main_check`/`main_red_hold` rule), in ms.
+   * Main's own red time, not any role's, so a role-scoped window carries 0; always present
+   * (0 when none). */
+  mainRedMs: number;
   /** Subscription spend per role id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */

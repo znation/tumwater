@@ -203,6 +203,10 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
     const modelPairs = rankedRoleMap(data.runsByModel).filter(([, n]) => n > 0);
     if (modelPairs.length > 0) lines.push(rankedRoleLine("Runs by model", modelPairs, String));
   }
+  // Main's red wall-clock over the window (main's own, not any role's — a role-scoped
+  // collector carries 0, so this never prints for a scoped window). Zero-absent: no line for
+  // a window main was never red.
+  if (data.mainRedMs > 0) lines.push(`**Main red:** ${durationLabel(data.mainRedMs)}`);
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines.
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
@@ -423,6 +427,13 @@ export function renderReportMarkdown(data: ReportData): string {
       d.checkFailures === undefined ? [] : [`${monthDay(d.date)} ×${d.checkFailures}`],
     );
     if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
+    // Per-day main red wall-clock, beside the red-check counts above: how long each day main
+    // had no passing full check (the span every code role was held). Team-only (main's own
+    // red time, not any role's) and zero-absent: no line when no day was red.
+    const mainReds = data.series.flatMap((d) =>
+      d.mainRedMs === undefined ? [] : [`${monthDay(d.date)} ${durationLabel(d.mainRedMs)}`],
+    );
+    if (mainReds.length > 0) lines.push(`**Main red:** ${mainReds.join(" · ")}`);
     const waits = medianLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     if (waits !== undefined) lines.push(waits);
     const runDurations = medianLine(data.series, "Run duration median", (d) => d.runMedianMs);

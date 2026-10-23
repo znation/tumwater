@@ -734,6 +734,35 @@ test("the Red merge checks chart draws one bar per red day and seriesHasCheckFai
   assert.equal(seriesHasCheckFailures(data), true);
 });
 
+test("the Main red time chart draws one bar per red day and seriesHasMainRedMs gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartMainRedMs(d: ReportData): string;
+    seriesHasMainRedMs(d: ReportData): boolean;
+  }
+  const { chartCommits, chartMainRedMs, seriesHasMainRedMs } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartMainRedMs", "seriesHasMainRedMs"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { mainRedMs: 63 * 60_000 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { mainRedMs: 180 * 60_000 }),
+  ]);
+  const svg = chartMainRedMs(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles, ["2026-09-01: 63m main red", "2026-09-03: 3.0h main red"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasMainRedMs(mk([mkDay("2026-09-01"), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasMainRedMs(data), true);
+});
+
 test("the Backlog items chart stacks features and bugs per day and seriesHasBacklogItems gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

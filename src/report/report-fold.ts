@@ -13,6 +13,7 @@ import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
+import { isPassingMainCheck, isRedMain } from "../baseline/main-guardrails.js";
 import { addTo, memoSetLru } from "../collections.js";
 import { asList } from "../text/text.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -398,6 +399,10 @@ interface ReportFoldEntry {
   hadEvents: boolean;
   firstEventTs?: number;
   days: Map<string, DayFold>;
+  /** The main is-red / passing-check events folded so far, in fold order — the retained input
+   * the report's per-day main-red walk (src/report/report-main-red.ts) reads. Only the two
+   * shapes it needs are kept, so the list stays tiny across the append-only fold. */
+  redEvents: HarnessEvent[];
 }
 
 /** Bounded memo of window folds. Eight entries cover a dashboard flipping among a few day
@@ -541,6 +546,7 @@ function foldEventInto(entry: ReportFoldEntry, ev: HarnessEvent): void {
     entry.hadEvents = true;
     entry.firstEventTs = typeof ev.ts === "number" ? ev.ts : undefined;
   }
+  if (isRedMain(ev) || isPassingMainCheck(ev)) entry.redEvents.push(ev);
   foldUsageEvent(dayFoldFor(entry, dayKey), ev);
 }
 
@@ -601,6 +607,7 @@ export function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry
     fileCovers: raw.coversFullWindow,
     hadEvents: false,
     days: new Map(),
+    redEvents: [],
   };
   for (const ev of raw.events) foldEventInto(entry, ev);
   memoSetLru(reportFoldCache, key, entry, REPORT_FOLD_CACHE_MAX);

@@ -566,6 +566,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     runsByRole: {},
     costByRole: {},
@@ -597,6 +598,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const data = renderSinceReportMarkdown({
     sinceMs: 90 * 60_000,
     fromIso: new Date(ago(90 * 60_000)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 1500, runs: 5, commits: 1, costUsd: 0.75, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     // Equal totals rank by name asc; a zero-cost role is omitted from the cost line.
     runsByRole: { bugfix: 2, feature: 2, clean: 1 },
@@ -634,6 +636,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     runsByRole: {},
     costByRole: {},
@@ -659,6 +662,7 @@ test("renderSinceReportMarkdown shows the merge line under Totals only when merg
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 1000, runs: 2, commits: 0, costUsd: 0.5, mergeRuns: 1, mergeTokens: 900, mergeCostUsd: 0.4 },
     runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
@@ -686,6 +690,7 @@ test("renderSinceReportMarkdown shows (N failed) on the merge line when a merge 
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 1000, runs: 2, commits: 0, costUsd: 0.5, mergeRuns: 2, mergeFailed: 1, mergeTokens: 1200, mergeCostUsd: 0.5 },
     runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
@@ -713,6 +718,7 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 1500, runs: 5, commits: 4, costUsd: 0.75, notionalCostUsd: 0.9, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     runsByRole: { feature: 5 },
     costByRole: { feature: 0.75 },
@@ -744,6 +750,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
+    mainRedMs: 0,
     totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     runsByRole: {},
     costByRole: {},
@@ -768,6 +775,34 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
   // carries no Estimated by role line at all — the same conditional omission the day render uses.
   assert.match(zero, /\*\*Commits by role:\*\* -/);
   assert.ok(!zero.includes("**Estimated by role:"), "no notional spend omits the line entirely");
+});
+
+test("renderSinceReportMarkdown prints Main red wall-clock for a positive window total and omits it at zero", () => {
+  const shape = {
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: {},
+    costByRole: {},
+    rejectionsByRole: {},
+    revisionsByRole: {},
+    refusalsByRole: {},
+    failedRunsByRole: {},
+    fallbacksByRole: {},
+    imageReroutesByRole: {},
+    tokensByRole: {},
+    commitsByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
+    mergeFailedByReason: {},
+    costByProvider: {},
+    notionalByProvider: {},
+    runsByModel: {},
+    revertsByRole: {},
+    coversFullWindow: true,
+  };
+  assert.ok(!renderSinceReportMarkdown({ ...shape, mainRedMs: 0 }).includes("**Main red:"), "zero omits the line");
+  assert.match(renderSinceReportMarkdown({ ...shape, mainRedMs: 63 * 60_000 }), /^\*\*Main red:\*\* 63m$/m);
 });
 
 test("tumwater report --since prints the window totals and validates its flags", async () => {
@@ -1428,6 +1463,25 @@ test("renderReportMarkdown prints Red merge checks for the days that carry one, 
   const none: ReportData = { ...base, series: base.series.map(({ checkFailures: _c, ...d }) => d) };
   assert.ok(!renderReportMarkdown(none).includes("Red merge checks"));
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Red merge checks"));
+});
+
+test("renderReportMarkdown prints Main red wall-clock for the days that carry one, team scope only", () => {
+  const base: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mainRedMs: 63 * 60_000 },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  assert.match(renderReportMarkdown(base), /^\*\*Main red:\*\* 09-10 63m$/m);
+
+  const none: ReportData = { ...base, series: base.series.map(({ mainRedMs: _m, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(none).includes("**Main red:"));
+  assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("**Main red:"));
 });
 
 test("renderReportMarkdown prints Merge wait median for the days that carry one, team scope only", () => {
