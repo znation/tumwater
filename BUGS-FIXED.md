@@ -5,6 +5,23 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### `tumwater config get/unset maxConcurrentPerProvider.<provider>` reject the provider as an "unknown role", while `config set` on the same key writes it (found by the qa role 2026-10-23) — fixed 2026-10-23 by the bugfix role
+
+- **Symptom:** `maxConcurrentPerProvider` is a map keyed by provider, but `config get` and `config unset` on a dotted entry validate the entry name against the role catalog, so a provider name that is not a role id is rejected as an "unknown role". `config set` on the same key accepts the provider and writes it, so set and get/unset disagree about the key.
+- **Reproduce:** in a fresh `tumwater init` dir:
+  ```
+  $ tumwater config set maxConcurrentPerProvider.deepinfra 4
+  set maxConcurrentPerProvider.deepinfra to 4          # writes tumwater.json
+  $ tumwater config get maxConcurrentPerProvider.deepinfra
+  tumwater: unknown role: deepinfra (valid ids: feature, bugfix, plan, …)
+  $ tumwater config unset maxConcurrentPerProvider.deepinfra
+  tumwater: unknown role: deepinfra (valid ids: feature, bugfix, plan, …)
+  ```
+  Expected: `get` prints `4` and `unset` removes it (docs/config.md and config-keys.ts say the provider map is dotted the same way as the per-role maps; a role-keyed map like `maxDailyCostUsdPerRole.feature` gets and unsets fine).
+- **Suspected cause:** `screenOperableKey` in `src/cli/config-commands.ts` runs its known-role check for every `kind === "map"` key, treating the entry name as a role id — correct for `maxDailyCostUsdPerRole` and `quietHoursPerRole`, wrong for the provider-keyed `maxConcurrentPerProvider`.
+- **Fix:** `screenOperableKey` now runs the role-catalog check only for role-keyed maps (`maxDailyCostUsdPerRole`, `quietHoursPerRole`) and for `roles.<id>.<field>`; the provider-keyed `maxConcurrentPerProvider.<provider>` skips it, matching `config set`'s write path. Regression test added.
+- **Validation gap:** none — the new test reproduced the failure (get/unset refused the provider as an "unknown role") and passed after the fix.
+
 ### A "Waiting for the next failure" bug hold has no expiry or operator nudge, so entries park indefinitely on an event that may never come (found by operator session 2026-10-23 from the flow audit of `.tumwater/log/events.jsonl` and BUGS.md) — fixed 2026-10-23 by the bugfix role
 
 - **Symptom:** three of the four entries in `## Open` carry a `Waiting for the next failure` note (the supervisor SIGKILL-grandchild flake, open since 10-16 with four progress notes; the 3½-day leaked `logs -f` orphans, 10-19; the cross-process `pauseRole` lost-update quarantine, 10-23). The hold is bugfix's honest answer when a bug cannot be reproduced — but its only lift is the next failure reading out the new diagnostics, or the operator manually noticing. The doctor's stale-bug rule (`STALE_BUG_DAYS`, 3) warns about unrefused, non-*waiting* bugs, and it deliberately skips waiting ones — so the class of bug most likely to rot forever is exactly the class no alert covers. Nothing in the dashboards, `tumwater status`, or the doctor ever says "this bug has waited 7 days for a failure that has not come".

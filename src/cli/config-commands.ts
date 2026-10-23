@@ -55,13 +55,20 @@ function screenOperableKey(root: string, key: string) {
   }
   const { config, error } = loadConfigSafe(root);
   if (config === undefined) fail(error); // validateConfig's message, via the standard fail()
-  if (parsed.kind === "map" || parsed.kind === "role") {
-    const id = parsed.kind === "map" ? parsed.role : parsed.id;
+  if (parsed.kind === "role") {
     const ids = knownRoleIds(config);
-    if (!ids.includes(id)) fail(unknownRoleMessage(id, ids));
-    if (parsed.kind === "role") {
-      const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
-      if (fieldError) fail(fieldError);
+    if (!ids.includes(parsed.id)) fail(unknownRoleMessage(parsed.id, ids));
+    const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
+    if (fieldError) fail(fieldError);
+  } else if (parsed.kind === "map") {
+    // Only role-keyed maps check the role catalog. `maxConcurrentPerProvider.<provider>` is
+    // keyed by provider, not a role id, and `config set` writes it without the role check —
+    // so get/unset must agree, or set would succeed while get/unset refused the provider as
+    // an "unknown role". A typo'd role id in the other two maps is refused the same way set's
+    // validator treats it.
+    if (parsed.map !== "maxConcurrentPerProvider") {
+      const ids = knownRoleIds(config);
+      if (!ids.includes(parsed.role)) fail(unknownRoleMessage(parsed.role, ids));
     }
   }
   return { parsed, config };

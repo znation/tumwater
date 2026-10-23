@@ -6,21 +6,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 
 ## Open
 
-### `tumwater config get/unset maxConcurrentPerProvider.<provider>` reject the provider as an "unknown role", while `config set` on the same key writes it (found by the qa role 2026-10-23)
-
-- **Symptom:** `maxConcurrentPerProvider` is a map keyed by provider, but `config get` and `config unset` on a dotted entry validate the entry name against the role catalog, so a provider name that is not a role id is rejected as an "unknown role". `config set` on the same key accepts the provider and writes it, so set and get/unset disagree about the key.
-- **Reproduce:** in a fresh `tumwater init` dir:
-  ```
-  $ tumwater config set maxConcurrentPerProvider.deepinfra 4
-  set maxConcurrentPerProvider.deepinfra to 4          # writes tumwater.json
-  $ tumwater config get maxConcurrentPerProvider.deepinfra
-  tumwater: unknown role: deepinfra (valid ids: feature, bugfix, plan, …)
-  $ tumwater config unset maxConcurrentPerProvider.deepinfra
-  tumwater: unknown role: deepinfra (valid ids: feature, bugfix, plan, …)
-  ```
-  Expected: `get` prints `4` and `unset` removes it (docs/config.md and config-keys.ts say the provider map is dotted the same way as the per-role maps; a role-keyed map like `maxDailyCostUsdPerRole.feature` gets and unsets fine).
-- **Suspected cause:** `screenOperableKey` in `src/cli/config-commands.ts` runs its known-role check for every `kind === "map"` key, treating the entry name as a role id — correct for `maxDailyCostUsdPerRole` and `quietHoursPerRole`, wrong for the provider-keyed `maxConcurrentPerProvider`.
-
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.

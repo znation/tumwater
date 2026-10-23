@@ -182,6 +182,24 @@ test("get of a dotted key naming an unknown role or role field fails, not null",
   assert.equal(badField.stdout, "", "a failed get prints no JSON");
 });
 
+test("get/unset of a provider-keyed maxConcurrentPerProvider value works while set accepts it", async () => {
+  // maxConcurrentPerProvider is keyed by provider, not role id; `config set` writes a provider
+  // without the role-catalog check, so get and unset must agree (the bug: set succeeded but
+  // get/unset refused the provider as an "unknown role").
+  const root = makeRepo();
+  const set = await attemptAsync(() => cmdConfig(root, ["set", "maxConcurrentPerProvider.deepinfra", "4"]));
+  assert.equal(set.stdout, "set maxConcurrentPerProvider.deepinfra to 4\n");
+
+  const get = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrentPerProvider.deepinfra"]));
+  assert.equal(get.stdout, "4\n", "get reads the provider entry, not an unknown-role refusal");
+
+  const unset = await attemptAsync(() => cmdConfig(root, ["unset", "maxConcurrentPerProvider.deepinfra"]));
+  assert.equal(unset.stdout, "unset maxConcurrentPerProvider.deepinfra (was 4)\n");
+
+  const after = await attemptAsync(() => cmdConfig(root, ["get", "maxConcurrentPerProvider.deepinfra"]));
+  assert.equal(after.stdout, "null\n", "unset removed the provider entry");
+});
+
 test("get rejects a dotted key outside the supported shapes", async () => {
   const root = makeRepo();
   const out = await attemptAsync(() => cmdConfig(root, ["get", "review.enabled.x"]));
