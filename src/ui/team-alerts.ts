@@ -9,6 +9,7 @@
 
 import type { StatusSnapshot } from "../status/status-data.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
+import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -220,7 +221,8 @@ function localizeInstants(text: string): string {
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, a stale or oversized flake quarantine, a plan filed under the
- * wrong backlog section, a duplicated backlog section heading, a pause, a stopped team.
+ * wrong backlog section, a duplicated backlog section heading, a Fixed record with a bad
+ * Validation gap trace, a pause, a stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -258,6 +260,7 @@ export function teamAlerts(
   quarantined: QuarantinedTests | null = null,
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
+  validationGaps: readonly ValidationGapProblem[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -548,6 +551,37 @@ export function teamAlerts(
       title: plural(duplicatedHeadings.length, "duplicated backlog heading", "duplicated backlog headings"),
       detail:
         `${first.file} "## ${first.heading}" appears more than once${more} — readers take the first section of a name, so later entries are invisible; remove the duplicate in a deliberate edit`,
+      actions: [],
+    });
+  }
+  // A Fixed record with a bad Validation gap trace (the doctor's `validation gaps` check,
+  // src/doctor/doctor-backlog-plans.ts checkValidationGaps) is the always-on twin of that
+  // doctor row: a newest Fixed record that omits its **Validation gap:** line, names a tag
+  // outside the closed vocabulary, or declares `unclear-invariant` without pinning a
+  // docs/invariants.md section is invisible or misleading to every closed-vocabulary consumer,
+  // so it asks (amber) the way the stranded-plan alert does, naming the first offending record
+  // and the fix. It is fed from the same scan (validationGapProblems over validationGapRecords)
+  // the doctor's check uses, so the alert and the doctor cannot drift on the problem set, and
+  // that scan runs no sourceHaystack walk, so it adds only the same two backlog-file reads the
+  // doctor's check already makes to the poll path. The fix is editing BUGS.md, so it has no
+  // buttons.
+  if (validationGaps.length) {
+    const first = validationGaps[0]!;
+    const rest = validationGaps.slice(1);
+    const reason =
+      first.kind === "missing"
+        ? "has no **Validation gap:** line"
+        : first.kind === "unrecognized"
+          ? `names unrecognized Validation gap tag "${first.tag}"`
+          : "is an unclear-invariant fix but names no docs/invariants.md section";
+    const more = rest.length ? ` · ${joinWithMore(rest.map((v) => `"${v.title}"`), 3)}` : "";
+    out.push({
+      key: "validation-gaps",
+      tone: "amber",
+      title: plural(validationGaps.length, "Fixed record has a validation-gap problem", "Fixed records have validation-gap problems"),
+      detail:
+        `BUGS.md "${first.title}" ${reason}${more} — every Fixed entry writes exactly one known **Validation gap:** tag (write \`none\` rather than omitting it), and an unclear-invariant fix pins its reconstructed guarantee in docs/invariants.md`,
+      // The fix is editing BUGS.md.
       actions: [],
     });
   }

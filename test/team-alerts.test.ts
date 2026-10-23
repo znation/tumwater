@@ -1126,3 +1126,47 @@ test("statusPayload and renderStatus carry a duplicated-heading alert from the b
   assert.equal(cleanPayload.alerts.find((a) => a.key === "backlog-headings"), undefined);
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /duplicated backlog heading/);
 });
+
+test("a bad Validation gap trace raises one amber alert", () => {
+  const now = Date.now();
+  const missing = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [{ title: "A fix", kind: "missing" }]);
+  assert.deepEqual(missing.map((a) => [a.key, a.tone, a.title]), [["validation-gaps", "amber", "1 Fixed record has a validation-gap problem"]]);
+  assert.match(missing[0]!.detail ?? "", /BUGS\.md "A fix"/);
+  assert.match(missing[0]!.detail ?? "", /no \*\*Validation gap:\*\* line/);
+  assert.match(missing[0]!.detail ?? "", /every Fixed entry writes exactly one known/);
+  assert.match(missing[0]!.detail ?? "", /docs\/invariants\.md/);
+  assert.deepEqual(missing[0]!.actions, []);
+  // An unrecognized row names its tag; an unpinned row carries the docs/invariants nudge.
+  const unrecognized = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [{ title: "A fix", kind: "unrecognized", tag: "no-reprod" }]);
+  assert.match(unrecognized[0]!.detail ?? "", /unrecognized Validation gap tag "no-reprod"/);
+  const unpinned = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [{ title: "A fix", kind: "unpinned" }]);
+  assert.match(unpinned[0]!.detail ?? "", /unclear-invariant.*docs\/invariants\.md/);
+  // Two rows pluralize the title and fold the second title.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [{ title: "One", kind: "missing" }, { title: "Two", kind: "unrecognized", tag: "x" }]);
+  assert.deepEqual(two.map((a) => a.key), ["validation-gaps"]);
+  assert.match(two[0]!.title ?? "", /Fixed records have validation-gap problems/);
+  assert.match(two[0]!.detail ?? "", /"Two"/);
+  // An empty array and the bare call add no validation-gaps alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], []), []);
+  assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "validation-gaps").length, 0);
+  // A stranded plan precedes a validation problem when both are present.
+  const both = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [{ title: "Split me (planned 2026-10-20)", section: "Done" }], [], [{ title: "A fix", kind: "missing" }]);
+  assert.deepEqual(both.map((a) => a.key), ["stranded-plans", "validation-gaps"]);
+});
+
+test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n\n## Fixed\n\n### Entry 0: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n`,
+  );
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "validation-gaps");
+  assert.equal(alert?.title, "1 Fixed record has a validation-gap problem");
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /1 Fixed record has a validation-gap problem/);
+  // A clean repo (no BUGS.md) produces none on either surface.
+  const clean = makeRepo();
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "validation-gaps"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /validation-gap problem/);
+});

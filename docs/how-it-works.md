@@ -472,7 +472,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   a stale bug, a broken plan dependency clause, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
   Needs review or Needs replan note, a stale or oversized flake quarantine, a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, a pause), the prompt
+  backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's

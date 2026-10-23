@@ -3,7 +3,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
-import { donePlans, plannedPlanEntries } from "../backlog/backlog.js";
+import { donePlans, fixedBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, heldCount } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
@@ -63,6 +63,54 @@ export function checkFixClaims(root: string): CheckOutcome {
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
 }
 
+/** One problem found by the shared validation-gap scan (validationGapRecords, below): a newest
+ * Fixed record whose `**Validation gap:**` line is missing (`missing`), names a tag outside the
+ * closed vocabulary (`unrecognized`, with `tag` set), or declares `unclear-invariant` while
+ * naming no docs/invariants.md section (`unpinned`). `title` is the record's heading. The scan
+ * orders suspects first, then `unpinned`, so the first problem is the one the doctor's message
+ * names — the always-on alert and the doctor stay in step by sharing this one scan. */
+export interface ValidationGapProblem {
+  title: string;
+  kind: "missing" | "unrecognized" | "unpinned";
+  tag?: string;
+}
+
+/** The validation-gap rows shared by the doctor's check and the always-on alert: each newest
+ * Fixed record classified against the closed `**Validation gap:**` vocabulary through
+ * validationGapTag, which is fence-aware — suspects (missing/unrecognized) first, then
+ * `unpinned`, so the first row is the one the doctor's message names and the alert's reason
+ * picks. */
+function classifyValidationGaps(records: readonly BacklogEntry[]): ValidationGapProblem[] {
+  const suspects: ValidationGapProblem[] = [];
+  const unpinned: ValidationGapProblem[] = [];
+  for (const { title, body } of records) {
+    const tag = validationGapTag(body);
+    if (tag === null) suspects.push({ title, kind: "missing" });
+    else if (!VALIDATION_GAP_TAGS.includes(tag)) suspects.push({ title, kind: "unrecognized", tag });
+    else if (tag === "unclear-invariant" && !body.toLowerCase().includes("docs/invariants.md"))
+      unpinned.push({ title, kind: "unpinned" });
+  }
+  return [...suspects, ...unpinned];
+}
+
+/** The ONE scan the doctor's `validation gaps` check and the always-on alert both hand their
+ * rows from: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so pre-convention history
+ * never warns forever) as fixedBugEntries reads them — the stat-cached section reader BUGS.md +
+ * BUGS-FIXED.md, bodies kept whole — classified through classifyValidationGaps. Reading both
+ * through this same reader (and not the doctor's one-off fixedEntriesAt/fixedSection walk) is
+ * what keeps the alert and the doctor on the identical problem set; there is only one scan. */
+function validationGapRecords(root: string): BacklogEntry[] {
+  return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
+}
+
+/** The problems the ONE shared validation-gap scan found among the newest Fixed records at `root`
+ * (empty when BUGS.md/BUGS-FIXED.md are unreadable or every newest Fixed record carries a known
+ * tag/trace). Feeds the always-on amber alert through the stat-cached fixedBugEntries reader, so
+ * it stays in step with the doctor and adds no re-read to the 1 Hz TUI and status-poll path. */
+export function validationGapProblems(root: string): ValidationGapProblem[] {
+  return classifyValidationGaps(validationGapRecords(root));
+}
+
 /** The fixed-record validation-gap twin of checkFixClaims, standing in for plans/repair-traces.md's
  * invariant 2 ("the vocabulary is closed and lives in one place"): the bugfix guidance tells every
  * run to write exactly one `**Validation gap:**` line with a known tag, and `none` rather than no
@@ -78,18 +126,15 @@ export function checkFixClaims(root: string): CheckOutcome {
  * may spuriously warn). A warn, never a fail, like its sibling: a suspect record is
  * operator signal, not a broken environment. */
 export function checkValidationGaps(root: string): CheckOutcome {
+  // The doctor's check reads BUGS.md itself so it can return its no-file outcome (a missing
+  // BUGS.md — nothing to verify); the classification then runs on the SAME fixedBugEntries
+  // reader the always-on alert feeds from, so the two cannot drift on the problem set. There
+  // is only one scan (validationGapRecords).
   const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
-  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
-  const suspects: Array<{ title: string; problem: string; tag?: string }> = [];
-  const unpinned: Array<{ title: string }> = [];
-  for (const { title, body } of records) {
-    const tag = validationGapTag(body);
-    if (tag === null) suspects.push({ title, problem: "missing" });
-    else if (!VALIDATION_GAP_TAGS.includes(tag)) suspects.push({ title, problem: "unrecognized", tag });
-    else if (tag === "unclear-invariant" && !body.toLowerCase().includes("docs/invariants.md"))
-      unpinned.push({ title });
-  }
+  const problems = classifyValidationGaps(validationGapRecords(root));
+  const suspects = problems.filter((p) => p.kind !== "unpinned");
+  const unpinned = problems.filter((p) => p.kind === "unpinned");
   const [first, ...rest] = suspects;
   if (!first) {
     if (unpinned.length > 0) {
@@ -99,10 +144,10 @@ export function checkValidationGaps(root: string): CheckOutcome {
         `docs/invariants.md section — record the reconstructed guarantee there (a "Pinned by" line) in the ` +
         `same commit so the next bug in that area does not reconstruct it again${more}`);
     }
-    return okOutcome(`newest ${records.length} Fixed record(s) carry a known Validation gap tag`);
+    return okOutcome(`newest ${validationGapRecords(root).length} Fixed record(s) carry a known Validation gap tag`);
   }
   const more = andMore(rest, (s) => `"${truncate(s.title, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
-  const what = first.problem === "missing"
+  const what = first.kind === "missing"
     ? `BUGS.md record "${first.title}" has no **Validation gap:** line`
     : `BUGS.md record "${first.title}" names unrecognized Validation gap tag "${first.tag}"`;
   const valid = VALIDATION_GAP_TAGS.join(", ");
