@@ -316,7 +316,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The docs name codex among the guarded backends and its `apply_patch`-only coverage.
 - `npm run test:gate` passes.
 
-## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
+### Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
 
 src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
 200-line median) and ~607 of those lines are one function, `validateConfig`, a single sequential
@@ -371,5 +371,22 @@ src/config/config-validation-agents.ts; docs/invariants.md only if it pins the g
 - A file only mentioning a model/backend key still validates identically pre- and post-split.
 - grep over src, tests and docs finds no stale path or name for the moved blocks.
 - `npm run test:gate` and `npm test` pass.
+
+### The stale-bug alert: the dashboard, the TUI and `tumwater status` name each open bug the doctor's 3-day rule warns about (planned 2026-10-23 by the plan role; independent of every eligible plan — it edits only src/ui and test/team-alerts.test.ts, which no waiting entry touches; reuses the doctor's existing `STALE_BUG_DAYS`; touches src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx test/team-alerts.test.ts docs/how-it-works.md)
+
+**Goal.** `tumwater doctor`'s `checkStaleBugs` (src/doctor/doctor-backlog-bugs.ts) warns when an unrefused, non-waiting open bug has waited at least `STALE_BUG_DAYS` (3) days for a fix, but the operator sees it only by running the doctor or opening the dashboard's Health card. The always-on alert surfaces the dashboards already raise for open questions and refused entries (`teamAlerts`, src/ui/team-alerts.ts) say nothing about a stale bug, so a team whose bugfix role is disabled or failing shows no banner while its bugs rot. Add a stale-bug alert built from the same rule and threshold, naming the oldest such bug, its age, and how to retract it.
+
+**Approach.**
+- src/ui/status-payload.ts: export `staleOpenBugs(root: string, now = Date.now())`: over `openBugEntries(root)`, skip an entry whose body carries a `refusalNote` or a `waitingNote` (src/backlog/backlog-eligibility.ts) and one with no `filingDate`; keep `ageInDays(stamp) >= STALE_BUG_DAYS`, each as `{ index, position: index + 1, title: stripEntryStamp(title), days }` (index zero-based for the drawer address, position 1-based for `bug --cancel`). In `statusPayload`, pass it as the new `staleBugs` argument to `teamAlerts` beside `refusedEntries(root)`.
+- src/ui/team-alerts.ts: add an optional sixth parameter `staleBugs: readonly StaleBug[] = []` (defaulted, so existing callers and tests compile unchanged) and one branch after the `refused` one: `key: "stale-bugs"`, amber tone, title `${plural(n, "open bug waited", "open bugs waited")} 3+ days for a fix`, detail naming the first `#<position> "<title>" has waited <days>d for a fix` plus the doctor's `check that the bugfix role is enabled and not failing, or retract it with `tumwater bug --cancel <position>`` clause and `entryListDetail` for the rest, and the `{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }` action the refused alert uses.
+- src/ui/status-render.ts and src/ui/tui/tui.tsx: import `staleOpenBugs` and pass it into their `teamAlerts` calls, so `tumwater status`'s alerts line and the TUI attention line show it too.
+- Import `STALE_BUG_DAYS` from src/doctor/doctor-backlog.ts (ui already imports doctor modules); define no second literal for the threshold.
+- docs/how-it-works.md: add stale bugs to the dashboard-alert sentence ("alerts for whatever needs you") and the matching TUI sentence.
+
+**Acceptance criteria.**
+- A fixture with one open bug stamped 3 days ago yields exactly one `stale-bugs` alert in `teamAlerts`, naming its 1-based position, its age in days and its stamp-stripped title; a bug stamped 2 days ago, one carrying a Refused note and one carrying a Waiting-for-the-next-failure note each yield none (the doctor's skip rules), and an empty `staleBugs` yields no alert.
+- The alert's `Open backlog` action carries `bugs:<zero-based index>` addressing the same entry `bug --list` numbers.
+- `statusPayload`'s `alerts`, the `tumwater status` alerts line and the TUI attention line all carry the alert for the same fixture and none when the backlog has no stale bug.
+- `npm run test:gate` passes.
 
 ## Done
