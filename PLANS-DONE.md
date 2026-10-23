@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 9b/9: Session retention — prune expired Codex sessions with `codex delete --force` (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9c/9 and 9d/9; design in plans/codex-backend.md "CODEX_HOME and sessions"; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/retention.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** The team's Codex sessions age out on `sessionRetentionDays` like every other backend's, so a team's `CODEX_HOME` does not grow forever; the same prune reports what it deleted.
+
+**Approach.**
+- src/agent/session-ledger.ts: add `pruneCodexSessions(sessionsRoot, days, { bin, env })`, the twin of `pruneOpencodeSessions`: read the expired codex ledger records first and run `codex delete --force <id>` under the run's `CODEX_HOME` env, bounded at 10 s. Without `--force` Codex refuses to delete without a terminal (design finding 21), so `--force` is part of the command.
+- When a delete fails or the binary is unusable, remove that session's rollout file under `$CODEX_HOME/sessions/` as the fallback (the OpenCode spill-file fallback's twin), so the ledger line and rollout do not outlive the window.
+- src/orchestrator/retention.ts: in `RetentionPruner.prune`, call `pruneCodexSessions` beside `pruneOpencodeSessions` when a codex seam is configured (resolve the codex bin as a run would), before `pruneOldFiles` ages the ledger out, and warn one `deleted N expired codex session(s)` event when it deleted anything.
+
+**Acceptance criteria.**
+- A test with an expired codex ledger record and a fake codex on PATH sees exactly one `codex delete --force <id>` for it and its rollout gone; a fresh record is kept and gets no delete.
+- A fake codex whose delete exits nonzero leaves that session's rollout removed by the fallback.
+- `npm run test:gate` passes.
+
 ### Write guard on Codex, part 4/9: Ask codex for the hook's trust key and hash through `hooks/list`, and cache them per build and Codex version (planned 2026-10-23 by user; requires part 3/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)" and finding 3; touches src/agent/codex/codex-hook-trust.ts (new) src/paths.ts test/fakes/fake-codex.ts docs/invariants.md test/codex-hook-trust.test.ts (new)) — done 2026-10-23 by the feature role
 
 **Goal.** Codex runs a session-flag hook only with the right `trusted_hash`. The hash is opaque: no simple digest of the definition matched (finding 3). So tumwater asks Codex for it, once per build and Codex version.

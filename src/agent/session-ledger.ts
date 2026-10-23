@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { daysAgoMs, dirEntryNames, ensureParentDir, readTextOrNull, statOrNull, terminateTornTail, walkFiles, writeTextAtomic } from "../files/files.js";
 import { isJsonObject } from "../files/json-object.js";
+import { findRollout } from "./codex/codex-rollout.js";
 
 /** The ledger file name every session dir holds. Deliberately a `.jsonl` name so it sits beside
  * the backend's own session files; readers that count session files must exclude it. */
@@ -257,6 +258,83 @@ export function pruneOpencodeSessions(
         // Best effort: a vanished or unwritable spill file is not a failure.
       }
     });
+  }
+  return deleted;
+}
+
+/** The options the retention pass resolves for the Codex session purge (part 9b/9): the binary
+ * and environment (CODEX_HOME) are per team root, resolved by the caller (retention) exactly as
+ * a run's invocation resolves them — so the deletes hit the same home the runs wrote. An
+ * undefined `bin` skips the CLI deletes (no codex configured/spawnable); the rollout fallback
+ * still runs where a home is in view, so a stale home never keeps a rollout past the window. */
+interface CodexPruneOptions {
+  /** The resolved codex binary to run `delete --force` with. */
+  bin?: string;
+  /** The run environment, carrying CODEX_HOME for the team root. */
+  env?: NodeJS.ProcessEnv;
+}
+
+/** Delete each Codex session the ledger records as expired, with one
+ * `codex delete --force <id>` each (bounded), plus the rollout-file fallback. Codex's sessions
+ * live under `CODEX_HOME` (part 8/9), OUTSIDE `.tumwater/` and outside the session dirs this
+ * pass walks, so trimming the ledger line alone would orphan them; the CLI's `delete --force`
+ * is the one way to reach them headless (design finding 21: without `--force` Codex refuses to
+ * delete without a terminal). Best-effort and backend-specific, kept out of the generic
+ * `pruneSessionLedgers` line pass: it returns the deletes that reported success. Whether or not
+ * a delete succeeded the session's own rollout file is removed as the fallback (the OpenCode
+ * spill-file fallback's twin), so the ledger line and rollout do not outlive the window. The
+ * caller (retention) runs this BEFORE pruneSessionLedgers trims the lines, so the full ledger
+ * is still in view. */
+export function pruneCodexSessions(
+  sessionsRoot: string,
+  days: number,
+  opts: CodexPruneOptions,
+): number {
+  const cutoff = daysAgoMs(days);
+  let deleted = 0;
+  // Codex reuses a resumed session's UUID, so one id can carry several ledger records — each
+  // resume appends a fresh line with the same id (design §4 resumes by id). Only an id whose
+  // EVERY record is expired is a session safe to trim: an older expired record beside a
+  // still-fresh resume must not `delete` the live session or unlink its rollout, so the live
+  // ids are gathered first and every candidate id is checked against them.
+  const live = new Set<string>();
+  const expired = new Set<string>();
+  walkFiles(sessionsRoot, (file) => {
+    if (!file.endsWith(SESSION_LEDGER_FILE)) return;
+    for (const record of readSessions(path.dirname(file))) {
+      if (record.agent !== "codex") continue;
+      (record.at >= cutoff ? live : expired).add(record.id);
+    }
+  });
+  for (const id of expired) {
+    if (live.has(id)) continue;
+    if (opts.bin !== undefined) {
+      try {
+        const res = spawnSync(opts.bin, ["delete", "--force", id], {
+          env: opts.env,
+          timeout: SESSION_DELETE_TIMEOUT_MS,
+          stdio: "ignore",
+        });
+        if (res.status === 0) deleted += 1;
+      } catch {
+        // Best effort: an unwritable env or a missing binary must not fail the prune.
+      }
+    }
+    // Fallback: unlink the home's rollout for this session so neither the ledger line nor
+    // its file outlives the window. A real `codex delete` removes the rollout itself, so a
+    // successful delete has nothing left to unlink; a failed or skipped delete does, and
+    // this is what trims it.
+    const home = opts.env?.CODEX_HOME;
+    if (home !== undefined) {
+      const rollout = findRollout(home, id);
+      if (rollout !== null) {
+        try {
+          fs.unlinkSync(rollout);
+        } catch {
+          // Best effort: a vanished or unwritable rollout is not a failure.
+        }
+      }
+    }
   }
   return deleted;
 }

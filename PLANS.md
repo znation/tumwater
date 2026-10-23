@@ -85,20 +85,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - On the fake: `>= 0.163.0` passes and a lower version fails; ChatGPT login passes; an API-key login fails with the startup-gate message; a logged-out home fails naming the login command; unset `configDir` warns naming what the shared home exposes; a routed model missing from the catalog and a `has_credits` account warn; each leak path is named; a pi-only team shows no codex row.
 - `npm run test:gate` passes.
 
-### Codex backend, part 9b/9: Session retention — prune expired Codex sessions with `codex delete --force` (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9c/9 and 9d/9; design in plans/codex-backend.md "CODEX_HOME and sessions"; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/retention.test.ts)
-
-**Goal.** The team's Codex sessions age out on `sessionRetentionDays` like every other backend's, so a team's `CODEX_HOME` does not grow forever; the same prune reports what it deleted.
-
-**Approach.**
-- src/agent/session-ledger.ts: add `pruneCodexSessions(sessionsRoot, days, { bin, env })`, the twin of `pruneOpencodeSessions`: read the expired codex ledger records first and run `codex delete --force <id>` under the run's `CODEX_HOME` env, bounded at 10 s. Without `--force` Codex refuses to delete without a terminal (design finding 21), so `--force` is part of the command.
-- When a delete fails or the binary is unusable, remove that session's rollout file under `$CODEX_HOME/sessions/` as the fallback (the OpenCode spill-file fallback's twin), so the ledger line and rollout do not outlive the window.
-- src/orchestrator/retention.ts: in `RetentionPruner.prune`, call `pruneCodexSessions` beside `pruneOpencodeSessions` when a codex seam is configured (resolve the codex bin as a run would), before `pruneOldFiles` ages the ledger out, and warn one `deleted N expired codex session(s)` event when it deleted anything.
-
-**Acceptance criteria.**
-- A test with an expired codex ledger record and a fake codex on PATH sees exactly one `codex delete --force <id>` for it and its rollout gone; a fresh record is kept and gets no delete.
-- A fake codex whose delete exits nonzero leaves that session's rollout removed by the fallback.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts)
 
 **Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.

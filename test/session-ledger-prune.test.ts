@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   hasResumableSession,
+  pruneCodexSessions,
   pruneOpencodeSessions,
   pruneSessionLedgers,
   readSessions,
@@ -121,4 +122,76 @@ test("pruneOpencodeSessions counts only deletes that succeeded and never throws"
   assert.doesNotThrow(() => {
     assert.equal(pruneOpencodeSessions(root, 7, { bin: missing }), 0);
   });
+});
+
+/** A codex home whose `sessions` tree holds one rollout file naming `id`, under a fake
+ * `CODEX_HOME`. Returns the home dir and the rollout path. */
+function codexHomeWithRollout(id: string): { home: string; rollout: string } {
+  const home = tmpdir("codex-home-");
+  const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+  fs.mkdirSync(path.dirname(rollout), { recursive: true });
+  fs.writeFileSync(rollout, "{}\n");
+  return { home, rollout };
+}
+
+test("pruneCodexSessions deletes each expired codex session with --force and keeps the fresh one", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const id = "c7b3e2a1-0000-4000-8000-000000000001";
+  recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * DAY }));
+  const freshId = "c7b3e2a1-0000-4000-8000-000000000002";
+  recordSession(dir, record({ agent: "codex", id: freshId }));
+  const { home, rollout } = codexHomeWithRollout(id);
+  const freshRollout = codexHomeWithRollout(freshId).rollout;
+
+  const bin = tmpdir("codex-bin-");
+  const capture = path.join(tmpdir("codex-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+
+  const deleted = pruneCodexSessions(root, 7, { bin: path.join(bin, "codex"), env: { CODEX_HOME: home } });
+  assert.equal(deleted, 1);
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.match(log, /delete --force c7b3e2a1-0000-4000-8000-000000000001\n/);
+  assert.ok(!log.includes(freshId), "fresh session got no delete");
+  assert.equal(fs.existsSync(rollout), false, "expired session's rollout gone");
+  assert.equal(fs.existsSync(freshRollout), true, "fresh session's rollout untouched");
+});
+
+test("pruneCodexSessions removes the rollout when the delete fails", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  const id = "c7b3e2a1-0000-4000-8000-000000000003";
+  recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * DAY }));
+  const { home, rollout } = codexHomeWithRollout(id);
+
+  const bin = tmpdir("codex-bin-");
+  writeScript(path.join(bin, "codex"), "exit 1");
+
+  assert.equal(pruneCodexSessions(root, 7, { bin: path.join(bin, "codex"), env: { CODEX_HOME: home } }), 0);
+  assert.equal(fs.existsSync(rollout), false, "failed delete still removes the rollout");
+});
+
+test("pruneCodexSessions spares a session whose id was resumed fresh within the window", () => {
+  const root = tmpdir();
+  const dir = path.join(root, "feature");
+  fs.mkdirSync(dir);
+  // Codex reuses a resumed session's UUID: an older expired record sits beside a still-fresh
+  // resume of the same id, and the purge must leave the live session (and its rollout) alone.
+  const id = "c7b3e2a1-0000-4000-8000-000000000004";
+  recordSession(dir, record({ agent: "codex", id, at: Date.now() - 30 * DAY }));
+  recordSession(dir, record({ agent: "codex", id }));
+  const { home, rollout } = codexHomeWithRollout(id);
+
+  const bin = tmpdir("codex-bin-");
+  const capture = path.join(tmpdir("codex-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+
+  assert.equal(pruneCodexSessions(root, 7, { bin: path.join(bin, "codex"), env: { CODEX_HOME: home } }), 0);
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.equal(log, "", "resumed session got no delete");
+  assert.equal(fs.existsSync(rollout), true, "resumed session's rollout untouched");
 });

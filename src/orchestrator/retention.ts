@@ -8,9 +8,12 @@
 import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DAY_MS } from "../text/datetime.js";
 import { ensureParentDir, pruneOldFiles } from "../files/files.js";
-import { pruneSessionLedgers, pruneOpencodeSessions } from "../agent/session-ledger.js";
+import { pruneSessionLedgers, pruneOpencodeSessions, pruneCodexSessions } from "../agent/session-ledger.js";
 import { loadConfigSafe } from "../config/config.js";
+import { resolvedBackendConfig } from "../config/config-views.js";
 import { opencodeBackend, opencodeSpillDir } from "../agent/opencode/opencode-backend.js";
+import { codexBackend } from "../agent/codex/codex-backend.js";
+import { codexHome } from "../agent/codex/codex-catalog.js";
 import { opencodeDbPath, salvageDir, sessionsRootDir, toolOutputDir } from "../paths.js";
 
 /** Is a once-per-day session prune due? Due when retention is enabled (> 0) and a full day
@@ -90,6 +93,22 @@ export class RetentionPruner {
     });
     if (deleted > 0)
       warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${deleted} expired opencode session(s)`);
+    // Codex's sessions also live outside .tumwater — under the team's CODEX_HOME (part 8/9).
+    // Resolve its binary and home exactly as a run's invocation would and purge its expired
+    // sessions from the ledger BEFORE the file pass below ages it out. Like the OpenCode twin,
+    // an unavailable config skips the deletes rather than guessing at a binary and home: a
+    // bare `codex` under the operator's inherited CODEX_HOME could act on the wrong home
+    // (review objection 2). CODEX_HOME is always set explicitly — to the resolved team home,
+    // or to undefined when the config is absent — so the inherited CODEX_HOME never reaches
+    // the purge (its rollout fallback would otherwise unlink the operator's own home).
+    const codexBin = config !== undefined ? codexBackend.resolveBin(config).bin : undefined;
+    const codexHomeDir = config !== undefined ? codexHome(resolvedBackendConfig(config, "codex")) : undefined;
+    const deletedCodex = pruneCodexSessions(sessions, days, {
+      bin: codexBin,
+      env: { ...process.env, CODEX_HOME: codexHomeDir },
+    });
+    if (deletedCodex > 0)
+      warnEventBestEffort(root, TUMWATER_SOURCE, `deleted ${deletedCodex} expired codex session(s)`);
     // Age out session/tool-output files now: an entirely stale dir is gone before the line
     // pass reads it. A running role's ledger mtime stays young, so pruneOldFiles never ages
     // that file out; each warning must name the unit it pruned.

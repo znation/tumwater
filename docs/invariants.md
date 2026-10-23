@@ -4004,15 +4004,23 @@ tests in `test/session-ledger.test.ts`.
 
 **Guarantee.** The retention trim drops lines past the window or without a numeric stamp, rewrites
 only a ledger that changed, leaves an emptied ledger in place, and leaves a ledger it cannot rewrite
-as it was, uncounted and without throwing. The OpenCode purge counts only deletes that exited 0, and
-a missing or failing binary costs nothing but the count.
+as it was, uncounted and without throwing. The OpenCode and Codex purges count only deletes that
+exited 0; a missing or failing binary costs nothing but the count. A Codex delete that fails (or a
+missing one) still has its rollout file unlinked under CODEX_HOME, so no expired session's rollout
+outlives the window while that team home is in view. On an unavailable config no team home is in
+view, so the purge acts on nothing — it never runs the inherited CODEX_HOME, and the operator's own
+rollouts are left untouched (never unlinked).
 
-**Binds.** `src/agent/session-ledger.ts` (`pruneSessionLedgers`, `pruneOpencodeSessions`).
+**Binds.** `src/agent/session-ledger.ts` (`pruneSessionLedgers`, `pruneOpencodeSessions`,
+`pruneCodexSessions`).
 
 **Pinned by.** `test/session-ledger-prune.test.ts` — "pruneSessionLedgers leaves a ledger it cannot
 rewrite as it was and counts nothing for it", "pruneSessionLedgers does not rewrite a ledger with
 nothing past the window", "pruneSessionLedgers empties a fully stale ledger in place and ages out a
-non-numeric stamp" and "pruneOpencodeSessions counts only deletes that succeeded and never throws";
+non-numeric stamp", "pruneOpencodeSessions counts only deletes that succeeded and never throws",
+"pruneCodexSessions deletes each expired codex session with --force and keeps the fresh one",
+"pruneCodexSessions removes the rollout when the delete fails" and
+"pruneCodexSessions spares a session whose id was resumed fresh within the window";
 `test/session-ledger.test.ts` — "pruneSessionLedgers drops lines past the window and keeps the recent
 ones" and "pruneOpencodeSessions deletes expired opencode sessions and prunes old spill files".
 
@@ -4039,15 +4047,17 @@ re-prunes at once, even inside the daily window.
 **Pinned by.** `test/retention.test.ts` — "RetentionPruner: poll re-prunes immediately on a window
 change and logs one event".
 
-### INV-BQ3: the OpenCode purge reads a ledger before the file pass can age it out
+### INV-BQ3: the OpenCode and Codex purges read a ledger before the file pass can age it out
 
-**Guarantee.** The OpenCode session purge runs before the file pass, so an idle role's ledger is read
-before its file ages out.
+**Guarantee.** The OpenCode and Codex session purges run before the file pass, so an idle role's
+ledger is read before its file ages out.
 
 **Binds.** `src/orchestrator/retention.ts` (`RetentionPruner.prune`, order of its passes).
 
 **Pinned by.** `test/retention.test.ts` — "RetentionPruner: an idle role's expired opencode session is
-purged before its ledger ages out".
+purged before its ledger ages out", "RetentionPruner: an idle role's expired codex session is
+purged before its ledger ages out" and "RetentionPruner: an unavailable config never unlinks
+rollouts from the inherited CODEX_HOME".
 
 ### INV-BQ4: a prune pass never throws
 

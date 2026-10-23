@@ -6,7 +6,7 @@ import { RetentionPruner, dueForPrune } from "../src/orchestrator/retention.js";
 import { sessionsRootDir, toolOutputDir, eventsLogPath, opencodeDbPath, salvageDir, salvagePendingDir } from "../src/paths.js";
 import { recordSession, sessionLedgerPath } from "../src/agent/session-ledger.js";
 import { backdate } from "./helpers/backdate.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { record } from "./fakes/session-record.js";
 import { writeScript } from "./fakes/fake-commands.js";
@@ -102,6 +102,84 @@ test("RetentionPruner: a window change and a prune survive an unwritable events 
   // the throw must not skip the prune itself.
   assert.doesNotThrow(() => pruner.poll(root, 7));
   assert.equal(fs.existsSync(toolOut), false);
+});
+
+test("RetentionPruner: an idle role's expired codex session is purged before its ledger ages out", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const id = "c7b3e2a1-0000-4000-8000-0000000000aa";
+  recordSession(dir, record({ agent: "codex", id, at: now - 30 * day }));
+  const ledger = sessionLedgerPath(dir);
+  const oldTime = new Date(now - 30 * day);
+  fs.utimesSync(ledger, oldTime, oldTime);
+
+  // A team home of its own (backends.codex.configDir → CODEX_HOME), with the idle session's
+  // rollout sitting in it — the file only the codex purge can reach.
+  const home = tmpdir("codex-retention-home-");
+  const rollout = path.join(home, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+  fs.mkdirSync(path.dirname(rollout), { recursive: true });
+  fs.writeFileSync(rollout, "{}\n");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+
+  const bin = tmpdir("codex-retention-bin-");
+  const capture = path.join(tmpdir("codex-retention-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  try {
+    new RetentionPruner(root, 7);
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+  }
+  const log = fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "";
+  assert.ok(log.includes(`delete --force ${id}`), `idle codex session purged: ${log}`);
+  assert.equal(fs.existsSync(ledger), false, "the stale ledger itself is still aged out by the file pass");
+  assert.match(
+    eventsOfType(root, "warning").map((e) => String(e.message)).join("\n"),
+    /deleted 1 expired codex session\(s\)/,
+  );
+});
+
+test("RetentionPruner: an unavailable config never unlinks rollouts from the inherited CODEX_HOME", () => {
+  const root = tmpdir();
+  const dir = path.join(sessionsRootDir(root), "feature");
+  const now = Date.now();
+  const day = 24 * 3600 * 1000;
+  const id = "c7b3e2a1-0000-4000-8000-0000000000bb";
+  recordSession(dir, record({ agent: "codex", id, at: now - 30 * day }));
+  const ledger = sessionLedgerPath(dir);
+  const oldTime = new Date(now - 30 * day);
+  fs.utimesSync(ledger, oldTime, oldTime);
+
+  // A broken tumwater.json makes loadConfigSafe hand back { config: undefined }: no team
+  // home and no binary are in view, so the purge must act on nothing — certainly not on the
+  // operator's inherited CODEX_HOME that this test process carries.
+  fs.writeFileSync(path.join(root, "tumwater.json"), "{ not json");
+  const inheritedHome = tmpdir("codex-retention-inherited-");
+  const inheritedRollout = path.join(inheritedHome, "sessions", "2026", "09", "30", `rollout-2026-09-30T00-00-00-000-${id}.jsonl`);
+  fs.mkdirSync(path.dirname(inheritedRollout), { recursive: true });
+  fs.writeFileSync(inheritedRollout, "{}\n");
+
+  const bin = tmpdir("codex-retention-bin-");
+  const capture = path.join(tmpdir("codex-retention-capture-"), "deleted.log");
+  fs.mkdirSync(path.dirname(capture), { recursive: true });
+  writeScript(path.join(bin, "codex"), `printf '%s\\n' "$*" >> ${capture}`);
+  process.env.TUMWATER_CODEX_BIN = path.join(bin, "codex");
+  process.env.CODEX_HOME = inheritedHome;
+  try {
+    new RetentionPruner(root, 7);
+  } finally {
+    delete process.env.TUMWATER_CODEX_BIN;
+    delete process.env.CODEX_HOME;
+  }
+  assert.equal(
+    fs.existsSync(capture) ? fs.readFileSync(capture, "utf8") : "",
+    "",
+    "no codex delete without a resolvable config",
+  );
+  assert.ok(fs.existsSync(inheritedRollout), "the operator's inherited CODEX_HOME rollout is untouched");
 });
 
 test("RetentionPruner: an idle role's expired opencode session is purged before its ledger ages out", () => {
