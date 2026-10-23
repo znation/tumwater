@@ -37,13 +37,6 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 const PHRASE_NO_MODELS_DECLARED =
   "no models declared — every model job uses pi's own default";
 
-/** The one phrase a configured-models check uses when pi's definitions file could not be read
- * at all: the check cannot answer what it was asked, so it warns instead of guessing. Shared by
- * checkTierModels and checkImageInput so the two checks word the "cannot check" stance
- * identically; each appends its own modelsPath (and checkImageInput its ompNote where present)
- * after the shared stem. */
-const PHRASE_CANNOT_READ_MODELS = "cannot check — could not read pi's model definitions at ";
-
 /** The doctor's model-readiness checks, split out of doctor-checks.ts (whose environment and
  * repo-setup checks stay there, and whose state/disk/build checks live in
  * doctor-project-checks.ts): the cap fallback price and fallback-chain checks (checkFallbackModel,
@@ -389,7 +382,7 @@ export async function checkTierModels(
   const fails: string[] = [];
   const warns: string[] = [];
   if (pairs.size > 0 && !providers)
-    return warnOutcome(`${PHRASE_CANNOT_READ_MODELS}${modelsPath}${ompNote}`);
+    return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}${ompNote}`);
   const readyProviders = new Set<string>();
   const checkedProviders = new Set<string>();
   for (const { provider, model } of pairs.values()) {
@@ -516,7 +509,7 @@ export async function checkImageInput(
   const pairs = seamPairs(config);
   const needsDefinitions = pairs.some((p) => usesPiModels(p.agent ?? "pi"));
   if (providers === null && needsDefinitions)
-    return warnOutcome(`${PHRASE_CANNOT_READ_MODELS}${modelsPath}`);
+    return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}`);
   const label = modelLabel;
   // The catalog claims (raw `input`, ignoring the cache): what to probe and report, including a
   // model whose earlier probe failed (it must still be named and re-probed by --reprobe).
