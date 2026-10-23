@@ -295,6 +295,18 @@ test("planBacklogFull: eligible plans reach the target and no plan is marked", (
     planBacklogFull(
       plans(
         entry("A"),
+        entry("B", "**Needs review 2026-01-02 by feature: too large for one run (held 3)**\n"),
+        entry("C"),
+      ),
+      cfg,
+    ),
+    true,
+    "a held-for-operator mark does not keep the plan role running",
+  );
+  assert.equal(
+    planBacklogFull(
+      plans(
+        entry("A"),
         entry("B, part 1/2: x", "**Refused 2026-01-02 by feature: no**\n"),
         `### B, part 2/2: x (planned 2026-01-01 by plan; requires part 1/2 landed)\nBody.\n`,
       ),

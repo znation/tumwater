@@ -143,6 +143,18 @@ export const NEEDS_REVIEW_PREFIX = `**Needs review `;
  * clause cannot drift. */
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
 
+/** The tag text before the held count, shared by the note templates and the parser
+ * (backlog-eligibility's heldCount) so the two cannot drift: the live count on a Needs-review
+ * or Needs-replan note is written inline as `(held N)`, with `N` one past the surviving prior
+ * count (the feature role appends it, the plan role's split carries it via PRIOR_HELD_NOTE). */
+export const HELD_TAG_PREFIX = `(held `;
+
+/** The marker a lifted hold leaves behind, so a split or rewrite carries the count instead of
+ * letting it reset: `**Previously held N**` on the note's line. The live count is `(held N)` on
+ * the note; the surviving marker after a lift is `**Previously held N**` — heldCount reads the
+ * first as the priority, then the second. */
+export const PRIOR_HELD_PREFIX = `**Previously held `;
+
 /** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
  * recognize one (the backlog index's ` [blocked: needs replan]` mark) can match on it instead of
  * parsing the date or the round count out of the full template. */

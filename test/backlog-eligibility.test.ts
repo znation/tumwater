@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, inProgressMark, eligibleEntries, entryHold, holdMark, holdsBacklogReaders, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, refusalNote, refusedEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -129,6 +129,23 @@ test("a waiting-for-the-next-failure note holds a bug, only as a line prefix", (
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "BUGS.md"), `# Bugs\n\n## Open\n\n### one\n\n${note}\n\nbody\n\n## Fixed\n`);
   assert.deepEqual(eligibleEntries(dir, "bugfix"), []);
+});
+
+test("heldCount reads the (held N) tag from a note line, else a **Previously held N** line, else 0", () => {
+  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: too large for one run (held 3)**`), 3);
+  assert.equal(heldCount(`**Needs replan 2026-10-23 by feature: rejected after 3 review rounds (held 2)**`), 2);
+  assert.equal(heldCount(`**Previously held 2**`), 2);
+  assert.equal(heldCount(`body with no held tag`), 0);
+  assert.equal(heldCount(`**Needs review 2026-10-23 by feature: x (held x)**`), 0);
+});
+
+test("a note whose held count reaches the threshold becomes a held-for-operator hold; below it stays today's hold", () => {
+  assert.equal(OPERATOR_HOLD_THRESHOLD, 3);
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 3)**`), []), "held-for-operator");
+  assert.equal(holdMark("held-for-operator"), " [blocked: held for operator]");
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x (held 2)**`), []), "needs-review");
+  assert.equal(entryHold(entry("Plan", `**Needs review 2026-10-23 by feature: x**`), []), "needs-review");
+  assert.equal(entryHold(entry("Plan", `**Needs replan 2026-10-23 by feature: rejected (held 3)**`), []), "held-for-operator");
 });
 
 test("eligibleEntries drops held entries, keeps file order, and attaches the index line ranges", () => {

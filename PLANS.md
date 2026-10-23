@@ -136,27 +136,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater start --once` (no `--json`) prints the same banner, event stream and summary line as before.
 - `npm run test:gate` passes.
 
-### Backlog hold convergence, part 1/3: The held count and the held-for-operator hold (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; the read half of the convergence backstop — parts 2/3 and 3/3 surface and write the count; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/prompt/notes-backlog.ts test/backlog-eligibility.test.ts)
-
-**Goal.** A Needs-review/Needs-replan note gains a held count, and an entry whose count reaches three becomes `held-for-operator`: `entryHold` classifies it as its own hold, the plan role no longer takes it, and every surface can see why. This part is the data layer only.
-
-**Approach.**
-- src/roles/role-guidance.ts: export the two literals both halves share — `HELD_TAG_PREFIX = "(held "` (the tag text before the number, so the parser and the note templates cannot drift) and `PRIOR_HELD_PREFIX = "**Previously held "` — beside the existing note prefixes. Document that the live count is `(held N)` on the note and the surviving marker after a lift is `**Previously held N**`.
-- src/backlog/backlog-eligibility.ts: export `OPERATOR_HOLD_THRESHOLD = 3`. Add `heldCount(body: string): number` — the integer in the first Needs-review or Needs-replan note line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0; a missing or non-numeric tag is 0 and never throws.
-- In `entryHoldAgainst`, before returning `"needs-review"`/`"needs-replan"` for a present note, return `"held-for-operator"` when `heldCount(body) >= OPERATOR_HOLD_THRESHOLD`. Add `"held-for-operator"` to the `EntryHold` union; `holdMark` renders ` [blocked: held for operator]`.
-- src/prompt/notes-backlog.ts: `holdWording` gains a `held-for-operator` branch (e.g. `held for the operator (tumwater plan --release)`) and `seriesInfos` counts it with `needs-review`, so the notes block does not fall through to the `blockedBy` wording for a string hold.
-- No change to the plan-role wake gate (`planBacklogFull`, src/scheduling/claims.ts): it already tests only `"needs-review"`/`"needs-replan"`, so a held-for-operator entry neither keeps the plan role running nor counts as an eligible plan. Verify with a test rather than editing it.
-
-**Tests.**
-- test/backlog-eligibility.test.ts: `heldCount` reads `(held 3)` from a Needs-review line, `(held 2)` from a Needs-replan line, `2` from `**Previously held 2**` when no note is present, and `0` when neither; a `(held x)` tag is 0.
-- An entry with a `**Needs review … (held 3)**` line yields `entryHold` `"held-for-operator"` and `holdMark` `[blocked: held for operator]`; the same note with `(held 2)` yields `"needs-review"` (today's behavior); a bare `**Needs review …**` still yields `"needs-review"`.
-- `planBacklogFull` is true (the plan role stops) for a backlog whose only marked entry is held-for-operator.
-
-**Acceptance criteria.**
-- `entryHold` returns `"held-for-operator"` exactly for a present Needs-review/Needs-replan note whose count is at least 3, and `"needs-review"`/`"needs-replan"` otherwise; an untagged note keeps today's classification.
-- `heldCount` is pure over the body and never throws; `holdMark` words the new hold as ` [blocked: held for operator]`; the prompt notes block names it without falling through.
-- `npm run test:gate` passes.
-
 ### Backlog hold convergence, part 2/3: The operator sees a held-for-operator entry and `--release` clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alerts.ts src/ui/status-model.ts and their tests)
 
 **Goal.** A held-for-operator entry is visible to the operator with `tumwater plan --release` as the way out, and release actually lifts it — today `--release` lifts only Refused and Waiting notes and deliberately leaves Needs-review alone.
@@ -196,6 +175,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A Needs-review note the feature charter writes carries ` (held <N>)`; a re-mark after one lift writes `(held 2)`, and a split's children each carry `**Previously held <N>**`.
 - `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` still match the tagged notes, so `entryHold` classification is unchanged except for the count.
 - `npm run test:gate` passes.
+
+
 
 ### Cancel a waiting merge from the dashboard Pending card: each merge-queue row gains a two-click Cancel, the browser twin of `tumwater queue --cancel <n>` (planned 2026-10-23 by the plan role; independent of every eligible plan — Interlock relief 1/2 edits `queuedMergeRoles` in src/merge/merge-queue.ts and src/orchestrator, the pollRunnerReasons split edits src/orchestrator, the Codex parts edit src/agent and src/prompt, `start --once --json` edits src/cli/cli-start.ts, and the Backlog hold parts edit src/backlog and src/roles; none touches src/merge/merge-cancel.ts, src/gui or src/ui/gui/gui-client-pending.ts, and this plan leaves docs/cli.md to the `start --once --json` entry; touches src/merge/merge-cancel.ts src/gui/gui-operator-commands.ts src/gui/gui-endpoint-commands.ts src/gui/gui-server.ts src/ui/gui/gui-client-pending.ts docs/how-it-works.md test/merge-cancel.test.ts test/gui-queue-cancel.test.ts (new) test/gui-client-pending.test.ts)
 

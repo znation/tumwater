@@ -12,7 +12,7 @@ import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { firstTrimmedLineStartingWith } from "../text/text.js";
-import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
+import { HELD_TAG_PREFIX, NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import type { BacklogEntry } from "./backlog-md.js";
@@ -22,7 +22,34 @@ import { finishedFiles, openBugEntries, plannedPlanEntries } from "./backlog.js"
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unmerged
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
-export type EntryHold = "refused" | "needs-review" | "needs-replan" | "waiting-for-failure" | { blockedBy: string[] } | null;
+export type EntryHold = "refused" | "needs-review" | "needs-replan" | "held-for-operator" | "waiting-for-failure" | { blockedBy: string[] } | null;
+
+/** The number of holds an entry's count must reach before a Needs-review/Needs-replan note
+ * becomes a `held-for-operator` hold (the operator's decision, surfaced by parts 2/3 and 3/3). */
+export const OPERATOR_HOLD_THRESHOLD = 3;
+
+/** The held count a body records: the integer in the first Needs-review or Needs-replan note
+ * line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0. A present
+ * but non-numeric `(held …)` tag is 0 (and stops the scan), so a malformed tag never throws.
+ * Pure over the body text — the data-layer read half of the convergence backstop. */
+export function heldCount(body: string): number {
+  const tagRe = new RegExp(`${HELD_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)\\)`);
+  for (const raw of body.split("\n")) {
+    const line = raw.trimStart();
+    const note = line.startsWith(NEEDS_REVIEW_PREFIX) || line.startsWith(NEEDS_REPLAN_PREFIX);
+    if (!note) continue;
+    const tag = tagRe.exec(line);
+    if (tag !== null) return Number(tag[1]);
+    if (line.includes(HELD_TAG_PREFIX)) return 0;
+  }
+  for (const raw of body.split("\n")) {
+    const line = raw.trimStart();
+    if (!line.startsWith(PRIOR_HELD_PREFIX)) continue;
+    const count = /\d+/.exec(line.slice(PRIOR_HELD_PREFIX.length));
+    return count === null ? 0 : Number(count[0]);
+  }
+  return 0;
+}
 
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
  * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the role
@@ -161,8 +188,15 @@ export function entryHoldAgainst(
   plannedParts: ReadonlySet<string>,
 ): EntryHold {
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
-  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";
-  if (hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) return "needs-replan";
+  if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX) || hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) {
+    // A note whose held count reached OPERATOR_HOLD_THRESHOLD stops out of the role loop:
+    // neither the plan role (planBacklogFull tests only these two) nor this role takes it.
+    return heldCount(entry.body) >= OPERATOR_HOLD_THRESHOLD
+      ? "held-for-operator" // vocabulary-ok: the operator-held string names the operator hold decision
+      : hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)
+        ? "needs-review"
+        : "needs-replan";
+  }
   if (hasNoteLine(entry.body, WAITING_FOR_FAILURE_PREFIX)) return "waiting-for-failure";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
@@ -181,6 +215,7 @@ export function holdMark(hold: EntryHold): string {
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
   if (hold === "needs-replan") return " [blocked: needs replan]";
+  if (hold === "held-for-operator") return " [blocked: held for operator]"; // vocabulary-ok: this hold names the operator-held wording for the operator decision
   if (hold === "waiting-for-failure") return " [blocked: waiting for the next failure]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }

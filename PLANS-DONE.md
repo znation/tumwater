@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backlog hold convergence, part 1/3: The held count and the held-for-operator hold (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; the read half of the convergence backstop — parts 2/3 and 3/3 surface and write the count; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/prompt/notes-backlog.ts test/backlog-eligibility.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** A Needs-review/Needs-replan note gains a held count, and an entry whose count reaches three becomes `held-for-operator`: `entryHold` classifies it as its own hold, the plan role no longer takes it, and every surface can see why. This part is the data layer only.
+
+**Approach.**
+- src/roles/role-guidance.ts: export the two literals both halves share — `HELD_TAG_PREFIX = "(held "` (the tag text before the number, so the parser and the note templates cannot drift) and `PRIOR_HELD_PREFIX = "**Previously held "` — beside the existing note prefixes. Document that the live count is `(held N)` on the note and the surviving marker after a lift is `**Previously held N**`.
+- src/backlog/backlog-eligibility.ts: export `OPERATOR_HOLD_THRESHOLD = 3`. Add `heldCount(body: string): number` — the integer in the first Needs-review or Needs-replan note line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0; a missing or non-numeric tag is 0 and never throws.
+- In `entryHoldAgainst`, before returning `"needs-review"`/`"needs-replan"` for a present note, return `"held-for-operator"` when `heldCount(body) >= OPERATOR_HOLD_THRESHOLD`. Add `"held-for-operator"` to the `EntryHold` union; `holdMark` renders ` [blocked: held for operator]`.
+- src/prompt/notes-backlog.ts: `holdWording` gains a `held-for-operator` branch (e.g. `held for the operator (tumwater plan --release)`) and `seriesInfos` counts it with `needs-review`, so the notes block does not fall through to the `blockedBy` wording for a string hold.
+- No change to the plan-role wake gate (`planBacklogFull`, src/scheduling/claims.ts): it already tests only `"needs-review"`/`"needs-replan"`, so a held-for-operator entry neither keeps the plan role running nor counts as an eligible plan. Verify with a test rather than editing it.
+
+**Tests.**
+- test/backlog-eligibility.test.ts: `heldCount` reads `(held 3)` from a Needs-review line, `(held 2)` from a Needs-replan line, `2` from `**Previously held 2**` when no note is present, and `0` when neither; a `(held x)` tag is 0.
+- An entry with a `**Needs review … (held 3)**` line yields `entryHold` `"held-for-operator"` and `holdMark` `[blocked: held for operator]`; the same note with `(held 2)` yields `"needs-review"` (today's behavior); a bare `**Needs review …**` still yields `"needs-review"`.
+- `planBacklogFull` is true (the plan role stops) for a backlog whose only marked entry is held-for-operator.
+
+**Acceptance criteria.**
+- `entryHold` returns `"held-for-operator"` exactly for a present Needs-review/Needs-replan note whose count is at least 3, and `"needs-review"`/`"needs-replan"` otherwise; an untagged note keeps today's classification.
+- `heldCount` is pure over the body and never throws; `holdMark` words the new hold as ` [blocked: held for operator]`; the prompt notes block names it without falling through.
+- `npm run test:gate` passes.
+
 ### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** Turn the guard on. A codex run whose `apply_patch` would land under the team root but outside its worktree is refused with the shared refusal, as pi, claude and OpenCode runs are.
