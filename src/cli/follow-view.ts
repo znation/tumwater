@@ -40,8 +40,17 @@ export async function followView(frameText: () => string | Promise<string>, seam
     process.stdout.write(tty ? "\x1b[H\x1b[2J" + clean + "\n" : clean + "\n\n");
   };
   // First paint: render once before the repaint loop's interval is registered, awaiting a
-  // slow async read so the first frame is on screen before the loop begins.
-  await Promise.resolve(frameText()).then(paint);
+  // slow async read so the first frame is on screen before the loop begins. Guarded exactly
+  // like the loop below (a failed frame is skipped, not fatal): the first read of a follow
+  // view can strike the same transient failure (a git read, a snapshot whose file is
+  // momentarily unreadable) as any later tick, and killing the whole interactive follow on
+  // it — while the identical failure a tick later is skipped and retried — is the same fault
+  // with a different outcome based only on which tick it lands on. `Promise.resolve()`
+  // first so a synchronous frame-throw is caught too.
+  await Promise.resolve()
+    .then(frameText)
+    .then(paint)
+    .catch(() => {});
   // Repaint on the interval. `painting` guards an async read against stacking frames: while
   // one async frame is in flight, a tick that arrives skips its repaint rather than queueing
   // a second write on top of the first. The guard is checked BEFORE the read, so a tick that
