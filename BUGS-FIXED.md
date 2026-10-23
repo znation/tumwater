@@ -5,6 +5,14 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Fixed
 
+### The dashboards hide an extra feature/bugfix runner even while it is paused with an error streak: feature-6 and feature-7 sat breaker-paused for 33 h with no row and no alert (found by operator session 2026-10-23 comparing /api/status rows with paused-roles.json) — fixed 2026-10-23 by the bugfix role
+
+- **Symptom:** with `roles.feature.instances: 5`, runner ids feature-6 to feature-10 exist (`RUNNERS_PER_INSTANCE = 2`, src/roles/runner-ids.ts). On 10-23, feature-6 and feature-7 had `consecutiveErrors` 10 and had been in `paused-roles.json` since 10-21 15:10 and 10-22 00:30. `/api/status` had no row for either, and the "failing run after run" alert named only feature #3, feature #5 and steward. The operator could neither see nor resume them from the dashboard.
+- **Reproduce:** deterministic, no model. Set `instances: 2`, write `feature-3.json` with `consecutiveErrors: 10`, put `feature-3` in the pause marker, and call `snapshot(root)`: `roles` has no `feature-3` row and `alerts` does not name it.
+- **Cause:** `collectRoleRows` (src/status/status-roles.ts) gives a runner above `instances` a row only while it is running, queued for merge, holding a claim, or owing work (`hasOutstandingWork`). Paused or error-streak state is not part of that test, and the alerts read the rows.
+- **Fixed / fix sketch:** keep a surplus runner's row while its id is in the pause marker or `onErrorStreak` holds. `collectRoleRows` now takes the poll's pause-marker set and keeps a surplus row while `runnerPaused` (id in the marker / base role / `<role>-1`) or `onErrorStreak` holds (the exact failing-run-alert condition: `consecutiveErrors >= ERROR_STREAK_WARN` or `lastResult === "quiet_killed" && quietKillStreak >= QUIET_KILL_RESUME_LIMIT`, status-model.ts). The cases in test/status-roles.test.ts pass, and the failing alert (which reads the rows) then names it.
+- **Validation gap:** none — the deterministic offline reproduction in test/status-roles.test.ts confirmed the missing row and the fix.
+
 ### The error-streak breaker never lifts its pause, and it re-pauses a resumed role on every restart: plan sat paused 24 h after its streak cleared, which starved all ten feature runners, and feature-3/feature-5 were re-paused four times after operator resumes (found by operator session 2026-10-23 from the GUI's "failing run after run" alert and events.jsonl) — fixed 2026-10-23 by the bugfix role
 
 - **Symptom:**

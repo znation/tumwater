@@ -409,7 +409,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // run or verification) or is pinned to — threaded into the roles collector so `running`,
   // `disk` and the rows agree.
   const slots = readSlotsState(root).slots;
-  const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath);
+  const roleRows = collectRoleRows(root, cfg, now, slots, modelsPath, markerSet);
   // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
   // the amber probe alert and `status --json` both answer from the same collector.
   const imageProbeFailures = collectImageProbeFailures(root, now);

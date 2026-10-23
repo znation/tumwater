@@ -68,13 +68,6 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
   - A one-time heal: when both `<old>.json` and `<new>.json` exist, keep the one with the newer `lastRunEndedAt` under the new name. On this instance that means `dry.json` → `dedupe.json` and `telemetry.json` → `selfcheck.json`.
   - Test: a loaded legacy-shaped state saves under the requested id, and the dashboards then show `dedupe`/`selfcheck` rows.
 
-### The dashboards hide an extra feature/bugfix runner even while it is paused with an error streak: feature-6 and feature-7 sat breaker-paused for 33 h with no row and no alert (found by operator session 2026-10-23 comparing /api/status rows with paused-roles.json)
-
-- **Symptom:** with `roles.feature.instances: 5`, runner ids feature-6 to feature-10 exist (`RUNNERS_PER_INSTANCE = 2`, src/roles/runner-ids.ts). On 10-23, feature-6 and feature-7 had `consecutiveErrors` 10 and had been in `paused-roles.json` since 10-21 15:10 and 10-22 00:30. `/api/status` had no row for either, and the "failing run after run" alert named only feature #3, feature #5 and steward. The operator could neither see nor resume them from the dashboard.
-- **Reproduce:** deterministic, no model. Set `instances: 2`, write `feature-3.json` with `consecutiveErrors: 10`, put `feature-3` in the pause marker, and call `snapshot(root)`: `roles` has no `feature-3` row and `alerts` does not name it.
-- **Cause:** `collectRoleRows` (src/status/status-roles.ts) gives a runner above `instances` a row only while it is running, queued for merge, holding a claim, or owing work (`hasOutstandingWork`). Paused or error-streak state is not part of that test, and the alerts read the rows.
-- **Expected / fix sketch:** keep a surplus runner's row while its id is in the pause marker or `onErrorStreak` holds for it. Add the case to test/status-roles.test.ts, and check that the failing alert names it.
-
 ### organize added its plan as a `## ` heading in PLANS.md, outside `## Planned`, and the structure check then rejects the correction as dropping that section (found by operator session 2026-10-23 from PLANS.md and two organize rejections)
 
 - **Symptom:** a975135a8 (10-22 19:24, md-only, so exempt from review) added "## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)" as a second-level heading after the Planned entries and before `## Done`. No section reader treats it as a Planned entry. Two later organize changes were then rejected: `PLANS.md drops the "## Split validateConfig's …" section the base had — entries filed under it would be invisible to every section reader; restore "## Split …"`. The misplaced heading is now locked in.

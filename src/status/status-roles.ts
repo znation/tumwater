@@ -9,7 +9,8 @@ import {
 } from "../config/config-views.js";
 import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
-import { baseRoleOf, configuredInstances, instanceIndex, runnerIds } from "../roles/runner-ids.js";
+import { baseRoleOf, configuredInstances, instanceIndex, runnerIds, runnerPaused } from "../roles/runner-ids.js";
+import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../run/run-apply.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { hasOutstandingWork } from "../runner/runner-state.js";
 import { formatModelSelector } from "../config/model-selector.js";
@@ -58,15 +59,29 @@ export function collectRoleRows(
   now: number,
   slots: ReturnType<typeof readSlotsState>["slots"],
   modelsPath: string,
+  paused: ReadonlySet<string>,
 ): StatusRoleRow[] {
   // A surplus runner (index above `instances`, from the runner pool of plans/fast-merge.md
   // "Lever 1") with nothing to show gets no row, so the table does not list idle extras.
+  // The exceptions are exactly the surplus runners an operator most needs to see and resume
+  // from the dashboard: one the pause marker stops (`runnerPaused`), one on an error streak
+  // at the warning threshold, and one on a quiet-kill streak at the give-up threshold. The
+  // last two mirror onErrorStreak (status-model.ts), the exact condition the red "failing
+  // run after run" alert keys on, so a surplus runner the alert would report is never
+  // hidden. Without these rows the role is invisible and unresumable (BUGS.md 2026-10-23),
+  // and the alerts — which read the rows — cannot name it.
   const queued = queuedMergeRoles(root);
   const roles = runnerIds(cfg).filter((r) => {
     if (instanceIndex(r) <= configuredInstances(cfg, r)) return true;
     const s = runnerStateForPoll(root, r);
+    if (runnerPaused(paused, r)) return true;
     return (
-      s.running || queued.has(r) || s.claim !== undefined || hasOutstandingWork(s)
+      s.running ||
+      queued.has(r) ||
+      s.claim !== undefined ||
+      hasOutstandingWork(s) ||
+      (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN ||
+      (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
     );
   });
   const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
