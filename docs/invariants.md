@@ -4108,8 +4108,9 @@ window are pruned, waiting or kept".
 **Guarantee.** A skip-reason or claim-release save that fails logs one warning under the role's id,
 and the poll goes on with the in-memory state; the next successful save writes it.
 
-**Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`) and
-`src/orchestrator/orchestrator-scheduling.ts` (`noteSkip`, `pollRunnerReasons`).
+**Binds.** `src/runner/runner-state.ts` (`saveRunnerStateBestEffort`),
+`src/orchestrator/scheduling-scope.ts` (`noteSkip`) and
+`src/orchestrator/orchestrator-scheduling.ts` (`pollRunnerReasons`).
 
 **Pinned by.** `test/orchestrator-scheduling.test.ts` — "a skip reason that cannot be saved warns and
 leaves the poll running" and "a claim release that cannot be saved warns and leaves the poll running";

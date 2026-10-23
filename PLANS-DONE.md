@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split orchestrator-scheduling.ts's pollRunnerReasons, part 1/3: the one-poll scope and shared pass context in scheduling-scope.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; the foundation parts 2/3 and 3/3 both require; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts (new) test/orchestrator-scheduling.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** `src/orchestrator/orchestrator-scheduling.ts` (611 lines) is the largest splittable module left: its exported `pollRunnerReasons` runs the whole per-poll scheduling pass in one 444-line function. This first part lifts the one-poll precompute out of it into a scope module, leaving the per-runner loop inline. Parts 2/3 and 3/3 then lift that loop's skip and admit halves against the scope; `pollRunnerReasons` stays the thin binder and its exported interface is unchanged.
+
+**Approach.**
+- New `src/orchestrator/scheduling-scope.ts`: move `SchedulingPassCtx` and `noteSkip` here; add `SchedulingScope` and `buildSchedulingScope(ctx: SchedulingPassCtx): SchedulingScope`. The scope carries `root`, `runners`, `now`, `once`, `workMergedSince`, `deferredDue`, `queuedRoles`, `pinnedDirector`, `claimGroups`, `writing` and the mutable `quotaAdmitted` counter, `ordered`, `eligibleMemo`, `reasons`, plus the gate predicates `budgetHolds`, `operatorPauseBlocks`, `hasDemand`, `bootstrapHeldNow`, `maintenanceQuotaOverLine` — the current closures, capturing the same ctx values.
+- Move the precompute verbatim: the `queuedMergeRoles` snapshot, the `hasUnmergedPin` director pin, the per-base claim-group build with its claim-release loop (which still mutates runner state, persists and logs), the predicate definitions, the `writing` count and `ownsOutstanding`/`ordered`, and `eligibleMemo`.
+- `orchestrator-scheduling.ts` keeps `pollRunnerReasons` (build the scope, then run the existing per-runner loop reading the scope's fields) and `reviewHoldKey`/`pollDeferralInputs`; the pass-level doc comment stays with `pollRunnerReasons`, and a short module header moves to `scheduling-scope.ts`.
+
+**Acceptance criteria.**
+- `pollRunnerReasons` runs the same gates in the same order with the same side effects: a pure code-move, no behavior change (the interlock-relief and cooldown-scope plans change behavior and touch this file; this split rebases behind them, it does not change what they set). The existing `test/orchestrator-scheduling.test.ts` cases pass without edits.
+- A grep over src, test and docs finds no stale reference to a moved symbol; `scheduling-scope.ts` holds no per-runner admission policy (that is parts 2/3 and 3/3).
+- `npm run test:gate` passes.
+
 ### Codex backend, part 9a/9: Doctor's Codex rows — install, login, home, models, account, leaks and sessions size (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9b/9, 9c/9 and 9d/9 — any of the four may land first; design in plans/codex-backend.md "CODEX_HOME and sessions", "Spend, free-ness, window, images" and "Hand steps"; touches src/doctor/doctor-codex-checks.ts (new) src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/agent/codex/codex-backend.ts test/fakes/fake-codex.ts test/doctor-checks.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** An operator can set Codex up from `tumwater doctor` alone: whether the binary is new enough, whether the configured `CODEX_HOME` is logged in the supported way, and what the home shares or leaks.
