@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 3/9: The hook's definition and its two `-c` flags, and `hooks` keys reserved from the passthrough (planned 2026-10-23 by user; requires part 2/9 landed; design in plans/codex-write-guard.md "The flags (part 3)" and findings 1–2; touches src/agent/codex/codex-write-guard.ts src/agent/codex/codex-args.ts src/config/config-validation.ts test/codex-write-guard.test.ts test/codex-args.test.ts test/config-validation.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Build the exact `-c` values that install the hook and trust it, without wiring them into runs yet. Make sure an operator's `backends.codex.args` cannot replace either.
+
+**Approach.**
+- src/agent/codex/codex-write-guard.ts gains three exports:
+  - `codexWriteGuardDefinition(nodeBin = process.execPath)` returns `{ matcher: "^apply_patch$", command, timeout: 30 }`. `command` is `n=<nodeBin quoted>; [ -x "$n" ] || n=node; exec "$n" <hook quoted>`, built like claude-write-guard.ts's `writeGuardSettings`. The hook path comes from `fileURLToPath(new URL("./write-guard-hook.js", import.meta.url))`, so a staged build runs its own copy.
+  - `codexHookArg(definition)` returns the value `hooks.PreToolUse=[{matcher=<s>,hooks=[{type="command",command=<s>,timeout=30}]}]`.
+  - `codexHookTrustArg(trust: { key: string; hash: string })` returns `hooks.state={<key>={trusted_hash=<hash>}}`, in the inline-table spelling. The dotted `hooks.state."<key>".trusted_hash=` spelling is ignored by Codex because the key contains dots (finding 2).
+  - One `tomlString(s)` helper writes every TOML basic string, escaping `\`, `"` and control characters.
+- Reserve `hooks`: a `-c`/`--config` passthrough whose key is `hooks` or starts with `hooks.` is refused. Codex is last-wins, so it could otherwise replace the guard or its trust.
+  - Add a prefix rule beside `HARNESS_CODEX_CONFIG_KEYS` in codex-args.ts, for example `HARNESS_CODEX_CONFIG_KEY_PREFIXES = ["hooks"]` and an `isHarnessCodexConfigKey(key)` that both screens call.
+  - The screens are config-validation.ts's `checkCodexConfigKeys` and any check codexArgs makes on its passthrough.
+  - The problem text names the key as the existing one does ("…passes the config key hooks.PreToolUse, which tumwater manages — drop it or use another key").
+
+**Tests.**
+- test/codex-write-guard.test.ts:
+  - `codexHookArg` and `codexHookTrustArg` produce the exact strings for a fixed definition and trust;
+  - a `nodeBin` and hook path containing `'`, `"` and a space round-trip: the definition's `command` run through `sh -c` with a stray payload on stdin still prints the deny JSON;
+  - `tomlString` escapes `\`, `"` and a control character.
+- test/codex-args.test.ts: `isHarnessCodexConfigKey` is true for `hooks`, `hooks.PreToolUse` and `hooks.state` and false for `hooksy` and `model_provider`. The existing reserved keys stay true.
+- test/config-validation.test.ts: `backends.codex.args` of `["-c", "hooks.PreToolUse=[]"]`, `["--config=hooks.state={}"]` and `["-c", "hooks={}"]` each report the key. `["-c", "model_provider=\"x\""]` still passes.
+
+**Acceptance criteria.**
+- Nothing in a run's argv changes in this part.
+- The three passthrough spellings above are refused at config validation.
+- `npm run test:gate` passes.
+
 ### Cooldown scope: A pending stale-build restart holds the redeploy, not the team (planned 2026-10-23 by user; design in plans/cooldown-scope.md "The decision"; evidence: the live instance paused 2026-10-23T09:51Z with all 30 roles stopped and auto-restart blocked by the cooldown until 13:04Z — 3 h 13 m of full stop over a stale build 15 commits ahead; the team pause and the error-streak breaker are deliberately out of scope (a pause is the operator's explicit command; the streak breaker already pauses only the failing role); touches src/redeploy/redeploy-policy.ts src/redeploy/redeployer.ts src/orchestrator/orchestrator-scheduling.ts and their tests) — done 2026-10-23 by the feature role
 
 **Goal.** The restart cooldown is a rate limit against restart storms, and it should limit restarts — not hold every role's runs and merges while it runs. A team whose build is merely stale (the common case: work landed, build didn't move) keeps working; the redeploy happens when its cooldown lapses or the operator forces it (the dashboard's restart button and `tumwater restart` already waive it — the escape hatch exists).

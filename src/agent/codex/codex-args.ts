@@ -75,6 +75,22 @@ export const HARNESS_CODEX_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "history.persistence",
 ]);
 
+/** Config-key prefixes an operator's `-c`/`--config` passthrough may not set: the write guard's
+ * own `hooks.*` keys (part 3/9). Codex is last-wins, so a `-c hooks.PreToolUse=…` or
+ * `-c hooks.state=…` passthrough would otherwise replace the guard or its trust after the
+ * harness's. Written beside HARNESS_CODEX_CONFIG_KEYS so both it and config validation screen
+ * against one predicate. */
+const HARNESS_CODEX_CONFIG_KEY_PREFIXES: ReadonlyArray<string> = ["hooks"];
+
+/** Whether `key` is a config key tumwater sets or reserves, so an operator's `-c`/`--config`
+ * passthrough naming it would silently override the harness. True for every
+ * HARNESS_CODEX_CONFIG_KEYS key and for the `hooks` key or any `hooks.<…>` subkey, which the
+ * write guard owns. */
+export function isHarnessCodexConfigKey(key: string): boolean {
+  if (HARNESS_CODEX_CONFIG_KEYS.has(key)) return true;
+  return HARNESS_CODEX_CONFIG_KEY_PREFIXES.some((p) => key === p || key.startsWith(`${p}.`));
+}
+
 /** Thinking → `model_reasoning_effort`. `off` and `minimal` clamp to `low` (Codex has no lower
  * setting; doctor notes the clamp), `low` through `max` map 1:1. `ultra` is not a value Codex
  * can receive — tumwater never sends it (it delegates to sub-agents). This is claude's

@@ -13,7 +13,7 @@ import {
 } from "./config-schema.js";
 import { DIRECTOR_ROLE, allRoleIds } from "../roles/roles.js";
 import { INSTANCE_ROLES, baseRoleOf } from "../roles/runner-ids.js";
-import { HARNESS_CODEX_CONFIG_KEYS } from "../agent/codex/codex-args.js";
+import { isHarnessCodexConfigKey } from "../agent/codex/codex-args.js";
 import { isJsonObject } from "../files/json-object.js";
 import { expandHomeTilde } from "../files/files.js";
 import os from "node:os";
@@ -187,9 +187,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   };
 
   // codex's `-c <key>=…` / `--config <key>=…` passthrough (plans/codex-backend.md §2/§3): a
-  // key tumwater sets on every run (HARNESS_CODEX_CONFIG_KEYS) is appended AFTER the harness's
-  // own `-c` and Codex's parser is last-wins, so it would silently override the model, effort,
-  // sandbox mode or telemetry the harness resolved. The standalone-flag screen above
+  // key tumwater sets on every run (HARNESS_CODEX_CONFIG_KEYS) — or one the write guard owns,
+  // `hooks` / `hooks.<…>` (part 3/9) — is appended AFTER the harness's own `-c` and Codex's
+  // parser is last-wins, so it would silently override the model, effort, sandbox mode,
+  // telemetry or the write guard the harness resolved. The standalone-flag screen above
   // (reservedPassthroughFlag + checkReservedArgs) splits on `=` and cannot see a separate
   // `-c` token, so codex gets its own arity-aware scan of the key. Any other key is the
   // operator's own and passes.
@@ -199,7 +200,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       const arg = args[i];
       if (typeof arg !== "string") continue;
       const key = codexConfigKey(arg, typeof args[i + 1] === "string" ? (args[i + 1] as string) : undefined);
-      if (key !== undefined && HARNESS_CODEX_CONFIG_KEYS.has(key))
+      if (key !== undefined && isHarnessCodexConfigKey(key))
         problems.push(
           `${prefix}.args[${i}] ${show(arg)} passes the config key ${key}, which tumwater manages — drop it or use another key`,
         );

@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { strayWriteRefusal } from "../src/agent/write-guard.js";
-import { codexWriteRefusal } from "../src/agent/codex/codex-write-guard.js";
+import { codexWriteRefusal, codexWriteGuardDefinition, codexHookArg, codexHookTrustArg, tomlString } from "../src/agent/codex/codex-write-guard.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A team root with its primary checkout's `src/a.ts`, the run's worktree `_slot-1` and another
@@ -73,4 +73,39 @@ test("the hook codex runs denies a stray apply_patch with the refusal as its rea
   assert.deepEqual({ status: passed.status, stdout: passed.stdout }, { status: 0, stdout: "" });
   const bad = spawnSync("node", [hook], { input: "not json", encoding: "utf8" });
   assert.deepEqual({ status: bad.status, stdout: bad.stdout }, { status: 0, stdout: "" }, "a hook that cannot read its input lets the patch run");
+});
+
+test("codexHookArg and codexHookTrustArg produce exact TOML strings (part 3/9)", () => {
+  const def = { matcher: "^apply_patch$", command: "n='node'; exec node ./write-guard-hook.js", timeout: 30 };
+  assert.equal(
+    codexHookArg(def),
+    'hooks.PreToolUse=[{matcher="^apply_patch$",hooks=[{type="command",command="n=\'node\'; exec node ./write-guard-hook.js",timeout=30}]}]',
+  );
+  assert.equal(codexHookTrustArg({ key: "c0de.x", hash: "abc123" }), 'hooks.state={"c0de.x"={trusted_hash="abc123"}}');
+});
+
+test("tomlString escapes backslash, quote and control characters (part 3/9)", () => {
+  assert.equal(tomlString('a"b\\c'), '"a\\"b\\\\c"');
+  assert.equal(tomlString("line1\nline2"), '"line1\\u000aline2"');
+  assert.equal(tomlString("tab\tchar"), '"tab\\u0009char"');
+  assert.equal(tomlString("plain text"), '"plain text"');
+});
+
+test("codexWriteGuardDefinition's command round-trips a tricky nodeBin through sh -c and still denies a stray patch (part 3/9)", () => {
+  const { root, wt } = team();
+  // A node binary reached through a path with a space, a single quote and a double quote;
+  // its definition's command must quote each so `sh -c` still runs the hook.
+  const dir = path.join(tmpdir(), "node 'bin' \"dir\"");
+  fs.mkdirSync(dir, { recursive: true });
+  const fakeBin = path.join(dir, "node");
+  fs.symlinkSync(process.execPath, fakeBin);
+  const def = codexWriteGuardDefinition(fakeBin);
+  assert.equal(def.matcher, "^apply_patch$");
+  assert.equal(def.timeout, 30);
+  const stray = JSON.stringify(payload(`*** Update File: ${path.join(root, "src", "a.ts")}`, wt));
+  const run = spawnSync("sh", ["-c", def.command], { input: stray, encoding: "utf8" });
+  assert.equal(run.status, 0);
+  assert.deepEqual(JSON.parse(run.stdout), {
+    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: strayWriteRefusal(path.join(root, "src", "a.ts"), wt) },
+  });
 });

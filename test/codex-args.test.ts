@@ -3,7 +3,7 @@
 // validation, and the reserved-flag rejection — all without a spawned process.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codexArgs, codexEffort, type CodexArgOptions } from "../src/agent/codex/codex-args.js";
+import { codexArgs, codexEffort, isHarnessCodexConfigKey, type CodexArgOptions } from "../src/agent/codex/codex-args.js";
 
 function opts(overrides: Partial<CodexArgOptions> = {}): CodexArgOptions {
   return { model: "gpt-6.1-sol", prompt: "do it", ...overrides };
@@ -99,4 +99,17 @@ test("codexEffort maps thinking through EFFORT_BY_THINKING, gated by the model's
   // A level the catalog does not support clamps to no effort; an unknown thinking level too.
   assert.equal(codexEffort("medium", ["low", "xhigh"]), undefined);
   assert.equal(codexEffort("galaxy-brain", ["low", "medium", "high", "xhigh", "max"]), undefined);
+});
+
+test("isHarnessCodexConfigKey reserves hooks and the harness-set keys (part 3/9)", () => {
+  // The write-guard `hooks` key and its subkeys are reserved; lookalikes pass.
+  assert.equal(isHarnessCodexConfigKey("hooks"), true);
+  assert.equal(isHarnessCodexConfigKey("hooks.PreToolUse"), true);
+  assert.equal(isHarnessCodexConfigKey("hooks.state"), true);
+  assert.equal(isHarnessCodexConfigKey("hooksy"), false);
+  assert.equal(isHarnessCodexConfigKey("model_provider"), false);
+  // The existing reserved keys stay reserved.
+  assert.equal(isHarnessCodexConfigKey("model"), true);
+  assert.equal(isHarnessCodexConfigKey("analytics.enabled"), true);
+  assert.equal(isHarnessCodexConfigKey("project_doc_fallback_filenames"), true);
 });

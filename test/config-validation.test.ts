@@ -556,6 +556,23 @@ test("codex joins the backends section: configDir, windowReserve and reserved fl
   );
   // A key tumwater does not set is the operator's own and passes.
   assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["-c", "model_verbosity=low"] } } }));
+  // The three hooks spellings the write guard owns are refused (part 3/9): a passthrough
+  // could otherwise replace the guard or its trust after the harness's, since codex is
+  // last-wins.
+  assert.match(
+    validationError({ backends: { codex: { args: ["-c", "hooks.PreToolUse=[]"] } } }),
+    /passes the config key hooks\.PreToolUse, which tumwater manages/,
+  );
+  assert.match(
+    validationError({ backends: { codex: { args: ["--config=hooks.state={}"] } } }),
+    /passes the config key hooks\.state, which tumwater manages/,
+  );
+  assert.match(
+    validationError({ backends: { codex: { args: ["-c", "hooks={}"] } } }),
+    /passes the config key hooks, which tumwater manages/,
+  );
+  assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["-c", 'model_provider="x"'] } } }));
+  assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["-c", "model_verbosity=low"] } } }));
   assert.doesNotThrow(() => validateConfig({ backends: { codex: { args: ["--enable", "automation"] } } }));
   // opencode still refuses configDir (only claude and codex accept it).
   assert.match(
