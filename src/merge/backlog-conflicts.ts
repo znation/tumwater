@@ -26,6 +26,7 @@
  * Anything else — the same entry edited on both sides, a code file, a file one side deleted —
  * goes to the pi resolver untouched. */
 
+import fs from "node:fs";
 import path from "node:path";
 import { BACKLOG_FILES, FINISHED_ARCHIVES, fenceTracker } from "../backlog/backlog-md.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
@@ -297,6 +298,22 @@ export async function resolveBacklogInsertConflicts(
       continue;
     }
     const p = path.join(wt, file);
+    // lstat, not stat: a symlink among the conflicted files is never followed out of the
+    // worktree (INV-G3 — a symlink holds no text of its own and its target could point out
+    // of it, so what a change that adds one put there is the link, not the target). Leaving
+    // it to the pi resolver keeps the same policy the conflict-marker and secret-leak gates
+    // pin: the resolver, like those gates, must not read an arbitrary host file.
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(p);
+    } catch {
+      remaining.push(file); // deleted side or unreadable path — leave it to the resolver
+      continue;
+    }
+    if (!st.isFile()) {
+      remaining.push(file); // symlink, directory or gitlink — leave it to the resolver
+      continue;
+    }
     const text = readTextOrNull(p);
     if (text === null) {
       remaining.push(file); // deleted side or unreadable path — leave it to the resolver

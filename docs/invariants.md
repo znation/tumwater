@@ -423,12 +423,16 @@ reason names the file after `could not be read to check for conflict markers: `.
 directory/gitlink) counts as resolved too — it is never followed (lstat, not stat), because a
 symlink holds no text of its own and its target could point out of the worktree (the same policy
 INV-G4 pins for the secret-leak check). The review gate rejects it before review, md-only diffs
-included, the stage check flags it, and the merge resolver's resolution is not accepted.
+included, the stage check flags it, and the merge resolver's resolution is not accepted. The
+deterministic backlog-conflict resolver (backlog-conflicts.ts) reads a conflicted root backlog
+file only when lstat shows it is a regular file; a symlink (or directory/gitlink, or an
+unreadable path) is left to the pi resolver, never followed out of the worktree.
 
-**Binds.** `src/merge/merge-git.ts`, `src/review/review.ts`, `src/run/stage-check.ts`,
+**Binds.** `src/merge/merge-git.ts`, `src/merge/backlog-conflicts.ts`,
+`src/review/review.ts`, `src/run/stage-check.ts`,
 `src/merge/merge-to-main.ts`.
 
-**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
+**Pinned by.** `test/merge-git.test.ts` — "hasConflictMarkers and conflictMarkerReason fail closed on a file that cannot be read", "hasConflictMarkers sees start/end markers but not a bare ======= separator", and "does not follow a symlink out of the worktree" — `test/backlog-conflicts.test.ts` — "resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree" — and `test/review.test.ts` — "gate rejects a change whose changed file cannot be read for conflict markers, with no pi run".
 
 ### INV-G4: a changed file that exists but cannot be read is a secret-leak finding; only a path with no file is skipped
 

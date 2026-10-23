@@ -183,6 +183,25 @@ test("resolveBacklogInsertConflicts rewrites and stages an insert-only PLANS.md"
   assert.equal(sh(root, "git", "diff", "--cached", "--name-only"), "PLANS.md", "the resolved file is staged");
 });
 
+test("resolveBacklogInsertConflicts does not follow a symlinked backlog file out of the worktree", async () => {
+  const root = makeRepo();
+  // The symlink's target lives OUTSIDE the worktree and holds an insert-only hunk. A
+  // resolver that followed the link (readFileSync) would read that host file, "settle" the
+  // hunk, write the resolved text back over the worktree path (replacing the symlink) and
+  // stage it — the symlink-follow the INV-G3/INV-G4 lstat policy forbids for the merge gates.
+  const target = path.join(path.dirname(root), "plans-target.txt");
+  fs.writeFileSync(target, `## Done\n\n${insertOnlyHunk("### Entry A", "### Entry C")}\n### Entry Z\n`);
+  fs.symlinkSync(target, path.join(root, "PLANS.md"));
+  const link = path.join(root, "PLANS.md");
+  const linkTarget = fs.readlinkSync(link);
+
+  const remaining = await resolveBacklogInsertConflicts(root, ["PLANS.md"]);
+
+  assert.deepEqual(remaining, ["PLANS.md"], "a symlinked backlog file is left to the resolver, never read");
+  assert.equal(fs.readlinkSync(link), linkTarget, "the symlink is untouched");
+  assert.equal(sh(root, "git", "diff", "--cached", "--name-only"), "", "nothing was staged");
+});
+
 test("resolveBacklogInsertConflicts leaves a non-insert-only backlog file untouched", async () => {
   const root = makeRepo();
   const text = ["<<<<<<< HEAD", "main line", "||||||| parent of abc", "base line", "=======", "change line", ">>>>>>> abc"].join("\n");
