@@ -177,20 +177,32 @@ function revertLooksFalse(
   return after?.status === "passed" ? "remerged" : null;
 }
 
+/** The trailing-day revert facts behind G2's warning: how many `main_revert` events landed in
+ * the trailing 24 h and the `revertWarnings` phrases that fired (the doctor's own wording).
+ * Returned by revertGuardrail for the doctor, the selfcheck digest and the always-on `reverts`
+ * alert, so every surface words the revert the same. null when nothing fired. */
+export interface RevertGuardrail {
+  count: number;
+  phrases: string[];
+}
+
 /** G2 over `events` and the quarantine list: warns on a `main_revert` in the trailing 24 h that
- * looks false, and on more than REVERT_RATE_LIMIT reverts a day. The detail names each
+ * looks false, and on more than REVERT_RATE_LIMIT reverts a day. The phrases name each
  * false-looking revert (culprit sha and which test failed / that it landed again unchanged)
- * and the count when over the rate limit. Returns the phrases that fire (empty when none do). */
-export function revertWarnings(
+ * and the count when over the rate limit. Returns null when nothing fires (no reverts, or only
+ * ordinary reverts under the limit); otherwise the trailing-day revert count and the phrases
+ * that fired, so a burst and a lone false revert can be told apart. revertWarnings is its
+ * string-only view, so the two cannot drift. */
+export function revertGuardrail(
   events: readonly HarnessEvent[],
   quarantine: readonly { test: string; lastSeen: number }[],
   now: number,
-): string[] {
+): RevertGuardrail | null {
   const cutoff = now - DAY_MS;
   const reverts = events.filter(
     (e) => e.type === "main_revert" && typeof e.ts === "number" && e.ts >= cutoff,
   );
-  if (reverts.length === 0) return [];
+  if (reverts.length === 0) return null;
   const phrases: string[] = [];
   if (reverts.length > REVERT_RATE_LIMIT) {
     phrases.push(`${reverts.length} reverts in the last 24 h — over the ${REVERT_RATE_LIMIT}-revert ceiling`);
@@ -212,7 +224,18 @@ export function revertWarnings(
       );
     }
   }
-  return phrases;
+  return phrases.length > 0 ? { count: reverts.length, phrases } : null;
+}
+
+/** G2 over `events` and the quarantine list, as the doctor and selfcheck digest read it: the
+ * phrases revertGuardrail fires (empty when none do), byte-identical to revertGuardrail's own
+ * strings so the doctor and the always-on `reverts` alert cannot drift on wording. */
+export function revertWarnings(
+  events: readonly HarnessEvent[],
+  quarantine: readonly { test: string; lastSeen: number }[],
+  now: number,
+): string[] {
+  return revertGuardrail(events, quarantine, now)?.phrases ?? [];
 }
 
 /** Both guardrail phrases that fire for `root`, reading the trailing 24 h of the event log and
@@ -227,6 +250,13 @@ export function guardrailWarnings(root: string, now: number = Date.now()): strin
   if (qw !== null) warnings.push(qw);
   warnings.push(...revertWarnings(events, q, now));
   return warnings;
+}
+
+/** The trailing-day revert guardrail over `root`'s event log and quarantine.json — the poll-path
+ * read (one trailing-day event read plus the quarantine file) that feeds the always-on `reverts`
+ * alert, the same material guardrailWarnings reads, over the same revertGuardrail rule. */
+export function revertsFor(root: string, now: number = Date.now()): RevertGuardrail | null {
+  return revertGuardrail(readEventsSince(root, DAY_MS).events, loadQuarantine(root), now);
 }
 
 /** "40 min", "3 h" — the duration a red main's warning names. */

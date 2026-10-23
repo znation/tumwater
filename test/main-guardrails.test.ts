@@ -7,6 +7,7 @@ import {
   RED_MAIN_WARN_MS,
   redMainWarning,
   quarantineWarning,
+  revertGuardrail,
   revertWarnings,
 } from "../src/baseline/main-guardrails.js";
 import { DAY_MS } from "../src/text/datetime.js";
@@ -221,4 +222,29 @@ test("the guardrail constants match the documented thresholds", () => {
   assert.equal(RED_MAIN_WARN_MS, 30 * MIN);
   assert.equal(QUARANTINE_AGE_MS, 3 * DAY_MS);
   assert.equal(QUARANTINE_WARN_COUNT, 10);
+});
+
+test("revertGuardrail returns the count and phrases, and null when nothing fires", () => {
+  const now = 1_000_000_000_000;
+  // A blamed test quarantined since the revert fires: count 1 with the doctor's phrase.
+  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "abcdef1234567890", failingTests: ["test/T.ts"] });
+  const q = [{ test: "test/T.ts", lastSeen: now - 5 * MIN }];
+  const g = revertGuardrail([revert], q, now);
+  assert.ok(g, "the quarantined-since revert fires");
+  assert.equal(g!.count, 1);
+  assert.match(g!.phrases[0]!, /did not reproduce/);
+  // revertWarnings is revertGuardrail's string-only view, so they cannot drift.
+  assert.deepEqual(revertWarnings([revert], q, now), g!.phrases);
+  // Six reverts in the day fire the burst: count 6 and the ceiling phrase.
+  const burstRevs = Array.from({ length: 6 }, (_, i) =>
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}` }),
+  );
+  const burst = revertGuardrail(burstRevs, [], now);
+  assert.ok(burst, "a revert burst fires");
+  assert.equal(burst!.count, 6);
+  assert.match(burst!.phrases[0]!, /over the 5-revert ceiling/);
+  // A lone revert neither false nor over the limit fires nothing.
+  const plain = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "dddddddddddddd" });
+  assert.equal(revertGuardrail([plain], [], now), null);
+  assert.deepEqual(revertWarnings([plain], [], now), []);
 });

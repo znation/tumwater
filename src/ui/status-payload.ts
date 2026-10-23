@@ -12,9 +12,9 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type PlanDependencyProblem, type QuarantinedTests, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type PlanDependencyProblem, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
-import { quarantineWarning } from "../baseline/main-guardrails.js";
+import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
@@ -121,6 +121,14 @@ export function quarantineAlert(root: string, now = Date.now()): QuarantinedTest
   if (warning === null) return null;
   const oldest = entries.reduce((a, b) => (b.firstSeen < a.firstSeen ? b : a));
   return { count: entries.length, oldestTest: oldest.test, oldestFirstSeen: oldest.firstSeen, warning };
+}
+/** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
+ * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
+ * revertGuardrail the doctor calls over the same readEventsSince event window and
+ * loadQuarantine list, so the alert and the doctor cannot drift on the trigger or the phrases.
+ * null when the day holds no reverts, or only ordinary reverts under the limit. */
+export function revertAlert(root: string, now = Date.now()): RevertWarning | null {
+  return revertsFor(root, now);
 }
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -437,6 +445,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now)),
   };
 }

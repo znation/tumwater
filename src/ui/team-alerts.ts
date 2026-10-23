@@ -8,6 +8,7 @@
  * the cap editor…). */
 
 import type { StatusSnapshot } from "../status/status-data.js";
+import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
@@ -102,7 +103,6 @@ export interface QuarantinedTests {
   oldestFirstSeen: number;
   warning: string;
 }
-
 /** One `## ` section heading that appears more than once in a backlog file — the always-on twin
  * of the doctor's `backlog headings` rule (src/doctor/doctor-backlog-plans.ts, computed by the
  * shared duplicatedBacklogHeadings, which itself shares scanBacklogHeadings with the doctor's
@@ -112,6 +112,15 @@ export interface BacklogHeadingDuplicate {
   file: string;
   heading: string;
 }
+
+/** A revert off main in the trailing day that G2 (src/baseline/main-guardrails.ts `revertsFor`)
+ * warns about: the `main_revert` count and the doctor's own `revertWarnings` phrases — a revert
+ * that looks false (its blamed test quarantined since, or its change merged again unchanged and
+ * main stayed green), or a burst over REVERT_RATE_LIMIT reverts. Computed in
+ * src/ui/status-payload.ts's revertAlert from the same rule the doctor's `main's check` row
+ * calls, so the alert and the doctor cannot drift on the trigger or the thresholds. null when
+ * the day holds no reverts, or only ordinary reverts under the limit. */
+export interface RevertWarning extends RevertGuardrail {}
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -220,9 +229,10 @@ function localizeInstants(text: string): string {
  * main, roles failing run after run, roles that look stuck, a stale running build, open
  * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, a stale or oversized flake quarantine, a plan filed under the
- * wrong backlog section, a duplicated backlog section heading, a Fixed record with a bad
- * Validation gap trace, a pause, a stopped team.
+ * review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
+ * looks false or a revert burst, a plan filed under the wrong backlog section, a duplicated
+ * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
+ * stopped team.
  * `now` is passed so a timed
  * pause's countdown agrees with the rest of the frame. */
 export function teamAlerts(
@@ -261,6 +271,7 @@ export function teamAlerts(
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
+  reverts: RevertWarning | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -710,6 +721,20 @@ export function teamAlerts(
       title: `${plural(quarantined.count, "test")} in the flake quarantine — the gate is excusing their failures`,
       detail:
         `${quarantined.warning} · oldest: ${squash(quarantined.oldestTest, 80)} (${humanAgo(quarantined.oldestFirstSeen, now)}) — a quarantined test counts as a known failure until its filed bug leaves BUGS.md \`## Open\`, so fix the test or file the missing bug`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+    });
+  }
+  // A revert off main — the always-on twin of the doctor's `main's check` revert rule
+  // (main-guardrails.ts revertGuardrail, REVERT_RATE_LIMIT): a false revert is working code
+  // lost and a burst is a flaky-revert habit, both worth the operator's eye while they happen.
+  // status-payload.ts's revertAlert feeds it from the same revertGuardrail the doctor calls,
+  // so the alert and the doctor cannot drift on the trigger or the phrases.
+  if (reverts) {
+    out.push({
+      key: "reverts",
+      tone: "amber",
+      title: `${plural(reverts.count, "revert off main", "reverts off main")} in the last day`,
+      detail: `${reverts.phrases.join("; ")} — the main watch takes a change off main when main's full check flags it; fix the failing test or the revert repeats`,
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }

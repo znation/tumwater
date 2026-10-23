@@ -5,11 +5,12 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole, type BacklogHeadingDuplicate } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, quarantineAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, quarantinePath } from "../src/paths.js";
@@ -861,6 +862,48 @@ test("a stale flake quarantine raises a standing amber alert after the skipped-m
   // The skipped-merge alert precedes the quarantine one when both are present.
   const withSkip = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], ["000-torn.json"], [], quarantined);
   assert.deepEqual(withSkip.map((a) => a.key), ["skipped-merges", "quarantine"]);
+});
+
+test("a revert that looks false raises one amber alert after the quarantine one", () => {
+  const now = Date.now();
+  const quarantined = { count: 12, oldestTest: "test/old.test.ts", oldestFirstSeen: now - 4 * 24 * 3_600_000, warning: "quarantine holds 12 tests — over the 10-test ceiling" };
+  const reverts = { count: 1, phrases: ["revert abcdef1 blamed test/T.ts, which has been quarantined since — the failure did not reproduce"] };
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], quarantined, [], [], [], reverts);
+  const rev = one.filter((a) => a.key === "reverts");
+  assert.equal(rev.length, 1);
+  assert.equal(rev[0]!.tone, "amber");
+  assert.equal(rev[0]!.title, "1 revert off main in the last day");
+  assert.match(rev[0]!.detail ?? "", /did not reproduce/);
+  assert.match(rev[0]!.detail ?? "", /fix the failing test/);
+  assert.deepEqual(rev[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  assert.equal(one[0]!.key, "quarantine", "quarantine precedes reverts");
+  // A burst over the ceiling titles plural.
+  const burst = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], { count: 6, phrases: ["6 reverts in the last 24 h — over the 5-revert ceiling"] });
+  const br = burst.find((a) => a.key === "reverts");
+  assert.match(br?.title ?? "", /6 reverts off main in the last day/);
+  // A null reverts argument, and the defaulted call, add no reverts alert.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null).filter((a) => a.key === "reverts").length, 0);
+  assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "reverts").length, 0);
+});
+
+test("revertAlert and the surfaces carry a revert alert from a false revert, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeEvents(root, [{ ts: now - 10 * 60_000, source: "tumwater", type: "main_revert", commit: "abcdef1234567890", failingTests: ["test/T.ts"] }]);
+  fs.mkdirSync(path.dirname(quarantinePath(root)), { recursive: true });
+  fs.writeFileSync(quarantinePath(root), JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 20 * 60_000, lastSeen: now - 5 * 60_000, count: 1, bug: "A flaky test" }] }));
+  assert.equal(revertAlert(root, now)?.count, 1);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const found = payload.alerts.find((a) => a.key === "reverts");
+  assert.ok(found, "the status payload carries a reverts alert");
+  assert.equal(found!.title, "1 revert off main in the last day");
+  assert.match(found!.detail ?? "", /did not reproduce/);
+  assert.match(renderStatus(root, snapshot(root, undefined, now)), /revert off main/);
+  // A clean repo (no reverts, no quarantine) produces none on either surface.
+  const clean = makeRepo();
+  assert.equal(revertAlert(clean, now), null);
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "reverts"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /revert off main/);
 });
 
 test("quarantineAlert and the surfaces carry a quarantine alert from an old or oversized list, and none from a fresh one", () => {
