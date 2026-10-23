@@ -40,6 +40,17 @@ const QUIET_HOURS_SPEC = { names: ["--quiet-hours"], value: true, valueName: "<w
 const CLEAR_CAP_SPEC = { names: ["--clear-cap"] };
 const CAP_SPEC = { names: ["--cap"], value: true, valueName: "<usd>" };
 
+/** A plain-decimal count like `.5`, `05` or `00.5` that Number() reads but JSON.parse cannot
+ * (JSON forbids a leading dot and a leading zero), so a `role` numeric write must spell it back
+ * in JSON form (`0.5` for `00.5`) before setConfigKey, whose JSON.parse fallback would
+ * otherwise store the literal string. The same plain-decimal rule the TUI's and GUI's editors
+ * apply (`Number()`), so the terminal admits exactly the spellings they do. Returns null for
+ * text that is not a plain decimal, so the caller leaves it untouched (the config validator
+ * owns the rest). */
+function plainDecimalToJson(raw: string): string | null {
+  return /^\d*\.?\d+$/.test(raw) ? String(Number(raw)) : null;
+}
+
 /** `role`'s min-run-interval write flags: clear it, or set it to a second count (0 is
  * back-to-back). */
 const CLEAR_MIN_RUN_INTERVAL_SPEC = { names: ["--clear-min-run-interval"] };
@@ -277,7 +288,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     if (id === DIRECTOR_ROLE) fail("the director has no daily cap");
     const base = baseRoleOf(id);
     const cap = flagValue(rest, "--cap") ?? "";
-    writeRoleConfigKey(root, base, clearCap, cap, `maxDailyCostUsdPerRole.${base}`, "daily cap", (v) => v, (v) => v);
+    writeRoleConfigKey(root, base, clearCap, cap, `maxDailyCostUsdPerRole.${base}`, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
     return;
   }
   // The min-run-interval write: the terminal twin of `config set
@@ -293,7 +304,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     requireKnownRole(root, id);
     const base = baseRoleOf(id);
     const secs = flagValue(rest, "--min-run-interval") ?? "";
-    writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => v, (v) => `${v}s`);
+    writeRoleConfigKey(root, base, clearInterval, secs, `roles.${base}.minRunIntervalSeconds`, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
     return;
   }
   // The instances write: the terminal twin of `config set roles.<base>.instances <n>`, the

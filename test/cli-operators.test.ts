@@ -628,11 +628,35 @@ test("role --cap/--clear-cap and --min-run-interval/--clear-min-run-interval wri
   assert.match(r.stdout, /feature: daily cap set to 5/);
   assert.equal(config().maxDailyCostUsdPerRole.feature, 5);
 
+  // A leading-dot decimal — the `.5` shorthand both cap editors admit — lands as the same
+  // number the editors store, not the literal string JSON.parse would otherwise read.
+  r = await cli(repo, "role", "feature", "--cap", ".5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap set to \.5/);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 0.5);
+
+  // The leading-zero and leading-dot-with-leading-zero spellings the cap editors also admit
+  // (`05`, `00.5`) land as the same numbers via Number(), not literal strings.
+  r = await cli(repo, "role", "feature", "--cap", "05");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap set to 05/);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 5);
+  r = await cli(repo, "role", "feature", "--cap", "00.5");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: daily cap set to 00\.5/);
+  assert.equal(config().maxDailyCostUsdPerRole.feature, 0.5);
+
   // `--min-run-interval <seconds>` writes roles.feature.minRunIntervalSeconds.
   r = await cli(repo, "role", "feature", "--min-run-interval", "300");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /feature: min run interval set to 300s/);
   assert.equal(config().roles.feature.minRunIntervalSeconds, 300);
+
+  // The same plain-decimal shorthand its editors admit (`05`) lands as the number, too.
+  r = await cli(repo, "role", "feature", "--min-run-interval", "05");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: min run interval set to 05s/);
+  assert.equal(config().roles.feature.minRunIntervalSeconds, 5);
 
   // An instance id targets its base role: feature-2 writes the .feature keys.
   const configured = readJson<TeamConfigFile>(path.join(repo, "tumwater.json"));
