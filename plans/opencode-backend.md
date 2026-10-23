@@ -546,7 +546,8 @@ through the backend's `imageInput` hook.
   (`opencode auth list --format json`).
 - The operator's global opencode config (`~/.config/opencode/{config.json,opencode.json,
   opencode.jsonc}`) or `~/.config/opencode/AGENTS.md`: any MCP server (disabled for team runs),
-  plugin, agent or instructions entry produces a warning naming what still leaks in.
+  plugin, agent or instructions entry produces a warning naming what still leaks in. tumwater's
+  own write-guard plugin, injected through `plugins` since 2026-10-23, is not the operator's.
 - A running background OpenCode service (`opencode service status`) is noted, since it is not the
   team's (finding 20).
 - Sizes: `.tumwater/opencode/opencode.db`, and the shell spill dir for this repo's root commit.

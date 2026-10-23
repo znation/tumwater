@@ -4547,3 +4547,11 @@ instead of skipping its re-review".
 **Binds.** `src/agent/claude/claude-args.ts` (`claudeArgs`, `HARNESS_CLAUDE_FLAGS`), `src/agent/claude/claude-write-guard.ts` (`writeGuardSettings`, `claudeWriteRefusal`) and `src/agent/claude/write-guard-hook.ts`.
 
 **Pinned by.** `test/write-guard.test.ts` — "claudeWriteRefusal refuses a stray Edit or Write and resolves relative paths from claude's cwd" and "the hook claude runs denies a stray write with the refusal as its reason and stays silent otherwise"; `test/claude-args.test.ts` — "claudeArgs builds the design's argv in order and pairs the prompt with stdin" and "claudeArgs rejects a passthrough arg that repeats a flag tumwater sets".
+
+### INV-CW3: every OpenCode run loads the write guard as a plugin that denies a stray edit
+
+**Guarantee.** `opencodeConfigContent` puts `writeGuardPluginEntry()` in the injected config's `plugins`: a `file://` URL of the directory holding the compiled `write-guard-plugin/index.js`, since OpenCode 2.x loads a configured plugin path only as a directory. The plugin's `setup` registers a permission `evaluate` hook for the run's `location.directory` and registers nothing when the context names none. The hook turns an `edit` decision whose resources include a path `strayWriteRefusal` refuses into `deny`, with that refusal as the `message`. It leaves every other decision alone, `external_directory` and `read` included.
+
+**Binds.** `src/agent/opencode/opencode-config.ts` (`opencodeConfigContent`, `writeGuardPluginEntry`) and `src/agent/opencode/write-guard-plugin/index.ts` (`guardEvaluate`, the default export's `setup`).
+
+**Pinned by.** `test/opencode-config.test.ts` — "opencodeConfigContent loads the write-guard plugin from a directory holding its compiled index.js"; `test/write-guard.test.ts` — "the opencode plugin denies an edit decision for a stray path and leaves every other decision alone".

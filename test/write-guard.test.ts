@@ -9,6 +9,7 @@ import path from "node:path";
 import { strayWriteRefusal } from "../src/agent/write-guard.js";
 import writeGuard, { guardToolCall } from "../src/pi-extension/write-guard.js";
 import { claudeWriteRefusal, writeGuardSettings } from "../src/agent/claude/claude-write-guard.js";
+import opencodeWriteGuard, { guardEvaluate } from "../src/agent/opencode/write-guard-plugin/index.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** A team root with its primary checkout's `src/a.ts`, the run's worktree `_slot-1` and another
@@ -139,4 +140,36 @@ test("the hook claude runs denies a stray write with the refusal as its reason a
   // shim does.
   const moved = runHook(writeGuardSettings(wt, path.join(tmpdir(), "gone", "node")), JSON.stringify({ tool_name: "Write", tool_input: { file_path: stray } }));
   assert.equal(JSON.parse(moved.stdout).hookSpecificOutput.permissionDecision, "deny");
+});
+
+test("the opencode plugin denies an edit decision for a stray path and leaves every other decision alone", async () => {
+  const { root, wt } = team();
+  const stray = path.join(root, "src", "a.ts");
+  let hook: ((event: Record<string, unknown>) => void) | undefined;
+  await opencodeWriteGuard.setup({
+    location: { directory: wt },
+    permission: {
+      hook(name, callback) {
+        assert.equal(name, "evaluate");
+        hook = callback as typeof hook;
+      },
+    },
+  });
+  assert.ok(hook);
+  const denied: Record<string, unknown> = { action: "edit", resources: [path.join(wt, "src", "a.ts"), stray], effect: "allow" };
+  hook(denied);
+  assert.deepEqual(denied, { action: "edit", resources: [path.join(wt, "src", "a.ts"), stray], effect: "deny", message: strayWriteRefusal(stray, wt) });
+  const inside = { action: "edit", resources: [path.join(wt, "src", "a.ts")], effect: "allow" };
+  hook(inside);
+  assert.equal(inside.effect, "allow");
+  // OpenCode also asks external_directory and read for paths outside the worktree; reads stay open.
+  for (const action of ["external_directory", "read"]) {
+    const other = { action, resources: [stray], effect: "allow" };
+    guardEvaluate(other, wt);
+    assert.equal(other.effect, "allow", action);
+  }
+  // A context with no directory registers nothing rather than guarding the wrong checkout.
+  let registered = false;
+  await opencodeWriteGuard.setup({ location: {}, permission: { hook: () => { registered = true; } } });
+  assert.equal(registered, false);
 });

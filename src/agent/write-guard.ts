@@ -1,6 +1,7 @@
 /** The write guard on a run's file-editing tools: pi's `edit`/`write` (src/pi-extension/
- * write-guard.ts) and claude's `Edit`/`Write` (src/agent/claude/write-guard-hook.ts) refuse a
- * write that would land under the team root but outside the run's own checkout.
+ * write-guard.ts), claude's `Edit`/`Write` (src/agent/claude/write-guard-hook.ts) and OpenCode's
+ * `edit` permission (src/agent/opencode/write-guard-plugin/index.ts) refuse a write that would
+ * land under the team root but outside the run's own checkout.
  *
  * Why a guard and not only the prompt rule: every run's checkout sits inside the primary checkout
  * (`<root>/.tumwater/worktrees/<name>`). An absolute path that drops that infix, or a relative one
@@ -12,7 +13,8 @@
  *
  * Writes outside the team root (scratch files under `$TMPDIR`, `/tmp`) are not this guard's
  * business and pass, as does every write from a run that is not in a team worktree. Bash is not
- * covered: a shell command's writes cannot be read from its text.
+ * covered: a shell command's writes cannot be read from its text. The codex backend is not
+ * covered yet.
  *
  * Pure apart from realpath lookups, so the rule is testable without pi or claude. */
 

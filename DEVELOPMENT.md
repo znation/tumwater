@@ -191,7 +191,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   strip-thinking (drops replayed thinking on a chat-completions model with a window of at most
   256k), trim-system-prompt (drops pi's docs section from the system prompt at a window of at
   most 128k), write-guard (refuses an edit or write outside the run's worktree; the rule is
-  `src/agent/write-guard.ts`, which claude's PreToolUse hook shares). bounded-output's caps and
+  `src/agent/write-guard.ts`, which claude's PreToolUse hook and OpenCode's plugin share). bounded-output's caps and
   context-shake's thresholds were tuned on a 128k window and scale down on a smaller declared
   window, through the shared arithmetic in `context-window.ts`.
 - `src/gui/`: the `tumwater gui` command and the dashboard's HTTP transport — the CLI entry

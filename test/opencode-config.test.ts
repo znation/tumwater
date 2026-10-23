@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { opencodeConfigContent, operatorMcpNames, type OpencodeConfigOptions } from "../src/agent/opencode/opencode-config.js";
+import { fileURLToPath } from "node:url";
+import { opencodeConfigContent, operatorMcpNames, writeGuardPluginEntry, type OpencodeConfigOptions } from "../src/agent/opencode/opencode-config.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 function opts(overrides: Partial<OpencodeConfigOptions> = {}): OpencodeConfigOptions {
@@ -29,6 +30,15 @@ test("opencodeConfigContent parses back with snapshots off, update disabled, the
   assert.ok(!permissions.some((p) => p.action === "read"), "read is never denied (finding 11)");
   assert.ok(!("tools" in parsed) && !("permission" in parsed), "only the gate-safe denials are set");
   assert.ok(!("mcp" in parsed), "no mcp key without operator servers");
+});
+
+test("opencodeConfigContent loads the write-guard plugin from a directory holding its compiled index.js", () => {
+  const parsed = JSON.parse(opencodeConfigContent(opts())) as { plugins: string[] };
+  assert.deepEqual(parsed.plugins, [writeGuardPluginEntry()]);
+  // OpenCode 2.x refuses a configured plugin path that is not a directory.
+  const dir = fileURLToPath(parsed.plugins[0]!);
+  assert.ok(fs.statSync(dir).isDirectory(), dir);
+  assert.ok(fs.existsSync(path.join(dir, "index.js")), "the compiled plugin sits in that directory");
 });
 
 test("opencodeConfigContent writes tool_output only when toolOutput is given (part 6f/7)", () => {

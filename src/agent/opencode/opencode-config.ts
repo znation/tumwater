@@ -3,9 +3,10 @@
  * applies after the operator's global and project files, so only managed config wins over it:
  * the gate-safe isolation switches (snapshots off, updates off, six denials), `enabled →
  * disabled: true` for every operator MCP server (config merges, so disabling is the only way
- * to remove one), and an `instructions` entry mirroring claude's AGENTS.md handling. No
- * tool is disabled beyond the six gate-safe denials — denying `read` trips the free-tier gate
- * (finding 11). Part 5/7 wires this string into the run's environment.
+ * to remove one), an `instructions` entry mirroring claude's AGENTS.md handling, and tumwater's
+ * write-guard plugin (write-guard-plugin/index.ts), which refuses a write outside the run's
+ * worktree. No tool is disabled beyond the six gate-safe denials — denying `read` trips the
+ * free-tier gate (finding 11). Part 5/7 wires this string into the run's environment.
  *
  * From part 3/4 tumwater no longer adds an MCP server of its own: run notes ride the
  * `tumwater-notes` command on PATH, so every operator MCP server is disabled alike — an
@@ -17,6 +18,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { readTextOrNull } from "../../files/files.js";
 import { isJsonObject } from "../../files/json-object.js";
 
@@ -184,6 +186,14 @@ export interface OpencodeConfigOptions {
   toolOutput?: { maxLines: number; maxBytes: number };
 }
 
+/** The write-guard plugin's `plugins` entry: a `file://` URL of the directory holding its
+ * compiled `index.js`, since OpenCode 2.x loads a configured plugin path only as a directory.
+ * Resolved from this module, so a staged build (.tumwater/build/<sha>) loads its own copy. */
+export function writeGuardPluginEntry(): string {
+  const entry = fileURLToPath(new URL("./write-guard-plugin/index.js", import.meta.url));
+  return pathToFileURL(path.dirname(entry)).href;
+}
+
 /** Build the injected opencode config JSON string. Never reads the worktree beyond the
  * CLAUDE.md/AGENTS.md probe. */
 export function opencodeConfigContent(opts: OpencodeConfigOptions): string {
@@ -191,6 +201,7 @@ export function opencodeConfigContent(opts: OpencodeConfigOptions): string {
     snapshots: boolean;
     update: string;
     permissions: readonly { action: string; resource: string; effect: string }[];
+    plugins: string[];
     mcp?: { servers: Record<string, McpServer> };
     instructions?: string[];
     tool_output?: { max_lines: number; max_bytes: number };
@@ -198,6 +209,7 @@ export function opencodeConfigContent(opts: OpencodeConfigOptions): string {
     snapshots: false,
     update: "disable",
     permissions: DENIED_PERMISSIONS,
+    plugins: [writeGuardPluginEntry()],
   };
   if (opts.toolOutput !== undefined) {
     config.tool_output = { max_lines: opts.toolOutput.maxLines, max_bytes: opts.toolOutput.maxBytes };
