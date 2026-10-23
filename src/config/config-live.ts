@@ -120,20 +120,19 @@ export function newLiveConfigReload(deps: {
         // api answer (codex-account.ts) so the operator's `codex login --device-auth` remedy
         // clears it at the next seed. A subscription codex passes through to the backend loop.
         const prevBackends = new Set(backendsInUse(prevLive));
-        if (!prevBackends.has("codex") && backendsInUse(nextConfig).includes("codex")) {
-          if (!liveCodexSeedAttempted.has(deps.root)) {
-            liveCodexSeedAttempted.add(deps.root);
-            seedCodexAccount(deps.root, nextConfig);
-          }
-          if (readCodexAccount(deps.root)?.billing === "api") {
-            if (!codexLiveRefused) {
-              codexLiveRefused = true;
-              warn(
-                "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
-              );
-            }
-            return prevLive;
-          }
+        const newlyRoutedCodex =
+          !prevBackends.has("codex") && backendsInUse(nextConfig).includes("codex");
+        if (newlyRoutedCodex && !liveCodexSeedAttempted.has(deps.root)) {
+          liveCodexSeedAttempted.add(deps.root);
+          seedCodexAccount(deps.root, nextConfig);
+        }
+        if (newlyRoutedCodex && readCodexAccount(deps.root)?.billing === "api") {
+          if (codexLiveRefused) return prevLive;
+          codexLiveRefused = true;
+          warn(
+            "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+          );
+          return prevLive;
         }
         // A poll that did not refuse clears the warn-once marker so a later re-entry into the
         // refusal (the operator reverts, then re-adds the API-billed codex seam) warns again.
