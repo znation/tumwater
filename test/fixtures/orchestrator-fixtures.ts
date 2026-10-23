@@ -83,6 +83,14 @@ export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   // Most of these e2e tests drive a role through a pre-merge review (a reviewer run holds the
   // merge in flight), which afterMerge would skip — so opt every role back into pre-merge review.
   c.review = { ...c.review, afterMerge: [] };
+  // The disk floor reads the host's real free space (sampleFreeBytes), and the defaults
+  // (10 GB hold, 40 GB reclaim) would hold every role run on a hosted runner with little
+  // disk — the fixed 30 s/60 s waits below then time out and the 30-minute suite ceiling
+  // kills the run (CI's ubuntu-26.04 image, 2026-10-22). These e2e repos are not about the
+  // disk gate; the disk tests inject their samples. 0 disables the hold, and the reclaim
+  // check only warns when reclaimGB > 0, so both off leaves the gate host-independent.
+  c.diskHoldGB = 0;
+  c.diskReclaimGB = 0;
   c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
   for (const id of Object.keys(c.roles)) {
     c.roles[id]!.enabled = roles.includes(id);

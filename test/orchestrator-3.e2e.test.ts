@@ -367,6 +367,10 @@ test("an abort request kills an in-flight run, consumes its marker, and logs one
   const cfg = defaultConfig();
   cfg.minRunIntervalSeconds = 0;
   cfg.idleBackoff = { initialSeconds: 30, factor: 1, maxSeconds: 30 };
+  // Both disk thresholds off (fastConfig's rule): the disk floor reads the host's real
+  // free space, and a hosted runner under the 10 GB default would hold clean's runs.
+  cfg.diskHoldGB = 0;
+  cfg.diskReclaimGB = 0;
   for (const id of Object.keys(cfg.roles)) cfg.roles[id]!.enabled = id === "clean";
   saveConfig(repo, cfg);
   // A slow fake pi: writes a half-done edit then hangs until killed — the run is in flight

@@ -11,7 +11,7 @@ import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
 import { setConfigKey } from "../src/config/config-write.js";
-import { defaultConfig, saveConfig } from "../src/config/config.js";
+import { loadConfig, saveConfig } from "../src/config/config.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledRun, makeFastRepo, startIdleOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
@@ -32,7 +32,11 @@ test("quiet hours block role runs while the director runs; emptying the window u
   const repo = await makeFastRepo("quiet hours e2e test", ["clean", "director"]);
   // The quiet window is on disk before the orchestrator starts, so the very first poll is
   // already inside it — no startup run for roles, one started event on that first poll.
-  saveConfig(repo, { ...defaultConfig(), quietHours: quietWindowAroundNow() });
+  // defaultConfig's disk floor is re-disabled: makeFastRepo's fastConfig already turned
+  // both thresholds off, and spreading defaultConfig() here (for the quiet window) would
+  // silently re-enable them — a hosted runner under the 10 GB floor would hold clean
+  // alongside the quiet window and muddy the gate's own events.
+  saveConfig(repo, { ...loadConfig(repo), quietHours: quietWindowAroundNow() });
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // The gate sits before eligibility: the entry event arrives on the first poll, and the
