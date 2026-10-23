@@ -287,22 +287,37 @@ export function teamAlerts(
   }
   if (snap.build?.stale) {
     const behind = plural(snap.build.aheadCommits ?? 0, "commit");
+    // The cooldown scopes the deferral to the redeploy, not the team (PLANS.md 2026-10-23): a
+    // restart held by the cooldown leaves the roles running on the stale build, so its alert
+    // reads blue "work continues" with the deadline, while a genuinely blocked restart (red main,
+    // a failed build, a boot refusal) stays the amber "restart blocked", and the momentary drain
+    // of an in-flight restart — the one stale state that actually holds new runs and merges —
+    // keeps the plain wording.
+    const deferred = snap.build.restartBlocked?.startsWith("cooldown until ");
     out.push(
-      snap.build.restartBlocked
+      deferred
         ? {
             key: "build",
-            tone: "amber",
-            title: `Update available (${behind} behind) — restart blocked`,
-            detail: localizeInstants(snap.build.restartBlocked),
+            tone: "blue",
+            title: `Update available (${behind} behind) — restarts after cooldown; work continues`,
+            detail: `Work continues on the running build; the restart lands when the cooldown lapses or you force it (${localizeInstants(snap.build.restartBlocked ?? "")}).`,
             actions: [],
           }
-        : {
-            key: "build",
-            tone: "blue",
-            title: `Update available (${behind} behind)${snap.build.restartPending ? " — restarts when idle" : ""}`,
-            detail: snap.build.restartPending ? "The team restarts onto it once running work finishes." : "Restart tumwater start to pick it up.",
-            actions: [],
-          },
+        : snap.build.restartBlocked
+          ? {
+              key: "build",
+              tone: "amber",
+              title: `Update available (${behind} behind) — restart blocked`,
+              detail: localizeInstants(snap.build.restartBlocked),
+              actions: [],
+            }
+          : {
+              key: "build",
+              tone: "blue",
+              title: `Update available (${behind} behind)${snap.build.restartPending ? " — restarts when idle" : ""}`,
+              detail: snap.build.restartPending ? "The team restarts onto it once running work finishes." : "Restart tumwater start to pick it up.",
+              actions: [],
+            },
     );
   }
   if (questions.length) {

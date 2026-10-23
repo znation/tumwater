@@ -573,7 +573,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Self-hosting teams only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
       // it.
-      return `update available (${plural(finiteNumber(e.aheadCommits, 0), "commit")} behind) — restarts when idle`;
+      return `update available (${plural(finiteNumber(e.aheadCommits, 0), "commit")} behind) — restarts after cooldown; work continues`;
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
     case "restart": {

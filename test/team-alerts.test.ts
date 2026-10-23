@@ -161,16 +161,25 @@ test("role trouble, a stale build, questions, and a pause, most urgent first", (
   // "no agent output for 6m00s" phrase already carries its duration, so it does not double even
   // with a stuckMs present.
   assert.equal(by.stuck?.detail, "feature: tool call stalled: bash for 12m00s · docs: no agent output for 6m00s");
-  assert.equal(by.build?.tone, "amber");
-  assert.equal(by.build?.title, "Update available (3 commits behind) — restart blocked");
+  assert.equal(by.build?.tone, "blue");
+  assert.equal(by.build?.title, "Update available (3 commits behind) — restarts after cooldown; work continues");
+  assert.match(by.build?.detail ?? "", /Work continues on the running build; the restart lands when the cooldown lapses or you force it \(cooldown until /, "a cooldown deferral reads work-continues with its deadline");
   assert.doesNotMatch(by.build?.detail ?? "", /T10:00:54/, "ISO instants read in local time");
   assert.equal(by.questions?.title, "2 questions need your answer");
   assert.equal(by.questions?.detail, "Q1: which database? — and 1 more", "a question's date note is metadata, not the question");
   assert.equal(by.paused?.title, "The team is paused and resumes in 12m");
-  assert.equal(alerts.filter(alertNeedsYou).length, 6);
-  // A build that is only behind (the restart will happen on its own) informs.
-  const pending = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartPending: true } }, [], [], now);
-  assert.deepEqual(pending.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "Update available (1 commit behind) — restarts when idle"]]);
+  // A cooldown-deferred restart is informational (blue, no action): work continues, so it no
+  // longer counts as needing the operator — the red/amber/indigo count drops to 5.
+  assert.equal(alerts.filter(alertNeedsYou).length, 5);
+  // A cooldown-deferred restart is the plan's whole point: the redeploy waits, the team does
+  // not — blue "work continues" with the deadline, not the amber "restart blocked" of a real
+  // block (PLANS.md 2026-10-23).
+  const deferred = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartBlocked: "cooldown until 2026-10-23T13:04:00.000Z" } }, [], [], now);
+  assert.deepEqual(deferred.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "Update available (1 commit behind) — restarts after cooldown; work continues"]]);
+  // The in-flight drain that precedes the swap is the one stale state that actually holds new
+  // work, so it keeps the plain wording rather than claiming work continues.
+  const draining = teamAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartPending: true } }, [], [], now);
+  assert.deepEqual(draining.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "Update available (1 commit behind) — restarts when idle"]]);
   // A standing pause has no countdown; an expired deadline is not claimed.
   assert.equal(teamAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The team is paused");
   assert.equal(teamAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The team is paused");

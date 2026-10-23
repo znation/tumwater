@@ -153,6 +153,11 @@ test("the header names the running build and flags a stale one", () => {
   // never will until main moves, and only the second one needs an operator (BUGS.md).
   const pending = { ...stale.build, restartPending: true };
   assert.match(buildBadge(pending), /update available \(7 commits behind\) — restarts when idle$/);
+  // A cooldown-deferred restart is the plan's whole point: the redeploy waits, the team does
+  // not — the badge says "work continues" and keeps the deadline, while a genuinely blocked
+  // restart (red main here) keeps the plain wording (PLANS.md 2026-10-23).
+  const deferred = { ...stale.build, restartBlocked: "cooldown until 2026-10-23T13:04:00.000Z" };
+  assert.match(buildBadge(deferred), /update available \(7 commits behind\) — restarts after cooldown; work continues \(cooldown until 2026-10-23T13:04:00.000Z\)$/);
   const blocked = { ...stale.build, restartBlocked: "main cccccccc is red" };
   assert.match(buildBadge(blocked), /behind\); restart blocked: main cccccccc is red$/);
   assert.equal(buildBadge(stale.build), ", build aaaaaaaa — update available (7 commits behind)", "silent when neither");

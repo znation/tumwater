@@ -76,20 +76,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### Cooldown scope: A pending stale-build restart holds the redeploy, not the team (planned 2026-10-23 by user; design in plans/cooldown-scope.md "The decision"; evidence: the live instance paused 2026-10-23T09:51Z with all 30 roles stopped and auto-restart blocked by the cooldown until 13:04Z — 3 h 13 m of full stop over a stale build 15 commits ahead; the team pause and the error-streak breaker are deliberately out of scope (a pause is the operator's explicit command; the streak breaker already pauses only the failing role); touches src/redeploy/redeploy-policy.ts src/redeploy/redeployer.ts src/orchestrator/orchestrator-scheduling.ts and their tests)
-
-**Goal.** The restart cooldown is a rate limit against restart storms, and it should limit restarts — not hold every role's runs and merges while it runs. A team whose build is merely stale (the common case: work landed, build didn't move) keeps working; the redeploy happens when its cooldown lapses or the operator forces it (the dashboard's restart button and `tumwater restart` already waive it — the escape hatch exists).
-
-**Approach.**
-- src/redeploy/redeploy-policy.ts / redeployer.ts: the cooldown's deferral stops feeding the `holdForRestart` reason that orchestrator-scheduling reads to hold all new runs and merges; only the redeploy itself waits. The drain that precedes any actual swap, the red-running-build urgency carve-out (BUGS.md 2026-09-30), and the swap's own safety conditions (green check on the new head, a successful compile, in-flight runs finishing) are unchanged.
-- The build-stale alert's text updates: "restarting when idle" becomes "restarting after cooldown; work continues" — the operator's mental model of what a stale build costs changes from "the team stops" to "the team runs yesterday's code until the swap".
-- docs/how-it-works.md's redeploy section states the narrowed scope; docs/glossary.md's `update available` row gains "work continues while the restart waits".
-
-**Acceptance criteria.**
-- A test with a pending restart inside its cooldown: new runs start and merges proceed on the running build; the restart itself fires at the cooldown's lapse or on `restart_forced`, with the drain as today.
-- The red-running-build carve-out still cuts the cooldown and the swap's preconditions still block a bad swap (existing tests untouched).
-- `npm run test:gate` passes.
-
 ### Backlog hold convergence: A needs-review/needs-replan entry that ping-pongs blocks its entry for the operator after three holds (planned 2026-10-23 by user; from the flow audit — feature↔plan is a genuine role-to-role loop with no convergence backstop: feature's `Needs review` note holds the entry until plan splits it, feature can mark it again, and nothing bounds the cycle; the reviewer's reject→revise loop got REVISION_BACKSTOP and REVISION_FINAL_ON_REPEAT (plans/revise-rejected.md), this loop got nothing; touches src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/doctor/doctor-backlog-bugs.ts and their tests)
 
 **Goal.** The `needs-review`/`needs-replan` hold (feature's note that a plan is too large for one run, or must be rewritten) is a hand-off to the plan role, and the plan role's split or rewrite is the lift. The cycle has no backstop: a plan that feature keeps marking and plan keeps splitting unproductively ties up both roles' attention and the entry, invisibly — unlike a rejected change, which visibly exhausts its revision cap. Give it the same convergence the reject loop got: after the third consecutive hold on one entry, the entry blocks for the operator with the history of holds.

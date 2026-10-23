@@ -588,7 +588,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   const stale = formatEvent({
     ts: 0, source: "tumwater", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: 12,
   } as never);
-  assert.match(stale, /update available \(12 commits behind\) — restarts when idle/);
+  assert.match(stale, /update available \(12 commits behind\) — restarts after cooldown; work continues/);
   assert.doesNotMatch(stale, /warning/, "staleness is a state, not a warning");
 
   const pending = formatEvent({ ts: 0, source: "tumwater", type: "restart_pending", head: "b".repeat(40) } as never);

@@ -401,7 +401,10 @@ the running build and shows `Update available`. With `autoRestart` (default true
 main's check passes, compiles it, finishes in-flight runs, swaps the new build into `dist/`, and
 restarts, at most once every 4 hours. The commit it builds is main's newest one whose full check
 passed and that is newer than the running build, so a red tip does not stall an update that an older
-green commit allows. A failing check on main (with no green commit newer than the running build) or a failed compile keeps the old
+green commit allows. The restart cooldown is a rate limit against restart storms, not a work stop:
+while a restart merely waits out its cooldown, the team keeps authoring and merging on the running
+build (it has been executing that build all along), and only the redeploy itself — the drain and the
+swap — waits. A failing check on main (with no green commit newer than the running build) or a failed compile keeps the old
 build running and shows `restart BLOCKED`, with the reason. You do not have to wait out the
 4-hour clock: the dashboard's update alert has a refresh button that waives the cooldown
 and starts the pending update immediately — every other gate (a passing check on main, a

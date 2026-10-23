@@ -21,15 +21,20 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 /** The header's build fragment: which commit the running harness was compiled from and, when
  * main's build inputs have moved past it, how far — the team is then executing code main no
  * longer describes (auto-restart lands the new build; off, restart `tumwater run` by hand).
- * A stale build also says what auto-restart is doing about it: `restart pending` resolves
- * itself, `restart BLOCKED` never will until main moves, and telling them apart at a glance is
- * the whole point (see BuildStatus.restartBlocked). Empty when the dist carries no stamp.
- * Shared by the TUI/status header and the GUI's. */
+ * A stale build also says what auto-restart is doing about it: a cooldown-deferred restart
+ * (the reason literally opens with "cooldown until …") scopes the wait to the redeploy — the
+ * team keeps running the stale build, so the badge reads "work continues" and keeps the
+ * deadline; `restart pending` (the drain that precedes the swap, which actually holds new runs
+ * and merges) resolves itself; `restart BLOCKED` never will until main moves. Telling them apart
+ * at a glance is the whole point (see BuildStatus.restartBlocked). Empty when the dist carries
+ * no stamp. Shared by the TUI/status header and the GUI's. */
 export function buildBadge(build: StatusSnapshot["build"]): string {
   if (!build) return "";
   const stale = build.stale ? ` — update available (${plural(build.aheadCommits ?? 0, "commit")} behind)` : "";
   const restart = build.restartBlocked
-    ? `; restart blocked: ${build.restartBlocked}`
+    ? build.restartBlocked.startsWith("cooldown until ")
+      ? ` — restarts after cooldown; work continues (${build.restartBlocked})`
+      : `; restart blocked: ${build.restartBlocked}`
     : build.restartPending
       ? " — restarts when idle"
       : "";

@@ -24,7 +24,7 @@ current one, so history, old logs and old scripts stay readable.
 | notes | A role's own scratch file that carries over between runs. | notebook |
 | inbox | Messages waiting for a role's next run (`tumwater prompt`). | queued prompts, "Queued" tab |
 | check | The project's declared check (`check.command`). | main check, build check, gate check, baseline check, project check, suite |
-| update | tumwater's own newer build, restarted onto when idle. | stale build, self-redeploy, generation |
+| update | tumwater's own newer build, restarted onto after the cooldown; work continues on the current build meanwhile. | stale build, self-redeploy, generation |
 
 ## Status words
 
@@ -39,7 +39,7 @@ current one, so history, old logs and old scripts stay readable.
 | sleeping | A role is between runs ("sleeping — next check in 12m"). "Wake sleeping roles" ends the sleep. |
 | stalled | A run was stopped for producing nothing ("Stalled, resumed"). |
 | paused | Only a pause you set. |
-| update available | A newer tumwater build exists ("Update available (3 commits behind) — restarts when idle"). |
+| update available | A newer tumwater build exists ("Update available (3 commits behind)"); work continues while the restart waits. |
 | restart N | How many times tumwater has restarted onto an update. |
 | priority | Which kind of work a role does first, for example "Priority: work". |
 | over-cap model | The model a role falls back to when its budget cap is spent. |
@@ -110,7 +110,7 @@ Identifiers follow the glossary: fleet → team, loop → runner, tick → run, 
 | disk, bootstrap, maintenance, 429, backend, claude-window hold | waiting ("waiting: low disk") | n/a (prose) |
 | "paused" (for any hold) | paused only for a pause you set | n/a (prose) |
 | "main is red", "main red" | main's check is failing | n/a (prose) |
-| "Build abc · 3 behind", STALE, "self-redeploys", "generation N" | Update available (3 commits behind) — restarts when idle; restart N | n/a (prose) |
+| "Build abc · 3 behind", STALE, "self-redeploys", "generation N" | Update available (3 commits behind) — restarts after cooldown; work continues; restart N | n/a (prose) |
 | "build" (for tumwater's own build) | update; "build" means only the project's build outputs | n/a (prose) |
 | "Scheduling tier: 0 (work)" | Priority: work | n/a (prose) |
 | status table column `gen` | output | n/a (prose) |

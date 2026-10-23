@@ -184,7 +184,11 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "build_stale":
-      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restarts when idle`;
+      // The digest's 72-char line cap (§ STATE_CHANGE_MAX) cannot hold the full alert phrase
+      // "restarts after cooldown; work continues" beside the ahead-count prefix, so it says
+      // the same thing compactly: the restart waits while work continues (cooldown scope,
+      // PLANS.md 2026-10-23).
+      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restart waits; work continues`;
       break;
     case "restart_pending":
       text = `restart pending — main ${shortSha(ev.head)} green`;
