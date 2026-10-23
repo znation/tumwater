@@ -57,3 +57,24 @@ export function renderQuarantine(rows: readonly QuarantineRow[], now: number): s
   }
   return lines.join("\n");
 }
+
+/** The Markdown section the Failures surfaces (the dashboard's Failures view and the TUI's
+ * Failures pane) append below the failure digest — the read twin of the amber quarantine
+ * alert, whose `See failures` action lands there. It reads the same `quarantineRows` rule as
+ * `tumwater quarantine` (and shares its `quarantineWarning` phrase when one fires), so the CLI
+ * and the always-on surfaces cannot disagree. Empty for an empty list, so a window with a
+ * digest but a clean quarantine adds nothing. Pure over its inputs (no I/O, no clock). */
+export function renderQuarantineSection(rows: readonly QuarantineRow[], now: number): string {
+  if (rows.length === 0) return "";
+  const lines = ["## Flake quarantine", ""];
+  const warning = quarantineWarning(rows, now);
+  if (warning !== null) lines.push(warning, "");
+  for (const r of rows) {
+    const filed = r.bug ? `filed: ${squash(r.bug, 80)}` : "not filed";
+    lines.push(
+      `- ${squash(r.test, 80)} — first seen ${humanAgo(r.firstSeen, now)}, ` +
+        `last seen ${humanAgo(r.lastSeen, now)}, ${plural(r.count, "flake")} — ${filed}`,
+    );
+  }
+  return lines.join("\n");
+}

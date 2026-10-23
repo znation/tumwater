@@ -10,6 +10,8 @@ import { initProject } from "../src/init/init.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { runTui } from "../src/ui/tui/tui.js";
 import { formatDate } from "../src/text/datetime.js";
+import { quarantinePath } from "../src/paths.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { atLocalTs as atNoon } from "./helpers/oracles.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { CLI, cli } from "./helpers/cli-harness.js";
@@ -982,4 +984,30 @@ test("tui exits 0 after its quit key: main()'s tui case returns once the TUI end
       }
     }
   }
+});
+
+test("the Failures pane lists the flake quarantine below the digest and omits it when clean", async () => {
+  const repo = await makeTuiRepo();
+  // A clean repo (no quarantine file) shows no quarantine on the Failures pane.
+  await withTui(repo, async (tui) => {
+    for (let i = 0; i < 4; i++) tui.key(undefined, "t", { ctrl: true }); // → … → Usage → Failures
+    let frame = tui.lastFrame();
+    assert.match(frame, /\[Failures\]/);
+    assert.doesNotMatch(frame, /## Flake quarantine/);
+  });
+  // Seed one quarantined test: the Failures frame lists it under the quarantine heading.
+  const now = Date.now();
+  writeFileDeep(
+    quarantinePath(repo),
+    JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "" }] }),
+  );
+  await withTui(repo, async (tui) => {
+    for (let i = 0; i < 4; i++) tui.key(undefined, "t", { ctrl: true });
+    // The quarantine sits below the digest at the pane's tail; page down to it.
+    for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
+    const frame = tui.lastFrame();
+    assert.match(frame, /\[Failures\]/);
+    assert.match(frame, /## Flake quarantine/);
+    assert.match(frame, /test\/T\.ts/);
+  });
 });

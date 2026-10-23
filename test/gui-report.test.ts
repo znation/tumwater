@@ -6,7 +6,7 @@ import { collectReport } from "../src/report/report-data.js";
 import type { ReportData, ReportDay } from "../src/report/report-types.js";
 import { collectFailureReport } from "../src/failure/failure-data.js";
 import { renderFailureMarkdown } from "../src/failure/failure-render.js";
-import { eventsLogPath } from "../src/paths.js";
+import { eventsLogPath, quarantinePath } from "../src/paths.js";
 import { REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { compactTokens } from "../src/text/format.js";
 import { initProject } from "../src/init/init.js";
@@ -14,6 +14,7 @@ import { atLocalTs as atNoon, dayKey } from "./helpers/oracles.js";
 import { withGui } from "./fixtures/gui-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { clientScope, clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_REPORT_CHART_JS } from "../src/ui/gui/gui-client-report-chart.js";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
@@ -140,6 +141,29 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
     const dd = (await r.json()) as { markdown: string };
     assert.equal(dd.markdown, renderFailureMarkdown(collectFailureReport(repo, expected)), `${q} → ${expected}`);
   }
+  });
+});
+
+test("gui /api/failures carries the current flake-quarantine section", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "failures quarantine api test");
+  await withGui(repo, async ({ base }) => {
+    // A fresh repo has no quarantine file → the field is "".
+    const clean = (await (await fetch(base + "/api/failures")).json()) as { quarantine: string; markdown: string };
+    assert.equal(clean.quarantine, "");
+    // Seed one quarantined test old enough for the warning to fire: the section names it.
+    const now = Date.now();
+    writeFileDeep(
+      quarantinePath(repo),
+      JSON.stringify({ tests: [{ test: "test/T.ts", firstSeen: now - 5 * 86_400_000, lastSeen: now, count: 2, bug: "" }] }),
+    );
+    const res = await fetch(base + "/api/failures");
+    assert.equal(res.status, 200);
+    const d = (await res.json()) as { quarantine: string; markdown: string };
+    assert.match(d.quarantine, /^## Flake quarantine\n/);
+    assert.match(d.quarantine, /test\/T\.ts/);
+    // The digest's markdown is byte-identical for the same query.
+    assert.equal(d.markdown, renderFailureMarkdown(collectFailureReport(repo, 14)));
   });
 });
 

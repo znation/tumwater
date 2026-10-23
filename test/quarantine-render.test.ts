@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { quarantineRows, renderQuarantine } from "../src/review/quarantine-render.js";
+import { quarantineRows, renderQuarantine, renderQuarantineSection } from "../src/review/quarantine-render.js";
 import { QUARANTINE_AGE_MS, QUARANTINE_WARN_COUNT } from "../src/baseline/main-guardrails.js";
 import type { QuarantineEntry } from "../src/review/known-flakes.js";
 
@@ -85,4 +85,21 @@ test("renderQuarantine appends the doctor's warning phrase for an old entry and 
     const lines = renderQuarantine(rows, now).split("\n");
     assert.equal(lines.length, 2, "no warning line for a fresh, quiet list");
   }
+});
+
+test("renderQuarantineSection is empty for an empty list and a Markdown section otherwise", () => {
+  assert.equal(renderQuarantineSection([], now), "");
+  // One old enough for quarantineWarning to fire, one fresh; the first names its test, ages,
+  // flake count and "not filed", the second ends "filed: …".
+  const rows = quarantineRows([
+    entry({ test: "test/not-filed.test.ts", firstSeen: now - QUARANTINE_AGE_MS - 1, lastSeen: now - 3_600_000, count: 2, bug: "" }),
+    entry({ test: "test/filed.test.ts", firstSeen: now - 3_600_000, lastSeen: now, count: 1, bug: "A filed flake" }),
+  ]);
+  const text = renderQuarantineSection(rows, now);
+  assert.match(text, /^## Flake quarantine\n/);
+  assert.match(text, /quarantine holds 1 test over 3 days:/, "the shared warning phrase appears when it fires");
+  const bullets = text.split("\n").filter((l) => l.startsWith("- "));
+  assert.equal(bullets.length, 2, "exactly two bullets");
+  assert.match(bullets[0]!, /^- test\/not-filed\.test\.ts — first seen 3d ago, last seen 1h ago, 2 flakes — not filed$/);
+  assert.match(bullets[1]!, /^- test\/filed\.test\.ts — first seen 1h ago, last seen 0s ago, 1 flake — filed: A filed flake$/);
 });

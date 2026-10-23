@@ -8,7 +8,9 @@
  * --since`), so the day and sub-day shapes read through the same collectors and renders as the
  * CLI; the since shape draws the returned Markdown instead of the charts. Failures renders
  * the failure digest (/api/failures, the Markdown `tumwater report --failures` prints) through
- * the page's Markdown renderer, over the same kind of window and Role pickers. Both fetch when
+ * the page's Markdown renderer, over the same kind of window and Role pickers. The Failures view
+ * also paints the current flake quarantine below the digest, the read twin of the amber quarantine
+ * alert. Both fetch when
  * their view opens, on Refresh, and — Usage only, throttled — when new events arrive while it
  * is open. On a trailing window, ◀ Earlier / Later ▶ step it back by its own length through
  * `?sinceMs=&untilMs=`, the twin of `report --since --until`. The chart builders are pure and
@@ -346,6 +348,17 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     },
   });
 
+  // report-quarantine:start
+  // The Failures view's flake-quarantine list, painted as its own card below the digest: the
+  // read twin of the amber quarantine alert (whose See-failures action lands here). An empty
+  // or absent section (a clean quarantine) renders nothing, so a window with a digest but no
+  // quarantine is unchanged. Built over the same renderQuarantineSection the server serves.
+  function quarantineCardHtml(md) {
+    const q = String(md || "").trim();
+    return q ? "<article class='card md'>" + renderMarkdown(q, true) + "</article>" : "";
+  }
+  // report-quarantine:end
+
   const failures = windowView({
     panelId: "failures", title: "Failures", bodyId: "failbody",
     blurb: "What went wrong, where, and how often — the digest the selfcheck role reads.",
@@ -357,9 +370,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
     render: (d) => {
       // The view head already titles the page, so the digest's own "# …" heading is dropped.
       const md = String(d.markdown || "").replace(/^# .*\n+/, "");
-      return md.trim()
+      const digest = md.trim()
         ? "<article class='card md'>" + renderMarkdown(md, true) + "</article>"
         : "<div class='card empty'><strong>No failure digest</strong>Nothing has been recorded in this window.</div>";
+      return digest + quarantineCardHtml(d.quarantine);
     },
   });
 

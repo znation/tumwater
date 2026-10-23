@@ -1178,3 +1178,19 @@ test("the Usage render chain gates the Deferred runs by reason chart after Runs 
   // Exactly one such gated term (the chain term carries its caption as a third argument).
   assert.equal((chain.match(/block\("Deferred runs by reason", chartDeferredByReason\(d\), "per day · backlog, no-work, plans-full"\)/g) || []).length, 1);
 });
+
+test("quarantineCardHtml wraps non-empty Flake quarantine Markdown in a card and returns empty for none", () => {
+  // The Failures view paints the server-served quarantine section as a card below the digest;
+  // the region is reached through the page's renderMarkdown like the digest card itself.
+  const { quarantineCardHtml } = clientScope<{ quarantineCardHtml(md?: unknown): string }>(
+    ["report-quarantine"],
+    ["quarantineCardHtml"],
+    { renderMarkdown: (md: string) => "<mark>" + md + "</mark>" },
+  );
+  assert.equal(
+    quarantineCardHtml("## Flake quarantine\n- test/T.ts"),
+    "<article class='card md'><mark>## Flake quarantine\n- test/T.ts</mark></article>",
+  );
+  assert.equal(quarantineCardHtml(""), "");
+  assert.equal(quarantineCardHtml(undefined), "");
+});

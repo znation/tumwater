@@ -9,6 +9,8 @@ import { collectReport, collectReportSince } from "../report/report-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
+import { loadQuarantine } from "../review/known-flakes.js";
+import { quarantineRows, renderQuarantineSection } from "../review/quarantine-render.js";
 import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { roleListQuery, sinceMsQuery, untilMsQuery, windowDays } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -68,7 +70,11 @@ export function handleReport(q: URLSearchParams, res: http.ServerResponse, root:
  * same bounded Markdown failure digest the selfcheck role feeds on and `tumwater report
  * --failures` prints, as JSON ({ markdown }) — the dashboard's failures tab renders it; with
  * sinceMs it is the trailing-window digest (collectFailureReportSince) through the same render,
- * the CLI's `report --failures --since` shape. The days window follows windowDays (so it can
+ * the CLI's `report --failures --since` shape. The response also carries `quarantine`, the
+ * Markdown section (renderQuarantineSection over the current loadQuarantine list, an empty
+ * string when it is empty) the Failures view paints below the digest — the read twin of the
+ * amber quarantine alert, current rather than window- or role-scoped. The digest's `markdown`
+ * is unchanged. The days window follows windowDays (so it can
  * never drift from /api/report's). role rides the same rule as
  * handleReport: absent → the team digest, present → the validated listed roles, summed. Reads files
  * directly, so it works with no team running. */
@@ -77,9 +83,10 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
   if (scope === null) return;
   const untilMs = untilMsQuery(q, res, scope.sinceMs);
   if (untilMs === null) return;
+  const quarantine = renderQuarantineSection(quarantineRows(loadQuarantine(root)), Date.now());
   if (scope.sinceMs !== undefined) {
-    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.roles, untilMs)) });
+    sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReportSince(root, scope.sinceMs, scope.roles, untilMs)), quarantine });
     return;
   }
-  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)) });
+  sendJson(res, 200, { markdown: renderFailureMarkdown(collectFailureReport(root, windowDays(q), scope.roles)), quarantine });
 }

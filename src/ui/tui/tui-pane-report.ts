@@ -3,6 +3,8 @@ import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/re
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import { collectFailureReport, collectFailureReportSince } from "../../failure/failure-data.js";
 import { renderFailureMarkdown } from "../../failure/failure-render.js";
+import { loadQuarantine } from "../../review/known-flakes.js";
+import { quarantineRows, renderQuarantineSection } from "../../review/quarantine-render.js";
 import { pageDir } from "./tui-keymap.js";
 import { pageMarkdownBody } from "./tui-backlog.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -39,11 +41,15 @@ export function createReportPane(session: TuiPaneSession) {
   };
 
   /** The Failures pane's body for one window and role scope, the digest sibling of
-   * usagePaneCache; renderFailureMarkdown renders both the day and --since shapes. */
+   * usagePaneCache; renderFailureMarkdown renders both the day and --since shapes, and the
+   * current flake quarantine (renderQuarantineSection over loadQuarantine, the read twin of
+   * the amber quarantine alert) is appended below the digest when it is non-empty. */
   const failuresPaneCache = (sinceMs: number | null, scope: string | undefined, step: number): string => {
-    if (sinceMs === null) return renderFailureMarkdown(collectFailureReport(session.root, REPORT_DEFAULT_DAYS, scope));
+    const quarantine = renderQuarantineSection(quarantineRows(loadQuarantine(session.root)), Date.now());
+    const tail = quarantine ? "\n\n" + quarantine : "";
+    if (sinceMs === null) return renderFailureMarkdown(collectFailureReport(session.root, REPORT_DEFAULT_DAYS, scope)) + tail;
     const b = steppedWindowBounds(sinceMs, step);
-    return renderFailureMarkdown(collectFailureReportSince(session.root, b.sinceMs!, scope, b.untilMs));
+    return renderFailureMarkdown(collectFailureReportSince(session.root, b.sinceMs!, scope, b.untilMs)) + tail;
   };
 
   /** Recompute the Usage/Failures panes' cached body if either is the current view, re-entering
