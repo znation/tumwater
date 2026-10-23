@@ -10,6 +10,8 @@ import { scopeChangeOverlaps, type ChangeOverlapsView } from "../../change/chang
 import { roleLabel } from "../../roles/role-labels.js";
 import { shortSha } from "../../text/format.js";
 import { humanAgo } from "../../text/datetime.js";
+import { readPostReviews, type PostReview } from "../../review/post-merge-review.js";
+import { renderPostReviews } from "../../review/post-review-render.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 import { arrowDir } from "./tui-keymap.js";
@@ -53,7 +55,9 @@ export function overlapDrillHeading(index: number, total: number, path: string):
 
 /** The Pending pane (view roleIds.length + 5) of the TUI (src/ui/tui/tui.tsx): the durable
  * merge queue rendered up front plus the git-backed change roster the async collector appends
- * when it resolves. Split out of the pane-navigation monolith; its key arms are the Ctrl+R
+ * when it resolves, and the post-merge review queue (`tumwater reviews`) painted between them
+ * from the same `readPostReviews`/`renderPostReviews` pair the CLI prints. Split out of the
+ * pane-navigation monolith; its key arms are the Ctrl+R
  * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G role scope (narrowing the
  * merge queue as well as the overlapping files), and it has no render state of its own —
  * aside from the enter half of the Ctrl+T cycle. Its queue arms: Ctrl+X twice cancels a
@@ -83,6 +87,7 @@ export function createPendingPane(session: TuiPaneSession) {
   let base = "";
   let lastOverlaps: ChangeOverlapsView | null = null;
   let lastQueue: MergeQueueView | null = null;
+  let lastReviews: PostReview[] = [];
   let rosterText = "";
   let overlapIndex = -1;
   let drillGen = 0;
@@ -111,6 +116,16 @@ export function createPendingPane(session: TuiPaneSession) {
     if (roleScope === null) return renderMergeQueue(lastQueue, session.now(), inFlight);
     const { view, scope } = scopeMergeQueue(lastQueue, [roleScope], (r) => r === roleScope);
     return renderMergeQueue(view, session.now(), inFlight, scope);
+  };
+  // The post-merge review block the pane paints under the merge queue and above the change
+  // roster: `tumwater reviews`' own renderer over the queue `readPostReviews` reads, so the
+  // TUI, the CLI, and the dashboard cannot drift on order or wording. Empty when the queue is
+  // empty (no block, no header).
+  const reviewsHead = (): string => (lastReviews.length === 0 ? "" : renderPostReviews(lastReviews));
+  const queueAndReviews = (): string => {
+    const q = queueHead();
+    const r = reviewsHead();
+    return r === "" ? q : q + "\n\n" + r;
   };
   // The rendered detail of one selected queue row — the headline naming the entry with the
   // position `tumwater queue --cancel` takes and the cancel hint, then the summary and (when
@@ -165,9 +180,10 @@ export function createPendingPane(session: TuiPaneSession) {
     lastOverlaps = null;
     ++drillGen;
     lastQueue = readMergeQueue(session.root);
+    lastReviews = readPostReviews(session.root);
     rosterText = "";
     rebuildQueueRows();
-    const queueText = queueHead();
+    const queueText = queueAndReviews();
     head = queueText;
     session.paneCache = base = head;
     void Promise.all([session.collectPending(session.root), session.collectOverlaps(session.root)]).then(
@@ -175,7 +191,7 @@ export function createPendingPane(session: TuiPaneSession) {
         if (gen !== refreshGen || session.view !== session.roleIds.length + 5) return;
         lastOverlaps = overlaps;
         rosterText = "\n\n" + renderTeamChange(team);
-        head = queueHead() + rosterText;
+        head = queueAndReviews() + rosterText;
         compose();
         session.paneCache = base;
         session.requestRender();
@@ -212,7 +228,7 @@ export function createPendingPane(session: TuiPaneSession) {
       if (roles.length === 0) {
         roleScope = null;
         rebuildQueueRows();
-        head = queueHead() + rosterText;
+        head = queueAndReviews() + rosterText;
         compose();
         session.paneCache = base;
         session.flashMessage("no queued merges or overlapping files to scope");
@@ -224,7 +240,7 @@ export function createPendingPane(session: TuiPaneSession) {
       rebuildQueueRows();
       overlapIndex = -1;
       ++drillGen;
-      head = queueHead() + rosterText;
+      head = queueAndReviews() + rosterText;
       compose();
       session.paneCache = base;
       session.paneScroll = 0;

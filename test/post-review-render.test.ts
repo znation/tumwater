@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPostReviews } from "../src/review/post-review-render.js";
+import { renderPostReviews, postReviewStatusLabel } from "../src/review/post-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -47,4 +47,11 @@ test("an entry with positive failures carries the failed-review-run count", () =
 test("an entry with neither rejected nor failures carries no suffix", () => {
   const out = renderPostReviews([e({})]);
   assert.ok(!out.includes("["), out);
+});
+
+test("a postReviewStatusLabel names the rejection or the failed-run count", () => {
+  assert.equal(postReviewStatusLabel(e({})), "");
+  assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");
+  assert.equal(postReviewStatusLabel(e({ rejected: ["a", "b"] })), "[rejected — waiting to revert: a; b]");
+  assert.equal(postReviewStatusLabel(e({ rejected: [] })), "[rejected — waiting to revert: ]");
 });

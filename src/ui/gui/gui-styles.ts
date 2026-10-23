@@ -298,6 +298,10 @@ export const GUI_STYLES = String.raw`
   .card-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; min-height: 50px;
                border-bottom: 1px solid var(--line); }
   .card-head h2 { margin: 0; font-size: 14.5px; font-weight: 650; }
+  /* The Post-merge reviews card's header line and one queue entry each, beside the Merge
+     queue card's mono lines — the dashboard twin of 'tumwater reviews'. */
+  .queue-head { padding: 10px 16px 2px; font-size: 12.5px; font-weight: 600; color: var(--text-3); }
+  .queue-entry { padding: 3px 16px; }
   .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 20px; align-items: start; }
   .grid-2.even { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
   .seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 9px; background: var(--surface-3); }

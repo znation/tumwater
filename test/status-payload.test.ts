@@ -17,7 +17,7 @@ import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { requestWake } from "../src/operator/operator-intent.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
-import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
+import { orchestratorStatePath, pausedPath, piLogPath, postReviewPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { freshRunnerState, saveRunnerState } from "../src/runner/runner-state.js";
 import { loadRunnerState } from "../src/runner/runner-state-load.js";
@@ -743,4 +743,16 @@ test("status payload scoped to a role lists only that role and keeps the team bu
   assert.ok(all.roles.some((r) => r.role === "dedupe"));
   assert.deepEqual(scoped.roles.map((r) => r.role), ["clean"]);
   assert.deepEqual(scoped.budget, all.budget);
+});
+
+test("statusPayload carries the post-merge review queue", () => {
+  const entry = { commit: "a".repeat(40), role: "feature", summary: "add x", failures: 2 };
+  const repo = makeRepo();
+  writeJsonFile(postReviewPath(repo), { pending: [entry] });
+  assert.deepEqual((statusPayload(repo) as { postReviews: unknown[] }).postReviews, [entry]);
+  const empty = makeRepo();
+  assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
+  // A torn entry is dropped exactly as readPostReviews drops it today.
+  writeJsonFile(postReviewPath(empty), { pending: [{ commit: "n" }] });
+  assert.deepEqual((statusPayload(empty) as { postReviews: unknown[] }).postReviews, []);
 });

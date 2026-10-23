@@ -7,7 +7,8 @@
  * card from `/api/diff?overlaps=1`, with Role and Folder pickers that narrow it client-side,
  * and the Merge queue card from the status payload, with a Role picker that keeps only the
  * chosen role's waiting merges under their whole-queue positions (the tumwater queue --role
- * twin) and a per-row Move to top / two-click Cancel pair on every non-first entry. Spliced
+ * twin) and a per-row Move to top / two-click Cancel pair on every non-first entry, and the
+ * Post-merge reviews card from the status payload (`tumwater reviews` twin). Spliced
  * into gui-client.ts's script, reaching its helpers (esc, getJson, icon,
  * errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
@@ -202,6 +203,51 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return head + body;
   }
+  // The Post-merge reviews card: every well-formed entry in .tumwater/state/post-review.json
+  // in FIFO order, one line each mirroring 'tumwater reviews' renderPostReviews — role, short
+  // commit, summary, and the status suffix from the browser twin of postReviewStatusLabel — so
+  // the page and the CLI cannot drift on order or wording. Painted from the status payload the
+  // page already polls. Empty (or a missing/malformed list) shows the empty line. A malformed
+  // entry renders a stand-in rather than undefined/NaN.
+  // The status suffix — the browser twin of postReviewStatusLabel
+  // (src/review/post-review-render.ts):
+  // the rejected reasons (still waiting on the revert) when 'rejected' is set, else the
+  // verdict-less failed-review-run count when positive, else "". Hand-kept copy because the
+  // script cannot import the server renderer; pinned by the client test against the CLI wording.
+  const squashText = (s, max) => {
+    const t = String(s).replace(/\s+/g, " ").trim();
+    if (t.length <= max) return t;
+    return t.slice(0, max - 1).trimEnd() + "…";
+  };
+  function postReviewStatusLabel(e) {
+    if (e && Array.isArray(e.rejected)) {
+      return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
+    }
+    if (e && typeof e.failures === "number" && e.failures > 0) {
+      return "[" + plural(e.failures, "failed review run") + "]";
+    }
+    return "";
+  }
+  function postReviewsHtml(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
+    }
+    const lines = entries.map((e) => {
+      const label = postReviewStatusLabel(e);
+      return "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
+        " · " + esc(e.summary || "—") +
+        (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
+    }).join("");
+    return "<div class='card-head'><h2>Post-merge reviews</h2></div>" +
+      "<div class='queue-head'>post-merge reviews (" + esc(entries.length) + "):</div>" + lines;
+  }
+  // Paint the Post-merge reviews card from the polled status payload — the dashboard twin of
+  // 'tumwater reviews', driven by the raw postReviews list statusPayload already carries.
+  function renderPendingReviews(status) {
+    const card = $("pendingreviews");
+    if (!card) return;
+    card.innerHTML = postReviewsHtml(status && Array.isArray(status.postReviews) ? status.postReviews : []);
+  }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
   // its own (the entries ride /api/status, unlike the roster's /api/diff).
@@ -249,6 +295,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every role's unmerged change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
       "<div class='toolbar'><button type='button' class='btn btn-sm' id='pendingrefresh'>" + icon("refresh") + "Refresh</button></div></div>" +
       "<div class='card' id='pendingqueue'><div class='empty'>Loading…</div></div>" +
+      "<div class='card' id='pendingreviews'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingoverlaps'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
@@ -328,6 +375,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     renderPending();
     renderPendingQueue(lastStatus);
+    renderPendingReviews(lastStatus);
   }
   function renderPending() {
     const body = $("pendingbody");

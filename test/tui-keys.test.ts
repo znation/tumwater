@@ -20,11 +20,13 @@ import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-
 import { renderRoleChange, renderRoleChanges } from "../src/change/change-render.js";
 import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
+import { readPostReviews } from "../src/review/post-merge-review.js";
+import { renderPostReviews } from "../src/review/post-review-render.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, branchName, mergeRefName, piLogPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, branchName, mergeRefName, piLogPath, postReviewPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { eventsOfType, writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { readRunDetail } from "../src/run/run-detail-data.js";
@@ -42,6 +44,7 @@ import { setConfigKey } from "../src/config/config-write.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { steppedWindowBounds } from "../src/ui/tui/tui-pane-session.js";
 import { pendingOverlapsText } from "../src/ui/tui/tui-pane-pending.js";
+import { writeJsonFile } from "../src/files/json-files.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -2324,6 +2327,29 @@ test("the Pending pane renders the durable merge queue on entry, above the resol
       "\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
     "the two-role roster is appended below the same queue text",
   );
+});
+
+test("the Pending pane shows the post-merge review queue above the roster", async () => {
+  const root = makeRoot();
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
+  writeJsonFile(postReviewPath(root), { pending: [{ commit: "b".repeat(40), role: "feature", summary: "review me", failures: 2 }] });
+  const team = { mainBranch: "main", roles: [] };
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+    collectPending: () => new Promise<typeof team>(() => {}),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  const queued = renderMergeQueue(readMergeQueue(root), 0);
+  const reviews = renderPostReviews(readPostReviews(root));
+  const cache = keys.state().paneCache ?? "";
+  assert.equal(cache, queued + "\n\n" + reviews);
+  assert.match(cache, /post-merge review queue \(1 entry\):/);
+  assert.match(cache, /feature bbbbbbbb · review me · \[2 failed review runs\]/);
 });
 
 test("a Pending collector resolution after the operator cycled away does not cache onto the new view", async () => {

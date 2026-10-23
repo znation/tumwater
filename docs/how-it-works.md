@@ -494,7 +494,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   queue`, with a Role picker that keeps only the chosen role's waiting merges, each under its
   whole-queue position, the `tumwater queue --role` twin, and the files two or more roles' pending changes touch as an Overlapping files card mirroring
   `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`), which also lists that role's waiting merges
-  under their whole-queue positions, mirroring `tumwater queue --role <id>`. Its Settings view shows the
+  under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
+  post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` — the merged
+  commits `review.afterMerge` put aside for post-merge review, each with its rejected (still
+  waiting on the revert) or failed-review status. Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater
   config set` uses, and Clear retracts through the same path `tumwater config unset` uses, so the
@@ -564,7 +567,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
   label (`[merging 2m · reviewing]`, `[approved, waiting to merge]`) on an entry a running team
-  is merging.
+  is merging. The post-merge review queue prints between the queue and the roster as a block
+  from the same `readPostReviews`/`renderPostReviews` pair `tumwater reviews` uses, so the two
+  surfaces are the observer twins of the CLI command.
   Each Merge queue row carries a two-click Cancel (the first click arms it, a second within 5 s
   posts) through `POST /api/queue-cancel`, the browser twin of `tumwater queue --cancel <n>` —
   the same removal, so the browser, the CLI, and the TUI cannot drift on what cancelling means.

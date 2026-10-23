@@ -15,6 +15,7 @@ import { teamAlerts, type PlanDependencyProblem, type QuarantinedTests, type Sta
 import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
 import { loadQuarantine } from "../review/known-flakes.js";
+import { readPostReviews } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
 import { staleWaitingBugRows } from "../doctor/doctor-backlog-bugs.js";
 
@@ -287,6 +288,10 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // preformatted through badges.ts's mergeBadge, so the page cannot re-derive it.
     mergeQueue: snap.mergeQueue,
     mergeBadge: mergeBadge(snap.mergeQueue),
+    // The post-merge review queue (`tumwater reviews`): raw data for the browser exactly like
+    // the merge queue — the page derives its card from this list and cannot import the
+    // TypeScript reader. `readPostReviews` drops a torn entry as the CLI does.
+    postReviews: readPostReviews(root),
     // One bracketed merge label per merge queue entry (queueEntryMergeLabel, "" for none),
     // parallel to mergeQueue.entries — display-ready like mergeBadge, since browser JS cannot
     // import the TypeScript stage labels.

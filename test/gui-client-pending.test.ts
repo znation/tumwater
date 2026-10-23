@@ -452,3 +452,22 @@ test("queue buttons carry no data-cancel in the drawer, and a malformed row rend
   assert.doesNotMatch(bad, /data-cancel|undefined|NaN/);
   assert.match(bad, /qa/);
 });
+
+test("postReviewsHtml is empty until a commit waits and names each entry otherwise", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  assert.match(postReviewsHtml([]), /No merged commit is waiting/);
+  assert.match(postReviewsHtml(null), /No merged commit is waiting/);
+  const html = postReviewsHtml([
+    { role: "feature", commit: "abcdef1234567890", summary: "add the thing" },
+    { role: "bugfix", commit: "0123456789abcdef", summary: "fix the thing", failures: 2 },
+    { role: "clean", commit: "fedcba9876543210", summary: "tidy", rejected: ["<revert>", "slow"] },
+  ]);
+  assert.match(html, /post-merge reviews \(3\)/);
+  assert.match(html, /feature abcdef12 · add the thing/);
+  assert.match(html, /bugfix 01234567 · fix the thing · <span class='mono'>\[2 failed review runs\]<\/span>/);
+  assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected — waiting to revert: &lt;revert&gt;; slow\]<\/span>/);
+  assert.doesNotMatch(html, /undefined|NaN/);
+});

@@ -392,6 +392,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (!lastStatus) return;
     if (activeView === "team") renderTeam(lastStatus);
     if (activeView === "pending") renderPendingQueue(lastStatus);
+    if (activeView === "pending") renderPendingReviews(lastStatus);
     if (drawer && drawer.kind === "role") renderRoleDrawer(lastStatus);
   }
   let lastEventKey = null;
@@ -433,6 +434,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       renderComposer(d);
       if (activeView === "team") renderTeam(d);
       if (activeView === "pending") renderPendingQueue(d);
+      if (activeView === "pending") renderPendingReviews(d);
       if (activeView === "history") syncHistoryRoles(d);
       // Keep the Usage/Failures Role pickers in step with the team while either is open.
       if (activeView === "usage" || activeView === "failures") syncReportRoles(d);
