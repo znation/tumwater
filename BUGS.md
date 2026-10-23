@@ -67,6 +67,14 @@ three T-long reviews run at once at cap 4, so all three merge in about T, not 3T
 
 **Waiting for the next failure 2026-10-23 by bugfix: which of the three assertions fires and its numbers — the overlap assertion's `in flight at each start:` list (which sample is < 3), the `one review per change` count (extra samples), or the span check's two ms figures**
 
+### `a hanging fake rejects within timeoutMs and its child is gone afterwards` failed, then passed on the same tree (quarantined by tumwater 2026-10-23)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a hanging fake rejects within timeoutMs and its child is gone afterwards
+~~~~
+
 ## Fixed
 
 ## Verified
