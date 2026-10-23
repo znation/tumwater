@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { staleMerges, statusPayload, stalePrompts } from "../src/ui/status-payload.js";
+import { planDependencyAlert, staleMerges, statusPayload, stalePrompts } from "../src/ui/status-payload.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -713,4 +713,64 @@ test("root install drift raises one amber install alert naming up to five packag
   assert.deepEqual(installs([]), []);
   const seven = (installs(["a", "b", "c", "d", "e", "f", "g"])[0]?.detail ?? "");
   assert.match(seven, /\(a, b, c, d, e, \+2 more\)/);
+});
+
+test("a broken plan-dependency clause raises a standing amber alert right after the refused alert", () => {
+  const now = Date.now();
+  const msg = 'PLANS.md plan "S, part 2/2: b" names S 1/2 as a prerequisite without a `requires … landed` clause — the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`';
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], { kind: "misworded", message: msg });
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["plan-dependencies", "amber", "A plan's dependency wording holds nothing"]]);
+  assert.equal(one[0]!.detail, msg);
+  assert.deepEqual(one[0]!.actions, []);
+  // The other three kinds map to their titles.
+  const titles = (kind: "cycle" | "dangling" | "unparsed" | "misworded") =>
+    teamAlerts(base, [], [], now, [], [], [], [], [], { kind, message: "m" })[0]!.title;
+  assert.equal(titles("cycle"), "Plan dependency cycle blocks a whole series");
+  assert.equal(titles("dangling"), "A plan requires a part no heading carries");
+  assert.equal(titles("unparsed"), "A plan's requires clause names no readable part");
+  // A null argument adds no alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null), []);
+  // With both a stale bug and a dependency problem, the dependency alert precedes stale-bugs.
+  const withBug = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs", days: 3 }], [], [], { kind: "misworded", message: msg });
+  assert.deepEqual(withBug.map((a) => a.key), ["plan-dependencies", "stale-bugs"]);
+});
+
+test("planDependencyAlert and the surfaces carry a plan-dependency alert from PLANS.md, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeBacklogFile(root, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: [
+        "### S, part 1/2: a",
+        "",
+        "body",
+        "",
+        "### S, part 2/2: b (blocked by part 1/2 above)",
+        "",
+        "body",
+      ].join("\n"),
+    },
+    { heading: "## Done" },
+  ]);
+  assert.equal(planDependencyAlert(root)?.kind, "misworded");
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "plan-dependencies");
+  assert.equal(alert?.title, "A plan's dependency wording holds nothing");
+  assert.ok(alert?.detail?.includes("S 1/2"));
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /A plan's dependency wording holds nothing/);
+  // A clean series pair (the child requires its planned parent, found under ## Done) yields none.
+  const clean = makeRepo();
+  writeBacklogFile(clean, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### S, part 2/2: b (requires part 1/2 landed)\n\nbody",
+    },
+    { heading: "## Done", body: "### S, part 1/2: a (done 2026-10-01)\n" },
+  ]);
+  assert.equal(planDependencyAlert(clean), null);
+  const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "plan-dependencies"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /dependency wording holds nothing/);
 });

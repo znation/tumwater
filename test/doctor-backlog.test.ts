@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "../src/doctor/doctor-backlog-plans.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, mergeWaitPhrase } from "../src/doctor/doctor-backlog.js";
@@ -705,6 +705,17 @@ test("checkPlanDependencies is ok on a clean pair and when PLANS.md is absent", 
   const dir = plansWith("### S, part 2/2: b (requires part 1/2 landed)\n\nbody\n", "### S, part 1/2: a (done 2026-10-01)\n");
   assert.equal(checkPlanDependencies(dir).level, "ok");
   assert.equal(checkPlanDependencies(tmpdir("doctor-plandeps-none-")).level, "ok");
+});
+
+test("planDependencyProblem names a kind and message, or null for a clean pair", () => {
+  // The shared problem-set/severity/wording source behind the check and the alert: the same
+  // misworded clause the check warns on comes back as kind "misworded" with the same message,
+  // and a clean series pair yields null.
+  const misworded = planDependencyProblem(plansWith("### S, part 1/2: a\n\nbody\n\n### S, part 2/2: b (blocked by part 1/2 above)\n\nbody\n"));
+  assert.equal(misworded?.kind, "misworded");
+  assert.ok(misworded?.message.includes("names S 1/2 as a prerequisite"));
+  const clean = planDependencyProblem(plansWith("### S, part 2/2: b (requires part 1/2 landed)\n\nbody\n", "### S, part 1/2: a (done 2026-10-01)\n"));
+  assert.equal(clean, null);
 });
 
 test("checkPlanDependencies warns on a dangling ref", () => {

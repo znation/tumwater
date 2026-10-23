@@ -211,6 +211,16 @@ export function checkStalledPlans(root: string): CheckOutcome {
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }
 
+/** A broken plan-dependency clause in PLANS.md's planned entries, named once with the doctor's
+ * exact message: `kind` is the most serious rule violated (cycle, then dangling, then unparsed,
+ * then misworded) and `message` is byte-identical to what the doctor's `plan dependencies` row
+ * shows. Shared by checkPlanDependencies and the always-on plan-dependencies team alert, so the
+ * problem set, the severity order, and the wording cannot drift. */
+interface PlanDependencyProblem {
+  kind: "cycle" | "dangling" | "unparsed" | "misworded";
+  message: string;
+}
+
 /** Plan dependencies — mistakes in the planned plans' `requires … landed` clauses that the claim
  * allocator (entryHoldAgainst) cannot see: a ref naming no heading (the hold is void, so the
  * dependent is claimable now), a clause that parses to no refs (it holds nothing), and a
@@ -218,7 +228,7 @@ export function checkStalledPlans(root: string): CheckOutcome {
  * planDependencyProblems. A warn, never a fail, like checkStalledPlans: the plan role writes the
  * clauses by hand and fixes them itself. The most serious kind is named — cycle, then dangling,
  * then unparsed — with a count of the other kinds. */
-export function checkPlanDependencies(root: string): CheckOutcome {
+export function planDependencyProblem(root: string): PlanDependencyProblem | null {
   const { cycle, dangling, unparsed, misworded } = planDependencyProblems(plannedPlanEntries(root), donePlans(root));
   const [firstDangling, ...restDangling] = dangling;
   const [firstUnparsed, ...restUnparsed] = unparsed;
@@ -236,22 +246,30 @@ export function checkPlanDependencies(root: string): CheckOutcome {
     `PLANS.md plan ${quote(w.title)} names ${w.ref} as a prerequisite without a \`requires … landed\` clause — ` + // vocabulary-ok: PLANS.md heading syntax
     "the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`"; // vocabulary-ok: PLANS.md heading syntax
   if (cycle !== null) {
-    return warnOutcome(`plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
+    return { kind: "cycle", message: `plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
       "edit one heading's `requires … landed` clause to break it" + // vocabulary-ok: PLANS.md heading syntax
-      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
+      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]) };
   }
   if (firstDangling) {
-    return warnOutcome(danglingMsg(firstDangling) +
+    return { kind: "dangling", message: danglingMsg(firstDangling) +
       andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, "ref(s)") +
-      others([[unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
+      others([[unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]) };
   }
   if (firstUnparsed) {
-    return warnOutcome(unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)") +
-      others([[misworded.length, "misworded dependency(ies)"]]));
+    return { kind: "unparsed", message: unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)") +
+      others([[misworded.length, "misworded dependency(ies)"]]) };
   }
   if (firstMisworded) {
-    return warnOutcome(miswordedMsg(firstMisworded) +
-      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, "dependency(ies)"));
+    return { kind: "misworded", message: miswordedMsg(firstMisworded) +
+      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, "dependency(ies)") };
   }
-  return okOutcome("every planned plan's requires clause names a known part, with no cycle or misworded dependency");
+  return null;
+}
+
+/** The doctor's `plan dependencies` row: warn on the first problem planDependencyProblem finds
+ * (sharing its problem set, severity order, and wording), ok when all four rules pass. A warn,
+ * never a fail: a broken clause is operator signal, not a broken environment. */
+export function checkPlanDependencies(root: string): CheckOutcome {
+  const p = planDependencyProblem(root);
+  return p ? warnOutcome(p.message) : okOutcome("every planned plan's requires clause names a known part, with no cycle or misworded dependency");
 }

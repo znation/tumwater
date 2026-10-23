@@ -11,7 +11,8 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type StaleBug, type StaleMerge, type StalePrompt } from "./team-alerts.js";
+import { teamAlerts, type PlanDependencyProblem, type StaleBug, type StaleMerge, type StalePrompt } from "./team-alerts.js";
+import { planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows } from "../doctor/doctor-backlog.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
@@ -73,6 +74,16 @@ export function stalePrompts(root: string, now = Date.now()): StalePrompt[] {
  * longest-waiting merge. */
 export function staleMerges(root: string, now = Date.now()): StaleMerge[] {
   return staleQueuedMergeRows(root, now).map((m) => ({ role: m.role, summary: m.summary, waitedMs: m.waitedMs }));
+}
+
+/** A broken plan-dependency clause, the always-on twin of the doctor's `plan dependencies` row
+ * (src/doctor/doctor-backlog-plans.ts checkPlanDependencies): the same rule's problem set,
+ * severity order, and exact message, so the alert and the doctor cannot drift. The reader owns
+ * the rule — planDependencyAlert passes the doctor's planDependencyProblem through unchanged,
+ * like staleOpenBugs and the other stale feeds do their doctor's rules. null when PLANS.md's
+ * planned entries have no cycle, dangling ref, unparsed clause, or misworded dependency. */
+export function planDependencyAlert(root: string): PlanDependencyProblem | null {
+  return planDependencyProblem(root);
 }
 
 /** The one team-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
@@ -386,6 +397,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root)),
   };
 }

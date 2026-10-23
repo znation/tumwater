@@ -60,6 +60,19 @@ export interface StaleMerge {
   waitedMs: number;
 }
 
+/** A broken plan-dependency clause the doctor's `plan dependencies` rule (src/doctor/
+ * doctor-backlog-plans.ts, planDependencyProblem) warns about: a cycle that blocks a whole
+ * series forever, a dangling `requires … landed` ref naming no heading (its hold is void), an
+ * unparsed clause that holds nothing, or a misworded dependency the claim allocator ignores.
+ * Computed in src/ui/status-payload.ts's planDependencyAlert through the same function the
+ * doctor's check uses, so the alert and the doctor cannot drift on the problem set, the
+ * severity order, or the wording. Gives the alert's title its kind and the detail.
+ */
+export interface PlanDependencyProblem {
+  kind: "cycle" | "dangling" | "unparsed" | "misworded";
+  message: string;
+}
+
 /** The alert detail head for a bounded entry list (open questions, refused entries): the
  * first title stripped of its stamp, plus ` — and N more` when others await, so the two
  * alert kinds cannot drift on the separator or the count. The caller appends its own
@@ -184,6 +197,7 @@ export function teamAlerts(
   staleBugs: readonly StaleBug[] = [],
   stalePrompts: readonly StalePrompt[] = [],
   staleMerges: readonly StaleMerge[] = [],
+  planDependency: PlanDependencyProblem | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -387,6 +401,28 @@ export function teamAlerts(
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
+    });
+  }
+  // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
+  // src/doctor/doctor-backlog-plans.ts planDependencyProblem, via status-payload.ts's
+  // planDependencyAlert) is invisible in the backlog listings — the claim allocator keeps
+  // acting on the misread clause — so it asks (amber) like the stale-bug alert, named by type
+  // and carrying the doctor's exact message. One alert at most (the problem set is the single
+  // most serious rule), and the fix is editing PLANS.md's heading, so there are no actions.
+  if (planDependency !== null) {
+    const titles: Record<PlanDependencyProblem["kind"], string> = {
+      cycle: "Plan dependency cycle blocks a whole series",
+      dangling: "A plan requires a part no heading carries",
+      unparsed: "A plan's requires clause names no readable part",
+      misworded: "A plan's dependency wording holds nothing",
+    };
+    out.push({
+      key: "plan-dependencies",
+      tone: "amber",
+      title: titles[planDependency.kind],
+      detail: planDependency.message,
+      // The fix is editing PLANS.md, and the message names the heading and ref.
+      actions: [],
     });
   }
   // A stale bug (doctor's STALE_BUG_DAYS rule, src/doctor/doctor-backlog-bugs.ts) sits when no
