@@ -24,6 +24,7 @@ import { setEnv } from "./helpers/env.js";
 
 import type { PiRunOptions } from "../src/pi/pi.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 
 interface Captured {
   opts: PiRunOptions | null;
@@ -98,6 +99,27 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
   assert.equal(opts.rawLogFile, piLogPath(root, "feature"));
   assert.equal(opts.config.runTimeoutSeconds, 900);
   assert.equal(opts.config.quietTimeoutSeconds, 300);
+});
+
+test("a blind image read on the follow-up turn is logged, not fatal", async () => {
+  // plans/image-input.md "Detecting a blind read" — same shape as the main review run: a gate
+  // follow-up that read an image its model cannot see logs an image_blind event (source, run,
+  // path, model, action) instead of failing the turn.
+  const config = defaultConfig();
+  config.model = "mri-vision";
+  const { ctx, root, captured } = makeCtx(config);
+  touchSession(root);
+  await requestVerdict(ctx);
+
+  captured.opts!.onBlindRead!("/team.png", "logged");
+  const blinds = eventsOfType(root, "image_blind");
+  assert.equal(blinds.length, 1, "exactly one image_blind event");
+  const blind = blinds[0]!;
+  assert.equal(blind.source, "feature");
+  assert.equal(blind.run, 7);
+  assert.equal(blind.path, "/team.png");
+  assert.equal(blind.model, "mri-vision");
+  assert.equal(blind.action, "logged");
 });
 
 test("a claude gate session resumes through the ledger without a pi session file", async () => {
