@@ -73,3 +73,12 @@ export function modelLabel(
   if (backend === "codex") return model ?? "codex default";
   return `${provider ?? "?"}/${model ?? "?"}`;
 }
+
+/** A backend id's display name as the status surfaces show it: title-cased
+ * (`id.charAt(0).toUpperCase() + id.slice(1)`, so `"claude"` → `"Claude"`, `"codex"` →
+ * `"Codex"`). The one home of the spelling the subscription window's per-backend block label
+ * (part 3a/9) and the later display parts share, so a backend's name cannot drift between
+ * them. */
+export function backendDisplayName(id: string): string {
+  return id.charAt(0).toUpperCase() + id.slice(1);
+}

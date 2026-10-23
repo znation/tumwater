@@ -6,25 +6,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ## Planned
 
-### Codex backend, part 3a/9: The subscription-window block is per backend, and `status --json` gains `subscriptionWindows` (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 2e/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/agent/subscription-account.ts src/agent/backend-traits.ts src/status/status-budget.ts src/status/status-data.ts src/ui/status-payload.ts test/status-budget.test.ts test/status-data-models.test.ts)
-
-**Goal.** One status-poll read yields one subscription-window block per subscription backend in use, not only claude's, and hands the ordered list to every display surface. This is the shared model parts 3b/9–3e/9 consume; a claude-only snapshot is unchanged apart from the added list.
-
-**Approach.**
-- src/agent/backend-traits.ts: add `backendDisplayName(id)` = `id.charAt(0).toUpperCase() + id.slice(1)` ("claude" → "Claude", "codex" → "Codex"), the one home of a backend's display name.
-- src/agent/subscription-account.ts: extract the comparator inside `windowEntries` into an exported `compareWindowEntries(a, b)` and call it from `windowEntries` (output byte-identical), so a list of blocks can be ordered by its primary entry the same way.
-- src/status/status-budget.ts: `claudeWindowBlock` becomes `windowBlocks(cfg, providers, accounts, catalog)` returning `{ blocks, only }`. `blocks: SubscriptionWindowBlock[]` (`{ backend, label: backendDisplayName(backend), windows: windowEntries(account), primary: windows[0]!, heldUntil }`) carries one entry for every distinct non-`pi` backend the enabled seams (roles, review, resolver) route to whose `accounts(backend)` reads `billing === "subscription"` with at least one window. Blocks sort by `compareWindowEntries(a.primary, b.primary)` then `backend`. `only` is team-global: `!seams.some((s) => !seamFree(providers, s, accounts, catalog))`.
-  - `BudgetSlice` replaces `claudeWindow` with `subscriptionWindows: SubscriptionWindowBlock[]` and `subscriptionOnly: boolean`. `collectBudget` builds `accounts` as a per-poll memoized `readAccount(root, backend, now)` Map (one read per backend per poll, today's one-claude-read cost) and returns both new fields.
-- src/status/status-data.ts: `StatusSnapshot` gains `subscriptionWindows?: SubscriptionWindowBlock[]` (present only when non-empty) and `subscriptionOnly: boolean`; it derives the existing `claudeWindow?: {windows, primary, only, heldUntil}` from the claude block (`only: subscriptionOnly`), with a doc comment saying it is kept for one release. Its presence rule is unchanged.
-- src/ui/status-payload.ts: the payload spreads `subscriptionWindows` and `subscriptionOnly` beside `claudeWindow` (the preformatted `budgetBadge` stays on `claudeWindow` until part 3b/9).
-
-**Acceptance criteria.**
-- With two subscription accounts (`claude` and a fake `sub`): `status --json` lists both `subscriptionWindows` entries, ordered most-constrained-first; each carries `backend`, `label`, `windows`, `primary`, `heldUntil`.
-- A claude-only team: `snap.claudeWindow` is unchanged (same `windows`, `primary`, `heldUntil`; `only` as before), and the only `status --json` delta is the added keys.
-- `snap.claudeWindow` is absent exactly when no claude subscription seam has a window (today's rule).
-- `windowEntries` output is byte-identical to before.
-- `npm test` passes.
-
 ### Codex backend, part 3b/9: The status header and the GUI budget tile name each backend's window (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/ui/badges.ts src/ui/status-render.ts src/ui/status-payload.ts src/ui/gui/gui-client-operator.ts test/badges.test.ts test/status-header.test.ts test/gui-client.test.ts)
 
 **Goal.** The header badge and the GUI budget tile render each subscription backend's window under that backend's name; a claude-only team's text is byte-identical.

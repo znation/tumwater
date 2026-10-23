@@ -245,6 +245,13 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // to render the window (the preformatted budgetBadge above already folds it into the
     // header for the TUI/status). Raw data, like budget.
     ...(snap.claudeWindow ? { claudeWindow: snap.claudeWindow } : {}),
+    // The per-backend window blocks (part 3a/9): one entry per subscription backend in use,
+    // machine-readable for `status --json` beside claudeWindow; the preformatted budgetBadge
+    // still folds the claude window alone until part 3b/9 labels each block.
+    ...(snap.subscriptionWindows && snap.subscriptionWindows.length > 0 ? { subscriptionWindows: snap.subscriptionWindows } : {}),
+    // The team-global free-ness answer (part 3a/9); the claude window's `only` shadows it for
+    // one release.
+    subscriptionOnly: snap.subscriptionOnly,
     // Each tier's fallback step (fallback chain part 7c/7), raw for the GUI side card.
     ...(snap.chain ? { chain: snap.chain } : {}),
     // Operator pause (`tumwater pause` marker present): every idle role's phase reads

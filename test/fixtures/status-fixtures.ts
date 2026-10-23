@@ -120,6 +120,9 @@ export function snapshotWith(
     ...(bootstrap ? { bootstrap } : {}),
     budgetPausedRoles,
     roleQuietPaused,
+    // Part 3a/9: the per-backend free-ness answer defaults to false (a fixture without a
+    // window block reads as a paying team), matching the unconditional snapshot field.
+    subscriptionOnly: false,
     // Quiet hours default to off — no window, not inside one — so existing header
     // assertions stay byte-identical; a test sets quietHours/inQuietHours to exercise the
     // badge (status-header.test.ts).

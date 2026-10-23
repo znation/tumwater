@@ -114,6 +114,21 @@ export function windowReserved(
  * the subscription window needs it. */
 export type SubscriptionWindowEntry = SubscriptionWindow & { type: string };
 
+/** One subscription backend's window block on a status poll (part 3a/9): the backend's display
+ * name and its windows most-constrained-first, with `primary` the one a badge would show and
+ * `heldUntil` the future `resetsAt` when a rejected window holds the backend's seams (else
+ * null). The shared model parts 3b/9–3e/9 display; the claude block alone still feeds the
+ * one-release `claudeWindow` field on the snapshot and payload. */
+export interface SubscriptionWindowBlock {
+  /** The backend id (`"claude"`, `"codex"` …). */
+  backend: string;
+  /** Its display name (backendDisplayName): `"Claude"`, `"Codex"`. */
+  label: string;
+  windows: SubscriptionWindowEntry[];
+  primary: SubscriptionWindowEntry;
+  heldUntil: number | null;
+}
+
 /** Status severity for ordering: a rejected window limits, an allowed_warning nears its limit,
  * every other reading (allowed/ok) rides at the bottom, and a reset one no longer limits. */
 const WINDOW_RANK: Record<string, number> = { rejected: 3, allowed_warning: 2, reset: 0 };
@@ -139,22 +154,26 @@ export function utilizationPct(utilization: number): number {
   return Math.round(utilization * 100);
 }
 
-/** The account's windows as a list, most constrained first: by status severity, then the
- * reported utilization (a missing reading sorts below any number), then the earlier reset,
- * then the type name — so a tie always orders the same way. Empty when the account reported
- * none. */
+/** Order two window entries by the windowEntries rule: status severity, then the reported
+ * utilization (a missing reading sorts below any number), then the earlier reset, then the
+ * type name. Exported so a list of per-backend blocks can be ordered by their primary entry
+ * the same way windowEntries orders one account's windows (part 3a/9). */
+export function compareWindowEntries(a: SubscriptionWindowEntry, b: SubscriptionWindowEntry): number {
+  const rank = (WINDOW_RANK[b.status] ?? 1) - (WINDOW_RANK[a.status] ?? 1);
+  if (rank !== 0) return rank;
+  const util = (b.utilization ?? -1) - (a.utilization ?? -1);
+  if (util !== 0) return util;
+  const reset = (a.resetsAt ?? Number.POSITIVE_INFINITY) - (b.resetsAt ?? Number.POSITIVE_INFINITY);
+  if (reset !== 0) return reset;
+  return a.type.localeCompare(b.type);
+}
+
+/** The account's windows as a list, most constrained first (by compareWindowEntries). Empty
+ * when the account reported none. */
 export function windowEntries(account: SubscriptionAccount): SubscriptionWindowEntry[] {
   return Object.entries(account.windows)
     .map(([type, w]) => ({ type, ...w }))
-    .sort((a, b) => {
-      const rank = (WINDOW_RANK[b.status] ?? 1) - (WINDOW_RANK[a.status] ?? 1);
-      if (rank !== 0) return rank;
-      const util = (b.utilization ?? -1) - (a.utilization ?? -1);
-      if (util !== 0) return util;
-      const reset = (a.resetsAt ?? Number.POSITIVE_INFINITY) - (b.resetsAt ?? Number.POSITIVE_INFINITY);
-      if (reset !== 0) return reset;
-      return a.type.localeCompare(b.type);
-    });
+    .sort((a, b) => compareWindowEntries(a, b));
 }
 
 /** Read the persisted account state for a backend, or null when it is absent or unreadable. A

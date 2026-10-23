@@ -120,9 +120,21 @@ test("snapshot carries the claude subscription window and classifies paying seam
   assert.equal(snap.claudeWindow!.primary.type, "five_hour");
   assert.equal(snap.claudeWindow!.primary.utilization, 0.64);
   assert.equal(snap.claudeWindow!.heldUntil, null);
+  // Part 3a/9: the snapshot also carries the per-backend list, one claude block here, and the
+  // claude spelling is derived from it (same windows/primary/heldUntil, `only` = subscriptionOnly).
+  assert.deepEqual(snap.subscriptionWindows!.map((b) => b.backend), ["claude"], "one claude block");
+  assert.equal(snap.subscriptionWindows![0]!.label, "Claude");
+  assert.equal(snap.subscriptionOnly, true, "the team-global answer matches the claude-only `only`");
   // The payload carries the raw block and the preformatted badge folds the window in.
-  const payload = statusPayload(repo) as { claudeWindow?: unknown; budgetBadge: string };
+  const payload = statusPayload(repo) as {
+    claudeWindow?: unknown;
+    subscriptionWindows?: unknown;
+    subscriptionOnly?: boolean;
+    budgetBadge: string;
+  };
   assert.ok(payload.claudeWindow, "the payload carries the raw block for the GUI");
+  assert.ok(payload.subscriptionWindows, "the payload carries the per-backend list too");
+  assert.equal(payload.subscriptionOnly, true);
   assert.match(payload.budgetBadge, /Claude 5h · 64% · resets /);
 
   // A rejected window reports the future hold.
