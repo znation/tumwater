@@ -49,14 +49,22 @@ test("runDoctor composes the full report — fixed check order, not-running head
   );
   // funes is absent: the fake PATH has no funes; and the two subscription-window rows are
   // conditional (a ready repo has no claude or codex subscription account, so both are omitted).
-  // The feedback filing row is conditional on `roles.feedback.enabled`, off by default.
+  // The feedback filing row is conditional on `roles.feedback.enabled`, off by default; and the
+  // seven codex rows are conditional on a codex seam, absent here, so they are omitted too.
   assert.deepEqual(
     DOCTOR_CHECK_NAMES.filter(
       (n) =>
         n !== "funes" &&
         n !== "claude window" &&
         n !== "codex window" &&
-        n !== "feedback filing",
+        n !== "feedback filing" &&
+        n !== "codex version" &&
+        n !== "codex login" &&
+        n !== "codex home" &&
+        n !== "codex models" &&
+        n !== "codex account" &&
+        n !== "codex leaks" &&
+        n !== "codex sessions",
     ),
     report.checks.map((c) => c.name),
   );

@@ -63,28 +63,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater plan --release` lifts it and clears the counter, as it lifts every other hold today.
 - `npm run test:gate` passes.
 
-### Codex backend, part 9a/9: Doctor's Codex rows — install, login, home, models, account, leaks and sessions size (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9b/9, 9c/9 and 9d/9 — any of the four may land first; design in plans/codex-backend.md "CODEX_HOME and sessions", "Spend, free-ness, window, images" and "Hand steps"; touches src/doctor/doctor-codex-checks.ts (new) src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/agent/codex/codex-backend.ts test/fakes/fake-codex.ts test/doctor-checks.test.ts)
-
-**Goal.** An operator can set Codex up from `tumwater doctor` alone: whether the binary is new enough, whether the configured `CODEX_HOME` is logged in the supported way, and what the home shares or leaks.
-
-**Approach.**
-- src/agent/codex/codex-backend.ts: export `CODEX_MIN_VERSION = "0.163.0"`, the sibling of `OPENCODE_MIN_VERSION` (src/agent/opencode/opencode-backend.ts) and `CLAUDE_MIN_VERSION` (src/agent/claude/claude-backend.ts).
-- src/doctor/doctor-model-checks.ts: add `codexSeamsInUse(config)` beside `claudeSeamsInUse`/`opencodeSeamsInUse` (both built on `seamPairs`), the gate every codex row reads to stand down on a pi-only team.
-- src/doctor/doctor-codex-checks.ts (new; the twin of doctor-opencode-checks.ts and doctor-claude-checks.ts): one exported check function per row, each returning null when `!codexSeamsInUse(config)`.
-  - install/version: resolve the codex bin as a run would (the run's `TUMWATER_CODEX_BIN`/config dir) and read `codex --version`; below `CODEX_MIN_VERSION` fails.
-  - login: `codex login status` under the run's `CODEX_HOME`; ChatGPT passes; an API-key login fails with the startup-gate message; not logged in fails naming `CODEX_HOME=<home> codex login --device-auth`.
-  - home: `backends.codex.configDir` unset warns that team runs share the operator's `~/.codex` (trust entries, sessions in the resume picker, skills, a global `AGENTS.md`).
-  - models: each routed codex model is in the home's catalog, with its window and any thinking level it lacks.
-  - account: `credits.has_credits` true warns that a run crossing a limit may spend credits tumwater cannot count (design §7).
-  - leaks: the home's `AGENTS.md`, `skills/` beyond `.system`, `hooks`, and the target repo's `.codex/config.toml` MCP servers, each named.
-  - sessions size: report the size of the home's `sessions/`.
-- src/doctor/doctor.ts: import the new check functions from doctor-codex-checks.ts and register the rows in the check list (as it imports checkOpencode from doctor-opencode-checks.ts); src/doctor/doctor-check-names.ts: add each row's name to `DOCTOR_CHECK_NAMES`.
-- test/fakes/fake-codex.ts: extend the PATH shim beyond its `exec` case to answer `--version`, `login status` and the catalog read, and to shape `$CODEX_HOME` files, so every row runs offline against the fake (never a real codex).
-
-**Acceptance criteria.**
-- On the fake: `>= 0.163.0` passes and a lower version fails; ChatGPT login passes; an API-key login fails with the startup-gate message; a logged-out home fails naming the login command; unset `configDir` warns naming what the shared home exposes; a routed model missing from the catalog and a `has_credits` account warn; each leak path is named; a pi-only team shows no codex row.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts)
 
 **Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.

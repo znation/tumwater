@@ -36,6 +36,15 @@ import {
   checkWorkInstances,
   checkWorktreePool,
 } from "../src/doctor/doctor-contention-checks.js";
+import {
+  checkCodexAccount,
+  checkCodexAuth,
+  checkCodexHome,
+  checkCodexLeaks,
+  checkCodexModels,
+  checkCodexSessions,
+  checkCodexVersion,
+} from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { fakeGh } from "./fakes/fake-gh.js";
@@ -1403,4 +1412,187 @@ test("checkOpencodeVersion stands down without an opencode seam", async () => {
 test("checkInit in a team workspace names the owning team root", () => {
   const { root, slot } = teamWorkspace();
   assert.deepEqual(checkInit(slot), { level: "fail", detail: teamWorkspaceMessage(root) });
+});
+
+// The doctor's codex rows (src/doctor/doctor-codex-checks.ts, part 9a/9,
+// plans/codex-backend.md §4, §7, "Hand steps"). Each returns null (omitting its row) without
+// a codex seam, and every row runs against a fake binary or a shaped temp CODEX_HOME, never a
+// real codex.
+test("codex rows omit their row without a codex seam", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model" });
+  for (const fn of [
+    checkCodexVersion,
+    checkCodexAuth,
+    checkCodexHome,
+    checkCodexModels,
+    checkCodexAccount,
+    checkCodexLeaks,
+    checkCodexSessions,
+  ]) {
+    assert.equal(await fn(root), null);
+  }
+});
+
+// A codex-routed config with a temp CODEX_HOME and a fake `codex` that answers the probes.
+function codexRowFixture(overrides: Record<string, unknown> = {}): { root: string; home: string } {
+  const root = readyRepo();
+  const home = tmpdir("doctor-codex-");
+  fs.mkdirSync(home, { recursive: true });
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna", backends: { codex: { configDir: home } }, ...overrides });
+  return { root, home };
+}
+
+test("checkCodexVersion fails below the floor and passes at it", async () => {
+  const { root } = codexRowFixture();
+  const bin = tmpdir("doctor-codex-version-");
+  writeScript(path.join(bin, "codex"), 'echo "0.162.9"');
+  const old = (await checkCodexVersion(root, bin))!;
+  assert.equal(old.level, "fail");
+  assert.match(old.detail, /codex 0\.162\.9 is older than 0\.163\.0 — upgrade the codex CLI/);
+  writeScript(path.join(bin, "codex"), 'echo "0.163.0"');
+  const ok = (await checkCodexVersion(root, bin))!;
+  assert.equal(ok.level, "ok");
+  assert.match(ok.detail, /codex 0\.163\.0 \(>= 0\.163\.0\)/);
+  writeScript(path.join(bin, "codex"), "exit 3");
+  const unreadable = (await checkCodexVersion(root, bin))!;
+  assert.equal(unreadable.level, "warn");
+  assert.match(unreadable.detail, /could not check/);
+});
+
+test("checkCodexAuth: ChatGPT passes, an API key and a logged-out home fail", async () => {
+  const { root, home } = codexRowFixture();
+  const bin = tmpdir("doctor-codex-login-");
+  writeScript(path.join(bin, "codex"), 'printf "Logged in using ChatGPT\\n"');
+  const sub = (await checkCodexAuth(root, bin))!;
+  assert.equal(sub.level, "ok");
+  assert.match(sub.detail, /logged in using ChatGPT — billing: subscription/);
+  writeScript(path.join(bin, "codex"), 'printf "Logged in using an API key\\n"');
+  const api = (await checkCodexAuth(root, bin))!;
+  assert.equal(api.level, "fail");
+  assert.match(api.detail, /Codex is logged in with an API key/);
+  assert.ok(api.detail.includes(`CODEX_HOME=${home} codex login --device-auth`));
+  writeScript(path.join(bin, "codex"), 'printf "Not logged in\\n"');
+  const loggedOut = (await checkCodexAuth(root, bin))!;
+  assert.equal(loggedOut.level, "fail");
+  assert.ok(loggedOut.detail.includes("codex is not logged in"));
+  assert.ok(loggedOut.detail.includes(`CODEX_HOME=${home} codex login --device-auth`));
+  // An unreadable reply (neither a ChatGPT login, an API key, nor an explicit
+  // not-logged-in) warns rather than failing as logged-out, so a reply this cannot
+  // read is never guessed to be a logout.
+  writeScript(path.join(bin, "codex"), 'printf "some other message\\n"');
+  const unreadable = (await checkCodexAuth(root, bin))!;
+  assert.equal(unreadable.level, "warn");
+  assert.match(unreadable.detail, /reply was unreadable/);
+});
+
+test("checkCodexHome warns on unset configDir and names the team home when set", async () => {
+  const root = readyRepo();
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna" });
+  const unset = (await checkCodexHome(root))!;
+  assert.equal(unset.level, "warn");
+  assert.match(unset.detail, /configDir is unset/);
+  const home = tmpdir("doctor-codex-home-");
+  fs.mkdirSync(home, { recursive: true });
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna", backends: { codex: { configDir: home } } });
+  const set = (await checkCodexHome(root))!;
+  assert.equal(set.level, "ok");
+  assert.equal(set.detail, `team codex home: ${home}`);
+});
+
+test("checkCodexModels warns a missing catalog model and a dropped thinking level", async () => {
+  const { root, home } = codexRowFixture();
+  const missing = (await checkCodexModels(root))!;
+  assert.equal(missing.level, "warn");
+  assert.match(missing.detail, /gpt-6-luna is not in the codex catalog/);
+  fs.writeFileSync(
+    path.join(home, "models_cache.json"),
+    JSON.stringify({
+      models: [
+        { slug: "gpt-6-luna", context_window: 272000, effective_context_window_percent: 95, supported_reasoning_levels: [{ effort: "low" }], input_modalities: ["text", "image"] },
+      ],
+    }),
+  );
+  const dropped = (await checkCodexModels(root))!; // no thinking configured -> no drop
+  assert.equal(dropped.level, "ok");
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna", thinking: "high", backends: { codex: { configDir: home } } });
+  const high = (await checkCodexModels(root))!;
+  assert.equal(high.level, "warn");
+  assert.match(high.detail, /gpt-6-luna has no high thinking level/);
+  // `minimal` maps to the `low` effort the catalog lists, so the run path sends it and the row
+  // must not warn — unlike the naive `levels.includes(thinking)` reading, which would warn
+  // because "minimal" is not itself in the catalog.
+  writeConfig(root, { backend: "codex", model: "gpt-6-luna", thinking: "minimal", backends: { codex: { configDir: home } } });
+  const clamped = (await checkCodexModels(root))!;
+  assert.equal(clamped.level, "ok");
+  assert.doesNotMatch(clamped.detail, /no minimal thinking level/);
+});
+
+test("checkCodexAccount warns when the account has credits and reads ok otherwise", async () => {
+  const { root, home } = codexRowFixture();
+  const none = (await checkCodexAccount(root))!;
+  assert.equal(none.level, "ok");
+  assert.match(none.detail, /no credit reading yet/);
+  fs.mkdirSync(path.join(home, "sessions", "2026-10-21"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, "sessions", "2026-10-21", "rollout-0000-x.jsonl"),
+    '{"payload":{"type":"token_count","rate_limits":{"credits":{"has_credits":true}}}}',
+  );
+  const warn = (await checkCodexAccount(root))!;
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /has_credits: true/);
+});
+
+test("checkCodexAccount reads the newest rollout by mtime, not readdir order", async () => {
+  const { root, home } = codexRowFixture();
+  const sessions = path.join(home, "sessions", "2026-10-22");
+  fs.mkdirSync(sessions, { recursive: true });
+  // Created first but made the OLDEST by mtime: a has_credits:true capture that must lose to the
+  // newer no-credits one. readdir returns them in creation order (true first), so any first-match
+  // reader would warn here — the row must sort by mtime and let the newest win.
+  const creditsOld = path.join(sessions, "rollout-aaa.jsonl");
+  fs.writeFileSync(creditsOld, '{"payload":{"type":"token_count","rate_limits":{"credits":{"has_credits":true}}}}');
+  const noneNew = path.join(sessions, "rollout-zzz.jsonl");
+  fs.writeFileSync(noneNew, '{"payload":{"type":"token_count","rate_limits":{"credits":{"has_credits":false}}}}');
+  const now = Date.now();
+  fs.utimesSync(creditsOld, new Date(now - 60_000), new Date(now - 60_000));
+  fs.utimesSync(noneNew, new Date(now), new Date(now));
+  const none = (await checkCodexAccount(root))!;
+  assert.equal(none.level, "ok");
+  assert.match(none.detail, /no credits/);
+  // Flip the mtimes: the has_credits capture is now the newest, so the row warns again.
+  fs.utimesSync(creditsOld, new Date(now + 60_000), new Date(now + 60_000));
+  const credits = (await checkCodexAccount(root))!;
+  assert.equal(credits.level, "warn");
+  assert.match(credits.detail, /has_credits: true/);
+});
+
+test("checkCodexLeaks names each leaked path and ignores .system", async () => {
+  const { root, home } = codexRowFixture();
+  fs.writeFileSync(path.join(home, "AGENTS.md"), "instructions");
+  fs.mkdirSync(path.join(home, "skills", "custom"), { recursive: true });
+  fs.mkdirSync(path.join(home, "skills", ".system", "builtin"), { recursive: true });
+  fs.mkdirSync(path.join(home, "hooks"), { recursive: true });
+  fs.writeFileSync(path.join(home, "hooks", "pre-command.sh"), "");
+  fs.mkdirSync(path.join(root, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".codex", "config.toml"), '[mcp_servers.foo]\ncommand = "bar"\n');
+  const leak = (await checkCodexLeaks(root))!;
+  assert.equal(leak.level, "warn");
+  assert.match(leak.detail, /AGENTS\.md still loads/);
+  assert.match(leak.detail, /skills\/custom/);
+  assert.doesNotMatch(leak.detail, /skills\/\.system/);
+  assert.match(leak.detail, /hooks\/pre-command\.sh/);
+  assert.match(leak.detail, /MCP server foo/);
+});
+
+test("checkCodexSessions reports the home sessions size", async () => {
+  const { root, home } = codexRowFixture();
+  const none = (await checkCodexSessions(root))!;
+  assert.equal(none.level, "ok");
+  assert.match(none.detail, /no sessions dir/);
+  fs.mkdirSync(path.join(home, "sessions", "2026-10-21"), { recursive: true });
+  fs.writeFileSync(path.join(home, "sessions", "2026-10-21", "rollout-0000-x.jsonl"), "abc");
+  const some = (await checkCodexSessions(root))!;
+  assert.equal(some.level, "ok");
+  assert.match(some.detail, /codex sessions: 3 B/);
 });

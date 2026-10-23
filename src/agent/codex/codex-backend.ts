@@ -44,6 +44,12 @@ import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
  * worth resuming (design §4). */
 const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** The oldest codex CLI the team targets, the sibling of `OPENCODE_MIN_VERSION`
+ * (src/agent/opencode/opencode-backend.ts) and `CLAUDE_MIN_VERSION`
+ * (src/agent/claude/claude-backend.ts): doctor's `codex version` row fails an installed CLI
+ * below this floor (plans/codex-backend.md "Hand steps", H1). */
+export const CODEX_MIN_VERSION = "0.163.0";
+
 /** The session this run uses: for a continue, the ledger's newest record of this kind when it
  * is codex's, has this cwd, carries a UUID thread id, and `findRollout` finds its rollout
  * under the run's home; otherwise the run is fresh (no pre-minted id — the stream names it).

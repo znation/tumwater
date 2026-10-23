@@ -49,6 +49,15 @@ import {
 import { checkFallbackChain, checkFallbackModel, checkFeedbackFiling, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
 import { checkAnthroApiKey, checkClaudeAuth, checkClaudeVersion } from "./doctor-claude-checks.js";
 import { checkOpencode } from "./doctor-opencode-checks.js";
+import {
+  checkCodexAccount,
+  checkCodexAuth,
+  checkCodexHome,
+  checkCodexLeaks,
+  checkCodexModels,
+  checkCodexSessions,
+  checkCodexVersion,
+} from "./doctor-codex-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
@@ -149,6 +158,13 @@ export async function runDoctor(
     { name: "claude version", run: () => checkClaudeVersion(root, pathEnv) },
     { name: "opencode version", run: () => checkOpencodeVersion(root, pathEnv) },
     { name: "opencode", run: () => checkOpencode(root, pathEnv) },
+    { name: "codex version", run: () => checkCodexVersion(root, pathEnv) },
+    { name: "codex login", run: () => checkCodexAuth(root, pathEnv) },
+    { name: "codex home", run: () => checkCodexHome(root) },
+    { name: "codex models", run: () => checkCodexModels(root) },
+    { name: "codex account", run: () => checkCodexAccount(root) },
+    { name: "codex leaks", run: () => checkCodexLeaks(root) },
+    { name: "codex sessions", run: () => checkCodexSessions(root) },
     { name: "backend binary", run: () => checkBackendBinary(root, pathEnv) },
     { name: "feedback filing", run: () => checkFeedbackFiling(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.

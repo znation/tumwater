@@ -241,6 +241,12 @@ export function opencodeSeamsInUse(config: TumwaterConfig): boolean {
   return seamPairs(config).some((pair) => pair.agent === "opencode");
 }
 
+/** Whether any seam routes to codex — the doctor's codex checks stand down when none does
+ * (a pi-only team spawns no codex and reads no codex home state). */
+export function codexSeamsInUse(config: TumwaterConfig): boolean {
+  return seamPairs(config).some((pair) => pair.agent === "codex");
+}
+
 /** Whether any seam routes to the pi backend — the doctor's pi-extension row stands down when
  * none does (an all-claude or all-opencode team reads no `~/.pi` state). Unlike the model-based
  * seam consult, this scans the routed seams directly (not seamPairs' model-filtered view) so a
