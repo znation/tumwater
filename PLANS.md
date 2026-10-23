@@ -105,41 +105,66 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater plan --release` lifts it and clears the counter, as it lifts every other hold today.
 - `npm run test:gate` passes.
 
-### Codex backend, part 9/9: Doctor checks the Codex install, login, home and models; session retention; docs; and an opt-in `smoke:codex` live check (planned 2026-10-20 by user; requires part 8/9 landed; design in plans/codex-backend.md "CODEX_HOME and sessions", "Spend, free-ness, window, images", "Risks" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/doctor/doctor-check-names.ts src/doctor/doctor.ts src/agent/codex/codex-backend.ts src/agent/session-ledger.ts src/orchestrator/retention.ts docs/backends.md docs/config.md README.md scripts/smoke-codex.mjs (new) package.json and their tests)
+### Codex backend, part 9a/9: Doctor's Codex rows — install, login, home, models, account, leaks and sessions size (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9b/9, 9c/9 and 9d/9 — any of the four may land first; design in plans/codex-backend.md "CODEX_HOME and sessions", "Spend, free-ness, window, images" and "Hand steps"; touches src/doctor/doctor-codex-checks.ts (new) src/doctor/doctor-model-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts src/agent/codex/codex-backend.ts test/fakes/fake-codex.ts test/doctor-checks.test.ts)
 
-**Needs review 2026-10-23 by feature: too large for one run**
-
-**Goal.** An operator can set Codex up from doctor's output alone, the team's Codex sessions are pruned like every other session, and one live command proves the production invocation still works after a Codex upgrade.
+**Goal.** An operator can set Codex up from `tumwater doctor` alone: whether the binary is new enough, whether the configured `CODEX_HOME` is logged in the supported way, and what the home shares or leaks.
 
 **Approach.**
-- Doctor gets a `codex` check group, shown when any job routes to codex:
-  - the binary resolves, and `codex --version` is at least `CODEX_MIN_VERSION` (0.163.0, the probed version);
-  - `codex login status` under the run's home: ChatGPT passes; an API key fails with the startup-gate message; not logged in fails, naming `CODEX_HOME=<home> codex login --device-auth`;
-  - the home: `backends.codex.configDir` unset warns that team runs share the operator's `~/.codex` (trust entries, sessions in the resume picker, skills, a global AGENTS.md);
-  - each Codex model is in the catalog, with its window and any thinking level it lacks;
-  - the account: `credits.has_credits` true warns that a run crossing a limit may spend credits tumwater cannot count (design §7);
-  - leaks: the home's `AGENTS.md`, `skills/` beyond `.system`, `hooks`, and the target repo's `.codex/config.toml` MCP servers, each named;
-  - the size of the home's `sessions/`.
-- Retention: the existing pruning (src/orchestrator/retention.ts, src/agent/session-ledger.ts) deletes the ledger's expired Codex sessions with `codex delete --force <id>` under the run's env (bounded at 10 s). Without `--force` Codex refuses to delete without a terminal (design finding 21). When the delete fails, pruning removes the rollout file.
-- docs/backends.md gets a "Codex (`backend: "codex"`)" section: what it runs, the home and its one login, subscription-only billing, the windows and reserve, what is disabled and why, sessions, and the sandbox choice. docs/config.md covers the `backends.codex` keys. README.md lists Codex among the backends.
-- scripts/smoke-codex.mjs (new; `npm run smoke:codex`, not in `npm test`) runs the exact production invocation in a throwaway git repo:
-  - a fresh run that edits a file and runs a command;
-  - a resume that recalls it;
-  - a SIGTERM mid-command, after which no marked process is left;
-  - an end-of-run note through `tumwater-notes`;
-  - an assertion that the first request is under 10,000 input tokens (8,059 on 0.163.0), which catches an isolation regression;
-  - a 90-second command that the model must poll to completion, with no `codex_command_abandoned`;
-  - an assertion that the rollout gave a `five_hour` and a `seven_day` reading.
+- src/agent/codex/codex-backend.ts: export `CODEX_MIN_VERSION = "0.163.0"`, the sibling of `OPENCODE_MIN_VERSION` (src/agent/opencode/opencode-backend.ts) and `CLAUDE_MIN_VERSION` (src/agent/claude/claude-backend.ts).
+- src/doctor/doctor-model-checks.ts: add `codexSeamsInUse(config)` beside `claudeSeamsInUse`/`opencodeSeamsInUse` (both built on `seamPairs`), the gate every codex row reads to stand down on a pi-only team.
+- src/doctor/doctor-codex-checks.ts (new; the twin of doctor-opencode-checks.ts and doctor-claude-checks.ts): one exported check function per row, each returning null when `!codexSeamsInUse(config)`.
+  - install/version: resolve the codex bin as a run would (the run's `TUMWATER_CODEX_BIN`/config dir) and read `codex --version`; below `CODEX_MIN_VERSION` fails.
+  - login: `codex login status` under the run's `CODEX_HOME`; ChatGPT passes; an API-key login fails with the startup-gate message; not logged in fails naming `CODEX_HOME=<home> codex login --device-auth`.
+  - home: `backends.codex.configDir` unset warns that team runs share the operator's `~/.codex` (trust entries, sessions in the resume picker, skills, a global `AGENTS.md`).
+  - models: each routed codex model is in the home's catalog, with its window and any thinking level it lacks.
+  - account: `credits.has_credits` true warns that a run crossing a limit may spend credits tumwater cannot count (design §7).
+  - leaks: the home's `AGENTS.md`, `skills/` beyond `.system`, `hooks`, and the target repo's `.codex/config.toml` MCP servers, each named.
+  - sessions size: report the size of the home's `sessions/`.
+- src/doctor/doctor.ts: import the new check functions from doctor-codex-checks.ts and register the rows in the check list (as it imports checkOpencode from doctor-opencode-checks.ts); src/doctor/doctor-check-names.ts: add each row's name to `DOCTOR_CHECK_NAMES`.
+- test/fakes/fake-codex.ts: extend the PATH shim beyond its `exec` case to answer `--version`, `login status` and the catalog read, and to shape `$CODEX_HOME` files, so every row runs offline against the fake (never a real codex).
 
 **Acceptance criteria.**
-- Doctor tests on fake-codex:
-  - each row's pass, warn and fail cases above;
-  - a version below 0.163.0 fails;
-  - a pi-only team shows no codex group.
-- Retention test: an expired codex ledger record gets one `codex delete --force <id>` on the fake, and its rollout is gone. A fresh one is kept.
-- `npm run smoke:codex --help` (or a dry-run flag) prints its steps without spawning codex.
-- docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
-- `npm test` passes.
+- On the fake: `>= 0.163.0` passes and a lower version fails; ChatGPT login passes; an API-key login fails with the startup-gate message; a logged-out home fails naming the login command; unset `configDir` warns naming what the shared home exposes; a routed model missing from the catalog and a `has_credits` account warn; each leak path is named; a pi-only team shows no codex row.
+- `npm run test:gate` passes.
+
+### Codex backend, part 9b/9: Session retention — prune expired Codex sessions with `codex delete --force` (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9c/9 and 9d/9; design in plans/codex-backend.md "CODEX_HOME and sessions"; touches src/agent/session-ledger.ts src/orchestrator/retention.ts test/session-ledger-prune.test.ts test/retention.test.ts)
+
+**Goal.** The team's Codex sessions age out on `sessionRetentionDays` like every other backend's, so a team's `CODEX_HOME` does not grow forever; the same prune reports what it deleted.
+
+**Approach.**
+- src/agent/session-ledger.ts: add `pruneCodexSessions(sessionsRoot, days, { bin, env })`, the twin of `pruneOpencodeSessions`: read the expired codex ledger records first and run `codex delete --force <id>` under the run's `CODEX_HOME` env, bounded at 10 s. Without `--force` Codex refuses to delete without a terminal (design finding 21), so `--force` is part of the command.
+- When a delete fails or the binary is unusable, remove that session's rollout file under `$CODEX_HOME/sessions/` as the fallback (the OpenCode spill-file fallback's twin), so the ledger line and rollout do not outlive the window.
+- src/orchestrator/retention.ts: in `RetentionPruner.prune`, call `pruneCodexSessions` beside `pruneOpencodeSessions` when a codex seam is configured (resolve the codex bin as a run would), before `pruneOldFiles` ages the ledger out, and warn one `deleted N expired codex session(s)` event when it deleted anything.
+
+**Acceptance criteria.**
+- A test with an expired codex ledger record and a fake codex on PATH sees exactly one `codex delete --force <id>` for it and its rollout gone; a fresh record is kept and gets no delete.
+- A fake codex whose delete exits nonzero leaves that session's rollout removed by the fallback.
+- `npm run test:gate` passes.
+
+### Codex backend, part 9c/9: Codex docs — a backends.md section, the config keys and the README backend list (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9d/9; design in plans/codex-backend.md "The decisions" and "Hand steps"; touches docs/backends.md docs/config.md README.md)
+
+**Goal.** The Codex backend is documented where the other backends are, so an operator can configure and trust it from the docs alone.
+
+**Approach.**
+- docs/backends.md: a "Codex (`backend: "codex"`)" section — what it runs, the home and its one login, subscription-only billing, the windows and reserve, what is disabled and why (no sandbox, API-key login refused), sessions, and the sandbox choice — naming `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`.
+- docs/config.md: the `backends.codex` keys (`configDir`, `windowReserve`, `args`).
+- README.md: add Codex to the backends list (the Backends paragraph; never the brief block between the `tumwater:prompt` markers).
+
+**Acceptance criteria.**
+- docs/backends.md's Codex section names `backends.codex.configDir`, `codex login --device-auth` and `windowReserve`; docs/config.md names the `backends.codex` keys; README's backend list names Codex.
+- `npm run test:gate` passes.
+
+### Codex backend, part 9d/9: The opt-in `smoke:codex` live check (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9c/9; design in plans/codex-backend.md "Hand steps" and "Risks"; touches scripts/smoke-codex.mjs (new) package.json)
+
+**Goal.** After a Codex upgrade, one live command proves the production invocation still works — the same hand check `smoke:claude` and `smoke:opencode` give.
+
+**Approach.**
+- scripts/smoke-codex.mjs (new; the twin of scripts/smoke-opencode.mjs and scripts/smoke-claude.mjs), run through a new `"smoke:codex"` script in package.json; it is not part of `npm test`.
+- It runs the exact production invocation in a throwaway git repo and lists every step under `--help`/a dry-run without spawning codex: a fresh run that edits a file and runs a command; a resume that recalls it; a SIGTERM mid-command after which no marked process is left; an end-of-run note through `tumwater-notes`; an assertion that the first request is under 10,000 input tokens (8,059 on 0.163.0), catching an isolation regression; a 90-second command polled to completion with no `codex_command_abandoned`; and an assertion that the rollout gave a `five_hour` and a `seven_day` reading.
+
+**Acceptance criteria.**
+- `npm run smoke:codex --help` (or the dry-run flag) prints its steps without spawning codex.
+- `npm run test:gate` passes.
 
 ### The day report's backlog lag median: how long a finished plan or bug waited from filing to done (planned 2026-10-23 by the plan role; shares src/report/report-types.ts, src/report/report-data.ts, src/report/report-render.ts and the src/ui/gui report files with the in-flight `tumwater report` main-red and review-duration entries — it adds a different field, line and chart beside theirs, so whichever lands later rebases; touches src/backlog, which no waiting entry touches; touches src/backlog/backlog-md.ts src/backlog/backlog.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/backlog.test.ts test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts)
 
@@ -227,7 +252,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - No Codex run's argv changes yet, and no code path calls the lookup outside the tests.
 - `npm run test:gate` passes.
 
-### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend parts 8/9 and 9/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts)
+### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts)
 
 **Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.
 
@@ -253,7 +278,7 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A failing lookup never fails or delays a run beyond the 15 s bound.
 - `npm run test:gate` passes.
 
-### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend parts 8/9 and 9/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts)
+### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts)
 
 **Goal.** Turn the guard on. A codex run whose `apply_patch` would land under the team root but outside its worktree is refused with the shared refusal, as pi, claude and OpenCode runs are.
 
@@ -294,12 +319,12 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Only codex prompts change, by exactly that rule.
 - `npm run test:gate` passes.
 
-### Write guard on Codex, part 8/9: Doctor's codex group reports whether codex runs carry the write guard (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)"; touches src/doctor/doctor-model-checks.ts test/doctor-model-checks.test.ts)
+### Write guard on Codex, part 8/9: Doctor's codex group reports whether codex runs carry the write guard (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9a/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)"; touches src/doctor/doctor-model-checks.ts test/doctor-model-checks.test.ts)
 
 **Goal.** An operator can see from `tumwater doctor` whether codex edits are guarded, and why not when they are not.
 
 **Approach.**
-- src/doctor/doctor-model-checks.ts: in the codex check group Codex backend part 9/9 adds (shown when any job routes to codex), add a `write guard` row.
+- src/doctor/doctor-model-checks.ts: in the codex check rows Codex backend part 9a/9 adds (each shown when any job routes to codex), add a `write guard` row.
 - The row runs `codexHookTrust` for the run env's home and the current build's definition, bounded at 10 s like the group's other Codex calls.
   - pass: `trusted (sha256:<first 12 hex>)`;
   - warn: `off: <reason> — codex runs edit without the worktree check`.
@@ -314,12 +339,12 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Both rows render as above.
 - `npm run test:gate` passes.
 
-### Write guard on Codex, part 9/9: The live `smoke:codex` step for the guard, and the docs (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)" and "Risks"; touches scripts/smoke-codex.mjs docs/how-it-works.md docs/backends.md plans/codex-backend.md)
+### Write guard on Codex, part 9/9: The live `smoke:codex` step for the guard, and the docs (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9c/9 and Codex backend 9d/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)" and "Risks"; touches scripts/smoke-codex.mjs docs/how-it-works.md docs/backends.md plans/codex-backend.md)
 
 **Goal.** After a Codex upgrade, one live command proves the guard still blocks. Session-flag trust could stop working while the `hooks/list` lookup still succeeds ("Risks"). The docs should say which backends are guarded and how.
 
 **Approach.**
-- scripts/smoke-codex.mjs (added by Codex backend part 9/9) gains a `write guard` step.
+- scripts/smoke-codex.mjs (added by Codex backend part 9d/9) gains a `write guard` step.
   - Build a throwaway team layout: a git repo `<T>/repo`, its worktree `<T>/repo/.tumwater/worktrees/_slot-1`, and the same `notes.md` text in both. Keep the session dir under `<T>/repo/.tumwater/sessions`, never outside a `.tumwater` root.
   - Run the production invocation through `runAgent`, asking the model to use `apply_patch` to change `notes.md` at the primary's absolute path, and to follow any refusal.
   - Assert three things: the primary's `notes.md` is unchanged, the worktree's `notes.md` changed, and the run's rollout holds "blocked by PreToolUse hook".
