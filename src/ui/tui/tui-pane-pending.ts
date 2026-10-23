@@ -1,6 +1,7 @@
 import { readMergeQueue, queuedMergeFiles, type MergeEntry, type MergeQueueView } from "../../merge/merge-queue.js";
 import { renderMergeQueue, revisionNote, retryNote, scopeMergeQueue } from "../../merge/merge-queue-render.js";
 import { cancelQueuedMerge } from "../../merge/merge-cancel.js";
+import { moveQueuedMergeToTop } from "../../merge/merge-top.js";
 import { mergeChanges } from "../../merge/merge-slot.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
@@ -55,7 +56,8 @@ export function overlapDrillHeading(index: number, total: number, path: string):
  * when it resolves. Split out of the pane-navigation monolith; its key arms are the Ctrl+R
  * in-place refresh, the Ctrl+N overlap drill-down, and the Ctrl+G role scope (narrowing the
  * merge queue as well as the overlapping files), and it has no render state of its own —
- * aside from the enter half of the Ctrl+T cycle. */
+ * aside from the enter half of the Ctrl+T cycle. Its queue arms: Ctrl+X twice cancels a
+ * selected merge, Ctrl+V moves it to the front. */
 export function createPendingPane(session: TuiPaneSession) {
   // Pending is the cycle's one async collector: collectTeamChanges awaits git plumbing,
   // so kick it off fire-and-forget, cache the rendered text when it resolves, and repaint.
@@ -119,7 +121,7 @@ export function createPendingPane(session: TuiPaneSession) {
     const note = revisionNote(e);
     const retry = retryNote(e, session.now());
     const lines = [
-      `merge #${row.position} (Ctrl+X to cancel): ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${humanAgo(e.enqueuedAt, session.now())}`,
+      `merge #${row.position} (Ctrl+X to cancel, Ctrl+V to top): ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${humanAgo(e.enqueuedAt, session.now())}`,
       e.summary,
     ];
     if (e.body) lines.push("", e.body);
@@ -339,6 +341,62 @@ export function createPendingPane(session: TuiPaneSession) {
         session.flashMessage(`press Ctrl+X again to cancel merge #${row.position} — any other key keeps it`);
         session.requestRender();
       }
+      return true;
+    }
+    if (key.ctrl && key.name === "v" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      // Move the selected merge to the head of the queue — the pane's twin of `tumwater
+      // queue --top <n>`, through the same core the CLI and the dashboard use, so the three
+      // cannot drift on the rename or the already-first/out-of-range outcomes. A single
+      // keypress is enough because the move is reversible and non-destructive (unlike
+      // Ctrl+X's two-step cancel arm).
+      if (selectedQueue === null || queueRows.length === 0) {
+        session.flashMessage("select a merge with ↑↓ first");
+        session.requestRender();
+        return true;
+      }
+      const row = queueRows[Math.min(selectedQueue, queueRows.length - 1)]!;
+      const top = async (): Promise<void> => {
+        if (row.position === 1) {
+          session.flashMessage("merge #1 is already at the front");
+          session.requestRender();
+          return;
+        }
+        const files = queuedMergeFiles(session.root);
+        if (files[row.position - 1]?.entry.sha !== row.entry.sha) {
+          // A queue that shifted under the selection moved this entry: refuse rather than
+          // move the wrong one.
+          session.flashMessage("the merge queue changed — try again");
+          session.requestRender();
+          return;
+        }
+        const inFlight = queueInFlight(session.root, lastQueue?.entries ?? [], orchestratorAlive(session.root));
+        if (inFlight && (inFlight.sha === row.entry.sha || mergeChanges(inFlight).some((c) => c.sha === row.entry.sha))) {
+          session.flashMessage(`merge #${row.position} is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(row.entry.sha)}\``);
+          session.requestRender();
+          return;
+        }
+        const outcome = moveQueuedMergeToTop(session.root, row.position);
+        if (outcome.status === "topped") {
+          selectedQueue = null;
+          queueDetail = "";
+          session.flashMessage(`moved merge #${row.position} to the front: ${roleLabel(outcome.role)} ${shortSha(outcome.sha)} — ${outcome.summary}`);
+          refresh();
+          session.requestRender();
+        } else if (outcome.status === "already-first") {
+          session.flashMessage(`merge #${row.position} is already at the front`);
+          refresh();
+          session.requestRender();
+        } else if (outcome.status === "out-of-range") {
+          session.flashMessage("the merge queue changed — try again");
+          refresh();
+          session.requestRender();
+        } else {
+          session.flashMessage("that merge already left the queue");
+          refresh();
+          session.requestRender();
+        }
+      };
+      void top();
       return true;
     }
     return false;

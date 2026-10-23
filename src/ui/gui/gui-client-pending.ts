@@ -7,7 +7,8 @@
  * card from `/api/diff?overlaps=1`, with Role and Folder pickers that narrow it client-side,
  * and the Merge queue card from the status payload, with a Role picker that keeps only the
  * chosen role's waiting merges under their whole-queue positions (the tumwater queue --role
- * twin). Spliced into gui-client.ts's script, reaching its helpers (esc, getJson, icon,
+ * twin) and a per-row Move to top / two-click Cancel pair on every non-first entry. Spliced
+ * into gui-client.ts's script, reaching its helpers (esc, getJson, icon,
  * errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlaps = null;
@@ -63,17 +64,24 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // One queued merge's line: the 1-based whole-queue position, role, run, short sha, age, an
   // optional merge label, and summary. Shared by the Merge queue card and the role drawer so
   // the two cannot drift; a malformed entry renders stand-ins rather than undefined/NaN.
-  function queueEntryLineHtml(e, position, now, label, cancel) {
+  function queueEntryLineHtml(e, position, now, label, cancel, top) {
     const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
     const run = Number.isFinite(e.run) ? e.run : "?";
     const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
     const retry = typeof e.retry === "string" ? " · re-queued after " + e.retry + (Number.isFinite(e.notBefore) && e.notBefore > now ? " · eligible in " + humanSeconds(Math.max(0, Math.round((e.notBefore - now) / 1000))) : "") : "";
-    const line = "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
+    let line = "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
       " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
       " ago" + (label && typeof label === "string" ? " · [" + esc(label) + "]" : "") +
       retry +
       note +
       " · " + esc(e.summary || "—") + "</div>";
+    // A reorder button (Move to top) on every non-first row of the Merge queue card, before
+    // the two-click cancel: the move is reversible and non-destructive, so a single click is
+    // enough (unlike Cancel's two-click arm). The drawer (this role's merges) passes no top,
+    // so its rows carry no reorder.
+    if (top && position > 1 && typeof e.sha === "string") {
+      line = "<button type='button' class='btn btn-sm' data-top='" + esc(e.sha) + "'>Move to top</button>" + line;
+    }
     // A two-click cancel: armed by the first click, fired by the second within 5 s (the
     // confirmSlot guard), so a stray click cannot remove an entry. A malformed entry carries
     // no sha, so it renders no button.
@@ -122,7 +130,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
           roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
       }
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => ({ e, i })).filter(({ e }) => !active || (e && e.role === active)).map(({ e, i }) =>
-        queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined, { sha: e && e.sha, armed: e && e.sha === cancelArmedSha })).join("") + "</div>";
+        queueEntryLineHtml(e, i + 1, now, Array.isArray(labels) ? labels[i] : undefined, { sha: e && e.sha, armed: e && e.sha === cancelArmedSha }, true)).join("") + "</div>";
     }
     return head + body;
   }
@@ -248,6 +256,18 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     // button as Confirm cancel), a second on the armed sha within 5 s posts /api/queue-cancel
     // then clears the arm and refetches so the removed row disappears at once.
     $("pendingqueue").addEventListener("click", async (e) => {
+      // A Merge queue row's Move to top: a single click posts /api/queue-top by sha, moving
+      // that entry to the head of the queue and refetching (the move is reversible and
+      // non-destructive, so it needs no two-step arm).
+      const t = e.target.closest("[data-top]");
+      if (t) {
+        const sha = t.getAttribute("data-top");
+        if (sha) {
+          await postAction("/api/queue-top", { sha }, (d) => d && d.status === "topped" ? "moved the merge of " + shortSha(d.commit) + " to the front" : d && d.status === "already-first" ? "that merge is already at the front" : "that merge already left the queue");
+          fetchPending();
+        }
+        return;
+      }
       const b = e.target.closest("[data-cancel]");
       if (!b) return;
       const sha = b.getAttribute("data-cancel");

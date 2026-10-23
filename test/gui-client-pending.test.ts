@@ -186,6 +186,35 @@ test("pendingQueueHtml escapes role and summary markup", () => {
   assert.match(html, /value='r&lt;script&gt;'/, "a role id carrying markup is escaped in the picker option");
 });
 
+test("pendingQueueHtml puts a Move to top button on every non-first row and none on first or one-entry queues", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const two = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", run: 1, summary: "a", enqueuedAt: now },
+    { role: "bugfix", sha: "0123456789abcdef", run: 2, summary: "b", enqueuedAt: now },
+  ] };
+  const html = pendingQueueHtml(two, now);
+  assert.doesNotMatch(html, /data-top='abcdef1234567890'/, "the first row has no Move to top");
+  assert.match(html, /data-top='0123456789abcdef'/, "the second row carries its sha");
+  const first = html.indexOf("data-top=");
+  const second = html.indexOf("01234567");
+  assert.ok(first > -1 && first < second, "the Move to top button precedes its row's line");
+  assert.match(html, /Move to top/);
+  // A one-entry queue has every row in front already: no button anywhere.
+  const one = pendingQueueHtml({ depth: 1, entries: [two.entries[0]!] }, now);
+  assert.doesNotMatch(one, /data-top=/, "a one-entry queue renders no Move to top");
+  // Role and summary markup stays escaped even next to the new button.
+  const evil = pendingQueueHtml({ depth: 2, entries: [
+    { role: "clea<n>", sha: "1111111111111111", run: 1, summary: "ok", enqueuedAt: now },
+    { role: "bugfix", sha: "<b>2222222222222222</b>", run: 2, summary: "<i>z</i>", enqueuedAt: now },
+  ] }, now);
+  assert.doesNotMatch(evil, /<n>|<b>|<i>/, "button, role, and summary markup are escaped");
+  assert.match(evil, /data-top='&lt;b&gt;2222222222222222&lt;\/b&gt;'/);
+});
+
 test("pendingQueueHtml keeps the chosen role's merges under their whole-queue positions", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown, role?: string): string }>(
     ["format", "labels", "pending-table"],

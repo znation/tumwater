@@ -17,6 +17,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
 import { cancelQueuedMergeBySha, type CancelQueuedByShaOutcome } from "../merge/merge-cancel.js";
+import { moveQueuedMergeToTopBySha, type TopQueuedByShaOutcome } from "../merge/merge-top.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { mergeChanges } from "../merge/merge-slot.js";
 import { queueInFlight } from "../status/status-polls.js";
@@ -215,6 +216,38 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
     commit: outcome.sha,
     summary: outcome.summary,
     message: `cancelled the merge of ${shortSha(outcome.sha)} — ${outcome.summary}`,
+  });
+}
+/** Handle POST /api/queue-top: the Merge queue card row's Move to top button — the browser
+ * twin of `tumwater queue --top <n>`, resolving by pinned sha (the same reorder
+ * `moveQueuedMergeToTopBySha` the CLI's position variant shares). A `sha` that is not 4-64
+ * hex digits is a 400 and runs nothing. A sha a live merge marker names mid-merge is a 409
+ * with the wait-then-revert wording and changes nothing; a sha no longer queued (a
+ * concurrent drain raced the click) is a 200 `{ status: "gone" }` data, not an error.
+ * Otherwise it answers the topped entry's role/commit/summary and moves its queue file to
+ * the front. */
+export async function handleQueueTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
+  if (!body) return;
+  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
+    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
+  const view = readMergeQueue(root);
+  const sha = body.sha.toLowerCase();
+  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
+  if (inFlight && ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === sha) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === sha)))
+    return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
+  const outcome: TopQueuedByShaOutcome = moveQueuedMergeToTopBySha(root, body.sha);
+  if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
+  if (outcome.status === "already-first")
+    return sendJson(res, 200, { ok: true, status: "already-first", role: outcome.role, commit: outcome.sha, summary: outcome.summary, message: `${shortSha(body.sha)} is already at the front` });
+  if (outcome.status !== "topped") return;
+  sendJson(res, 200, {
+    ok: true,
+    status: "topped",
+    role: outcome.role,
+    commit: outcome.sha,
+    summary: outcome.summary,
+    message: `moved the merge of ${shortSha(outcome.sha)} to the front — ${outcome.summary}`,
   });
 }
 /** Handle POST /api/brief: replace the brief text through editBriefText — the same

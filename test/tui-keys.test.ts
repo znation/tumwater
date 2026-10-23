@@ -2716,12 +2716,12 @@ test("the Pending pane selects a queued merge in full and Esc returns to the lis
 
   keys.handleKey(undefined, { name: "down" });
   assert.equal(keys.state().selectedQueue, 0, "Down selects the first (oldest) entry");
-  assert.match(keys.state().queueDetail, /^merge #1 \(Ctrl\+X to cancel\): feature run #1 · /);
+  assert.match(keys.state().queueDetail, /^merge #1 \(Ctrl\+X to cancel, Ctrl\+V to top\): feature run #1 · /);
   assert.ok(keys.state().queueDetail.includes("add one"), "the detail shows the summary");
 
   keys.handleKey(undefined, { name: "down" });
   assert.equal(keys.state().selectedQueue, 1, "Down wraps to the second");
-  assert.match(keys.state().queueDetail, /^merge #2 \(Ctrl\+X to cancel\): clean run #2 · /);
+  assert.match(keys.state().queueDetail, /^merge #2 \(Ctrl\+X to cancel, Ctrl\+V to top\): clean run #2 · /);
   assert.ok(keys.state().queueDetail.includes("add two"), "the detail shows the second summary");
 
   keys.handleKey(undefined, { name: "up" });
@@ -2828,6 +2828,72 @@ test("a Pending cancel is refused when the queued entry is a merge record name b
   await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
   assert.equal(queuedMerges(root).length, 2, "the recorded in-flight entry is not removed");
   assert.ok(await refSha(root, mergeRefName("feature")), "the pin is intact");
+});
+
+test("a Pending top of a merge the running team is mid-merging is refused with the wait-then-revert wording", async () => {
+  const { root, cleanSha } = await pendingCancelRoot();
+  // A live team whose merge marker names the queued clean entry (#2), so the top passes the
+  // already-first and shifted-queue checks and reaches the in-flight guard.
+  writeOrchestratorMarker(root, ["clean"]);
+  writeMergeMarker(root, { role: "clean", sha: cleanSha, summary: "add two", startedAt: Date.now() - 120_000, stage: "reviewing" });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // feature (#1)
+  keys.handleKey(undefined, { name: "down" }); // clean (#2)
+  keys.handleKey(undefined, { ctrl: true, name: "v" }); // → in-flight guard
+  await untilFlash(() => keys.state().flash ?? "", /is being merged right now — wait for it to land, then `tumwater revert /);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the in-flight entry is not topped");
+  assert.equal(eventsOfType(root, "merge_topped").length, 0, "no event for a refused top");
+});
+
+test("the Pending pane moves the selected queued merge to the front with Ctrl+V", async () => {
+  const { root, cleanSha } = await pendingCancelRoot();
+  const keys = openPending(root);
+  // Ctrl+V with no selection just tells the operator how to select; the queue is untouched.
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  assert.equal(keys.state().flash, "select a merge with ↑↓ first");
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "no selection leaves the queue");
+
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { name: "down" }); // select clean (#2)
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  await untilFlash(() => keys.state().flash ?? "", /moved merge #2 to the front: clean /);
+  const after = queuedMerges(root);
+  assert.deepEqual(
+    after.map((e) => e.role),
+    ["clean", "feature"],
+    "the selected entry is now the head and the rest keep their order",
+  );
+  assert.equal(after[0]!.sha, cleanSha, "every entry field rides the renamed file");
+  assert.equal(after[0]!.run, 2);
+  assert.equal(keys.state().selectedQueue, null, "a top returns to list mode");
+  assert.equal(keys.state().queueDetail, "", "a top clears the detail");
+  const topped = eventsOfType(root, "merge_topped");
+  assert.equal(topped.length, 1, "exactly one merge_topped event is logged");
+  assert.equal(topped[0]!.source, "clean");
+  assert.equal(topped[0]!.commit, cleanSha);
+});
+
+test("the Pending pane's Ctrl+V on position 1 flashes already-first and changes nothing", async () => {
+  const { root } = await pendingCancelRoot();
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select feature (#1)
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  await untilFlash(() => keys.state().flash ?? "", /merge #1 is already at the front/);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the queue is untouched");
+  assert.equal(eventsOfType(root, "merge_topped").length, 0, "no event for a no-op");
+});
+
+test("the Pending pane's Ctrl+V still opens the attach editor on the Activity view", async () => {
+  const { root } = await pendingCancelRoot();
+  const keys = openPending(root);
+  // openPending ends on Pending (view 5). Cycle back to Activity (view 0), where Ctrl+V must
+  // still open the attach editor rather than be swallowed by the new Pending arm.
+  for (let i = 0; i < 4; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 0, "we are back on Activity");
+  assert.equal(keys.state().attachMode, false, "sanity: no attach editor open yet");
+  keys.handleKey(undefined, { ctrl: true, name: "v" });
+  assert.equal(keys.state().attachMode, true, "Ctrl+V on Activity opens the attach editor");
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the queue is untouched");
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {

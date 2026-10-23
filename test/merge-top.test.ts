@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { moveQueuedMergeToTop } from "../src/merge/merge-top.js";
+import { moveQueuedMergeToTop, moveQueuedMergeToTopBySha } from "../src/merge/merge-top.js";
 import { enqueueMerge, queuedMergeFiles, queuedMerges, type MergeEntry } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, mergeRefName } from "../src/paths.js";
 import { setRef } from "../src/git/git.js";
@@ -131,4 +131,50 @@ test("a concurrent drop mid-move answers gone with no rename and no event", asyn
     ["improve", "organize", "feature"],
     "no rename happened, so the queue is untouched",
   );
+});
+
+test("moveQueuedMergeToTopBySha tops the named entry and logs one event", async () => {
+  const root = await threeQueued();
+  const shas = queuedMergeFiles(root).map((q) => q.entry.sha);
+  const thirdSha = shas[2]!;
+  const outcome = moveQueuedMergeToTopBySha(root, thirdSha);
+  assert.deepEqual(outcome, { status: "topped", role: "feature", sha: thirdSha, summary: "add feature" });
+  const after = queuedMerges(root);
+  assert.deepEqual(
+    after.map((e) => e.role),
+    ["feature", "improve", "organize"],
+    "the named entry is now the head and the rest keep their order",
+  );
+  assert.equal(after[0]!.sha, thirdSha);
+  const topped = eventsOfType(root, "merge_topped");
+  assert.equal(topped.length, 1, "exactly one merge_topped event is logged");
+  assert.equal(topped[0]!.source, "feature");
+  assert.equal(topped[0]!.commit, thirdSha);
+});
+
+test("moveQueuedMergeToTopBySha on the leading sha answers already-first and renames nothing", async () => {
+  const root = await threeQueued();
+  const before = queuedMergeFiles(root).map((q) => q.file);
+  const headSha = queuedMergeFiles(root)[0]!.entry.sha;
+  const outcome = moveQueuedMergeToTopBySha(root, headSha);
+  assert.deepEqual(outcome, { status: "already-first", role: "improve", sha: headSha, summary: "add improve" });
+  assert.deepEqual(
+    queuedMergeFiles(root).map((q) => q.file),
+    before,
+    "no file is renamed",
+  );
+  assert.equal(eventsOfType(root, "merge_topped").length, 0, "no event for a no-op");
+});
+
+test("moveQueuedMergeToTopBySha on an unknown sha answers gone with the order unchanged", async () => {
+  const root = await threeQueued();
+  const before = queuedMergeFiles(root).map((q) => q.file);
+  const outcome = moveQueuedMergeToTopBySha(root, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+  assert.deepEqual(outcome, { status: "gone" });
+  assert.deepEqual(
+    queuedMergeFiles(root).map((q) => q.file),
+    before,
+    "no file is renamed",
+  );
+  assert.equal(eventsOfType(root, "merge_topped").length, 0);
 });
