@@ -80,6 +80,30 @@ interface TuiHeld {
   claudeReserve: boolean;
 }
 
+/** The prompt-line editor keys: the `entering` argument of the shared hold-guard helpers.
+ * `null` means no editor is about to take the line, so any held editor flashes. */
+type EditorEnterKey =
+  | null
+  | "pause"
+  | "budget"
+  | "attach"
+  | "notes"
+  | "brief"
+  | "retire"
+  | "quiet"
+  | "interval"
+  | "instructions"
+  | "providerCaps"
+  | "concurrency"
+  | "slots"
+  | "notify"
+  | "backends"
+  | "fallback"
+  | "roleModel"
+  | "model"
+  | "instances"
+  | "claudeReserve";
+
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
  * `TuiEditorCtx`) instead of the whole `TuiEditorsDeps`: the one prompt line (`input`/`cursor`),
  * the session history, the mutually-exclusive-mode registry, the
@@ -143,7 +167,12 @@ export interface TuiEditorSession {
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out; null
    * means no editor is entering, so any held editor flashes. */
-  heldEditorFlash(entering: null | "pause" | "budget" | "attach" | "notes" | "brief" | "retire" | "quiet" | "interval" | "instructions" | "providerCaps" | "concurrency" | "slots" | "notify" | "backends" | "fallback" | "roleModel" | "model" | "instances" | "claudeReserve"): string | null;
+  heldEditorFlash(entering: EditorEnterKey): string | null;
+  /** Refuse the shared prompt line to `entering` when another editor already holds it: flash the
+   * holder's subject on the same line and return true (the key was consumed). Returns false when
+   * the line is free for `entering` to take. Every editor's open-arm calls this before blanking
+   * the line, so the hold-priority invariant and its flash are stated once, not per editor. */
+  editorEntryDenied(entering: Exclude<EditorEnterKey, null>): boolean;
 }
 
 /** The prompt-line editors a keypress can be refused for, each with its busy-guard subject, in
@@ -254,6 +283,12 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
         if (h[mode] && entering !== mode) return session.busyFlash(subject);
       }
       return null;
+    },
+    editorEntryDenied(entering) {
+      const held = session.heldEditorFlash(entering);
+      if (held === null) return false;
+      session.flashMessage(held);
+      return true;
     },
   };
   return session;

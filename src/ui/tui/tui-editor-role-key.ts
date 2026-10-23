@@ -74,13 +74,7 @@ export function createRoleKeyEditor(
       }
       if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length) || spec.yieldsOn?.(ctx)) return false;
       const role = ctx.roleIds[ctx.view - 1]!;
-      const held = session.heldEditorFlash(spec.mode);
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied(spec.mode)) return true;
       // Pin the role first so the write below is safe against a mid-edit roster shift, then
       // pre-fill from the file's own entry — one fresh read per open is the smallest honest
       // source; a broken config degrades to no pre-fill and the write reports the error.

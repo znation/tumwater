@@ -52,14 +52,7 @@ export function createInstructionsEditor(session: TuiEditorSession): TuiEditorMo
       // `roles.<base>.instructions` override through the same setConfigKey write the CLI and
       // the dashboard drawer use. Entering saves the prompt draft and blanks the line; leaving
       // restores it.
-      const held = session.heldEditorFlash("instructions");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping
-        // the held mode's saved draft.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("instructions")) return true;
       if (instructionsFor !== null) {
         exitInstructionsMode();
       } else {

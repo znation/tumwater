@@ -61,13 +61,7 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
       }
       if (!(ctx.view >= 1 && ctx.view <= ctx.roleIds.length)) return false;
       const role = ctx.roleIds[ctx.view - 1]!;
-      const held = session.heldEditorFlash("quiet");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("quiet")) return true;
       if (role === DIRECTOR_ROLE) {
         session.flashMessage("the director has no quiet hours");
         return true;
@@ -111,13 +105,7 @@ export function createQuietEditor(session: TuiEditorSession): TuiEditorModule {
         return true;
       }
       if (ctx.view !== 0) return false;
-      const held = session.heldEditorFlash("quiet");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("quiet")) return true;
       const existing = loadConfigSafe(session.root).config?.quietHours ?? "";
       restoreDraft = session.takeDraft();
       quietMode = true;

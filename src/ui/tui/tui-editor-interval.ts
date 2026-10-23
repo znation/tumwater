@@ -47,13 +47,7 @@ export function createIntervalEditor(session: TuiEditorSession): TuiEditorModule
       // on the same clock, so `--min-run-interval` is accepted for it too.
       if (!intervalMode && !(ctx.view >= 1 && ctx.view <= ctx.roleIds.length)) return false;
       const role = ctx.roleIds[ctx.view - 1]!;
-      const held = session.heldEditorFlash("interval");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("interval")) return true;
       if (intervalMode) {
         exitIntervalMode();
         return true;

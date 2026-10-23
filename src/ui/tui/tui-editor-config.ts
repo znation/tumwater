@@ -72,13 +72,7 @@ export function createTeamConfigKeyEditor(
         return true;
       }
       if (ctx.view !== 0) return false;
-      const held = session.heldEditorFlash(spec.mode);
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode
-        // may not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied(spec.mode)) return true;
       const existing = spec.prefill(session);
       restoreDraft = session.takeDraft();
       mode = true;

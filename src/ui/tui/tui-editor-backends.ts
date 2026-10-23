@@ -53,13 +53,7 @@ export function createBackendsEditor(session: TuiEditorSession): TuiEditorModule
         return true;
       }
       if (ctx.view !== 0) return false;
-      const held = session.heldEditorFlash("backends");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("backends")) return true;
       const existing = rawBackends(session.root);
       restoreDraft = session.takeDraft();
       backendsMode = true;

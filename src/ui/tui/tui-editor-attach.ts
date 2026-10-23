@@ -38,14 +38,7 @@ export function createAttachEditor(session: TuiEditorSession): TuiEditorModule {
       // the line edits one image path that rides into the next director prompt as the same
       // `[image attached: …]` `tumwater prompt --attach <path>` and the dashboard composer
       // write. Entering saves the director draft and blanks the line; leaving restores it.
-      const held = session.heldEditorFlash("attach");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping
-        // the held mode's saved draft.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("attach")) return true;
       if (attachMode) {
         exitAttachMode();
         session.flashMessage("image attach cancelled");

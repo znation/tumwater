@@ -46,14 +46,7 @@ export function createNotesEditor(session: TuiEditorSession): TuiEditorModule {
       // line edits one file path that becomes the role's whole note through the same
       // saveRoleNote write the CLI and the dashboard drawer use. Entering saves the prompt
       // draft and blanks the line; leaving restores it.
-      const held = session.heldEditorFlash("notes");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping
-        // the held mode's saved draft.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("notes")) return true;
       if (notesEditFor !== null) {
         exitNotesMode();
       } else {

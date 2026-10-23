@@ -36,14 +36,7 @@ export function createRetireEditor(session: TuiEditorSession): TuiEditorModule {
       // role id; Enter retires that role's leftovers through the same retireRole core the CLI
       // and the dashboard button use. Entering saves the prompt draft and blanks the line;
       // leaving restores it.
-      const held = session.heldEditorFlash("retire");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping
-        // the held mode's saved draft.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("retire")) return true;
       // Mid-recall, hand the arrows' saved draft back before the retire editor takes the line —
       // the same settle the role editors do — so leaving restores the draft, not a
       // history entry, with no stale recall state riding along.

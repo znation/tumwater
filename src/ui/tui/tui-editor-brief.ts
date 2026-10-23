@@ -38,14 +38,7 @@ export function createBriefEditor(session: TuiEditorSession): TuiEditorModule {
       // The line edits one file path that becomes the whole brief through the same
       // editBriefText write the CLI and the dashboard's Brief card use. Entering saves the
       // prompt draft and blanks the line; leaving restores it.
-      const held = session.heldEditorFlash("brief");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out instead of silently dropping
-        // the held mode's saved draft.
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("brief")) return true;
       // Mid-recall, hand the arrows' saved draft back before the brief editor takes the line —
       // the same settle the other editors do — so leaving restores the draft, not a history
       // entry, with no stale recall state riding along.

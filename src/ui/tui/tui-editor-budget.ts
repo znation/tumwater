@@ -68,15 +68,7 @@ export function createBudgetEditor(session: TuiEditorSession): TuiEditorModule {
         ctx.view >= 1 && ctx.view <= ctx.roleIds.length
           ? ctx.roleIds[ctx.view - 1]!
           : null;
-      const held = session.heldEditorFlash("budget");
-      if (held) {
-        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
-        // not enter while another holds it. Flash the way out first — even on the director's
-        // pane — instead of the director wording or silently dropping the held mode's saved
-        // draft (or parsing its text as a cap on Enter).
-        session.flashMessage(held);
-        return true;
-      }
+      if (session.editorEntryDenied("budget")) return true;
       if (role === DIRECTOR_ROLE) {
         // The cap exempts the director (role-view.ts's rule), so there is nothing to edit.
         session.flashMessage("the director has no daily cap");
