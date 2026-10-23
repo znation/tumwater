@@ -22,6 +22,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Interlock relief, part 1/2: The merge-queue interlock holds only what the feedback contract needs — a queued author whose change is approved may run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; evidence: queue waits before landing ran median 5 min, max 3 h 17 m over 58 h, and the interlock parks the author for the whole window; one switch: `review.afterMerge` opts a role into both post-merge review and this relief (Reviewer as a regular role, part 1/4, landed); touches src/git/git.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-scope.ts src/orchestrator/scheduling-skip.ts src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts src/runner/leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts plans/merge-queue.md and their tests)
 
+**Needs review 2026-10-23 by feature: too large for one run (held 1)**
+
 **Goal.** plans/merge-queue.md invariant 3 ("a loop with a queued or landing change is not eligible to tick") preserves the `state.lastReview` feedback contract. For post-merge-review roles that contract no longer needs the pre-merge pipeline: scope the interlock per role and per stage, so an author whose change is approved-and-waiting or in the merge's fast-forward is not parked, while the stages that actually race the author's branch stay exclusive. The queue's one-entry-per-role cap is unchanged: a role admitted this way that authors a second change holds it on its branch, unpinned, until the first drains.
 
 **Approach.**
