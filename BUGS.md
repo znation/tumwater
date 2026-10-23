@@ -120,6 +120,14 @@ diff: 'simple'
 }
 ~~~~
 
+### `three T-long reviews run at once at cap 4, so all three merge in about T, not 3T` failed, then passed on the same tree (quarantined by tumwater 2026-10-23)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+three T-long reviews run at once at cap 4, so all three merge in about T, not 3T
+~~~~
+
 ## Fixed
 
 ## Verified
