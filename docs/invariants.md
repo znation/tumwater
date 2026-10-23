@@ -4518,7 +4518,7 @@ index, rather than skipping the preserve".
 
 **Guarantee.** `handleRefusal` catches a note merge that throws (a lock timeout, `cannot acquire lock`): it records `state.lastError` as "refusal note merge failed: <error>", logs no `entry_refused`, and still returns the "refused" outcome with the note commit, which stays on the branch for leftover recovery. The refusal path's merge waits `MERGE_LOCK_WAIT_MS` (15 minutes) for `merge.lock` rather than `withLock`'s 120 s default, because a merge holds the lock through its in-lock check; the merge queue's own callers set no `lockTimeoutMs` and keep the default.
 
-**Binds.** `src/verdict/refusal.ts` (`handleRefusal`), `src/runner/runner-run.ts` (`mergePhase`) and `src/merge/merge-to-main.ts` (`tryMerge`, `MergeContext.lockTimeoutMs`).
+**Binds.** `src/verdict/refusal.ts` (`handleRefusal`), `src/runner/runner-outcome.ts` (`mergePhase`) and `src/merge/merge-to-main.ts` (`tryMerge`, `MergeContext.lockTimeoutMs`).
 
 **Pinned by.** `test/refusal.test.ts` — "a note merge that throws records lastError and still returns the refusal"; `test/merge-to-main.test.ts` — "mergeToMain waits for merge.lock up to ctx.lockTimeoutMs and names the lock when it gives up".
 

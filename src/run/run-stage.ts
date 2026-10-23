@@ -69,7 +69,7 @@ interface RunFiled {
   title: string;
 }
 
-/** The shared role wiring a changed worktree's staging needs (src/runner/runner-run.ts):
+/** The shared role wiring a changed worktree's staging needs (src/runner/runner-outcome.ts):
  * the per-run authoring-run counters as a snapshot, plus the callbacks that touch the
  * role — warnings, the summary follow-up run, the pre-queue self-check with its fix-up
  * run, the merge-ref pin, and the abort finalizer. Mirrors the context-object shapes of

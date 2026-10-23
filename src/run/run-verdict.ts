@@ -1,4 +1,4 @@
-/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see runner-run.ts's
+/** The UNFULFILLED-VERDICT half of a finished pi run's classification (see runner-outcome.ts's
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
  * with the staging handoff (src/run/run-stage.ts) staying in the run pipeline. Returns null when
