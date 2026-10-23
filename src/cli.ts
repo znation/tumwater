@@ -399,7 +399,7 @@ async function main(): Promise<void> {
       await (await import("./cli/brief-command.js")).cmdBrief(root, args);
       break;
     case "role":
-      await (await import("./cli/cli-query-commands.js")).cmdRole(root, args);
+      await (await import("./cli/cli-role-command.js")).cmdRole(root, args);
       break;
     case "prompt":
       // Parse before the gate: prompt's positionals are free-form, so rejectUnknownArgs
