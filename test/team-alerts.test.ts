@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole, type BacklogHeadingDuplicate } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, notifyFailures, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
@@ -15,6 +15,8 @@ import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, quarantinePath } from "../src/paths.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
+import { warnEvent } from "../src/events/events.js";
+import { notifyExitWarning } from "../src/events/notify.js";
 
 // team-alerts.ts's teamAlerts: what needs the operator, phrased once for the dashboard's alert
 // banners and the TUI's attention lines.
@@ -600,6 +602,52 @@ test("staleOpenBugs and the surfaces carry a stale-bug alert from BUGS.md, and n
   const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
   assert.equal(cleanPayload.alerts.find((a) => a.key === "stale-bugs"), undefined);
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /open bug waited/);
+});
+
+test("a failed notify page raises a standing amber alert", () => {
+  const now = Date.now();
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, { count: 1, latestTs: now - 3600_000, message: "notify command exited with code 127 paging budget_paused" });
+  // notifyFailure is the 19th positional argument, after reverts (null); one position earlier
+  // it would land in the skippedMergeFiles slot and raise no notify alert.
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["notify", "amber", "1 failed notify page in the last day"]]);
+  assert.match(one[0]!.detail ?? "", /1h ago/);
+  assert.match(one[0]!.detail ?? "", /code 127/);
+  assert.match(one[0]!.detail ?? "", /tumwater notify --test/);
+  assert.deepEqual(one[0]!.actions, []);
+  // Two failures read plural; the detail names the latest only.
+  const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, { count: 2, latestTs: now - 2 * 3600_000, message: "notify command exited with code 1 paging paused" });
+  assert.match(two[0]!.title, /2 failed notify pages in the last day/);
+  assert.match(two[0]!.detail ?? "", /2h ago/);
+  // A null last argument adds no alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null), []);
+  // With both a stale bug and a notify failure, the keys are [stale-bugs, notify].
+  const both = teamAlerts(base, [], [], now, [], [], [{ index: 2, position: 3, title: "Bug hangs", days: 3 }], [], [], null, [], [], [], null, [], [], [], null, { count: 1, latestTs: now - 60_000, message: "notify command exited with code 127 paging paused" });
+  assert.deepEqual(both.map((a) => a.key), ["stale-bugs", "notify"]);
+});
+
+test("notifyFailures and the surfaces carry a notify alert from failed pages, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  warnEvent(root, "tumwater", notifyExitWarning("budget_paused", 127, null) ?? "");
+  assert.equal(notifyFailures(root, now)?.count, 1);
+  assert.match(notifyFailures(root, now)?.message ?? "", /^notify command exited with code 127/);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string }> };
+  assert.equal(payload.alerts.find((a) => a.key === "notify")?.title, "1 failed notify page in the last day");
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /failed notify page in the last day/);
+  // A feature-sourced warning and a clean root each produce none.
+  const foreign = makeRepo();
+  warnEvent(foreign, "feature", notifyExitWarning("budget_paused", 127, null) ?? "");
+  assert.equal(notifyFailures(foreign, now), null);
+  assert.equal((statusPayload(foreign, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "notify"), undefined);
+  const clean = makeRepo();
+  assert.equal(notifyFailures(clean, now), null);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /failed notify page/);
+  // A failure older than 24h produces none, on every surface.
+  const old = makeRepo();
+  warnEvent(old, "tumwater", notifyExitWarning("budget_paused", 127, null) ?? "");
+  assert.equal(notifyFailures(old, now + 25 * 3600_000), null);
+  assert.equal((statusPayload(old, now + 25 * 3600_000) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "notify"), undefined);
 });
 
 test("a stalled merge queue raises a standing amber alert right after the stale-prompt alert", () => {

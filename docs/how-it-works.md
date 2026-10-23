@@ -469,7 +469,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   token as `Authorization: Bearer <token>` or `?token=`.
 - The web dashboard opens on Team: alerts for whatever needs you (a failing or stuck role, a
   failing check on main, a spent budget, an available update, open questions, refused entries,
-  a stale bug, a broken plan dependency clause, a stranded inbox prompt,
+  a stale bug, a failed notify page, a broken plan dependency clause, a stranded inbox prompt,
   a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
   Needs review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
   looks false or a revert burst, a plan filed under the wrong

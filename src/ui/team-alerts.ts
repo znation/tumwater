@@ -37,6 +37,18 @@ export interface StaleBug {
   days: number;
 }
 
+/** A failed notify page the doctor's 1-day rule warns about (src/doctor/doctor-notify.ts,
+ * NOTIFY_CHECK_WINDOW_MS): a warning event within the last day from a notify hook that failed
+ * to page — a nonzero exit, a kill, or a failed start. Computed in src/ui/status-payload.ts's
+ * notifyFailures over the same window and the same isNotifyFailure filter the doctor's check
+ * uses, so the alert and the doctor cannot drift on the rule. count is the failed pages in the
+ * window, latestTs the most recent one's event stamp, message its squashed wording. */
+export interface NotifyFailure {
+  count: number;
+  latestTs: number;
+  message: string;
+}
+
 /** A queued inbox prompt the doctor's stale-prompt rule warns about (src/doctor/doctor-backlog.ts
  * checkStalePrompts, STALE_PROMPT_MS): a prompt due-but-undelivered for more than a day because
  * its role is paused, disabled, or failing. Computed in src/ui/status-payload.ts's stalePrompts
@@ -227,7 +239,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a stranded inbox prompt, a stalled merge queue, a
+ * questions, refused entries, stale bugs, a failed notify page, a stranded inbox
+ * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
  * looks false or a revert burst, a plan filed under the wrong backlog section, a duplicated
@@ -272,6 +285,7 @@ export function teamAlerts(
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
   validationGaps: readonly ValidationGapProblem[] = [],
   reverts: RevertWarning | null = null,
+  notifyFailure: NotifyFailure | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -617,6 +631,23 @@ export function teamAlerts(
       // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
       // `bugs:index` with a 0-based row, matching the drawer address.
       actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],
+    });
+  }
+  // A failed notify page (doctor's NOTIFY_CHECK_WINDOW_MS rule, src/doctor/doctor-notify.ts
+  // checkNotify) leaves the fleet unsupervised — a dead webhook must not page the operator when
+  // something else goes wrong — so a page that failed within the last day asks (amber) the way
+  // the stale-bug alert does, naming the count, the age of the latest, its squashed message,
+  // and the `tumwater notify --test` fix. Its callers feed it the latest failure's message via
+  // status-payload.ts's notifyFailures (the same isNotifyFailure filter and window), so the
+  // alert and the doctor cannot drift.
+  if (notifyFailure) {
+    out.push({
+      key: "notify",
+      tone: "amber",
+      title: `${plural(notifyFailure.count, "failed notify page", "failed notify pages")} in the last day`,
+      detail:
+        `the notify hook could not reach you ${humanAgo(notifyFailure.latestTs, now)}: ${squash(notifyFailure.message, 160)} — check it with \`tumwater notify --test\``,
+      actions: [],
     });
   }
   // A waiting bug (doctor's STALE_WAIT_DAYS rule, src/doctor/doctor-backlog-bugs.ts

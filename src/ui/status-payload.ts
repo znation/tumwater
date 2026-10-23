@@ -4,6 +4,8 @@ import { backlogHolds, backlogInProgress, backlogMarks, operatorHeldEntries, ref
 import { finishedTitle, groupBlockedSeries, partsLabel, strandedPlanEntriesFor, stripEntryStamp } from "../backlog/backlog-structure.js";
 import { validationGapProblems } from "../doctor/doctor-backlog-plans.js";
 import { readEvents } from "../events/event-read.js";
+import { eventsSince } from "../events/event-window.js";
+import { isNotifyFailure } from "../events/notify.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
@@ -12,12 +14,13 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type PlanDependencyProblem, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type NotifyFailure, type PlanDependencyProblem, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
+import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
 import { staleWaitingBugRows } from "../doctor/doctor-backlog-bugs.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
@@ -55,6 +58,17 @@ export function staleOpenBugs(root: string, now = Date.now()): StaleBug[] {
       return days >= STALE_BUG_DAYS ? [{ index, position: index + 1, title: stripEntryStamp(entry.title), days }] : [];
     })
     .sort((a, b) => b.days - a.days || a.index - b.index);
+}
+
+/** The notify pages the doctor's 1-day rule (src/doctor/doctor-notify.ts checkNotify,
+ * NOTIFY_CHECK_WINDOW_MS) calls failed — warning events within the last day that isNotifyFailure
+ * recognizes (a nonzero exit, a kill, or a failed start). This is the always-on feed for the
+ * notify team alert, sharing the doctor's threshold, window and filter, so the alert and the
+ * check cannot drift. null when the window holds no failed page. */
+export function notifyFailures(root: string, now = Date.now()): NotifyFailure | null {
+  const failures = eventsSince(root, NOTIFY_CHECK_WINDOW_MS, now, isNotifyFailure);
+  const latest = failures[failures.length - 1];
+  return latest ? { count: failures.length, latestTs: latest.ts, message: String(latest.message) } : null;
 }
 
 /** The queued inbox prompts the doctor's stale-prompt rule (src/doctor/doctor-backlog.ts
@@ -445,6 +459,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now)),
   };
 }
