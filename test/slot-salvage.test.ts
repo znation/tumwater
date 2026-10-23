@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { chmodSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { restoreSalvagedWork, salvageSlotLeftovers } from "../src/git/slot-salvage.js";
@@ -64,6 +65,36 @@ test("restoreSalvagedWork finds nothing for a role with no waiting patch", async
   assert.equal(await restoreSalvagedWork(root, "docs", wt), null);
   assert.equal(sh(wt, "git", "status", "--porcelain"), "");
   assert.equal(readdirSync(salvagePendingDir(root, "feature")).length, 1, "feature's patch still waits");
+});
+
+test("a salvage patch whose save dies mid-write leaves no torn .patch behind", async (t) => {
+  const { root, wt } = fixture();
+  writeFileSync(join(wt, "notes.md"), "v2, half done\n");
+  fs.mkdirSync(salvagePendingDir(root, "feature"), { recursive: true });
+  // The one writeFileSync salvageSlotLeftovers makes is the patch itself: write a truncated
+  // prefix to the given path, then die (throw) as a mid-write kill does. The patch is the only
+  // copy of the work after the lease resets the workspace, so it must never come back as a
+  // partial .patch that a later restore reads and partially applies.
+  const originalWrite = fs.writeFileSync.bind(fs);
+  let hitPatchWrite = false;
+  t.mock.method(fs, "writeFileSync", ((p: Parameters<typeof fs.writeFileSync>[0], data: string | Uint8Array) => {
+    // Only the patch save (and its temp twin) is the fault under test; the warn path's event
+    // log write must pass through untouched so the interruption is reported, not swallowed.
+    if (/\.patch(\.tmp-\d+)?$/.test(String(p))) {
+      hitPatchWrite = true;
+      originalWrite(p, String(data).slice(0, 20));
+      throw new Error("torn write");
+    }
+    originalWrite(p, data);
+  }) as typeof fs.writeFileSync);
+  try {
+    const patch = await salvageSlotLeftovers(root, wt, { leftBy: "feature", recoverFor: "feature", forRole: "docs" }, new Date());
+    assert.equal(patch, null, "an interrupted save reports failure, never a path to a partial patch");
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(hitPatchWrite, true, "the fault must land on the patch save, not the event log");
+  assert.deepEqual(readdirSync(salvagePendingDir(root, "feature")), [], "no torn .patch may be left behind");
 });
 
 test("a patch the branch moved under goes back with conflict markers where both sides changed", async () => {
