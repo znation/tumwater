@@ -120,7 +120,12 @@ test("run --json without --once is refused and boots nothing", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run json refused");
   writeConfig(repo, fastConfig(["clean"]));
-  const r = await cli(repo, "run", "--json");
-  assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json is only valid with --once or --for/);
+  // A fake pi on PATH: the startup gate walks every enabled seam's backend binary before
+  // the flag guard, so on a host without a real pi (CI) the gate's "pi not found on PATH"
+  // would fire first and the flag refusal this test pins would never print.
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--json");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--json is only valid with --once or --for/);
+  });
 });
