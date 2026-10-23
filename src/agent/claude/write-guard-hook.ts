@@ -4,20 +4,12 @@
  * the model reads only the reason, where a refusal by exit 2 would also quote the whole hook
  * command. It prints nothing to let the write run. Any failure of its own lets the write run, so a
  * broken hook cannot stop every edit of a run; the stray-write warning in runner-run.ts still sees
- * a write that slips through. */
+ * a write that slips through. The stdin read and the deny-decision printing are runGuardHook's
+ * (src/agent/write-guard.ts), shared with the codex PreToolUse hook; only the refusal computation
+ * differs, and it needs the run's checkout, which this process receives as its first argument. */
 
-import fs from "node:fs";
+import { runGuardHook } from "../write-guard.js";
 import { claudeWriteRefusal } from "./claude-write-guard.js";
 
-let refusal: string | null = null;
-try {
-  const runDir = process.argv[2];
-  if (runDir) refusal = claudeWriteRefusal(JSON.parse(fs.readFileSync(0, "utf8")), runDir);
-} catch {
-  refusal = null;
-}
-if (refusal !== null) {
-  process.stdout.write(`${JSON.stringify({
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: refusal },
-  })}\n`);
-}
+const runDir = process.argv[2];
+runGuardHook((payload) => (runDir ? claudeWriteRefusal(payload, runDir) : null));

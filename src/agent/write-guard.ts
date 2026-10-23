@@ -125,3 +125,27 @@ export function strayWriteRefusal(target: string, runDir: string, resolveFrom: s
     + `inside the worktree are committed, so this write would be lost. `
     + (instead ?? "Leave it alone and work only inside the worktree.");
 }
+
+/** The stdin-driven guard-hook driver shared by the claude and codex PreToolUse hooks
+ * (src/agent/claude/write-guard-hook.ts, src/agent/codex/write-guard-hook.ts). Each hook runs as
+ * `node write-guard-hook.js` with the backend's hook payload JSON on stdin; this reads it in one
+ * place, asks `computeRefusal` for a refusal string (null lets the edit/patch run), and prints the
+ * `deny` decision only when there is a refusal. Any failure — unreadable stdin, malformed JSON, a
+ * throw — reads as "no refusal" (null), so a broken hook cannot stop every edit of a run; the
+ * stray-write warning in runner-run.ts still sees a write that slips through. The deny payload's
+ * shape (`hookSpecificOutput` with a `PreToolUse` deny and the refusal as its reason) lives only
+ * here so the two hooks cannot drift it apart. */
+export function runGuardHook(computeRefusal: (payload: unknown) => string | null): void {
+  let refusal: string | null = null;
+  try {
+    refusal = computeRefusal(JSON.parse(fs.readFileSync(0, "utf8")));
+  } catch {
+    refusal = null;
+  }
+  if (refusal !== null) {
+    process.stdout.write(`${JSON.stringify({
+      hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: refusal },
+    })}\n`);
+  }
+}
+
