@@ -53,7 +53,7 @@ import { repoToplevel } from "./git/git.js";
 import { didYouMean } from "./text/suggest.js";
 import { errorMessage, gotSuffix, stripTerminalControls } from "./text/text.js";
 import { typoSuffix } from "./text/suggest.js";
-import { completionConfigKeys, completionModels, completionRoleIds, completionScript, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
+import { completionConfigKeys, completionModels, completionRoleIds, completionScript, configValueWords, SUPPORTED_SHELLS, type CompletionShell } from "./cli/completion.js";
 import { HELP, helpTopic, helpTopicForArgs, suggestCommand } from "./cli/help.js";
 import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } from "./version.js";
 
@@ -460,6 +460,13 @@ async function main(): Promise<void> {
       }
       if (args.length === 1 && args[0] === "--config-keys") {
         for (const key of completionConfigKeys(root)) say(key);
+        break;
+      }
+      if (args.length === 2 && args[0] === "--config-value") {
+        // The vocabulary `config set <key> <value>` completes for a discrete-valued key
+        // (boolean/backend/model/thinking); free-form keys print nothing, so a `set` on one
+        // completes nothing instead of offering a wrong vocabulary.
+        for (const word of configValueWords(args[1]!)) say(word);
         break;
       }
       if (args.length === 1 && args[0] === "--models") {

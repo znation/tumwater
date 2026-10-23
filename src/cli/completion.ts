@@ -117,6 +117,39 @@ export function completionConfigKeys(root: string): string[] {
   return [...new Set(keys)];
 }
 
+/** The value vocabulary `config set <key> <value>` completes for one key, or [] when the
+ * field is free-form. The discrete-valued keys source the SAME closed constants the config
+ * validation accepts — BACKEND_IDS for a `.backend` field or the top-level `backend`,
+ * MODEL_TIERS for a `.model` field (the tier-name shorthand checkModelTripleField/review
+ * allow), THINKING_LEVELS for a `.thinking` field or the top-level `thinking`, and
+ * `true|false` for the always-boolean `.enabled` — so a domain changes the moment its
+ * constant does. `provider` (top-level, `roles.<id>.provider`, `review.provider`) is a
+ * free-form pi provider name, NOT a backend id — the ids validation rejects as the retired
+ * backend namespace on the default pi backend — so it completes nothing rather than offering
+ * ids that `set` would refuse. Number/free-text values (instances, minRunIntervalSeconds,
+ * maxDailyCostUsd, backends' bin/args, a full model id) are not worth a TAB either. The
+ * `config set` value-position arm in bashScript shells out here, so the vocabulary lives in
+ * exactly one place on every shell. */
+export function configValueWords(key: string): string[] {
+  const dot = key.lastIndexOf(".");
+  if (dot < 0) {
+    // A dot-less key is a whole top-level key (TOP_LEVEL_KEYS); `backend` and `thinking` are
+    // the two discrete-valued ones, the rest are free-form numbers/strings/objects.
+    switch (key) {
+      case "backend": return [...BACKEND_IDS];
+      case "thinking": return [...THINKING_LEVELS];
+      default: return [];
+    }
+  }
+  switch (key.slice(dot + 1)) {
+    case "enabled": return ["true", "false"];
+    case "backend": return [...BACKEND_IDS];
+    case "model": return [...MODEL_TIERS];
+    case "thinking": return [...THINKING_LEVELS];
+    default: return [];
+  }
+}
+
 /** Commands whose first positional (word 2) is a role id, so completion offers
  * `tumwater completion --roles` there. */
 const ROLE_POSITIONAL_COMMANDS = ["role", "history", "revert"];
@@ -229,6 +262,15 @@ function bashScript(help: string): string {
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-keys 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
     `  fi`,
+    // config set's VALUE sits at word 4, after the key a set write scopes (get/unset take no
+    // value, so only set reaches here). It shells out for the key's discrete vocabulary — the
+    // dotted fields (roles.<id>.<field>, review.<field>) and the top-level `backend`/`thinking`
+    // keys — and resolves to nothing for a free-form value, all decided in configValueWords so
+    // the vocabulary lives in exactly one place on every shell.
+    `  if [ "$COMP_CWORD" -eq 4 ] && [ "\${COMP_WORDS[1]}" = config ] && [ "\${COMP_WORDS[2]}" = set ] && [[ "$cur" != -* ]]; then`,
+    `    COMPREPLY=( $(compgen -W "$(tumwater completion --config-value "\${COMP_WORDS[3]}" 2>/dev/null)" -- "$cur") )`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$COMP_CWORD" -eq 1 ]; then`,
     `    COMPREPLY=( $(compgen -W "${spec.commands.join(" ")}" -- "$cur") )`,
     `    return 0`,
@@ -285,6 +327,7 @@ function fishScript(help: string): string {
   lines.push(
     `complete -c tumwater -n "__fish_seen_subcommand_from ${ROLE_POSITIONAL_COMMANDS.join(" ")}; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,
     `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from get set unset; and test (__tumwater_argc) -eq 3" -a "(tumwater completion --config-keys 2>/dev/null)"`,
+    `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from set; and test (__tumwater_argc) -eq 4" -a "(tumwater completion --config-value (commandline -opc)[4] 2>/dev/null)"`,
     `complete -c tumwater -n "__fish_seen_subcommand_from doctor" -a "(__tumwater_doctor_checks)"`,
     ``,
   );

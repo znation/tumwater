@@ -53,7 +53,7 @@ async function complete(script: string, words: string[], cword: number, cwd?: st
   const quoted = words.map((w) => `'${w}'`).join(" ");
   const { stdout } = await run("bash", [
     "-c",
-    `tumwater() { if [ "$2" = --models ]; then printf 'hf/m-a:deepinfra\\nhf/m-b\\n'; elif [ "$2" = --config-keys ]; then printf 'maxDailyCostUsd\\nmaxDailyCostUsdPerRole.qa\\nroles.qa.model\\nroles.qa.enabled\\nmodel.strong\\n'; else printf 'feature\\nfeature-2\\nqa\\n'; fi; }\n${script}\nCOMP_WORDS=(${quoted}); COMP_CWORD=${cword}; _tumwater; printf '%s\\n' "\${COMPREPLY[@]}"`,
+    `tumwater() { if [ "$2" = --models ]; then printf 'hf/m-a:deepinfra\\nhf/m-b\\n'; elif [ "$2" = --config-keys ]; then printf 'maxDailyCostUsd\\nmaxDailyCostUsdPerRole.qa\\nroles.qa.model\\nroles.qa.enabled\\nmodel.strong\\n'; elif [ "$2" = --config-value ]; then case "$3" in *enabled) printf 'false\\ntrue\\n';; *thinking) printf 'off\\nmedium\\n';; *backend) printf 'pi\\nclaude\\nopencode\\ncodex\\n';; esac; else printf 'feature\\nfeature-2\\nqa\\n'; fi; }\n${script}\nCOMP_WORDS=(${quoted}); COMP_CWORD=${cword}; _tumwater; printf '%s\\n' "\${COMPREPLY[@]}"`,
   ], { cwd });
   return stdout.split("\n").filter(Boolean);
 }
@@ -172,6 +172,47 @@ test("the bash script completes config keys at word 3 only for config get|set|un
   assert.deepEqual(await complete(script, ["tumwater", "config", "get", "roles.q"], 3), ["roles.qa.model", "roles.qa.enabled"]);
   assert.deepEqual(await complete(script, ["tumwater", "config", "u"], 2), ["unset"]);
   assert.deepEqual(await complete(script, ["tumwater", "config", "set", "model", "x"], 4), []);
+});
+
+test("config set completes a discrete-valued key's value vocabulary at word 4", async () => {
+  const script = completionScript("bash");
+  // A boolean .enabled completes true/false; a .thinking key the levels.
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "roles.qa.enabled", "t"], 4), ["true"]);
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "roles.qa.enabled", ""], 4), ["false", "true"]);
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "review.thinking", "me"], 4), ["medium"]);
+  // A dot-less top-level key is whole-value too: `backend` and `thinking` are the discrete ones.
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "backend", "cl"], 4), ["claude"]);
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "thinking", "of"], 4), ["off"]);
+  // A provider is a free-form pi provider name, not a backend id — completes nothing.
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "roles.qa.provider", "c"], 4), []);
+  // A key with no discrete vocabulary, or a free-form top-level key, completes nothing.
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "roles.qa.minRunIntervalSeconds", "3"], 4), []);
+  assert.deepEqual(await complete(script, ["tumwater", "config", "set", "model", "s"], 4), []);
+});
+
+test("completion --config-value prints a discrete key's vocabulary, nothing for a free-form key", async () => {
+  const dir = tmpdir();
+  const en = await cli(dir, "completion", "--config-value", "roles.qa.enabled");
+  assert.equal(en.code, 0);
+  assert.deepEqual(en.stdout.split("\n").filter(Boolean), ["true", "false"]);
+  const think = await cli(dir, "completion", "--config-value", "review.thinking");
+  assert.ok(think.stdout.split("\n").includes("off"));
+  const back = await cli(dir, "completion", "--config-value", "roles.qa.backend");
+  assert.ok(back.stdout.split("\n").includes("codex"));
+  // A dot-less whole top-level key works the same: `backend` and `thinking` are discrete.
+  const topBack = await cli(dir, "completion", "--config-value", "backend");
+  assert.ok(topBack.stdout.split("\n").includes("codex"));
+  const topThink = await cli(dir, "completion", "--config-value", "thinking");
+  assert.ok(topThink.stdout.split("\n").includes("off"));
+  // `provider` is a free-form pi provider name, not a backend id — prints nothing.
+  const prov = await cli(dir, "completion", "--config-value", "roles.qa.provider");
+  assert.equal(prov.stdout.trim(), "");
+  const free = await cli(dir, "completion", "--config-value", "maxDailyCostUsd");
+  assert.equal(free.code, 0);
+  assert.equal(free.stdout.trim(), "");
+  const nodot = await cli(dir, "completion", "--config-value", "model");
+  assert.equal(nodot.stdout.trim(), "");
+  assert.ok(completionSpec().flags.completion?.includes("--config-value"));
 });
 
 test("completion --config-keys prints parseable keys for this repo's roles, or the catalog on a broken config", async () => {
