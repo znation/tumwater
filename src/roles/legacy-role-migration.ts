@@ -88,16 +88,15 @@ export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record
           // Both ids hold a file (the stale-role split this bug caused). For the runner's state
           // file, heal by keeping the one with the newer lastRunEndedAt under the new id; for
           // every other artifact the new-id file wins unchanged.
-          if (isStateFile) {
-            const oldLast = stateLastRunEndedAt(from);
-            const newLast = stateLastRunEndedAt(to);
-            if (oldLast !== null && (newLast === null || oldLast > newLast)) {
-              fs.renameSync(from, to); // overwrite the stale new-id copy with the newer old-id one
-              rewriteStateRole(to, newId);
-              return `moved ${from} to ${to}: both existed, kept the newer by lastRunEndedAt`;
-            }
+          if (!isStateFile) return `kept ${from} and ${to}: both exist`;
+          const oldLast = stateLastRunEndedAt(from);
+          const newLast = stateLastRunEndedAt(to);
+          if (oldLast === null || (newLast !== null && oldLast <= newLast)) {
+            return `kept ${from} and ${to}: both exist`;
           }
-          return `kept ${from} and ${to}: both exist`;
+          fs.renameSync(from, to); // overwrite the stale new-id copy with the newer old-id one
+          rewriteStateRole(to, newId);
+          return `moved ${from} to ${to}: both existed, kept the newer by lastRunEndedAt`;
         }
         fs.renameSync(from, to);
         if (isStateFile) rewriteStateRole(to, newId);
