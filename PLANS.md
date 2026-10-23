@@ -112,17 +112,27 @@ unchanged) and keeps behavior and message byte-identical: the section validators
 where each today-appended problem is produced, in the same order.
 
 **Target structure** — the two largest, most self-contained blocks move out first, each into a
-new module exporting one function `(r, problems, helpers) => void` that appends problems exactly
-as the gate does today:
-- New src/config/config-validation-model.ts — the model-declaration surface: top-level `model`
-  selector vs map-by-tier and each tier entry's `model`/`provider`/`thinking`, the empty-half
-  selector checks, backend-resolution and `fallback` (string vs map) checks, the retired-is-a-
-  backend spelling, the legacy-provider form, and the free-fallback-model shape.
+new module that appends problems exactly as the gate does today. The model blocks are
+interleaved with the gate's other sections: the top-level `model`/`provider` block runs before
+`agentBin`/`baseBranch`/`backends`, but the `fallback`/`fallbackModel` block runs after the
+numeric/`check`/`idleBackoff`/`review` sections (lines 224–277 and 473–508 in today's gate). So
+the model module exports TWO functions — `validateModelBlock(r, problems, helpers)` for the
+top-level selector/map block and `validateFallbackBlock(r, problems, helpers)` for the
+fallback/fallbackModel shape — and the gate calls each at the point where its block runs today;
+the agents module stays one function. This keeps problem order byte-identical, which a single
+model-module function called once could not (a one-call design would emit fallback problems
+before the agents and middle-section problems they follow today).
+- New src/config/config-validation-model.ts — the model-declaration surface, as two entry points:
+  `validateModelBlock` — top-level `model` selector vs map-by-tier and each tier entry's
+  `model`/`provider`/`thinking`, the empty-half selector checks, backend-resolution, the
+  retired-is-a-backend spelling and the legacy-provider form; and `validateFallbackBlock` — the
+  `fallback` (string vs map) checks and the free-fallback-model (`fallbackModel`) shape.
 - New src/config/config-validation-agents.ts — the agent-execution surface: `agentBin`,
   `baseBranch`, the claude/codex `configDir` scan, the codex `-c <key>=…` arity-aware scan, the
   `agents`/`piArgs` passthrough reserved-flag checks, and the legacy piArgs back-compat pair.
 - src/config/config-validation.ts keeps `validateConfig` as the gate: bind the generic checkers
-  once, call the two section validators in the same order their blocks run today, and keep the
+  once, call the two model-module functions and the agents-module function in the same order their
+  blocks run today, and keep the
   per-role and cross-field sections (roles.<id> task/instructions/customRoles/instances,
   review.afterMerge names, per-role caps, per-role quiet hours, maxConcurrentPerProvider,
   claudeWindowReserve, and the idleBackoff cross-field pair) for a later pass.
