@@ -433,4 +433,22 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The run's outcome is unchanged (`no_change`, clean worktree, no warning): recording is bookkeeping that never fails the run.
 - `npm run test:gate` passes.
 
+### Split orchestrator-scheduling.ts's pollRunnerReasons pass into a scope/skip/admit structure (planned 2026-10-23 by the organize role, plan-only; the pass is one 444-line function, ~73% of the 611-line module, so it is not splittable in one run — this plan lands the target structure for a later organize run)
+
+**Goal.** `src/orchestrator/orchestrator-scheduling.ts` is the largest splittable module left: its exported `pollRunnerReasons` (lines 114-557) is a single function that runs the whole per-poll scheduling pass — the one-poll precompute (merge-queue interlock, director pin, per-base claim groups and their release loop, the team-gate block predicates, the multi-runner `writing` count and admission order), then a per-runner loop folding the skip gates and once settlement, then the claim-assignment and stand-down admission. The file's other exports (`reviewHoldKey`, `pollDeferralInputs`) are small. Splitting the pass into three focused modules by phase, with `pollRunnerReasons` kept as the thin binder, makes the WHY-due policy each phase computes addressable on its own screen, the way the config-validation split did for `validateConfig`.
+
+**Approach.**
+- New `src/orchestrator/scheduling-scope.ts` — phase A (the one-poll precompute, current lines ~145-288): returns a `SchedulingScope` struct carrying `queuedRoles`, `pinnedDirector`, `claimGroups` (including the claim-release side loop that mutates runner state and persists), the gate-block predicate closures (`budgetHolds`, `operatorPauseBlocks`, `hasDemand`, `bootstrapHeldNow`, `maintenanceQuotaOverLine`), the `writing` counts, `ordered` runners, and the `eligibleMemo` map.
+- New `src/orchestrator/scheduling-skip.ts` — phase B (the per-runner verdict loop, ~289-460): given a runner and the scope, returns `{ verdict: SkipReason }` or "due", folding once-mode settlement, the pause/cost-cap/maintenance/bootstrap gates, the director's window hold, inbox due, conflict-pin hand-back, need-based deferral, the merge-queue interlock, and the `instances` limit. It writes the skipped entries into the `reasons` map it is passed.
+- New `src/orchestrator/scheduling-admit.ts` — phase C (~461-552): claim assignment for multi-runner groups (the hold/eligible/held rules) and the stand-down turn-down, returning the assigned/stood-down verdict for the runner.
+- `src/orchestrator/orchestrator-scheduling.ts` shrinks to: build the scope via scheduling-scope, then loop `ordered` runners calling scheduling-skip and (when "due") scheduling-admit, assembling the `reasons` map; it keeps `SchedulingPassCtx`, `reviewHoldKey`, and `pollDeferralInputs`. The pass-level doc comment (lines 1-13) and each phase's inline invariants move with the code they explain.
+- `src/scheduling/scheduling.ts` etc. keep the shared helpers they already own; nothing new is exported beyond the three modules' phase functions.
+
+**Files touched.** src/orchestrator/orchestrator-scheduling.ts; new src/orchestrator/scheduling-scope.ts, src/orchestrator/scheduling-skip.ts, src/orchestrator/scheduling-admit.ts; orchestrator-scheduling.test.ts and orchestrator.test.ts only if an import path changes.
+
+**Acceptance criteria.**
+- `pollRunnerReasons` produces a byte-identical `reasons` map for identical input and state: this is a pure code-move restructure, no behavior change (the interlock-relief and cooldown-scope plans change behavior and will touch this file; this split must rebase behind them, not change what they set).
+- A grep over src, test and docs finds no stale reference to any moved or renamed symbol; the file-level doc comment still names the pass and each phase module.
+- `npm run test:gate` passes.
+
 ## Done
