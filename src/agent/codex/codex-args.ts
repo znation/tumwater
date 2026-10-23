@@ -140,6 +140,10 @@ export interface CodexArgOptions {
   effort?: string;
   /** A resumed run's session id; absent means a fresh run. */
   resumeId?: string;
+  /** The write guard's two `-c` values (hook and trust, part 6/9), inserted after the
+   * harness's own `-c` keys and before `-m`. Supplied by the codex backend's
+   * `invocation` when `prepare` resolved trust; absent leaves today's argv. */
+  guardArgs?: string[];
   /** The configured `backends.codex.args` passthrough, appended before the final `-`. */
   args?: string[];
   /** The run prompt, returned as stdin rather than as an argv element. */
@@ -192,6 +196,10 @@ export function codexArgs(opts: CodexArgOptions): { args: string[]; stdin: strin
     'history.persistence="none"',
     "-c",
     'project_doc_fallback_filenames=["CLAUDE.md"]',
+    // The write guard's hook and trust ride the same `-c` layer, after the harness's own
+    // keys and before `-m` (plans/codex-write-guard.md "Runs (part 6)"); an untrusted hook
+    // would be skipped silently, so a backend with no trust passes nothing here.
+    ...(opts.guardArgs ?? []),
     "-m",
     opts.model,
   ];

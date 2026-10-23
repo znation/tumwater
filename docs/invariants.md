@@ -4628,3 +4628,11 @@ instead of skipping its re-review".
 **Binds.** `src/agent/codex/codex-hook-trust.ts` (`lookupCodexHookTrust`, `codexHookTrust`), `src/paths.ts` (`codexHookTrustPath`).
 
 **Pinned by.** `test/codex-hook-trust.test.ts` — "a lookup returns the fake's key and sha256: hash", "a second codexHookTrust with the same version and definition starts no app-server", "a changed definition timeout looks up again", "a changed --version output looks up again", "a hanging fake rejects within timeoutMs and its child is gone afterwards", "a fake whose list holds no matching hook rejects with the message" and "root undefined looks up and writes no file".
+
+### INV-CW6: a codex run carries the guard's hook and its trust entry together or neither, and never `--dangerously-bypass-hook-trust`
+
+**Guarantee.** The codex backend's `invocation` reads the trust its `prepare` step resolved for the run's (home, definition) and, only when it is a `trust` result, passes two `-c` values to `codexArgs` — `codexHookArg(definition)` installing the PreToolUse hook and `codexHookTrustArg(trust)` trusting it — which land together after the harness's own `-c` keys and before `-m`, on a fresh (`exec`) and a resumed (`exec resume`) run alike. With `off`, or with no state (no `prepare`), it passes neither, so today's argv is unchanged; the passthrough cannot add them, because `hooks` keys are reserved. No codex argv ever contains `--dangerously-bypass-hook-trust`, which would run the target repo's own `.codex` hooks unreviewed and add an `error` item to every run's stream.
+
+**Binds.** `src/agent/codex/codex-args.ts` (`codexArgs`, `CodexArgOptions.guardArgs`), `src/agent/codex/codex-backend.ts` (`invocation`).
+
+**Pinned by.** `test/codex-args.test.ts` — "codexArgs places guardArgs after the harness -c keys and before -m on fresh and resumed runs (part 6/9)" and "codexArgs omits guardArgs when unset"; `test/codex-run.test.ts` — "a fresh and a resumed run carry the write guard's hook and trust, and never bypass hook trust (part 6/9)" and "a codex run whose trust lookup fails carries neither guard -c value (part 6/9)".

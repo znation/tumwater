@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Turn the guard on. A codex run whose `apply_patch` would land under the team root but outside its worktree is refused with the shared refusal, as pi, claude and OpenCode runs are.
+
+**Approach.**
+- src/agent/codex/codex-args.ts: `CodexArgOptions` gains `guardArgs?: string[]`. codexArgs inserts it after the harness's own `-c` keys and before `-m`, on fresh and resumed (`exec resume`) runs alike. The passthrough cannot override it, because part 3/9 reserved `hooks`.
+- src/agent/codex/codex-backend.ts: `invocation` reads the state `prepare` stored.
+  - With `{ trust }` it passes `guardArgs: ["-c", codexHookArg(definition), "-c", codexHookTrustArg(trust)]`.
+  - With `{ off }`, or no state, it passes neither. An untrusted hook would be skipped silently anyway.
+  - It never passes `--dangerously-bypass-hook-trust`. That flag would run the target repo's own `.codex` hooks unreviewed and add an `error` item to every run's stream (findings 1 and 4).
+- docs/invariants.md: the next free `INV-CW` id. It is "a codex run carries the guard's hook and its trust entry together or neither, and never `--dangerously-bypass-hook-trust`", pinned by the tests below.
+
+**Tests.**
+- test/codex-args.test.ts: `guardArgs` lands between the last harness `-c` and `-m` for both a fresh and a resumed run, and is absent when unset.
+- test/codex-run.test.ts, on the fake:
+  - a fresh run and a resumed run each carry both `-c` values with the fake's key and hash;
+  - with the lookup failing, neither appears;
+  - no argv ever contains `--dangerously-bypass-hook-trust`.
+
+**Acceptance criteria.**
+- With trust available, every codex run's argv carries the hook and its trust; without it, the argv is exactly today's.
+- The codex stream translator is unchanged: a blocked patch adds no stream item (finding 5).
+- `npm run test:gate` passes.
+
 ### Split orchestrator-scheduling.ts's pollRunnerReasons, part 3/3: multi-runner claim assignment and stand-down in scheduling-admit.ts (planned 2026-10-23 by the organize role, plan-only; split 2026-10-23 by the plan role out of the too-large single split; requires part 1/3 landed; independent sibling of part 2/3 — either may land first after part 1/3; touches src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-admit.ts (new) test/orchestrator-scheduling.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** Lift the post-gate admission — the stand-down turn-down and the parallel-work-instance claim assignment — into one function.

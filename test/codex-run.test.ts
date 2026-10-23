@@ -112,6 +112,51 @@ test("a real codex run warms the write guard trust once per build", async () => 
   });
 });
 
+test("a fresh and a resumed run carry the write guard's hook and trust, and never bypass hook trust (part 6/9)", async () => {
+  // Part 6/9: `invocation` turns the trust `prepare` warmed into two `-c` values (finding 1
+  // and 2), so every real codex run's argv carries the hook and its trust together, with the
+  // fake's key and a sha256: hash, and no argv ever passes --dangerously-bypass-hook-trust.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  await withCodexReplay(codexCaptures.editRun, async (fake) => {
+    const run = codexRun(dir);
+    const first = await runAgent(run);
+    assert.equal(first.ok, true, `${first.errorMessage}`);
+    const second = await runAgent({ ...run, continueSession: true });
+    assert.equal(second.ok, true, `${second.errorMessage}`);
+    const argv = readRunBlocks(fake.argvFile);
+    assert.equal(argv.length, 2);
+    for (const block of argv) {
+      const args = argLines(block);
+      assert.equal(args.filter((a) => a.startsWith("hooks.PreToolUse=[")).length, 1, "the hook -c is present");
+      assert.equal(
+        args.filter((a) =>
+          a.startsWith('hooks.state={"/<session-flags>/config.toml:pre_tool_use:0:0"={trusted_hash="sha256:'),
+        ).length,
+        1,
+        "the trust -c rides beside the hook with the fake's key and a sha256: hash",
+      );
+      assert.ok(!args.includes("--dangerously-bypass-hook-trust"), "no argv ever bypasses hook trust");
+    }
+  });
+});
+
+test("a codex run whose trust lookup fails carries neither guard -c value (part 6/9)", async () => {
+  // A failed lookup (the fake lists the hook under a `user` source, so the session-flag match
+  // fails) records `off`; the invocation then passes no guard -c, leaving today's argv.
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const fake = fakeCodexAppServer({ mismatch: true });
+  try {
+    const spec = prepareRunSpec(dir, { bin: fake.bin });
+    await codexBackend.prepare!(spec);
+    const { args } = codexBackend.invocation(codexRun(dir) as unknown as AgentRunSpec);
+    assert.ok(!args.some((a) => a.startsWith("hooks.PreToolUse=") || a.startsWith("hooks.state=")), "no guard -c when trust is off");
+  } finally {
+    fake.restore();
+  }
+});
+
 test("pi, claude and opencode backends have no prepare, so they start no app-server", () => {
   // Only the codex adapter needs the async trust lookup; pi, claude and opencode resolve their
   // runs synchronously, so they register no `prepare` and can never spawn an app-server.

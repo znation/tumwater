@@ -75,6 +75,30 @@ test("codexArgs omits the effort flag when effort is unset", () => {
   assert.ok(!args.includes("model_reasoning_effort"));
 });
 
+test("codexArgs places guardArgs after the harness -c keys and before -m on fresh and resumed runs (part 6/9)", () => {
+  const guard = ["-c", 'hooks.PreToolUse=[{…}]', "-c", 'hooks.state={…}'];
+  // Fresh: guardArgs land right after the last harness `-c` (project_doc_fallback_filenames)
+  // and right before `-m`, never next to the operator's passthrough.
+  const fresh = codexArgs(opts({ guardArgs: guard })).args;
+  const freshAfterC = fresh.indexOf('project_doc_fallback_filenames=["CLAUDE.md"]');
+  assert.deepEqual(fresh.slice(freshAfterC + 1, fresh.indexOf("-m")), guard);
+  // Resumed: the same guard block rides `exec resume <id>` after the same harness keys.
+  const resumed = codexArgs(opts({ resumeId: "7f3a-11", guardArgs: guard })).args;
+  const resumedAfterC = resumed.indexOf('project_doc_fallback_filenames=["CLAUDE.md"]');
+  assert.deepEqual(resumed.slice(resumedAfterC + 1, resumed.indexOf("-m")), guard);
+  // The passthrough its the operator's own, appended at the very end before the closing `-`.
+  const withPass = codexArgs(opts({ guardArgs: guard, args: ["--unsafe-custom", "x"] })).args;
+  assert.equal(withPass[withPass.length - 1], "-");
+  assert.deepEqual(withPass.slice(withPass.length - 3), ["--unsafe-custom", "x", "-"]);
+});
+
+test("codexArgs omits guardArgs when unset", () => {
+  const fresh = codexArgs(opts());
+  assert.ok(!fresh.args.some((a) => a.startsWith("hooks.PreToolUse=") || a.startsWith("hooks.state=")));
+  const resumed = codexArgs(opts({ resumeId: "7f3a-11" }));
+  assert.ok(!resumed.args.some((a) => a.startsWith("hooks.PreToolUse=") || a.startsWith("hooks.state=")));
+});
+
 test("codexArgs rejects an unknown effort", () => {
   assert.throws(() => codexArgs(opts({ effort: "ultra" })), /unknown effort "ultra"/);
   assert.throws(() => codexArgs(opts({ effort: "galaxy-brain" })), /unknown effort/);

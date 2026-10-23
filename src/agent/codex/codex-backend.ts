@@ -38,7 +38,7 @@ import { resumableSession } from "../session-ledger.js";
 import { codexArgs, codexEffort } from "./codex-args.js";
 import { codexEnv } from "./codex-env.js";
 import { codexHookTrust } from "./codex-hook-trust.js";
-import { codexWriteGuardDefinition } from "./codex-write-guard.js";
+import { codexHookArg, codexHookTrustArg, codexWriteGuardDefinition } from "./codex-write-guard.js";
 import { findRollout, rolloutLines } from "./codex-rollout.js";
 import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
 
@@ -160,10 +160,23 @@ export const codexBackend: AgentBackend = {
       home === undefined ? new Map<string, CodexCatalogEntry>() : readCodexCatalog(home);
     const effort =
       thinking === undefined ? undefined : codexEffort(thinking, catalog.get(run.config.model ?? "")?.levels);
+    // The write guard's trust (part 6/9): `prepare` resolved it under this run's env and
+    // home and stored it keyed by (home, definition), so `invocation` reads it synchronously.
+    // With trust it rides the hook and its trust entry as two `-c` values (after the
+    // harness's own keys, before `-m`); with `off` or no state it passes neither, since an
+    // untrusted hook would be skipped silently anyway. tumwater never passes
+    // `--dangerously-bypass-hook-trust` (findings 1 and 4).
+    const definition = codexWriteGuardDefinition();
+    const trust = writeGuardTrust.get(writeGuardKey(home, definition));
+    const guardArgs =
+      trust?.kind === "trust"
+        ? ["-c", codexHookArg(definition), "-c", codexHookTrustArg(trust.trust)]
+        : undefined;
     const { args, stdin } = codexArgs({
       model: run.config.model ?? "",
       ...(effort !== undefined ? { effort } : {}),
       ...(resumed && sessionId !== undefined ? { resumeId: sessionId } : {}),
+      ...(guardArgs !== undefined ? { guardArgs } : {}),
       args: resolvedBackendConfig(run.config, "codex").args,
       prompt: run.prompt,
     });
