@@ -9,6 +9,7 @@ import type { Semaphore } from "../concurrency/semaphore.js";
 import { errorMessage } from "../text/text.js";
 import { backendsInUse, seedOpencodeCatalog, type OpenCodeSeedOptions } from "../gates/startup-gate.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
+import { seedCodexAccount, readCodexAccount } from "../agent/codex/codex-account.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all roles,
@@ -74,6 +75,11 @@ export function newLiveConfigReload(deps: {
   // reload block below), so repeated polls of a config that keeps a claude seam cannot respawn
   // `claude auth status` on every cycle.
   const liveClaudeSeedAttempted = new Set<string>();
+  // Likewise for the codex-account seed: one `codex login status` per root per process.
+  const liveCodexSeedAttempted = new Set<string>();
+  // Set while a live edit routing a codex seam is being refused for an API-key login, so the
+  // refusal warns once on the transition in (and once again when it re-enters after clearing).
+  let codexLiveRefused = false;
   // Likewise for the opencode models catalog: one models.dev refresh per root per process.
   const liveOpencodeSeedAttempted = new Set<string>();
 
@@ -104,8 +110,35 @@ export function newLiveConfigReload(deps: {
         configMissing = false;
       }
       if (reloaded.config) {
-        live = reloaded.config;
         const nextConfig = reloaded.config;
+        // A live edit that routes a seam to a codex logged in with an API key is refused before
+        // the reload is applied: startup refuses the same codex seam (decision 5), and here a
+        // warn-only would let the running team spend per-token Codex the budget cap cannot see
+        // (review objection 1). Refusing keeps the last-known-good config, like a missing or
+        // broken file. The seed runs once per root (`codex login status` is a real probe); the
+        // persisted account file is the voice of the refusal on later polls, re-probing a stale
+        // api answer (codex-account.ts) so the operator's `codex login --device-auth` remedy
+        // clears it at the next seed. A subscription codex passes through to the backend loop.
+        const prevBackends = new Set(backendsInUse(prevLive));
+        if (!prevBackends.has("codex") && backendsInUse(nextConfig).includes("codex")) {
+          if (!liveCodexSeedAttempted.has(deps.root)) {
+            liveCodexSeedAttempted.add(deps.root);
+            seedCodexAccount(deps.root, nextConfig);
+          }
+          if (readCodexAccount(deps.root)?.billing === "api") {
+            if (!codexLiveRefused) {
+              codexLiveRefused = true;
+              warn(
+                "refusing live edit: Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+              );
+            }
+            return prevLive;
+          }
+        }
+        // A poll that did not refuse clears the warn-once marker so a later re-entry into the
+        // refusal (the operator reverts, then re-adds the API-billed codex seam) warns again.
+        codexLiveRefused = false;
+        live = reloaded.config;
         // A live edit that changes behavior elsewhere logs one event naming the settings that
         // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
         const changedKeys = changedConfigKeys(prevLive, reloaded.config);
@@ -138,8 +171,8 @@ export function newLiveConfigReload(deps: {
         // models catalog (opencode) seeded, exactly as startup would — so a claude reviewer
         // added to a pi team does not start uncheckable. A missing binary is a warning event,
         // never a crash; a present one logs its verdict as a backend_binary event. The seed is
-        // attempted once per root.
-        const prevBackends = new Set(backendsInUse(prevLive));
+        // attempted once per root. (The codex seed moved to the refusal check at the top of
+        // this block, which also refuses an API-key-logged-in codex seam.)
         for (const backend of backendsInUse(reloaded.config)) {
           if (prevBackends.has(backend)) continue;
           const resolved = resolveBackendBin(reloaded.config, backend);

@@ -19,6 +19,7 @@ import { fakePi, withPi } from "./fakes/fake-pi.js";
 import { setEnv } from "./helpers/env.js";
 import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { readCodexAccount } from "../src/agent/codex/codex-account.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { claudeAccountPath, opencodeModelsPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
@@ -180,6 +181,47 @@ test("an unwritable claude account file does not fail the startup gate", async (
     const check = await runStartupCheck(repo, null);
     assert.ok(!("problem" in check), JSON.stringify(check));
     assert.equal(readClaudeAccount(repo), null);
+  });
+});
+
+test("a codex login using ChatGPT seeds subscription billing and lets the gate pass", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate codex subscription");
+  const codexBin = tmpdir("startup-codex-bin-");
+  writeScript(path.join(codexBin, "codex"), 'echo "Logged in using ChatGPT"');
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = readJson(file) as Record<string, unknown>;
+    cfg.backends = { codex: { bin: path.join(codexBin, "codex") } };
+    cfg.backend = "codex";
+    cfg.model = "gpt-6-luna";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    const check = await runStartupCheck(repo, null);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    const account = readCodexAccount(repo);
+    assert.ok(account !== null, "the gate wrote the codex account");
+    assert.equal(account.billing, "subscription");
+  });
+});
+
+test("a codex login using an API key refuses the gate with the fix named", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate codex api key");
+  const codexBin = tmpdir("startup-codex-bin-");
+  writeScript(path.join(codexBin, "codex"), 'echo "Logged in using an API key"');
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = readJson(file) as Record<string, unknown>;
+    cfg.backends = { codex: { bin: path.join(codexBin, "codex") } };
+    cfg.backend = "codex";
+    cfg.model = "gpt-6-luna";
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    const check = await runStartupCheck(repo, null);
+    assert.ok("problem" in check, "an API-key codex job must refuse startup");
+    assert.match(
+      (check as { problem: string }).problem,
+      /Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`/,
+    );
   });
 });
 

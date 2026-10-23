@@ -16,6 +16,7 @@ import {
 import { owningTeamRoot } from "../paths.js";
 import { backendMissingMessage, findBackendBinary, resolveBackendBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
+import { seedCodexAccount } from "../agent/codex/codex-account.js";
 import {
   opencodeCatalogStale,
   readOpencodeCache,
@@ -128,6 +129,22 @@ export async function runStartupCheck(
     claudeSeedAttempted.add(root);
     seedClaudeAccount(root, config);
   }
+  // Seed the codex account state before the first codex run (plans/codex-backend.md §7):
+  // `codex login status` decides subscription vs API key, and an existing file is left alone.
+  // Gated on a codex seam like the claude seed above, and attempted once per root per process.
+  // API-key billing is refused (decision 5): Codex reports no cost, so per-token billing would
+  // spend money the cap cannot see. If the seed fails or reads something else, the first codex
+  // run's observation fills the file in.
+  if (!codexSeedAttempted.has(root) && backendsInUse(config).includes("codex")) {
+    codexSeedAttempted.add(root);
+    const codexAccount = seedCodexAccount(root, config);
+    if (codexAccount?.billing === "api") {
+      return {
+        problem:
+          "Codex is logged in with an API key; tumwater runs Codex on a ChatGPT subscription only — run `CODEX_HOME=<home> codex login --device-auth`",
+      };
+    }
+  }
   // Seed the opencode models catalog (part 6b/7) before the first run: the poll surfaces price
   // opencode seams from the cached `.tumwater/state/opencode-models.json`, and an absent cache
   // reads every opencode seam NOT free (the safe direction for the budget gate). Mirroring the
@@ -200,6 +217,11 @@ export function newOpencodeCatalogRefresh(
  * so the supervisor's and redeploy's repeated startup checks do not respawn `claude auth
  * status` on every poll when the probe fails. */
 const claudeSeedAttempted = new Set<string>();
+
+/** Roots this process has already attempted a codex-account seed for (see runStartupCheck),
+ * so the supervisor's and redeploy's repeated startup checks do not respawn `codex login
+ * status` on every poll when the probe fails. */
+const codexSeedAttempted = new Set<string>();
 
 /** Roots this process has already attempted an opencode-catalog seed for (see runStartupCheck),
  * so the supervisor's and redeploy's repeated startup checks do not respawn the models.dev

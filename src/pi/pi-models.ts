@@ -2,8 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import type { SubscriptionAccount } from "../agent/subscription-account.js";
 import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
-import { enabledRoleIds } from "../config/config.js";
-import { configForRole, resolverConfig, reviewConfig } from "../config/config-views.js";
+import { enabledRoleIds, loadConfigSafe } from "../config/config.js";
+import { configForRole, resolverConfig, resolvedBackendConfig, reviewConfig } from "../config/config-views.js";
 import { fallbackPair } from "../config/config-fallbacks.js";
 import { seamAgent } from "../config/model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
@@ -13,6 +13,7 @@ import { expandHomeTilde } from "../files/files.js";
 import { declaredWindow } from "../pi-extension/context-window.js";
 import { piSettingsPath, readPiDefaultModel } from "./pi-settings.js";
 import { opencodeModelFree, opencodeModelKey, readOpencodeCache, type OpencodeCatalogCache } from "../agent/opencode/opencode-catalog.js";
+import { codexHome, readCodexCatalog } from "../agent/codex/codex-catalog.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) team differs from an API one: unpriced or
@@ -152,6 +153,19 @@ export function seamContextWindow(
       // prices by, so a seam's window never disagrees with the model it runs.
       if (seam.model === undefined) return null;
       return declaredWindow(readOpencodeCache(projectRoot).models[opencodeModelKey(seam.model)]?.context);
+    case "codex":
+      // The model catalog (codex-catalog.ts) holds the window part 8/9 parsed from
+      // `context_window × effective_context_window_percent / 100`, read from the team's codex
+      // home (backends.codex.configDir) at this project root — the same home the runs use. An
+      // unknown model, an absent home or a missing catalog reads null (declaredWindow's safe
+      // answer for an unknown window).
+      if (seam.model === undefined) return null;
+      {
+        const { config } = loadConfigSafe(projectRoot);
+        const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+        if (home === undefined) return null;
+        return declaredWindow(readCodexCatalog(home).get(seam.model)?.contextWindow);
+      }
     default:
       return null;
   }
@@ -271,6 +285,15 @@ export function seamFree(
       // The generic subscription arm: read the seam's own backend's account (today always
       // "claude") so a future subscription backend is judged by its own lookup, not a captured
       // one. A subscription that is spending into overage is NOT free.
+      const account = accounts(seamAgent(seam));
+      return account?.billing === "subscription" && !accountUsesOverage(account);
+    }
+    case "codex": {
+      // The same subscription arm for codex (part 8/9): read the seam's own backend's account
+      // ("codex") so a codex seam is free while it bills a ChatGPT subscription and is not
+      // spending into overage. API-key billing — which this build refuses at the startup gate —
+      // and an absent account read NOT free, so the badge never reads n/a while spend it cannot
+      // see could still reach the cap.
       const account = accounts(seamAgent(seam));
       return account?.billing === "subscription" && !accountUsesOverage(account);
     }

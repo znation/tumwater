@@ -18,13 +18,12 @@
  * pi and claude adapters do. */
 
 import fs from "node:fs";
-import os from "node:os";
 import { loadConfigSafe } from "../../config/config.js";
 import { resolvedBackendConfig } from "../../config/config-views.js";
 import { backendBaseEnv, withNotesPath } from "../../process/run-marker.js";
 import { resolveBinForBackend, type ResolvedBackendBin } from "../../pi/pi-bin.js";
 import { teamRootOf } from "../../paths.js";
-import { expandHomeTilde } from "../../files/files.js";
+import { codexHome, readCodexCatalog, type CodexCatalogEntry } from "./codex-catalog.js";
 import type {
   AgentBackend,
   BackendBinConfig,
@@ -44,16 +43,6 @@ import { codexTranslator, type CodexStreamTranslator } from "./codex-stream.js";
  * instead, so this regex is what tells a resume that a record holds a real, stream-minted id
  * worth resuming (design §4). */
 const THREAD_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/** The team's Codex home for a run: `backends.codex.configDir`, a leading `~` expanded, else
- * none — a run with no configured home keeps the operator's `CODEX_HOME` (codexEnv leaves it
- * unset), and no rollout can then be found under a known home, so a continue falls back to a
- * fresh thread. Pure. */
-function codexHome(config: { configDir?: string }): string | undefined {
-  const dir = config.configDir;
-  if (dir === undefined) return undefined;
-  return expandHomeTilde(dir, os.homedir());
-}
 
 /** The session this run uses: for a continue, the ledger's newest record of this kind when it
  * is codex's, has this cwd, carries a UUID thread id, and `findRollout` finds its rollout
@@ -110,9 +99,14 @@ export const codexBackend: AgentBackend = {
     const env = codexEnv(base, { home });
     const { sessionId, resumed } = resolveCodexSession(run, home);
     const thinking = run.config.thinking;
-    // The effort (part 5/9): ride the thinking level through the decoder. The model's own
-    // cataloged effort levels (part 8/9) are undefined until then, so the value is unclamped.
-    const effort = thinking === undefined ? undefined : codexEffort(thinking);
+    // The effort (parts 5/9 and 8/9): ride the thinking level through the decoder, then gate
+    // it on the model's cataloged effort levels — a level the model does not list is never
+    // sent (codexEffort's `levels` half). No home (no catalog) leaves the value unclamped, as
+    // before part 8/9.
+    const catalog: Map<string, CodexCatalogEntry> =
+      home === undefined ? new Map<string, CodexCatalogEntry>() : readCodexCatalog(home);
+    const effort =
+      thinking === undefined ? undefined : codexEffort(thinking, catalog.get(run.config.model ?? "")?.levels);
     const { args, stdin } = codexArgs({
       model: run.config.model ?? "",
       ...(effort !== undefined ? { effort } : {}),
@@ -129,10 +123,19 @@ export const codexBackend: AgentBackend = {
     return codexTranslator();
   },
 
-  imageInput(): boolean {
-    // Every Codex model reads images (the Read/`view_image` tool); part 8/9 reads the
-    // catalog to refine this.
-    return true;
+  imageInput(model: string | undefined): boolean {
+    // Answer from the model catalog (part 8/9): a model reads images when its catalog entry's
+    // `input_modalities` say so; a model missing from the catalog — or a run with no home to
+    // read — answers false, the safe direction, so a blind image read is never silently
+    // assumed readable. The home is the team's `backends.codex.configDir`, found by walking
+    // up from the process's working directory to its `.tumwater` root and loading the config
+    // there, the same root the runs' home and account live under (like opencode's cache).
+    if (model === undefined) return false;
+    const root = teamRootOf(process.cwd());
+    const { config } = loadConfigSafe(root);
+    const home = codexHome(resolvedBackendConfig(config ?? {}, "codex"));
+    if (home === undefined) return false;
+    return readCodexCatalog(home).get(model)?.images === true;
   },
 
   resumable(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean {

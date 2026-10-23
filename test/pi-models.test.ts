@@ -7,7 +7,8 @@ import { fallbackModelFree, piAgentDir, piModelsPath, readPiProviders, seamConte
 import type { OpencodeCatalogCache } from "../src/agent/opencode/opencode-catalog.js";
 import { writeOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { codexModelsPath } from "../src/agent/codex/codex-catalog.js";
 
 /** A models.json shaped like the one on a local-model machine: an unpriced model (no cost
  * field), an all-zero-cost model, and a paid one. */
@@ -416,6 +417,36 @@ test("seamContextWindow reads an opencode model's window from the catalog cache 
   assert.equal(seamContextWindow({ provider: "qwenrunner", model: "qwen3.8-27b" }, project, file), 131_072);
 });
 
+test("seamContextWindow reads a codex model's window from the team catalog (part 8/9)", () => {
+  // A team root whose backends.codex.configDir points at a home holding a fixture catalog:
+  // the window is `context_window × effective_context_window_percent / 100`, and an unknown
+  // model (or a seam naming no model) reads null — declaredWindow's safe answer.
+  const home = tmpdir("codex-window-home-");
+  fs.writeFileSync(
+    codexModelsPath(home),
+    JSON.stringify({ models: [{ slug: "gpt-6.1-sol", context_window: 500000, effective_context_window_percent: 95, input_modalities: ["text", "image"] }] }),
+  );
+  const root = tmpdir("codex-window-root-");
+  writeConfig(root, { backends: { codex: { configDir: home } } });
+  assert.equal(seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, root), 475_000);
+  assert.equal(seamContextWindow({ agent: "codex", model: "no-such-model" }, root), null, "unknown model");
+  assert.equal(seamContextWindow({ agent: "codex" }, root), null, "no model named");
+  // An absent `backends.codex.configDir` reads the operator's default `~/.codex` home (codexHome's
+  // fallback): point HOME at a catalog-free dir so the answer is deterministic, not whatever the
+  // operator's real home holds.
+  const realHome = process.env.HOME;
+  process.env.HOME = tmpdir("codex-window-empty-home-");
+  try {
+    assert.equal(
+      seamContextWindow({ agent: "codex", model: "gpt-6.1-sol" }, tmpdir("codex-window-nohome-root-")),
+      null,
+      "an empty default ~/.codex reads no window",
+    );
+  } finally {
+    process.env.HOME = realHome;
+  }
+});
+
 // --- OpenCode free-ness (part 6b/7 of plans/opencode-backend.md) ---------------------------
 
 /** A catalog cache with a free gateway model, a priced sibling, a billed free model, and a
@@ -450,6 +481,32 @@ test("seamFree prices an opencode seam by its catalog entry (part 6b/7)", () => 
   assert.equal(seamFree(null, { agent: "opencode", model: "anthropic/claude-haiku-5-5" }, () => null, OPENCAT), true);
   // The pi and claude arms are unchanged by the new catalog parameter.
   assert.equal(seamFree(null, { agent: "claude", provider: "claude", model: "x" }, (b: string) => (b === "claude" ? { billing: "subscription" as const, observedAt: 1, windows: {} } : null), OPENCAT), true);
+});
+
+test("a codex seam is free while it bills a subscription; API, absent and overage read not free (part 8/9)", () => {
+  const sub = { billing: "subscription" as const, observedAt: 1, windows: {} };
+  const api = { billing: "api" as const, observedAt: 1, windows: {} };
+  // The per-backend lookup names the seam's own backend: a subscription account under
+  // "codex" makes a codex seam (and a codex fallback) free; API billing and an absent
+  // account read not free.
+  const codexSub = (b: string) => (b === "codex" ? sub : null);
+  const codexApi = (b: string) => (b === "codex" ? api : null);
+  assert.equal(seamFree(null, { agent: "codex", model: "gpt-6-luna" }, codexSub), true, "subscription codex is free");
+  assert.equal(seamFree(null, { agent: "codex", model: "gpt-6-luna" }, codexApi), false, "API billing is never free");
+  assert.equal(seamFree(null, { agent: "codex", model: "gpt-6-luna" }, () => null), false, "no account reads no subscription");
+  // The fallback pair follows the same predicate.
+  const file = writeModels();
+  const cfg = teamAt("paid", "gpt-x");
+  const withFallback = { ...cfg, fallback: [{ backend: "codex", model: "gpt-6-luna" }] };
+  assert.equal(fallbackModelFree(withFallback, file, codexSub), true, "a subscription codex fallback is free");
+  assert.equal(fallbackModelFree(withFallback, file, codexApi), false, "an API codex fallback is refused");
+  // Overage is real money: an overage subscription codex seam is not free.
+  const overage = {
+    billing: "subscription" as const,
+    observedAt: 1,
+    windows: { five_hour: { status: "allowed", isUsingOverage: true, observedAt: 1 } },
+  };
+  assert.equal(seamFree(null, { agent: "codex", model: "gpt-6-luna" }, (b: string) => (b === "codex" ? overage : null)), false, "an overage subscription codex seam is not free");
 });
 
 test("a pi seam keeps judging by models.json even when a catalog is passed (part 6b/7)", () => {

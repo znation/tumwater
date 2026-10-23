@@ -14,6 +14,7 @@ import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { readOpencodeCache } from "../src/agent/opencode/opencode-catalog.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { readCodexAccount } from "../src/agent/codex/codex-account.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return JSON.parse(JSON.stringify(c)) as TumwaterConfig;
@@ -411,6 +412,31 @@ test("a live edit adding a missing claude binary warns but keeps the team runnin
   assert.match(warnings[0] ?? "", /\/no\/such\/claude/);
   // The team kept running: the poll returned the live config, no throw.
   assert.equal(readEvents(root).some((e) => e.type === "backend_binary"), false);
+});
+
+test("a live edit routing a seam to codex refuses while codex is logged in with an API key", () => {
+  const start = cloneConfig(defaultConfig());
+  start.review = { ...(start.review ?? {}), enabled: true };
+  const { root, runners, live } = liveReload(start);
+  live.poll(); // the unchanged pi config: nothing new
+  const codexBin = tmpdir("live-codex-bin-");
+  writeScript(path.join(codexBin, "codex"), 'echo "Logged in using an API key"');
+  const next = cloneConfig(start);
+  next.backends = { codex: { bin: path.join(codexBin, "codex") } };
+  next.review = { ...next.review, backend: "codex", model: "gpt-6-luna" };
+  writeConfig(root, next);
+  // The refusal keeps the last-known-good config: the API-billed codex seam is never applied,
+  // so no runner routes to it (the same refusal as startup, decision 5).
+  assert.deepEqual(live.poll(), start);
+  assert.equal(runners[0]!.config.review?.backend, start.review?.backend);
+  assert.notEqual(runners[0]!.config.review?.backend, "codex", "the refused codex seam is not applied");
+  const warnings = warnMessages(root).filter((m) => m.includes("Codex is logged in with an API key"));
+  assert.equal(warnings.length, 1, "an API-key codex seam warns the same refusal as startup");
+  assert.match(warnings[0] ?? "", /login --device-auth/);
+  assert.equal(readCodexAccount(root)?.billing, "api");
+  // A second poll while the file still routes codex keeps refusing (no re-apply, no re-warn).
+  assert.deepEqual(live.poll(), start);
+  assert.equal(warnMessages(root).filter((m) => m.includes("Codex is logged in with an API key")).length, 1);
 });
 
 /** A live reload over a pi team whose review seam a test then edits onto opencode, with the

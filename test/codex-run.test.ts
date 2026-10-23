@@ -9,9 +9,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
 import { readSessions } from "../src/agent/session-ledger.js";
+import { codexBackend } from "../src/agent/codex/codex-backend.js";
 import { defaultConfig } from "../src/config/config.js";
 import { suiteRerunWarning, type ToolCallStart } from "../src/review/suite-rerun.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
+import { withCwd } from "./helpers/env.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withCodexReplay, readRunBlocks } from "./fakes/fake-codex.js";
 import { codexCaptures } from "./fixtures/codex-events.js";
@@ -170,5 +172,59 @@ test("a reviewer codex run that runs npm test is seen as a suite rerun", async (
     assert.equal(result.ok, true, `${result.errorMessage}`);
     assert.ok(calls.some((c) => c.toolName === "bash"), "the command reached the tool-call seam");
     assert.ok(suiteRerunWarning(calls), "the reviewer's npm test reads as a suite rerun");
+  });
+});
+
+test("the catalog gates the effort the run sends and answers image input (part 8/9)", async () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  // A fixture catalog under the run's CODEX_HOME listing only low and xhigh for gpt-6-luna
+  // (no high), with image input.
+  const catalogHome = path.join(dir, "codex-home");
+  fs.mkdirSync(path.join(catalogHome, "sessions", "2026-10-21"), { recursive: true });
+  fs.writeFileSync(
+    path.join(catalogHome, "models_cache.json"),
+    JSON.stringify({
+      models: [
+        {
+          slug: "gpt-6-luna",
+          context_window: 272000,
+          effective_context_window_percent: 95,
+          supported_reasoning_levels: [{ effort: "low" }, { effort: "xhigh" }],
+          default_reasoning_level: "low",
+          input_modalities: ["text", "image"],
+        },
+      ],
+    }),
+  );
+  const baseConfig = () => ({
+    ...defaultConfig(),
+    agent: "codex",
+    model: "gpt-6-luna",
+    backends: { codex: { configDir: catalogHome } },
+  });
+  await withCodexReplay(codexCaptures.editRun, async (fake) => {
+    // high is not among the fixture's levels, so no effort flag is sent.
+    const run = codexRun(dir, { config: { ...baseConfig(), thinking: "high" } });
+    const result = await runAgent(run);
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    const args = argLines(readRunBlocks(fake.argvFile)[0]!);
+    assert.ok(!args.some((a) => a.startsWith("model_reasoning_effort=")), "a level the model does not list is dropped");
+
+    // xhigh IS cataloged, so it rides as the effort (`-c model_reasoning_effort=xhigh`).
+    const run2 = codexRun(dir, { config: { ...baseConfig(), thinking: "xhigh" } });
+    const result2 = await runAgent(run2);
+    assert.equal(result2.ok, true, `${result2.errorMessage}`);
+    const args2 = argLines(readRunBlocks(fake.argvFile)[1]!);
+    assert.ok(args2.includes("model_reasoning_effort=xhigh"), "a cataloged level is sent");
+
+    // The same home answers imageInput, read by walking up from the process's cwd to its root.
+    const cwdRoot = tmpdir();
+    fs.mkdirSync(path.join(cwdRoot, ".tumwater"), { recursive: true });
+    fs.writeFileSync(path.join(cwdRoot, "tumwater.json"), JSON.stringify({ backends: { codex: { configDir: catalogHome } } }));
+    withCwd(cwdRoot, () => {
+      assert.equal(codexBackend.imageInput!("gpt-6-luna"), true, "a cataloged image model reads images");
+      assert.equal(codexBackend.imageInput!("no-such-model"), false, "a model missing from the catalog is blind");
+    });
   });
 });
