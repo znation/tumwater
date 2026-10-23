@@ -104,6 +104,30 @@ test("run --tui fails before boot when the terminal is not interactive", async (
   });
 });
 
+// A JSON document owns stdout, so --json refuses the two modes that paint their own banner
+// there, before any boot — the same fail-fast rival-shapes wording as the --gui/--once pair.
+test("run --for --json --gui fails before boot with the rival-shapes message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run for json gui");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--for", "1s", "--json", "--gui");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--json cannot be combined with --gui/);
+    assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
+  });
+});
+
+test("run --for --json --tui fails before boot with the rival-shapes message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run for json tui");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--for", "1s", "--json", "--tui");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--json cannot be combined with --tui/);
+    assert.equal(readEvents(repo).length, 0, "no events — the run never booted");
+  });
+});
+
 // The `--role` guards of `run` (cmdStart): scoping is a once-round concept, the filter is
 // validated against the ENABLED role ids, and the startup gate is asked before any of it.
 // These were pinned only in the e2e tier (orchestrator-once.e2e.test.ts), which `npm test`

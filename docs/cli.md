@@ -24,9 +24,10 @@ tumwater start --gui            # ... and serve the browser dashboard at http://
                                 # add --port <n> to serve it on another port (the `tumwater gui --port <n>` twin)
 tumwater start --tui        # ... and host the TUI in this same terminal (the `tumwater tui` view; quitting it stops the team like Ctrl+C)
 tumwater start --for 2h     # run for a bounded window (capped at 90d), then finish current work, print a per-role summary of the window, and exit (one window across updates); shown as `stops in …` on status, the TUI, and the dashboard
+                            # (add --json to print that summary as one JSON object — tumwater start --for 2h --json)
 tumwater start --once       # one full round of runs, finishes the merges it produced, and exits (for cron/CI); exits 3 if a run failed;
                             # add --role <id>[,<id>...] to scope the round to the listed roles (enabled roles only)
-                            # add --json to print the round's totals, per-result counts, skipped roles and failures as one JSON object (only with --once)
+                            # add --json to print the round's totals, per-result counts, skipped roles and failures as one JSON object (only with --once or --for)
 tumwater start --branch <name>  # merge into that branch instead of baseBranch in tumwater.json or the checked-out branch; it must exist
 ```
 

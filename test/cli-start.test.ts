@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowSummary } from "../src/cli/cli-start.js";
+import { ONCE_FAILURE_RESULTS, armDeadlineTimer, guiChildPlan, inheritedWindowStart, onceFailures, onceReport, onceSummary, parseRunWindow, renderOnceSummary, windowReport, windowSummary, type WindowReport } from "../src/cli/cli-start.js";
 import { summarizeRunRows, type RunRow } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
@@ -404,6 +404,18 @@ test("windowSummary says nothing ran for an empty window and notes a sparse one"
   assert.equal(windowSummary("2h", summarizeRunRows([]), true), "for 2h: 0 runs — nothing ran");
   assert.equal(windowSummary("2h", summarizeRunRows([]), false), `for 2h: 0 runs — nothing ran\n${SPARSE_WINDOW_NOTE}`);
   assert.ok(windowSummary("2h", summarizeRunRows([runRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
+});
+
+test("windowReport mirrors windowSummary's rows as one JSON object", () => {
+  const summary = summarizeRunRows([runRow("clean", "changed", 1), runRow("qa", "no_change", 2)]);
+  const report: WindowReport = windowReport("2h", summary, true);
+  assert.deepEqual(report, { window: "2h", covered: true, roles: summary.roles, total: summary.total });
+  const sparse: WindowReport = windowReport("2h", summary, false);
+  assert.equal(sparse.covered, false);
+  assert.deepEqual(sparse.roles, summary.roles);
+  assert.deepEqual(sparse.total, summary.total);
+  // The JSON contract never appends the prose sparse-window note; covered:false is the fact.
+  assert.ok(!JSON.stringify(sparse).includes(SPARSE_WINDOW_NOTE));
 });
 
 test("inheritedWindowStart adopts only a positive past integer, else now", () => {

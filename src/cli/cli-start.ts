@@ -85,7 +85,13 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // queued that role a prompt. Daemon `run --role` stays an error: scoping is a once-round concept.
   const roleFilter = parseRoleListFlag(args, knownRoleIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
-  if (json && !once) fail("--json is only valid with --once");
+  if (json && !once && forMs === null) fail("--json is only valid with --once or --for");
+  // Both interactive modes write their own banner to the stdout a JSON document must own, so a
+  // --json round/window refuses them before any boot.
+  if (json && args.includes("--gui"))
+    failRivalShapes("--json", "--gui", "the dashboard writes its banner to the stdout a JSON document must own");
+  if (json && args.includes("--tui"))
+    failRivalShapes("--json", "--tui", "a TUI owns the terminal");
   if (roleFilter !== null) {
     const runners = runnerIds(config);
     const missing = roleFilter.find((id) => !runners.includes(id));
@@ -137,7 +143,9 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
   // retracts it when the run ends first (an early Ctrl+C), so no stray timer outlives the run.
   const windowStart = inheritedWindowStart(process.env[RUN_WINDOW_START_ENV], Date.now());
   const deadlineTimer = forMs !== null ? armDeadlineTimer(Math.max(0, windowStart + forMs - Date.now()), () => {
-    say("deadline reached — stopping");
+    // A --for --json window's stdout must hold exactly its one JSON document, so the deadline
+    // prose is suppressed too; the document's non-zero-absent facts carry the window.
+    if (!json) say("deadline reached — stopping");
     stop();
   }) : null;
   const scheduledStopWatch = armScheduledStopWatch(root, () => {
@@ -213,7 +221,9 @@ export async function cmdStart(root: string, args: string[]): Promise<void> {
     else say(onceSummary(root, roles, runsBefore, exit.settled, exit.runsDone));
   } else if (forMs !== null && !exit.restart) {
     const { rows, covered } = readRunRowsSince(root, Date.now() - windowStart, null);
-    say(windowSummary(durationLabel(forMs), summarizeRunRows(rows), covered));
+    const summary = summarizeRunRows(rows);
+    if (json) sayJson(windowReport(durationLabel(forMs), summary, covered));
+    else say(windowSummary(durationLabel(forMs), summary, covered));
   }
   if (once) {
     const failures = onceFailures(root, roles, runsBefore, exit.runsDone);
@@ -255,6 +265,21 @@ export function windowSummary(label: string, summary: { roles: HistorySummaryRow
   if (total.runs > 0) lines.push(renderSummary(summary));
   if (!covered) lines.push(SPARSE_WINDOW_NOTE);
   return lines.join("\n");
+}
+
+/** The `run --for --json` exit summary: the windowed run's per-role tally as one JSON object a
+ * script parses, mirroring `windowSummary`'s rendering of the same rows. Unlike `windowSummary`
+ * it never appends `SPARSE_WINDOW_NOTE` — `covered: false` is the fact a caller reads. */
+export interface WindowReport {
+  window: string;
+  covered: boolean;
+  roles: HistorySummaryRow[];
+  total: HistorySummaryRow;
+}
+
+/** Build the `run --for --json` window report from the same summary `windowSummary` renders. */
+export function windowReport(label: string, summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): WindowReport {
+  return { window: label, covered, roles: summary.roles, total: summary.total };
 }
 
 /** Arm the windowed run's deadline timer: the one home of the arming `cmdStart` does for
@@ -595,7 +620,7 @@ async function superviseStartCommand(root: string, runArgs: string[], branchArg:
         // restart line over the ink full-screen render and corrupt it — the same interleaving
         // childStdio silences for the children. The TUI renders status from on-disk state, so
         // the redeploy is visible there as the team coming back.
-        if (!plan.spawnTui) say(`\nrestarting onto the update (restart ${generation})\n`);
+        if (!plan.spawnTui && !runArgs.includes("--json")) say(`\nrestarting onto the update (restart ${generation})\n`);
       },
       onCrashLoop: () =>
         process.stderr.write("tumwater restarted itself too many times in a minute — giving up\n"),

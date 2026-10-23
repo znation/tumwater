@@ -24,9 +24,10 @@ Usage:
                                    exits 3 when a run ended in error, review failed,
                                    a merge conflicted or was blocked, or main's check is failing;
                                    --once --role <id>[,<id>...] limits that round to the listed roles;
-                                   --once --json prints the round's totals, per-result counts, skipped roles and failures as one JSON object on stdout (no banner or event stream); only valid with --once;
+                                   --once --json prints the round's totals, per-result counts, skipped roles and failures as one JSON object on stdout (no banner or event stream) (the --once report; --json is refused without --once or --for);
                                    --for <duration> runs for that window then finishes current work, prints a per-role summary
                                    (one window across self-redeploys),
+                                   --for --json prints the window's per-role summary as one JSON object on stdout at exit (no banner or event stream); --json with --gui or --tui is refused;
                                    and exits like Ctrl+C would (for an overnight
                                    trial, a demo, a CI step);
                                    --gui also serves the browser dashboard at

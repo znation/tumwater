@@ -122,5 +122,5 @@ test("run --json without --once is refused and boots nothing", async () => {
   writeConfig(repo, fastConfig(["clean"]));
   const r = await cli(repo, "run", "--json");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /--json is only valid with --once/);
+  assert.match(r.stderr, /--json is only valid with --once or --for/);
 });

@@ -135,6 +135,49 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
   }
 });
 
+// `run --for <duration> --json`: the same bounded window as the prose form, but the only
+// stdout at exit is one JSON object whose window/covered/roles/total carry the same facts the
+// prose table renders — no banner, no event stream, no deadline/stop prose, no pre-window runs.
+test("run --for --json prints one JSON object and no banner or event stream", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run for json");
+
+  onlyCleanRole(repo);
+  // A run that ended before the window opened must not be counted in the window's summary.
+  logEvent(repo, { ts: Date.now() - 3_600_000, source: "ghost", type: "run_end", run: 1, result: "changed" } as never);
+  const restore = fakePi("exit 0");
+  const s = spawnCli(repo, ["run", "--for", "3s", "--json"]);
+  try {
+    let stopsAt: unknown;
+    const bootAllowance = 20_000;
+    const polled = Date.now() + bootAllowance;
+    while (stopsAt === undefined && Date.now() < polled) {
+      try {
+        stopsAt = readJson<{ stopsAt?: number }>(orchestratorStatePath(repo)).stopsAt;
+      } catch { /* not written yet, or torn */ }
+      if (stopsAt === undefined) await sleep(50);
+    }
+    assert.equal(typeof stopsAt, "number", "the info file publishes the window's deadline");
+    const code = await exitCode(s.child);
+    assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
+    const parsed = JSON.parse(s.out().trim()) as { window: string; covered: boolean; roles: unknown[]; total: { runs: number } };
+    assert.equal(parsed.window, "3s");
+    assert.equal(typeof parsed.total.runs, "number");
+    assert.equal(typeof parsed.covered, "boolean");
+    assert.ok(Array.isArray(parsed.roles));
+    const out = s.out();
+    assert.ok(!out.includes("tumwater running on branch"), `no banner in json output:\n${out}`);
+    assert.ok(!out.includes("deadline reached — stopping"), `no deadline prose in json output:\n${out}`);
+    assert.ok(!out.includes("stopping — finishing current runs"), `no stop prose in json output:\n${out}`);
+    assert.ok(!out.includes("ghost"), `a pre-window run leaked into the json output:\n${out}`);
+    assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,
+      `a deadline stop must not be recorded as a team death:\n${JSON.stringify(readEvents(repo))}`);
+  } finally {
+    s.kill();
+    restore();
+  }
+});
+
 // `run --gui`: one command boots the team and serves the browser dashboard (the `tumwater gui`
 // server on its defaults) from the supervisor, so the dashboard outlives orchestrator
 // generations and dies with the team. This is the only test that exercises the wiring end to
