@@ -20,6 +20,7 @@ import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { writeAccount } from "../src/agent/subscription-account.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 
@@ -533,6 +534,7 @@ test("a claude model job's role view names its billing and subscription window",
   });
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.billing, "subscription");
+  assert.equal(p.billingBackend, "claude");
   assert.equal(p.billingWindow, "five_hour");
   assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
@@ -540,11 +542,51 @@ test("a claude model job's role view names its billing and subscription window",
   const api = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(api.billing, "api");
   assert.equal(api.billingWindow, undefined);
+  assert.equal(api.billingBackend, "claude");
   assert.match(renderRoleMarkdown(api), /- Billing: API/m);
 
   // A pi seam carries no billing line at all, whatever the account file says.
   writeConfig(dir, {});
-  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
+  const pi = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(pi.billingBackend, undefined);
+  assert.doesNotMatch(renderRoleMarkdown(pi), /Billing:/m);
+});
+
+// A non-claude subscription backend (plans/codex-backend.md part 3c/9): the role view names
+// the backend's own window on the billing line and in the "used up" phrase, not claude's.
+test("a codex subscription account renders Codex window labels", () => {
+  const dir = root();
+  writeConfig(dir, { backend: "codex" });
+  writeAccount(dir, "codex", {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { seven_day: { status: "allowed", utilization: 0.31, observedAt: Date.now() } },
+  });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.billingBackend, "codex");
+  assert.equal(p.billing, "subscription");
+  assert.equal(p.billingWindow, "seven_day");
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(Codex 7d window\)/m);
+
+  // A codex window hold words the chain's window reason with the backend too.
+  const returnsAt = new Date(2026, 9, 16, 17, 40).getTime();
+  writeOrchestratorMarker(dir, [], {
+    chain: { default: { pair: "p/m", step: 2, of: 3, reason: "window", returnsAt } },
+  });
+  assert.match(
+    renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)),
+    /- Running on fallback 2 of 3 \(Codex 7d window used up, resets 17:40\)/,
+  );
+
+  // A codex subscription whose account reports no window still names the backend in the
+  // phrase ("Codex window used up", where claude would say "Claude window used up").
+  writeAccount(dir, "codex", { billing: "subscription", observedAt: Date.now(), windows: {} });
+  const noWindow = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(noWindow.billingWindow, undefined);
+  assert.match(
+    renderRoleMarkdown(noWindow),
+    /- Running on fallback 2 of 3 \(Codex window used up, resets 17:40\)/,
+  );
 });
 
 // Context-window visibility: the role view names the resolved primary seam's declared window,
@@ -618,6 +660,7 @@ test("a pi role with a claude reviewer shows claude billing; a pi reviewer does 
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.backend, "pi", "the role's own model job is pi");
   assert.equal(p.billing, "subscription", "the claude reviewer's billing is shown");
+  assert.equal(p.billingBackend, "claude", "the claude reviewer's backend is named");
   assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
   // A pi reviewer leaves the role view without a billing line.

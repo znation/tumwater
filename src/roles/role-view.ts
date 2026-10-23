@@ -29,7 +29,8 @@ import { roleImageInfo } from "../agent/image-input.js";
 import { readPiListedModels } from "../pi/pi-listed-models.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
+import { readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
+import { readAccount, windowEntries } from "../agent/subscription-account.js";
 import { CONFIG_BASENAME, configPath, roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
@@ -86,7 +87,13 @@ export interface RoleViewPayload {
   /** The active model-fallback episode (PLANS.md "Model failure fallback"), or null when
    * the role's runs are not running off-model. */
   modelFallback: ModelFallbackView | null;
-  /** The claude billing for a claude seam (plans/agent-backends.md §7/§8, PLANS.md part
+  /** The subscription backend whose billing this answer reads (the role's own non-pi seam,
+   * else the review gate's non-pi backend — today's claude precedence generalized, so a
+   * codex role or a pi author on a codex reviewer names codex here): `"claude"`, `"codex"`, …
+   * — the id the renderer labels a window with. Absent for a pi seam with no non-pi reviewer,
+   * so old payloads stay byte-identical (plans/codex-backend.md "Groundwork", part 3c/9). */
+  billingBackend?: string;
+  /** The billing of the backend in play (plans/agent-backends.md §7/§8, PLANS.md part
    * 6d/7): "subscription" or "api" from the account file, absent for a pi seam or when no
    * account read exists. */
   billing?: ClaudeBilling;
@@ -231,17 +238,22 @@ export function rolePayload(
     throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
   }
   const effective = configForRole(cfg, role);
-  // The claude billing answer, read when a claude seam is in play — the role's OWN seam, or
-  // the review gate's when the reviewer runs claude (PLANS.md "Mixed claude + pi fleets, part
-  // 3/4" gap 7): a pi author on a claude reviewer still shows where its changes' spend lands.
-  // Its subscription window's primary type rides along for the renderer's label. The account
-  // file is team-global, so either seam reads the same answer.
-  const claudeInPlay =
-    effective.agent === "claude" || (cfg.review.enabled && reviewRunConfig(cfg).agent === "claude");
-  const account = claudeInPlay ? readClaudeAccount(root) : null;
+  // The subscription backend whose billing is in play — the role's OWN seam when it routes
+  // to a non-pi backend, else the review gate's backend when the reviewer runs a non-pi
+  // backend (today's claude precedence generalized off the literal "claude", part 3c/9;
+  // PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): a pi author on a claude/codex
+  // reviewer still shows where its changes' spend lands. Read that backend's account; the
+  // account file is team-global, so either seam reads the same answer. Its subscription
+  // window's primary type rides along for the renderer's label.
+  const roleBackend = effective.agent !== undefined && effective.agent !== "pi" ? effective.agent : undefined;
+  const reviewAgent = reviewRunConfig(cfg).agent;
+  const reviewBackend =
+    cfg.review.enabled && reviewAgent !== undefined && reviewAgent !== "pi" ? reviewAgent : undefined;
+  const billingBackend = roleBackend ?? reviewBackend;
+  const account = billingBackend !== undefined ? readAccount(root, billingBackend) : null;
   const info = readOrchestratorInfo(root);
   const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
-  const billingWindow = account?.billing === "subscription" ? claudeWindowEntries(account)[0]?.type : undefined;
+  const billingWindow = account?.billing === "subscription" ? windowEntries(account)[0]?.type : undefined;
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
   // wins over the default's because tumwater passes it to pi as `--thinking`, mirroring the
@@ -408,7 +420,7 @@ export function rolePayload(
     fallback,
     fallbackFree: freeFallback !== null,
     modelFallback: modelFallbackView(episode, cfg, role),
-    ...(account !== null ? { billing: account.billing } : {}),
+    ...(account !== null ? { billing: account.billing, billingBackend } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root), readPiListedModels(root)),

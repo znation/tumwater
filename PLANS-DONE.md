@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 3c/9: The role view and its billing line name the job's own subscription backend (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 3a/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/roles/role-view.ts src/roles/role-render.ts test/role-view.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** A role running a subscription backend shows that backend's window label and "window used up" phrase instead of always saying Claude.
+
+**Approach.**
+- src/roles/role-view.ts: `claudeInPlay` becomes "a subscription backend is in play": the role's own seam backend when it is not `pi`, else the reviewer's backend when the review gate is on (today's precedence, generalized off the literal "claude"). Read its account with `readAccount(root, backend)`, keep `billingWindow` as the account's primary window type, and carry the backend id as a new view field beside it.
+- src/roles/role-render.ts: the "window used up" phrase and the billing line use `backendDisplayName(billingBackend)` with `windowLabel(windowType)` ("Codex 7d window"), falling back to today's "Claude" wording when no backend is known.
+
+**Acceptance criteria.**
+- A role on a codex subscription account renders "Codex 7d window" and "Codex window used up"; a claude role's render is byte-identical to today; a pi role with a claude reviewer still shows claude.
+- `npm test` passes.
+
 ### Codex backend, part 3a/9: The subscription-window block is per backend, and `status --json` gains `subscriptionWindows` (planned 2026-10-20 by user, split 2026-10-23 by the plan role from part 3/9 after a feature Needs-review; requires part 2e/9 landed; design in plans/codex-backend.md "Groundwork: the subscription account is per backend" item 3; touches src/agent/subscription-account.ts src/agent/backend-traits.ts src/status/status-budget.ts src/status/status-data.ts src/ui/status-payload.ts test/status-budget.test.ts test/status-data-models.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** One status-poll read yields one subscription-window block per subscription backend in use, not only claude's, and hands the ordered list to every display surface. This is the shared model parts 3b/9–3e/9 consume; a claude-only snapshot is unchanged apart from the added list.
