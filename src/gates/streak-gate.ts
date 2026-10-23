@@ -14,16 +14,19 @@
  * here so it is unit-testable without a team, and the module owns the only event emission — the
  * orchestrator's poll owns only the wiring.
  *
- * Ack bookkeeping. The marker itself is the ack carrier: every poll, each role present in the
- * paused set has its streak recorded in the in-memory `acked` map, so after the operator resumes a
- * breaker-paused role, re-tripping requires ERROR_STREAK_BREAKER *more* consecutive failures, not
- * one — the same grace an operator-paused failing role gets (its streak is acked while the pause
- * stands, so resuming it does not instantly re-trip on the pre-pause streak), and the same
- * durability a harness restart mid-pause gets (the in-memory state is lost, but the standing marker
- * freezes the ack on the first poll after the restart). If the operator had already resumed before
- * a restart, a still-live streak at or past the breaker re-trips once — the cause is durable, and
- * one event is the honest report. A streak that resets to 0 through the role's own success clears
- * the ack: the next episode trips on its own fresh ERROR_STREAK_BREAKER failures.
+ * Ack bookkeeping. The marker is the ack carrier within a run, and the durable copy of the
+ * ack lives in each runner's persisted `RunnerState.streakAcked`: every poll, each role present
+ * in the paused set has its streak recorded in the in-memory `acked` cache (and flushed to the
+ * runner's state), so after the operator resumes a breaker-paused role, re-tripping
+ * requires ERROR_STREAK_BREAKER *more* consecutive failures, not one — the same grace an
+ * operator-paused failing role gets (its streak is acked while the pause stands, so resuming
+ * it does not instantly re-trip on the pre-pause streak). Because the ack is
+ * persisted, a harness restart after a resume does NOT re-trip a role whose frozen streak
+ * never ran down — the durable cause's first poll finds the persisted ack and leaves the role
+ * alone (BUGS.md 2026-10-23: the old in-memory-only ack re-paused a resumed role on every
+ * auto-redeploy). A streak that resets to 0 through the role's own success clears the ack
+ * (from the cache and the runner's state): the next episode trips on its own fresh
+ * ERROR_STREAK_BREAKER failures.
  *
  * Accepted behavior, stated here and not fixed in this change: the dashboards' "failing run after
  * run" alert (src/ui/team-alerts.ts) reads consecutiveErrors regardless of pause, so it keeps
@@ -32,26 +35,32 @@
 
 import { ERROR_STREAK_BREAKER } from "../run/run-apply.js";
 import type { RunnerState } from "../runner/runner-state.js";
+import { saveRunnerStateBestEffort } from "../runner/runner-state.js";
 import { runnerPaused } from "../roles/runner-ids.js";
 import { pauseRole } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
-/** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
- * (src/team/team-polls.ts): RunnerState.consecutiveErrors and lastError. */
+/** One runner's streak as the gate reads it, with the runner's full persisted state so the
+ * gate can write the excused-streak ack back durably (the ack's cross-restart home is
+ * `RunnerState.streakAcked`; the in-memory gate state is just this run's cache of it). */
 interface StreakObservation {
   role: string;
-  state: Pick<RunnerState, "consecutiveErrors" | "lastError">;
+  state: RunnerState;
 }
 
 /** The gate's cross-poll memory: per role, the streak level already accounted for at its
- * last trip or last ack-while-paused. In memory only, like every gate state — the marker
- * carries the durable half (see the module doc). */
+ * last trip or last ack-while-paused. The durable half lives in each runner's persisted
+ * `RunnerState.streakAcked` (written by the gate when the ack changes); this map is only the
+ * in-run cache of it, seeded from the persisted value on the first sight of a role so a
+ * restart keeps the excused level. */
 export interface StreakGateState {
   acked: Map<string, number>;
 }
 
-/** A fresh gate state: nothing acked, so a live streak at or past the breaker trips on the
- * first poll (the durable-cause case a restart after an operator resume relies on). */
+/** A fresh gate state: nothing cached yet, so the first poll of a runner whose persisted
+ * `streakAcked` is set seeds it from there — a restart does NOT re-trip a role the breaker
+ * already excused (the bug this state exists to fix). A runner with no persisted ack that
+ * is at or past the breaker trips on the first poll, as before. */
 export function newStreakGateState(): StreakGateState {
   return { acked: new Map() };
 }
@@ -78,25 +87,43 @@ export function pollStreakGate(
   const tripped: string[] = [];
   for (const { role, state: s } of runners) {
     const streak = s.consecutiveErrors ?? 0;
+    // Seed a fresh in-run ack cache from the persisted excused streak, so a restart keeps the
+    // grace the breaker (and a later operator resume) relies on instead of re-pausing a role
+    // whose frozen streak never ran down (BUGS.md 2026-10-23).
+    if (!state.acked.has(role) && s.streakAcked !== undefined) {
+      state.acked.set(role, s.streakAcked);
+    }
     // Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
     // paused (no new runs start), so recording it here is exactly the level the resume excuses.
     if (runnerPaused(pausedRoles, role)) {
-      state.acked.set(role, streak);
+      if ((state.acked.get(role) ?? 0) !== streak) {
+        state.acked.set(role, streak);
+        s.streakAcked = streak;
+        saveRunnerStateBestEffort(root, s);
+      }
       continue;
     }
     if (streak === 0) {
       // A streak that reset through the role's own success ends the excused episode: the
-      // next one must climb a fresh ERROR_STREAK_BREAKER of its own.
-      state.acked.delete(role);
+      // next one must climb a fresh ERROR_STREAK_BREAKER of its own, so drop the durable ack too.
+      if (state.acked.get(role) !== undefined) {
+        state.acked.delete(role);
+        delete s.streakAcked;
+        saveRunnerStateBestEffort(root, s);
+      }
       continue;
     }
     const ack = state.acked.get(role) ?? 0;
     if (streak < ERROR_STREAK_BREAKER + ack) continue;
     // Ack at trip time, before the pause is observed: the bar for the next trip is
     // ERROR_STREAK_BREAKER more failures from this level, whether or not any poll sees the
-    // role paused in between (an operator resume racing the next poll must not re-trip).
+    // role paused in between (an operator resume racing the next poll must not re-trip). The
+    // durable copy is written only once the pause is confirmed below — a failed or crashed
+    // pauseRole must not leave a permanent excused ack with no marker behind it.
     state.acked.set(role, streak);
     if (pauseRole(root, pauseKey(role))) {
+      s.streakAcked = streak;
+      saveRunnerStateBestEffort(root, s);
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "role_streak_paused",

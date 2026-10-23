@@ -16,6 +16,7 @@ import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
+import { freshRunnerState } from "../src/runner/runner-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { pollBudgetGate, newBudgetGateState } from "../src/gates/budget-gates.js";
@@ -68,12 +69,10 @@ test("pollStreakGate: a breaker trip pauses the role even when the event cannot 
   const root = tmpdir("gate-best-effort-streak-");
   unwritableEvents(root);
   const state = newStreakGateState();
-  const tripped = pollStreakGate(
-    root,
-    state,
-    [{ role: "docs", state: { consecutiveErrors: 10, lastError: "boom" } }],
-    new Set(),
-  );
+  const s = freshRunnerState("docs");
+  s.consecutiveErrors = 10;
+  s.lastError = "boom";
+  const tripped = pollStreakGate(root, state, [{ role: "docs", state: s }], new Set());
   assert.deepEqual(tripped, ["docs"], "the trip is reported even though its event is lost");
 });
 

@@ -183,6 +183,7 @@ test("loadRunnerState heals a corrupt persisted numeric field", () => {
       noChangeStreak: "lots",
       unreviewFailures: "lots",
       parkedSince: "soon",
+      streakAcked: -3, // the breaker's excused-streak ack heals like the error streak it excuses
     }),
   );
   const s = loadRunnerState(dir, "dirty");
@@ -203,6 +204,7 @@ test("loadRunnerState heals a corrupt persisted numeric field", () => {
     "noChangeStreak",
     "unreviewFailures",
     "parkedSince",
+    "streakAcked",
   ] as const) {
     assert.equal(s[key], 0, `field ${key} should heal to 0`);
   }

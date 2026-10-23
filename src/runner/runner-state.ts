@@ -136,6 +136,16 @@ export interface RunnerState {
    * `queued`, which preserves the streak, and applyMergeOutcome's rejected branch is the
    * accumulation point; a merged change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
+  /** The error-streak breaker's excused streak level for this role (src/gates/streak-gate.ts):
+   * the streak already accounted for at its last trip or last ack-while-paused, persisted so a
+   * harness restart keeps the grace an operator resume (or a standing frozen streak) relies on
+   * instead of re-pausing the role on the first poll (BUGS.md 2026-10-23: a resume was undone
+   * by every 4-hourly auto-redeploy). Read by the gate as the ack on a fresh in-memory gate
+   * state; written back whenever the gate's ack changes; cleared when the streak returns to 0
+   * through the role's own success or a merge. Absent on states written before the field
+   * existed — reads as 0, a fresh ack. Not cleared by reset-counters (the gate's own healthy-
+   * streak branch owns its lifecycle). */
+  streakAcked?: number;
   /** Consecutive completed runs that ended `no_change`. Observational only — the resting
    * state cell's ` · no change ×N` suffix (status-model.ts rolePhase) — so a runner that keeps
    * waking and returning nothing to do stops reading as an ordinary idle; a legitimately idle
