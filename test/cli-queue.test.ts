@@ -218,3 +218,98 @@ test("queue --cancel refuses an entry a live merge marker names", async () => {
   assert.match(r.stderr, /queue entry 1 is being merged right now — wait for it to land, then `tumwater revert aaaaaaaa`/);
   assert.match((await cli(repo, "queue")).stdout, /^merge queue \(1\):\n  1\. improve /, "the refusal changes nothing");
 });
+
+test("queue --top <n> moves the entry to the front and prints the moved line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  enqueueMerge(repo, entry("feature", "c".repeat(40), 3, "add the widget"));
+  const r = await cli(repo, "queue", "--top", "3");
+  assert.equal(r.code, 0);
+  assert.equal(r.stdout.trim(), "moved queue entry 3 to the front: feature cccccccc — add the widget");
+  const after = await cli(repo, "queue");
+  assert.equal(after.code, 0);
+  const lines = after.stdout.trimEnd().split("\n");
+  assert.equal(lines[0], "merge queue (3):");
+  assert.match(lines[1]!, /^  1\. feature /, "the moved entry is now at position 1");
+  assert.match(lines[2]!, /^  2\. improve /);
+  assert.match(lines[3]!, /^  3\. organize /);
+});
+
+test("queue --top 1 prints the already-first line and exits 0", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top first test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  const r = await cli(repo, "queue", "--top", "1");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /queue entry 1 is already first: improve aaaaaaaa — tidy the parser/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(2\):\n  1\. improve /, "a no-op changes nothing");
+});
+
+test("queue --top --json prints the topped object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top json test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  const r = await cli(repo, "queue", "--top", "2", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { topped: { role: string; commit: string; summary: string } };
+  assert.deepEqual(payload.topped, { role: "organize", commit: "b".repeat(40), summary: "split the module" });
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(2\):\n  1\. organize /);
+});
+
+test("queue --top --json prints an already-first key for a no-op position 1", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top json first test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 1, "tidy the parser"));
+  const r = await cli(repo, "queue", "--top", "1", "--json");
+  assert.equal(r.code, 0);
+  const payload = JSON.parse(r.stdout) as { "already-first": { role: string; commit: string; summary: string } };
+  assert.deepEqual(payload["already-first"], { role: "improve", commit: "a".repeat(40), summary: "tidy the parser" });
+  assert.equal("topped" in payload, false, "a no-op must not be reported as topped");
+});
+
+test("queue --top with an out-of-range position fails naming the depth", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top range test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40)));
+  enqueueMerge(repo, entry("organize", "b".repeat(40)));
+  const r = await cli(repo, "queue", "--top", "9");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /no queued merge at position 9 \(merge queue holds 2\)/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(2\):\n  1\. improve /, "out-of-range changes nothing");
+});
+
+test("queue --top refuses --role, -f/--follow, and an unknown flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top refuse test");
+  enqueueMerge(repo, entry("improve", "a".repeat(40)));
+  const role = await cli(repo, "queue", "--role", "improve", "--top", "1");
+  assert.notEqual(role.code, 0);
+  assert.match(role.stderr, /tumwater queue/);
+  for (const flag of ["-f", "--follow"]) {
+    const follow = await cli(repo, "queue", flag, "--top", "1");
+    assert.notEqual(follow.code, 0);
+    assert.match(follow.stderr, /repaints a live view/);
+  }
+  const wat = await cli(repo, "queue", "--top", "1", "--wat");
+  assert.notEqual(wat.code, 0);
+  assert.match(wat.stderr, /--wat/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(1\):\n  1\. improve /, "a refused top changes nothing");
+});
+
+test("queue --top refuses an entry a live merge marker names", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "queue top inflight test");
+  const sha = "a".repeat(40);
+  enqueueMerge(repo, entry("improve", sha, 3, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 2, "split the module"));
+  writeFileDeep(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+  writeFileDeep(mergeStatePath(repo), JSON.stringify({ role: "organize", sha: "b".repeat(40), summary: "split", startedAt: Date.now() - 120_000, stage: "reviewing" }));
+  const r = await cli(repo, "queue", "--top", "2");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /queue entry 2 is being merged right now — it's already heading into the merge, so there's nothing to top/);
+  assert.match((await cli(repo, "queue")).stdout, /^merge queue \(2\):\n  1\. improve /, "the refusal changes nothing");
+});

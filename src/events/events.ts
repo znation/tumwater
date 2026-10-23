@@ -44,6 +44,7 @@ export interface HarnessEvent {
     | "run_end" // carries run, the run's usage, providerCost, billing/agent (when the run reported billing or rate windows), and its wall-clock span
     | "merge_queued" // a changed run pinned its commit and enqueued it for the orchestrator's merge slot (merge queue 3/5); carries sha + summary
     | "merge_cancelled" // an operator cancelled a waiting merge with tumwater queue --cancel; carries commit + summary
+    | "merge_topped" // an operator moved a waiting merge to the front with tumwater queue --top; carries commit + summary
     | "merge_done" // the merge slot finished with the change on main; carries commit, the merger's outcome, durationMs, queuedMs (enqueue to outcome), and the merge's own usage (incl. notionalByBackend when it spent subscription notional)
     | "merge_failed" // the merge slot finished without merging (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary, and notionalByBackend) — retry rides next-run leftover recovery, never the queue
     | "merged" // merged; carries commit and summary, plus patchId when the merged commit's patch-id could be computed (src/git/git.ts patchId, -U0 diff against its parent) — the fast-merge guardrail G2 matches it against a main_revert's to spot a change that landed again unchanged

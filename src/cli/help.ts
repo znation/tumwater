@@ -218,7 +218,7 @@ Usage:
                                    role holds, each still naming every holder; --path keeps only the files
                                    at or under that repo-relative file or directory;
                                    --json prints {mainBranch, state, overlaps}
-  tumwater queue [--role <id>[,<id>...]] [-f/--follow] [--json] [--cancel <n>]
+  tumwater queue [--role <id>[,<id>...]] [-f/--follow] [--json] [--cancel <n>] [--top <n>]
                                    List the durable merge queue in execution order (oldest
                                    first): one line per waiting merge — position, role, run
                                    number, short pinned sha, age, and summary — plus a bracketed
@@ -236,7 +236,11 @@ Usage:
                                    backgrounded follow does not outlive its parent; it refuses --json;
                                    --cancel <n> removes the Nth queued merge before it lands (and
                                    its role's merge pin, so next-run recovery cannot re-enqueue it),
-                                   refusing an entry a live merge is merging and --role/-f
+                                   refusing an entry a live merge is merging and --role/-f;
+                                   --top <n> moves the Nth queued merge to the front of the
+                                   execution order (so it merges next when ready), preserving any
+                                   notBefore deferral, refusing an entry a live merge is merging and
+                                   --role/-f, and answering already-first for position 1
   tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable

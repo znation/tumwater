@@ -255,7 +255,7 @@ test("the bash script completes file names, template ids, and result classes aft
 
 test("the bash script completes event-type codes after logs --type", async () => {
   const script = completionScript("bash");
-  assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "merge_"], 3), ["merge_cancelled", "merge_done", "merge_failed", "merge_queued"]);
+  assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "merge_"], 3), ["merge_cancelled", "merge_done", "merge_failed", "merge_queued", "merge_topped"]);
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "run_"], 3), ["run_aborted", "run_deferred", "run_end", "run_start"]);
   assert.ok((await complete(script, ["tumwater", "logs", "--type", ""], 3)).length > 0);
 });

@@ -236,6 +236,10 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine operation (the user removed a waiting merge), not a warning — like
       // prompt_cancelled. The merge_cancelled event name carries the payload (commit + summary).
       return `cancelled the merge of ${shortSha(e.commit)} — ${textOr(e.summary)}`;
+    case "merge_topped":
+      // Routine operation (the user reordered a waiting merge), not a warning — like
+      // prompt_topped. The merge_topped event name carries the payload (commit + summary).
+      return `moved the merge of ${shortSha(e.commit)} to the front — ${textOr(e.summary)}`;
     case "merge_done":
       // The merge slot finished with the change on main; the usage is the merge's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt merges

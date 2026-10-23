@@ -736,6 +736,28 @@ test("formatEvent renders merge_cancelled plainly with the sha and summary", () 
   assert.ok(!bare.includes("undefined"), `corrupt commit/summary must not render undefined: ${bare}`);
 });
 
+// The operator's queue --top (PLANS.md): the merge_topped event names the sha and
+// summary, routine like prompt_topped — no warning prefix — with the "?" fallback on a
+// torn line.
+test("formatEvent renders merge_topped plainly with the sha and summary", () => {
+  const line = formatEvent({
+    ts: 0,
+    source: "feature",
+    type: "merge_topped",
+    commit: "abcdef1234567890",
+    summary: "add the widget",
+  } as never);
+  assert.match(line, /feature\s+moved the merge of abcdef12 to the front — add the widget$/, `must name the sha and summary: ${line}`);
+  assert.ok(!line.includes("warning"), `a topped merge is routine, not a warning: ${line}`);
+  assert.equal(EVENT_TYPE_LABELS["merge_topped"], "merge moved to front", "the event's label");
+
+  // A torn or hand-edited event line could carry no commit or summary; the fallbacks must
+  // render "?", never String(undefined)'s literal "undefined".
+  const bare = formatEvent({ ts: 0, source: "feature", type: "merge_topped" } as never);
+  assert.match(bare, /moved the merge of \? to the front — \?$/);
+  assert.ok(!bare.includes("undefined"), `corrupt commit/summary must not render undefined: ${bare}`);
+});
+
 // Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or
 // hand-edited line can omit any field. The feed's fallbacks ("?", pi's default provider,
 // "several roles") must render — the operator reading `logs` during an incident sees these
