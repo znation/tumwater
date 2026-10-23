@@ -50,23 +50,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### Backlog hold convergence: A needs-review/needs-replan entry that ping-pongs blocks its entry for the operator after three holds
-(planned 2026-10-23 by user; from the flow audit — feature↔plan is a genuine role-to-role loop with no convergence backstop: feature's `Needs review` note holds the entry until plan splits it, feature can mark it again, and nothing bounds the cycle; the reviewer's reject→revise loop got REVISION_BACKSTOP and REVISION_FINAL_ON_REPEAT (plans/revise-rejected.md), this loop got nothing; touches src/backlog/backlog-eligibility.ts src/roles/role-catalog.ts src/doctor/doctor-backlog-bugs.ts and their tests)
-**Needs review 2026-10-23 by feature: too large for one run**
-
-**Goal.** The `needs-review`/`needs-replan` hold (feature's note that a plan is too large for one run, or must be rewritten) is a hand-off to the plan role, and the plan role's split or rewrite is the lift. The cycle has no backstop: a plan that feature keeps marking and plan keeps splitting unproductively ties up both roles' attention and the entry, invisibly — unlike a rejected change, which visibly exhausts its revision cap. Give it the same convergence the reject loop got: after the third consecutive hold on one entry, the entry blocks for the operator with the history of holds.
-
-**Approach.**
-- src/backlog/backlog-eligibility.ts: `entryHold` already parses the note from the entry body; the hold text gains a counter the way `lastReview`'s reasons carry `(prior N)` tags — the note's writer (feature) appends `(held N)` when re-marking an entry whose previous hold was lifted without a landing (the marker is the entry body, so the count survives like every other note; a re-marked entry whose plan landed in between resets, because the new hold answers a different plan).
-- On `held 3`, the hold renders as blocked-for-operator: the plan role no longer picks it (its charter skips entries the index block marks `[blocked: …]`), and the stale-backlog visibility that already exists surfaces it — the dashboard's refused-entry alert (src/ui/team-alerts.ts) is the model: a held entry with `(held 3)` shows the operator the entry, the surviving disagreement, and `tumwater plan --release` as the way out.
-- The plan role's lift path is unchanged for the first two holds: a split or rewrite that answers the note lifts it as today.
-- Left out deliberately: any prompt-level instruction for feature to mark differently. The counter is harness state, not a behavior ask — the same split between mechanism and verdict that plans/revise-rejected.md drew.
-
-**Acceptance criteria.**
-- An entry marked, lifted by a split, and marked again reads `(held 1)`, not `(held 2)` (the landing reset); marked three times without a landing between, it reads `(held 3)`, the plan role's eligibility test excludes it, and the operator alert names it.
-- `tumwater plan --release` lifts it and clears the counter, as it lifts every other hold today.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend part 9a/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts)
 
 **Goal.** Turn the guard on. A codex run whose `apply_patch` would land under the team root but outside its worktree is refused with the shared refusal, as pi, claude and OpenCode runs are.
@@ -189,6 +172,67 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - `tumwater start --once --json` writes exactly one parseable JSON object to stdout (no banner, no event lines) and exits 0, or 3 when the round failed, carrying `runs`, `outcomes`, `skipped` and `failures`; `--once --role clean --json` carries only clean's work.
 - `tumwater start --json` without `--once` exits 1 with `--json is only valid with --once`; the daemon and `--for` output are unchanged.
 - `tumwater start --once` (no `--json`) prints the same banner, event stream and summary line as before.
+- `npm run test:gate` passes.
+
+### Backlog hold convergence, part 1/3: The held count and the held-for-operator hold (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; the read half of the convergence backstop — parts 2/3 and 3/3 surface and write the count; touches src/roles/role-guidance.ts src/backlog/backlog-eligibility.ts src/prompt/notes-backlog.ts test/backlog-eligibility.test.ts)
+
+**Goal.** A Needs-review/Needs-replan note gains a held count, and an entry whose count reaches three becomes `held-for-operator`: `entryHold` classifies it as its own hold, the plan role no longer takes it, and every surface can see why. This part is the data layer only.
+
+**Approach.**
+- src/roles/role-guidance.ts: export the two literals both halves share — `HELD_TAG_PREFIX = "(held "` (the tag text before the number, so the parser and the note templates cannot drift) and `PRIOR_HELD_PREFIX = "**Previously held "` — beside the existing note prefixes. Document that the live count is `(held N)` on the note and the surviving marker after a lift is `**Previously held N**`.
+- src/backlog/backlog-eligibility.ts: export `OPERATOR_HOLD_THRESHOLD = 3`. Add `heldCount(body: string): number` — the integer in the first Needs-review or Needs-replan note line's `(held N)` tag, else the integer in a `**Previously held N**` line, else 0; a missing or non-numeric tag is 0 and never throws.
+- In `entryHoldAgainst`, before returning `"needs-review"`/`"needs-replan"` for a present note, return `"held-for-operator"` when `heldCount(body) >= OPERATOR_HOLD_THRESHOLD`. Add `"held-for-operator"` to the `EntryHold` union; `holdMark` renders ` [blocked: held for operator]`.
+- src/prompt/notes-backlog.ts: `holdWording` gains a `held-for-operator` branch (e.g. `held for the operator (tumwater plan --release)`) and `seriesInfos` counts it with `needs-review`, so the notes block does not fall through to the `blockedBy` wording for a string hold.
+- No change to the plan-role wake gate (`planBacklogFull`, src/scheduling/claims.ts): it already tests only `"needs-review"`/`"needs-replan"`, so a held-for-operator entry neither keeps the plan role running nor counts as an eligible plan. Verify with a test rather than editing it.
+
+**Tests.**
+- test/backlog-eligibility.test.ts: `heldCount` reads `(held 3)` from a Needs-review line, `(held 2)` from a Needs-replan line, `2` from `**Previously held 2**` when no note is present, and `0` when neither; a `(held x)` tag is 0.
+- An entry with a `**Needs review … (held 3)**` line yields `entryHold` `"held-for-operator"` and `holdMark` `[blocked: held for operator]`; the same note with `(held 2)` yields `"needs-review"` (today's behavior); a bare `**Needs review …**` still yields `"needs-review"`.
+- `planBacklogFull` is true (the plan role stops) for a backlog whose only marked entry is held-for-operator.
+
+**Acceptance criteria.**
+- `entryHold` returns `"held-for-operator"` exactly for a present Needs-review/Needs-replan note whose count is at least 3, and `"needs-review"`/`"needs-replan"` otherwise; an untagged note keeps today's classification.
+- `heldCount` is pure over the body and never throws; `holdMark` words the new hold as ` [blocked: held for operator]`; the prompt notes block names it without falling through.
+- `npm run test:gate` passes.
+
+### Backlog hold convergence, part 2/3: The operator sees a held-for-operator entry and `--release` clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/backlog/backlog-eligibility.ts src/backlog/backlog-release.ts src/doctor/doctor-backlog-plans.ts src/ui/team-alerts.ts src/ui/status-model.ts and their tests)
+
+**Goal.** A held-for-operator entry is visible to the operator with `tumwater plan --release` as the way out, and release actually lifts it — today `--release` lifts only Refused and Waiting notes and deliberately leaves Needs-review alone.
+
+**Approach.**
+- src/backlog/backlog-eligibility.ts: add `operatorHeldEntries(root): RefusedEntry[]` beside `refusedEntries`, returning the planned plans whose hold is `"held-for-operator"`, each with `file: "plans"`, its 0-based index and title (reuse the `RefusedEntry` shape and the `backlogHolds` + `plannedPlanEntries` pairing).
+- src/backlog/backlog-eligibility.ts: add `withoutHeldForOperatorNotes(lines)` (through `withoutNoteLines`) dropping a `**Needs review … (held N)**`/`**Needs replan … (held N)**` line and its `**Previously held N**` line together. It drops nothing when the note's count is below the threshold, so `--release` still cannot lift a live first/second Needs-review hold.
+- src/backlog/backlog-release.ts: `liftRefusal` gains a third branch after Refused and Waiting — when the entry's `entryHold` is `"held-for-operator"`, splice out the held note and prior-held line via `withoutHeldForOperatorNotes`; otherwise `not_refused` as today.
+- src/doctor/doctor-backlog-plans.ts: `checkStalledPlans` keeps its needs-review/replan branch and adds a held-for-operator branch whose warn names the entry, its `(held N)`, and `tumwater plan --release` as the recovery (the plan role does not resolve this one).
+- src/ui/team-alerts.ts: a new amber alert (key `"operator-held"`) listing `operatorHeldEntries` through `entryListDetail`, with the refused alert's "Open backlog" action and text naming `tumwater plan --release`; add the input to `buildAlerts`'s params (default `[]`) and pass `operatorHeldEntries(root)` from src/ui/status-model.ts beside `refusedEntries(root)`.
+
+**Tests.**
+- test/backlog-eligibility.test.ts: `operatorHeldEntries` returns a `(held 3)` plan and not a `(held 2)` one.
+- test/backlog-release-holds.test.ts: `--release` on a `(held 3)` entry removes both the note and `**Previously held 3**`; on a `(held 2)` entry it reports `not_refused` and writes nothing.
+- test/doctor-backlog.test.ts: `checkStalledPlans` warns for a held-for-operator entry naming `tumwater plan --release`.
+- test/team-alerts.test.ts: an `operator-held` amber alert names the entry; no such alert when the list is empty.
+
+**Acceptance criteria.**
+- The dashboard alerts and the doctor both name a held-for-operator entry and `tumwater plan --release`; a Needs-review entry below the threshold surfaces exactly as today.
+- `tumwater plan --release` on a held-for-operator entry leaves no Needs-review and no `**Previously held` line behind, and the entry becomes eligible; on any other Needs-review entry it refuses without writing.
+- `npm run test:gate` passes.
+
+### Backlog hold convergence, part 3/3: Feature increments the count; the plan role carries it across a split and release clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/roles/role-guidance.ts src/roles/role-catalog.ts test/role-guidance.test.ts)
+
+**Goal.** The held count part 1/3 reads is actually written and maintained: feature appends `(held N)` with N one past the surviving prior count; the plan role carries `**Previously held N**` onto each child of a split.
+
+**Approach.**
+- src/roles/role-guidance.ts: `NEEDS_REVIEW_NOTE` and `NEEDS_REPLAN_NOTE` gain the trailing tag ` (held <N>)`; add `PRIOR_HELD_NOTE = \`${PRIOR_HELD_PREFIX}<N>**\`` beside them. `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` are unchanged (the tag is inside the line, so recognition is unaffected).
+- src/roles/role-catalog.ts, feature `find` step 4: on appending a Needs-review (or Needs-replan) note, write `N = heldCount + 1`, where the prior count is read from the entry's existing `(held N)` or `**Previously held N**` line; an entry carrying neither starts at 1. State that the count must not reset while the same plan ping-pongs, and that a plan that landed and left `## Planned` needs no marker.
+- src/roles/role-catalog.ts, plan `find` step 1: when the plan role lifts a Needs-review/replan note (split or rewrite) and the change has not landed, replace the note with `PRIOR_HELD_NOTE` at the same N and copy it to every child part the split produces; a landed parent leaves none. This corrects the original entry's "split resets to held 1": a split carries the count to its children, so three consecutive holds without a landing reach `(held 3)` and part 1/3's block.
+
+**Tests.**
+- test/role-guidance.test.ts (or the file already covering these exports): `NEEDS_REVIEW_NOTE`/`NEEDS_REPLAN_NOTE` each contain `(held <N>)`, `PRIOR_HELD_NOTE` contains `Previously held <N>`, and `NEEDS_REVIEW_PREFIX` still matches a tagged note line — so `heldCount` round-trips a `PRIOR_HELD_NOTE`-shaped line.
+- A role-catalog test (the existing pattern for `find` texts): the feature text mentions `(held ` and the plan text mentions `Previously held`.
+
+**Acceptance criteria.**
+- A Needs-review note the feature charter writes carries ` (held <N>)`; a re-mark after one lift writes `(held 2)`, and a split's children each carry `**Previously held <N>**`.
+- `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` still match the tagged notes, so `entryHold` classification is unchanged except for the count.
 - `npm run test:gate` passes.
 
 ## Done
