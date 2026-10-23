@@ -69,6 +69,28 @@ test("a paired run's block is its start, its in-run events, and its end — noth
   );
 });
 
+test("readRunDetail carries the run's model from its run_start, and null without one", () => {
+  // A run_start carrying a model names it: the same selector the run row and report key on.
+  const withModel = tmpdir();
+  writeEvents(withModel, [
+    startEvent({ ts: 1000, run: 1, model: "claude/claude-sonnet-5-5" }),
+    endEvent({ ts: 2000, run: 1, result: "changed" }),
+  ]);
+  assert.equal(readRunDetail(withModel, "feature", 1)!.model, "claude/claude-sonnet-5-5");
+  // A start carrying none leaves model null.
+  const noModel = tmpdir();
+  writeEvents(noModel, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 2000, run: 1 })]);
+  assert.equal(readRunDetail(noModel, "feature", 1)!.model, null);
+  // An empty model string also reads as null (the omit-when-absent rule RunRow shares).
+  const emptyModel = tmpdir();
+  writeEvents(emptyModel, [startEvent({ ts: 1000, run: 1, model: "" }), endEvent({ ts: 2000, run: 1 })]);
+  assert.equal(readRunDetail(emptyModel, "feature", 1)!.model, null);
+  // A rotation-cut start (only the end survives) carries no model.
+  const unpaired = tmpdir();
+  writeEvents(unpaired, [endEvent({ ts: 11000, run: 6, result: "changed" })]);
+  assert.equal(readRunDetail(unpaired, "feature", 6)!.model, null);
+});
+
 test("a torn run_end outcome reads as ?, never undefined", () => {
   // The collector used String(end.result) raw: a hand-edited run_end with a missing or
   // non-string result shipped the literal "undefined" as RunDetail.result, which the CLI

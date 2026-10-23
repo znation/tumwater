@@ -146,7 +146,7 @@ test("readRunDetail returns null for a run the scan does not hold", () => {
 test("renderRunDetail prints the summary header, the commit sha, and formatEvent lines", () => {
   const root = makeRepo();
   writeEvents(root, [
-    start({ ts: 1000 }),
+    start({ ts: 1000, model: "claude/claude-sonnet-5-5" }),
     { ts: 2000, source: "bugfix", type: "merge_queued", commit: "abc1234def7890", summary: "the fix" } as HarnessEvent,
     end({ ts: 61_000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
   ]);
@@ -154,8 +154,13 @@ test("renderRunDetail prints the summary header, the commit sha, and formatEvent
   const out = renderRunDetail(d);
   const lines = out.split("\n");
   assert.equal(lines.length, 4);
+  // The model reads between the usage and the commit sha clause.
   assert.match(lines[0]!, /^bugfix run #3 — merged · 60s · /);
-  assert.match(lines[0]!, / tok · \$0\.03 · commit abc1234/);
+  assert.match(lines[0]!, / tok · \$0\.03 · claude\/claude-sonnet-5-5 · commit abc1234/);
+  // A run with no model renders without the ` · claude` clause.
+  const modeless = renderRunDetail({ ...d, model: null });
+  assert.ok(!modeless.split("\n")[0]!.includes(" · claude"));
+  assert.match(modeless.split("\n")[0]!, / tok · \$0\.03 · commit abc1234/);
   // The trail is the shared event rendering, one line per event, in ts order.
   assert.match(lines[1]!, /run #3 started/);
   assert.match(lines[3]!, /run #3 merged — the fix/);
@@ -771,6 +776,8 @@ test("cmdRunDetail --last --model picks the newest run on the listed models", as
     JSON.parse(await out(["bugfix"], { last: true, model: "a" }, true)),
     JSON.parse(await out(["bugfix", "7"], {}, true)),
   );
+  // The --json payload carries the run's model as a top-level field.
+  assert.equal(JSON.parse(await out(["bugfix", "7"], {}, true)).model, "a");
 });
 
 test("--last --model with no matching run: not-found line at exit 0, null under --json", async () => {

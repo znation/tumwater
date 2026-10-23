@@ -43,8 +43,10 @@ export function runDetailPatch(root: string, d: RunDetail): Promise<string> {
 }
 
 /** The human view of a RunDetail: one summary line — result (or the in-flight/unpaired
- * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`merge_done`
- * event carries one — then each event through formatEvent, the shared renderer `logs` and the
+ * marker), duration, usage, and the model the run started on when its `run_start` carried one
+ * (after the usage, before the pinned-commit sha), plus the pinned commit sha when the block's
+ * `merge_queued`/`merge_done` event carries one — then each event through formatEvent, the
+ * shared renderer `logs` and the
  * TUI use, so the trail reads exactly like the feed it came from. A queued run whose merge
  * has finished shows that verdict in the header and ends with the merge's outcome line; a
  * leftover-recovery run's verdict is the failed attempt it re-queued (resolveQueuedResult),
@@ -56,6 +58,7 @@ export function renderRunDetail(d: RunDetail): string {
   else summary.push(d.result ? eventTypeLabel(d.result) : "?");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
+  if (d.model !== null) summary.push(d.model);
   const sha = runCommitSha(d);
   let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;

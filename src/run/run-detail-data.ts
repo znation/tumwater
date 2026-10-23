@@ -39,6 +39,10 @@ export interface RunDetail {
   endTs: number | null;
   durationMs: number | null;
   result: string | null;
+  /** The agent-qualified selector the run's `run_start` carried — a per-role override, a
+   * fallback or the primary — the same string `RunRow.model` and the report's `runsByModel`
+   * use, or null when the run's start sits outside the scanned window or carried none. */
+  model: string | null;
   tokens: number;
   costUsd: number;
   usage: string;
@@ -134,7 +138,7 @@ export function readRunDetail(root: string, role: string, runNumber: number): Ru
     if (end !== null ? e.ts > end.ts : nextStart !== null && e.ts >= nextStart.ts) break;
     block.push(e);
   }
-  return detailFrom(role, runNumber, all, events, block, end, start.ts);
+  return detailFrom(role, runNumber, all, events, block, end, start);
 }
 
 /** Fill the payload around a collected block: usage from the run_end via eventUsage/usageText,
@@ -147,7 +151,7 @@ function detailFrom(
   scoped: HarnessEvent[],
   block: HarnessEvent[],
   end: HarnessEvent | null,
-  startTs: number | null,
+  start: HarnessEvent | null,
 ): RunDetail {
   const usageNums = end === null ? { tokens: 0, costUsd: 0 } : eventUsage(end);
   let result = end === null ? null : outcomeText(end);
@@ -165,7 +169,8 @@ function detailFrom(
   const detail: RunDetail = {
     role,
     run: runNumber,
-    startTs,
+    startTs: start === null ? null : start.ts,
+    model: typeof start?.model === "string" && start.model.length > 0 ? start.model : null,
     endTs: end === null ? null : end.ts,
     durationMs: end === null ? null : runSpanMs(end, runStartMap(scoped)),
     result,
