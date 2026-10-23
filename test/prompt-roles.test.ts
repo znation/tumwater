@@ -463,8 +463,8 @@ test("the director routes a user ruling on a marked plan", () => {
   const prompt = oneLine(buildDirectorPrompt("split plan X"));
   assert.match(prompt, /A decision about a marked plan/);
   assert.match(prompt, /split it into independently landable sub-plans per PLAN_SIZING/);
-  assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run\*\* note/);
-  assert.match(prompt, /or clear a \*\*Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds\*\* note and rewrite the entry/);
+  assert.match(prompt, /or clear the \*\*Needs review <YYYY-MM-DD> by feature: too large for one run \(held <N>\)\*\* note/);
+  assert.match(prompt, /or clear a \*\*Needs replan <YYYY-MM-DD> by feature: rejected after <N> review rounds \(held <H>\)\*\* note and rewrite the entry/);
 });
 test("the bugfix role bounds its latent-bug hunt and demands a reproduction", () => {
   const find = oneLine(roleById("bugfix")!.find);

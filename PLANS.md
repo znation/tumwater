@@ -52,24 +52,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.
 - `npm run test:gate` passes (docs only).
 
-### Backlog hold convergence, part 3/3: Feature increments the count; the plan role carries it across a split and release clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/roles/role-guidance.ts src/roles/role-catalog.ts test/role-guidance.test.ts)
-
-**Goal.** The held count part 1/3 reads is actually written and maintained: feature appends `(held N)` with N one past the surviving prior count; the plan role carries `**Previously held N**` onto each child of a split.
-
-**Approach.**
-- src/roles/role-guidance.ts: `NEEDS_REVIEW_NOTE` and `NEEDS_REPLAN_NOTE` gain the trailing tag ` (held <N>)`; add `PRIOR_HELD_NOTE = \`${PRIOR_HELD_PREFIX}<N>**\`` beside them. `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` are unchanged (the tag is inside the line, so recognition is unaffected).
-- src/roles/role-catalog.ts, feature `find` step 4: on appending a Needs-review (or Needs-replan) note, write `N = heldCount + 1`, where the prior count is read from the entry's existing `(held N)` or `**Previously held N**` line; an entry carrying neither starts at 1. State that the count must not reset while the same plan ping-pongs, and that a plan that landed and left `## Planned` needs no marker.
-- src/roles/role-catalog.ts, plan `find` step 1: when the plan role lifts a Needs-review/replan note (split or rewrite) and the change has not landed, replace the note with `PRIOR_HELD_NOTE` at the same N and copy it to every child part the split produces; a landed parent leaves none. This corrects the original entry's "split resets to held 1": a split carries the count to its children, so three consecutive holds without a landing reach `(held 3)` and part 1/3's block.
-
-**Tests.**
-- test/role-guidance.test.ts (or the file already covering these exports): `NEEDS_REVIEW_NOTE`/`NEEDS_REPLAN_NOTE` each contain `(held <N>)`, `PRIOR_HELD_NOTE` contains `Previously held <N>`, and `NEEDS_REVIEW_PREFIX` still matches a tagged note line — so `heldCount` round-trips a `PRIOR_HELD_NOTE`-shaped line.
-- A role-catalog test (the existing pattern for `find` texts): the feature text mentions `(held ` and the plan text mentions `Previously held`.
-
-**Acceptance criteria.**
-- A Needs-review note the feature charter writes carries ` (held <N>)`; a re-mark after one lift writes `(held 2)`, and a split's children each carry `**Previously held <N>**`.
-- `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` still match the tagged notes, so `entryHold` classification is unchanged except for the count.
-- `npm run test:gate` passes.
-
 ### A failed notify page raises a standing amber alert on the dashboard, the TUI and `tumwater status`: the always-on twin of the doctor's `notify` row (planned 2026-10-23 by the plan role; independent of every eligible plan except two shared files — the in-flight stranded-inbox-prompt alert also edits src/ui/team-alerts.ts and src/ui/status-payload.ts, appending a `stalePrompts` parameter and a `stale-prompts` block, so whichever lands second rebases over a neighbouring block and parameter; Interlock 1/2 edits src/merge and src/runner, Backlog hold 3/3 edits src/roles, and Split run-agent edits src/agent; touches src/doctor/doctor-notify.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md docs/config.md test/team-alerts.test.ts)
 
 **Goal.** The doctor's `notify` check (src/doctor/doctor-notify.ts, `checkNotify`) warns when the configured notify hook failed to page within the last day (`isNotifyFailure` events — a nonzero exit, a kill, or a failed start), but only when the operator runs `tumwater doctor`. The notify hook is the operator's paging channel — a spent budget, a red main — so a hook that silently stopped reaching them leaves the fleet unsupervised. Give the stale-bug rule's treatment to the notify rule: an always-on alert, at the same threshold and over the same `isNotifyFailure` window, so a dead webhook stays visible in the alert banners until a page succeeds.

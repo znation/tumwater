@@ -5,6 +5,24 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Backlog hold convergence, part 3/3: Feature increments the count; the plan role carries it across a split and release clears it (planned 2026-10-23 by the plan role, split from the user's "Backlog hold convergence" plan; requires part 1/3 landed; touches src/roles/role-guidance.ts src/roles/role-catalog.ts test/role-guidance.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** The held count part 1/3 reads is actually written and maintained: feature appends `(held N)` with N one past the surviving prior count; the plan role carries `**Previously held N**` onto each child of a split.
+
+**Approach.**
+- src/roles/role-guidance.ts: `NEEDS_REVIEW_NOTE` and `NEEDS_REPLAN_NOTE` gain the trailing tag ` (held <N>)`; add `PRIOR_HELD_NOTE = \`${PRIOR_HELD_PREFIX}<N>**\`` beside them. `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` are unchanged (the tag is inside the line, so recognition is unaffected).
+- src/roles/role-catalog.ts, feature `find` step 4: on appending a Needs-review (or Needs-replan) note, write `N = heldCount + 1`, where the prior count is read from the entry's existing `(held N)` or `**Previously held N**` line; an entry carrying neither starts at 1. State that the count must not reset while the same plan ping-pongs, and that a plan that landed and left `## Planned` needs no marker.
+- src/roles/role-catalog.ts, plan `find` step 1: when the plan role lifts a Needs-review/replan note (split or rewrite) and the change has not landed, replace the note with `PRIOR_HELD_NOTE` at the same N and copy it to every child part the split produces; a landed parent leaves none. This corrects the original entry's "split resets to held 1": a split carries the count to its children, so three consecutive holds without a landing reach `(held 3)` and part 1/3's block.
+
+**Tests.**
+- test/role-guidance.test.ts (or the file already covering these exports): `NEEDS_REVIEW_NOTE`/`NEEDS_REPLAN_NOTE` each contain `(held <N>)`, `PRIOR_HELD_NOTE` contains `Previously held <N>`, and `NEEDS_REVIEW_PREFIX` still matches a tagged note line — so `heldCount` round-trips a `PRIOR_HELD_NOTE`-shaped line.
+- A role-catalog test (the existing pattern for `find` texts): the feature text mentions `(held ` and the plan text mentions `Previously held`.
+
+**Acceptance criteria.**
+- A Needs-review note the feature charter writes carries ` (held <N>)`; a re-mark after one lift writes `(held 2)`, and a split's children each carry `**Previously held <N>**`.
+- `NEEDS_REVIEW_PREFIX`/`NEEDS_REPLAN_PREFIX` still match the tagged notes, so `entryHold` classification is unchanged except for the count.
+- `npm run test:gate` passes.
+
 ### A stranded inbox prompt raises a standing alert on the dashboard, the TUI and `tumwater status`: the always-on twin of the doctor's `stale prompts` rule (planned 2026-10-23 by the plan role; independent of every eligible plan except one shared file — Backlog hold 2/3 adds its held-for-operator alert in the same `teamAlerts` function of src/ui/team-alerts.ts, so whichever lands second rebases over a neighbouring block; Interlock 1/2, Cancel dashboard and Split run-agent touch no file here; touches src/doctor/doctor-backlog.ts src/ui/team-alerts.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/team-alerts.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** The doctor's `stale prompts` check (src/doctor/doctor-backlog.ts checkStalePrompts, STALE_PROMPT_MS) warns when a prompt has waited more than a day for its role to dequeue it, but only when the operator runs `tumwater doctor`. A paused, disabled or failing role never reaches the run that would dequeue it, so the prompt waits indefinitely and only the Inbox views show its age, and only when the operator looks. The stale-bug rule already has an always-on alert (`key: "stale-bugs"`, src/ui/team-alerts.ts) fed by `staleOpenBugs` on all three surfaces; give the stale-prompt rule the same treatment, at the same threshold and over the same inbox traversal, so a stranded prompt is visible in the alert banners until it is delivered or dropped.

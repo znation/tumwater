@@ -137,23 +137,31 @@ export const VALIDATION_GAP_QUERY = `grep -snE '\\*\\*Validation gap:\\*\\* (${V
  * NEEDS_REPLAN_PREFIX. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 
-/** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
- * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
- * with no code parsing it. Defined once so the feature and plan texts and the director's routing
- * clause cannot drift. */
-export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
-
 /** The tag text before the held count, shared by the note templates and the parser
  * (backlog-eligibility's heldCount) so the two cannot drift: the live count on a Needs-review
  * or Needs-replan note is written inline as `(held N)`, with `N` one past the surviving prior
  * count (the feature role appends it, the plan role's split carries it via PRIOR_HELD_NOTE). */
 export const HELD_TAG_PREFIX = `(held `;
 
+/** The markdown note the feature role appends to a plan it cannot finish in one run, so the plan
+ * role can split it. Mirrors the **Refused …** note convention: a note the next fresh run reads,
+ * with no code parsing it. Defined once so the feature and plan texts and the director's routing
+ * clause cannot drift. The trailing `(held <N>)` tag (HELD_TAG_PREFIX) is the live held count,
+ * written as one past the count surviving on the entry; it sits inside the line, so
+ * NEEDS_REVIEW_PREFIX still recognizes the note. */
+export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run ${HELD_TAG_PREFIX}<N>)**`;
+
 /** The marker a lifted hold leaves behind, so a split or rewrite carries the count instead of
  * letting it reset: `**Previously held N**` on the note's line. The live count is `(held N)` on
  * the note; the surviving marker after a lift is `**Previously held N**` — heldCount reads the
  * first as the priority, then the second. */
 export const PRIOR_HELD_PREFIX = `**Previously held `;
+
+/** The literal marker a lift leaves on a split or rewrite so the held count survives instead of
+ * resetting: a `**Previously held <N>**` line at the same count the lifted note carried (the
+ * <N> here is the value the note's `(held N)` tag held). heldCount reads this as the fallback
+ * when no live note is present, so the count round-trips a split. */
+export const PRIOR_HELD_NOTE = `${PRIOR_HELD_PREFIX}<N>**`;
 
 /** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
  * recognize one (the backlog index's ` [blocked: needs replan]` mark) can match on it instead of
@@ -163,8 +171,11 @@ export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
 /** The markdown note the feature role appends under a plan whose change was rejected after its
  * final revision round, carrying the reviewer's objections back to the strong-tier plan role
  * instead of letting feature re-author the same plan. Same convention as NEEDS_REVIEW_NOTE: a
- * note a later fresh run reads, with no code parsing it. */
-export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds**`;
+ * note a later fresh run reads, with no code parsing it. The trailing `(held <H>)` tag
+ * (HELD_TAG_PREFIX) is the live held count, one past the count surviving on the entry; the
+ * placeholder is `<H>` (for held) so it reads apart from the `<N>` review-round count earlier
+ * in the same line. It sits inside the line, so NEEDS_REPLAN_PREFIX still recognizes the note. */
+export const NEEDS_REPLAN_NOTE = `${NEEDS_REPLAN_PREFIX}<YYYY-MM-DD> by feature: rejected after <N> review rounds ${HELD_TAG_PREFIX}<H>)**`;
 
 /** The literal prefix every Waiting-for-the-next-failure note starts with. Exported so a reader
  * that only has to recognize one (the backlog index's ` [blocked: waiting for the next failure]`
