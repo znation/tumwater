@@ -14,7 +14,7 @@
  * logical `plan` field is stored under the historical key `subscriptionType`, so claude's file
  * keeps today's shape. */
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { finiteNumber, isJsonObject } from "../files/json-object.js";
+import { finiteNumber, isJsonObject, setOwn } from "../files/json-object.js";
 import { accountPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RateWindow } from "../pi/pi-stream.js";
@@ -245,7 +245,7 @@ function setWindow(
   type: string,
   window: SubscriptionWindow,
 ): void {
-  Object.defineProperty(windows, type, { value: window, enumerable: true, writable: true, configurable: true });
+  setOwn(windows, type, window);
 }
 
 /** Overwrite a backend's account file with `account`, creating the state directory. The

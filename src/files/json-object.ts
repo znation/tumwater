@@ -106,6 +106,19 @@ export function validEntries<T>(value: unknown, guard: (entry: unknown) => entry
   return Object.fromEntries(Object.entries(value).filter((kv): kv is [string, T] => guard(kv[1])));
 }
 
+/** Store one own property on `obj` under `key`. A plain `obj[key] = value` loses a key of
+ * `__proto__`: the assignment hits Object.prototype's setter and rewrites the map's prototype
+ * instead of adding an own entry, so the value vanishes from every reader and from the
+ * persisted JSON. Handling untrusted keys, or a model/flow name crossing an external boundary,
+ * means that case is real, so every site that stores under such a key defines the own property
+ * instead — the one home of the `enumerable/writable/configurable: true` descriptor, so the
+ * three flags cannot drift between sites. A named wrapper (`setWindow` on the account's
+ * windows) keeps its domain meaning across its call sites; callers keep `setOwn` where the
+ * key/value are generic, as the qa coverage ledger and budget.ts's per-pair spend do. */
+export function setOwn<V>(obj: Record<string, V>, key: string, value: V): void {
+  Object.defineProperty(obj, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
 /** Assemble a stream translator's canonical usage block from the four already-validated non-
  * negative counts and the USD cost — the one home of the shape both the claude and opencode
  * translators (agent/claude/claude-stream.ts, agent/opencode/opencode-stream.ts) build, so the

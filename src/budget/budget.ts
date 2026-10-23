@@ -9,7 +9,7 @@
  * runner-state.ts. */
 
 import { MODEL_TIERS, type TumwaterConfig } from "../config/config-schema.js";
-import { nonNegativeNumber } from "../files/json-object.js";
+import { nonNegativeNumber, setOwn } from "../files/json-object.js";
 import type { RunnerState } from "../runner/runner-state.js";
 import { dayAt, dayKey } from "../text/datetime.js";
 
@@ -62,7 +62,7 @@ export function recordDailyCost(s: RunnerState, usd: number, now = Date.now(), p
   if (pair !== undefined) {
     const by = (s.dayCostByPair ??= {});
     const sum = spendNumber(Object.hasOwn(by, pair) ? by[pair] : 0) + spendNumber(usd);
-    Object.defineProperty(by, pair, { value: sum, enumerable: true, writable: true, configurable: true });
+    setOwn(by, pair, sum);
   }
 }
 

@@ -1,6 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
-import { isJsonObject } from "../files/json-object.js";
+import { isJsonObject, setOwn } from "../files/json-object.js";
 import { formatAge } from "../text/datetime.js";
 
 /** The `qa` observer's flow-coverage ledger (plans/observer-roles.md 2/2). Every `qa` run
@@ -46,15 +46,6 @@ function isResult(value: unknown): value is QaFlowResult {
   return value === "passed" || value === "bug";
 }
 
-/** Store one flow under its name. A plain `coverage[flow] = entry` loses a name of `__proto__`:
- * the assignment hits Object.prototype's setter and rewrites the map's prototype instead of
- * adding an own entry, so the flow vanishes from every reader and from the persisted JSON. The
- * qa model's own FLOW line supplies the name, so it crosses an external boundary; defining the
- * own property keeps even that key, matching claude-account's setWindow. */
-function setFlow(coverage: QaCoverage, flow: string, entry: QaFlowEntry): void {
-  Object.defineProperty(coverage, flow, { value: entry, enumerable: true, writable: true, configurable: true });
-}
-
 /** Read the ledger, keeping only well-formed entries. A missing, torn, or wrong-shaped file
  * reads as an empty ledger — the caller renders no block and the run proceeds as before. */
 export function readQaCoverage(root: string): QaCoverage {
@@ -66,7 +57,7 @@ export function readQaCoverage(root: string): QaCoverage {
     if (!isJsonObject(raw)) continue;
     const entry = raw;
     if (typeof entry.lastRunAt !== "number" || !isResult(entry.result)) continue;
-    setFlow(out, name, {
+    setOwn(out, name, {
       lastRunAt: entry.lastRunAt,
       result: entry.result,
       ...(typeof entry.summary === "string" ? { summary: entry.summary } : {}),
@@ -85,7 +76,7 @@ export function recordFlow(
   now: number = Date.now(),
 ): void {
   const coverage = readQaCoverage(root);
-  setFlow(coverage, flow, { lastRunAt: now, result, ...(summary ? { summary } : {}) });
+  setOwn(coverage, flow, { lastRunAt: now, result, ...(summary ? { summary } : {}) });
   writeJsonAtomic(qaCoveragePath(root), { flows: coverage });
 }
 
