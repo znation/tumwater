@@ -422,6 +422,10 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "main_revert":
       return `reverted ${shortSha(String(e.commit ?? ""))} (merged by ${textOr(e.runner)}) as ${shortSha(String(e.revert ?? ""))}`;
+    case "operator_revert": {
+      const undid = typeof e.runner === "string" && e.runner !== "" ? `, undid ${e.runner}` : "";
+      return `reverted ${shortSha(String(e.commit ?? ""))} (by operator) as ${shortSha(String(e.revert ?? ""))}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role
+    }
     case "main_red_hold":
       // The message already names the SHA, script, and consequence; the problem tone comes
       // from PROBLEM_EVENTS.

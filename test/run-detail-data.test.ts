@@ -239,6 +239,7 @@ test("a run's main_revert names the automatic revert of its landed sha", () => {
     ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "feature", failingTests: ["a.test.ts", "b.test.ts"] }), // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
+    kind: "main",
     sha: "landed1",
     revert: "rev1",
     failingTests: ["a.test.ts", "b.test.ts"],
@@ -278,8 +279,61 @@ test("a no-op fast-forward run matches its main_revert through the pinned commit
   // No `merged` event, so mergedSha is null and the pinned commit is what merged — the
   // reverted.sha names that pinned commit.
   assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
+    kind: "main",
     sha: "pin1",
     revert: "rev1",
     failingTests: ["a.test.ts"],
+  });
+});
+
+test("an operator_revert names the operator's deliberate revert of the run's landed sha", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  const merged = (ts: number, commit: string): HarnessEvent => ev({ ts, source: "feature", loop: "feature", type: "merged", commit }); // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "operator_revert", commit: "landed1", revert: "rev1", runner: "feature", subject: "tumwater(feature): add x" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
+    kind: "operator",
+    sha: "landed1",
+    revert: "rev1",
+    failingTests: [],
+  });
+  // A wrong runner or a wrong commit each leave this run uncovered — the match is on both.
+  const wrongRunner = tmpdir();
+  writeEvents(wrongRunner, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "operator_revert", commit: "landed1", revert: "rev1", runner: "bugfix" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.equal(readRunDetail(wrongRunner, "feature", 1)!.reverted, null);
+  const wrongCommit = tmpdir();
+  writeEvents(wrongCommit, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "operator_revert", commit: "other", revert: "rev1", runner: "feature" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.equal(readRunDetail(wrongCommit, "feature", 1)!.reverted, null);
+});
+
+test("an instance run matches its operator_revert by base role (it commits under the base role)", () => {
+  const root = tmpdir();
+  const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature-2", ...o }) as HarnessEvent; // retired-name-ok: legacy event field in a fixture
+  writeEvents(root, [
+    startEvent({ ts: 1000, run: 1, loop: "feature-2" }), // retired-name-ok: legacy event field in a fixture
+    ev({ ts: 1050, source: "feature-2", loop: "feature-2", type: "merged", commit: "landed1" }), // retired-name-ok: legacy event field in a fixture
+    endEvent({ ts: 1100, run: 1, result: "changed", loop: "feature-2" }), // retired-name-ok: legacy event field in a fixture
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "operator_revert", commit: "landed1", revert: "rev1", runner: "feature", subject: "tumwater(feature): add x" }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.deepEqual(readRunDetail(root, "feature-2", 1)!.reverted, {
+    kind: "operator",
+    sha: "landed1",
+    revert: "rev1",
+    failingTests: [],
   });
 });

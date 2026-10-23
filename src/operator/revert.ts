@@ -4,6 +4,7 @@ import { currentBranch, headOf, isMergedInto, targetBranch } from "../git/git.js
 import { GitError, commitAuthorArgs, committerIdentArgs, gitTry, runGit } from "../git/git-run.js";
 import { stampedRole, stampedSubject } from "../git/commit-message.js";
 import { shortSha } from "../text/format.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { RunDetail } from "../run/run-detail-data.js";
 import { runMergedSha } from "../run/run-detail-data.js";
 
@@ -134,12 +135,20 @@ export async function previewRevert(
   }
 }
 
+/** The role a revert of a commit with this subject undoes: the stamped role when it is a working
+ * role, else null — an unstamped (hand-made) commit, the operator's or the harness's own. */
+function revertedRole(subject: string): string | null {
+  const role = stampedRole(subject);
+  if (role === undefined || role === "operator" || role === "tumwater") return null; // vocabulary-ok: commit stamp strings
+  return role;
+}
+
 /** What to tell the operator after reverting a commit with this subject: the role that made it may
  * redo the work. Null when no role made it — an unstamped (hand-made) commit, the operator's or
  * the harness's own. */
 export function revertFollowUp(subject: string): string | null {
-  const role = stampedRole(subject);
-  if (role === undefined || role === "operator" || role === "tumwater") return null; // vocabulary-ok: commit stamp strings
+  const role = revertedRole(subject);
+  if (role === null) return null;
   return `the ${role} role may redo the work, so cancel or edit its PLANS.md/BUGS.md entry if it should not`;
 }
 
@@ -178,6 +187,19 @@ export async function revertMergedCommit(
 
       const reverted = await revertCommitIn(root, full, stampedSubject("operator", "Revert " + shortSha(full))); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
       if (!reverted.ok) return reverted;
+
+      // Log the operator's deliberate revert while the primary lock is held, so the inverse
+      // commit and its trail land together. Best-effort: a failed event write must never turn a
+      // successful revert into a refusal.
+      const role = revertedRole(subject);
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "operator_revert",
+        commit: full,
+        revert: reverted.sha,
+        subject,
+        ...(role === null ? {} : { runner: role }),
+      });
 
       return { ok: true, headSha: await headOf(root, "HEAD"), beforeSha: head, subject };
     });

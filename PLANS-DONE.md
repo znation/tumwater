@@ -5,6 +5,34 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### An operator `tumwater revert` logs an `operator_revert` event, so the reverted run's trail and history name the revert and the role it undid (planned 2026-10-23 by the plan role; independent of every eligible plan and of the Codex backend series; touches src/events/events.ts src/events/event-labels.ts src/events/event-format.ts src/operator/revert.ts src/run/run-detail-data.ts src/run/run-detail-render.ts docs/cli.md test/operator-revert.test.ts test/run-detail-data.test.ts test/run-detail.test.ts test/event-format.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** An operator who runs `tumwater revert` on a merged change leaves a trace the team can read. Today only the automatic main-watch revert logs an event (`main_revert`), and the run trail matches only `main_revert`; `revertedOf`'s doc comment says so in as many words ("an operator `tumwater revert` logs no `main_revert` and stays uncovered"). After this plan, `tumwater history <role> <n>`, the TUI's History trail and the dashboard's History drill-down all show `· reverted <sha> (by operator)` for a change an operator took back, and the event feed names it.
+
+**Approach.**
+- `src/events/events.ts`: add `"operator_revert"` to `HarnessEvent["type"]` with a comment that names its writer (an operator `tumwater revert`, src/operator/revert.ts) and its payload: `commit` (the reverted commit), `revert` (the inverse commit), `runner` (the role the reverted commit's stamp names, omitted for a hand-made, director or harness commit) and `subject`. It is deliberately distinct from `main_revert`: the revert guardrails and doctor warnings (`revertWarnings`, src/baseline/main-guardrails.ts; `test/doctor-holds.test.ts`) count `main_revert` and must not count an operator's deliberate revert.
+- `src/events/event-labels.ts`: add `operator_revert: "operator revert"`. The file's `Record<HarnessEvent["type"], string>` makes the compiler demand it.
+- `src/events/event-format.ts`: add a `case "operator_revert"` in the same shape as the existing `main_revert` case: `reverted <short commit> (by operator) as <short revert>`, naming the runner when the event carries one.
+- `src/operator/revert.ts`:
+  - Extract the stamped-role check `revertFollowUp` already performs into a helper `revertedRole(subject): string | null` (null when `stampedRole` is undefined, `operator` or `tumwater`) and use it in both `revertFollowUp` and the new log site.
+  - In `revertMergedCommit`, after `revertCommitIn` succeeds and while the primary lock is held, call `logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "operator_revert", commit: full, revert: reverted.sha, subject, ...(role === null ? {} : { runner: role }) })`. Best-effort, so a failed event write never turns a successful revert into a refusal. No import cycle: `src/events/events.ts` imports no operator module.
+- `src/run/run-detail-data.ts`: `RunDetail["reverted"]` gains `kind: "main" | "operator"`; `revertedOf` accepts `operator_revert` beside `main_revert`, keeping the same `runner`-and-`commit` match (the run's role, and its `mergedSha` or `runCommitSha`), and returns `failingTests: []` with `kind: "operator"` for it. Update the two doc comments that say operator reverts stay uncovered.
+- `src/run/run-detail-render.ts`: keep the `· reverted <sha>` clause, append ` (failing: <test>)` for a `main` revert that names one, and ` (by operator)` for an `operator` revert.
+- `docs/cli.md`, the "Watch run history" row: after the existing `main_revert` clause, add the operator twin — a change an operator reverted adds `reverted <sha> (by operator)`.
+
+**Tests.**
+- `test/operator-revert.test.ts`: a new test seeds a `tumwater(feature): …`-stamped commit, reverts it, and asserts one `operator_revert` (`eventsOfType`, test/fixtures/log-fixtures.ts) with the reverted sha as `commit`, the new HEAD as `revert`, and `runner: "feature"`; a second reverts a normal commit and asserts the event has no `runner`.
+- `test/run-detail-data.test.ts`: the two existing `deepEqual` expectations gain `kind: "main"`; a new test matches an `operator_revert` to the run's landed sha (with `failingTests: []`, `kind: "operator"`), and a wrong runner or wrong commit leaves `reverted` null.
+- `test/run-detail.test.ts`: the existing render literal gains `kind: "main"`; a new assertion renders an operator revert's `· reverted <sha> (by operator)` header.
+- `test/event-format.test.ts`: one case for the new type's line.
+
+**Acceptance criteria.**
+- `tumwater revert <sha>` logs exactly one `operator_revert` carrying the reverted commit, the inverse, the subject, and the stamped role when there is one; the CLI, the GUI and the TUI all reach it through `revertMergedCommit`, so all three log it once.
+- An operator revert of a role's landed change makes that run's `readRunDetail(...).reverted` non-null with `kind: "operator"` and `failingTests: []`, and its rendered header line ends `(by operator)`; an automatic `main_revert` still yields `kind: "main"` and its first failing test.
+- `main_revert` guardrail and doctor counts are unchanged by an operator revert (nothing that matches `main_revert` matches the new type).
+- The updated run-detail-data and run-detail render tests, plus the new operator-revert and event-format tests, pass; `docs/invariants.md` is edited only if its run-trail/revert section pins the match (check INV-L1 before finishing).
+- `npm run test:gate` passes.
+
 ### `tumwater report` gains a `Reverts by role` line and per-day series: which role's merged changes the main watch took back off main (planned 2026-10-23 by the plan role; independent of every eligible plan — it folds the existing `main_revert` event and no waiting entry touches src/report; touches src/report/report-types.ts src/report/report-fold.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report.ts src/ui/gui/gui-client-report-chart.ts docs/cli.md test/report.test.ts test/report-data.test.ts test/gui-client-report.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** The usage report names whose merged changes had to be reverted off main. Today `renderReportMarkdown` / `renderSinceReportMarkdown` count rejections, revisions, refusals, failed runs, fallbacks and image reroutes per role, but a revert — the most expensive merge outcome — appears nowhere in `src/report` (a grep for `main_revert` under it finds nothing); only doctor's `checkMainReverts`-family warnings and the selfcheck digest read `main_revert`. After this plan the day report and `report --since` print `Reverts by role: feature — 2 · bugfix — 1`, `report --json` carries the per-day/per-window map, and the dashboard's Usage view gains a `Reverts by role` chart gated like its siblings.

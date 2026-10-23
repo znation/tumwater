@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { headSha, makeRepo, seedCommit, sh, writeConfig } from "./fixtures/repo-fixtures.js";
+import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { stampedRole } from "../src/git/commit-message.js";
 import { previewRevert, revertFollowUp, revertMergedCommit, runRevertSha } from "../src/operator/revert.js";
 import type { RunDetail } from "../src/run/run-detail-data.js";
@@ -32,7 +33,13 @@ function seededRename(repo: string, from: string, to: string, message: string): 
 }
 
 function statusPorcelain(repo: string): string {
-  return sh(repo, "git", "status", "--porcelain");
+  // The revert now logs an operator_revert event under .tumwater/log/, so the successful-revert
+  // tests see that untracked dir; it is not a git-state half left behind, so filter it out and
+  // keep asserting the revert left nothing staged or tracked-dirty.
+  return sh(repo, "git", "status", "--porcelain")
+    .split("\n")
+    .filter((l) => l !== "" && !/^\?\? \.tumwater\/?$/.test(l))
+    .join("\n");
 }
 
 test("reverting HEAD on a clean base-branch checkout moves main, stays clean, and names its message", async () => {
@@ -225,6 +232,38 @@ test("stampedRole reads the role of a stamped subject only", () => {
   assert.equal(stampedRole("tumwater(feature): add x"), "feature");
   assert.equal(stampedRole("tumwater(operator): Revert abc\n\nbody"), "operator");
   assert.equal(stampedRole("work to undo"), undefined);
+});
+
+test("reverting a stamped role's commit logs one operator_revert naming the role", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "work.txt", "work\n", "tumwater(feature): add work");
+  const revertedSha = headSha(repo);
+
+  const r = await revertMergedCommit(repo, revertedSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const events = eventsOfType(repo, "operator_revert");
+  assert.equal(events.length, 1, "exactly one operator_revert event");
+  const e = events[0]!;
+  assert.equal(e.commit, revertedSha);
+  assert.equal(e.revert, headSha(repo));
+  assert.equal(e.runner, "feature");
+  assert.equal(e.subject, "tumwater(feature): add work");
+});
+
+test("reverting an unstamped commit's operator_revert carries no runner", async () => {
+  const repo = makeRepo();
+  seedCommit(repo, "hand.txt", "hand\n", "a hand-made change");
+  const before = headSha(repo);
+
+  const r = await revertMergedCommit(repo, "HEAD");
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const events = eventsOfType(repo, "operator_revert");
+  assert.equal(events.length, 1, "exactly one operator_revert event");
+  const e = events[0]!;
+  assert.equal(e.commit, before);
+  assert.equal("runner" in e, false, "no runner on an unstamped revert");
 });
 
 test("revertFollowUp names a role, and is null when no role made the commit", () => {

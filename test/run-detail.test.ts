@@ -606,8 +606,12 @@ test("renderRunDetail names a reverted change and its first failing test", () =>
   )!;
   const header = (d: Partial<RunDetail>): string => renderRunDetail({ ...base, ...d }).split("\n")[0]!;
   assert.match(
-    header({ reverted: { sha: "abcdef1234", revert: "9999999", failingTests: ["a.test.ts", "b.test.ts"] } }),
+    header({ reverted: { kind: "main", sha: "abcdef1234", revert: "9999999", failingTests: ["a.test.ts", "b.test.ts"] } }),
     / · reverted abcdef12 \(failing: a\.test\.ts\)$/m,
+  );
+  assert.match(
+    header({ reverted: { kind: "operator", sha: "abcdef1234", revert: "9999999", failingTests: [] } }),
+    / · reverted abcdef12 \(by operator\)$/m,
   );
   assert.doesNotMatch(header({ reverted: null }), /reverted/);
 });

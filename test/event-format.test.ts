@@ -99,6 +99,29 @@ test("formatEvent renders each type as one line", () => {
   assert.match(formatEvent(cases[3] as never), /abcdef12/);
 });
 
+test("formatEvent renders operator_revert naming the revert, the inverse, and the role it undid", () => {
+  const stamped = formatEvent({
+    ts: 0,
+    source: "tumwater",
+    type: "operator_revert",
+    commit: "abcdef1234567890",
+    revert: "9999999",
+    runner: "feature",
+    subject: "tumwater(feature): add x",
+  } as never);
+  assert.match(stamped, /reverted abcdef12 \(by operator\) as 9999999, undid feature/);
+  const unstamped = formatEvent({
+    ts: 0,
+    source: "tumwater",
+    type: "operator_revert",
+    commit: "abcdef1234567890",
+    revert: "9999999",
+    subject: "hand-made change",
+  } as never);
+  assert.match(unstamped, /reverted abcdef12 \(by operator\) as 9999999/);
+  assert.doesNotMatch(unstamped, /undid/);
+});
+
 test("formatEvent prints an instance id as its role label and the harness source as tumwater", () => {
   const run = formatEvent({ ts: 0, source: "feature-2", type: "run_end", run: 12, result: "no_change" } as never);
   assert.match(run, /^\S+ \S+ feature #2 run #12 no change$/);
