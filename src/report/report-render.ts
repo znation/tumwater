@@ -49,19 +49,21 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
-/** The per-day-median line of the team day report — "MMM D <span>" cells for each day that
+/** The per-day cameo line of the team day report — "MMM D <cell>" cells for each day that
  * carries a value, joined under a bold title, or undefined when no day has one (zero means
- * absent). The one home of that cameo rendering, shared by the merge check-time and merge-wait
- * medians so their date+span cells and title line cannot drift; the planned provider-slot wait
- * median is a third caller of the same rule. */
-function medianLine(
+ * absent). The one home of that cameo rendering, shared by the per-day medians, the red-check
+ * count and the main-red wall-clock lines so their date+cell shape and title line cannot drift.
+ * Each caller supplies its own cell formatter (shortSpanPhrase for the medians, `×n` for the
+ * red-check count, durationLabel for the main-red span). */
+function dayCameoLine(
   series: ReportDay[],
   title: string,
   pick: (d: ReportDay) => number | undefined,
+  fmt: (v: number) => string = shortSpanPhrase,
 ): string | undefined {
   const cells = series.flatMap((d) => {
     const v = pick(d);
-    return v === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(v)}`];
+    return v === undefined ? [] : [`${monthDay(d.date)} ${fmt(v)}`];
   });
   return cells.length > 0 ? `**${title}:** ${cells.join(" · ")}` : undefined;
 }
@@ -419,34 +421,30 @@ export function renderReportMarkdown(data: ReportData): string {
       lines.push(rankedRoleLine("Merge failures by reason", mergeFailureReasons, String));
     // Per-day median passing check time, so a suite slowing over days shows; days without a
     // check are left out, and no line prints when no day has one (zero means absent).
-    const medians = medianLine(data.series, "Merge check median", (d) => d.checkMedianMs);
+    const medians = dayCameoLine(data.series, "Merge check median", (d) => d.checkMedianMs);
     if (medians !== undefined) lines.push(medians);
     // Per-day count of red full-suite checks, beside the passing medians above; a day whose
     // suite went red before passing shows here. Zero-absent: no line when no day fails.
-    const reds = data.series.flatMap((d) =>
-      d.checkFailures === undefined ? [] : [`${monthDay(d.date)} ×${d.checkFailures}`],
-    );
-    if (reds.length > 0) lines.push(`**Red merge checks:** ${reds.join(" · ")}`);
+    const reds = dayCameoLine(data.series, "Red merge checks", (d) => d.checkFailures, (n) => `×${n}`);
+    if (reds !== undefined) lines.push(reds);
     // Per-day main red wall-clock, beside the red-check counts above: how long each day main
     // had no passing full check (the span every code role was held). Team-only (main's own
     // red time, not any role's) and zero-absent: no line when no day was red.
-    const mainReds = data.series.flatMap((d) =>
-      d.mainRedMs === undefined ? [] : [`${monthDay(d.date)} ${durationLabel(d.mainRedMs)}`],
-    );
-    if (mainReds.length > 0) lines.push(`**Main red:** ${mainReds.join(" · ")}`);
-    const waits = medianLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
+    const mainReds = dayCameoLine(data.series, "Main red", (d) => d.mainRedMs, durationLabel);
+    if (mainReds !== undefined) lines.push(mainReds);
+    const waits = dayCameoLine(data.series, "Merge wait median", (d) => d.mergeWaitMedianMs);
     if (waits !== undefined) lines.push(waits);
-    const runDurations = medianLine(data.series, "Run duration median", (d) => d.runMedianMs);
+    const runDurations = dayCameoLine(data.series, "Run duration median", (d) => d.runMedianMs);
     if (runDurations !== undefined) lines.push(runDurations);
     // How long the review gate ran per day — how long the reviewer's verdict run(s) took —
-    // beside the run/merge-wait medians; medianLine omits the line when no day carries one.
-    const reviewDurations = medianLine(data.series, "Review duration median", (d) => d.reviewMedianMs);
+    // beside the run/merge-wait medians; dayCameoLine omits the line when no day carries one.
+    const reviewDurations = dayCameoLine(data.series, "Review duration median", (d) => d.reviewMedianMs);
     if (reviewDurations !== undefined) lines.push(reviewDurations);
-    const providerWaits = medianLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
+    const providerWaits = dayCameoLine(data.series, "Provider wait median", (d) => d.providerWaitMedianMs);
     if (providerWaits !== undefined) lines.push(providerWaits);
-    const slotWaits = medianLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
+    const slotWaits = dayCameoLine(data.series, "Workspace wait median", (d) => d.slotWaitMedianMs);
     if (slotWaits !== undefined) lines.push(slotWaits);
-    const checkWaits = medianLine(data.series, "Check wait median", (d) => d.checkWaitMedianMs);
+    const checkWaits = dayCameoLine(data.series, "Check wait median", (d) => d.checkWaitMedianMs);
     if (checkWaits !== undefined) lines.push(checkWaits);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
