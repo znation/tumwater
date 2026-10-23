@@ -193,3 +193,21 @@ test("the opencode plugin denies an edit decision for a stray path and leaves ev
   guardEvaluate(emptyFirst, wt);
   assert.deepEqual(emptyFirst, { action: "edit", resources: ["", stray], effect: "deny", message: strayWriteRefusal(stray, wt) });
 });
+
+test("a failure of the opencode guard's own leaves a decision alone instead of stopping every edit", async () => {
+  const { wt } = team();
+  let hook: ((event: Record<string, unknown>) => void) | undefined;
+  await opencodeWriteGuard.setup({
+    location: { directory: wt },
+    permission: { hook(_name, callback) { hook = callback as typeof hook; } },
+  });
+  assert.ok(hook);
+  // An `edit` decision whose resources iterate into a throw must not deny or crash the run:
+  // the guard's contract is that a failure of its own leaves the decision untouched (a broken
+  // guard cannot stop every edit), which runner-run.ts's stray-write warning still catches.
+  const throwing = new Array(1);
+  Object.defineProperty(throwing, 0, { get() { throw new Error("boom"); } });
+  const failing = { action: "edit", resources: throwing, effect: "allow" };
+  hook(failing);
+  assert.deepEqual(failing, { action: "edit", resources: throwing, effect: "allow" });
+});
