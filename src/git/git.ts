@@ -482,6 +482,23 @@ export async function subjectOfCommit(cwd: string, ref: string): Promise<string>
   return ((await gitTry(cwd, "log", "-1", "--format=%s", ref)) ?? "").trim();
 }
 
+/** Subject lines merged on `mainBranch` whose message contains `Revert <shortRef>` (fixed-strings
+ * grep), newest first — the one home of the read so the two paths that ask "did a revert of this
+ * commit land" (the main watch's auto-revert, src/baseline/main-revert.ts, and the rejected-change
+ * re-apply, src/runner/revision.ts) spell the git call identically and cannot drift. Empty when the
+ * branch cannot be read. The caller still applies its own predicate: main-revert accepts only
+ * tumwater's own revert prefix, revision any `Revert <sha>`-suffixed subject, so both filter the
+ * returned lines rather than sharing a boolean. */
+export async function revertSubjectsOn(
+  cwd: string,
+  mainBranch: string,
+  shortRef: string,
+): Promise<string[]> {
+  return gitLines(
+    await gitTry(cwd, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortRef}`),
+  );
+}
+
 /** The number of commits in a `A..B` range: `git rev-list --count <range>` parsed as an
  * integer. The one home of the count idiom, so every surface that measures how far one ref
  * is ahead of another (a branch over main, main over a build) reads identically instead of
