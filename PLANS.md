@@ -269,6 +269,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Split orchestrator-scheduling.ts's pollRunnerReasons pass into a scope/skip/admit structure (planned 2026-10-23 by the organize role, plan-only; the pass is one 444-line function, ~73% of the 611-line module, so it is not splittable in one run — this plan lands the target structure for a later organize run)
 
+**Needs review 2026-10-23 by feature: too large for one run**
+
 **Goal.** `src/orchestrator/orchestrator-scheduling.ts` is the largest splittable module left: its exported `pollRunnerReasons` (lines 114-557) is a single function that runs the whole per-poll scheduling pass — the one-poll precompute (merge-queue interlock, director pin, per-base claim groups and their release loop, the team-gate block predicates, the multi-runner `writing` count and admission order), then a per-runner loop folding the skip gates and once settlement, then the claim-assignment and stand-down admission. The file's other exports (`reviewHoldKey`, `pollDeferralInputs`) are small. Splitting the pass into three focused modules by phase, with `pollRunnerReasons` kept as the thin binder, makes the WHY-due policy each phase computes addressable on its own screen, the way the config-validation split did for `validateConfig`.
 
 **Approach.**
