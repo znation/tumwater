@@ -11,7 +11,9 @@
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
  * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
  * through GET /api/doctor on each open (and on its Re-run button) and paints the report (its
- * Re-probe models button POSTs /api/doctor-reprobe instead, spending the image probes); a
+ * Re-probe models button POSTs /api/doctor-reprobe instead, spending the image probes; its
+ * Commit backlog button POSTs /api/doctor-commit-backlog instead, the same commitUncommittedBacklog
+ * `tumwater doctor --commit-backlog` runs); a
  * third, "Disabled roles", lists every disabled role (GET /api/retire), each with an Enable
  * button (POST /api/role-enable) and — for a role that still keeps worktree/branch leftovers — a
  * two-click Retire button (POST /api/retire). */
@@ -70,7 +72,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<label><input type='checkbox' data-action='doctor-problems'> Problems only</label>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button></div>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
@@ -215,6 +218,21 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     showFlash("Killing orphaned processes…");
     try {
       const d = await postJson("/api/kill-orphans", {});
+      showFlash((d.ok ? "" : "error: ") + d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
+  }
+  // The Health card's Commit backlog button: a single click, because the commit is the doctor's
+  // own recommended repair and is reversible (unlike the two-click Kill orphans arm), POSTing
+  // /api/doctor-commit-backlog — the same commitUncommittedBacklog "tumwater doctor
+  // --commit-backlog" runs — flashing the shared lines (nothing-to-commit when the checkout is
+  // clean), then re-running the checks so the uncommitted-backlog row repaints.
+  async function commitBacklogClick() {
+    showFlash("Committing the uncommitted backlog/brief files…");
+    try {
+      const d = await postJson("/api/doctor-commit-backlog", {});
       showFlash((d.ok ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));

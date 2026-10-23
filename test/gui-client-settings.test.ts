@@ -29,6 +29,7 @@ interface SettingsFns {
   enableRole(role: string): Promise<void>;
   confirmRetire(role: string): Promise<void>;
   killOrphansClick(): Promise<void>;
+  commitBacklogClick(): Promise<void>;
   reprobeDoctorClick(): Promise<void>;
   paintKillButton(): void;
 }
@@ -36,7 +37,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "reprobeDoctorClick", "paintKillButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "commitBacklogClick", "reprobeDoctorClick", "paintKillButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -498,6 +499,28 @@ test("killOrphansClick arms on the first click and posts /api/kill-orphans on th
   assert.deepEqual(posts, [{ path: "/api/kill-orphans", body: {} }]);
   assert.deepEqual(flashes, ["Killing orphaned processes…", "killed pid 4242 node x"]);
   assert.equal(button.textContent, "Kill orphans");
+  assert.equal(doctorFetches, 1);
+});
+
+test("commitBacklogClick posts /api/doctor-commit-backlog and reruns the doctor", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let doctorFetches = 0;
+  const { commitBacklogClick } = settingsScope({
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => {
+      doctorFetches++;
+      return { checks: [] };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "committed PLANS.md on main" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await commitBacklogClick();
+  assert.deepEqual(posts, [{ path: "/api/doctor-commit-backlog", body: {} }]);
+  assert.deepEqual(flashes, ["Committing the uncommitted backlog/brief files…", "committed PLANS.md on main"]);
   assert.equal(doctorFetches, 1);
 });
 

@@ -5,7 +5,7 @@ import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, planDependencyProblem } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
-import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles } from "../src/doctor/doctor-backlog.js";
+import { checkMergeQueueFiles, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
 import type { DirtyBacklogFiles } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -666,6 +666,7 @@ test("checkUncommittedBacklog warns naming each modified backlog file", async ()
   assert.equal(r.level, "warn");
   assert.match(r.detail, /PLANS\.md, QUESTIONS\.md have uncommitted changes/);
   assert.match(r.detail, /merge_blocked/);
+  assert.match(r.detail, /tumwater doctor --commit-backlog/);
 });
 
 test("checkUncommittedBacklog ignores untracked and unwatched files", async () => {
@@ -775,6 +776,24 @@ test("an unreadable brief on the base branch is skipped, not fatal", async () =>
   } finally {
     undo();
   }
+});
+
+test("backlogCommitLines names each committed and failed file and the skip sentence", () => {
+  const report = { base: "main", committed: ["PLANS.md"], failed: ["BUGS.md"], skipped: null };
+  assert.deepEqual(backlogCommitLines(report), [
+    "committed PLANS.md on main",
+    "could not commit BUGS.md — commit it by hand",
+  ]);
+  assert.deepEqual(backlogCommitLines({ base: "main", committed: [], failed: [], skipped: "your checkout is not on main; nothing committed" }), [
+    "your checkout is not on main; nothing committed",
+  ]);
+  assert.deepEqual(backlogCommitLines({ base: "main", committed: [], failed: [], skipped: null }), []);
+  // backlogCommitMessage shares the same wording the dashboard handler and the TUI flash use:
+  // the lines joined with "; ", or the nothing-to-commit sentence when the lists are empty and
+  // there was no skip sentence.
+  assert.equal(backlogCommitMessage(report), "committed PLANS.md on main; could not commit BUGS.md — commit it by hand");
+  assert.equal(backlogCommitMessage({ base: "main", committed: [], failed: [], skipped: "your checkout is not on main; nothing committed" }), "your checkout is not on main; nothing committed");
+  assert.equal(backlogCommitMessage({ base: "main", committed: [], failed: [], skipped: null }), "nothing to commit — every watched backlog or brief file is committed");
 });
 
 // checkPlanDependencies: cycles, dangling refs and unparsed requires clauses.

@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleCommitBacklog, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -281,6 +281,25 @@ test("handleKillOrphans answers the kill's lines and ok", async () => {
   assert.deepEqual(killed.data, { ok: true, message: "killed pid 4242 (+1 descendant) node x" });
   const broken = await captureJson((res) => handleKillOrphans(fakeReq("{}"), res, root, async () => ({ error: "boom" })));
   assert.deepEqual(broken.data, { ok: false, message: "could not scan the process table — boom; nothing killed" });
+});
+
+test("handleCommitBacklog answers the commit lines and ok", async () => {
+  const root = makeRepo();
+  let called = 0;
+  const committed = await captureJson((res) => handleCommitBacklog(fakeReq("{}"), res, root, async () => { called += 1; return { base: "main", committed: ["PLANS.md"], failed: [], skipped: null }; }));
+  assert.equal(called, 1);
+  assert.equal(committed.captured.status, 200);
+  assert.deepEqual(committed.data, { ok: true, message: "committed PLANS.md on main", committed: ["PLANS.md"], failed: [], skipped: null, base: "main" });
+  const failed = await captureJson((res) => handleCommitBacklog(fakeReq("{}"), res, root, async () => ({ base: "main", committed: [], failed: ["BUGS.md"], skipped: null })));
+  assert.deepEqual(failed.data, { ok: false, message: "could not commit BUGS.md — commit it by hand", committed: [], failed: ["BUGS.md"], skipped: null, base: "main" });
+  const empty = await captureJson((res) => handleCommitBacklog(fakeReq("{}"), res, root, async () => ({ base: "main", committed: [], failed: [], skipped: null })));
+  assert.deepEqual(empty.data, { ok: true, message: "nothing to commit — every watched backlog or brief file is committed", committed: [], failed: [], skipped: null, base: "main" });
+  const skipped = await captureJson((res) => handleCommitBacklog(fakeReq("{}"), res, root, async () => ({ base: "main", committed: [], failed: [], skipped: "your checkout is not on main; nothing committed" })));
+  assert.deepEqual(skipped.data, { ok: true, message: "your checkout is not on main; nothing committed", committed: [], failed: [], skipped: "your checkout is not on main; nothing committed", base: "main" });
+  let notCalled = true;
+  const badBody = await captureJson((res) => handleCommitBacklog(fakeReq("{nope"), res, root, async () => { notCalled = false; return { base: "main", committed: [], failed: [], skipped: null }; }));
+  assert.equal(badBody.captured.status, 400);
+  assert.equal(notCalled, true, "a malformed body never calls the commit seam");
 });
 
 test("handleReclaim with no worktrees answers nothing to reclaim", async () => {

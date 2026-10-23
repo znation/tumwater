@@ -298,7 +298,8 @@ export async function checkUncommittedBacklog(root: string, config: TumwaterConf
   const list = dirty.join(", ");
   return warnOutcome(`${list} ${dirty.length > 1 ? "have" : "has"} uncommitted changes in your checkout — ` +
     `roles branch from main and do not see them, and a merge that touches one cannot fast-forward the checkout ` +
-    `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base}`);
+    `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base} ` +
+    `(or run \`tumwater doctor --commit-backlog\`, or the Health card's Commit backlog, or the TUI Health tab's Ctrl+A)`);
 }
 
 /** What `doctor --commit-backlog` did: the base branch it committed on, the files it committed,
@@ -333,4 +334,30 @@ export async function commitUncommittedBacklog(root: string, config: TumwaterCon
     (ok ? committed : failed).push(name);
   }
   return { base: d.base, committed, failed, skipped: null };
+}
+
+/** The committed/failed/skip wording the CLI, the dashboard handler and the TUI flash all share
+ * for a BacklogCommitReport, so the three surfaces cannot drift: one `committed <file> on
+ * <base>` line per committed file, one `could not commit <file> — commit it by hand` line per
+ * failed file, then the skipped sentence when set. `[]` when the report committed nothing,
+ * failed nothing, and carried no skip sentence. `tumwater doctor --commit-backlog` (src/cli.ts),
+ * the dashboard Health card's Commit backlog (handleCommitBacklog) and the TUI Health tab's
+ * Ctrl+A all render from this one source. */
+export function backlogCommitLines(report: BacklogCommitReport): string[] {
+  const lines = [
+    ...report.committed.map((file) => `committed ${file} on ${report.base}`),
+    ...report.failed.map((file) => `could not commit ${file} — commit it by hand`),
+  ];
+  if (report.skipped !== null) lines.push(report.skipped);
+  return lines;
+}
+
+/** The single-line message a surface flashes or answers for a BacklogCommitReport: the shared
+ * backlogCommitLines joined with "; ", or the nothing-to-commit sentence when the report
+ * committed nothing, failed nothing and carried no skip sentence. Lives here beside
+ * backlogCommitLines so the dashboard Health card's Commit backlog handler and the TUI Health
+ * tab's Ctrl+A flash cannot drift from each other. */
+export function backlogCommitMessage(report: BacklogCommitReport): string {
+  const lines = backlogCommitLines(report);
+  return lines.length ? lines.join("; ") : "nothing to commit — every watched backlog or brief file is committed";
 }

@@ -4447,6 +4447,89 @@ test("Ctrl+K off the Health view never kills", () => {
   assert.equal(h.kills(), 0);
 });
 
+test("Ctrl+A on the Health view commits the dirty backlog and flashes the lines", async () => {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let commits = 0;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(report);
+    },
+    commitBacklog: () => {
+      commits += 1;
+      return Promise.resolve({ base: "main", committed: ["PLANS.md"], failed: [], skipped: null });
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health (roleIds.length + 7)
+  assert.equal(keys.state().view, 7);
+  await Promise.resolve();
+  const before = doctors;
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(commits, 1);
+  await waitFor(() => (keys.state().flash ?? "").includes("committed PLANS.md on main"), "the commit flash");
+  assert.equal(keys.state().flash, "committed PLANS.md on main");
+  assert.equal(doctors, before + 1, "the checks re-run after the commit");
+});
+
+test("Ctrl+A on the Health view with a clean backlog flashes the nothing-to-commit line", async () => {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let commits = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => Promise.resolve(report),
+    commitBacklog: () => {
+      commits += 1;
+      return Promise.resolve({ base: "main", committed: [], failed: [], skipped: null });
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  await waitFor(() => (keys.state().flash ?? "").includes("nothing to commit"), "the nothing-to-commit flash");
+  assert.equal(commits, 1);
+});
+
+test("Ctrl+A off the Health view commits nothing", () => {
+  const root = makeRoot();
+  let commits = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>(() => {}),
+    commitBacklog: () => {
+      commits += 1;
+      return Promise.resolve({ base: "main", committed: [], failed: [], skipped: null });
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  assert.equal(keys.state().view, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.equal(commits, 0);
+});
+
 test("Ctrl+N on the Health view with no notify configured flashes the missing-setting wording and leaves the report", async () => {
   const root = makeRoot();
   const report: DoctorReport = {

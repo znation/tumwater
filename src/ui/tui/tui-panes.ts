@@ -163,6 +163,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // Health owns Ctrl+P (re-probe image-input models) ahead of History's fallback.
     if (key.ctrl && key.name === "p" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "p") return history.handleKey?.(key, ctx) ?? false;
+    // Health owns Ctrl+A (commit-backlog) ahead of the pane router's fallthrough; the Backlog
+    // view's Ctrl+A (the answer editor) is handled by tui-editor-answer.ts, which the key
+    // dispatcher consults before this router, so this case never shadows it.
+    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") {
       // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
       // through off it, so History keeps its Summary cycle on every other view.

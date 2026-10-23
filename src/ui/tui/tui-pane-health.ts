@@ -1,5 +1,6 @@
 import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
 import { orphanKillLines } from "../../doctor/doctor-orphans.js";
+import { backlogCommitMessage } from "../../doctor/doctor-backlog.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
@@ -7,9 +8,9 @@ import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
 /** The Health pane (view roleIds.length + 7) of the TUI (src/ui/tui/tui.tsx): the problems-only
- * Ctrl+O toggle, the Ctrl+P image-model re-probe and the runDoctor collector it re-reads on
- * every entry. Split out of the pane-navigation monolith; it owns the problems flag and the last
- * resolved report. */
+ * Ctrl+O toggle, the Ctrl+P image-model re-probe, the Ctrl+A commit-backlog, and the runDoctor
+ * collector it re-reads on every entry. Split out of the pane-navigation monolith; it owns the
+ * problems flag and the last resolved report. */
 export function createHealthPane(session: TuiPaneSession) {
   // Within the Health pane (Ctrl+O), whether the cached report paints only its warn and fail
   // checks, the same problems-only trim `tumwater doctor --problems` applies. Session-only
@@ -123,6 +124,32 @@ export function createHealthPane(session: TuiPaneSession) {
               ? "notify is not configured (set `notify` in tumwater.json)"
               : outcome.message,
           );
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "a" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {
+      // Ctrl+A on the Health pane commits each uncommitted tracked backlog or brief file in the
+      // primary checkout — the terminal twin of `tumwater doctor --commit-backlog` and the
+      // dashboard Health card's Commit backlog button, all reached through the same
+      // commitUncommittedBacklog core. It flashes the same message the CLI prints (the shared
+      // backlogCommitMessage: the backlogCommitLines, or the nothing-to-commit line when the
+      // checkout is clean), then re-runs the checks so the `uncommitted backlog` row repaints. A
+      // failure flashes instead of killing the TUI. Every other view keeps Ctrl+A's backlog
+      // answer editor (routed ahead of this pane) — the key dispatcher consults the editors
+      // before the pane router, so this arm never shadows it.
+      session.flashMessage("committing the uncommitted backlog/brief files …");
+      session.requestRender();
+      void session.commitBacklog(session.root).then(
+        (report) => {
+          session.flashMessage(backlogCommitMessage(report));
+          void run();
+          session.paneScroll = 0;
           session.requestRender();
         },
         (err: unknown) => {

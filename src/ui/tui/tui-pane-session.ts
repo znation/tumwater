@@ -2,6 +2,7 @@ import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
+import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
 import { HISTORY_RESULT_CLASSES, HISTORY_RESULT_FLAG_NAMES } from "../../history/history-data.js";
@@ -33,6 +34,7 @@ export interface TuiPanesDeps {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  commitBacklog(root: string): Promise<BacklogCommitReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
@@ -187,6 +189,7 @@ export interface TuiPaneSession {
   collectOverlaps(root: string): Promise<ChangeOverlapsView>;
   runDoctor(root: string, probeImages: "never" | "all"): Promise<DoctorReport>;
   killOrphans(root: string): Promise<OrphanKillReport>;
+  commitBacklog(root: string): Promise<BacklogCommitReport>;
   previewRevert: typeof previewRevert;
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
@@ -228,6 +231,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     collectOverlaps: deps.collectOverlaps,
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
+    commitBacklog: deps.commitBacklog,
     previewRevert: deps.previewRevert,
     revertCommit: deps.revertCommit,
     collectChange: deps.collectChange,

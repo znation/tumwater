@@ -3,6 +3,8 @@ import { runDetailPatch, runDetailStat } from "../../run/run-detail-render.js";
 import { collectTeamChanges, collectRoleChange, collectChangeOverlaps, type ChangeOverlapsView, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
+import { commitUncommittedBacklog, type BacklogCommitReport } from "../../doctor/doctor-backlog.js";
+import { loadConfigSafe } from "../../config/config.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { commitOperatorBacklogEdit } from "../../backlog/backlog-commit.js";
@@ -40,6 +42,9 @@ interface TuiKeysDeps {
   /** Seam for the Health tab's Ctrl+K orphan kill; defaults to `killOrphans` so tests need not
    * scan the process table or signal anything. */
   killOrphans?(root: string): Promise<OrphanKillReport>;
+  /** Seam for the Health tab's Ctrl+A commit-backlog; defaults to `commitUncommittedBacklog` so
+   * tests need not run git on a throwaway root. */
+  commitBacklog?(root: string): Promise<BacklogCommitReport>;
   /** Seam for the History trail's first Ctrl+V (the revert preview); defaults to `previewRevert`
    * so tests need not run git. */
   previewRevert?: typeof previewRevert;
@@ -293,6 +298,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const collectOverlaps = deps.collectOverlaps ?? collectChangeOverlaps;
   const runDoctorSeam = deps.runDoctor ?? ((r: string, p: "never" | "all") => runDoctor(r, undefined, undefined, p));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
+  const commitBacklogSeam = deps.commitBacklog ?? ((r: string) => commitUncommittedBacklog(r, loadConfigSafe(r).config));
   const previewRevertSeam = deps.previewRevert ?? previewRevert;
   const revertCommit = deps.revertCommit ?? revertMergedCommit;
   const collectChange = deps.collectChange ?? collectRoleChange;
@@ -339,6 +345,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     collectOverlaps,
     runDoctor: runDoctorSeam,
     killOrphans: killOrphansSeam,
+    commitBacklog: commitBacklogSeam,
     previewRevert: previewRevertSeam,
     revertCommit,
     collectChange,

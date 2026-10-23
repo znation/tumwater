@@ -1,8 +1,8 @@
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
- * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit, and
- * queue-cancel — every POST handler that is not prompt/backlog/config/team. Each handler
+ * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit, queue-cancel,
+ * and commit-backlog — every POST handler that is not prompt/backlog/config/team. Each handler
  * adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
@@ -11,6 +11,8 @@ import { cancelScheduledStopMessage, requestAbort, requestResetCounters, request
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
+import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
+import { loadConfigSafe } from "../config/config.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -97,6 +99,25 @@ export async function handleKillOrphans(req: http.IncomingMessage, res: http.Ser
   if (!body) return;
   const report = await kill(root);
   sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") });
+}
+
+/** Handle POST /api/doctor-commit-backlog: the dashboard Health card's Commit backlog button —
+ * the same commitUncommittedBacklog `tumwater doctor --commit-backlog` runs, answering its
+ * lines joined with "; " through the shared backlogCommitMessage, plus the report's fields so the
+ * card can repaint precisely. `ok` is false when any file's commit failed. Same body discipline
+ * as /api/kill-orphans; `commit` is injectable so a test need not touch git. commitUncommitted-
+ * Backlog never throws, so an off-base or unreadable checkout lands as the skip sentence, not a
+ * 500. */
+export async function handleCommitBacklog(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  root: string,
+  commit: (root: string) => Promise<BacklogCommitReport> = (r) => commitUncommittedBacklog(r, loadConfigSafe(r).config),
+): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const report = await commit(root);
+  sendJson(res, 200, { ok: report.failed.length === 0, message: backlogCommitMessage(report), committed: report.committed, failed: report.failed, skipped: report.skipped, base: report.base });
 }
 
 /** Handle POST /api/doctor-reprobe: the dashboard Health card's Re-probe models button, the

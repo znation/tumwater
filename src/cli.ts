@@ -219,14 +219,12 @@ async function main(): Promise<void> {
       }
       let backlogCommit: BacklogCommitReport | undefined;
       if (args.includes("--commit-backlog")) {
-        const { commitUncommittedBacklog } = await import("./doctor/doctor-backlog.js");
+        const { commitUncommittedBacklog, backlogCommitLines } = await import("./doctor/doctor-backlog.js");
         const { config } = loadConfigSafe(root); // the report's own config, so base resolution and the off-base skip match the `uncommitted backlog` row's
         backlogCommit = await commitUncommittedBacklog(root, config);
         // The text form prints the commits before the report; --json keeps stdout one document.
         if (!args.includes("--json")) {
-          for (const file of backlogCommit.committed) say(`committed ${file} on ${backlogCommit.base}`);
-          for (const file of backlogCommit.failed) say(`could not commit ${file} — commit it by hand`);
-          if (backlogCommit.skipped) say(backlogCommit.skipped);
+          for (const line of backlogCommitLines(backlogCommit)) say(line);
           say("");
         }
       }
