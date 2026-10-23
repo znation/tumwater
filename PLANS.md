@@ -21,20 +21,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The failure-limit test passes: the third verdict-less run drops the entry, logs the warning, and starts no revert.
 - `npm run test:gate` passes.
 
-### Reviewer as a regular role, part 2b/4: The revert path holds — a post-merge rejection of an already-archived entry hands its author a fixable revision (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; independent sibling of part 2a/4 — either may land first; touches src/merge/merge-drain.ts src/baseline/main-revert.ts test/post-merge-review.test.ts)
-
-**Goal.** A post-merge rejection must not strand a change whose PLANS.md/BUGS.md entry was archived on merge. The revert of the merged commit restores the live entry, and `handBackReverted` → `recordRevertedChange` gives the author a revision carrying the reviewer's reasons, so the next run fixes the change instead of re-deriving it.
-
-**Approach.**
-- Extend test/post-merge-review.test.ts with the archive race end to end: make a repo, have the role's commit move a `## Planned` entry to the finished section (the `archiveNewFinishedEntries` shape, src/backlog/backlog-archive.ts), queue it with `addPostReview`, drive a rejecting review, then `drainMerge` through the revert and `handBackReverted`. Assert the heading is back under `## Planned` and absent from the finished section, `runner.state.lastReview` carries the reviewer's reasons, and `runner.state.revision.sha` is the reverted commit.
-- Cover the failed-revert fallback only by asserting the existing path: `runMainRevert`'s `onFailed` → `sendReviewToRole` (src/merge/merge-drain.ts) leaves the commit on main and enqueues a role prompt naming the reviewer's reasons. test/main-revert.test.ts already covers the throwing hand-off; add the archive-free case only if it is cheap, and do not build a second revert harness.
-- If the archive-race test exposes a gap (an entry left only in the finished section, or a revision with nothing to apply), fix the minimal cause in the revert or hand-back path; do not widen the poll.
-
-**Acceptance criteria.**
-- The archive-race test passes: after the revert the live entry is back under `## Planned` and the author holds the revision with the reviewer's reasons.
-- The failed-revert fallback assertion passes: the commit stays on main and the role prompt names the reviewer's reasons.
-- `npm run test:gate` passes.
-
 ### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
 
 **Refused 2026-10-23 by feature: executing the decision now needs one week of post-reviewer-plan `check_wait` data, but reviewer-as-role parts 1/4 and 3/4 are still under `## Planned` (not landed), so no evidence exists and raising the cap 3→4 now would be the theory-knob this plan's "not a knob raised on theory" decision rejects**

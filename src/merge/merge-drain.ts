@@ -123,8 +123,8 @@ function pendingReverts(root: string): PendingRevert[] {
 }
 
 /** A rejected commit whose revert failed stays on main: its role gets the reviewer's reasons in its
- * inbox instead. */
-function sendReviewToRole(ctx: MergePipelineContext, c: MainCulprit, reason: string): void {
+ * inbox instead. Exported for the failed-revert fallback assertion in test/main-revert.test.ts. */
+export function sendReviewToRole(ctx: MergePipelineContext, c: MainCulprit, reason: string): void {
   if (c.runner === undefined || c.postReview === undefined) return;
   const reasons = c.postReview.reasons.map((r) => `- ${r}`).join("\n");
   enqueueRolePrompt(

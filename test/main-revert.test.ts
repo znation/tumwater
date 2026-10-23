@@ -5,7 +5,7 @@ import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { revertSkipReason, routeMainCulprit, runMainRevert, type MainCulprit } from "../src/baseline/main-revert.js";
 import { defaultConfig } from "../src/config/config.js";
-import { assignPendingReverts, drainMerge } from "../src/merge/merge-drain.js";
+import { assignPendingReverts, drainMerge, sendReviewToRole } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
@@ -154,6 +154,23 @@ test("a post-review revert whose reviewer hand-off throws resolves and warns tha
   });
   const warnings = warningMessages(root);
   assert.equal(warnings.filter((m) => m.includes("could not send the reviewer's reasons to its role: EACCES")).length, 1);
+});
+
+test("a post-review revert that fails keeps the commit on main and enqueues its role a prompt naming the reviewer's reasons", async () => {
+  // The failed-revert fallback (merge-drain.ts sendReviewToRole): a rejection whose revert cannot
+  // merge leaves the commit on main and hands its role the reviewer's reasons in its inbox.
+  const { root, found } = await redMain("improve", true);
+  const before = headSha(root);
+  const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["breaks the contract"] } };
+  const ctx = { root, mainBranch: "main" } as unknown as MergePipelineContext;
+  await runMainRevert(root, "main", defaultConfig(), c, undefined, (culprit, reason) => sendReviewToRole(ctx, culprit, reason));
+  assert.equal(headSha(root), before, "a conflicting revert leaves the commit on main");
+  assert.equal(eventsOfType(root, "main_revert").length, 0);
+  const files = queuedFiles(root, "improve");
+  assert.equal(files.length, 1);
+  const prompt = fs.readFileSync(files[0]!, "utf8");
+  assert.match(prompt, /breaks the contract/);
+  assert.match(prompt, /still on main/);
 });
 
 test("a director-merged, runnerless or revert culprit is skipped", async () => {

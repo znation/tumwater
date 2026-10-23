@@ -121,6 +121,57 @@ test("a rejecting post-merge review reverts the commit and hands it back as a re
   assert.equal(sh(root, "git", "rev-parse", rejectedRefName("improve")).trim(), commit);
 });
 
+test("a post-merge rejection of an already-archived entry restores the live entry and fetches the revision", async () => {
+  // The commit-time archive sweep (archiveNewFinishedEntries, src/backlog/backlog-archive.ts) moves
+  // a finished `## Planned` entry out of the live file and into the archive on merge. A post-merge
+  // rejection must not strand that change: reverting the merged commit restores the live entry, and
+  // handBackReverted gives the author a revision carrying the reviewer's reasons.
+  const root = makeRepo();
+  const planned = `# Plans\n\n## Planned\n\n### The archived entry (planned 2026-10-23 by user)\n\nSome body.\n\n## Done\n\n_None yet._\n`;
+  fs.writeFileSync(path.join(root, "PLANS.md"), planned);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "baseline plans");
+  // The merged commit archives the entry: moved to `## Done` and swept into PLANS-DONE.md, the
+  // archiveNewFinishedEntries shape a role run leaves wired to its commit.
+  const archived = `# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### The archived entry (planned 2026-10-23 by user — done 2026-10-23 by the improve role)\n\nSome body.\n`;
+  fs.writeFileSync(path.join(root, "PLANS.md"), archived);
+  fs.writeFileSync(
+    path.join(root, "PLANS-DONE.md"),
+    `# Done\n\n## Done\n\n### The archived entry (planned 2026-10-23 by user — done 2026-10-23 by the improve role)\n\nSome body.\n`,
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "archive the finished entry");
+  const commit = headSha(root);
+  const runner = fakeRunner("improve", "VERDICT: reject\n1. the change must not land");
+  const ctx = {
+    root,
+    mainBranch: "main",
+    liveConfig: defaultConfig(),
+    runners: [runner],
+    semaphore: new Semaphore(2),
+    signal: new AbortController().signal,
+    startHeld: () => false,
+  } as unknown as MergePipelineContext;
+  addPostReview(root, { commit, role: "improve", summary: "archive the finished entry" });
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  await drainUntilRevert(ctx, p); // the rejection moves to the revert slot
+  assert.equal(p.revert?.commit, commit);
+  drainMerge(ctx, p);
+  await p.merge!.promise;
+  assert.equal(readPostReviews(root).length, 0);
+  // The live entry is back under `## Planned`, not stranded in the finished section, and the
+  // archive file the merged commit created is gone with the revert.
+  const plans = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  assert.match(plans, /## Planned\n\n### The archived entry/);
+  assert.ok(plans.includes("## Done\n\n_None yet._"), "the archived entry is not stranded in the finished section");
+  assert.ok(!fs.existsSync(path.join(root, "PLANS-DONE.md")), "the archive file the merged commit created is gone with the revert");
+  assert.equal(runner.state.revision?.sha, commit);
+  assert.match(runner.state.lastReview?.reasons[0] ?? "", /the change must not land/);
+  assert.equal(sh(root, "git", "rev-parse", rejectedRefName("improve")).trim(), commit);
+});
+
 test("a rejected entry stays queued until its revert ran: a replaced revert slot is refilled next poll", async () => {
   const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
   const p = newMergePipeline();

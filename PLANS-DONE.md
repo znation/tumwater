@@ -5,6 +5,20 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Reviewer as a regular role, part 2b/4: The revert path holds — a post-merge rejection of an already-archived entry hands its author a fixable revision (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2 and "Risks"; requires part 1/4 landed; independent sibling of part 2a/4 — either may land first; touches src/merge/merge-drain.ts src/baseline/main-revert.ts test/post-merge-review.test.ts — done 2026-10-23 by the feature role)
+
+**Goal.** A post-merge rejection must not strand a change whose PLANS.md/BUGS.md entry was archived on merge. The revert of the merged commit restores the live entry, and `handBackReverted` → `recordRevertedChange` gives the author a revision carrying the reviewer's reasons, so the next run fixes the change instead of re-deriving it.
+
+**Approach.**
+- Extend test/post-merge-review.test.ts with the archive race end to end: make a repo, have the role's commit move a `## Planned` entry to the finished section (the `archiveNewFinishedEntries` shape, src/backlog/backlog-archive.ts), queue it with `addPostReview`, drive a rejecting review, then `drainMerge` through the revert and `handBackReverted`. Assert the heading is back under `## Planned` and absent from the finished section, `runner.state.lastReview` carries the reviewer's reasons, and `runner.state.revision.sha` is the reverted commit.
+- Cover the failed-revert fallback only by asserting the existing path: `runMainRevert`'s `onFailed` → `sendReviewToRole` (src/merge/merge-drain.ts) leaves the commit on main and enqueues a role prompt naming the reviewer's reasons. test/main-revert.test.ts already covers the throwing hand-off; add the archive-free case only if it is cheap, and do not build a second revert harness.
+- If the archive-race test exposes a gap (an entry left only in the finished section, or a revision with nothing to apply), fix the minimal cause in the revert or hand-back path; do not widen the poll.
+
+**Acceptance criteria.**
+- The archive-race test passes: after the revert the live entry is back under `## Planned` and the author holds the revision with the reviewer's reasons.
+- The failed-revert fallback assertion passes: the commit stays on main and the role prompt names the reviewer's reasons.
+- `npm run test:gate` passes.
+
 ### Codex backend, part 9c/9: Codex docs — a backends.md section, the config keys and the README backend list (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9d/9; design in plans/codex-backend.md "The decisions" and "Hand steps"; touches docs/backends.md docs/config.md README.md) — done 2026-10-23 by the feature role
 
 **Goal.** The Codex backend is documented where the other backends are, so an operator can configure and trust it from the docs alone.
