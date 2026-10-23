@@ -29,6 +29,7 @@ import { formatClock, formatDate } from "../text/datetime.js";
 import type { FallbackDemotion } from "../budget/fallback-breaker.js";
 import { errorMessage, joinParts } from "../text/text.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
+import { belowNodeFloor } from "../version.js";
 
 /** The one phrase a configured-models check uses when the config declares no models at all:
  * informational (capability falls to pi's own defaults), not a warning. Shared by
@@ -235,6 +236,25 @@ export function seamPairs(config: TumwaterConfig): SeamPair[] {
  * walk exactly this filtered list, so they share one filter rather than three copies. */
 export function seamedModels(config: TumwaterConfig, agent: string): SeamPair[] {
   return seamPairs(config).filter((p) => p.agent === agent && p.model !== undefined);
+}
+
+/** The warn/fail/ok verdict for a backend CLI's `--version` check against one flat minimum
+ * version (codex's checkCodexVersion and opencode's checkOpencodeVersion both require a
+ * single floor for the whole backend, unlike claude's per-model floors). `found` is the
+ * parsed dotted version, or undefined when the probe could not run or its output was
+ * unreadable. Centralizing the three messages and the belowNodeFloor comparison keeps the
+ * two backends' version verdicts from drifting. */
+export function minVersionOutcome(
+  name: string,
+  found: string | undefined,
+  min: string,
+  upgradeHint: string,
+): CheckOutcome {
+  if (found === undefined)
+    return warnOutcome(`could not check — \`${name} --version\` did not run or its output was unreadable`);
+  if (belowNodeFloor(found, `>=${min}`))
+    return failOutcome(`${name} ${found} is older than ${min} — ${upgradeHint}`);
+  return okOutcome(`${name} ${found} (>= ${min})`);
 }
 
 /** Whether any seam runs on the claude backend — the doctor's claude checks stand down when

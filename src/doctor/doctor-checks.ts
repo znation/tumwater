@@ -37,7 +37,7 @@ import { formatBytes } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { plural } from "../text/phrases.js";
 import { backendsInUse, unregisteredBackendInUse } from "../gates/startup-gate.js";
-import { claudeSeamsInUse, opencodeSeamsInUse, piSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
+import { claudeSeamsInUse, minVersionOutcome, opencodeSeamsInUse, piSeamsInUse, AUTH_CHECK_MAX_OUTPUT_BYTES, AUTH_CHECK_TIMEOUT_MS } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { boundedProbe } from "./probe.js";
 import { childEnv } from "../process/process.js";
@@ -318,11 +318,7 @@ export async function checkOpencodeVersion(
     AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
   const found = result !== null && result.code === 0 ? parseOpencodeCliVersion(result.stdout) : undefined;
-  if (found === undefined)
-    return warnOutcome("could not check — `opencode --version` did not run or its output was unreadable");
-  if (belowNodeFloor(found, `>=${OPENCODE_MIN_VERSION}`))
-    return failOutcome(`opencode ${found} is older than ${OPENCODE_MIN_VERSION} — run \`brew install opencode\``);
-  return okOutcome(`opencode ${found} (>= ${OPENCODE_MIN_VERSION})`);
+  return minVersionOutcome("opencode", found, OPENCODE_MIN_VERSION, "run `brew install opencode`");
 }
 
 export function checkClaudeTranscripts(

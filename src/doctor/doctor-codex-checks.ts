@@ -14,13 +14,13 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
-import { belowNodeFloor } from "../version.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
   AUTH_CHECK_MAX_OUTPUT_BYTES,
   AUTH_CHECK_TIMEOUT_MS,
   codexSeamsInUse,
   loadConfigForCheck,
+  minVersionOutcome,
   seamedModels,
 } from "./doctor-model-checks.js";
 
@@ -73,11 +73,7 @@ export async function checkCodexVersion(
   if (!codexSeamsInUse(config)) return null;
   const result = await codexProbe(config, ["--version"], pathEnv, timeoutMs);
   const found = result?.code === 0 ? parseCodexCliVersion(result.stdout) : undefined;
-  if (found === undefined)
-    return warnOutcome("could not check — `codex --version` did not run or its output was unreadable");
-  if (belowNodeFloor(found, `>=${CODEX_MIN_VERSION}`))
-    return failOutcome(`codex ${found} is older than ${CODEX_MIN_VERSION} — upgrade the codex CLI`);
-  return okOutcome(`codex ${found} (>= ${CODEX_MIN_VERSION})`);
+  return minVersionOutcome("codex", found, CODEX_MIN_VERSION, "upgrade the codex CLI");
 }
 
 /** codex login readiness (plans/codex-backend.md §4, §7): a ChatGPT login is subscription
