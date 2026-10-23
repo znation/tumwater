@@ -49,6 +49,19 @@ export interface NotifyFailure {
   message: string;
 }
 
+/** A merge refused because the primary checkout holds uncommitted files the merge would
+ * overwrite (src/merge/merge-git.ts `primaryCheckoutBlockers`, `overwriteBlockedReason`), read
+ * off the `warning` event the merge path already writes. Computed in src/ui/status-payload.ts's
+ * primaryOverwriteBlocks over the last PRIMARY_OVERWRITE_WINDOW_MS, matching the message marker
+ * the merge path logs, so the alert needs no new git read and cannot drift from the refusal
+ * count. count is the refusals in the window, latestTs the most recent one's event stamp,
+ * message the latest refusal's squashed wording. */
+export interface PrimaryOverwriteBlock {
+  count: number;
+  latestTs: number;
+  message: string;
+}
+
 /** A queued inbox prompt the doctor's stale-prompt rule warns about (src/doctor/doctor-backlog.ts
  * checkStalePrompts, STALE_PROMPT_MS): a prompt due-but-undelivered for more than a day because
  * its role is paused, disabled, or failing. Computed in src/ui/status-payload.ts's stalePrompts
@@ -239,7 +252,8 @@ function localizeInstants(text: string): string {
 
 /** Everything about the team that needs the operator, most urgent first: a spent budget, a red
  * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a stranded inbox
+ * questions, refused entries, stale bugs, a failed notify page, a dirty primary
+ * checkout refusing merges, a stranded inbox
  * prompt, a stalled merge queue, a
  * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
  * review or Needs replan note, a stale or oversized flake quarantine, a revert off main that
@@ -286,6 +300,7 @@ export function teamAlerts(
   validationGaps: readonly ValidationGapProblem[] = [],
   reverts: RevertWarning | null = null,
   notifyFailure: NotifyFailure | null = null,
+  primaryOverwrite: PrimaryOverwriteBlock | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -735,6 +750,23 @@ export function teamAlerts(
       detail:
         `the queue reader skips ${first} — a torn or foreign file never clears itself, so its merge is stranded; remove it (a crashed enqueue's merge ref still recovers on the next run)` +
         moreDetail(rest, (labels) => joinWithMore(labels, 3)),
+      actions: [],
+    });
+  }
+  // A merge the primary checkout blocked (merge-git.ts primaryCheckoutBlockers, the
+  // overwriteBlockedReason `warning` the merge path writes) — the always-on twin of the doctor's
+  // `uncommitted backlog` row, but read off events so it reaches the status poll (the doctor's
+  // git read is async and never gets there). A fleet stuck retrying one dirty file is a single
+  // amber banner until the file is committed and the refusals age out; status-payload.ts's
+  // primaryOverwriteBlocks feeds it the last day's refusals, counting them and naming the
+  // latest's age, squashed message, and the commit fix.
+  if (primaryOverwrite) {
+    out.push({
+      key: "primary-overwrite",
+      tone: "amber",
+      title: `${plural(primaryOverwrite.count, "merge was", "merges were")} refused by files uncommitted in your primary checkout`,
+      detail:
+        `most recently ${humanAgo(primaryOverwrite.latestTs, now)}: ${squash(primaryOverwrite.message, 160)} — roles cannot commit your checkout; commit the file(s) on main with \`tumwater doctor --commit-backlog\` (or by hand) so merges can proceed`,
       actions: [],
     });
   }

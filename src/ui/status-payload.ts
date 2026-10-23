@@ -14,7 +14,7 @@ import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
-import { teamAlerts, type NotifyFailure, type PlanDependencyProblem, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
+import { teamAlerts, type NotifyFailure, type PlanDependencyProblem, type PrimaryOverwriteBlock, type QuarantinedTests, type RevertWarning, type StaleBug, type StaleMerge, type StalePrompt, type StaleWaitingBug } from "./team-alerts.js";
 import { duplicatedBacklogHeadings, planDependencyProblem } from "../doctor/doctor-backlog-plans.js";
 import { quarantineWarning, revertsFor } from "../baseline/main-guardrails.js";
 import { loadQuarantine } from "../review/known-flakes.js";
@@ -122,6 +122,26 @@ export function staleWaitingBugs(root: string, now = Date.now()): StaleWaitingBu
  * row cannot drift on the selection or the named paths. */
 export function skippedMergeFiles(root: string): string[] {
   return skippedMergeQueueFiles(root);
+}
+
+/** How far back the primary-overwrite alert looks — one day, so a fleet stuck retrying one
+ * dirty primary file is a standing amber banner until the file is committed and the refusals
+ * age out. */
+export const PRIMARY_OVERWRITE_WINDOW_MS = 24 * 60 * 60_000;
+/** The exact substring merge-git.ts's overwrite blocker logs in its `warning` event, so this
+ * feed matches the refusal and nothing the merge path does not say (see merge-git.ts
+ * `overwriteBlockedReason`). */
+const PRIMARY_OVERWRITE_MARKER = "would overwrite files in the primary checkout";
+/** The merges the primary checkout refused in the trailing day (src/merge/merge-git.ts
+ * `primaryCheckoutBlockers`, `overwriteBlockedReason`) — the always-on feed for the
+ * `primary-overwrite` team alert (src/ui/team-alerts.ts). It reads only the `warning` event the
+ * merge path already writes, so it reaches the status poll without a git read (the doctor's
+ * `uncommitted backlog` check's git read is async and never gets there) and cannot drift from
+ * the refusals. null when the window holds no such warning. */
+export function primaryOverwriteBlocks(root: string, now = Date.now()): PrimaryOverwriteBlock | null {
+  const hits = eventsSince(root, PRIMARY_OVERWRITE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(PRIMARY_OVERWRITE_MARKER));
+  const latest = hits[hits.length - 1];
+  return latest ? { count: hits.length, latestTs: latest.ts, message: String(latest.message) } : null;
 }
 
 /** A stale or oversized flake quarantine, the always-on twin of the doctor's `flaky checks` row
@@ -459,6 +479,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now)),
   };
 }

@@ -5,7 +5,7 @@ import path from "node:path";
 import { alertNeedsYou, teamAlerts, type AlertRole, type BacklogHeadingDuplicate } from "../src/ui/team-alerts.js";
 import { phaseTone, resultTone } from "../src/ui/tone.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
-import { planDependencyAlert, notifyFailures, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
+import { planDependencyAlert, notifyFailures, primaryOverwriteBlocks, quarantineAlert, revertAlert, skippedMergeFiles, staleMerges, statusPayload, stalePrompts, staleWaitingBugs } from "../src/ui/status-payload.js";
 import { strandedPlanEntriesFor } from "../src/backlog/backlog-structure.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
@@ -648,6 +648,49 @@ test("notifyFailures and the surfaces carry a notify alert from failed pages, an
   warnEvent(old, "tumwater", notifyExitWarning("budget_paused", 127, null) ?? "");
   assert.equal(notifyFailures(old, now + 25 * 3600_000), null);
   assert.equal((statusPayload(old, now + 25 * 3600_000) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "notify"), undefined);
+});
+
+test("a merge refused by an uncommitted primary file raises one standing amber alert", () => {
+  const now = Date.now();
+  const blockObj = { count: 2, latestTs: now - 3600_000, message: "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there" };
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, blockObj);
+  // primaryOverwrite is the 20th positional argument, after notifyFailure (null); one position
+  // earlier it would land in the validationGaps slot and raise no primary-overwrite alert.
+  assert.deepEqual(alerts.map((a) => [a.key, a.tone, a.title]), [["primary-overwrite", "amber", "2 merges were refused by files uncommitted in your primary checkout"]]);
+  assert.match(alerts[0]!.detail ?? "", /1h ago/);
+  assert.match(alerts[0]!.detail ?? "", /uncommitted: PLANS.md/);
+  assert.match(alerts[0]!.detail ?? "", /tumwater doctor --commit-backlog/);
+  assert.deepEqual(alerts[0]!.actions, []);
+  // One refusal reads singular.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, { count: 1, latestTs: now - 60_000, message: "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there" });
+  assert.match(one[0]!.title, /1 merge was refused/);
+  // A null last argument adds no alert.
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null), []);
+});
+
+test("primaryOverwriteBlocks and the surfaces carry a primary-overwrite alert from overwrite-block warnings, and none without one", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  warnEvent(root, "feature", "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there");
+  assert.equal(primaryOverwriteBlocks(root, now)?.count, 1);
+  assert.match(primaryOverwriteBlocks(root, now)?.message ?? "", /uncommitted: PLANS.md/);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string }> };
+  assert.equal(payload.alerts.find((a) => a.key === "primary-overwrite")?.title, "1 merge was refused by files uncommitted in your primary checkout");
+  const status = renderStatus(root, snapshot(root, undefined, now));
+  assert.match(status, /merge was refused by files uncommitted in your primary checkout/);
+  // A warning without the marker, and a clean root, each produce none.
+  const foreign = makeRepo();
+  warnEvent(foreign, "feature", "pi exited 1");
+  assert.equal(primaryOverwriteBlocks(foreign, now), null);
+  assert.equal((statusPayload(foreign, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "primary-overwrite"), undefined);
+  const clean = makeRepo();
+  assert.equal(primaryOverwriteBlocks(clean, now), null);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /refused by files uncommitted/);
+  // A warning older than the day-long window produces none, on every surface.
+  const old = makeRepo();
+  warnEvent(old, "feature", "merge blocked: the merge would overwrite files in the primary checkout (uncommitted: PLANS.md) — commit, stash or remove them there");
+  assert.equal(primaryOverwriteBlocks(old, now + 25 * 3600_000), null);
+  assert.equal((statusPayload(old, now + 25 * 3600_000) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "primary-overwrite"), undefined);
 });
 
 test("a stalled merge queue raises a standing amber alert right after the stale-prompt alert", () => {
