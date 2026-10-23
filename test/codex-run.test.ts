@@ -8,11 +8,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
-import { readSessions } from "../src/agent/session-ledger.js";
+import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { codexBackend } from "../src/agent/codex/codex-backend.js";
+import { codexTranslator } from "../src/agent/codex/codex-stream.js";
 import { defaultConfig } from "../src/config/config.js";
 import { suiteRerunWarning, type ToolCallStart } from "../src/review/suite-rerun.js";
 import type { PiRunOptions } from "../src/agent/run-agent.js";
+import type { AgentBackend } from "../src/agent/agent-backend.js";
 import { withCwd } from "./helpers/env.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withCodexReplay, readRunBlocks } from "./fakes/fake-codex.js";
@@ -227,4 +229,70 @@ test("the catalog gates the effort the run sends and answers image input (part 8
       assert.equal(codexBackend.imageInput!("no-such-model"), false, "a model missing from the catalog is blind");
     });
   });
+});
+
+/** A team root whose `backends.codex.configDir` points at `home`, the shape `resumable` and
+ * `afterRun` walk up to when resolving the run's home. */
+function codexResumeRoot(root: string, home: string): void {
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  fs.writeFileSync(path.join(root, "tumwater.json"), JSON.stringify({ backends: { codex: { configDir: home } } }));
+}
+
+/** The `resumable` hook (the seam's id-scoped resume gate, agent-backend.ts:198) is the
+ * resume rule `resolveCodexSession` already holds for `invocation`, so it must agree with it:
+ * a codex record whose id is a real thread id AND whose rollout exists under the configured
+ * home is resumable; anything else — no matching record, a non-UUID id, or a rollout that
+ * never landed — is fresh. The run-level resume tests reach `resolveCodexSession` inside
+ * `invocation`, never this hook, so its branches are pinned here directly. */
+const THREAD_ID = "01a15c9d-6762-7931-814e-a3e6e64c1b51";
+
+function writeThreadRollout(home: string, id: string): void {
+  fs.mkdirSync(path.join(home, "sessions", "2026-10-21"), { recursive: true });
+  fs.writeFileSync(path.join(home, "sessions", "2026-10-21", `rollout-0000-${id}.jsonl`), "x");
+}
+
+test("resumable accepts a codex record whose thread rollout exists under the configured home", () => {
+  const root = tmpdir();
+  const home = path.join(root, "codex-home");
+  codexResumeRoot(root, home);
+  const sessionDir = path.join(root, ".tumwater", "sessions", "t");
+  recordSession(sessionDir, { agent: "codex", id: THREAD_ID, kind: "author", name: "t", cwd: root, at: 1_730_000_000_000 });
+  writeThreadRollout(home, THREAD_ID);
+  assert.equal(codexBackend.resumable!(sessionDir, { kind: "author", agent: "codex", cwd: root }), true);
+});
+
+test("resumable declines when the ledger holds no matching codex record", () => {
+  const sessionDir = path.join(tmpdir(), ".tumwater", "sessions", "t");
+  assert.equal(codexBackend.resumable!(sessionDir, { kind: "author", agent: "codex", cwd: "/x" }), false);
+});
+
+test("resumable declines a record whose id is not a thread UUID even with a rollout present", () => {
+  const root = tmpdir();
+  const home = path.join(root, "codex-home");
+  codexResumeRoot(root, home);
+  const sessionDir = path.join(root, ".tumwater", "sessions", "t");
+  recordSession(sessionDir, { agent: "codex", id: "not-a-thread-id", kind: "author", name: "t", cwd: root, at: 1_730_000_000_000 });
+  writeThreadRollout(home, "not-a-thread-id");
+  assert.equal(codexBackend.resumable!(sessionDir, { kind: "author", agent: "codex", cwd: root }), false);
+});
+
+test("resumable declines a UUID record whose rollout never landed under the home", () => {
+  const root = tmpdir();
+  const home = path.join(root, "codex-home");
+  codexResumeRoot(root, home);
+  const sessionDir = path.join(root, ".tumwater", "sessions", "t");
+  recordSession(sessionDir, { agent: "codex", id: THREAD_ID, kind: "author", name: "t", cwd: root, at: 1_730_000_000_000 });
+  assert.equal(codexBackend.resumable!(sessionDir, { kind: "author", agent: "codex", cwd: root }), false);
+});
+
+test("afterRun with no session id falls back to the stream usage and flags it partial", () => {
+  const dir = tmpdir();
+  fs.mkdirSync(path.join(dir, ".tumwater"), { recursive: true });
+  const translator = codexTranslator({});
+  // afterRun reads only `run.config` (its model and the resolved codex home), so the run
+  // builder's full AgentRunSpec-shaped object stands in for a real resolved spec here.
+  const run = codexRun(dir) as unknown as Parameters<NonNullable<AgentBackend["afterRun"]>>[0];
+  const lines = codexBackend.afterRun!(run, { args: [], env: {} }, translator);
+  assert.deepEqual(lines, []);
+  assert.ok(translator.warnings().includes("codex_usage_partial"), translator.warnings().join(", "));
 });
