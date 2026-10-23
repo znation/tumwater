@@ -10,7 +10,7 @@ import { baselineVerdictsPath, quarantinePath } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { baselineFixture, runsOf } from "./fixtures/runner-fixtures.js";
 import { headSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { logEvent } from "../src/events/events.js";
 import { loadQuarantine, quarantinedTests, quarantineTests, releaseQuarantine } from "../src/review/known-flakes.js";
 import { readJson } from "./helpers/json-read.js";
@@ -100,6 +100,23 @@ test("a held team starts no watch run", async () => {
   await watchAt(watch, root, true);
   assert.equal(eventsOfType(root, "main_check").length, 0);
   assert.equal(runsOf(counter), 0);
+});
+
+test("a main whose branch is unreadable warns once through the poll catch and is not retried until the head moves", async () => {
+  const { root } = baselineFixture("improve", "echo ok");
+  const head = headSha(root); // capture before the ref is gone: HEAD no longer resolves once deleted
+  const watch = createMainWatch(root, "main");
+  // Knock out the branch ref the watch resolves its tip from, so branchHead("main") is null and
+  // withMainTipWorktree rejects — the one path that records no verdict and warns per head.
+  sh(root, "git", "update-ref", "-d", "refs/heads/main");
+  watch.poll(head, false, defaultConfig());
+  await watch.idle();
+  const warnings = warningMessages(root);
+  assert.ok(
+    warnings.some((m) => m.includes("main watch could not check main") && m.includes("main is unreadable")),
+    warnings.join("|"),
+  );
+  assert.equal(eventsOfType(root, "main_check").length, 0, "an unreadable main records no verdict");
 });
 
 test("the newest verdict's failing tests are main's known failures; a later green clears them", async () => {
