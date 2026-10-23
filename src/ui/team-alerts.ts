@@ -110,6 +110,20 @@ function entryListDetail(titles: readonly string[]): string {
   return titles.length > 1 ? `${first} — and ${titles.length - 1} more` : first;
 }
 
+/** Append the folded names of the entries past an alert's first one, after a ` · ` separator,
+ * when there are any, and the empty string otherwise — the shared idiom every amber
+ * "name the oldest, fold the rest" alert (stale-bugs, waiting-bugs, stale-prompts,
+ * stale-merges, stranded-plans, skipped-merges) uses to compose its `detail`, so the
+ * separator, the empty case, and the default fold (entryListDetail; joinWithMore for the
+ * merge-queue alerts) cannot drift. Callers pre-map each rest element to the label the
+ * first clause already named. */
+function moreDetail(
+  restLabels: readonly string[],
+  fold: (items: readonly string[]) => string = entryListDetail,
+): string {
+  return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
+}
+
 /** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
@@ -489,9 +503,10 @@ export function teamAlerts(
   if (strandedPlans.length) {
     const first = strandedPlans[0]!;
     const rest = strandedPlans.slice(1);
-    const more = rest.length
-      ? ` · ${joinWithMore(rest.map((e) => `"${e.title}" in ${e.file ?? "PLANS.md"} ## ${e.section}`), 3)}`
-      : "";
+    const more = moreDetail(
+      rest.map((e) => `"${e.title}" in ${e.file ?? "PLANS.md"} ## ${e.section}`),
+      (labels) => joinWithMore(labels, 3),
+    );
     out.push({
       key: "stranded-plans",
       tone: "amber",
@@ -518,7 +533,7 @@ export function teamAlerts(
       title: `${plural(staleBugs.length, "open bug waited", "open bugs waited")} 3+ days for a fix`,
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for a fix` +
-        (rest.length > 0 ? ` · ${entryListDetail(rest.map((r) => r.title))}` : "") +
+        moreDetail(rest.map((r) => r.title)) +
         ` · check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``,
       // The action lands the operator on the first stale bug: the dashboard's backlog arm reads
       // `bugs:index` with a 0-based row, matching the drawer address.
@@ -542,7 +557,7 @@ export function teamAlerts(
       title: `${plural(staleWaitingBugs.length, "waiting bug held", "waiting bugs held")} 7+ days`,
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
-        (rest.length > 0 ? ` · ${entryListDetail(rest.map((r) => `#${r.position} "${r.title}"`))}` : "") +
+        moreDetail(rest.map((r) => `#${r.position} "${r.title}"`)) +
         ` · its flake has not come back — release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
       // The action lands the operator on the first stale waiting bug: the dashboard's backlog arm
       // reads `bugs:index` with a 0-based row, matching the drawer address.
@@ -565,7 +580,7 @@ export function teamAlerts(
       title: `${plural(stalePrompts.length, "queued prompt waited", "queued prompts waited")} 1+ day for its role`,
       detail:
         `inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${duration(first.waitedMs)} — the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with \`tumwater prompt --cancel ${first.position} --role ${first.role}\`` +
-        (rest.length > 0 ? ` · ${entryListDetail(rest.map((p) => `${roleLabel(p.role)} #${p.position}`))}` : ""),
+        moreDetail(rest.map((p) => `${roleLabel(p.role)} #${p.position}`)),
       // The action lands the operator on the Inbox tab (the dashboard's backlog arm reads `act:
       // "queued"` as the Inbox view), where the stranded prompt is cancellable.
       actions: [{ label: "Open inbox", act: "queued" }],
@@ -587,7 +602,7 @@ export function teamAlerts(
       title: `${plural(staleMerges.length, "queued merge waited", "queued merges waited")} 6+ hours to start`,
       detail:
         `${roleLabel(first.role)} — "${first.summary}" — has waited ${duration(first.waitedMs)} to start` +
-        (rest.length > 0 ? ` · ${joinWithMore(rest.map((m) => roleLabel(m.role)), 3)}` : "") +
+        moreDetail(rest.map((m) => roleLabel(m.role)), (labels) => joinWithMore(labels, 3)) +
         ` — the merge queue has stopped moving; run \`tumwater queue\` to see it, or drop the entry with \`tumwater queue --cancel <n>\``,
       // The header's `merge queue: N` badge and the Pending view already carry the drill-in.
       actions: [],
@@ -609,7 +624,7 @@ export function teamAlerts(
       title: `${plural(skippedMergeFiles.length, "merge-queue file is", "merge-queue files are")} unreadable`,
       detail:
         `the queue reader skips ${first} — a torn or foreign file never clears itself, so its merge is stranded; remove it (a crashed enqueue's merge ref still recovers on the next run)` +
-        (rest.length > 0 ? ` · ${joinWithMore(rest, 3)}` : ""),
+        moreDetail(rest, (labels) => joinWithMore(labels, 3)),
       actions: [],
     });
   }
