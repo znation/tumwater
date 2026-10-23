@@ -144,6 +144,30 @@ export function createPendingPane(session: TuiPaneSession) {
     if (retry) lines.push("", retry);
     return lines.join("\n");
   };
+  // Resolve the selected queue row for a pending-pane action (Ctrl+X cancel, Ctrl+V top), or
+  // null when nothing is selected: a list-mode press just tells the operator how to select.
+  // Shared by the cancel and top handlers so the prompt and the row bound stay in one place.
+  const selectedQueueRow = (): { entry: MergeEntry; position: number } | null => {
+    if (selectedQueue === null || queueRows.length === 0) {
+      session.flashMessage("select a merge with ↑↓ first");
+      session.requestRender();
+      return null;
+    }
+    return queueRows[Math.min(selectedQueue, queueRows.length - 1)]!;
+  };
+
+  // True when the queue shifted under the selection (a concurrent drain or another cancel)
+  // moved this entry away from `row.position`: refuse rather than act on the wrong entry.
+  // Shared by the cancel and top handlers for the one "the merge queue changed" wording.
+  const queueShiftedAway = (row: { entry: MergeEntry; position: number }): boolean => {
+    if (queuedMergeFiles(session.root)[row.position - 1]?.entry.sha !== row.entry.sha) {
+      session.flashMessage("the merge queue changed — try again");
+      session.requestRender();
+      return true;
+    }
+    return false;
+  };
+
   // Guard the cancel/top actions against racing a merge that just entered the slot: the
   // selected entry (or one its changes touch) is heading into the merge right now, so acting
   // on it would race the drain. Flash the pane's "being merged" message and return true so
@@ -321,28 +345,14 @@ export function createPendingPane(session: TuiPaneSession) {
       return true;
     }
     if (key.ctrl && key.name === "x" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
-      if (selectedQueue === null || queueRows.length === 0) {
-        // A list-mode press (or any other view) just tells the operator how to select; the
-        // queue is untouched. The first press of the two-step arm is disarmed by beginKey.
-        session.flashMessage("select a merge with ↑↓ first");
-        session.requestRender();
-        return true;
-      }
-      const row = queueRows[Math.min(selectedQueue, queueRows.length - 1)]!;
+      const row = selectedQueueRow();
+      if (row === null) return true;
       if (session.armedQueue?.sha === row.entry.sha && session.armedQueue?.position === row.position) {
         // Second press on the same entry: re-read the queue, guard the in-flight race, then
         // remove it through the CLI's own core (`tumwater queue --cancel <n>`), so the pane,
         // the CLI, and the dashboard cancel cannot drift.
         const confirm = async (): Promise<void> => {
-          const files = queuedMergeFiles(session.root);
-          const target = files[row.position - 1];
-          if (target?.entry.sha !== row.entry.sha) {
-            // A queue that shifted under the selection (a concurrent drain or another cancel)
-            // moved this entry: refuse rather than remove the wrong one.
-            session.flashMessage("the merge queue changed — try again");
-            session.requestRender();
-            return;
-          }
+          if (queueShiftedAway(row)) return;
           if (guardMergeInFlight(row)) return;
           const outcome = await cancelQueuedMerge(session.root, row.position);
           if (outcome.status === "cancelled") {
@@ -373,26 +383,15 @@ export function createPendingPane(session: TuiPaneSession) {
       // cannot drift on the rename or the already-first/out-of-range outcomes. A single
       // keypress is enough because the move is reversible and non-destructive (unlike
       // Ctrl+X's two-step cancel arm).
-      if (selectedQueue === null || queueRows.length === 0) {
-        session.flashMessage("select a merge with ↑↓ first");
-        session.requestRender();
-        return true;
-      }
-      const row = queueRows[Math.min(selectedQueue, queueRows.length - 1)]!;
+      const row = selectedQueueRow();
+      if (row === null) return true;
       const top = async (): Promise<void> => {
         if (row.position === 1) {
           session.flashMessage("merge #1 is already at the front");
           session.requestRender();
           return;
         }
-        const files = queuedMergeFiles(session.root);
-        if (files[row.position - 1]?.entry.sha !== row.entry.sha) {
-          // A queue that shifted under the selection moved this entry: refuse rather than
-          // move the wrong one.
-          session.flashMessage("the merge queue changed — try again");
-          session.requestRender();
-          return;
-        }
+        if (queueShiftedAway(row)) return;
         if (guardMergeInFlight(row)) return;
         const outcome = moveQueuedMergeToTop(session.root, row.position);
         if (outcome.status === "topped") {
