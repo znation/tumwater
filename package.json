@@ -43,6 +43,7 @@
     "test:coverage": "node scripts/live-checkout-guard.mjs && tsc --incremental && node scripts/stamp-build.mjs && node dist/test/test-runner.js --coverage",
     "smoke:claude": "node scripts/smoke-claude.mjs",
     "smoke:opencode": "node scripts/smoke-opencode.mjs",
+    "smoke:codex": "node scripts/smoke-codex.mjs",
     "tumwater": "node scripts/tumwater.mjs"
   },
   "devDependencies": {

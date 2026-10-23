@@ -99,18 +99,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - A fake codex whose delete exits nonzero leaves that session's rollout removed by the fallback.
 - `npm run test:gate` passes.
 
-### Codex backend, part 9d/9: The opt-in `smoke:codex` live check (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9c/9; design in plans/codex-backend.md "Hand steps" and "Risks"; touches scripts/smoke-codex.mjs (new) package.json)
-
-**Goal.** After a Codex upgrade, one live command proves the production invocation still works — the same hand check `smoke:claude` and `smoke:opencode` give.
-
-**Approach.**
-- scripts/smoke-codex.mjs (new; the twin of scripts/smoke-opencode.mjs and scripts/smoke-claude.mjs), run through a new `"smoke:codex"` script in package.json; it is not part of `npm test`.
-- It runs the exact production invocation in a throwaway git repo and lists every step under `--help`/a dry-run without spawning codex: a fresh run that edits a file and runs a command; a resume that recalls it; a SIGTERM mid-command after which no marked process is left; an end-of-run note through `tumwater-notes`; an assertion that the first request is under 10,000 input tokens (8,059 on 0.163.0), catching an isolation regression; a 90-second command polled to completion with no `codex_command_abandoned`; and an assertion that the rollout gave a `five_hour` and a `seven_day` reading.
-
-**Acceptance criteria.**
-- `npm run smoke:codex --help` (or the dry-run flag) prints its steps without spawning codex.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 4/9: Ask codex for the hook's trust key and hash through `hooks/list`, and cache them per build and Codex version (planned 2026-10-23 by user; requires part 3/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)" and finding 3; touches src/agent/codex/codex-hook-trust.ts (new) src/paths.ts test/fakes/fake-codex.ts docs/invariants.md test/codex-hook-trust.test.ts (new))
 
 **Goal.** Codex runs a session-flag hook only with the right `trusted_hash`. The hash is opaque: no simple digest of the definition matched (finding 3). So tumwater asks Codex for it, once per build and Codex version.

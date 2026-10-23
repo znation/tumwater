@@ -5,6 +5,18 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Codex backend, part 9d/9: The opt-in `smoke:codex` live check (planned 2026-10-20 by user; split 2026-10-23 by the plan role out of the too-large part 9/9; requires part 8/9 landed; independent sibling of parts 9a/9, 9b/9 and 9c/9; design in plans/codex-backend.md "Hand steps" and "Risks"; touches scripts/smoke-codex.mjs (new) package.json) — done 2026-10-23 by the feature role
+
+**Goal.** After a Codex upgrade, one live command proves the production invocation still works — the same hand check `smoke:claude` and `smoke:opencode` give.
+
+**Approach.**
+- scripts/smoke-codex.mjs (new; the twin of scripts/smoke-opencode.mjs and scripts/smoke-claude.mjs), run through a new `"smoke:codex"` script in package.json; it is not part of `npm test`.
+- It runs the exact production invocation in a throwaway git repo and lists every step under `--help`/a dry-run without spawning codex: a fresh run that edits a file and runs a command; a resume that recalls it; a SIGTERM mid-command after which no marked process is left; an end-of-run note through `tumwater-notes`; an assertion that the first request is under 10,000 input tokens (8,059 on 0.163.0), catching an isolation regression; a 90-second command polled to completion with no `codex_command_abandoned`; and an assertion that the rollout gave a `five_hour` and a `seven_day` reading.
+
+**Acceptance criteria.**
+- `npm run smoke:codex -- --help` (or the dry-run flag) prints its steps without spawning codex.
+- `npm run test:gate` passes.
+
 ### Reviewer as a regular role, part 2a/4: The merge poll keeps up at fleet scale — FIFO, exactly-once, and the failure limit (planned 2026-10-23 by user; split 2026-10-23 by the plan role out of the too-large part 2/4; design in plans/reviewer-as-role.md "What lands" item 2; requires part 1/4 landed; independent sibling of part 2b/4 — either may land first; touches src/review/post-merge-review.ts src/merge/merge-post-review.ts test/post-merge-review.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** Post-merge review was built for three slow maintenance roles; part 1/4 moved bugfix's, readme's and organize's volume onto it. The one-at-a-time poll must drain the queue: every merged commit is reviewed exactly once, the oldest unreviewed commit goes first, and a busy permit delays a review rather than dropping or reordering it. A verdict-less review drops its commit after POST_REVIEW_FAILURE_LIMIT runs and leaves it on main, because the failure is the reviewer's, not the change's.
