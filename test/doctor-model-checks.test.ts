@@ -1084,6 +1084,70 @@ test("checkOpencode scans the XDG config home, not ~/.config, when XDG_CONFIG_HO
   assert.match(noXdg.detail, /carries an MCP server — disabled for team runs/);
 });
 
+test("checkOpencode warns that the operator's AGENTS.md still loads into team runs", async () => {
+  const root = readyRepo();
+  writeConfig(root, { backend: "opencode", model: "deepseek-v4.1-flash-free" });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/deepseek-v4.1-flash-free": { free: true } },
+  });
+  // A config file that leaks is not needed to warn: AGENTS.md alone still loads, and the watch
+  // names the exact file that carries it.
+  const home = tmpdir("doctor-opencode-home-");
+  fs.mkdirSync(path.join(home, ".config", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".config", "opencode", "AGENTS.md"), "# operator instructions\n");
+  const out = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, path.join(home, ".config"));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /AGENTS\.md still loads into team runs/);
+
+  // No AGENTS.md and no leaking config file: nothing warns, staying ok.
+  fs.rmSync(path.join(home, ".config", "opencode", "AGENTS.md"));
+  const clean = await checkOpencode(root, tmpdir("doctor-opencode-bin-"), home, path.join(home, ".config"));
+  assert.equal(clean.level, "ok");
+  assert.ok(!clean.detail.includes("still loads"), clean.detail);
+});
+
+test("checkOpencode reads an object-shaped auth list and a non-JSON prose list word-bounded", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: { default: { backend: "opencode", model: "anthropic/claude-sonnet" } } });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "anthropic/claude-sonnet": { free: false, inputPerM: 3, outputPerM: 15 } },
+  });
+  // An object-shaped list: a per-credential object vouches for its `provider` value.
+  const bin = tmpdir("doctor-opencode-auth-");
+  writeScript(path.join(bin, "opencode"), 'echo \'[{"provider":"anthropic"}]\'');
+  const obj = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.ok(!obj.detail.includes("non-gateway provider"), obj.detail);
+
+  // Non-JSON prose (the CLI may change shape) is matched word-bounded.
+  writeScript(path.join(bin, "opencode"), "echo 'signed in to anthropic'");
+  const prose = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.ok(!prose.detail.includes("non-gateway provider"), prose.detail);
+
+  // A prose `anthropic-foo` is not the `anthropic` provider: doctor still warns.
+  writeScript(path.join(bin, "opencode"), "echo 'provider anthropic-foo'");
+  const sub = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.equal(sub.level, "warn");
+  assert.match(sub.detail, /non-gateway provider opencode does not list a credential for/);
+});
+
+test("checkOpencode treats a full opencode/<provider>/<model> id as provider-qualified", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: { default: { backend: "opencode", model: "opencode/anthropic/claude-sonnet" } } });
+  writeOpencodeCache(root, {
+    fetchedAt: Date.now(),
+    models: { "opencode/anthropic/claude-sonnet": { free: false, inputPerM: 3, outputPerM: 15 } },
+  });
+  // The three-part id resolves its provider the same as the two-part one, so with no credential
+  // listed the check warns against the full id.
+  const bin = tmpdir("doctor-opencode-auth-");
+  writeScript(path.join(bin, "opencode"), "echo '[]'");
+  const out = await checkOpencode(root, bin, tmpdir("doctor-opencode-home-"));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /opencode\/anthropic\/claude-sonnet is a non-gateway provider opencode does not list a credential for/);
+});
+
 test("parsePiModelList reads pi's list-models table and refuses anything else", () => {
   const header = "provider     model                      context  max-out  thinking  images";
   const table = `${header}\nhuggingface  deepseek-ai/DeepSeek-V3.1  131.1K  8.2K  yes  no\nanthropic    claude-x  200K  8K  yes  yes\n`;
