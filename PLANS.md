@@ -63,20 +63,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The measurable target (stated in the plan, verified by hand after landing): first-rejection → second-rejection on the *same* reason drops against the 10-21→23 audit baseline.
 - `npm run test:gate` passes.
 
-### Check-permit priority, part 1/2: Merge-scope checks jump the permit queue; the cap stays 3 (planned 2026-10-23 by user; design in plans/check-permit-priority.md "The decision" and "What lands"; evidence: 639 suite runs through 3 permits over 58 h at ~20% occupancy yet 6.3 h of check_wait idle, max 24 min (feature-6, 10-21T13:38Z) — synchronized arrivals, not steady-state load; touches src/concurrency/check-permit.ts src/build/build-check-events.ts and their tests)
-
-**Goal.** The most expensive wait in the system is a gate check parking the merge-slot holder: the merge lock is held through the in-lock check (src/merge/merge-to-main.ts, INV-CT1), so every other merge serializes behind it. Give merge-scope checks queue priority over gate-scope checks; within a scope, FIFO stays.
-
-**Approach.**
-- src/concurrency/check-permit.ts: `withCheckPermit` gains a scope argument (`"merge" | "other"`; batch and baseline stay `"other"` — a merge-scope check waiting matters because it holds the lock, the others do not). The semaphore keeps its shrink-preemption and its re-entrancy guard (a nested permit runs inside the held one) — the priority lane routes through the same entry point, so no double-grant.
-- A merge-scope request parks in a priority lane ahead of queued `"other"` waiters; the next released permit grants the lane's head first. At most one priority check per merge batch (mergeBatchMax changes share one), so sustained merge pressure cannot starve gate checks outright.
-- No new event: a priority jump is not a wait worth a `check_wait` (src/events/events.ts's `heldBy` wording is unchanged).
-
-**Acceptance criteria.**
-- A test with 3 held permits and queued gate waiters: a merge-scope request is granted on the first release, ahead of earlier-queued gate requests; with no merge request queued, grants are FIFO as today.
-- A nested permit inside a held one still runs inline without queueing; a config shrink still preempts as today (their existing tests pass untouched).
-- `npm run test:gate` passes.
-
 ### Check-permit priority, part 2/2: Measure after the reviewer plan lands, then decide whether the cap rises (planned 2026-10-23 by user; design in plans/check-permit-priority.md "What lands" item 2; requires reviewer-as-role parts 1/4 and 3/4 landed (post-merge review removes the demoted roles' pre-merge gate checks; the convergence rule removes the 3–6-round tail that multiplies one item into a dozen checks); touches tumwater.json docs/config.md)
 
 **Refused 2026-10-23 by feature: executing the decision now needs one week of post-reviewer-plan `check_wait` data, but reviewer-as-role parts 1/4 and 3/4 are still under `## Planned` (not landed), so no evidence exists and raising the cap 3→4 now would be the theory-knob this plan's "not a knob raised on theory" decision rejects**

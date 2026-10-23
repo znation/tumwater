@@ -270,6 +270,31 @@ test("a queued merge-scope check is granted the next permit ahead of queued gate
   assert.deepEqual(order, ["mergeCheck", "gate"]);
 });
 
+test("at a cap of 3 a merge-scope check is granted ahead of earlier-queued gate checks", { timeout: 10_000 }, async () => {
+  // The plan's audit scenario (plans/check-permit-priority.md): 3 permits held, gate checks queued
+  // behind them, then a merge-scope check arrives. It runs inside the merge lock, so it takes a
+  // freed permit ahead of every earlier-queued gate check; the gates keep FIFO among themselves.
+  // A granted check that finishes immediately releases, handing its permit to the next waiter, so
+  // the order they all finish in still shows the merge jumped the queue (without priority, FIFO
+  // would finish gate1, gate2, then merge).
+  const cfg = { maxConcurrentChecks: 3 };
+  const order: string[] = [];
+  const release: Array<() => void> = [];
+  const held = Array.from({ length: 3 }, () =>
+    withCheckPermit(cfg, CHECK_TIER.other, () => new Promise<void>((resolve) => release.push(resolve))),
+  );
+  const gate1 = withCheckPermit(cfg, CHECK_TIER.other, async () => void order.push("gate1"));
+  await flushImmediate(); // gate1 parks behind the three holders
+  const gate2 = withCheckPermit(cfg, CHECK_TIER.other, async () => void order.push("gate2"));
+  const mergeCheck = withCheckPermit(cfg, CHECK_TIER.merge, async () => void order.push("merge"));
+  // The merge parked ahead of gate1/gate2, at the better tier.
+  release.shift()!();
+  release.shift()!();
+  release.shift()!();
+  await Promise.all([...held, gate1, gate2, mergeCheck]);
+  assert.deepEqual(order, ["merge", "gate1", "gate2"]);
+});
+
 test("a check-permit request from inside a held permit runs under it instead of deadlocking", { timeout: 10_000 }, async () => {
   // At a cap of 1 a second wait from the holder could never be granted — its own holder is the
   // one blocking it. No call path nests today; this pins that a future one cannot wedge checks.
