@@ -1059,6 +1059,32 @@ test("role --provider/--model/--thinking (and --clear-*) write the role's model 
   assert.equal(config().roles.director.thinking, "medium");
 });
 
+test("role writes report a broken tumwater.json instead of crashing on it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role broken config");
+
+  // A tumwater.json that cannot be parsed makes every config-core write fail. The role write
+  // branches' `if (!result.ok) fail(result.error)` path must surface the parse error — the same
+  // wording `config set` gives — and leave the (already broken) file untouched rather than
+  // crash or half-write. requireKnownRole falls back to defaultConfig on a failed load, so the
+  // id still resolves and the write reaches the config core.
+  const broken = "{ broken";
+  fs.writeFileSync(path.join(repo, "tumwater.json"), broken);
+  const instFile = path.join(repo, "inst.md");
+  fs.writeFileSync(instFile, "keep me");
+  for (const args of [
+    ["feature", "--cap", "5"], // the shared six-hold set path (writeRoleConfigKey)
+    ["feature", "--clear-cap"], // the shared six-hold unset path
+    ["feature", "--enable"], // the enable/disable write
+    ["feature", "--instructions-file", instFile], // the instructions block
+  ] as const) {
+    const r = await cli(repo, "role", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.match(r.stderr, /tumwater\.json is not valid JSON/, args.join(" "));
+    assert.equal(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"), broken, "file untouched");
+  }
+});
+
 test("a valued role write flag followed by another flag refuses with its own needs-a-value wording", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role flag-as-value");
