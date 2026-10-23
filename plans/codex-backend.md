@@ -190,7 +190,7 @@ logged in with ChatGPT, `plan_type: "plus"`. The probes ran in throwaway git rep
       closing event is written.
     - SIGKILL leaves the same orphan.
     - The orphan's environment still carries `TUMWATER_RUN` (checked on a `node` child). So
-      run-agent's marker sweep is what ends it.
+      run-settle's marker sweep is what ends it.
     - `codex exec` runs in-process. A shared `codex app-server` daemon was running
       (`daemon_auto_start` is on), but the run's commands were children of the exec process, not
       of the daemon.

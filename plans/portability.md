@@ -941,7 +941,8 @@ happened since. Every load-bearing claim re-verified on this tree; six correctio
 four load-bearing.**
 
 Verified as written: `spawn("pi", …)` was then the single pi spawn (now
-src/agent/run-agent.ts), the `SPAWN_ERROR_PREFIX` constant sits in src/agent/run-agent.ts, and
+src/agent/run-agent.ts), the `SPAWN_ERROR_PREFIX` constant sits in src/agent/run-settle.ts (it
+moved with the post-run settlement split), and
 `grep -rn 'findOnPath("pi")' src/` then returned exactly the two named gates — `cmdRun`'s preflight
 (now src/cli/cli-run.ts, src/gates/startup-gate.ts) and `checkPiBinary` (now `checkAgentBinary` in
 src/doctor/doctor-checks.ts). `TumwaterConfig` and `TOP_LEVEL_KEYS` are src/config/config-schema.ts;
@@ -1017,7 +1018,8 @@ except where re-pinned here.**
    PATH-resolution path in doctor would break that promise.
 2. **Line pins refreshed.** The single pi spawn is in src/agent/run-agent.ts (the spawn gained
    `detached: true` and a process-group kill, `c73363e` — no interaction with this entry);
-   `SPAWN_ERROR_PREFIX` and `PiRunOptions.config` are in src/agent/run-agent.ts; `TOP_LEVEL_KEYS`
+   `SPAWN_ERROR_PREFIX` is in src/agent/run-settle.ts (moved with the settlement split);
+   `PiRunOptions.config` is in src/agent/run-agent.ts; `TOP_LEVEL_KEYS`
    is src/config/config-schema.ts; `loadConfigSafe` is src/config/config.ts. `cmdRun`'s preflight
    still precedes its `loadConfig` (src/cli/cli-run.ts), so correction 4 stands as written;
    `findOnPath` (src/files/files.ts) is unchanged, so correction 3 stands.

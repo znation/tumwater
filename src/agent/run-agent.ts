@@ -1,26 +1,29 @@
 /** The backend-neutral agent runner (plans/agent-backends.md \"The seam\"): everything a run
  * needs regardless of which agent it drives — the spawn, the `tumwater_run` raw-log marker,
- * the watchdog wiring, abort, the group kill and marker sweep, stderr capture, and result
- * assembly. The backend (src/agent/agent-backend.ts, with pi in src/pi/pi-backend.ts) supplies
- * the argv/stdin/env, the native-to-canonical stdout translator, the stderr warning matcher,
- * and the exit classification. `runPi` (src/pi/pi.ts) is the thin alias the existing call sites
- * use, so a caller and its fakes are untouched by this split. */
+ * the watchdog wiring, abort, and stderr capture. The backend (src/agent/agent-backend.ts, with
+ * pi in src/pi/pi-backend.ts) provides the argv/stdin/env, the native-to-canonical stdout
+ * translator, the stderr warning
+ * matcher, and the exit classification. This file keeps the live lifecycle — pre-spawn setup,
+ * `prepare`, spawn, decoders, the stream pipeline, the watchdogs and the feed — and delegates
+ * the post-run settlement (spawn-error result, exit orphan sweep, close-time reconcile and
+ * classify) to src/agent/run-settle.ts. `runPi` (src/pi/pi.ts) is the thin alias the existing
+ * call sites use, so a caller and its fakes are untouched by this split. */
 
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import type { ResolvedModelConfig } from "../config/config-views.js";
 import { ensureDir, ensureParentDir, removeTree, rotateIfLarge } from "../files/files.js";
-import { backendBinConfigKey, backendBinSourceLabel, type ResolvedBackendBin } from "../pi/pi-bin.js";
+import type { ResolvedBackendBin } from "../pi/pi-bin.js";
 import { runOnAbort, terminateChild } from "../process/process.js";
-import { leftoversSweptMessage, makeRunMarker, sweepRunMarker } from "../process/run-marker.js";
+import { makeRunMarker } from "../process/run-marker.js";
 import type { PiRunKind } from "../pi/pi-event-line.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentRunSpec } from "./agent-backend.js";
+import { DEFAULT_BACKEND, backendById, registerAgentBackend, type AgentBackend, type AgentInvocation, type AgentRunSpec, type StreamTranslator } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -28,6 +31,7 @@ import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
 import { codexBackend } from "./codex/codex-backend.js";
 import { opencodeBackend } from "./opencode/opencode-backend.js";
+import { setupFailureResult, settleClose, settleError, settleExit } from "./run-settle.js";
 import { seamImageInput } from "./image-input.js";
 import { ensureNotesShim } from "./notes-shim.js";
 import { nearestTumwaterRoot } from "../paths.js";
@@ -53,25 +57,36 @@ registerAgentBackend(claudeBackend);
 registerAgentBackend(opencodeBackend);
 registerAgentBackend(codexBackend);
 
-/** Prefix of PiRunResult.errorMessage when the agent process never started (no session file
- * is created for such a run). The resolved binary follows it, so a configured agentBin
- * reads "failed to spawn <bin>" rather than blaming an ambient "pi". */
-const SPAWN_ERROR_PREFIX = "failed to spawn";
-
-/** The spawn-error message for a resolved binary: the default source keeps today's text
- * ("failed to spawn pi: …"); a configured source names the binary and where it came from —
- * the backend's own env var and config key (backendBinConfigKey) — so a wrong
- * `backends.claude.bin` does not read as pi's legacy `agentBin`. */
-function spawnErrorMessage(
-  resolved: ResolvedBackendBin,
-  errMessage: string,
-  backend: AgentBackend,
-): string {
-  const source =
-    resolved.source === "default"
-      ? ""
-      : ` (resolved from ${backendBinSourceLabel(resolved.source, backend.binEnv, backendBinConfigKey(backend.id))})`;
-  return `${SPAWN_ERROR_PREFIX} ${resolved.bin}${source}: ${errMessage}`;
+/** The live state a running agent shares with the settlement half (src/agent/run-settle.ts):
+ * what the `error`/`exit`/`close` handlers run-settle owns read at the moment their event
+ * fires. run-agent constructs it (the getters read through to the run's still-mutating feed
+ * state — the stderr buffer, the fallback-clone flag, the settled/aborted/blind-read flags and
+ * the kill classification), and run-settle imports only this type, so there is no runtime
+ * import cycle: run-agent imports run-settle's handlers at runtime and run-settle imports
+ * nothing of run-agent's runtime surface. */
+export interface RunSettleState {
+  child: ChildProcess;
+  resolved: ResolvedBackendBin;
+  backend: AgentBackend;
+  runMarker: string;
+  parser: PiStreamParser;
+  translator: StreamTranslator;
+  decoder: StringDecoder;
+  wd: ReturnType<typeof startPiWatchdogs>;
+  finish: (result: PiRunResult) => void;
+  feedCanonical: (text: string, final?: boolean) => void;
+  onLine: (line: string) => void;
+  runSpec: AgentRunSpec;
+  invocation: AgentInvocation;
+  stderr: () => string;
+  fallbackClone: () => string | undefined;
+  settled: () => boolean;
+  blindRead: () => string | undefined;
+  aborted: () => boolean;
+  wasKilled: () => boolean;
+  kind: PiRunKind;
+  config: ResolvedModelConfig;
+  onLeftoversSwept?: (message: string) => void;
 }
 
 /** A best-effort append log: its parent is created and it is rotated when oversized before the
@@ -165,38 +180,6 @@ export interface PiRunOptions {
    * (plans/agent-backends.md §7): the claude backend forwards it as `--max-budget-usd`, and
    * backends with no such flag ignore it. Undefined means no per-run cap. */
   maxBudgetUsd?: number;
-}
-
-/** The failed result of a run that never started: all counters zero, all flags false. */
-function setupFailureResult(agent: string, message: string): PiRunResult {
-  return {
-    ok: false,
-    finalText: "",
-    nothingToDo: false,
-    refused: false,
-    agent,
-    outputTokens: 0,
-    promptTokens: 0,
-    cacheReadTokens: 0,
-    preEditPromptTokens: 0,
-    peakContextTokens: 0,
-    turns: 0,
-    costUsd: 0,
-    errorMessage: message,
-    timedOut: false,
-    timedOutProgressing: false,
-    aborted: false,
-    quietKilled: false,
-    contextExceeded: false,
-    transientServerTimeout: false,
-    transientPiCrash: false,
-    transientRateLimit: false,
-    transientBackend: false,
-    configError: false,
-    finalMessageContentless: false,
-    producedAssistantContent: false,
-    compacted: false,
-  };
 }
 
 /** Run the configured agent backend non-interactively in a worktree and distill the result.
@@ -596,58 +579,36 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       if (pending === 0) settle();
     };
 
-    // Every PiRunResult is built here from what the parser has seen plus how the run ended,
-    // so adding a field to PiRunResult touches this single place. The spawn-error path passes
-    // only an errorMessage override: at that point no output ever arrived, so the parser holds
-    // exactly its initial values — which is precisely what a failed spawn reports.
-    const resultFromParser = (overrides: Partial<PiRunResult>): PiRunResult => ({
-      ok: false,
-      finalText: parser.finalText,
-      nothingToDo: parser.declaredNothingToDo,
-      refused: parser.refused,
-      refusedReason: parser.refusedReason || undefined,
-      verdictText: parser.verdictText || undefined,
-      agent: backend.id,
-      outputTokens: parser.outputTokens,
-      promptTokens: parser.promptTokens,
-      cacheReadTokens: parser.cacheReadTokens,
-      preEditPromptTokens: parser.preEditPromptTokens,
-      firstEditTurn: parser.firstEditTurn,
-      peakContextTokens: parser.peakContextTokens,
-      turns: parser.turns,
-      costUsd: parser.costUsd,
-      stopReason: parser.stopReason,
-      errorMessage: undefined,
-      timedOut: false,
-      timedOutProgressing: false,
-      quietKilled: false,
-      aborted,
-      contextExceeded: parser.contextExceeded,
-      transientServerTimeout: parser.transientServerTimeout,
-      transientRateLimit: parser.transientRateLimit,
-      transientBackend: parser.transientBackend,
-      backendKind: parser.backendFailureKind,
-      configError: parser.configError,
-      retryAfterSeconds: parser.retryAfterSeconds,
-      transientPiCrash: false,
-      fallbackClone,
-      finalMessageContentless: parser.finalMessageContentless,
-      producedAssistantContent: parser.producedAssistantContent,
-      compacted: parser.compacted,
-      budgetCapped: parser.budgetCapped,
-      resumeMissing: parser.resumeMissing,
-      billing: parser.billing,
-      rateWindows: parser.rateWindows.length > 0 ? parser.rateWindows : undefined,
-      usedOverage: parser.usedOverage,
-      ...overrides,
-    });
+    // The run state the settlement-half handlers (run-settle.ts) read when their event
+    // fires. The getters read through to the run's still-mutating feed state, so a handler
+    // sees the current value rather than a snapshot taken when its listener was registered.
+    const state: RunSettleState = {
+      child,
+      resolved,
+      backend,
+      runMarker,
+      parser,
+      translator,
+      decoder,
+      wd,
+      finish,
+      feedCanonical,
+      onLine,
+      runSpec,
+      invocation,
+      stderr: () => stderr,
+      fallbackClone: () => fallbackClone,
+      settled: () => settled,
+      blindRead: () => blindRead,
+      aborted: () => aborted,
+      wasKilled: () => wasKilled(),
+      kind: opts.kind,
+      config: opts.config,
+      onLeftoversSwept: opts.onLeftoversSwept,
+    };
 
     child.on("error", (err) => {
-      finish(
-        resultFromParser({
-          errorMessage: spawnErrorMessage(resolved, err.message, backend),
-        }),
-      );
+      settleError(state, err);
     });
 
     // Sweep the run however it ended, a normal exit included, in two passes:
@@ -671,81 +632,12 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     //    awaited — the run resolves on pi's output, and the sweep's own SIGKILL escalation
     //    (10 s) is unref'd like signalTree's.
     child.on("exit", () => {
-      terminateChild(child);
-      void sweepRunMarker(runMarker)
-        .then((n) => {
-          const msg = leftoversSweptMessage(opts.kind, n, wasKilled());
-          if (msg) opts.onLeftoversSwept?.(msg);
-        })
-        .catch(() => {});
+      settleExit(state);
     });
 
     child.on("close", (code) => {
-      // Flush any bytes the decoder held back at stream end and any unterminated final line
-      // so the tail is not lost, then let the translator flush its own pending canonical
-      // line(s) — a batching backend's unclosed last assistant message, which a killed run
-      // never closes with a later event.
-      feedCanonical(decoder.end(), true);
-      for (const canonical of translator.finalize?.() ?? []) parser.feed(canonical + "\n", onLine);
-      // A blind image read on an authoring run deliberately killed it (terminateRun above),
-      // so its exit is a kill like the watchdogs' — the half-done work is discarded.
-      const killed = wasKilled();
-      // The backend's post-run reconciliation (opencode's authoritative session export), only
-      // when the run is not already settled (a failed spawn settles in the 'error' handler
-      // before 'close') and was not killed — a killed run's session is half-done and no export
-      // should spend its 10 s on it. Its lines are written and parsed like streamed ones, so
-      // they reach the raw log and the parser's authoritative fold (run_cost/run_usage).
-      if (!settled && !killed) {
-        for (const canonical of backend.afterRun?.(runSpec, invocation, translator) ?? []) {
-          parser.feed(canonical + "\n", onLine);
-        }
-      }
-      const failed =
-        killed ||
-        parser.stopReason === "error" ||
-        (code !== 0 && !parser.finalText.trim());
-      // The backend classifies the exit's stderr (pi: the transient JSON-parse crash, a
-      // provider-wide backend failure, a permanent config error). The runner merges that with
-      // the parser's own event-derived flags — one exit has one cause.
-      const cls = backend.classifyExit({ code, stderr, killed });
-      const stderrBackend = cls.backendKind;
-      const configError =
-        !killed &&
-        cls.transientPiCrash !== true &&
-        stderrBackend === undefined &&
-        (parser.configError || cls.configError === true);
-      // The blind-read failure names both the file and the model (plans/image-input.md
-      // "Failing the run"): take it over any generic exit text so lastError is actionable.
-      const errorMessage = blindRead !== undefined
-        ? `read ${blindRead}, but ${opts.config.model ?? "the model"} cannot read images`
-        : aborted
-          ? "stopped by tumwater shutdown"
-          : wd.quietKilled
-            ? `killed as hung: no agent progress for over ${opts.config.quietTimeoutSeconds}s`
-            : wd.timedOut
-              ? wd.timedOutProgressing
-                ? `timed out after ${wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
-                : `timed out after ${wd.timeoutBudgetMs / 1000}s`
-              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `the agent exited ${code}` : undefined));
-      finish(
-        resultFromParser({
-          ok: !failed,
-          transientPiCrash: cls.transientPiCrash === true,
-          transientBackend: parser.transientBackend || cls.transientBackend === true,
-          backendKind: parser.backendFailureKind ?? stderrBackend,
-          configError,
-          // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
-          // intact, so the runner resumes them (quiet_killed) instead of discarding them as an
-          // unfulfilled timeout does. A deadline that fired on a run still making progress
-          // gets the same treatment (BUGS.md 2026-09-29).
-          timedOut: wd.timedOut,
-          timedOutProgressing: wd.timedOut && wd.timedOutProgressing,
-          quietKilled: wd.quietKilled,
-          imageBlind: parser.imageBlind,
-          errorMessage,
-        }),
-      );
-      });
+      settleClose(state, code);
+    });
     } catch (err) {
       // A synchronous throw in the run's build-and-spawn stage (claude's invocation rejects a
       // run with no resolved model) rejects the run, preserving the contract a synchronous

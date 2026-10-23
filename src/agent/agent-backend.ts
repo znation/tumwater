@@ -1,8 +1,10 @@
 /** The backend seam (plans/agent-backends.md "The seam"): what one non-interactive agent
  * run needs from its backend — how to build the command, how to translate its native stdout
  * into tumwater's canonical event stream, and how to classify its exit. src/agent/run-agent.ts
- * owns everything backend-neutral (spawn, marker, watchdogs, abort, group kill and marker
- * sweep, stderr capture); a backend registered here supplies the rest. src/agent/run-agent.ts
+ * owns everything backend-neutral (spawn, marker, watchdogs, abort, stderr capture); the
+ * post-run settlement — the group-kill and marker sweeps on exit, the spawn-error result and
+ * the close-time reconcile/classify that builds the `PiRunResult` — lives in
+ * src/agent/run-settle.ts. A backend registered here supplies the rest. src/agent/run-agent.ts
  * registers the pi and claude adapters here.
  *
  * The registry is keyed by id and fed by explicit registration (src/agent/run-agent.ts
