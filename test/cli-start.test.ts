@@ -11,7 +11,8 @@ import type { RunnerState } from "../src/runner/runner-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { sleep } from "./helpers/wait.js";
 
-// Unit seam for cli/cli-start.ts's onceSummary — the one-line `tumwater start --once` summary a
+// Unit seam for cli/cli-start-summary.ts's onceSummary — the one-line `tumwater start --once`
+// summary a
 // cron log keeps. The orchestrator-level behavior (which settle reason a real round hands back,
 // deferred included) is pinned end to end by test/orchestrator-once.e2e.test.ts; these tests
 // pin the summary's own accounting at unit level: run counting against the pre-round

@@ -416,8 +416,9 @@ export function zeroCounters(s: RunnerState): RunnerState {
 
 /** The skip reason a runner's persisted state yields when it does not run this round: a pending
  * resume wait outranks backoff, anything else is idle. The shared tail of the two skip
- * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli/cli-start.ts's
- * once-summary (which adds the team-pause arm) — so the two surfaces cannot drift on which
+ * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and
+ * cli/cli-start-summary.ts's once-summary (which adds the team-pause arm) — so the two surfaces
+ * cannot drift on which
  * reason wins when several conditions hold at once. */
 export function stateSkipReason(
   s: Pick<RunnerState, "resumePending" | "backoffSeconds">,
