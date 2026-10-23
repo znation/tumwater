@@ -133,6 +133,37 @@ function seed(
   counter.ino = stat?.ino ?? 0;
 }
 
+/** Refresh the memo from a live, readable log file: seed it (a full windowed read) when this is
+ * the first count or the file's identity says a prior append cannot be trusted (rotation,
+ * truncation, replacement); otherwise fold only the appended bytes since the last poll. A read
+ * that fails mid-fold leaves the memo's existing records counting; retry next poll. */
+function refreshFromReadable(
+  counter: MaintenanceWindowCounter,
+  root: string,
+  cutoff: number,
+  readable: { mtimeMs: number; dev: number; ino: number },
+  info: { unchanged: boolean; size: number; mtimeMs: number; dev: number; ino: number },
+): void {
+  const needSeed =
+    !counter.seeded ||
+    (!info.unchanged && !(info.size > counter.offset && info.dev === counter.dev && info.ino === counter.ino));
+  try {
+    if (needSeed) {
+      seed(counter, root, cutoff, readable);
+      return;
+    }
+    if (info.unchanged) return;
+    const { lines, end } = readCompleteLines(eventsLogPath(root), counter.offset, info.size);
+    if (end > counter.offset) {
+      for (const line of lines) foldLine(counter.records, line);
+      counter.offset = end;
+    }
+    counter.mtimeMs = info.mtimeMs;
+  } catch {
+    // Unreadable this poll: the memo's existing records still count; retry next poll.
+  }
+}
+
 /** One enabled role as the quota gate reads it: whether a maintenance-tier run is in flight
  * (mid-run or holding a queued merge). Only the two in-flight facts matter; the tier is
  * derived from the role here, so the caller passes every runner unchanged. */
@@ -225,20 +256,7 @@ export function countMaintenanceWindow(
     { dev: counter.dev, ino: counter.ino, mtimeMs: counter.mtimeMs, size: counter.offset },
   );
   if (readable) {
-    try {
-      if (!counter.seeded || (!unchanged && !(size > counter.offset && dev === counter.dev && ino === counter.ino))) {
-        seed(counter, root, cutoff, readable);
-      } else if (!unchanged) {
-        const { lines, end } = readCompleteLines(eventsLogPath(root), counter.offset, size);
-        if (end > counter.offset) {
-          for (const line of lines) foldLine(counter.records, line);
-          counter.offset = end;
-        }
-        counter.mtimeMs = mtimeMs;
-      }
-    } catch {
-      // Unreadable this poll: the memo's existing records still count; retry next poll.
-    }
+    refreshFromReadable(counter, root, cutoff, readable, { unchanged, size, mtimeMs, dev, ino });
   } else if (stat === null && !counter.seeded) {
     // The log does not exist yet: seed an empty memo — the same state a first read of an empty
     // window yields — so the first count is remembered and a log that appears later seeds
