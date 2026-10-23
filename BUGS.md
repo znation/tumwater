@@ -75,6 +75,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a hanging fake rejects within timeoutMs and its child is gone afterwards
 ~~~~
 
+**Progress 2026-10-23 by bugfix: not reproduced in ~35 runs — the file alone, 8 concurrent copies, and 20 concurrent copies under 6 CPU+spawn-churn load loops (all green). A controlled probe of the same detached direct child showed the SIGKILLed leader is reaped in ~12 ms even after `releaseChildHandles` unrefs it, so the 2 s `gone` poll window covers the reap by orders of magnitude — the reap-lag reading is unlikely. The remaining load-dependent candidate is pid reuse: under the full suite's thousands of concurrent spawns a freed app-server pid can be handed to another process, and `process.kill(pid, 0)` then succeeds for the whole 2 s window no matter how fast the parent reaps. Every assertion's failure message already names its numbers.**
+
+**Waiting for the next failure 2026-10-23 by bugfix: which assertion fires and its figures — the `gone` assertion's `hanging app-server pid <pid> still alive` (a pid probe that can also hit a reused pid), or the rejects/pid-file assertions' messages**
+
 ## Fixed
 
 ## Verified
