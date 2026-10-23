@@ -17,6 +17,7 @@ const ALL_COMMANDS = [
   "history",
   "diff",
   "queue",
+  "reviews",
   "backlog",
   "quarantine",
   "archive",

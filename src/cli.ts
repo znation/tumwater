@@ -309,6 +309,9 @@ async function main(): Promise<void> {
     case "queue":
       await (await import("./cli/cli-query-commands.js")).cmdQueue(root, args);
       break;
+    case "reviews":
+      await (await import("./cli/cli-review-commands.js")).cmdReviews(root, args);
+      break;
     case "backlog":
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;

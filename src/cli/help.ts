@@ -244,6 +244,16 @@ Usage:
                                    execution order (so it merges next when ready), preserving any
                                    notBefore deferral, refusing an entry a live merge is merging and
                                    --role/-f, and answering already-first for position 1
+  tumwater reviews [--json]       List the post-merge review queue (\.tumwater/state
+                                   /post-review.json) in FIFO order: one line per merged commit
+                                   waiting for its review — position, role, short sha, summary,
+                                   and either its rejected reasons
+                                   (\`[rejected — waiting to revert: …]\`) or its
+                                   failed-review-run count (\`[N failed review runs]\`); an empty
+                                   queue prints \`post-merge review queue empty\`; --json prints
+                                   the normalized { pending: [...] } list for scripts; read-only,
+                                   no ready-repo gate (a missing or torn file degrades to the
+                                   empty or well-formed list)
   tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
