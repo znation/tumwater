@@ -24,11 +24,15 @@ export function fakeBins(...names: string[]): string {
   return dir;
 }
 
-/** A ready repo: one commit on main plus a valid tumwater.json (the empty object — all
- * defaults). */
+/** A ready repo: one commit on main plus a valid tumwater.json — all defaults except the
+ * disk floor, which is disabled (both thresholds 0). The disk check reads the host's real
+ * free space, and a hosted runner under the 10 GB default floor would fail its row, fail
+ * every exit-0/verdict assertion below, and hold the e2e roles' runs elsewhere (CI's
+ * ubuntu-26.04 image, 2026-10-22). The disk row stays covered by its injected-sample tests
+ * in doctor-checks.test.ts; every test here wants a deterministic all-ok report. */
 export function readyRepo(): string {
   const root = makeRepo();
-  writeConfig(root, {});
+  writeConfig(root, { diskHoldGB: 0, diskReclaimGB: 0 });
   return root;
 }
 

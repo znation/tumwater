@@ -47,6 +47,9 @@ test("pollTeamGates: a breaker trip logs role_streak_paused once — no duplicat
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs"] },
+    // Injected so a hosted runner's real free space cannot also pause docs through the
+    // disk floor, muddying what the breaker's own pause did.
+    sampleFree: () => 100 * BYTES_PER_GB,
   };
 
   // Poll 1: the breaker trips — the scheduler's paused-roles view must block the role on
@@ -548,6 +551,9 @@ test("pollTeamGates: capPaused reflects maxDailyCostUsdPerRole; an absent key yi
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", DIRECTOR_ROLE] },
+    // Injected so a hosted runner's real free space cannot add docs to pausedRoles
+    // through the disk floor and fail the set-separation assertion below.
+    sampleFree: () => 100 * BYTES_PER_GB,
   };
 
   const first = pollTeamGates(states, ctx);
@@ -654,6 +660,11 @@ test("pollTeamGates: roleQuietHeld names the roles their own quiet window holds;
     modelsPath: path.join(root, "models.json"),
     now: Date.now(),
     info: { pid: process.pid, startedAt: 0, roles: ["docs", "coverage", "qa", DIRECTOR_ROLE] },
+    // The disk sampler is injected (as the disk test below does) so a hosted runner with
+    // little real free space cannot hold docs through the disk floor and fail the
+    // pausedRoles assertion (CI's ubuntu-26.04 image, 2026-10-22); this test is about
+    // quiet windows alone.
+    sampleFree: () => 100 * BYTES_PER_GB,
   };
   // A mid-day poll: docs' near-all-day window holds, coverage's empty window is off, qa's
   // wrapping window only holds late night. `now` is pinned to a fixed local mid-day instead
