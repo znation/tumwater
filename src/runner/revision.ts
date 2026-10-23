@@ -11,6 +11,7 @@ import { stampedSubject } from "../git/commit-message.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { entryKey } from "../backlog/backlog-parts.js";
 import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import { CONVERGENCE_HOLD_MARKER } from "../roles/role-guidance.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 import { logEventBestEffort } from "../events/events.js";
 
@@ -66,7 +67,7 @@ export async function holdEntryAfterExhaustion(
 ): Promise<void> {
   if (claim?.file !== "PLANS.md") return;
   const note =
-    `**Needs review ${formatDate(new Date())} by ${baseRoleOf(role)}: could not converge` +
+    `**Needs review ${formatDate(new Date())} by ${baseRoleOf(role)}: ${CONVERGENCE_HOLD_MARKER}` +
     (reasons.length === 0 ? "" : ` — ${reasons.join("; ")}`) +
     `**`;
   try {

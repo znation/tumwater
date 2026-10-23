@@ -3686,7 +3686,9 @@ PLANS.md entry, the plan is held for the plan role with a `**Needs review …**`
 names the surviving objections verbatim, so it is not left re-pickable to restart the same
 non-converging cycle (the convergence rule); the hold is committed on main by
 `commitOperatorBacklogEdit`, like every other backlog write, and is best-effort, never turning
-the already-terminal exhaustion into a throw. A BUGS.md claim is never held — no role resolves a
+the already-terminal exhaustion into a throw. The hold's `could not converge` marker
+(`CONVERGENCE_HOLD_MARKER`) is the same literal the plan role's charter names, so the plan role
+rewrites the plan from the note's quoted objections rather than leaving it parked. A BUGS.md claim is never held — no role resolves a
 Needs-review hold on a bug (`tumwater bug --release` keeps the note, INV-AT1), so holding one
 would be a permanent dead-end. Otherwise the ref points at the judged head and the round
 advances. The director never revises.
@@ -3699,7 +3701,10 @@ head and records round 1", "a rejection whose objection has survived two revisio
 deletes the rejected ref", "a converging chain whose revisions raise only new objections keeps
 revising", "a chain whose objections never repeat ends at the backstop", "an exhausted chain holds
 the entry with the surviving objections, not a fresh pick" and "the director never
-gets a revision: a rejection leaves no revision state"; `test/revision-prior-tags.test.ts` — "a
+gets a revision: a rejection leaves no revision state"; `test/prompt-roles.test.ts` — "the plan
+role prioritizes a Needs review plan, clears the note after splitting, and stops while plans
+wait"; `test/role-guidance.test.ts` — "the convergence-hold marker is embedded in the plan
+charter and pinned to its literal"; `test/revision-prior-tags.test.ts` — "a
 (prior N) tag beyond the prior list, or with no prior list, counts one revision and is not final".
 
 ### INV-BH5: a re-apply git could not start keeps the revision and its ref

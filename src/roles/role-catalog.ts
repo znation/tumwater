@@ -7,6 +7,7 @@
 
 import {
   backlogMoveGuidance,
+  CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
   HELD_TAG_PREFIX,
   NEEDS_REPLAN_NOTE,
@@ -138,6 +139,11 @@ within that budget, there is nothing to do.`,
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently mergeable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.
+      - A plan held by the automatic convergence hold (${CONVERGENCE_HOLD_MARKER}) also outranks
+        adding another plan: the text after the dash is the reviewer's surviving objections, so read
+        the quoted objections and the code they name and rewrite the plan so an implementation
+        following it would answer each — correcting the approach or the anchors, tightening the
+        acceptance criteria, or splitting it per PLAN_SIZING — then remove the note.
       - A plan carrying a ${NEEDS_REPLAN_NOTE} note also outranks adding another plan: read the
         quoted objections and the code they name, then rewrite the plan so an implementation
         following it would answer them — correcting the approach or the anchors, tightening the
@@ -149,7 +155,8 @@ within that budget, there is nothing to do.`,
         produces, then write \`${PRIOR_HELD_PREFIX}<N>**\` at the lifted note's count on the
         parent and copy it to each child, so exactly one marker survives and heldCount reads the
         lifted count everywhere — a merged parent (one whose plan left \`## Planned\`) leaves no
-        marker.
+        marker, and a note with no \`(held N)\` tag (the automatic convergence hold) is lifted
+        without writing a \`**Previously held 0**\` marker.
       - Otherwise, when PLANS.md \`## Planned\` already holds one more eligible plan than there
         are feature instances (one waiting per instance, plus one for the next planner run),
         end with ${NOTHING_TO_DO} — feature has work, and a waiting plan is refined by the

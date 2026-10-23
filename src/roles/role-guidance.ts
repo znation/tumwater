@@ -151,6 +151,17 @@ export const HELD_TAG_PREFIX = `(held `;
  * NEEDS_REVIEW_PREFIX still recognizes the note. */
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run ${HELD_TAG_PREFIX}<N>)**`;
 
+/** The literal reason the automatic convergence hold writes into a held plan's note
+ * (holdEntryAfterExhaustion, src/runner/revision.ts, builds the note as
+ * `**Needs review … by <role>: could not converge — <surviving objections>**`, INV-BH4).
+ * Exported so the writer and the reader share one literal: it sits between holdEntryAfterExhaustion
+ * (which writes the note) and the plan role's charter (role-catalog.ts `find`) which reads it, so
+ * reason to recognize the automatic hold as distinct from the feature role's too-large
+ * ${NEEDS_REVIEW_NOTE} note and the ${NEEDS_REPLAN_PREFIX} note — both carry no
+ * `could not converge` text, so the charter routes each hold to its own action without matching
+ * on a second literal. Add no second spelling of this text. */
+export const CONVERGENCE_HOLD_MARKER = "could not converge";
+
 /** The marker a lifted hold leaves behind, so a split or rewrite carries the count instead of
  * letting it reset: `**Previously held N**` on the note's line. The live count is `(held N)` on
  * the note; the surviving marker after a lift is `**Previously held N**` — heldCount reads the

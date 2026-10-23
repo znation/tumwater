@@ -5,6 +5,7 @@ import path from "node:path";
 import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { roleById } from "../src/roles/roles.js";
 import {
+  CONVERGENCE_HOLD_MARKER,
   DECOMPOSITION_GUIDANCE,
   NEEDS_REPLAN_NOTE,
   NEEDS_REPLAN_PREFIX,
@@ -172,6 +173,11 @@ test("the backlog-free roles carry the shared search guidance with a role-specif
   for (const id of ["feature", "bugfix", "plan", "readme", "qa", "steward"]) {
     assert.ok(!roleById(id)!.find.includes("How to search:"), `${id} has no search guidance`);
   }
+});
+
+test("the convergence-hold marker is embedded in the plan charter and pinned to its literal", () => {
+  assert.equal(CONVERGENCE_HOLD_MARKER, "could not converge");
+  assert.ok(oneLine(roleById("plan")!.find).includes(CONVERGENCE_HOLD_MARKER));
 });
 
 test("the Needs review marker is embedded in the feature, plan, and director prompts", () => {

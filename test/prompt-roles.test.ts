@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildDirectorPrompt, buildRunPrompt } from "../src/prompt/prompt.js";
 import { NOTHING_TO_DO, SUMMARY_BLOCK } from "../src/verdict/reply-contract.js";
 import { ROLES, roleById } from "../src/roles/roles.js";
-import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
+import { CONVERGENCE_HOLD_MARKER, NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE, VALIDATION_GAP_QUERY } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
@@ -447,8 +447,10 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   const find = oneLine(roleById("plan")!.find);
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
   assert.ok(find.includes(NEEDS_REPLAN_NOTE), "plan embeds the replan marker");
+  assert.ok(find.includes(CONVERGENCE_HOLD_MARKER), "plan names the automatic convergence hold marker");
   assert.match(find, /outranks adding another plan/);
   assert.match(find, /split it into independently mergeable sub-plans that cross-reference each other/);
+  assert.match(find, /read the quoted objections and the code they name and rewrite the plan/);
   assert.match(find, /then remove the note/);
   assert.ok(!find.includes('refining the weakest'), "the refine-the-weakest clause is gone");
   assert.match(find, /holds one more eligible plan than there are feature instances/);
@@ -458,6 +460,8 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
   assert.match(find, /refined by the feature run that picks it up/);
   assert.match(find, /at the END of `## Planned`, after every existing entry/);
+  assert.match(find, /note with no `\(held N\)` tag \(the automatic convergence hold\) is lifted/);
+  assert.match(find, /without writing a `\*\*Previously held 0\*\*` marker/);
 });
 test("the director routes a user ruling on a marked plan", () => {
   const prompt = oneLine(buildDirectorPrompt("split plan X"));

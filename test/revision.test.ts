@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/runner/revision.js";
+import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
 import { verifyRequest } from "../src/merge/merge-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
@@ -347,6 +348,7 @@ test("an exhausted chain holds the entry with the surviving objections, not a fr
     // The surviving objection is now a needs-review hold under the entry's heading, so no role
     // re-picks it "fresh"; the note text carries the objection verbatim for the operator/plan role.
     const noteLine = md.split("\n").find((l) => l.startsWith("**Needs review"));
+    assert.ok(noteLine?.includes(CONVERGENCE_HOLD_MARKER), "the hold note carries the shared convergence marker");
     const holdsObjection = noteLine?.includes("still wrong") === true;
     if (!holdsObjection) {
       assert.fail("the needs-review hold note is missing or lacks the surviving objection:\n" + (noteLine ?? md));
