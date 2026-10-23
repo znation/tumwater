@@ -207,6 +207,19 @@ test("fixSymbols unwraps a name quoted in JSON or array notation", () => {
   assert.deepEqual(fixSymbols("**Fix:** it returns `'quotedName'`."), ["quotedName"]);
 });
 
+// Regression coverage for the 2026-10-23 record (BUGS.md): a Fix paragraph citing where its fix
+// lives (`status-roles.ts:66`) was checked as a symbol named "status-roles.ts:66", which no file
+// is, so every bugfix run closing that bug was rejected (105 times in 41 h).
+test("fixSymbols reads a path:line location as its file and drops a bare line reference", () => {
+  assert.deepEqual(
+    fixSymbols(
+      "**Fix:** `src/a.ts:66`, `b.ts:12:3`, `c.test.ts:5-9`, `:368` and `:40-42`; " +
+        "`127.0.0.1:8000` and `node:test` stay as written.",
+    ),
+    ["src/a.ts", "b.ts", "c.test.ts", "127.0.0.1:8000", "node:test"],
+  );
+});
+
 test("unbackedSymbols keeps only names absent from both the code haystack and the tree", () => {
   const root = makeRepo();
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
@@ -219,6 +232,21 @@ test("unbackedSymbols keeps only names absent from both the code haystack and th
   ]);
   // A path candidate is backed by the file existing on disk, even if no code names it.
   assert.deepEqual(unbackedSymbols(root, ["src/real.ts", "./test/real.test.ts"], haystack), []);
+});
+
+test("unbackedSymbols backs a bare file name by a file of that name under the source dirs", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src", "status"), { recursive: true });
+  // The file's own text never spells its name, so only the file walk can back it.
+  fs.writeFileSync(path.join(root, "src", "status", "status-roles.ts"), "export const rows = 1;\n");
+  fs.mkdirSync(path.join(root, "node_modules", "pkg"), { recursive: true });
+  fs.writeFileSync(path.join(root, "node_modules", "pkg", "vendored.ts"), "\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(!haystack.includes("status-roles.ts"), "the fixture must not back the name by text");
+  assert.deepEqual(
+    unbackedSymbols(root, ["status-roles.ts", "ghost-module.ts", "vendored.ts"], haystack),
+    ["ghost-module.ts", "vendored.ts"],
+  );
 });
 
 test("sourceHaystack covers code but excludes markdown (the bug entry names its own symbols)", () => {
@@ -472,6 +500,52 @@ test("falseFixReason leaves an already-Fixed entry with an untouched body alone"
     "## Open\n\n### New (found 2026-09-23)\n\n" + fixedDoc,
   );
   assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+// Regression coverage for the 2026-10-23 record (BUGS.md): BUGS-FIXED.md held two Fixed entries
+// whose headings normalize alike (the same bug fixed by two roles). The base bodies sat in a map
+// keyed by heading, so only the second body was kept, the first entry read as rewritten on every
+// md-only edit, and its Fix paragraph named a symbol a rename had since removed: 27 unrelated
+// edits from five roles were rejected as "rewrites the already-Fixed entry".
+test("falseFixReason leaves two untouched Fixed entries that share a normalized heading alone", async () => {
+  const root = makeRepo();
+  const twins =
+    "## Fixed\n\n### The same bug (found 2026-10-06, fixed 2026-10-06 by bugfix loop)\n\n" +
+    "**Fix:** `renamedAwaySymbol` now does it.\n\n" +
+    "### The same bug (found 2026-10-06, fixed 2026-10-06 by perf loop)\n\n" +
+    "**Fix:** the prompt now carries the index.\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n" + twins);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed twins");
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### New (found 2026-10-23)\n\n" + twins);
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+  // A rewrite of either twin into a new body still faces the symbol check.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n" + twins.replace("the prompt now carries the index.", "`phantomTwinSymbol` does it."),
+  );
+  assert.match((await falseFixReason(root, "main", ["BUGS.md"]))!, /rewrites the already-Fixed entry .*phantomTwinSymbol/);
+});
+
+test("falseFixReason backs a Fix paragraph that cites its fix as path:line locations", async () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src", "status"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "status", "status-roles.ts"), "export const rows = 1;\n");
+  fs.writeFileSync(path.join(root, "BUGS.md"), "## Open\n\n### A bug (found 2026-10-21)\n\n**Symptom:** x.\n");
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-10-21, fixed 2026-10-22)\n\n" +
+      "**Fix:** the filter at `status-roles.ts:66` and `src/status/status-roles.ts:70`, `:72-74` now keeps it.\n",
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+  // A location in a file the tree lacks is still a phantom, named by its file.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-10-21, fixed 2026-10-22)\n\n**Fix:** `src/ghost.ts:12` now keeps it.\n",
+  );
+  assert.match((await falseFixReason(root, "main", ["BUGS.md"]))!, /nowhere on this tree: src\/ghost\.ts —/);
 });
 
 test("falseFixReason measures an Open→Fixed restoration against the merge-base, not main's tip", async () => {

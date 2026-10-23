@@ -51,6 +51,56 @@ tumwater then archives them in BUGS-FIXED.md, so this file holds only open work.
 - **Considered and excluded:** the maintenance allowance's admission (src/orchestrator/orchestrator-scheduling.ts:453) also calls `noteSkip(..., undefined)`, but its headroom is recomputed from in-flight roles every pass (`maintenanceQuotaOverLine` at :259-262 owns the "used has reached the allowance" case, which already reads `waiting: maintenance allowance used …` through `maintenanceQuotaHold`), so a role declined only by the one-poll reservation is normally admitted on the next pass and the label's promise holds there. Left alone rather than adding a third state for a promise that keeps itself.
 - **Out of scope, deliberately:** the 2 s poll and the start latency it costs stay as they are — this entry makes the label tell the truth, it does not add a wake mechanism. The multiplier/clock split stays too, since `yieldMultiplierSuffix`'s own comment already declares a `now`-due cell at ×N to be "a role waiting out its gap, not a broken clock"; only the phase cell contradicts it.
 
+### The error-streak breaker never lifts its pause, and it re-pauses a resumed role on every restart: plan sat paused 24 h after its streak cleared, which starved all ten feature runners, and feature-3/feature-5 were re-paused four times after operator resumes (found by operator session 2026-10-23 from the GUI's "failing run after run" alert and events.jsonl)
+
+- **Symptom:**
+  - On 2026-10-22 at 00:41:15, the restart's first poll paused plan (streak 11), coverage (11) and security (14) with `role_streak_paused`. plan's queued change merged 2 s later (`merge_done` 00:41:17), which reset its streak to 0, but the pause marker stood. All three stayed paused until a hand `tumwater resume` at 10-23 00:22.
+  - Meanwhile Codex part 3/9 was marked "Needs review: too large for one run" (10-22 03:05). Only the plan role splits such parts; it split part 2c/9 within 3 h on 10-21. So parts 3, 8 and 9 stayed blocked, and every feature runner read "idle: no unclaimed plans" from 10-22 05:23.
+  - feature-3 and feature-5 were resumed at 00:31, 03:21/03:25 and 04:36. Each restart (00:41, 03:24, 04:33, 08:33) paused them again with `role_streak_paused` on the frozen streak of 10 left by the 10-21 spawn storm. They had no claimable work, so they never ran in between.
+  - The "failing run after run" alert listed them with 10-21's `git reset --hard main failed (EAGAIN)` for about 40 h.
+- **Reproduce:** deterministic, no model. Build a runner state with `consecutiveErrors: 10`, call `pollStreakGate` once (it pauses), remove the marker as `resume` does, then call `pollStreakGate` again with `newStreakGateState()` (a restart): it pauses again. For the second half, set the paused runner's `consecutiveErrors` back to 0 and poll: the marker stays.
+- **Cause:**
+  - `pollStreakGate` (src/gates/streak-gate.ts) keeps its ack in memory (`StreakGateState.acked`). A resume deletes the marker, and a restart starts the gate empty, so a streak still at `ERROR_STREAK_BREAKER` trips on the first poll. The module doc accepts that it "re-trips once", but it happens once per restart, and an idle instance never runs to clear its streak. With the 4-hourly auto-redeploy, a resume lasts at most until the next restart.
+  - Nothing removes a breaker-written marker entry when the role's streak returns to 0 through a merge (src/run/run-apply.ts resets `consecutiveErrors` on `merge_done`).
+  - `tumwater reset-counters` (`zeroCounters`) leaves `consecutiveErrors` alone, so the operator has no way to make a resume survive a restart.
+- **Expected / fix sketch:** this should self-heal, not wait on the operator.
+  - Make the ack durable: a resume of a breaker pause records the excused streak in `RunnerState`, or zeroes `consecutiveErrors`.
+  - Lift a breaker-written pause automatically once the role's streak returns to 0. The marker must tell a breaker pause from an operator pause, so an operator pause is never lifted.
+  - Consider one probe run per cool-down for a breaker-paused role, so a transient host cause such as the 10-21 spawn storm recovers on its own.
+  - Have the alert say "paused after N failures (last <time>)" instead of "failing run after run" for a role that is not running.
+  - Until this is fixed, feature-3, feature-5, feature-6 and feature-7 (resumed 10-23 00:22, still at streak 10) are paused again at the next restart unless they finish a run first.
+
+### dedupe's and selfcheck's runner state is saved under their retired ids and reloaded from frozen 10-16 copies on every start: the role-id migration renamed the files but left `role` inside (found by operator session 2026-10-23 from the GUI's "dry" and "telemetry" rows)
+
+- **Symptom:** `.tumwater/state/dedupe.json` holds `"role": "dry"` (1023 runs, last run 10-17 03:24Z) and `selfcheck.json` holds `"role": "telemetry"` (140 runs, last run 10-17 04:52Z). Neither has changed since 10-16 20:25 and 21:52. Meanwhile the live runners write `dry.json` (1035 runs, last 10-21 15:16) and `telemetry.json` (142 runs, last 10-22 23:48).
+  - Every start reloads the frozen copies. The runners lose `lastReview` (the reasons fed to the next run), cost totals, backoff and error streaks.
+  - The reloaded `nextRunAt` is from 10-17, so the role is due at once: selfcheck ran 3 min after the 10-22 21:42 restart despite its 2 h interval.
+  - `status --json` and the dashboards show rows named "dry" and "telemetry" carrying the 10-16 data. dedupe was breaker-paused from 10-21 15:16 to 10-23 00:22, but its row read "deferred (backlog open)" and no alert named it.
+- **Reproduce:** deterministic, no model. Write `state/dedupe.json` with `{"role":"dry"}`. Then `loadRunnerState(root, "dedupe").role` is `"dry"`, and `saveRunnerState` on that state writes `state/dry.json`.
+- **Cause:**
+  - `migrateLegacyRoleIds` (src/roles/legacy-role-migration.ts) renames `state/<old>.json` to `state/<new>.json` without rewriting the `role` field.
+  - `loadRunnerState` (src/runner/runner-state-load.ts) spreads the saved object over `freshRunnerState(role)`, so the saved `role` wins. `saveRunnerState` (src/runner/runner-state.ts) then writes `statePath(root, state.role)`, the old file name.
+  - On later starts the migration finds both files and keeps both ("both exist"), so the split persists.
+- **Expected / fix sketch:**
+  - `loadRunnerState` sets the loaded state's `role` to the id it was asked for: the file name is the identity.
+  - The migration rewrites `role` when it moves a state file.
+  - A one-time heal: when both `<old>.json` and `<new>.json` exist, keep the one with the newer `lastRunEndedAt` under the new name. On this instance that means `dry.json` → `dedupe.json` and `telemetry.json` → `selfcheck.json`.
+  - Test: a loaded legacy-shaped state saves under the requested id, and the dashboards then show `dedupe`/`selfcheck` rows.
+
+### The dashboards hide an extra feature/bugfix runner even while it is paused with an error streak: feature-6 and feature-7 sat breaker-paused for 33 h with no row and no alert (found by operator session 2026-10-23 comparing /api/status rows with paused-roles.json)
+
+- **Symptom:** with `roles.feature.instances: 5`, runner ids feature-6 to feature-10 exist (`RUNNERS_PER_INSTANCE = 2`, src/roles/runner-ids.ts). On 10-23, feature-6 and feature-7 had `consecutiveErrors` 10 and had been in `paused-roles.json` since 10-21 15:10 and 10-22 00:30. `/api/status` had no row for either, and the "failing run after run" alert named only feature #3, feature #5 and steward. The operator could neither see nor resume them from the dashboard.
+- **Reproduce:** deterministic, no model. Set `instances: 2`, write `feature-3.json` with `consecutiveErrors: 10`, put `feature-3` in the pause marker, and call `snapshot(root)`: `roles` has no `feature-3` row and `alerts` does not name it.
+- **Cause:** `collectRoleRows` (src/status/status-roles.ts) gives a runner above `instances` a row only while it is running, queued for merge, holding a claim, or owing work (`hasOutstandingWork`). Paused or error-streak state is not part of that test, and the alerts read the rows.
+- **Expected / fix sketch:** keep a surplus runner's row while its id is in the pause marker or `onErrorStreak` holds for it. Add the case to test/status-roles.test.ts, and check that the failing alert names it.
+
+### organize added its plan as a `## ` heading in PLANS.md, outside `## Planned`, and the structure check then rejects the correction as dropping that section (found by operator session 2026-10-23 from PLANS.md and two organize rejections)
+
+- **Symptom:** a975135a8 (10-22 19:24, md-only, so exempt from review) added "## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)" as a second-level heading after the Planned entries and before `## Done`. No section reader treats it as a Planned entry. Two later organize changes were then rejected: `PLANS.md drops the "## Split validateConfig's …" section the base had — entries filed under it would be invisible to every section reader; restore "## Split …"`. The misplaced heading is now locked in.
+- **Reproduce:** deterministic, no model. `backlogStructureReason` over a base PLANS.md and a head that adds an unknown `## ` heading returns undefined. Over that head as base and a head that demotes the heading to `### ` under `## Planned`, it returns the "drops the section" reason.
+- **Cause:** `backlogStructureReason` (src/backlog/backlog-structure.ts) rejects a duplicated or dropped `## ` heading but accepts a new one, and treats every `## ` the base has as a section to keep, whether or not it is one of the file's known sections.
+- **Expected / fix sketch:** reject an added `## ` heading that is not one of the file's known sections (PLANS.md: Planned and Done; BUGS.md: Open, Fixed and Verified), and allow dropping an unknown one, so demoting it to `### ` passes. Then demote this heading to a `### ` entry at the end of `## Planned`.
+
 ## Fixed
 
 ## Verified

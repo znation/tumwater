@@ -31,7 +31,18 @@
  * and all ~170 records' names faced its symbol check — two prose names no code ever held
  * rejected three compressions in a row. fixedSection now ends an entry's own body at its first
  * one-line record and checks records on their own: a record the diff adds or edits may carry
- * forward any name the base's Fixed section already holds, and nothing else unbacked. */
+ * forward any name the base's Fixed section already holds, and nothing else unbacked.
+ *
+ * Two false positives after those (BUGS.md 2026-10-23), which together rejected every md-only
+ * BUGS.md edit the team made for two days:
+ * - The base bodies were keyed by normalized heading in a map, so of two distinct Fixed
+ *   entries sharing one (a bug fixed twice, by two roles), only the last one's body was kept.
+ *   The other one read as rewritten on every edit, and its Fix paragraph named a symbol a later
+ *   rename removed. An entry is now untouched when its body matches any base body under its
+ *   heading.
+ * - A `path:line` location (`status-roles.ts:66`) was checked as a symbol, and no file is named
+ *   that. A location now claims its file, a bare line reference (`:368`) claims nothing, and a
+ *   bare file name is backed by a file of that name anywhere in the walked source dirs. */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
@@ -153,16 +164,34 @@ export function bugEntryBody(doc: string, heading: string): string {
  * absorbed into it (BUGS.md 2026-10-08), or a narrative describing two fixes — and picking
  * the first match with `Array.find` let a later paragraph name symbols that exist nowhere on
  * the tree while `falseFixReason` passed on the first. Spans with whitespace inside —
- * `npm test`, `--days N`, `Ctrl+B` — are not symbols and never counted. */
+ * `npm test`, `--days N`, `Ctrl+B` — are not symbols and never counted. A location span
+ * claims its file (claimedName). */
 export function fixSymbols(body: string): string[] {
   const fixes = body.split(/\n\s*\n/).filter((p) => p.includes("**Fix:**"));
   const fix = fixes.length > 0 ? fixes.join("\n") : body;
   const symbols: string[] = [];
   for (const span of fix.matchAll(/`([^`\n]+)`/g)) {
-    const symbol = unwrapSymbol((span[1] ?? "").trim()).replace(/\(\)$/, "");
+    const symbol = claimedName(unwrapSymbol((span[1] ?? "").trim()).replace(/\(\)$/, ""));
     if (symbol && !/\s/.test(symbol)) symbols.push(symbol);
   }
   return symbols;
+}
+
+/** A `path:line` location — `src/a.ts:66`, `a.ts:66:3`, `a.ts:66-70` — whose path part ends in
+ * a file extension. An address like `127.0.0.1:8000` has no extension there and stays a span. */
+const LOCATION_RE = /^(.+\.[A-Za-z][\w-]*):\d+(?:[:-]\d+)?$/;
+
+/** A bare line reference continuing an earlier location in the same sentence:
+ * "`src/a.ts:390`, `:368`". */
+const LINE_REF_RE = /^:\d+(?:[:-]\d+)?$/;
+
+/** What a span claims exists: the file of a `path:line` location, nothing for a bare line
+ * reference (dropped by fixSymbols' emptiness guard), and the span itself otherwise. Without
+ * this, no file is named `status-roles.ts:66`, so a Fix paragraph citing where its fix lives read
+ * as a phantom (BUGS.md 2026-10-23: 105 rejections of one bug close). */
+function claimedName(span: string): string {
+  if (LINE_REF_RE.test(span)) return "";
+  return LOCATION_RE.exec(span)?.[1] ?? span;
 }
 
 /** A backticked span with a surrounding array/quote wrapper stripped: a Fix paragraph may
@@ -188,21 +217,15 @@ function unwrapSymbol(span: string): string {
  * a false one. */
 export function sourceHaystack(root: string): string {
   const parts: string[] = [];
-  const skipDirs = new Set(["node_modules", "dist"]);
   const docExts = new Set([".md", ".markdown"]);
-  for (const dir of ["src", "test", "scripts"])
-    walkFiles(
-      join(root, dir),
-      (p, entry) => {
-        if (docExts.has(extname(entry.name).toLowerCase())) return;
-        try {
-          if (statSync(p).isFile()) parts.push(readFileSync(p, "utf8"));
-        } catch {
-          // Unreadable file: contributes nothing rather than failing the check.
-        }
-      },
-      skipDirs,
-    );
+  walkSourceFiles(root, (p, entry) => {
+    if (docExts.has(extname(entry.name).toLowerCase())) return;
+    try {
+      if (statSync(p).isFile()) parts.push(readFileSync(p, "utf8"));
+    } catch {
+      // Unreadable file: contributes nothing rather than failing the check.
+    }
+  });
   for (const file of ["package.json", "tsconfig.json"]) {
     const text = readTextOrNull(join(root, file));
     if (text !== null) parts.push(text); // Missing or unreadable contributes nothing.
@@ -210,12 +233,33 @@ export function sourceHaystack(root: string): string {
   return parts.join("\n");
 }
 
+/** Every file under the source dirs the haystack reads (src/, test/, scripts/), node_modules and
+ * dist trees skipped at any depth. */
+function walkSourceFiles(root: string, visit: Parameters<typeof walkFiles>[1]): void {
+  const skipDirs = new Set(["node_modules", "dist"]);
+  for (const dir of ["src", "test", "scripts"]) walkFiles(join(root, dir), visit, skipDirs);
+}
+
+/** A slash-free name with a file extension: `status-roles.ts`, not `src/a.ts` or `signalTree`. */
+const FILE_NAME_RE = /^[^/]+\.[A-Za-z][\w-]*$/;
+
 /** The symbols an entry names that exist nowhere on the tree: neither as a substring of the
- * code haystack nor as a file path on disk (`src/foo.ts`, `./test/foo.test.ts`). */
+ * code haystack nor as a file path on disk (`src/foo.ts`, `./test/foo.test.ts`). A bare file
+ * name (`status-roles.ts`) is a path too: it is backed by a file of that name anywhere under the
+ * source dirs, since code rarely spells its own module's name. */
 export function unbackedSymbols(root: string, symbols: string[], haystack: string): string[] {
-  return symbols.filter(
-    (s) => !haystack.includes(s) && !existsSync(join(root, s.replace(/^\.\//, ""))),
-  );
+  // Walked only once a bare file name is not otherwise backed.
+  let fileNames: Set<string> | undefined;
+  return symbols.filter((s) => {
+    if (haystack.includes(s) || existsSync(join(root, s.replace(/^\.\//, "")))) return false;
+    if (!FILE_NAME_RE.test(s)) return true;
+    if (fileNames === undefined) {
+      const names = new Set<string>();
+      walkSourceFiles(root, (_p, entry) => names.add(entry.name));
+      fileNames = names;
+    }
+    return !fileNames.has(s);
+  });
 }
 
 /** The unbacked names for a one-line message: all of them when 3 or fewer, otherwise the
@@ -252,9 +296,15 @@ export async function falseFixReason(
   // An already-Fixed entry is skipped only when its body is unchanged: an md-only edit that
   // rewrites an existing Fixed record's narrative must face the symbol check too (BUGS.md
   // 2026-09-23 — the in-place narrative rewrite is how a second phantom merge evaded it).
-  const baseBodies = new Map(
-    bases.flatMap((base) => fixedEntries(base)).map((e) => [normalizeFixedHeading(e.title), e.body]),
-  );
+  // Every base body under a heading counts: two distinct entries can share one normalized
+  // heading, and keeping only the last made the other read as rewritten (BUGS.md 2026-10-23).
+  const baseBodies = new Map<string, Set<string>>();
+  for (const e of bases.flatMap((base) => fixedEntries(base))) {
+    const key = normalizeFixedHeading(e.title);
+    const bodies = baseBodies.get(key) ?? new Set<string>();
+    bodies.add(e.body);
+    baseBodies.set(key, bodies);
+  }
   // Built lazily, only once a Fixed record's body actually changed: the haystack walks and
   // reads the entire source tree (~5 MB here), and the common BUGS.md edit moves nothing to
   // Fixed — an Open bug added, a narrative touched elsewhere — so the gate and the in-lock
@@ -264,8 +314,8 @@ export async function falseFixReason(
   const entries = sections.flatMap((section) => section.entries);
   const records = sections.flatMap((section) => section.records);
   for (const { title: heading, body } of entries) {
-    const baseBody = baseBodies.get(normalizeFixedHeading(heading));
-    if (baseBody === body) continue;
+    const knownBodies = baseBodies.get(normalizeFixedHeading(heading));
+    if (knownBodies?.has(body)) continue;
     haystack ??= sourceHaystack(wt);
     const missing = unbackedSymbols(wt, fixSymbols(body), haystack);
     if (missing.length === 0) continue;
@@ -273,7 +323,7 @@ export async function falseFixReason(
     // The rejection says which shape it saw: the old message called every rewrite of an
     // already-Fixed entry a move "to Fixed", so an author could not find the move it named and
     // resubmitted the same diff as a false positive (BUGS.md 2026-10-13).
-    return baseBody === undefined
+    return knownBodies === undefined
       ? `md-only BUGS.md edit moves "${heading}" to Fixed, but its Fix paragraph names code ` +
           `that exists nowhere on this tree: ${names} — include the fix in the same commit, ` +
           `or keep the bug Open until the code exists`
