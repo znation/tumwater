@@ -130,6 +130,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The dashboard's Usage view renders the `Main red time` chart only when a day carries a nonzero `mainRedMs`.
 - `redMainWarning`'s output is unchanged by the predicate extraction (its tests pass untouched); `npm run test:gate` passes.
 
+### The day report's review-duration median: how long the reviewer ran each day (planned 2026-10-23 by the plan role; independent of the Codex parts; adds only a new per-day median beside the existing ones, so a merge with the in-flight main-red entry rebases; touches src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts)
+
+**Goal.** The team day report and the dashboard Usage view show each day's median reviewer-run wall-clock — how long the review gate actually took — beside the existing check/merge-wait/run medians. Today the reviewer's time is hidden inside `mergeWaitMedianMs` (enqueue through review to merged), so a slow review cannot be told apart from queue latency.
+
+**Approach.**
+- src/report/report-fold.ts: add `reviewDurationsMs: number[]` to `UsageFold` and `DayFold`, seeded `[]` in `dayFoldFor` beside `checkDurationsMs`. In `foldUsageEvent`, push `finiteNumber(ev.durationMs, 0)` into it when `> 0` from both a new `else if (ev.type === "review_verdict")` branch and the existing `review_rejected` branch (`review_rejected` carries `durationMs` only when a reviewer actually ran; the build pre-check and a duration-less event contribute nothing). The rule stated in one comment: the median is every reviewer run that reached a verdict, approval or rejection. `review_failed` stays out — it has no verdict.
+- src/report/report-types.ts: `ReportDay` gains `reviewMedianMs?: number` (team-only, absent when the day has none, like `checkMedianMs`), documented as the lower median of the day's reviewer-run durations.
+- src/report/report-data.ts: add `reviewDurationsMs: []` to `collectReportSince`'s `acc` initializer (the shared `UsageFold` shape now requires it — the `--since` render draws no median, so the field is folded but not surfaced there). In `collectReport`'s team branch, `if (fold.reviewDurationsMs.length > 0) day.reviewMedianMs = lowerMedian(fold.reviewDurationsMs);`. A review belongs to the merge slot/reviewer, not the author role, so the team-only gate mirrors `checkMedianMs`.
+- src/report/report-render.ts: after the `Run duration median` line, `const reviewDurations = medianLine(data.series, "Review duration median", (d) => d.reviewMedianMs); if (reviewDurations !== undefined) lines.push(reviewDurations);` — `medianLine` already omits a line when no day carries one.
+- src/ui/gui/gui-client-report-chart.ts: `chartReviewMedian(data)` = `medianBarChart(data, "reviewMedianMs", <color distinct from the six existing median charts>, "review")`, a `seriesHasReviewMedian(data)` wrapper over `seriesHasScalar(data, "reviewMedianMs")`, beside their siblings in the `report-chart:end` region.
+- src/ui/gui/gui-client-report.ts: add `(seriesHasReviewMedian(d) ? block("Review duration median", chartReviewMedian(d), "per day · reviewer runs that reached a verdict") : "")` to the day-report block chain.
+- docs/cli.md: the `tumwater report` row names the new `Review duration median` line (per day, review approval or rejection durations, team report only).
+
+**Tests.**
+- test/report-data.test.ts: seed a day with `review_verdict` durations 2 min, 4 min and 6 min; assert `day.reviewMedianMs` is 4 min (the lower median) on that day and absent on a review-free day; a `review_rejected` carrying `durationMs: 5 * 60_000` joins the same median; a `review_rejected` with no `durationMs` and a `review_failed` are not counted; a role-scoped `collectReport` leaves every day's `reviewMedianMs` unset.
+- test/report.test.ts: `renderReportMarkdown` prints `**Review duration median:** <MM-DD> <span>` for a day that carries one and omits it when no day does, and a role-scoped report prints no line.
+- test/gui-client-report.test.ts: the day-report block chain contains the `seriesHasReviewMedian`/`chartReviewMedian` gate, and `seriesHasScalar(d, "reviewMedianMs")` is false for a review-free series.
+
+**Acceptance criteria.**
+- A day whose reviewer runs reached verdicts reports the lower median of their durations as `reviewMedianMs`; a day with no review carries no field and the line is omitted (zero means absent).
+- Both an approval (`review_verdict`) and a rejection with a positive `durationMs` count; a duration-less rejection, a `review_failed`, and a `durationMs: 0` event count for nothing.
+- The field and line are team-only: a role-scoped day report and `report --json --role <id>` carry no `reviewMedianMs`.
+- The dashboard renders the `Review duration median` chart only when a day carries a nonzero value.
+- The existing check/merge-wait/run/provider-wait/slot-wait/check-wait medians render unchanged (their tests pass untouched); `npm run test:gate` passes.
+
 ## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
 
 src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
