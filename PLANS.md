@@ -207,6 +207,31 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - Operator reverts are deliberately not folded here (that event does not exist yet); a later entry can add `operator_revert` to the same branch.
 - `npm run test:gate` passes.
 
+### `tumwater report --failures` prices a main-watch revert as its own loss cause, so the digest names the agent-hours a `main_revert` threw away (planned 2026-10-23 by the plan role; independent of every eligible plan — the Codex parts and the two revert entries edit src/report, src/run, src/events and src/ui, none of them src/failure; touches src/failure/time-spend.ts src/failure/failure-data.ts src/failure/failure-render.ts docs/cli.md docs/invariants.md test/failure-time-spend.test.ts)
+
+**Goal.** The failure digest's `Top loss causes by time` ranking says where the fleet burned agent-hours on work that did not stick: an error cluster, a role's `no_change` total, a review-rejected authoring span, a merge-conflict/merge-blocked span, a refusal. It omits the most expensive outcome of all — a change that merged and was then reverted off main by the main watch (`main_revert`, src/baseline/main-revert.ts). That run's `run_end` resolved to a merge, so it prices as `merged` progress in the role × outcome table and appears in no loss cause at all; `grep -rn 'main_revert\|revert' src/failure` finds nothing. After this plan a window containing an automatic revert ranks a `reverted` cause carrying the authoring span and the revert's first failing test, in both the Markdown digest and `report --failures --json`.
+
+**Approach.**
+- `src/failure/time-spend.ts`:
+  - `LossCause.kind` and `LossDraft.kind` gain `"reverted"` (both unions are hand-written; the compiler flags both sites), and the two doc comments naming the kinds gain the reverted arm.
+  - In `timeAndSpend`, before the run loop, build the reverted landings from `allEvents`: a `Set<string>` keyed `${runner}\u0000${commit}` for every event where `e.type === "main_revert"` and both `e.runner` and `e.commit` are non-empty strings. Key by the exact role id the event names (not `baseRoleOf` — the run_end's `eventRole` is the same instance id) so the join matches one run, the way `revertedOf` in src/run/run-detail-data.ts matches `runner` and the landed sha.
+  - In the run loop, after the `merge_conflict`/`merge_blocked` branch and before `if (key === null) continue`, add: when `ev.result === "queued"`, `resolvedOutcome?.outcome.type === "merge_done"`, and the pair `${role}\u0000${textOr(resolvedOutcome.outcome.commit, resolvedOutcome.sha)}` is in the set, set `key = \`reverted\u0000${role}\``, `kind = "reverted"`, and `example = truncateExample(first string of the matching main_revert's failingTests)` or `""` when it names none. The matching `main_revert` is found from `allEvents` by the same runner+commit key; keep a `Map<string, HarnessEvent>` instead of a `Set` so the example is available.
+  - The run's span stays in the `merged` class of the time-and-spend table: it did merge. The loss ranking is the separate `what did not survive` lens, so this cause is additive, exactly as a review-rejected span is both error-class in the table and its own loss. Note this in the `timeAndSpend` doc comment.
+  - An operator `tumwater revert` logs no `main_revert` today and is deliberately not folded; `operator_revert` is a later entry's concern.
+- `src/failure/failure-data.ts`: the `FailureReportData.lossCauses` field comment (the `top LOSS_TOP causes by time` line) names the reverted arm.
+- `src/failure/failure-render.ts`: in the loss-cause label chain, add a `c.kind === "reverted"` arm rendering `reverted off main on ${roleCell(c.roles[0] ?? "?")}<example clause>` (the example, when present, is the first failing test); update the section comment listing the causes.
+- `docs/cli.md`, the `tumwater report --failures` clause inside the report row: after `the top five loss causes ranked by agent-hours` add that the ranking prices a change the main watch later reverted off main (`main_revert`) by its authoring span, named by the revert's first failing test.
+- `docs/invariants.md`: add `### INV-C3: a change the main watch reverted off main prices its authoring span as a `reverted` loss cause` after INV-C2 (or extend INV-C2's guarantee, whichever reads truer once the code is in): the classifier prices the merged run whose landed sha a `main_revert` names as a `reverted` cause with its authoring span, while the role × outcome table keeps it `merged`; binds `timeAndSpend`; pinned by the new test below.
+
+**Tests.**
+- `test/failure-time-spend.test.ts`, new test `a main-reverted merge prices its authoring span as a reverted loss cause`, built like the existing queued→merged fixture (`merge_queued` + `run_end result "queued"` + `merge_done`): with a matching `main_revert` (`runner` and `commit` the merged sha, `failingTests: ["a.test.ts flaked"]`) the digest carries a loss cause `kind: "reverted"`, `roles: ["feature"]`, `example: "a.test.ts flaked"`, and the run's own duration ms/cost; a second `main_revert` with a different `commit` or a different `runner` adds no `reverted` cause. Assert the role's `timeSpend` row still shows `classes.merged` for that run (the table is unchanged) and that `renderFailureMarkdown(data)` matches `/reverted off main on feature — a\.test\.ts flaked/`. Follow the file's existing `atLocalTs`/`tmpdir`/`writeEvents` fixtures.
+
+**Acceptance criteria.**
+- A window whose `main_revert` names the landed sha of a run that ended `queued` ranks one `reverted` loss cause for that role, carrying the run's `run_start`→`run_end` ms and cost and the revert's first failing test; `report --failures --json` carries `kind: "reverted"`.
+- The same run still appears in the `merged` column of the time-and-spend table (unchanged), and a revert whose culprit run is outside the window adds no cause (no authoring span is known).
+- A `main_revert` naming a different commit or a different runner leaves the digest's loss causes unchanged.
+- `npm run test:gate` passes.
+
 ## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
 
 src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
