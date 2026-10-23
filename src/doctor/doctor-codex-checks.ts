@@ -36,6 +36,21 @@ import {
  * codexSeamsInUse, seamPairs, the AUTH_CHECK_* budgets) come from doctor-model-checks.ts and
  * outcome.ts, as the other doctor-* modules share them. */
 
+/** The config and codex home a codex readiness row reads, or the warn outcome a broken
+ * `tumwater.json` earns, or null when no seam routes to codex (the row's stand-down). All
+ * eight rows repeat the same three-line guard and the same home lookup
+ * (`codexHome(resolvedBackendConfig(config, "codex"))`); this folds them so a change to how
+ * doctor reads codex's home touches one spot instead of seven. `home` is always the team's
+ * codex home, whether or not the row needs it. */
+function codexCheckBase(
+  root: string,
+): { config: TumwaterConfig; home: string } | CheckOutcome | null {
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
+  if (!codexSeamsInUse(config)) return null;
+  return { config, home: codexHome(resolvedBackendConfig(config, "codex")) };
+}
+
 /** One bounded probe of the resolved `codex` binary under the scrubbed run environment a real
  * run gets: resolve the binary through the codex adapter that would spawn it, point it at the
  * run's home (`CODEX_HOME`), and run `args` with a short deadline. Null when the probe could
@@ -68,10 +83,9 @@ export async function checkCodexVersion(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const result = await codexProbe(config, ["--version"], pathEnv, timeoutMs);
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const result = await codexProbe(base.config, ["--version"], pathEnv, timeoutMs);
   const found = result?.code === 0 ? parseCodexCliVersion(result.stdout) : undefined;
   return minVersionOutcome("codex", found, CODEX_MIN_VERSION, "upgrade the codex CLI");
 }
@@ -87,11 +101,10 @@ export async function checkCodexAuth(
   pathEnv: string = envPath(),
   timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
 ): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
-  const result = await codexProbe(config, ["login", "status"], pathEnv, timeoutMs);
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const { home } = base;
+  const result = await codexProbe(base.config, ["login", "status"], pathEnv, timeoutMs);
   if (result?.code !== 0)
     return warnOutcome("could not check — `codex login status` did not run or its output was unreadable");
   const status = parseCodexLoginStatus(result.stdout);
@@ -110,10 +123,9 @@ export async function checkCodexAuth(
  * `codex resume` picker, any skills and a global `AGENTS.md`. Set, it reads the team home.
  * Stands down when no seam routes to codex. */
 export async function checkCodexHome(root: string): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const configDir = resolvedBackendConfig(config, "codex").configDir;
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const configDir = resolvedBackendConfig(base.config, "codex").configDir;
   if (configDir === undefined)
     return warnOutcome(
       "backends.codex.configDir is unset — team runs share the user's ~/.codex (trust entries, team sessions in the resume picker, skills, a global AGENTS.md); set backends.codex.configDir to a home of the team's own",
@@ -127,10 +139,9 @@ export async function checkCodexHome(root: string): Promise<CheckOutcome | null>
  * The cataloged models are reported with their context window. Stands down when no seam routes
  * to codex. */
 export async function checkCodexModels(root: string): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const { config, home } = base;
   const catalog = readCodexCatalog(home);
   const models = seamedModels(config, "codex");
   const warns: string[] = [];
@@ -207,10 +218,9 @@ function codexSessionCredits(home: string): boolean | null {
  * crosses a limit may draw on them. Otherwise it reads ok with the safe direction. Stands down
  * when no seam routes to codex. */
 export async function checkCodexAccount(root: string): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const { home } = base;
   const hasCredits = codexSessionCredits(home);
   if (hasCredits === true)
     return warnOutcome(
@@ -224,10 +234,9 @@ export async function checkCodexAccount(root: string): Promise<CheckOutcome | nu
  * `.codex/config.toml` MCP servers each still load into team runs, so each is named as one
  * warning. Stands down when no seam routes to codex. */
 export async function checkCodexLeaks(root: string): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const { home } = base;
   const warns: string[] = [];
   const agentsMd = path.join(home, "AGENTS.md");
   if (statOrNull(agentsMd)?.isFile() === true) warns.push(`${agentsMd} still loads into team runs`);
@@ -258,10 +267,9 @@ export async function checkCodexLeaks(root: string): Promise<CheckOutcome | null
  * expired sessions, and doctor reports how much the collection holds so the operator can size
  * the knob. Stands down when no seam routes to codex. */
 export async function checkCodexSessions(root: string): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const { home } = base;
   const sessions = path.join(home, "sessions");
   const size = isDirectory(sessions) ? treeBytes(sessions) : null;
   return okOutcome(size !== null ? `codex sessions: ${formatBytes(size)}` : "codex sessions: no sessions dir");
@@ -282,11 +290,10 @@ export async function checkCodexWriteGuard(
   pathEnv: string = envPath(),
   timeoutMs: number = CODEX_HOOK_TRUST_TIMEOUT_MS,
 ): Promise<CheckOutcome | null> {
-  const config = loadConfigForCheck(root);
-  if ("level" in config) return config;
-  if (!codexSeamsInUse(config)) return null;
-  const resolved = codexBackend.resolveBin(config);
-  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const base = codexCheckBase(root);
+  if (base === null || "level" in base) return base;
+  const resolved = codexBackend.resolveBin(base.config);
+  const { home } = base;
   const env = codexEnv(childEnv({ PATH: pathEnv }), { home });
   const definition = codexWriteGuardDefinition();
   try {
