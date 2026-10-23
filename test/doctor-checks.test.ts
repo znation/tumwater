@@ -44,10 +44,12 @@ import {
   checkCodexModels,
   checkCodexSessions,
   checkCodexVersion,
+  checkCodexWriteGuard,
 } from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { fakeGh } from "./fakes/fake-gh.js";
+import { fakeCodexAppServer } from "./fakes/fake-codex.js";
 import { initProject } from "../src/init/init.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { envPath } from "../src/files/files.js";
@@ -63,7 +65,7 @@ import { bootstrapLatchPath, quarantinePath, slotWorktreePath, worktreesDir } fr
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { atLocalTs as tsDaysAgo, dayKey } from "./helpers/oracles.js";
-import { withEnv } from "./helpers/env.js";
+import { withEnv, setEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
 import { withReadOnlyDir } from "./helpers/fs-faults.js";
 import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
@@ -1429,6 +1431,7 @@ test("codex rows omit their row without a codex seam", async () => {
     checkCodexAccount,
     checkCodexLeaks,
     checkCodexSessions,
+    checkCodexWriteGuard,
   ]) {
     assert.equal(await fn(root), null);
   }
@@ -1595,4 +1598,32 @@ test("checkCodexSessions reports the home sessions size", async () => {
   const some = (await checkCodexSessions(root))!;
   assert.equal(some.level, "ok");
   assert.match(some.detail, /codex sessions: 3 B/);
+});
+
+test("checkCodexWriteGuard: a fake that lists the hook gives the pass row with the hash prefix", async () => {
+  const { root } = codexRowFixture();
+  const fake = fakeCodexAppServer();
+  const restore = setEnv("TUMWATER_CODEX_BIN", fake.bin);
+  try {
+    const out = (await checkCodexWriteGuard(root))!;
+    assert.equal(out.level, "ok");
+    assert.match(out.detail, /^trusted \(sha256:[0-9a-f]{12}\)$/);
+  } finally {
+    restore();
+    fake.restore();
+  }
+});
+
+test("checkCodexWriteGuard warns off with the reason when no hook matches", async () => {
+  const { root } = codexRowFixture();
+  const fake = fakeCodexAppServer({ mismatch: true });
+  const restore = setEnv("TUMWATER_CODEX_BIN", fake.bin);
+  try {
+    const out = (await checkCodexWriteGuard(root))!;
+    assert.equal(out.level, "warn");
+    assert.match(out.detail, /^off: .*codex runs edit without the worktree check$/);
+  } finally {
+    restore();
+    fake.restore();
+  }
 });

@@ -41,6 +41,7 @@ export const DOCTOR_CHECK_NAMES = [
   "codex account",
   "codex leaks",
   "codex sessions",
+  "codex write guard",
   "backend binary",
   "feedback filing",
   "claude transcripts",

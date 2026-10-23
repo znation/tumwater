@@ -6,11 +6,14 @@ import { codexBackend, CODEX_MIN_VERSION } from "../agent/codex/codex-backend.js
 import { codexEffort, EFFORT_BY_THINKING } from "../agent/codex/codex-args.js";
 import { codexEnv } from "../agent/codex/codex-env.js";
 import { codexHome, readCodexCatalog } from "../agent/codex/codex-catalog.js";
+import { codexHookTrust } from "../agent/codex/codex-hook-trust.js";
 import { parseCodexLoginStatus } from "../agent/codex/codex-account.js";
+import { codexWriteGuardDefinition } from "../agent/codex/codex-write-guard.js";
 import { resolvedBackendConfig } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
+import { errorMessage } from "../text/text.js";
 import { belowNodeFloor } from "../version.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
@@ -22,8 +25,9 @@ import {
 } from "./doctor-model-checks.js";
 
 /** The doctor's codex rows (part 9a/9, plans/codex-backend.md §4, §7, "Hand steps"): one
- * exported check per row — install/version, login, home, models, account, leaks and sessions
- * size. These are the doctor's only checks that spawn the `codex` CLI and read the team's
+ * exported check per row — install/version, login, home, models, account, leaks, sessions
+ * size and the write guard. These are the doctor's only checks that spawn the `codex` CLI and
+ * read the team's
  * `CODEX_HOME` state (catalog, skills, hooks, sessions, rollouts) — a distinct concern from the
  * filesystem/git checks, kept together so a change to how doctor reads codex does not touch the
  * other model checks. Each returns null (omitting its row) when no seam routes to codex, so a
@@ -265,4 +269,34 @@ export async function checkCodexSessions(root: string): Promise<CheckOutcome | n
   const sessions = path.join(home, "sessions");
   const size = isDirectory(sessions) ? treeBytes(sessions) : null;
   return okOutcome(size !== null ? `codex sessions: ${formatBytes(size)}` : "codex sessions: no sessions dir");
+}
+
+/** The bound on the codex write-guard row's trust lookup, matching the group's other calls. */
+const CODEX_HOOK_TRUST_TIMEOUT_MS = 10_000;
+
+/** codex write-guard readiness (plans/codex-write-guard.md "Visibility (parts 8–9)"): whether
+ * codex runs the trusted write-guard hook under this team's home, so the operator sees whether
+ * codex edits are guarded and why not when they are not. Asks codex's own `hooks/list` through
+ * codexHookTrust for the current build's definition, bounded like the group's other Codex calls;
+ * the cache file it writes is the one writable surface Doctor keeps. A trust reading gives the
+ * pass row naming the hash's first 12 hex; a failed lookup warns with its reason — codex then
+ * runs edits without the worktree check. Stands down when no seam routes to codex. */
+export async function checkCodexWriteGuard(
+  root: string,
+  pathEnv: string = envPath(),
+  timeoutMs: number = CODEX_HOOK_TRUST_TIMEOUT_MS,
+): Promise<CheckOutcome | null> {
+  const config = loadConfigForCheck(root);
+  if ("level" in config) return config;
+  if (!codexSeamsInUse(config)) return null;
+  const resolved = codexBackend.resolveBin(config);
+  const home = codexHome(resolvedBackendConfig(config, "codex"));
+  const env = codexEnv(childEnv({ PATH: pathEnv }), { home });
+  const definition = codexWriteGuardDefinition();
+  try {
+    const trust = await codexHookTrust(root, { bin: resolved.bin, env, cwd: root, definition, timeoutMs });
+    return okOutcome(`trusted (sha256:${trust.hash.replace(/^sha256:/, "").slice(0, 12)})`);
+  } catch (error) {
+    return warnOutcome(`off: ${errorMessage(error)} — codex runs edit without the worktree check`);
+  }
 }

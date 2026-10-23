@@ -64,7 +64,8 @@ test("runDoctor composes the full report — fixed check order, not-running head
         n !== "codex models" &&
         n !== "codex account" &&
         n !== "codex leaks" &&
-        n !== "codex sessions",
+        n !== "codex sessions" &&
+        n !== "codex write guard",
     ),
     report.checks.map((c) => c.name),
   );

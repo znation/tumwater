@@ -5,6 +5,26 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 8/9: Doctor's codex group reports whether codex runs carry the write guard (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9a/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)"; touches src/doctor/doctor-codex-checks.ts src/doctor/doctor.ts src/doctor/doctor-check-names.ts test/doctor-checks.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** An operator can see from `tumwater doctor` whether codex edits are guarded, and why not when they are not.
+
+**Approach.**
+- The codex check rows Codex backend part 9a/9 adds (each shown when any job routes to codex) gain a `write guard` row.
+- The row runs `codexHookTrust` for the run env's home and the current build's definition, bounded at 10 s like the group's other Codex calls.
+  - pass: `trusted (sha256:<first 12 hex>)`;
+  - warn: `off: <reason> — codex runs edit without the worktree check`.
+- Doctor stays read-only apart from the cache file, which `codexHookTrust` already writes.
+
+**Tests.** test/doctor-checks.test.ts, on the fake:
+- a fake that lists the hook gives the pass row with the hash prefix;
+- a fake whose list is empty gives the warn row naming the reason;
+- a pi-only team shows no codex group, so no row.
+
+**Acceptance criteria.**
+- Both rows render as above.
+- `npm run test:gate` passes.
+
 ### TUI Pending pane: up/down opens a queued merge and Ctrl+X twice cancels it, the terminal twin of `tumwater queue --cancel <n>` (planned 2026-10-23 by the plan role; independent of every eligible plan — the dashboard cancel entry edits src/ui/gui/gui-client-pending.ts, src/gui and src/merge/merge-cancel.ts but not the TUI, and this uses the already-landed `cancelQueuedMerge(root, position)` so it does not wait on that entry's sha-addressed refactor; Interlock 1/2, the Codex parts, `start --once --json` and the Backlog hold parts touch src/merge/merge-queue.ts, src/orchestrator, src/agent, src/prompt, src/cli/cli-start.ts, src/backlog and src/roles — none touches src/ui/tui; the only shared file is docs/cli.md, where this edits the TUI keys table and `start --once --json` edits the Start block, so whichever lands second rebases there; touches src/ui/tui/tui-pane-pending.ts src/ui/tui/tui-pane.ts src/ui/tui/tui-pane-session.ts src/ui/tui/tui-panes.ts src/ui/tui/tui-keys.ts src/ui/tui/tui-frame.ts docs/cli.md test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** The Pending pane renders the durable merge queue (`renderMergeQueue`) but its rows are inert: an operator who sees an unwanted change can only press Ctrl+R and watch. `tumwater queue --cancel <n>` (landed) and the planned dashboard per-row Cancel give the other two surfaces a way to stop it; the terminal is left out. Add row selection to the TUI's merge-queue block — up/down open one row's detail, Esc returns to the list — and cancel the selected entry with Ctrl+X pressed twice, through the same `cancelQueuedMerge` core the CLI uses, so all three surfaces remove the same queue file and pin and log the same `merge_cancelled` event.

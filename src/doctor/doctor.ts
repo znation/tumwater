@@ -56,6 +56,7 @@ import {
   checkCodexLeaks,
   checkCodexModels,
   checkCodexSessions,
+  checkCodexWriteGuard,
   checkCodexVersion,
 } from "./doctor-codex-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
@@ -165,6 +166,7 @@ export async function runDoctor(
     { name: "codex account", run: () => checkCodexAccount(root) },
     { name: "codex leaks", run: () => checkCodexLeaks(root) },
     { name: "codex sessions", run: () => checkCodexSessions(root) },
+    { name: "codex write guard", run: () => checkCodexWriteGuard(root, pathEnv) },
     { name: "backend binary", run: () => checkBackendBinary(root, pathEnv) },
     { name: "feedback filing", run: () => checkFeedbackFiling(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
