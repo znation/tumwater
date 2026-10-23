@@ -164,13 +164,13 @@ function foldProviderCost(target: UsageFold, providerCost: unknown): void {
   }
 }
 
-/** Push a provider- or workspace-slot wait's ms into the accumulator list a median reads,
- * when the event carried a positive wait: a wait is only event-logged at or above the 30 s
- * threshold, so a 0 ms wait (a probe seam) or a pre-waitedMs event adds nothing and the two
- * wait medians reflect real blocked admissions only. */
-function pushPositiveWaitedMs(list: number[], ev: HarnessEvent): void {
-  const waited = finiteNumber(ev.waitedMs, 0);
-  if (waited > 0) list.push(waited);
+/** Push `ms` into the accumulator list a day median reads, when it is positive: the event
+ * fields that feed these medians are missing or 0 for the same event kinds (short runs, build
+ * pre-checks, precedent legacy events, probe-seam waits), and those contribute nothing — a
+ * median over only real durations/wait times. Every median list folds through here, so the
+ * "positive-only" rule cannot drift between fields. */
+function pushPositiveMs(list: number[], ms: number): void {
+  if (ms > 0) list.push(ms);
 }
 
 /** Fold one event into a usage accumulator: run_end events add a run (per role and, when
@@ -196,8 +196,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (ev.result === "refused") addTo(target.refusalsByRole, role, 1);
     if (target.runs !== undefined) target.runs++;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
-    const runMs = finiteNumber(ev.durationMs, 0);
-    if (runMs > 0) target.runDurationsMs.push(runMs);
+    pushPositiveMs(target.runDurationsMs, finiteNumber(ev.durationMs, 0));
     addTo(target.tokensByRole, role, tokens);
     target.tokensOut += tokens;
     target.costUsd += costUsd;
@@ -230,22 +229,19 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // and reached a verdict (post-merge rejections do; the build pre-check contributes no
     // duration), so it joins the review-duration median beside approvals. durationMs: 0 and
     // a duration-less event contribute nothing.
-    const rejectionMs = finiteNumber(ev.durationMs, 0);
-    if (rejectionMs > 0) target.reviewDurationsMs.push(rejectionMs);
+    pushPositiveMs(target.reviewDurationsMs, finiteNumber(ev.durationMs, 0));
   } else if (ev.type === "review_verdict") {
     // An approval that reached a verdict. Every reviewer run that reached a verdict, approval
     // or rejection, is one entry in the review-duration median; review_failed stays out — it
     // has no verdict. Mirrors the rejection branch above, on the same-day count.
-    const verdictMs = finiteNumber(ev.durationMs, 0);
-    if (verdictMs > 0) target.reviewDurationsMs.push(verdictMs);
+    pushPositiveMs(target.reviewDurationsMs, finiteNumber(ev.durationMs, 0));
   } else if (ev.type === "revision") {
     // One rework round per event, on the day it happened, per role. Zero-means-absent: a role
     // that never reworked a rejected change stays absent, like rejectionsByRole.
     addTo(target.revisionsByRole, eventRole(ev), 1);
   } else if (isPassingFullCheck(ev)) {
     // The merge slot's passing full-suite checks, for the day report's check-time median.
-    const durationMs = finiteNumber(ev.durationMs, 0);
-    if (durationMs > 0) target.checkDurationsMs.push(durationMs);
+    pushPositiveMs(target.checkDurationsMs, finiteNumber(ev.durationMs, 0));
   } else if (isRedFullCheck(ev)) {
     // The merge slot's red full-suite checks, for the day report's red-check count.
     target.checkFailures++;
@@ -290,16 +286,16 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // The day report's provider-slot wait median, mirroring the slot_wait push: a wait only
     // event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam) adds
     // nothing and the median reflects real blocked admissions only.
-    pushPositiveWaitedMs(target.providerWaitsMs, ev);
+    pushPositiveMs(target.providerWaitsMs, finiteNumber(ev.waitedMs, 0));
   } else if (ev.type === "slot_wait") {
     // The day report's workspace-slot wait median, mirroring the provider_wait push: a wait
     // only event-logged at or above the 30 s threshold counts, so a 0 ms wait (a probe seam)
     // or a pre-waitedMs event adds nothing.
-    pushPositiveWaitedMs(target.slotWaitsMs, ev);
+    pushPositiveMs(target.slotWaitsMs, finiteNumber(ev.waitedMs, 0));
   } else if (ev.type === "check_wait") {
     // The day report's check-slot wait median, mirroring the slot_wait push: only waits logged
     // at or above the 30 s threshold count, so a 0 ms or pre-waitedMs event adds nothing.
-    pushPositiveWaitedMs(target.checkWaitsMs, ev);
+    pushPositiveMs(target.checkWaitsMs, finiteNumber(ev.waitedMs, 0));
   } else if (ev.type === "merge_done" || ev.type === "merge_failed") {
     target.mergeRuns = (target.mergeRuns ?? 0) + 1;
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
@@ -311,8 +307,7 @@ export function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (ev.type === "merge_done") {
       addTo(target.mergedByRole, role, 1);
       // Events logged before queuedMs existed carry none: skipped, not counted as zero.
-      const waited = finiteNumber(ev.queuedMs, 0);
-      if (waited > 0) target.mergeWaitsMs.push(waited);
+      pushPositiveMs(target.mergeWaitsMs, finiteNumber(ev.queuedMs, 0));
     } else {
       addTo(target.mergeFailedByRole, role, 1);
       // The event's result (writeMergeOutcome's RunResult) names WHY the merge bounced
