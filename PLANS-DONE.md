@@ -5,6 +5,30 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Write guard on Codex, part 1/9: List the paths an `apply_patch` text writes (planned 2026-10-23 by user; independent of every Planned entry; design in plans/codex-write-guard.md "The hook (parts 1–2)"; touches src/agent/codex/codex-patch-paths.ts (new) test/codex-patch-paths.test.ts (new)) — done 2026-10-23 by the feature role
+
+**Goal.** The codex write guard has to know which files a patch writes before Codex applies it. Codex's PreToolUse payload carries the patch text, not a path (plans/codex-write-guard.md finding 4). This part adds the pure parser the hook will use; nothing calls it yet.
+
+**Approach.**
+- src/agent/codex/codex-patch-paths.ts (new): `patchWritePaths(patch: string): string[]`.
+- It returns the path after each line that begins at column 0 with `*** Add File: `, `*** Delete File: `, `*** Update File: ` or `*** Move to: `, trimmed of trailing whitespace and `\r`, in order and without duplicates.
+- Paths are kept as written. The caller resolves relative ones against the run's directory.
+- Only a line starting exactly with `*** ` is a header. A hunk line (`+`, `-`, a space, `@@`) never counts, even when its text reads `*** Update File: …` after its prefix.
+- A text without `*** Begin Patch` or `*** End Patch` is still scanned. A truncated patch still writes the files it names, so the guard must not trust the markers.
+
+**Tests.** test/codex-patch-paths.test.ts:
+- the live payload's patch, `*** Begin Patch\n*** Update File: /abs/repo/notes.md\n@@\n-primary\n+GUARD_TEST\n*** End Patch`, yields `["/abs/repo/notes.md"]`;
+- one patch with an Add, a Delete, and an Update followed by `*** Move to: b/new.ts` yields all four paths in order;
+- a hunk line `+*** Update File: evil.ts` is not counted;
+- CRLF line endings and trailing spaces are stripped;
+- a repeated path is listed once;
+- empty text yields `[]`.
+
+**Acceptance criteria.**
+- `patchWritePaths` is pure: no filesystem and no imports beyond node built-ins.
+- Every case above passes.
+- `npm run test:gate` passes.
+
 ### The day report's review-duration median: how long the reviewer ran each day (planned 2026-10-23 by the plan role; independent of the Codex parts; adds only a new per-day median beside the existing ones, so a merge with the in-flight main-red entry rebases; touches src/report/report-fold.ts src/report/report-types.ts src/report/report-data.ts src/report/report-render.ts src/ui/gui/gui-client-report-chart.ts src/ui/gui/gui-client-report.ts docs/cli.md test/report-data.test.ts test/report.test.ts test/gui-client-report.test.ts) — done 2026-10-23 by the feature role
 
 **Goal.** The team day report and the dashboard Usage view show each day's median reviewer-run wall-clock — how long the review gate actually took — beside the existing check/merge-wait/run medians. Today the reviewer's time is hidden inside `mergeWaitMedianMs` (enqueue through review to merged), so a slow review cannot be told apart from queue latency.

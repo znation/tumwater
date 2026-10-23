@@ -114,30 +114,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The dashboard renders the `Backlog lag median` chart only when a day carries the field.
 - The existing per-day lines render unchanged (their tests pass untouched); `npm run test:gate` passes.
 
-### Write guard on Codex, part 1/9: List the paths an `apply_patch` text writes (planned 2026-10-23 by user; independent of every Planned entry; design in plans/codex-write-guard.md "The hook (parts 1–2)"; touches src/agent/codex/codex-patch-paths.ts (new) test/codex-patch-paths.test.ts (new))
-
-**Goal.** The codex write guard has to know which files a patch writes before Codex applies it. Codex's PreToolUse payload carries the patch text, not a path (plans/codex-write-guard.md finding 4). This part adds the pure parser the hook will use; nothing calls it yet.
-
-**Approach.**
-- src/agent/codex/codex-patch-paths.ts (new): `patchWritePaths(patch: string): string[]`.
-- It returns the path after each line that begins at column 0 with `*** Add File: `, `*** Delete File: `, `*** Update File: ` or `*** Move to: `, trimmed of trailing whitespace and `\r`, in order and without duplicates.
-- Paths are kept as written. The caller resolves relative ones against the run's directory.
-- Only a line starting exactly with `*** ` is a header. A hunk line (`+`, `-`, a space, `@@`) never counts, even when its text reads `*** Update File: …` after its prefix.
-- A text without `*** Begin Patch` or `*** End Patch` is still scanned. A truncated patch still writes the files it names, so the guard must not trust the markers.
-
-**Tests.** test/codex-patch-paths.test.ts:
-- the live payload's patch, `*** Begin Patch\n*** Update File: /abs/repo/notes.md\n@@\n-primary\n+GUARD_TEST\n*** End Patch`, yields `["/abs/repo/notes.md"]`;
-- one patch with an Add, a Delete, and an Update followed by `*** Move to: b/new.ts` yields all four paths in order;
-- a hunk line `+*** Update File: evil.ts` is not counted;
-- CRLF line endings and trailing spaces are stripped;
-- a repeated path is listed once;
-- empty text yields `[]`.
-
-**Acceptance criteria.**
-- `patchWritePaths` is pure: no filesystem and no imports beyond node built-ins.
-- Every case above passes.
-- `npm run test:gate` passes.
-
 ### Write guard on Codex, part 2/9: The PreToolUse hook refuses an `apply_patch` outside the run's worktree (planned 2026-10-23 by user; requires part 1/9 landed; design in plans/codex-write-guard.md "The hook (parts 1–2)" and findings 4–5; touches src/agent/codex/codex-write-guard.ts (new) src/agent/codex/write-guard-hook.ts (new) docs/invariants.md test/codex-write-guard.test.ts (new))
 
 **Goal.** Add the hook a codex run will call before every `apply_patch`, deciding with the same rule pi, claude and OpenCode use (`strayWriteRefusal`, src/agent/write-guard.ts). This part only adds the hook; part 6/9 makes runs use it.
