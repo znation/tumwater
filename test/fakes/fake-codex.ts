@@ -59,9 +59,13 @@ function appServerJs(opts: {
   errorReply?: unknown;
   noise?: boolean;
   exitEarly?: boolean;
+  /** When set, hooks/list answers with exactly this `result` value instead of the default one
+   * matching hook — a crafted multi-group list (to exercise findTrust's traversal) or a
+   * malformed shape (data not an array, a hook that is not an object). */
+  resultData?: unknown;
   versionHang?: boolean;
 }): string {
-  const { callsFile, pidFile, version, mismatch, hang, errorReply, noise, exitEarly, versionHang } = opts;
+  const { callsFile, pidFile, version, mismatch, hang, errorReply, noise, exitEarly, versionHang, resultData } = opts;
   const source = mismatch ? "user" : "sessionFlags";
   return [
     'const fs = require("node:fs");',
@@ -75,6 +79,7 @@ function appServerJs(opts: {
     `const NOISE = ${noise === true};`,
     `const EXIT_EARLY = ${exitEarly === true};`,
     `const VERSION_HANG = ${versionHang === true};`,
+    `const RESULT_DATA = ${JSON.stringify(resultData ?? null)};`,
     "const args = process.argv.slice(2);",
     'if (args[0] === "--version") {',
     "  if (VERSION_HANG) { setTimeout(function () {}, 60000); return; }",
@@ -108,6 +113,8 @@ function appServerJs(opts: {
     '        if (EXIT_EARLY) { process.exit(0); }',
     '        if (ERROR !== null) {',
     '          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: ERROR }) + "\\n");',
+    '        } else if (RESULT_DATA !== null) {',
+    '          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: RESULT_DATA }) + "\\n");',
     '        } else {',
     '          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { data: [{ hooks: [hook] }] } }) + "\\n");',
     '        }',
@@ -266,6 +273,10 @@ interface FakeCodexServerOptions {
   /** The `--version` probe hangs (never prints, never exits), for the test that the whole
    * lookup — version probe plus app-server — settles within the one deadline. */
   versionHang?: boolean;
+  /** When set, hooks/list answers with exactly this `result` value instead of the default one
+   * matching hook — a crafted multi-group list (to exercise findTrust's traversal) or a
+   * malformed shape (data not an array, a hook that is not an object). */
+  resultData?: unknown;
 }
 
 /** A fake `codex` that answers the trust lookup (plans/codex-write-guard.md "Trust (parts
@@ -283,7 +294,7 @@ export function fakeCodexAppServer(opts: FakeCodexServerOptions = {}): FakeCodex
   const pidFile = path.join(dir, "server.pid");
   const version = opts.version ?? "0.163.0";
   const script = path.join(dir, "app-server.js");
-  fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang }));
+  fs.writeFileSync(script, appServerJs({ callsFile, pidFile, version, mismatch: opts.mismatch === true, hang: opts.hang === true, errorReply: opts.errorReply, noise: opts.noise, exitEarly: opts.exitEarly, versionHang: opts.versionHang, resultData: opts.resultData }));
   // The pid is stamped in the shim before node starts, so the timeout test can read it the
   // moment the lookup settles, however slowly node itself cold-starts under parallel load.
   writeScript(path.join(dir, "codex"), `echo $$ > "${pidFile}"; exec node ${script} "$@"`);

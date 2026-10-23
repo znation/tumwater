@@ -154,6 +154,60 @@ test("a fake whose list holds no matching hook rejects with the message", async 
   }
 });
 
+test("a list holding non-matching hooks before the guard's still matches the guard's hook", async () => {
+  const cwd = tmpdir();
+  const def = definition();
+  const good = { source: "sessionFlags", eventName: "preToolUse", command: def.command, key: "GUARD", currentHash: "sha256:GOOD" };
+  const fake = fakeCodexAppServer({
+    resultData: {
+      data: [
+        5, // a data group that is not an object
+        { hooks: "not-an-array" }, // a group whose hooks is not an array
+        { hooks: [null] }, // a hook that is not an object
+        { hooks: [{ source: "user", eventName: "preToolUse", command: def.command }] }, // wrong source
+        { hooks: [{ source: "sessionFlags", eventName: "notification", command: def.command }] }, // wrong event
+        { hooks: [{ source: "sessionFlags", eventName: "preToolUse", command: "different-command" }] }, // wrong command
+        { hooks: [good] },
+      ],
+    },
+  });
+  try {
+    const trust = await lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 });
+    assert.equal(trust.key, "GUARD");
+    assert.equal(trust.hash, "sha256:GOOD");
+  } finally {
+    fake.restore();
+  }
+});
+
+test("a hooks/list result whose data is not an array rejects as having no matching hook", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ resultData: { data: {} } });
+  try {
+    const def = definition();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex listed no session-flag PreToolUse hook with this command/,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
+test("an RPC error that is neither a string nor a {message} object names its JSON", async () => {
+  const cwd = tmpdir();
+  const fake = fakeCodexAppServer({ errorReply: { extra: 1, nested: { a: 2 } } });
+  try {
+    const def = definition();
+    await assert.rejects(
+      lookupCodexHookTrust({ bin: fake.bin, env: process.env, cwd, definition: def, timeoutMs: 5_000 }),
+      /codex hooks\/list errored: \{"extra":1,"nested":\{"a":2\}\}/,
+    );
+  } finally {
+    fake.restore();
+  }
+});
+
 test("an RPC error reply rejects, naming the string error", async () => {
   const cwd = tmpdir();
   const fake = fakeCodexAppServer({ errorReply: "boom" });
