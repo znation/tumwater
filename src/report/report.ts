@@ -9,6 +9,7 @@ import { renderReportMarkdown, renderSinceReportMarkdown } from "./report-render
 import { fail, say, sayJson, sayJsonOrRender } from "../cli/cli-output.js";
 import { followView, type FollowViewSeams } from "../cli/follow-view.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { hasFollowFlag } from "../cli/cli-flag-specs.js";
 import { REPORT_DEFAULT_DAYS, REPORT_MAX_DAYS, REPORT_SINCE_MAX_MS } from "../events/event-window.js";
 
 /** `tumwater report [--days <n>] [--failures] [--since <duration>]
@@ -26,7 +27,7 @@ export async function cmdReport(root: string, args: string[], seams: FollowViewS
   // --role scopes both report shapes: the usage report (day and --since) and the failure
   // digest, whose day and --since collectors take the same optional list of base roles.
   const role = parseRoleListScope(root, args);
-  const follow = args.includes("-f") || args.includes("--follow");
+  const follow = hasFollowFlag(args);
   if (follow && args.includes("--json")) fail("report --json prints one document; -f/--follow repaints a live view — drop one of them");
   if (ms !== null) {
     // --days is still a rival shape: it counts whole local days, while --since totals a trailing
