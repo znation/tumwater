@@ -401,6 +401,30 @@ test("the Queued pane shows a selected row's full prompt under a cancel header a
   });
 });
 
+test("Up/Down do not move the selection while the queued in-place editor is open", async () => {
+  const repo = await makeTuiRepo();
+  enqueueRolePrompt(repo, "clean", "queued body line");
+  await withTui(repo, async (tui) => {
+    // A second queued row (the director's own prompt) so an unguarded Up/Down has somewhere
+    // to jump the selection away from the row being edited.
+    for (const ch of "fix the bug") tui.key(ch, ch);
+    tui.key(undefined, "return");
+    assert.match(tui.lastFrame(), /added to the director's inbox/);
+    for (let i = 0; i < 7; i++) tui.key(undefined, "t", { ctrl: true }); // → Queued
+    tui.key(undefined, "down"); // → the director's prompt row
+    tui.key(undefined, "down"); // → clean's queued prompt
+    tui.key(undefined, "e", { ctrl: true }); // open the in-place editor on its body
+    assert.match(tui.lastFrame(), /editing inbox message #\d+ for clean/);
+    assert.match(tui.lastFrame(), /queued body line/);
+    // Up/Down must stay inert while an editor holds the prompt line: the selection (and the
+    // body it highlights) must not jump away from the row being edited.
+    tui.key(undefined, "up");
+    const frame = tui.lastFrame();
+    assert.match(frame, /clean's inbox #1 \(Ctrl\+X to cancel\)/);
+    assert.doesNotMatch(frame, /director's inbox #1/);
+  });
+});
+
 test("project status browses entries in full with up/down and resets on Ctrl+T", async () => {
   const repo = await makeTuiRepo();
   // One plan with a real body (the seeded placeholder file has none) so browsing shows more

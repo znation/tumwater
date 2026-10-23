@@ -128,8 +128,13 @@ export function createQueuedPane(
       // The selected body shares paneScroll with the list, so a newly opened row must start
       // at its head (the status pane's entryScroll reset on the same move), or it renders
       // scrolled into the middle of the previous row's body.
-      selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
-      session.paneScroll = 0;
+      // An open in-place editor pins the selection (its row was captured at Ctrl+E), the
+      // backlog pane's answer/title rule: the arrows must not jump the highlighted body to a
+      // different message while the prompt line is editing another.
+      if (!ctx.es.queuedEditFor) {
+        selectedQueued = moveEntrySelection(queuedRows.length, selectedQueued, arrow);
+        session.paneScroll = 0;
+      }
       session.requestRender();
       return true;
     }
