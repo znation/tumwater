@@ -114,6 +114,232 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The dashboard renders the `Backlog lag median` chart only when a day carries the field.
 - The existing per-day lines render unchanged (their tests pass untouched); `npm run test:gate` passes.
 
+### Write guard on Codex, part 1/9: List the paths an `apply_patch` text writes (planned 2026-10-23 by user; independent of every Planned entry; design in plans/codex-write-guard.md "The hook (parts 1–2)"; touches src/agent/codex/codex-patch-paths.ts (new) test/codex-patch-paths.test.ts (new))
+
+**Goal.** The codex write guard has to know which files a patch writes before Codex applies it. Codex's PreToolUse payload carries the patch text, not a path (plans/codex-write-guard.md finding 4). This part adds the pure parser the hook will use; nothing calls it yet.
+
+**Approach.**
+- src/agent/codex/codex-patch-paths.ts (new): `patchWritePaths(patch: string): string[]`.
+- It returns the path after each line that begins at column 0 with `*** Add File: `, `*** Delete File: `, `*** Update File: ` or `*** Move to: `, trimmed of trailing whitespace and `\r`, in order and without duplicates.
+- Paths are kept as written. The caller resolves relative ones against the run's directory.
+- Only a line starting exactly with `*** ` is a header. A hunk line (`+`, `-`, a space, `@@`) never counts, even when its text reads `*** Update File: …` after its prefix.
+- A text without `*** Begin Patch` or `*** End Patch` is still scanned. A truncated patch still writes the files it names, so the guard must not trust the markers.
+
+**Tests.** test/codex-patch-paths.test.ts:
+- the live payload's patch, `*** Begin Patch\n*** Update File: /abs/repo/notes.md\n@@\n-primary\n+GUARD_TEST\n*** End Patch`, yields `["/abs/repo/notes.md"]`;
+- one patch with an Add, a Delete, and an Update followed by `*** Move to: b/new.ts` yields all four paths in order;
+- a hunk line `+*** Update File: evil.ts` is not counted;
+- CRLF line endings and trailing spaces are stripped;
+- a repeated path is listed once;
+- empty text yields `[]`.
+
+**Acceptance criteria.**
+- `patchWritePaths` is pure: no filesystem and no imports beyond node built-ins.
+- Every case above passes.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 2/9: The PreToolUse hook refuses an `apply_patch` outside the run's worktree (planned 2026-10-23 by user; requires part 1/9 landed; design in plans/codex-write-guard.md "The hook (parts 1–2)" and findings 4–5; touches src/agent/codex/codex-write-guard.ts (new) src/agent/codex/write-guard-hook.ts (new) docs/invariants.md test/codex-write-guard.test.ts (new))
+
+**Goal.** Add the hook a codex run will call before every `apply_patch`, deciding with the same rule pi, claude and OpenCode use (`strayWriteRefusal`, src/agent/write-guard.ts). This part only adds the hook; part 6/9 makes runs use it.
+
+**Approach.**
+- src/agent/codex/codex-write-guard.ts (new): `codexWriteRefusal(payload: unknown): string | null`.
+  - It acts only when `tool_name` is `"apply_patch"` and `tool_input.command` is a string; anything else returns null.
+  - The run's directory is the payload's `cwd`, which is Codex's session cwd. Every shell call is its own `zsh -lc`, so a `cd` cannot move it. With no `cwd`, it returns null.
+  - For each path from `patchWritePaths(tool_input.command)`, in order, it returns the first non-null `strayWriteRefusal(path, cwd)`. A relative path resolves from `cwd`, as Codex resolves it.
+- src/agent/codex/write-guard-hook.ts (new) is the entry codex runs, with no arguments:
+  - it reads its stdin as JSON and calls `codexWriteRefusal`;
+  - on a refusal it prints `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":<refusal>}}` and a newline;
+  - otherwise it prints nothing, and it exits 0 either way;
+  - any failure of its own (bad JSON, a throw) prints nothing, so a broken hook lets the patch run and the stray-write warning in runner-run.ts still sees a stray write.
+- **Why no argument naming the worktree,** unlike claude's hook: Codex trusts a hook by a hash of its whole definition (plans/codex-write-guard.md finding 3). A per-worktree argument would need a trust lookup per slot, while a command fixed per build needs one.
+- Follow the doc-comment shape of src/agent/claude/claude-write-guard.ts and write-guard-hook.ts.
+- docs/invariants.md: under "Write guard", add the next free `INV-CW` id (INV-CW4 if still free: check `grep -n '^### INV-CW' docs/invariants.md` first). It is "a codex `apply_patch` to a path under the team root but outside the payload's cwd checkout is denied with `strayWriteRefusal`'s text, and the hook prints nothing for any other call or for input it cannot read", pinned by the tests below.
+
+**Tests.** test/codex-write-guard.test.ts, with the same team fixture as test/write-guard.test.ts (a root, `_slot-1` as the worktree, `_slot-2` as another):
+- an Update of `<root>/src/a.ts` from `cwd: <wt>` is refused, and the reason names `<wt>/src/a.ts`;
+- an Update of `src/a.ts` (relative) passes;
+- a patch whose `*** Move to:` leaves the worktree is refused;
+- `tool_name: "Bash"` returns null, and so does a payload with no `cwd`;
+- the compiled hook, spawned as `node dist/src/agent/codex/write-guard-hook.js` with a stray payload on stdin, prints the deny JSON and exits 0;
+- the same with an in-worktree payload prints nothing and exits 0;
+- with `not json` on stdin it prints nothing and exits 0.
+
+**Acceptance criteria.**
+- The hook's output for a refused patch parses as the JSON above, with `permissionDecisionReason` equal to `strayWriteRefusal`'s text.
+- No path is refused when the payload names no `cwd`.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 3/9: The hook's definition and its two `-c` flags, and `hooks` keys reserved from the passthrough (planned 2026-10-23 by user; requires part 2/9 landed; design in plans/codex-write-guard.md "The flags (part 3)" and findings 1–2; touches src/agent/codex/codex-write-guard.ts src/agent/codex/codex-args.ts src/config/config-validation.ts test/codex-write-guard.test.ts test/codex-args.test.ts test/config-validation.test.ts)
+
+**Goal.** Build the exact `-c` values that install the hook and trust it, without wiring them into runs yet. Make sure an operator's `backends.codex.args` cannot replace either.
+
+**Approach.**
+- src/agent/codex/codex-write-guard.ts gains three exports:
+  - `codexWriteGuardDefinition(nodeBin = process.execPath)` returns `{ matcher: "^apply_patch$", command, timeout: 30 }`. `command` is `n=<nodeBin quoted>; [ -x "$n" ] || n=node; exec "$n" <hook quoted>`, built like claude-write-guard.ts's `writeGuardSettings`. The hook path comes from `fileURLToPath(new URL("./write-guard-hook.js", import.meta.url))`, so a staged build runs its own copy.
+  - `codexHookArg(definition)` returns the value `hooks.PreToolUse=[{matcher=<s>,hooks=[{type="command",command=<s>,timeout=30}]}]`.
+  - `codexHookTrustArg(trust: { key: string; hash: string })` returns `hooks.state={<key>={trusted_hash=<hash>}}`, in the inline-table spelling. The dotted `hooks.state."<key>".trusted_hash=` spelling is ignored by Codex because the key contains dots (finding 2).
+  - One `tomlString(s)` helper writes every TOML basic string, escaping `\`, `"` and control characters.
+- Reserve `hooks`: a `-c`/`--config` passthrough whose key is `hooks` or starts with `hooks.` is refused. Codex is last-wins, so it could otherwise replace the guard or its trust.
+  - Add a prefix rule beside `HARNESS_CODEX_CONFIG_KEYS` in codex-args.ts, for example `HARNESS_CODEX_CONFIG_KEY_PREFIXES = ["hooks"]` and an `isHarnessCodexConfigKey(key)` that both screens call.
+  - The screens are config-validation.ts's `checkCodexConfigKeys` and any check codexArgs makes on its passthrough.
+  - The problem text names the key as the existing one does ("…passes the config key hooks.PreToolUse, which tumwater manages — drop it or use another key").
+
+**Tests.**
+- test/codex-write-guard.test.ts:
+  - `codexHookArg` and `codexHookTrustArg` produce the exact strings for a fixed definition and trust;
+  - a `nodeBin` and hook path containing `'`, `"` and a space round-trip: the definition's `command` run through `sh -c` with a stray payload on stdin still prints the deny JSON;
+  - `tomlString` escapes `\`, `"` and a control character.
+- test/codex-args.test.ts: `isHarnessCodexConfigKey` is true for `hooks`, `hooks.PreToolUse` and `hooks.state` and false for `hooksy` and `model_provider`. The existing reserved keys stay true.
+- test/config-validation.test.ts: `backends.codex.args` of `["-c", "hooks.PreToolUse=[]"]`, `["--config=hooks.state={}"]` and `["-c", "hooks={}"]` each report the key. `["-c", "model_provider=\"x\""]` still passes.
+
+**Acceptance criteria.**
+- Nothing in a run's argv changes in this part.
+- The three passthrough spellings above are refused at config validation.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 4/9: Ask codex for the hook's trust key and hash through `hooks/list`, and cache them per build and Codex version (planned 2026-10-23 by user; requires part 3/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)" and finding 3; touches src/agent/codex/codex-hook-trust.ts (new) src/paths.ts test/fakes/fake-codex.ts docs/invariants.md test/codex-hook-trust.test.ts (new))
+
+**Goal.** Codex runs a session-flag hook only with the right `trusted_hash`. The hash is opaque: no simple digest of the definition matched (finding 3). So tumwater asks Codex for it, once per build and Codex version.
+
+**Approach.**
+- src/agent/codex/codex-hook-trust.ts (new): `lookupCodexHookTrust({ bin, env, cwd, definition, timeoutMs = 15_000 }): Promise<{ key: string; hash: string }>`.
+  - It spawns `<bin> -c <codexHookArg(definition)> app-server` in `cwd` with `env`, using the harness's own spawn helper with process-group kill. It kills the group when done, on timeout and on error.
+  - Over stdio, one JSON object per line, it sends `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"tumwater","version":<tumwater version>}}}`, then `{"jsonrpc":"2.0","method":"initialized"}`, then `{"jsonrpc":"2.0","id":2,"method":"hooks/list","params":{"cwds":[cwd]}}`.
+  - It reads the reply to id 2 and returns the first hook in `result.data[*].hooks` with `source: "sessionFlags"`, `eventName: "preToolUse"` and `command` equal to `definition.command`, giving `{ key, hash: currentHash }`. It never hardcodes the key, which was `/<session-flags>/config.toml:pre_tool_use:0:0` on 0.163.0.
+  - It rejects on timeout, on child exit before the reply, on a JSON-RPC error, and on "codex listed no session-flag PreToolUse hook with this command". It needs no login and makes no model request (verified with an empty `CODEX_HOME`).
+- `codexHookTrust({ root, bin, env, cwd, definition })` caches in `codexHookTrustPath(root)` (new in src/paths.ts: `.tumwater/state/codex-hook-trust.json`).
+  - The cache key is the trimmed output of `<bin> --version` plus `JSON.stringify(definition)`, each entry `{ key, hash, checkedAt }`.
+  - A hit returns without spawning `app-server`. A miss looks up and writes the entry through `writeJsonAtomic`.
+  - With `root` undefined (a hand run with no `.tumwater` root) it looks up and caches nothing. It never creates a `.tumwater` directory: a hand run once minted a phantom `$TMPDIR/.tumwater` and reddened every suite on the host (plans/codex-write-guard.md "Visibility").
+- test/fakes/fake-codex.ts: the shim answers `app-server`.
+  - It reads the JSON-RPC lines and answers `initialize` with `{}` and `hooks/list` with one sessionFlags preToolUse hook whose `command` is parsed from the `-c hooks.PreToolUse=` argument and whose `currentHash` is `sha256:` plus the sha256 of that command.
+  - It appends each app-server start to a calls file the test can count. A test switch makes it hang, for the timeout case.
+- docs/invariants.md: the next free `INV-CW` id. It is "the trust key and hash come from Codex's own `hooks/list` for the exact definition, are cached per Codex version and definition, and a lookup that times out leaves no child behind", pinned by the tests below.
+
+**Tests.** test/codex-hook-trust.test.ts, on the fake:
+- a lookup returns the fake's key and `sha256:` hash;
+- a second `codexHookTrust` with the same version and definition starts no `app-server` (the calls file has one line);
+- a changed `timeout` or a changed `--version` output looks up again;
+- a hanging fake rejects within `timeoutMs` (set to 500 ms in the test), and the child's pid is gone afterwards;
+- a fake whose list holds no matching hook rejects with the message above;
+- `root` undefined writes no file.
+
+**Acceptance criteria.**
+- No Codex run's argv changes yet, and no code path calls the lookup outside the tests.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 5/9: An async `prepare` step on agent backends; codex's resolves the guard's trust before a run (planned 2026-10-23 by user; requires part 4/9 landed; design in plans/codex-write-guard.md "Trust (parts 4–5)"; also edited by the open Codex backend parts 8/9 and 9/9 in other functions of src/agent/codex/codex-backend.ts, so whichever lands later rebases; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/codex/codex-backend.ts test/agent-backend.test.ts test/codex-run.test.ts)
+
+**Goal.** `AgentBackend.invocation()` is synchronous, but the trust lookup spawns `codex app-server`. Resolve it in an awaited step before the invocation is built, without blocking the event loop and without one `app-server` per run.
+
+**Approach.**
+- src/agent/agent-backend.ts: `AgentBackend` gains optional `prepare?(run: AgentRunSpec): Promise<void>`, documented as "work the invocation needs that cannot be synchronous; never throws a run away".
+- src/agent/run-agent.ts: right before `backend.invocation(runSpec)` (today around line 304), `await backend.prepare?.(runSpec)` inside a try/catch. A throw is logged as a `warning` (source `tumwater`) through `logEventBestEffort` on the run's root (`nearestTumwaterRoot(opts.sessionDir)`, skipped with no root), and the run continues.
+- src/agent/codex/codex-backend.ts: `prepare(run)` resolves the guard's trust for `codexWriteGuardDefinition()` under the run's codex env (`CODEX_HOME` as `invocation` computes it).
+  - It goes through `codexHookTrust` with `root = nearestTumwaterRoot(run.sessionDir)` and `cwd = run.cwd`.
+  - It is single-flight: one in-flight promise per process per (home, definition), shared by concurrent runs.
+  - The result is a module-level state that `invocation` reads synchronously: `{ trust }` or `{ off: reason }`.
+  - A failed lookup records `off` and logs one `warning` per process per (home, definition): `codex write guard off: <reason>`.
+- Nothing uses the stored trust yet. This part only warms it, so a codex run now starts one `app-server` per new build and Codex version, and none on a cache hit.
+
+**Tests.**
+- test/agent-backend.test.ts (or a run-agent test beside it): a backend whose `prepare` throws still spawns its run and logs one warning; a backend without `prepare` behaves as before.
+- test/codex-run.test.ts, on the fake:
+  - two codex runs started together start one `app-server`;
+  - a hanging `app-server` lets both runs start after the bounded wait and logs `codex write guard off:` once across three runs;
+  - a pi run and a claude run start no `app-server`.
+
+**Acceptance criteria.**
+- No backend's argv changes.
+- A failing lookup never fails or delays a run beyond the 15 s bound.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 6/9: Codex runs carry the trusted write-guard hook (planned 2026-10-23 by user; requires part 5/9 landed; design in plans/codex-write-guard.md "Runs (part 6)" and findings 1, 2 and 5; also edited by the open Codex backend parts 8/9 and 9/9 in other functions of src/agent/codex/codex-backend.ts; touches src/agent/codex/codex-args.ts src/agent/codex/codex-backend.ts docs/invariants.md test/codex-args.test.ts test/codex-run.test.ts)
+
+**Goal.** Turn the guard on. A codex run whose `apply_patch` would land under the team root but outside its worktree is refused with the shared refusal, as pi, claude and OpenCode runs are.
+
+**Approach.**
+- src/agent/codex/codex-args.ts: `CodexArgOptions` gains `guardArgs?: string[]`. codexArgs inserts it after the harness's own `-c` keys and before `-m`, on fresh and resumed (`exec resume`) runs alike. The passthrough cannot override it, because part 3/9 reserved `hooks`.
+- src/agent/codex/codex-backend.ts: `invocation` reads the state `prepare` stored.
+  - With `{ trust }` it passes `guardArgs: ["-c", codexHookArg(definition), "-c", codexHookTrustArg(trust)]`.
+  - With `{ off }`, or no state, it passes neither. An untrusted hook would be skipped silently anyway.
+  - It never passes `--dangerously-bypass-hook-trust`. That flag would run the target repo's own `.codex` hooks unreviewed and add an `error` item to every run's stream (findings 1 and 4).
+- docs/invariants.md: the next free `INV-CW` id. It is "a codex run carries the guard's hook and its trust entry together or neither, and never `--dangerously-bypass-hook-trust`", pinned by the tests below.
+
+**Tests.**
+- test/codex-args.test.ts: `guardArgs` lands between the last harness `-c` and `-m` for both a fresh and a resumed run, and is absent when unset.
+- test/codex-run.test.ts, on the fake:
+  - a fresh run and a resumed run each carry both `-c` values with the fake's key and hash;
+  - with the lookup failing, neither appears;
+  - no argv ever contains `--dangerously-bypass-hook-trust`.
+
+**Acceptance criteria.**
+- With trust available, every codex run's argv carries the hook and its trust; without it, the argv is exactly today's.
+- The codex stream translator is unchanged: a blocked patch adds no stream item (finding 5).
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 7/9: Codex's prompt dialect sends file edits through `apply_patch` (planned 2026-10-23 by user; requires part 6/9 landed; design in plans/codex-write-guard.md "Coverage (part 7)" and finding 6; touches src/prompt/dialect.ts test/prompt-dialect.test.ts)
+
+**Goal.** The guard sees only `apply_patch`. plans/codex-backend.md's probes saw codex models edit through the shell (`printf >>`) unless the prompt asked for `apply_patch`, so ask for it.
+
+**Approach.**
+- src/prompt/dialect.ts: `CODEX_DIALECT.backendRules` gains one rule: "Edit and create files with the `apply_patch` tool, not shell redirection (`>`, `>>`, `tee`) or `sed -i`."
+- Update the `CODEX_DIALECT` doc comment to say why: the write guard checks only `apply_patch` (plans/codex-write-guard.md).
+
+**Tests.** test/prompt-dialect.test.ts:
+- a codex run prompt contains the rule exactly once;
+- the pi, claude and OpenCode run prompts do not contain it;
+- the codex prompt's other backend rule (the `write_stdin` polling rule) is still present.
+
+**Acceptance criteria.**
+- Only codex prompts change, by exactly that rule.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 8/9: Doctor's codex group reports whether codex runs carry the write guard (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)"; touches src/doctor/doctor-model-checks.ts test/doctor-model-checks.test.ts)
+
+**Goal.** An operator can see from `tumwater doctor` whether codex edits are guarded, and why not when they are not.
+
+**Approach.**
+- src/doctor/doctor-model-checks.ts: in the codex check group Codex backend part 9/9 adds (shown when any job routes to codex), add a `write guard` row.
+- The row runs `codexHookTrust` for the run env's home and the current build's definition, bounded at 10 s like the group's other Codex calls.
+  - pass: `trusted (sha256:<first 12 hex>)`;
+  - warn: `off: <reason> — codex runs edit without the worktree check`.
+- Doctor stays read-only apart from the cache file, which `codexHookTrust` already writes.
+
+**Tests.** test/doctor-model-checks.test.ts, on the fake:
+- a fake that lists the hook gives the pass row with the hash prefix;
+- a fake whose list is empty gives the warn row naming the reason;
+- a pi-only team shows no codex group, so no row.
+
+**Acceptance criteria.**
+- Both rows render as above.
+- `npm run test:gate` passes.
+
+### Write guard on Codex, part 9/9: The live `smoke:codex` step for the guard, and the docs (planned 2026-10-23 by user; requires part 6/9 and Codex backend 9/9 landed; design in plans/codex-write-guard.md "Visibility (parts 8–9)" and "Risks"; touches scripts/smoke-codex.mjs docs/how-it-works.md docs/backends.md plans/codex-backend.md)
+
+**Goal.** After a Codex upgrade, one live command proves the guard still blocks. Session-flag trust could stop working while the `hooks/list` lookup still succeeds ("Risks"). The docs should say which backends are guarded and how.
+
+**Approach.**
+- scripts/smoke-codex.mjs (added by Codex backend part 9/9) gains a `write guard` step.
+  - Build a throwaway team layout: a git repo `<T>/repo`, its worktree `<T>/repo/.tumwater/worktrees/_slot-1`, and the same `notes.md` text in both. Keep the session dir under `<T>/repo/.tumwater/sessions`, never outside a `.tumwater` root.
+  - Run the production invocation through `runAgent`, asking the model to use `apply_patch` to change `notes.md` at the primary's absolute path, and to follow any refusal.
+  - Assert three things: the primary's `notes.md` is unchanged, the worktree's `notes.md` changed, and the run's rollout holds "blocked by PreToolUse hook".
+  - The step is listed by the script's `--help`/dry-run.
+- docs/how-it-works.md, "A run" step 2: the guarded tools name codex's `apply_patch`, through a trusted hook. Shell writes stay unchecked on every backend.
+- docs/backends.md, Codex section:
+  - the guard is a PreToolUse hook passed with `-c`, trusted through the same session-flag layer with the hash Codex reports;
+  - `codex-hook-trust.json` caches the hash;
+  - `--dangerously-bypass-hook-trust` is never used.
+- plans/codex-backend.md: under "never passes `--dangerously-bypass-hook-trust`", add one sentence: tumwater trusts only its own write-guard hook, through the session-flag layer (plans/codex-write-guard.md).
+
+**Tests.** None beyond the script's dry-run listing. The live step runs by hand: `npm run smoke:codex`.
+
+**Acceptance criteria.**
+- `npm run smoke:codex -- --help` (or the script's dry-run flag) lists the `write guard` step.
+- The docs name codex among the guarded backends and its `apply_patch`-only coverage.
+- `npm run test:gate` passes.
+
 ## Split validateConfig's section rules out of the single validation gate by theme (planned 2026-10-22 by the organize role, plan-only)
 
 src/config/config-validation.ts is the project's second-largest module (748 lines, ~3.7× the
