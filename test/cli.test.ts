@@ -68,6 +68,22 @@ test("init creates the harness files and is idempotent", async () => {
   assert.equal(r.stdout, "already initialized; nothing to do\n");
 });
 
+test("init re-seeding a repo that only lacks its config reports it without claiming a commit", async () => {
+  // The committed=false arm of the created report: a repo that already carries every harness
+  // file but has lost its tumwater.json only gains the (gitignored) config, so the commit
+  // pathspec is empty and init creates the file WITHOUT the "(committed)" suffix it appends
+  // when it stages and commits a new set. The config is deliberately left out of the pathspec
+  // (plans/portability.md §4a/7), so a config-only re-seed has nothing to commit.
+  const repo = makeRepo();
+  await cli(repo, "init", "Re-seed me.");
+  fs.unlinkSync(path.join(repo, "tumwater.json"));
+  const r = await cli(repo, "init", "Re-seed me.");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, "created tumwater.json\nnext: `tumwater start` in one terminal, `tumwater tui` in another\n");
+  assert.ok(fs.existsSync(path.join(repo, "tumwater.json")), "config re-created");
+  assertClean(repo);
+});
+
 test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async () => {
   const dir = tmpdir();
   const r = await cli(dir, "init", "Build a tiny markdown-to-html converter CLI.");
