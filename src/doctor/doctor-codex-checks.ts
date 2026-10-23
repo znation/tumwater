@@ -18,7 +18,7 @@ import {
   AUTH_CHECK_TIMEOUT_MS,
   codexSeamsInUse,
   loadConfigForCheck,
-  seamPairs,
+  seamedModels,
 } from "./doctor-model-checks.js";
 
 /** The doctor's codex rows (part 9a/9, plans/codex-backend.md §4, §7, "Hand steps"): one
@@ -132,7 +132,7 @@ export async function checkCodexModels(root: string): Promise<CheckOutcome | nul
   if (!codexSeamsInUse(config)) return null;
   const home = codexHome(resolvedBackendConfig(config, "codex"));
   const catalog = readCodexCatalog(home);
-  const models = seamPairs(config).filter((p) => p.agent === "codex" && p.model !== undefined);
+  const models = seamedModels(config, "codex");
   const warns: string[] = [];
   const notes: string[] = [];
   for (const pair of models) {

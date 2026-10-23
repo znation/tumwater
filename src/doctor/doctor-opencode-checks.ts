@@ -14,7 +14,7 @@ import {
   AUTH_CHECK_TIMEOUT_MS,
   loadConfigForCheck,
   opencodeSeamsInUse,
-  seamPairs,
+  seamedModels,
 } from "./doctor-model-checks.js";
 
 /** The doctor's opencode credential and leak readiness check, split out of doctor-model-checks.ts
@@ -144,7 +144,7 @@ export async function checkOpencode(
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
   if (!opencodeSeamsInUse(config)) return okOutcome("no model jobs run on opencode");
-  const models = seamPairs(config).filter((p) => p.agent === "opencode" && p.model !== undefined);
+  const models = seamedModels(config, "opencode");
   const cache = readOpencodeCache(root);
   const fails: string[] = [];
   const warns: string[] = [];

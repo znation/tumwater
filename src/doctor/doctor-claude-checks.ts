@@ -14,7 +14,7 @@ import {
   AUTH_CHECK_TIMEOUT_MS,
   claudeSeamsInUse,
   loadConfigForCheck,
-  seamPairs,
+  seamedModels,
 } from "./doctor-model-checks.js";
 
 /** The doctor's claude credential and version readiness checks, split out of
@@ -141,7 +141,7 @@ export async function checkClaudeVersion(
 ): Promise<CheckOutcome> {
   const config = loadConfigForCheck(root);
   if ("level" in config) return config;
-  const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
+  const seams = seamedModels(config, "claude");
   if (seams.length === 0) return okOutcome("no model jobs run on claude");
   // The floor each configured model needs; a model the adapter does not gate contributes none.
   const floors = new Map<string, string>();

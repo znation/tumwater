@@ -229,6 +229,14 @@ export function seamPairs(config: TumwaterConfig): SeamPair[] {
   return [...pairs.values()];
 }
 
+/** The model-carrying seam pairs for one backend — `seamPairs` with model guaranteed present
+ * (seamPairs never emits a pair without a model, so the guard only narrows the type) and
+ * narrowed to `agent`'s pairs. The backend readiness checks (claude, codex, opencode) each
+ * walk exactly this filtered list, so they share one filter rather than three copies. */
+export function seamedModels(config: TumwaterConfig, agent: string): SeamPair[] {
+  return seamPairs(config).filter((p) => p.agent === agent && p.model !== undefined);
+}
+
 /** Whether any seam runs on the claude backend — the doctor's claude checks stand down when
  * none does (a pi-only team reads no `~/.claude` state and spawns no claude). */
 export function claudeSeamsInUse(config: TumwaterConfig): boolean {
