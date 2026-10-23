@@ -61,6 +61,32 @@ test("when both state files exist and the new-id file is newer, it is kept uncha
   assert.equal(fs.existsSync(statePath(root, "oldy")), true, "the old-id file is left in place (kept both exist)");
 });
 
+test("the rewritten state file is committed atomically, never written in place", async () => {
+  const root = makeRepo();
+  put(statePath(root, "oldy"), JSON.stringify({ role: "oldy", runs: 5, lastRunEndedAt: 123 }));
+  const target = statePath(root, "newy");
+  const wroteInPlace: string[] = [];
+  const original = fs.writeFileSync;
+  // Inject the fault: record (and let through) every write, flagging any that targets the
+  // state file itself. A plain writeFileSync truncates the target then fills it, so a crash
+  // mid-write leaves the state torn; committing via writeJsonAtomic's tmp+rename only ever
+  // calls writeFileSync on a `.tmp-` path and swaps the target with rename, so the target is
+  // never observed in a partial state.
+  fs.writeFileSync = ((file: unknown, ...rest: unknown[]): void => {
+    const p = String(file);
+    if (p === target) wroteInPlace.push(p);
+    (original as (f: unknown, ...r: unknown[]) => void)(file, ...rest);
+  }) as typeof fs.writeFileSync;
+  try {
+    await migrateLegacyRoleIds(root, MAP);
+  } finally {
+    fs.writeFileSync = original;
+  }
+  assert.equal(JSON.parse(fs.readFileSync(target, "utf8")).role, "newy", "the migration still rewrites the role");
+  assert.equal(fs.existsSync(statePath(root, "oldy")), false);
+  assert.deepEqual(wroteInPlace, [], "the state target is never written in place, only via atomic rename");
+});
+
 const read = (f: string) => fs.readFileSync(f, "utf8");
 
 test("a legacy role id's branch, refs and files move to the new id; logs stay", async () => {

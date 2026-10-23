@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { readJsonFile } from "../files/json-files.js";
+import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { deleteRefIfAt, refSha } from "../git/git.js";
 import { gitTry, runGit } from "../git/git-run.js";
 import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
@@ -18,7 +18,12 @@ function rewriteStateRole(file: string, role: string): void {
     const rec = parsed as Record<string, unknown>;
     if (rec.role === role) return;
     rec.role = role;
-    fs.writeFileSync(file, JSON.stringify(rec, null, 2));
+    // writeJsonAtomic, not a plain writeFileSync like every other production state writer
+    // (INV-AF4): the rewritten file is a role's runner state, and a tmp+rename keeps a crash
+    // mid-write (or a concurrent reader) from ever seeing a torn file. A migration that dies
+    // before the rename leaves the target at its pre-rewrite bytes — retried next startup —
+    // never a truncated state file the runner would read as no state.
+    writeJsonAtomic(file, rec);
   } catch {
     /* not a JSON state file — leave it alone */
   }
