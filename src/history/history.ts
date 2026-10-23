@@ -1,5 +1,5 @@
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag } from "../cli/cli-args.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -151,7 +151,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // did-you-mean hint for a near-miss of a real result — the same typoSuffix treatment
   // `logs --type` gives its codes). Applied after --grep, over the same rows both the table
   // and --json serialize.
-  const resultRaw = flagValue(rest, "--result");
+  const resultRaw = rejectFlagLookingValue("history --result", flagValue(rest, "--result"));
   let resultClasses: HistoryResultClass[] | null = null;
   if (resultRaw !== null) {
     const wanted = parseHistoryResultList(resultRaw);
@@ -163,7 +163,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   // matches. An unknown selector is not an error: models have no closed vocabulary and an old log
   // holds models the config has since dropped, so it simply keeps no rows.
   const afterResult = rows.length;
-  const modelRaw = flagValue(rest, "--model");
+  const modelRaw = rejectFlagLookingValue("history --model", flagValue(rest, "--model"));
   let models: string[] | null = null;
   if (modelRaw !== null) {
     const pieces = parseHistoryModelList(modelRaw);

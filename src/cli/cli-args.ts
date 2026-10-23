@@ -44,20 +44,40 @@ export function rejectRepeatFlag(seen: boolean, flag: string): void {
   if (seen) fail(`${flag} may only be given once`);
 }
 
+/** Refuse a `--`-token in a valued flag's position — `--result --last` must not treat `--last`
+ * as its value. Both `history` forms used to swallow the following `--` token in the value
+ * slot: the trail's `--result`/`--model` then failed downstream with a misleading "--result
+ * needs --last" wording — the operator DID write `--last` — and the listing's `--model`
+ * silently treated `--last` as a model filter and matched no rows. Returns the value
+ * unchanged when it is not a `--` token; only a `--` token reads as a flag, so a single-dash
+ * token and the intentional-text filters (grep, type) are not refused. `flag` names the
+ * valued flag the way its missing-value error names the command (e.g. `history --model`). */
+export function rejectFlagLookingValue(flag: string, value: string | null | undefined): string | null | undefined {
+  if (typeof value === "string" && value.startsWith("--"))
+    fail(`${flag} needs a value (the next token ${JSON.stringify(value)} is a flag, not a value)`);
+  return value;
+}
+
 /** The shared body of the `parse*Flag` helpers (grep, type, result, model): the flag's
  * value (null when absent) alongside `rest`, the args with the value token removed, failing
- * with `missingValueError` when the flag is valueless or its value is empty. */
+ * with `missingValueError` when the flag is valueless or its value is empty.
+ * `guardFlagValue` opts the flag into rejectFlagLookingValue, the same refusal the history
+ * listing (cmdHistory) applies to its own `--result`/`--model` and `role <id>`'s write flags
+ * and `config set` make. The value-scored filters (grep, type) deliberately keep a
+ * flag-shaped token as filter text and so stay off this guard. */
 function takeValuedFlag(
   args: string[],
   flag: string,
   missingValueError: string,
+  guardFlagValue = false,
 ): { rest: string[]; value: string | null } {
   const i = args.indexOf(flag);
   const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
   const raw = flagValue(args, flag);
   if (raw === null) return { rest, value: null };
-  if (raw === undefined || raw === "") fail(missingValueError);
-  return { rest, value: raw };
+  const checked = guardFlagValue ? rejectFlagLookingValue(flag, raw) : raw;
+  if (checked === undefined || checked === "") fail(missingValueError);
+  return { rest, value: checked };
 }
 
 /** Parse an optional `--grep <text>` filter flag for the filtering views (logs, history): the
@@ -93,7 +113,7 @@ export function parseTypeFlag(args: string[], missingValueError: string): { rest
  * cannot be read as a positional. Validation of the classes belongs to the caller
  * (parseHistoryResultList); a valueless or empty value fails with `missingValueError`. */
 export function parseResultFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
-  const { rest, value } = takeValuedFlag(args, "--result", missingValueError);
+  const { rest, value } = takeValuedFlag(args, "--result", missingValueError, true);
   return { rest, raw: value };
 }
 
@@ -102,7 +122,7 @@ export function parseResultFlag(args: string[], missingValueError: string): { re
  * cannot be read as a positional. Validation belongs to the caller (parseHistoryModelList); a
  * valueless or empty value fails with `missingValueError`. */
 export function parseModelFlag(args: string[], missingValueError: string): { rest: string[]; raw: string | null } {
-  const { rest, value } = takeValuedFlag(args, "--model", missingValueError);
+  const { rest, value } = takeValuedFlag(args, "--model", missingValueError, true);
   return { rest, raw: value };
 }
 

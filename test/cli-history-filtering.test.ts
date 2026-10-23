@@ -600,6 +600,26 @@ test("history --model fails with its own wording when the value is missing or em
   }
 });
 
+test("history --model/--result followed by a flag names the forgotten value in the listing form", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli history model flag value");
+  writeModelFixture(repo);
+  // `history --role feature --model --last`: --role (not a positional) routes to the listing
+  // form, which would otherwise treat "--last" as a model filter and exit 0 showing nothing
+  // ("no runs on model \"--last\""). The flag-looking-value guard refuses up front.
+  const model = await cli(repo, "history", "--role", "feature", "--model", "--last");
+  assert.notEqual(model.code, 0);
+  assert.match(model.stderr, /history --model needs a value \(the next token "--last" is a flag, not a value\)/);
+  // --result follows the same rule in the listing form.
+  const result = await cli(repo, "history", "--result", "--last");
+  assert.notEqual(result.code, 0);
+  assert.match(result.stderr, /history --result needs a value \(the next token "--last" is a flag, not a value\)/);
+  // A genuinely valued write still works (the guard is scoped to -- tokens).
+  const ok = await cli(repo, "history", "--model", "acme/m1", "--role", "feature");
+  assert.equal(ok.code, 0, ok.stderr);
+  assert.match(ok.stdout, /feature\s+#?3\b/);
+});
+
 test("an empty log keeps its own wording under --model", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history model empty");

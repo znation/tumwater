@@ -420,6 +420,29 @@ test("--result needs --last and a known class", async () => {
   );
 });
 
+test("history --result/--model followed by another flag names the forgotten value", async () => {
+  // `history bugfix --result --last` (value forgotten, the flag order reversed from the
+  // help's `--last --result <class>`) would otherwise swallow `--last` as the value and fail
+  // later with the misleading "--result needs --last on a one-run trail" — which claims the
+  // operator did NOT write --last when they did. The shared flag-looking-value guard refuses
+  // up front, naming the slip. The listing form's silent case -- `history --role bugfix
+  // --model --last` treating "--last" as a model filter and exiting 0 showing nothing -- is
+  // covered in cli-history-filtering.test.ts, where the role flag routes to that form.
+  const repo = makeRepo();
+  await initProject(repo, "run result flag value");
+  const byResult = await cli(repo, "history", "bugfix", "--result", "--last");
+  assert.equal(byResult.code, 1, byResult.stderr);
+  assert.match(byResult.stderr, /--result needs a value \(the next token "--last" is a flag, not a value\)/);
+  const byModel = await cli(repo, "history", "bugfix", "--model", "--last");
+  assert.equal(byModel.code, 1, byModel.stderr);
+  assert.match(byModel.stderr, /--model needs a value \(the next token "--last" is a flag, not a value\)/);
+  // A genuinely valued write still works (the guard is scoped to -- tokens).
+  writeEvents(repo, [start({ ts: 1000, run: 1 }), end({ ts: 2000, run: 1, result: "error", summary: "work" })]);
+  const ok = await cli(repo, "history", "bugfix", "--last", "--result", "problems");
+  assert.equal(ok.code, 0, ok.stderr);
+  assert.match(ok.stdout, /^bugfix run #1 /);
+});
+
 test("history <role> --last --result <class> through the CLI is not read as a run number", async () => {
   const repo = makeRepo();
   await initProject(repo, "run last result cli");
