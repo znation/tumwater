@@ -257,6 +257,22 @@ the `merge_conflict` arm as error-class under a `merge-conflict` cause with the 
 placeholder, not a review-rejection), and "a review_error merge prices its authoring hours
 under the matching review_failed cause".
 
+### INV-C3: a change the main watch reverted off main prices its authoring span as a `reverted` loss cause
+
+**Guarantee.** The time-spend classifier prices the merged run whose landed sha a `main_revert`
+names (by its `runner` and `commit`) as a `reverted` loss cause carrying the run's authoring
+span and the revert's first failing test, while the role × outcome table keeps that run in the
+`merged` column — the ranking is the separate "what did not survive" lens, so the cause is
+additive, exactly as a review-rejected span is both error-class in the table and its own loss. A
+`main_revert` naming a different commit or runner adds no cause, and a revert whose culprit run
+is outside the window adds none (no authoring span is known).
+
+**Binds.** `src/failure/time-spend.ts` (`timeAndSpend`), `src/failure/failure-render.ts`
+(`renderFailureMarkdown`).
+
+**Pinned by.** `test/failure-time-spend.test.ts` — "a main-reverted merge prices its authoring
+span as a reverted loss cause".
+
 ## Disclosed cuts and recorded causes
 
 A bounded view and a terminal decision each owe the reader the same thing: what the view left

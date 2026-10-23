@@ -11,6 +11,7 @@ import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRole
 import { resolveQueuedResult, bucketMergeEvents } from "../history/history-queued.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
+import { textOr } from "../text/text.js";
 
 /** How the Outcome table's results collapse for costing:
  * "merged" made progress, "no_change" spent a run and merged nothing, and every remaining
@@ -55,13 +56,15 @@ export interface TimeSpendRow {
 /** One ranked loss cause: an error cluster — the digest's
  * own clustering, applied to the runs that burned time — a role's total "no_change" spend,
  * the quiet loss no cluster names, or a role's total authoring spend on changes the merge
- * gate rejected (BUGS.md 2026-09-30), or a merge that failed (BUGS.md 2026-10-10).
+ * gate rejected (BUGS.md 2026-09-30), or a merge that failed (BUGS.md 2026-10-10), or a
+ * change the main watch reverted off main (the `reverted` arm).
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
  * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
  * refusal summary (the deliberate objection that blocks the entry), the shared no-text
- * placeholder for a merge failure, or "" for a no_change cause. */
+ * placeholder for a merge failure, a reverted cause's revert's first failing test, or ""
+ * for a no_change cause. */
 export interface LossCause {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "reverted";
   roles: string[]; // unique, sorted
   example: string;
   runs: number;
@@ -90,7 +93,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "reverted";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -115,6 +118,34 @@ function newestAttemptEvent(
   return (eventsByRunner.get(role) ?? [])
     .filter((e) => e.ts >= attempt.pin.ts && e.ts <= attempt.outcome.ts)
     .at(-1);
+}
+
+/** The sha the main watch names a revert by — the landed `merged`-event sha, not the authored
+ * pin: a verification rebases its pin onto main before the gate (syncPinToMain), so the `merged`
+ * event logged at fast-forward carries the rebased commit main actually holds while the pin (and
+ * the merge_done it pairs with) keeps the authored one — the same rebase the review joins already
+ * account for (BUGS.md 2026-10-10). Mirrors revertedOf's mergedSha pick
+ * (src/run/run-detail-data.ts): the newest `merged` event for the role inside the merge's own
+ * span (merge_done ts minus its durationMs, up to its ts), falling back to the pin sha when no
+ * `merged` event names a landed commit (a no-op fast-forward logs none). The exact join a
+ * main_revert must make, or a reverted merge whose pin was rebased before landing is silently
+ * missing from the loss ranking. */
+function mergedShaOf(
+  role: string,
+  mergedByRunner: Map<string, HarnessEvent[]>,
+  outcome: HarnessEvent,
+  pinSha: string,
+): string {
+  const scoped = mergedByRunner.get(role) ?? [];
+  if (typeof outcome.durationMs === "number" && Number.isFinite(outcome.durationMs)) {
+    for (let i = scoped.length - 1; i >= 0; i--) {
+      const e = scoped[i]!;
+      if (e.ts >= outcome.ts - outcome.durationMs && e.ts <= outcome.ts) {
+        return textOr(e.commit, pinSha);
+      }
+    }
+  }
+  return pinSha;
 }
 
 /** The pooled cluster key and truncated example a failure-message source's span prices under:
@@ -185,6 +216,29 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
   // the same cluster key the digest's review-failure section already counts.
   const reviewFailedByRunner = groupBy(
     allEvents.filter((e) => e.type === "review_failed"),
+    (e) => e.source,
+  );
+  // A `main_revert` (src/baseline/main-revert.ts) names the role that merged a change the main
+  // watch later reverted off main, keyed by the exact role id and the landed sha — the same
+  // instance-id join revertedOf (src/run/run-detail-data.ts) uses — so a window coupling a
+  // reverted merge to its authoring run can price that run's span as a `reverted` loss cause.
+  // The run's `run_end` resolved to a merge and stays in the `merged` class of the table
+  // below; the loss ranking is the separate "what did not survive" lens, so this cause is
+  // additive, exactly as a review-rejected span is both error-class in the table and its own
+  // loss. Kept as a Map so the matching event's failingTests are available for the example.
+  const revertedByKey = new Map<string, HarnessEvent>();
+  for (const e of allEvents) {
+    if (e.type !== "main_revert") continue;
+    if (typeof e.runner !== "string" || e.runner === "") continue;
+    if (typeof e.commit !== "string" || e.commit === "") continue;
+    revertedByKey.set(`${e.runner}\u0000${e.commit}`, e);
+  }
+  // The landed shas main_revert names: its `commit` is the actual `merged`-event sha on main, not
+  // the authored pin (a verification rebases the pin onto main before the gate) — so the fold
+  // keys each revert by the role + the sha main landed, and each resolved merge first names its
+  // own landed commit (mergedShaOf) before joining. Grouped per role for that lookup.
+  const mergedByRunner = groupBy(
+    allEvents.filter((e) => e.type === "merged" && typeof e.commit === "string" && e.commit !== ""),
     (e) => e.source,
   );
   const deadlineKilledByRunner = groupBy(
@@ -299,6 +353,23 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
       if (kind === "merge-blocked" && killed) {
         key = `merge_blocked_deadline\u0000${role}`;
         example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
+      }
+    } else if (ev.result === "queued" && resolvedOutcome?.outcome.type === "merge_done") {
+      // The change merged and the main watch reverted it off main (`main_revert`): the authoring
+      // span burned and survives in no other loss cause, so it ranks under a `reverted` cause —
+      // the most expensive loss, a merged run that did not stick — named by the revert's first
+      // failing test. The run still prices as `merged` in the table above; the ranking is the
+      // separate loss lens. The join is revertedOf's (src/run/run-detail-data.ts): the revert's
+      // runner is this role and its commit is the run's LANDED `merged` sha — not the pin, which
+      // a pre-landing rebase moved — so a rebased landing is still priced, exactly as a rebased
+      // rejection is (BUGS.md 2026-10-10). The example is that revert's first failing test.
+      const mergedSha = mergedShaOf(role, mergedByRunner, resolvedOutcome.outcome, textOr(resolvedOutcome.outcome.commit, resolvedOutcome.sha));
+      const revertedEv = revertedByKey.get(`${role}\u0000${mergedSha}`);
+      if (revertedEv !== undefined) {
+        key = `reverted\u0000${role}`;
+        kind = "reverted";
+        const tests = Array.isArray(revertedEv.failingTests) ? (revertedEv.failingTests as string[]) : [];
+        example = tests[0] !== undefined ? truncateExample(tests[0]) : "";
       }
     }
     if (key === null) continue;

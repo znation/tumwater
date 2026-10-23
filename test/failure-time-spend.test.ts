@@ -327,3 +327,47 @@ test("a refused run prices its own loss cause, not no_change", () => {
   assert.deepEqual(feature?.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
   assert.deepEqual(data.lossCauses.reduce((n, c) => n + c.runs, 0), 2, "both runs are owned by a loss cause");
 });
+
+test("a main-reverted merge prices its authoring span as a reverted loss cause", () => {
+  // The most expensive outcome the digest omitted: a change that merged and was then reverted
+  // off main by the main watch (`main_revert`). The run's `run_end` resolved to a merge, so it
+  // priced as `merged` progress and appeared in no loss cause at all. The fold now joins each
+  // queued→merged run to a `main_revert` naming its role (`runner`) and landed sha (`commit`) —
+  // revertedOf's exact join — and ranks the authoring span as a `reverted` cause named by the
+  // revert's first failing test, while the role × outcome table keeps the run `merged`.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    // A change that merged and was then reverted off main by the main watch. The verification
+    // rebased its pin (merge_queued commit head("b")) onto main before landing, so the `merged`
+    // event names the landed sha head("z") — the sha the main watch's main_revert names. The
+    // fold joins the revert to the LANDED sha, exactly as revertedOf does, or a rebased landing
+    // would be silently missing from the loss ranking.
+    { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("b"), summary: "land a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "feature", type: "merged", commit: head("z"), summary: "land a thing" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("b"), result: "changed", durationMs: 3_600_000 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), source: "tumwater", type: "main_revert", commit: head("z"), revert: head("r"), runner: "feature", failingTests: ["a.test.ts flaked"] },
+    // A revert naming a different landed commit, or a different runner, adds no reverted cause.
+    { ts: at(0, 14), source: "tumwater", type: "main_revert", commit: head("c"), revert: head("s"), runner: "feature", failingTests: ["b.test.ts flaked"] },
+    { ts: at(0, 15), source: "tumwater", type: "main_revert", commit: head("b"), revert: head("t"), runner: "bugfix", failingTests: ["c.test.ts flaked"] },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const reverted = data.lossCauses.find((c) => c.kind === "reverted");
+  assert.ok(reverted, `a main-reverted merge names a reverted loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.deepEqual(
+    reverted && { roles: reverted.roles, example: reverted.example, runs: reverted.runs, ms: reverted.ms, costUsd: reverted.costUsd },
+    { roles: ["feature"], example: "a.test.ts flaked", runs: 1, ms: 1_800_000, costUsd: 0.2 },
+    "the revert's authoring span owns a reverted cause named by its first failing test",
+  );
+  assert.equal(
+    data.lossCauses.filter((c) => c.kind === "reverted").length,
+    1,
+    "a revert naming a different commit or runner adds no reverted cause",
+  );
+  // The run still prices as merged in the table — the ranking is the separate loss lens.
+  const feature = data.timeSpend.find((r) => r.role === "feature");
+  assert.deepEqual(feature?.classes.merged, { runs: 1, ms: 1_800_000, costUsd: 0.2 }, "the reverted run stays in the merged column");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /reverted off main on feature — a\.test\.ts flaked/);
+});
