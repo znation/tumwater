@@ -20,11 +20,50 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - The decision (either branch) is recorded with its evidence in PLANS-DONE.md when closed; a raised cap is accompanied by one week of load-watch in the dogfood instance.
 - `npm run test:gate` passes (config change only; no code).
 
-### Interlock relief, part 1/2: The merge-queue interlock holds only what the feedback contract needs — a queued author whose change is approved may run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; evidence: queue waits before landing ran median 5 min, max 3 h 17 m over 58 h, and the interlock parks the author for the whole window; one switch: `review.afterMerge` opts a role into both post-merge review and this relief (Reviewer as a regular role, part 1/4, landed); touches src/git/git.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-scope.ts src/orchestrator/scheduling-skip.ts src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts src/runner/leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts plans/merge-queue.md and their tests)
+### Interlock relief, part 1/4: The relief run holds its commit on the branch, and its row does not join the earlier change's verdict (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2 — the scheduler admission is part 3/4, the recovery arms part 2/4; touches src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts test/run-stage.test.ts test/history-data.test.ts)
 
-**Needs review 2026-10-23 by feature: too large for one run (held 1)**
+**Previously held 1**
 
-**Goal.** plans/merge-queue.md invariant 3 ("a loop with a queued or landing change is not eligible to tick") preserves the `state.lastReview` feedback contract. For post-merge-review roles that contract no longer needs the pre-merge pipeline: scope the interlock per role and per stage, so an author whose change is approved-and-waiting or in the merge's fast-forward is not parked, while the stages that actually race the author's branch stay exclusive. The queue's one-entry-per-role cap is unchanged: a role admitted this way that authors a second change holds it on its branch, unpinned, until the first drains.
+**Goal.** A post-merge-review role the scheduler admits while its first change is queued (part 3/4) may author a second change. The queue's one-entry-per-role cap must hold: the new commit stays on the branch, unpinned and unqueued, until the first entry drains. Today `stageRunMerge` unconditionally pins and enqueues, which would put two changes on the queue for one role. Stop that, and keep the held run's `run_end` out of the queued-row join so the earlier change's merge verdict is not attributed to it.
+
+**Approach.**
+- src/run/run-stage.ts (`stageRunMerge`): before `pinAndReset`, if the role already has a queued entry (`queuedMerges(ctx.root).some((e) => e.role === ctx.role)`) or an unmerged pin (`hasUnmergedPin(ctx.root, ctx.role)`), pin nothing, enqueue nothing, and leave the commit on the branch. End `{ result: "queued", summary: finalSummary, commit, highFriction, heldOnBranch: true }`. The commit message, events, flow/filed records and friction are unchanged; only the pin/enqueue block is skipped.
+- src/run/run-outcome.ts: add `heldOnBranch?: true` to `RunOutcome`, documented as "the run committed but enqueued nothing because the role already had a queued change; its `run_end` must not join the queued-row verdict".
+- src/run/run-finalize.ts: write `heldOnBranch` onto the `run_end` event when the outcome carries it.
+- src/history/history-queued.ts (`resolveQueuedResult`): return `null` at the top when `end.heldOnBranch === true`, before the window/floor and bucket walks. The one guard covers all three call sites (`history-data.ts`, `time-spend.ts`, `run-detail-data.ts`).
+
+**Acceptance criteria.**
+- With a queued entry already present for the role (`queuedMerges` non-empty), and separately with an unmerged pin and no queue entry, `stageRunMerge` pins nothing, enqueues nothing, leaves the commit on the branch, and ends `queued` with `heldOnBranch: true`; with neither present it pins and enqueues exactly as today.
+- `resolveQueuedResult` returns `null` for a `run_end` carrying `heldOnBranch: true`, and the earlier queued run's row still resolves to its own pin's verdict; a `run_end` without the flag is unaffected.
+- `npm run test:gate` passes.
+
+**Tests.** test/run-stage.test.ts (the held run pins and enqueues nothing, leaves its commit on the branch, and ends `queued` + `heldOnBranch`); test/history-data.test.ts (a `heldOnBranch` `run_end` is not joined, and the earlier queued run keeps its own pin's verdict).
+
+### Interlock relief, part 2/4: Recovery preserves a held branch commit and lets an approved queued author run (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision"; split of the oversized Interlock relief part 1/2; requires part 1/4 landed — the held-on-branch staging; the scheduler admission is part 3/4; touches src/runner/leftover.ts src/runner/runner-recovery.ts src/runner/runner-run.ts test/leftover.test.ts test/runner-leftover-recovery.test.ts test/runner-recovery.test.ts)
+
+**Previously held 1**
+
+**Goal.** Once part 1/4 stages a second commit on the branch, recovery must let a scheduler-admitted run author instead of ending on `already_queued`, report an already-held branch commit as a wait without discarding it, and keep a main-red or reviewer-config hold from being repointed by pin adoption.
+
+**Approach.**
+- src/runner/leftover.ts (`recoverLeftover`): when the role has a queued entry, return a new `relief_wait` recovery when the branch is ahead of main (the held commit) and `already_queued` when it is at main; add `relief_wait` to the `LeftoverRecovery` union. In the no-pin branch, when `mergeReviewError` or `mainRedRetry` names the branch tip, return `held`/`main_red_wait` with that tip's sha WITHOUT adopting it into `refs/tumwater/merge/<role>`: adopting would repoint the ref and lose the kept sha.
+- src/runner/runner-run.ts: the `already_queued` arm still ends the run except for a post-merge-review role (`(ctx.config.review.afterMerge ?? []).includes(baseRoleOf(ctx.role))`), where it falls through to author — that fall-through IS the run the scheduler admitted. Every other recovery kind, `relief_wait` included, ends the run.
+- src/runner/runner-recovery.ts (`finishRecoveryRunPhase`): `relief_wait` ends `{ result: "skipped", recoveredLeftover: true }` without resetting the worktree (the held commit must survive). `enqueued` resets only when the branch is at main or its tip IS the re-queued pin, so an unpinned relief commit is not discarded.
+
+**Acceptance criteria.**
+- A role with a queued entry and a branch commit ahead of main recovers `relief_wait`; with the branch at main it recovers `already_queued`.
+- A post-merge-review role whose recovery is `already_queued` falls through to author; a pre-merge-review role ends the run as today; every other recovery kind ends the run.
+- `relief_wait` ends `skipped` with `recoveredLeftover: true` and leaves the branch commit in place; `enqueued` resets only when the branch is at main or its tip is the re-queued pin.
+- A recovery run with a branch commit ahead of main, no pin, and `mainRedRetry` (or `mergeReviewError`) set creates or repoints no `refs/tumwater/merge/<role>`, leaves the branch commit in place, and ends on the held/`main_red` path.
+- `npm run test:gate` passes.
+
+**Tests.** test/leftover.test.ts (branch-ahead `relief_wait`; the no-pin held-record guard does not adopt); test/runner-recovery.test.ts and test/runner-leftover-recovery.test.ts (the recovery arms and the conditional reset, plus the `already_queued` fall-through versus the pre-merge end).
+
+### Interlock relief, part 3/4: Scheduler admits a post-merge author whose queued change is approved or merging (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2; requires parts 1/4 and 2/4 landed; one switch: `review.afterMerge` opts a role into both post-merge review and this relief (Reviewer as a regular role, part 1/4, landed); evidence: queue waits before landing ran median 5 min, max 3 h 17 m over 58 h, and the interlock parks the author for the whole window; touches src/git/git.ts src/orchestrator/orchestrator-poll.ts src/orchestrator/scheduling-scope.ts src/orchestrator/scheduling-skip.ts test/orchestrator-scheduling.test.ts)
+
+**Previously held 1**
+
+**Goal.** plans/merge-queue.md invariant 3 ("a loop with a queued or landing change is not eligible to tick") preserves the `state.lastReview` feedback contract. For post-merge-review roles that contract no longer needs the pre-merge pipeline: scope the interlock per role and per stage, so an author whose change is approved-and-waiting or in the merge's fast-forward is not parked, while the stages that actually race the author's branch stay exclusive.
 
 **Approach.**
 - The stage is NOT a new queue field. `queuedMergeRoles` (src/merge/merge-queue.ts) says a role HAS a queued change; the stage comes from the pipeline the poll already shares (`SchedulingPassCtx.merges: MergePipeline`, src/merge/merge-pipeline.ts: `verifying`, `approved`, `merge.roles`) plus the live in-flight marker's per-change `stage` (`readMergeMarker` + `isMergeChange`, src/merge/merge-slot.ts). Do not add a stage to `MergeEntry`: the queue holds only unattempted entries, and its other readers (`claims.ts`, `status-*`, `gate-polls.ts`) consume the role set, not a stage. A queued post-merge role is held while its entry is pre-approval (`verifying`, or not yet picked up), in `resolve-wait`/`resolving`, or while its branch is already ahead of main (a prior relief run's held commit) — and admitted once `approved` or in `merge` and not resolving.
@@ -32,31 +71,25 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - src/orchestrator/scheduling-scope.ts: add `mainBranch: string` and `merges: MergePipeline` to `SchedulingPassCtx`, and `interlockedHold: Set<string>` to `SchedulingScope`. In `buildSchedulingScope`, fill `interlockedHold` for each queued post-merge role in a non-admissible stage or with `aheadOfMainBranch(root, branchName(role), mainBranch) > 0`.
 - src/orchestrator/scheduling-skip.ts, the `queuedRoles.has(runner.role)` block: skip when the role is not a post-merge role OR `interlockedHold.has(runner.role)`; otherwise fall through to author. Pre-merge roles and non-admissible stages are unchanged.
 - src/orchestrator/orchestrator-poll.ts: pass `mainBranch` and `ctx.merges` into `pollRunnerReasons`.
-- src/git/git.ts: add `export async function aheadOfMainBranch(root, branch, mainBranch)` returning `countCommitsInRange(root, `${mainBranch}..refs/heads/${branch}`)` — the role's branch may live in a leased pool slot, so read it from the shared root, not a worktree path (`aheadOfMain` is unchanged).
-- src/runner/leftover.ts (`recoverLeftover`): when the role has a queued entry, return a new `relief_wait` recovery when the branch is ahead of main (the held commit) and `already_queued` when it is at main. In the no-pin branch, when `mergeReviewError` or `mainRedRetry` names the branch tip, return `held`/`main_red_wait` with that tip's sha WITHOUT adopting it into `refs/tumwater/merge/<role>`: adopting would repoint the ref and lose the kept sha (the earlier review's repro).
-- src/runner/runner-run.ts: the `already_queued` arm still ends the run except for a post-merge-review role, where it falls through to author — that fall-through IS the run the scheduler admitted. Every other recovery kind, `relief_wait` included, ends the run.
-- src/runner/runner-recovery.ts (`finishRecoveryRunPhase`): `relief_wait` ends `{ result: "skipped", recoveredLeftover: true }` without resetting the worktree (the held commit must survive). `enqueued` resets only when the branch is at main or its tip IS the re-queued pin, so an unpinned relief commit is not discarded.
-- src/run/run-stage.ts (`stageRunMerge`): before `pinAndReset`, if the role already has a queued entry (`queuedMerges(ctx.root).some((e) => e.role === ctx.role)`) or an unmerged pin (`hasUnmergedPin`), pin nothing, enqueue nothing, and leave the commit on the branch. End `{ result: "queued", summary: finalSummary, commit, highFriction, heldOnBranch: true }`.
-- The queued-row join fix: src/run/run-outcome.ts gains `heldOnBranch?: true` on `RunOutcome` (the run committed but enqueued nothing, so its `run_end` must not be joined); src/run/run-finalize.ts writes it on the `run_end`; src/history/history-queued.ts's `resolveQueuedResult` returns `null` at the top when `end.heldOnBranch === true`, so all three call sites (history-data.ts, time-spend.ts, run-detail-data.ts) are covered by the one guard and can never attribute the earlier queued change's merge verdict to the relief run's row. The run otherwise keeps the `queued` label and its scheduling.
-- plans/merge-queue.md invariant 3 is updated to the scoped form with a pointer to plans/interlock-relief.md; docs/glossary.md's `waiting to merge` row keeps its meaning (it names the queue, not the run gate). The docs tiering paragraph is part 2/2.
+- src/git/git.ts: add `export async function aheadOfMainBranch(root, branch, mainBranch)` returning `countCommitsInRange(root, \`${mainBranch}..refs/heads/${branch}\`)` — the role's branch may live in a leased pool slot, so read it from the shared root, not a worktree path (`aheadOfMain` is unchanged).
+- plans/merge-queue.md invariant 3 and the docs are part 4/4; this part changes the scheduling code only.
 
 **Acceptance criteria.**
-- A post-merge-review role with an `approved` queued entry starts its next run in the same poll it would have started in with an empty queue; the same role with an entry `verifying`, not yet picked up, or in `resolve-wait`/`resolving` does not start (test over the stages). A pre-merge-review role (feature) with any queued entry still does not start — today's behavior, test unchanged.
-- A relief run admitted by an approved entry authors a second change, pins and enqueues nothing, leaves the commit on the branch, and ends `queued` with `heldOnBranch: true`; the scheduler then holds the role on the branch-ahead read until the first entry drains and recovery adopts the held commit.
-- `resolveQueuedResult` returns `null` for a `run_end` carrying `heldOnBranch: true`, and the earlier queued run's row still resolves to its own pin's verdict (the join regression test); a `run_end` without the flag is unaffected.
-- A recovery run with a branch commit ahead of main, no pin, and `mainRedRetry` (or `mergeReviewError`) set creates or repoints no `refs/tumwater/merge/<role>`, leaves the branch commit in place, and ends on the held/`main_red` path.
+- A post-merge-review role with an `approved` queued entry starts its next run in the same poll it would have started in with an empty queue; the same role with an entry `verifying`, not yet picked up, or in `resolve-wait`/`resolving` does not start (test over the stages). A pre-merge-review role (feature) with any queued entry still does not start — today's behavior, test unchanged. A post-merge role whose branch is ahead of main does not start.
 - `npm run test:gate` passes.
 
-**Tests.** test/orchestrator-scheduling.test.ts (the `schedulingCtx` helper gains `mainBranch` and `merges`; stage-scoped admission and the branch-ahead hold over a post-merge and a pre-merge role); test/run-stage.test.ts (the held run pins and enqueues nothing, leaves its commit on the branch, and ends `queued` + `heldOnBranch`); test/history-data.test.ts (a `heldOnBranch` `run_end` is not joined, and the earlier queued run keeps its own pin's verdict); test/leftover.test.ts (branch-ahead `relief_wait`; the no-pin held-record guard does not adopt); test/runner-leftover-recovery.test.ts and test/runner-recovery.test.ts (the recovery arms and the conditional reset).
+**Tests.** test/orchestrator-scheduling.test.ts (the `schedulingCtx` helper gains `mainBranch` and `merges`; stage-scoped admission and the branch-ahead hold over a post-merge and a pre-merge role).
 
-### Interlock relief, part 2/2: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 1/2 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
+### Interlock relief, part 4/4: Docs state which roles wait on their merge and which do not (planned 2026-10-23 by user; design in plans/interlock-relief.md "What lands" item 2; requires part 3/4 landed; touches docs/how-it-works.md docs/glossary.md plans/merge-queue.md)
+
+**Previously held 1**
 
 **Goal.** An operator reading the merge-pipeline section can predict which roles author through a queued change and which park, and why the split follows `review.afterMerge`.
 
 **Approach.**
 - docs/how-it-works.md, the merge-pipeline/scheduling sections: the interlock paragraph states the two tiers and the stage exclusions (pre-approval, conflict, main-red) as behavior, one paragraph, no new terms.
 - docs/glossary.md: the `waiting to merge` status row gains the half-sentence "for pre-merge-review roles, this also holds the role's next run" — the scoped behavior is the row's whole difference.
-- plans/merge-queue.md's invariant text carries the final wording (part 1/2 edits it; this part reconciles any drift from review).
+- plans/merge-queue.md's invariant 3 is updated to the scoped form with a pointer to plans/interlock-relief.md.
 
 **Acceptance criteria.**
 - The three docs agree on the tiers and the excluded stages; grep finds no remaining unscoped "a role with a queued change never runs" claim outside plans/ as historical record.

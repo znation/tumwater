@@ -53,12 +53,13 @@ entry drains — one commit ahead of main, as before, just not idle while waitin
 
 ## What lands
 
-1. **Stage-scoped eligibility (part 1/2):** `queuedMergeRoles` (src/merge/merge-queue.ts) gains
-   the entry's stage; the scheduling skip applies to a role whose entry is pre-approval or in a
-   conflict/main-red hold, not one approved-and-waiting or in the merge's fast-forward. The
-   `waiting to merge` status word (docs/glossary.md) keeps its meaning — it names the queue, not
-   the run gate.
-2. **Docs (part 2/2):** plans/merge-queue.md's invariant 3 text is updated to the scoped form
+1. **Stage-scoped eligibility (parts 1/4–3/4):** the stage is read from the shared
+   `MergePipeline` (src/merge/merge-pipeline.ts) and the live marker (src/merge/merge-slot.ts),
+   not added to `MergeEntry`; the scheduling skip applies to a role whose entry is pre-approval
+   or in a conflict/main-red hold, not one approved-and-waiting or in the merge's fast-forward.
+   The `waiting to merge` status word (docs/glossary.md) keeps its meaning — it names the queue,
+   not the run gate.
+2. **Docs (part 4/4):** plans/merge-queue.md's invariant 3 text is updated to the scoped form
    with a pointer here; docs/how-it-works.md's merge-pipeline section says which roles wait and
    which don't and why.
 
