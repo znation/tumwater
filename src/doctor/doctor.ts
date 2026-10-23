@@ -36,6 +36,7 @@ import {
   checkFlakyChecks,
   checkStateDir,
 } from "./doctor-project-checks.js";
+import { sampleFreeBytes } from "../gates/disk-gate.js";
 import {
   checkCheckContention,
   checkLeftoverRoleBranches,
@@ -94,7 +95,9 @@ export async function runDoctorCheck(run: () => CheckOutcome | null | Promise<Ch
  * construction — no check removes or repairs anything (the state-dir probe writes a temp file
  * and deletes it again; the orphan check reports processes, never signals them) — so doctor
  * works identically with or without a running harness. `probe` feeds the orphan and port
- * checks, so tests can pin the report without reading the host's process table. `only` runs
+ * checks, so tests can pin the report without reading the host's process table. `diskSample`
+ * feeds the disk check the same way, so tests can pin the report without reading the host's
+ * real free space (a hosted runner under the 10 GB floor would fail its row). `only` runs
  * just the named checks, in report order; a skipped check is never evaluated, and a named
  * conditional check that returns null leaves no row. A check that throws becomes its own fail
  * row, and every other check still runs. */
@@ -104,6 +107,7 @@ export async function runDoctor(
   probe: ProcessProbe = systemProcessProbe,
   probeImages: "missing" | "all" | "never" = "never",
   only?: readonly DoctorCheckName[],
+  diskSample: (root: string) => number | null = sampleFreeBytes,
 ): Promise<DoctorReport> {
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
   // undefined — checkInit reports it verbatim — so doctor still runs every other check.
@@ -188,7 +192,7 @@ export async function runDoctor(
     { name: "tumwater pins", run: () => checkTumwaterPins(root) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
-    { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
+    { name: "disk space", run: () => checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40, diskSample) },
     { name: "check", run: () => checkBuildCheck(root, config) },
     { name: "root install", run: () => checkRootInstall(root) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept

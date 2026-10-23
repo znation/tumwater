@@ -7,6 +7,8 @@ import { writeScript } from "../fakes/fake-commands.js";
 // process-table content — the doctor files never read the host's real state.
 export { noProcesses, fakeProbe } from "../fakes/process.js";
 import { makeRepo, tmpdir, writeConfig } from "./repo-fixtures.js";
+import { loadConfig, saveConfig } from "../../src/config/config.js";
+import { initProject } from "../../src/init/init.js";
 
 /** Fixtures shared by the doctor test files (doctor.test.ts, doctor-checks.test.ts,
  * doctor-orphans.test.ts): a
@@ -34,6 +36,22 @@ export function readyRepo(): string {
   const root = makeRepo();
   writeConfig(root, { diskHoldGB: 0, diskReclaimGB: 0 });
   return root;
+}
+
+/** An initialized repo for the CLI-wiring doctor tests: initProject's seeded config with the
+ * disk floor disabled, the same hermeticity readyRepo carries. The CLI child reads the
+ * host's real free space, and a hosted runner under the 10 GB default floor would fail the
+ * disk row and with it every exit-0 or verdict-count assertion the wiring tests pin (CI's
+ * ubuntu-26.04 image, 2026-10-22); the disk row's own levels stay covered by the injected
+ * -sample tests in doctor-checks.test.ts. */
+export async function diskHermeticRepo(label: string): Promise<string> {
+  const repo = makeRepo();
+  await initProject(repo, label);
+  const config = loadConfig(repo);
+  config.diskHoldGB = 0;
+  config.diskReclaimGB = 0;
+  saveConfig(repo, config);
+  return repo;
 }
 
 /** The doctor CLI wiring tests' PATH entry: a fake `pi` (exit 0), a fake `ps` that touches
