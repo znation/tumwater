@@ -606,6 +606,40 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
   }
 });
 
+test("gui /api/backlog marks a held-for-operator plan for the drawer's Release button", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "backlog held-for-operator gui test");
+  // A plain planned entry and one carrying a held-for-operator Needs-review note
+  // ((held 3) at/above the OPERATOR_HOLD_THRESHOLD) plus its **Previously held 2** line.
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Plain plan (planned 2026-10-05)\n\nbody\n\n### Held plan (planned 2026-10-01)\n\n**Needs review 2026-10-16 by feature: too large for one run (held 3)**\n\n**Previously held 2**",
+    },
+  ]);
+  const { server, base } = await startLocalGui(repo);
+  try {
+    // The held plan's payload gains heldForOperator: true beside refused/waiting.
+    let res = await fetch(base + "/api/backlog?file=plans&index=1");
+    assert.equal(res.status, 200);
+    const held = (await res.json()) as {
+      title: string;
+      body: string;
+      refused: boolean;
+      waiting: boolean;
+      heldForOperator?: boolean;
+    };
+    assert.match(held.body, /\*\*Needs review/);
+    assert.equal(held.heldForOperator, true);
+    // The plain plan's payload carries no heldForOperator key at all.
+    res = await fetch(base + "/api/backlog?file=plans&index=0");
+    const plain = (await res.json()) as Record<string, unknown>;
+    assert.equal(("heldForOperator" in plain), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("apiError renders the operator-facing message for every error-body shape", async () => {
   // The guard above is pinned by source shape; this pins its BEHAVIOR — endpoint, HTTP
   // status, and the server's error text joined by the same separator — for every body shape
