@@ -5,6 +5,7 @@ import type { HarnessEvent } from "./events.js";
 import { EVENTS_KEEP } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
 import { statOrNull } from "../files/files.js";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { readTailTextWithEnd } from "../files/tail.js";
 
 /** The report window's bounds, shared by every surface that takes a day count (the CLI's
@@ -187,14 +188,39 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
   );
 }
 
+/** Parsed in-window event scans, keyed by file + fromKey, bounded inside cachedByStat so many
+ * short-lived roots in tests cannot grow it unbounded. A status poll asks eventsSince and the
+ * doctor's checks ask readEventsSince over the same log several times a second; each was
+ * re-reading and re-parsing the whole in-window tail on every call (a ~6 MB, ~26k-line busy
+ * day's log measured ~210 ms per 1-day scan on this repo), so five sibling calls in one poll
+ * cost ~1.7 s of CPU re-doing the one scan. The log is append-only: an unchanged stat means
+ * unchanged bytes, so a steady-state poll now costs one stat per file and the shared scan is
+ * divided among every windowed reader — the same freshness contract readEvents already keeps
+ * for the recent-tail reader. Rotation swaps the inode and every append changes size, so both
+ * invalidate through the same dev/ino/mtime/size check. */
+const scanEventsFileCache = new Map<string, StatKeyedValue<ScannedFile>>();
+
+function scanEventsFile(file: string, fromKey: string): ScannedFile {
+  return (
+    cachedByStat(
+      scanEventsFileCache,
+      `${file}\u0000${fromKey}`, // Per (file, fromKey): the several windows in one poll share one entry.
+      file,
+      () => scanEventsFileInner(file, fromKey), // A missing/unreadable log scans to the empty window, cached like an empty one.
+      (v) => ({ ...v, events: v.events.map((e) => ({ ...e })) }), // A copy: callers may treat the result as their own.
+    ) ?? { events: [], coversFullWindow: false, end: 0, logState: classifyLogFile("", null) }
+  );
+}
+
 /** One file's in-window events, scanned backwards with bounded I/O: the log is append-only and
  * chronological, so we scan backwards in chunks from EOF (tail.readTailText) and stop as soon
  * as the oldest complete line in hand predates the window — cost scales with the window's size,
  * not the file's. `coversFullWindow` records whether this file reaches back before the window
  * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
  * team was idle": both leave the oldest returned event later than the window start, but only
- * the former means data was lost. */
-function scanEventsFile(file: string, fromKey: string): ScannedFile {
+ * the former means data was lost. This body is the cached loader scanEventsFile runs only on a
+ * miss — a first observation or a changed file — so a steady-state poll re-reads nothing. */
+function scanEventsFileInner(file: string, fromKey: string): ScannedFile {
   const st = statOrNull(file);
   let coversFullWindow = false;
   const { text, coveredEnd } = readTailTextWithEnd(file, (_chunk, parts) => {
