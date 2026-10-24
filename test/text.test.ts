@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { asList, collapseWhitespace, errorFirstLine, firstTrimmedLineStartingWith, gotSuffix, isNonBlankString, joinParts, joinWithMore, parseNonNegativeInt, parsePositiveInt, pathTokens, splitCommaList, splitCommaListUnique, squash, stripTerminalControls, textOr, tooLongMessage, trimLeadingBlankLines, trimTrailingBlankLines, truncate, truncateWithNote } from "../src/text/text.js";
+import { asList, collapseWhitespace, cutSplitsSurrogatePair, errorFirstLine, errorMessage, escapeRegExp, firstTrimmedLineStartingWith, gotSuffix, isNonBlankString, joinParts, joinWithMore, parseNonNegativeInt, parsePositiveInt, pathTokens, splitCommaList, splitCommaListUnique, squash, stripTerminalControls, textOr, tooLongMessage, trimLeadingBlankLines, trimTrailingBlankLines, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -57,6 +57,25 @@ test("truncate handles tiny max values without breaking", () => {
   assert.equal(truncate("abc", 1), "…"); // nothing fits but the ellipsis itself
   assert.equal(truncate("abc", 2), "a…");
   assert.ok(truncate("anything at all", 3).length <= 3);
+});
+
+test("cutSplitsSurrogatePair is true exactly between an astral character's two code units", () => {
+  const s = "ab🎉cd"; // 🎉 (U+1F389) occupies code units 2..3, high 0xD83C then low 0xDF89
+  assert.equal(cutSplitsSurrogatePair(s, 0), false); // nothing before index 0
+  assert.equal(cutSplitsSurrogatePair(s, 1), false); // plain 'a' / 'b' boundary
+  assert.equal(cutSplitsSurrogatePair(s, 2), false); // a 'b' / high-surrogate boundary
+  assert.equal(cutSplitsSurrogatePair(s, 3), true); // high / low surrogate: a split
+  assert.equal(cutSplitsSurrogatePair(s, 4), false); // low-surrogate / 'c' boundary
+  assert.equal(cutSplitsSurrogatePair(s, 6), false); // at and past s.length can't split
+  assert.equal(cutSplitsSurrogatePair(s, 7), false);
+  // A lone low surrogate at the cut's high side is not a pair.
+  assert.equal(cutSplitsSurrogatePair("a\udf89", 1), false);
+  // A lone high surrogate at the cut's low side is not a pair.
+  assert.equal(cutSplitsSurrogatePair("\ud83cb", 1), false);
+  // Whole single astral character: the only split index is 1.
+  assert.equal(cutSplitsSurrogatePair("🎉", 0), false);
+  assert.equal(cutSplitsSurrogatePair("🎉", 1), true);
+  assert.equal(cutSplitsSurrogatePair("🎉", 2), false);
 });
 
 test("truncate never splits a surrogate pair (no lone surrogates in clipped labels)", () => {
@@ -202,6 +221,27 @@ test("textOr keeps strings and finite numbers, and falls back for anything else"
   assert.equal(textOr({}), "?");
   assert.equal(textOr([1]), "?");
   assert.equal(textOr(undefined, "n/a"), "n/a");
+});
+
+test("errorMessage turns an Error into its message and anything else into its String() form", () => {
+  assert.equal(errorMessage(new Error("boom")), "boom");
+  assert.equal(errorMessage(new Error("")), "");
+  assert.equal(errorMessage("a thrown string"), "a thrown string");
+  assert.equal(errorMessage(42), "42");
+  assert.equal(errorMessage(null), "null");
+  assert.equal(errorMessage(undefined), "undefined");
+});
+
+test("escapeRegExp escapes every regex metacharacter so it matches literally", () => {
+  assert.equal(escapeRegExp(""), "");
+  assert.equal(escapeRegExp("a"), "a");
+  // Every metacharacter in the standard escape upper set is backslash-prefixed.
+  assert.equal(escapeRegExp(".*+?^${}()|[]\\"), "\\\.\\\*\\\+\\\?\\\^\\\$\\\{\\\}\\(\\)\\\|\\\[\\\]\\\\");
+  // A doubled backslash that would otherwise form an escape sequence stays literal.
+  assert.equal(escapeRegExp("a.b*c"), "a\\.b\\*c");
+  // The escaped form re-matches only the literal text, and word boundaries still work on top.
+  assert.match("tag.one", new RegExp(`\\b${escapeRegExp("tag.one")}\\b`));
+  assert.doesNotMatch("tagXone", new RegExp(`\\b${escapeRegExp("tag.one")}\\b`));
 });
 
 test("errorFirstLine returns the trimmed first line of the error message", () => {
