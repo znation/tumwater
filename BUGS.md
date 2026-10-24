@@ -102,6 +102,14 @@ a hanging fake rejects within timeoutMs and its child is gone afterwards
 - **Diagnosis 2026-10-24 (operator session, from the live log and the revert commits themselves):** the digest's count is not a red-main burst at all — it is this entry's own rejection class, read as red-main. All 15 `main_revert` events in `.tumwater/log/events.jsonl*` since 2026-10-22 carry `failingTests: []` and **no `reason` field**, and every one of the 11 in the trailing window matches a `tumwater(tumwater): Revert <sha>` commit whose body says "which a post-merge review rejected". `revertGuardrail` (src/baseline/main-guardrails.ts:211) filters on `r.reason !== "post-review"`, so an event with no `reason` counts as red-main — which the field's own comment intends ("older events without `reason` predate the split and default to main-red") — and `1917e9c80`'s fix, on main and correct, has nothing to read. **Why the events carry none:** their writer predates the field. The orchestrator generation that ran 2026-10-23 23:13 → 2026-10-24 03:20 was build `96b4ef892` (`orchestrator_start` 2026-10-23T23:13Z), which is *not* a descendant of `1917e9c80` (merged 2026-10-23 17:44), so eight of the eleven (17:47 through 03:05) were written after the fix merged, by a process that did not have it. [INFERENCE] The next generation (build `7b8546f9e`, started 2026-10-24T08:51Z) carries it; no revert has run since, so that is expected, not observed.
   **Fix sketch, sharpened by this:** a `main_revert` with no `reason` is an *unknown* cause, not a red-main revert — classify it from what the event already carries. A post-merge rejection's commit has an `afterMerge` `review_rejected` event naming that same sha in its `head` (verified against this window's own log), and a red-main revert carries the failing tests the watch parsed, so both classes are in the log already; only an event with neither reads as red-main. A deploy lag then cannot turn an intended rejection cycle into a 5-revert alarm, and the alert's "fix the failing test or the revert repeats" has a referent only when a check really failed. Per-cause alert wording is `970f99b1`'s subject — reverted the same day by `b735cbd5` for claiming code that was not in its diff, so that revert's objections are the bar for the next attempt.
 
+### `a revision whose re-apply conflicts reaches the author with markers, not a plain rejection` failed, then passed on the same tree (quarantined by tumwater 2026-10-24)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+a revision whose re-apply conflicts reaches the author with markers, not a plain rejection
+~~~~
+
 ## Fixed
 
 ## Verified
