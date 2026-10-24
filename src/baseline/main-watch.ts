@@ -1,5 +1,4 @@
 import { checkMainBaseline } from "./main-baseline.js";
-import type { MainCulprit } from "./main-revert.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
 import { FAILING_TESTS_MAX } from "../build/build-check-report.js";
@@ -23,13 +22,23 @@ import { mergingRoleOf } from "../events/event-read.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { diffRuleReasons } from "../review/diff-rules.js";
 
+/** What the main watch hands to `onCulprit` for a red tip: the red head it was found at (`tip`)
+ * and the failing tests that made it red — exactly the fields ci's red-main heal prompt needs
+ * (src/baseline/main-red.ts mainRedHealPrompt). Forward, never back, part 4/6: a red main heals
+ * forward and is never reverted, so this holds nothing a revert would need. */
+interface MainCulprit {
+  commit: string;
+  failingTests: string[];
+  tip: string;
+}
+
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
  * (which persists beside the greens). The watch checks every new red tip, so the newest head is
  * the culprit for what it finds: on a red tip it logs a `main_culprit` event naming that head
  * (with its merging runner when a recent merged event names one). No run, gate or merge waits on
- * it; the culprit goes to the optional `onCulprit` callback, which the orchestrator wires to the
- * merge slot's revert (plans/fast-merge.md, Lever 2, parts 3, 4a and 4b).
+ * it; the culprit goes to the optional `onCulprit` callback, which the orchestrator wires to ci's
+ * heal prompt (Forward, never back, part 4/6): a red main is healed forward, never reverted.
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
  * head that moves during a run is watched next. The run goes through checkMainBaseline, so a
@@ -237,7 +246,6 @@ export function createMainWatch(
       });
       onCulprit?.({
         commit: baseline.sha,
-        ...(runner !== undefined ? { runner } : {}),
         failingTests: baseline.failingTests ?? [],
         tip: baseline.sha,
       });

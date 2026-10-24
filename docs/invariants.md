@@ -257,24 +257,6 @@ the `merge_conflict` arm as error-class under a `merge-conflict` cause with the 
 placeholder, not a review-rejection), and "a review_error merge prices its authoring hours
 under the matching review_failed cause".
 
-### INV-C3: a change the main watch reverted off main prices its authoring span as a `reverted` loss cause
-
-**Guarantee.** The time-spend classifier prices the merged run whose landed sha a `main_revert`
-names (by its `runner` and `commit`) as a `reverted` loss cause carrying the run's authoring
-span and the revert's first failing test, while the role × outcome table keeps that run in the
-`merged` column — the ranking is the separate "what did not survive" lens, so the cause is
-additive, exactly as a review-rejected span is both error-class in the table and its own loss. A
-`main_revert` whose `failingTests` is empty prices its `reverted` cause as `post-merge review
-rejection` when its `reason` is `post-review` and `main's check failed` otherwise. A
-`main_revert` naming a different commit or runner adds no cause, and a revert whose culprit run
-is outside the window adds none (no authoring span is known).
-
-**Binds.** `src/failure/time-spend.ts` (`timeAndSpend`), `src/failure/failure-render.ts`
-(`renderFailureMarkdown`).
-
-**Pinned by.** `test/failure-time-spend.test.ts` — "a main-reverted merge prices its authoring
-span as a reverted loss cause".
-
 ## Disclosed cuts and recorded causes
 
 A bounded view and a terminal decision each owe the reader the same thing: what the view left
@@ -593,25 +575,6 @@ verdict cache holds only full-check verdicts.
 **Pinned by.** `test/redeploy-wiring.test.ts` — "redeployTarget picks main's newest green commit
 newer than the running build, never a red or unverified-green one" and "redeployTarget never
 targets an older commit that no check has called green".
-
-## Main's red culprit
-
-### INV-L1: an automatic revert only reverts a commit a non-director role merged, whose red reproduced
-
-**Guarantee.** The revert task queued from a `main_culprit` event reverts only a commit that a
-`merged` event credits to a runner whose base role is not the director, that is not itself a
-revert, and whose revert has not already merged. The watch names a culprit only after its red
-reproduced (the confirming re-run): the newest checked red head is its own culprit — the watch
-re-checks and names the tip, never an older commit. Any other
-culprit, and any revert that conflicts, fails its gate or loses the fast-forward, leaves main
-unchanged and queues ci's heal prompt.
-
-**Binds.** `src/baseline/main-revert.ts`, `src/baseline/main-watch.ts`, `src/merge/merge-drain.ts`,
-`src/orchestrator/orchestrator.ts`.
-
-**Pinned by.** `test/main-revert.test.ts` — "a named culprit is reverted on main…", "a revert that
-conflicts leaves main alone…" and "a director-merged, runnerless or revert culprit is skipped";
-`test/main-watch.test.ts` — the culprit cases.
 
 ## The fallback breaker: a free fallback that cannot serve is demoted, not retried forever
 
@@ -3232,8 +3195,7 @@ output-tail clauses only when it has them.
 **Binds.** `src/baseline/main-red.ts` (`mainRedHealPrompt`, `queueCulpritHeal`).
 
 **Pinned by.** `test/main-red.test.ts` — "mainRedHealPrompt returns one self-limiting line naming
-the short SHA"; `test/main-revert.test.ts` — "a revert that conflicts leaves main alone and queues
-the heal prompt naming the culprit"; `test/main-red-heal.test.ts` — "mainRedHealPrompt with a
+the short SHA"; `test/main-red-heal.test.ts` — "mainRedHealPrompt with a
 culprit names it and adds the failing and tail clauses only when it has them".
 
 ## Maintenance allowance: maintenance merges stop at the rolling-day allowance, counted from the event log
@@ -3285,7 +3247,7 @@ allowance's in-flight headroom starts at most one of two due maintenance roles p
 ## Commit messages: the harness's stamps and trailers read back only in their exact stamped form
 
 `src/git/commit-message.ts` builds every run commit message, and the harness reads it back later:
-leftover recovery calls `parseCommitMetadata`, `recordRevertedChange` calls `revisionRoundOf`, and
+leftover recovery calls `parseCommitMetadata`, a rejection's round counter calls `revisionRoundOf`, and
 `revertFollowUp` calls `stampedRole`.
 
 ### INV-BB1: a run commit is the stamped subject, the body, then the trailer, each its own paragraph
@@ -3754,27 +3716,6 @@ Only git's own answer, a missing object or a conflict no settler resolves, drops
 reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
 the revision and its ref for the next run".
 
-### INV-BH6: a post-merge revert hand-back counts one round and holds its plan at the backstop like a rejection
-
-**Guarantee.** The post-merge revert hand-back (`recordRevertedChange`, src/merge/merge-core.ts)
-drives the SAME round/backstop counter as a rejection: the next round is one past the commit's
-`Revision` trailer, and at `REVISION_BACKSTOP` the chain ends exactly as a rejection's exhaustion
-does — the revision and the rejected ref are cleared, `revision exhausted` is logged (so the
-report's per-role revision line counts it where rejections already are), and the PLANS.md plan is
-held for the plan role with the surviving objections verbatim (`holdEntryAfterExhaustion`, the
-convergence rule; a BUGS.md claim is never held), so an exhausted post-merge chain is not left
-re-pickable to restart the cycle. The author re-applies the reverted commit as a revision:
-`state.lastReview.verdict` is `reverted`, `state.revision` names the commit (one past its
-`Revision` trailer), and `refs/tumwater/rejected/<role>` points it, so no surface reads a revert
-that never ran. The director never receives the hand-back.
-
-**Binds.** `src/merge/merge-core.ts` (`handBackChange`, `recordRevertedChange`);
-`src/runner/revision.ts` (`REVISION_BACKSTOP`, `holdEntryAfterExhaustion`).
-
-**Pinned by.** `test/main-revert.test.ts` — "a post-merge rejection chain that never converges holds
-its plan at the backstop"; `test/revision.test.ts` — "a reverted post-merge rejection records one
-past the commit's Revision trailer".
-
 ## Batch merge: a stack merges as one fast-forward on its own check, and only a full check that passed on exactly the merged tip seeds main's baseline
 
 `mergeStack` in `src/merge/merge-stack.ts` cherry-picks a batch of approved changes onto main's tip,
@@ -4190,38 +4131,6 @@ failed queue write warns and leaves the kept pin to the role's leftover recovery
 the change", "a main_red re-queue whose queue write fails warns instead of throwing" and "a main_red
 pin is re-queued once main's head moves, and not before".
 
-## Pending reverts: a hand-back from reverted.json never throws and never hands a commit out twice
-
-### INV-BS1: a torn reverted.json entry is dropped
-
-**Guarantee.** A reverted.json entry that is not an object with a string commit, a string role and an
-array of reasons is dropped, and the reasons keep only their strings.
-
-**Binds.** `src/merge/merge-drain.ts` (`pendingReverts`).
-
-**Pinned by.** `test/main-revert.test.ts` — "a torn reverted.json entry is dropped and the well-formed
-one is still handed back".
-
-### INV-BS2: assigning pending reverts never throws
-
-**Guarantee.** `assignPendingReverts` never throws. A failed state save warns under the taker's id and
-the entry still counts as assigned, and a failed rewrite warns under `tumwater`.
-
-**Binds.** `src/merge/merge-drain.ts` (`handBackRevert`, `assignPendingReverts`).
-
-**Pinned by.** `test/main-revert.test.ts` — "a hand-back whose state save fails warns and still counts
-as assigned", "a failed reverted.json rewrite warns, and the next poll does not hand the commit out
-twice" and "with no free runner the revision waits in reverted.json and is assigned once one frees".
-
-### INV-BS3: a commit already handed back is never handed out again
-
-**Guarantee.** A commit some runner's `lastReview` records as reverted is never handed out again.
-
-**Binds.** `src/merge/merge-drain.ts` (`assignPendingReverts`).
-
-**Pinned by.** `test/main-revert.test.ts` — "a failed reverted.json rewrite warns, and the next poll
-does not hand the commit out twice".
-
 ## Post-merge reviews: post-review.json never throws out of the merge drain, and a commit is never reviewed over a diff git could not produce
 
 ### INV-BT1: a torn post-review.json entry is dropped
@@ -4577,16 +4486,6 @@ index, rather than skipping the preserve".
 
 **Pinned by.** `test/merger.test.ts` — "an unwritable state file during a red merge check's attribution still settles its verdict (green main)" and "an unwritable state file during a red merge check's attribution still settles its verdict (red main)".
 
-## Main revert: a hand-off that cannot be queued never fails the revert task
-
-### INV-CO1: a failed automatic revert whose heal prompt or reviewer hand-off cannot be queued resolves, logs one warning saying the hand-off was not queued, and leaves main unchanged
-
-**Guarantee.** `runMainRevert` keeps its never-throws contract when the heal prompt or the reviewer hand-off itself fails (full disk, EACCES): the failure is caught, main is left as it was, and the one warning logged for the failed revert says "could not queue the heal prompt for ci" or "could not send the reviewer's reasons to its role" instead of claiming a prompt that was never queued.
-
-**Binds.** `src/baseline/main-revert.ts` (`runMainRevert`).
-
-**Pinned by.** `test/main-revert.test.ts` — "a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent".
-
 ## Red-main healer: a heal prompt that cannot be queued never fails the gate
 
 ### INV-CP1: a red main whose heal prompt cannot be queued resolves the gate, warns once that the prompt was not queued, and queues it at the next red verification
@@ -4607,16 +4506,6 @@ index, rather than skipping the preserve".
 (`setupFailureResult`).
 
 **Pinned by.** `test/pi.test.ts` — "an agent run whose session dir or log cannot be created resolves as a failed run instead of rejecting" and "an agent run whose scratch dir cannot be created resolves as a failed run".
-
-## Main watch: a culprit hand-off never rejects
-
-### INV-CR1: a culprit the main watch names whose revert is skipped and whose heal prompt cannot be queued resolves and warns once that it was not queued
-
-**Guarantee.** `routeMainCulprit` starts the automatic revert for a revertable culprit and otherwise queues ci's heal prompt. A heal prompt that cannot be queued (full disk, EACCES) is caught and warned once, so the promise the orchestrator discards never rejects and ends the process.
-
-**Binds.** `src/baseline/main-revert.ts` (`routeMainCulprit`) and its one caller in `src/orchestrator/orchestrator.ts`.
-
-**Pinned by.** `test/main-revert.test.ts` — "a skipped culprit whose heal prompt cannot be queued resolves and warns once that it was not queued" and "a named culprit starts its revert, and a skipped one queues the heal prompt instead".
 
 ## Notes command: a note file that fails refuses in one line, never a stack trace
 

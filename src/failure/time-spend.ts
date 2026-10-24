@@ -219,7 +219,8 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
     allEvents.filter((e) => e.type === "review_failed"),
     (e) => e.source,
   );
-  // A `main_revert` (src/baseline/main-revert.ts) names the role that merged a change the main
+  // A historical `main_revert` (the automatic revert, deleted in Forward never back part 4/6)
+  // names the role that merged a change the main
   // watch later reverted off main, keyed by the exact role id and the landed sha — the same
   // instance-id join revertedOf (src/run/run-detail-data.ts) uses — so a window coupling a
   // reverted merge to its authoring run can price that run's span as a `reverted` loss cause.
@@ -374,7 +375,7 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
         // An absent or unknown reason reads as main-red, the events.ts contract
         // (revertReasonOf, src/events/event-read.ts). A post-review revert records the
         // reviewer's reasons, not a failing test, so its empty failingTests still names the
-        // cause instead of leaving the example blank (INV-C3).
+        // cause instead of leaving the example blank.
         const revertedReason = revertReasonOf(revertedEv);
         example =
           tests[0] !== undefined

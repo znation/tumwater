@@ -6,7 +6,6 @@ import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/run
 import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
 import { verifyRequest } from "../src/merge/merge-batch.js";
-import { recordRevertedChange } from "../src/merge/merge-core.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -829,32 +828,4 @@ test("a fresh merge leaves a pending revision's rejected ref alone", async () =>
   await settleMergeOutcome(root, fresh, state, "changed", 1, { tokens: 0, cost: 0, providerCost: {} }, path.join(root, "no-such-queue-file.json"));
 
   assert.equal(await refSha(root, rejectedRefName(role)), rejected, "the pending revision's ref survives");
-});
-
-test("a reverted post-merge rejection records one past the commit's Revision trailer", async () => {
-  // The reverted hand-back (recordRevertedChange) drives the SAME round/backstop counter as a
-  // rejection: the next round is one past the commit's `Revision` trailer, and at the cap the
-  // chain ends exactly as a rejection's exhaustion does.
-  const root = makeRepo();
-  const mk = (msg: string, tag: string): string => {
-    fs.writeFileSync(path.join(root, "a.txt"), tag);
-    commitIn(root, msg);
-    return headSha(root);
-  };
-  const revRole = "feature-2";
-  const mid = mk("edit a\n\nRevision: 2", "first"); // revision 2 → round 3, not exhausted
-  const revState = freshRunnerState(revRole);
-  await recordRevertedChange(root, revRole, revState, mid, ["still wrong"]);
-  assert.equal(revState.revision?.round, 3, "the reverted record counts one past the trailer");
-  assert.equal(revState.revision?.sha, mid, "the reverted record names the commit to re-apply");
-  assert.equal(revState.lastReview?.verdict, "reverted");
-  assert.equal(await refSha(root, rejectedRefName(revRole)), mid, "the reverted hand-back points the rejected ref");
-
-  // Identical backstop: a trailer one below the cap ends the chain like a rejection exhausts.
-  const cap = mk(`edit b\n\nRevision: ${REVISION_BACKSTOP - 1}`, "cap");
-  const revEx = freshRunnerState(revRole);
-  await recordRevertedChange(root, revRole, revEx, cap, ["still wrong"]);
-  assert.equal(revEx.revision, undefined, "the reverted chain is cleared at the backstop");
-  assert.equal(revEx.lastReview?.exhausted, true, "the reverted exhaustion is final");
-  assert.equal(await refSha(root, rejectedRefName(revRole)), null, "the reverted ref is deleted");
 });

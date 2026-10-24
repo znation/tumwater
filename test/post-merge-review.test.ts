@@ -108,7 +108,6 @@ test("a rejecting post-merge review never fills the revert slot and keeps the co
     drainPostReviews(ctx, p);
     await sleep(10);
   }
-  assert.equal(p.revert, null, "a post-merge rejection never fills the revert slot");
   assert.equal(headSha(root), commit, "the rejected commit stays on main");
   // The rejection is recorded in post-review.json, answered only by the reviewer's own fix
   // (part 1a/6), and never re-reviewed.
@@ -153,7 +152,6 @@ test("a post-merge rejection leaves an archived entry archived: nothing walks th
   const p = newMergePipeline();
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
-  assert.equal(p.revert, null, "the rejection never fills the revert slot");
   assert.equal(headSha(root), commit, "the rejected commit stays on main");
   const plans = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
   assert.ok(plans.includes("## Planned\n\n_None yet._"), "the archived entry stays archived — no revert restores it");
@@ -171,7 +169,6 @@ test("a rejected entry stays recorded in post-review.json and never takes the re
     drainPostReviews(ctx, p);
     await sleep(10);
   }
-  assert.equal(p.revert, null, "the revert slot stays free across polls");
 });
 
 test("a listed role's change merges with no review before it, then is queued and reviewed after", async () => {
@@ -314,7 +311,6 @@ test("a failed post-review.json write on a rejection warns and does not wedge th
     undo();
   }
   assert.equal(p.postReview, null, "the review task freed the slot");
-  assert.equal(p.revert, null, "no revert starts even when the rejection's write fails");
   const warnings = eventsOfType(root, "warning").filter((e) => e.source === "tumwater");
   assert.ok(warnings.some((e) => String(e.message).includes("pr write refused")), "the failed write warns");
 });
@@ -449,7 +445,6 @@ test("a queued rejection is neither re-reviewed nor reverted while the poll revi
   drainPostReviews(ctx, p);
   await p.postReview!.promise;
   assert.equal(eventsOfType(root, "review_start")[0]?.head, a, "FIFO: the first unreviewed commit is picked, skipping the rejected one");
-  assert.equal(p.revert, null, "the rejected entry never fills the revert slot");
   const kept = readPostReviews(root);
   const b = kept.find((e) => e.commit === rejectedB)!;
   assert.deepEqual(b.rejected, ["breaks the contract"], "the rejected entry stays recorded, never re-reviewed");
@@ -475,7 +470,6 @@ test("a verdict-less review past the failure limit drops the entry, warns, and s
   await p.postReview!.promise;
   assert.equal(reviews.count, 1, "one verdict-less review ran");
   assert.equal(readPostReviews(root).length, 0, "the entry is dropped");
-  assert.equal(p.revert, null, "dropping a review starts no revert");
   assert.ok(
     eventsOfType(root, "warning")
       .map((e) => String(e.message))

@@ -1,25 +1,18 @@
-import { runMainRevert, type MainCulprit } from "../baseline/main-revert.js";
 import { mergeApproved, type BatchRoleWiring } from "./merge-batch.js";
 import { removeMergeChange, resolveWaitStage, setMergeChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { dropMerge, entryRevisionFields, queuedMergeFiles, queuedMergeRoles } from "./merge-queue.js";
+import { dropMerge, entryRevisionFields, queuedMergeFiles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
-import { warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/events.js";
-import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
-import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject, stringList } from "../files/json-object.js";
-import { recordRevertedChange } from "./merge-core.js";
-import { revertedPendingPath } from "../paths.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
+import { saveRunnerState } from "../runner/runner-state.js";
 
-import { addPostReview, settlePostReview } from "../review/post-merge-review.js";
+import { addPostReview } from "../review/post-merge-review.js";
 import { drainPostReviews } from "./merge-post-review.js";
 import { subscribeEvents } from "../events/events.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
-import type { RoleRunner } from "../runner/runner.js";
 import {
   abortOnShutdown,
   discardPinnedRefs,
@@ -53,90 +46,8 @@ async function postReviewDue(config: TumwaterConfig, root: string, commit: strin
  * awaits them — authors keep running behind them, which is the entire point. */
 export async function drainMergeQueue(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
   await drainVerify(ctx, p);
-  await assignPendingReverts(ctx);
   drainPostReviews(ctx, p);
   drainMerge(ctx, p);
-}
-
-/** A reverted change waiting for a runner (.tumwater/state/reverted.json). */
-interface PendingRevert {
-  commit: string;
-  role: string;
-  reasons: string[];
-}
-
-/** The reasons a reverted change goes back with. */
-function revertReasons(c: MainCulprit): string[] {
-  if (c.postReview) return c.postReview.reasons.map((r) => `reverted after merge: a post-merge review rejected it — ${r}`);
-  const tests = c.failingTests.length > 0 ? c.failingTests.join("; ") : "no failing test was named";
-  return [`reverted after merge: turned main red — ${tests}`];
-}
-
-/** A runner that can take a revision now: idle, with no pending revision and no change queued for
- * merging (a verifying or approved change is still a queue entry). */
-function runnerIsFree(queued: Set<string>, r: RoleRunner): boolean {
-  return !r.state.running && !hasOutstandingWork(r.state) && !queued.has(r.role);
-}
-
-/** The first free runner that may take a hand-back for `role`: its own runner when free, else the
- * first free runner of the same base role, in runner order. Undefined when none is free. */
-function freeTaker(ctx: MergePipelineContext, role: string): RoleRunner | undefined {
-  const queued = queuedMergeRoles(ctx.root);
-  const base = baseRoleOf(role);
-  const candidates = (ctx.runners ?? []).filter((r) => r.baseRole === base);
-  const own = candidates.find((r) => r.role === role);
-  return own && runnerIsFree(queued, own) ? own : candidates.find((r) => runnerIsFree(queued, r));
-}
-
-/** Give a reverted change to a runner as a revision (recordRevertedChange): the first free runner
- * of the commit's role, its own runner preferred. Returns whether one took it, with its state
- * saved. */
-async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert): Promise<boolean> {
-  const taker = freeTaker(ctx, pending.role);
-  if (taker === undefined) return false;
-  await recordRevertedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
-  // The in-memory state holds the revision; the runner's next successful save writes it.
-  tryOrWarn(ctx.root, taker.role, "save the reverted change's revision", () => saveRunnerState(ctx.root, taker.state));
-  return true;
-}
-
-/** After the revert merges: hand the culprit back to its author's role, or park it in
- * reverted.json when no runner of that role is free. */
-async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Promise<void> {
-  if (c.runner === undefined) return;
-  const pending: PendingRevert = { commit: c.commit, role: c.runner, reasons: revertReasons(c) };
-  if (await handBackRevert(ctx, pending)) return;
-  const file = revertedPendingPath(ctx.root);
-  writeJsonAtomic(file, { reverted: [...pendingReverts(ctx.root), pending] });
-}
-
-/** The parked reverted changes. A torn or hand-edited entry (not an object with a string commit, a
- * string role and an array of reasons) is dropped, and the next rewrite leaves it out. */
-function pendingReverts(root: string): PendingRevert[] {
-  const saved = readJsonFile<{ reverted?: unknown }>(revertedPendingPath(root));
-  if (!Array.isArray(saved?.reverted)) return [];
-  const pending: PendingRevert[] = [];
-  for (const e of saved.reverted as unknown[]) {
-    if (!isJsonObject(e) || typeof e.commit !== "string" || typeof e.role !== "string" || !Array.isArray(e.reasons)) continue;
-    pending.push({ commit: e.commit, role: e.role, reasons: stringList(e.reasons) });
-  }
-  return pending;
-}
-
-/** Each poll: assign the parked reverted changes to runners that have freed up, dropping each
- * one once assigned. It never throws, because the poll loop calls it with no catch; the
- * already-assigned check keeps a retry after a failed rewrite from handing a commit out twice. */
-export async function assignPendingReverts(ctx: MergePipelineContext): Promise<void> {
-  const reverted = pendingReverts(ctx.root);
-  const leftReverted: PendingRevert[] = [];
-  for (const pending of reverted) {
-    const assigned = (ctx.runners ?? []).some((r) => r.state.lastReview?.verdict === "reverted" && r.state.lastReview.head === pending.commit);
-    if (!assigned && !(await handBackRevert(ctx, pending))) leftReverted.push(pending);
-  }
-  if (leftReverted.length < reverted.length)
-    tryOrWarn(ctx.root, TUMWATER_SOURCE, "rewrite the pending reverted changes", () =>
-      writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: leftReverted }),
-    );
 }
 
 /** Settle every approved change `tumwater abort --role` flagged (consumeAbortRequests over
@@ -173,11 +84,6 @@ export async function settleAbortedApproved(root: string, p: MergePipeline): Pro
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
   if (p.merge !== null) return;
-  if (p.revert !== null) {
-    p.merge = startRevert(ctx, p, p.revert);
-    p.revert = null;
-    return;
-  }
   if (p.approved.size === 0) return;
   const queued = queuedMergeFiles(ctx.root);
   const files = new Set(queued.map((q) => q.file));
@@ -194,24 +100,6 @@ export function drainMerge(ctx: MergePipelineContext, p: MergePipeline): void {
   if (picks.length === 0) return;
   for (const v of picks) p.approved.delete(v.entry.role);
   p.merge = startMerge(ctx, p, picks);
-}
-
-/** The revert task: a culprit the main watch named is reverted in the merge slot, before any merge
- * pick, so it is serialized with merges (runMainRevert, src/baseline/main-revert.ts). It holds no
- * role, so a user abort has nothing of it to reach; a shutdown waits for it like any merge task. */
-function startRevert(ctx: MergePipelineContext, p: MergePipeline, culprit: MainCulprit): InFlightMerge {
-  const merge: InFlightMerge = {
-    promise: Promise.resolve(),
-    controller: new AbortController(),
-    roles: [],
-    userAborted: false,
-  };
-  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c), undefined).finally(() => {
-    if (culprit.postReview) settlePostReview(ctx.root, culprit.commit, null);
-    p.merge = null;
-  });
-  merge.promise = guardMergeTask(ctx.root, "main revert", task);
-  return merge;
 }
 
 /** The merge task — main's one writer in the pipeline: merge `picks` through mergeApproved on

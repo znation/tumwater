@@ -5,7 +5,6 @@ import { gitTry, gitTryStarted } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { resolveBacklogInsertConflicts } from "../merge/backlog-conflicts.js";
 import { conflictedFiles } from "../merge/merge-git.js";
-import { shortSha } from "../text/format.js";
 import { formatDate } from "../text/datetime.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
@@ -151,21 +150,10 @@ async function pickSettlingBacklog(wt: string, base: string, sha: string): Promi
   }
 }
 
-/** The exclusive start of the range to re-apply for `sha`: the merge-base with main, except that a
- * commit already on main (a reverted change, plans/fast-merge.md part 4c) has merge-base `sha`
- * itself and an empty range, so its own parent is the base and the range is that one commit. null
- * (the caller drops the hand-back) only on git's own answer, never because git could not start. */
+/** The exclusive start of the range to re-apply for `sha`: the merge-base with main. null (the
+ * caller drops the hand-back) only on git's own answer, never because git could not start. */
 async function pickBase(wt: string, mainBranch: string, sha: string): Promise<string | null> {
-  const base = await gitTryStarted(wt, "merge-base", mainBranch, sha);
-  if (base === null) return null;
-  const full = await gitTryStarted(wt, "rev-parse", sha);
-  if (full?.trim() !== base.trim()) return base;
-  // A commit main merely fast-forwarded onto keeps the empty range; only one main reverted is
-  // handed back to be re-applied.
-  const reverts =
-    (await gitTryStarted(wt, "log", mainBranch, "--format=%s", "--fixed-strings", `--grep=Revert ${shortSha(sha)}`)) ?? "";
-  if (!reverts.split("\n").some((subject) => subject.endsWith(`Revert ${shortSha(sha)}`))) return base;
-  return gitTryStarted(wt, "rev-parse", `${sha}^`);
+  return gitTryStarted(wt, "merge-base", mainBranch, sha);
 }
 
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`

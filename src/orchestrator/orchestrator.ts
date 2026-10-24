@@ -29,7 +29,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import { createMainWatch } from "../baseline/main-watch.js";
-import { routeMainCulprit } from "../baseline/main-revert.js";
+import { queueCulpritHeal } from "../baseline/main-red.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
@@ -277,9 +277,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
   const workMergedSince = new WorkMergedCache(root, mainBranch);
   const mainWatch = createMainWatch(root, mainBranch, (culprit) => {
-    void routeMainCulprit(root, mainBranch, culprit, (c) => {
-      merges.revert = c;
-    });
+    // A red main heals forward (Forward, never back, part 4/6): the watch's named culprit goes
+    // straight to ci's heal prompt with the existing wording; nothing is reverted and no revision
+    // is handed back.
+    queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
   });
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode

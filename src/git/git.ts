@@ -473,11 +473,12 @@ export async function commitMessage(cwd: string, sha: string): Promise<string | 
 
 /** The subject (first line) of one commit, trimmed, or "" when it cannot be read — the
  * non-throwing sibling of `commitMessage` and the one home of the `log -1 --format=%s`
- * read, so the revert paths that name a culprit's subject cannot drift on its git spelling
- * or its trim. Both calls its two callers (src/baseline/main-revert.ts) make are through
- * gitTry, so an unreadable repo yields a "" subject, never a throw; they treat that as an
- * honest degradation, not an error. (Distinct from commit-message.ts's commitSubject, which
- * parses a subject out of a message string instead of reading one commit from git.) */
+ * read, so the path that names a commit in a message (the post-merge reviewer naming the
+ * fix it landed, src/merge/merge-post-review.ts) cannot drift on its git spelling
+ * or its trim. Its call is through gitTry, so an unreadable repo yields a "" subject, never a
+ * throw; it treats that as an honest degradation, not an error. (Distinct from
+ * commit-message.ts's commitSubject, which parses a subject out of a message string instead of
+ * reading one commit from git.) */
 export async function subjectOfCommit(cwd: string, ref: string): Promise<string> {
   return ((await gitTry(cwd, "log", "-1", "--format=%s", ref)) ?? "").trim();
 }

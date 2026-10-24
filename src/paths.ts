@@ -199,13 +199,6 @@ export function mergeStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "merging.json");
 }
 
-/** The reverted changes still waiting for a free runner (.tumwater/state/reverted.json;
- * src/merge/merge-drain.ts): `{ reverted: [{ commit, role, reasons }] }`, each entry dropped once
- * assigned. */
-export function revertedPendingPath(root: string): string {
-  return path.join(tumwaterDir(root), "state", "reverted.json");
-}
-
 /** Merged commits awaiting their review after merging (src/review/post-merge-review.ts), for roles
  * listed in `review.afterMerge`: `{ pending: PostReview[] }`. Runtime state, never committed. */
 export function postReviewPath(root: string): string {

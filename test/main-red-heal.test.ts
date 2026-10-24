@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { mainRedGate, mainRedHealPrompt } from "../src/baseline/main-red.js";
+import { mainRedGate, mainRedHealPrompt, queueCulpritHeal } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { shortSha } from "../src/text/format.js";
 import { roleInboxDir } from "../src/paths.js";
@@ -91,6 +91,26 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
   } finally {
     restore();
   }
+});
+
+test("queueCulpritHeal never throws: a prompt that cannot be queued warns and the culprit goes unanswered", async () => {
+  // The watch's onCulprit calls queueCulpritHeal from a callback whose caller discards the result,
+  // so the remedy itself must not throw: an unwritable ci inbox is warned (the same guard the
+  // red-main gate's warnMainRedOnce uses), and the call returns.
+  const { root } = baselineFixture("coverage", "echo ok");
+  const inbox = roleInboxDir(root, "ci");
+  const undo = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith(inbox)) throw errnoError("ENOSPC");
+    return orig(...args);
+  });
+  try {
+    queueCulpritHeal(root, "a".repeat(40), { culprit: "b".repeat(40), failingTests: ["t1"] });
+  } finally {
+    undo();
+  }
+  assert.equal(queuedRolePrompts(root, "ci").length, 0, "nothing was queued");
+  const warnings = warningMessages(root).filter((m) => /could not queue the heal prompt for ci: .*ENOSPC/.test(m));
+  assert.equal(warnings.length, 1, warningMessages(root).join("\n"));
 });
 
 test("mainRedHealPrompt with a culprit names it and adds the failing and tail clauses only when it has them", () => {

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { createMainWatch, knownMainFailures, onlyKnownMainFailures } from "../src/baseline/main-watch.js";
+import { queueCulpritHeal } from "../src/baseline/main-red.js";
+import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { FAILING_TESTS_MAX } from "../src/build/build-check-report.js";
 import { persistBaselineVerdicts } from "../src/baseline/main-baseline.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -171,6 +173,29 @@ test("a red tip names itself as the culprit, with its merging runner and the fai
   await watchAt(watch, root);
   assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
 });
+
+test("the watch's onCulprit hands a red culprit straight to ci's heal queue and reverts nothing", async () => {
+  // The orchestrator's wiring (src/orchestrator/orchestrator.ts): a named red-main culprit goes
+  // to ci's heal queue with the existing wording, and nothing is ever reverted (Forward, never
+  // back, part 4/6).
+  const { root } = culpritFixture();
+  const watch = createMainWatch(root, "main", (culprit) => {
+    queueCulpritHeal(root, culprit.tip, { culprit: culprit.commit, failingTests: culprit.failingTests });
+  });
+  await watchAt(watch, root); // the seed commit G: green, cached
+  const b = change(root, "bad.txt", "b"); // the red tip itself
+  await watchAt(watch, root);
+  const queued = queuedRolePrompts(root, "ci");
+  assert.equal(queued.length, 1, "the red culprit queued exactly one heal prompt for ci");
+  const prompt = queued[0]!;
+  assert.ok(prompt.includes(mainRedCulpritClause(b)), queued.join("\n"));
+  assert.ok(prompt.includes("Failing: first; second; third."), prompt);
+  assert.equal(eventsOfType(root, "main_revert").length, 0, "nothing is reverted");
+});
+
+function mainRedCulpritClause(sha: string): string {
+  return `The watch named ${shortSha(sha)} as the commit that turned it red`;
+}
 
 test("a red tip with no merged event is named without a runner", async () => {
   const { root } = culpritFixture();

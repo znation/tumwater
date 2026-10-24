@@ -79,7 +79,7 @@ and one serial merge step merges them, so other roles keep running while a chang
 `check.mergeCommand` names a cheaper check for that in-lock step (lint, compile and the change's
 affected tests). A merge whose rebased head the gate verified then runs nothing in the lock, and
 a green of the cheaper command never seeds main's verdict. The main watch runs the full check on
-main's tip after the merge: a break it finds is reverted, and the red-main gate, the ci note
+main's tip after the merge: a break it finds queues the red-main heal prompt, and the red-main gate, the ci note
 read the watch's verdict instead of starting a full check (no verdict yet reads as green); the
 gate's re-attribution of a repeated failure still runs main's check fresh, as it does unset. Its in-lock `build_check` events carry `full: false`, so reports and
 doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls back to
@@ -261,22 +261,12 @@ discards a role's in-flight merge.
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
   logged as a warning naming the rule and the head (the same reason text the
   gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises a standing amber alert naming the tip and the rule on `tumwater status`, the dashboard and the TUI, so a diff the gate let through cannot sit on main unremarked. No run or
-  merge waits for the watch. It hands the named commit to the merge slot, which reverts it before
-  any merge pick (serialized with merges): it checks out main's tip in the `_merge` worktree,
-  commits the inverse as `tumwater(tumwater): Revert <short sha>`, runs `check.gateCommand` on it
-  when one is set, fast-forwards main under the merge lock and logs `main_revert`. A commit with no
-  merging runner, one the director merged, a revert itself, or one already reverted is not
-  reverted, and a revert that conflicts, fails its gate or loses the fast-forward is abandoned with
-  main unchanged; each of those queues ci's heal prompt naming the commit and the failing tests.
-  After a successful revert the commit goes back to its role as a revision: the merging runner when
-  it is idle with no queued change or pending revision, else the first such free runner of the same
-  base role. It points that runner's `refs/tumwater/rejected/<role>` at the commit and records
-  `reverted after merge: turned main red — <failing tests>` as the review to revise against. With no
-  free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
-  once assigned. A hand-back whose commit carries a `Revision` trailer counts one more round than it
-  says, and a chain that reaches the backstop ends exactly as a rejection's exhaustion does: the ref
-  and the revision are cleared and the PLANS.md plan is held for the plan role with the surviving
-  objections verbatim instead of being left re-pickable.
+  merge waits for the watch. On a red tip it names that head as the culprit and queues ci's
+  heal prompt (Forward, never back, part 4/6): the same `mainRedHealPrompt` wording the red-main
+  gate uses — `Main was reported red at commit <sha>; verify main is green now; if it is still
+  red, reproduce the failure and land the fix` — naming the commit and the failing tests. Nothing
+  is ever taken off main for a red tip, and no revision is handed back or parked for one; the
+  only way a commit leaves main is the operator's own deliberate `tumwater revert <sha>`.
   A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the
   selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report how long main has had no passing full
   check, the sha it has been red since, and its newest failing test. The same row and section warn

@@ -131,14 +131,23 @@ export function mainRedHealPrompt(
   return `${base} The watch named ${shortSha(detail.culprit)} as the commit that turned it red.${tests}${tail}`;
 }
 
-/** Queue the heal prompt for ci with the culprit's detail: the fallback when the automatic
- * revert (src/baseline/main-revert.ts) is skipped or fails. */
+/** Queue the heal prompt for ci with the culprit's detail: the one way a named red-main culprit
+ * is answered (Forward, never back, part 4/6): the watch's onCulprit hand-off routes through
+ * this, and nothing is ever reverted. (The ci gate's own red-main hand-off is the separate
+ * direct `enqueueRolePrompt` in warnMainRedOnce.) Never throws: a prompt that cannot be
+ * queued (an unwritable inbox) is warned, like that hand-off guard in warnMainRedOnce — so
+ * the watch's onCulprit (whose caller discards the result) cannot derail a watch run or end
+ * the orchestrator. */
 export function queueCulpritHeal(
   root: string,
   tip: string,
   detail: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
 ): void {
-  enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, detail));
+  try {
+    enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, detail));
+  } catch (err) {
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not queue the heal prompt for ci: ${errorMessage(err)}`);
+  }
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role

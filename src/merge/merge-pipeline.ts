@@ -15,7 +15,6 @@ import type { MergeEntry } from "./merge-queue.js";
 import type { RunResult } from "../run/run-outcome.js";
 import type { FoldsUsage } from "../runner/runner-pi.js";
 import type { RunnerState } from "../runner/runner-state.js";
-import type { MainCulprit } from "../baseline/main-revert.js";
 
 /** One merge task the pipeline owns (merge queue 3/5, land-queue speed 2c) — a verification or the
  * merge: its task, the controller that aborts it (harness shutdown OR `tumwater abort --role`
@@ -119,10 +118,6 @@ export interface MergePipeline {
   verifying: Map<string, InFlightMerge>;
   approved: Map<string, ApprovedMerge>;
   merge: InFlightMerge | null;
-  /** A culprit the main watch named, waiting for the merge slot to revert it (drainMerge starts it
-   * before any merge pick; src/baseline/main-revert.ts). One at a time: a later one replaces an
-   * earlier one that has not started, since the watch names the newest red head's culprit. */
-  revert: MainCulprit | null;
   /** The one post-merge review in flight (src/merge/merge-post-review.ts), for a commit of a role
    * listed in review.afterMerge. It holds a permit but no role, queue entry or the merge slot. */
   postReview: InFlightMerge | null;
@@ -131,7 +126,7 @@ export interface MergePipeline {
 /** A fresh pipeline: nothing in flight anywhere — no verification running, no approved change
  * waiting, no merge holding main. The orchestrator builds one per team start (orchestrator.ts). */
 export function newMergePipeline(): MergePipeline {
-  return { verifying: new Map(), approved: new Map(), merge: null, revert: null, postReview: null };
+  return { verifying: new Map(), approved: new Map(), merge: null, postReview: null };
 }
 
 /** Every merge task in flight — each verification holding its permit, and the merge — for the

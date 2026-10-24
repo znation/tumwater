@@ -284,3 +284,21 @@ test("runRevertSha refuses an unmerged run and a merged run naming no commit, an
   assert.ok(!unnamed.ok && unnamed.error.includes("no longer names its commit"));
   assert.deepEqual(runRevertSha("clean", 3, { ...base, result: "merged", mergedSha: "f".repeat(40) }), { ok: true, sha: "f".repeat(40) });
 });
+
+test("a deliberate tumwater revert lands and logs exactly one operator_revert", async () => {
+  // Forward, never back, part 4/6 deleted the automatic revert subsystem: nothing is taken off
+  // main but the operator's own deliberate revert, which goes through revertMergedCommit (under
+  // the primary-worktree lock), never through the merge pipeline's slot. This pins that the lone
+  // surviving revert path lands and logs one operator_revert.
+  const repo = makeRepo();
+  seedCommit(repo, "work.txt", "work\n", "tumwater(feature): add work");
+  const revertedSha = headSha(repo);
+
+  const r = await revertMergedCommit(repo, revertedSha);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  const events = eventsOfType(repo, "operator_revert");
+  assert.equal(events.length, 1, "exactly one operator_revert event");
+  assert.equal(events[0]?.commit, revertedSha);
+  assert.equal(headSha(repo), r.headSha, "the deliberate revert moved main");
+});
