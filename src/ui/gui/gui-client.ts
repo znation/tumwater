@@ -295,13 +295,23 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
     return true;
   }
   // panel-build:end
+  // err-message:start
+  // The one error-message read every fetch/parse catch shares: a thrown Error's message when
+  // it has one (the server's JSON body, or the client's own throws, put it there), else the
+  // caller's fallback. Single-homed here in the core before every splice so the catch blocks
+  // cannot drift the ternary's shape; settings' clientErrorMessage feeds it String(err) as the
+  // fallback.
+  function errMessage(err, fallback) {
+    return err && err.message ? err.message : fallback;
+  }
+  // err-message:end
   // The standard "this view could not load" panel: a title plus the server's error message,
   // if any. cls is "empty" for the bare panels (history, drawer) and "card empty" where the
   // view frames panels in cards (the report views). Drawer paints it through paintPanel so a
   // retry loop does not repaint; callers that own the element assign it directly.
   function errorPanel(title, err, cls) {
     return "<div class='" + (cls || "empty") + "'><strong>" + esc(title) + "</strong>" +
-      esc(err && err.message ? err.message : "") + "</div>";
+      esc(errMessage(err, "")) + "</div>";
   }
   // Mark the one button of a segmented filter whose dataset[attr] matches current as
   // "active" and clear the rest: one home for the toggle loop each of the page's segmented

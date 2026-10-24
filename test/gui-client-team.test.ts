@@ -306,7 +306,7 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
     addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
   });
   const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void; setFeedType(type: string): void; FEED_MAX_MS: number }>(
-    ["format", "labels", "view-model", "click-delegate", "activity", "report-role"],
+    ["format", "labels", "view-model", "click-delegate", "activity", "report-role", "err-message"],
     ["renderFeed", "clearFeedFilter", "setFeedType", "FEED_MAX_MS"],
     {
       recall: (key: string) => recalled[key] ?? null,

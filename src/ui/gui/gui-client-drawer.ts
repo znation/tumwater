@@ -249,7 +249,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       assign({ role, state: "ok", view: d });
     } catch (err) {
       if (openRoleId() !== role) return;
-      assign({ role, state: "error", message: err && err.message ? err.message : fallbackMessage });
+      assign({ role, state: "error", message: errMessage(err, fallbackMessage) });
     }
     if (lastStatus) renderRoleDrawer(lastStatus);
   }

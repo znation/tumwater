@@ -23,7 +23,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // {error} object (its message on the .message field) — the three Save/Clear/Brief catch
   // blocks that flash the outcome share this coercion so the wording cannot drift.
   function clientErrorMessage(err) {
-    return err && err.message ? err.message : String(err);
+    return errMessage(err, String(err));
   }
   // The curated keys, in display order: [key, label]. Mirrors the server's
   // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the settings test pins

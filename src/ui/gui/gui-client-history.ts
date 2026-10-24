@@ -191,7 +191,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
       histNewest = { state: "ok", key };
     } catch (err) {
-      histNewest = { state: "error", message: err && err.message ? err.message : "Newest failure unavailable" };
+      histNewest = { state: "error", message: errMessage(err, "Newest failure unavailable") };
     }
     renderHistory();
   }
@@ -250,7 +250,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       else if (dryRun) entry.revert = { state: "preview", preview: d.preview };
       else entry.revert = { state: "done", message: d.message || "reverted" };
     } catch (err) {
-      entry.revert = { state: "error", message: err && err.message ? err.message : "the revert failed" };
+      entry.revert = { state: "error", message: errMessage(err, "the revert failed") };
     }
     renderHistory();
   }
@@ -311,7 +311,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       if (!d || typeof d[kind] !== "string") throw new Error("/api/run answered without a " + kind + " field");
       entry[kind] = { state: "ok", text: d[kind], open: true };
     } catch (err) {
-      entry[kind] = { state: "error", message: err && err.message ? err.message : "the " + kind + " failed to load" };
+      entry[kind] = { state: "error", message: errMessage(err, "the " + kind + " failed to load") };
     }
     renderHistory();
   }
@@ -371,7 +371,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       t.grepText = d.transcript;
     } catch (err) {
       if (entry.transcript !== t || t.grep !== grep) return;
-      t.grepError = err && err.message ? err.message : "the search failed";
+      t.grepError = errMessage(err, "the search failed");
     }
     delete t.grepLoading;
     renderHistory();
@@ -399,7 +399,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
       t.promptText = d.transcript;
       t.prompts = true;
     } catch (err) {
-      t.promptsError = err && err.message ? err.message : "the prompts failed to load";
+      t.promptsError = errMessage(err, "the prompts failed to load");
     }
     delete t.promptsLoading;
     renderHistory();
@@ -448,7 +448,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Runs to sho
         );
       histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "", revertSha: typeof d.revertSha === "string" ? d.revertSha : null, hasCommit: d.hasCommit === true });
     } catch (err) {
-      histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Run detail unavailable" });
+      histDetails.set(key, { state: "error", message: errMessage(err, "Run detail unavailable") });
     }
     renderHistory();
   }

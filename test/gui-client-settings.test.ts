@@ -37,7 +37,7 @@ interface SettingsFns {
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
-    ["panel-build", "settings-view"],
+    ["panel-build", "err-message", "settings-view"],
     ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "commitBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );

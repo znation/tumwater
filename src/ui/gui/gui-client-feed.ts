@@ -97,7 +97,7 @@ export const GUI_CLIENT_FEED_JS = String.raw`
       if (seq !== feedSeq) return;
       feedResults = null;
       feedNote = "";
-      feedError = err && err.message ? err.message : "Search unavailable";
+      feedError = errMessage(err, "Search unavailable");
     }
     if (lastStatus) renderFeed(lastStatus);
   }

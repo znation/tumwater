@@ -17,7 +17,7 @@ test("GUI_CLIENT_JS carries the history module verbatim", () => {
 
 // The regions the History view's pieces run with: the shared format/view-model helpers, the
 // drill-down state and card renderer, then the table.
-const HISTORY_REGIONS = ["format", "labels", "view-model", "history-detail", "history-table"];
+const HISTORY_REGIONS = ["format", "labels", "view-model", "err-message", "history-detail", "history-table"];
 
 test("the History table renders run rows, escapes them, and filters by outcome", () => {
   const { historyTableHtml, historyClass } = clientScope<{

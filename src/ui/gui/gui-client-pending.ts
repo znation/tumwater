@@ -300,7 +300,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         const view = await getJson("/api/diff?role=" + encodeURIComponent(role) + "&path=" + encodeURIComponent(path));
         row = { role, state: "ok", view };
       } catch (err) {
-        row = { role, state: "error", message: err && err.message ? err.message : "Pending change unavailable" };
+        row = { role, state: "error", message: errMessage(err, "Pending change unavailable") };
       }
       if (pendingOverlapOpen !== open) return;
       open.rows[k] = row;
