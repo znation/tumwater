@@ -701,7 +701,7 @@ export function teamAlerts(
       detail:
         `#${first.position} "${first.title}" has waited ${first.days}d for its next failure` +
         moreDetail(rest.map((r) => `#${r.position} "${r.title}"`)) +
-        ` · its flake has not come back — release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
+        ` · the hold has outlived a week and this surface omits the doctor's recurrence scan — \`tumwater doctor\` reports whether the flake came back; release it with \`tumwater bug --release ${first.position}\`, or keep the hold if the failure is still expected`,
       // The action lands the operator on the first stale waiting bug: the dashboard's backlog arm
       // reads `bugs:index` with a 0-based row, matching the drawer address.
       actions: [{ label: "Open backlog", act: "backlog", arg: `bugs:${first.index}` }],

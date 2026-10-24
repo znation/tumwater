@@ -824,6 +824,12 @@ test("waiting bugs held a week raise a standing amber alert right after the stal
   assert.match(one[0]!.detail ?? "", /^#3 "Bug hangs on shutdown" has waited 7d/);
   assert.match(one[0]!.detail ?? "", /tumwater bug --release 3/);
   assert.match(one[0]!.detail ?? "", /keep the hold/);
+  // The alert omits the doctor's recurrence scan, so it must not assert that the flake has not
+  // come back (the doctor's checkWaitingBugs row is the surface that quotes a recurrence); it
+  // defers that fact to the doctor instead, so the two surfaces cannot contradict one another.
+  assert.match(one[0]!.detail ?? "", /tumwater doctor/);
+  assert.match(one[0]!.detail ?? "", /reports whether the flake came back/);
+  assert.doesNotMatch(one[0]!.detail ?? "", /flake has not come back/);
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "bugs:2" }]);
   // Callers feed most-days-first (staleWaitingBugs sorts days descending, ties in file order, so
   // the first element is the longest-held bug and the one the alert names; the rest are folded
