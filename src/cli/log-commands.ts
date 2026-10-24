@@ -1,6 +1,6 @@
 import { fail, say, sayJsonLine } from "./cli-output.js";
 import { hasFollowFlag, LOGS_TRANSCRIPT_VALUE_ERROR } from "./cli-flag-specs.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
+import { durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -200,9 +200,7 @@ export async function cmdLogs(root: string, args: string[], seams: FollowSeams =
   // both flags. (--prompt requires --transcript, so it is excluded with it.)
   const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
   const untilMs = parseSinceFlag(rest, "logs --until", LOGS_SINCE_MAX_MS, "--until");
-  if (untilMs !== null && ms === null) fail("logs --until requires --since");
-  if (untilMs !== null && ms !== null && untilMs >= ms)
-    fail(`logs --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(ms)})`);
+  failUntilShorterThanSince("logs", untilMs, ms);
   if (ms !== null) {
     if (follow)
       failRivalShapes("logs --since", "-f/--follow", 'follow means "from now on"; --since shows a bounded past window');

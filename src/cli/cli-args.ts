@@ -371,6 +371,26 @@ export function failRivalShapes(subject: string, rival: string, why: string): ne
   fail(`${subject} cannot be combined with ${rival} (${why})`);
 }
 
+/** Guard a trailing-window command's `--until <window>` against its `--since <window>` pair —
+ * the shared fail sentences the three windowed views (logs, history, report) print, so the
+ * wording cannot drift per command. When `--until` is present but `--since` is not, it fails
+ * `` `${label} --until requires --since` ``; when both are present and the until window reaches
+ * or exceeds the since window, it fails `` `${label} --until (<until>) must be shorter than
+ * --since (<since>)` `` — each named through the same durationLabel the parser reads, so an
+ * operator could retype the window. `sinceMs` is the command's parsed `--since` window (null
+ * when it read the day-shape instead), the single value the until window must stay below.
+ * Returns silently when both checks pass, like failOverDurationCap above. */
+export function failUntilShorterThanSince(
+  label: string,
+  untilMs: number | null,
+  sinceMs: number | null,
+): void {
+  if (untilMs === null) return;
+  if (sinceMs === null) fail(`${label} --until requires --since`);
+  if (sinceMs !== null && untilMs >= sinceMs)
+    fail(`${label} --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(sinceMs)})`);
+}
+
 /** Read an optional `--since <duration>` window from a command's args and cap it: the one
  * home of the flagValue → parseDurationFlag → failOverDurationCap idiom the three windowed
  * read-only views (logs, history, report) share. Returns the parsed milliseconds, or null

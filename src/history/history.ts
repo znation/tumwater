@@ -1,5 +1,5 @@
 import { fail, say, sayJson, sayJsonLine } from "../cli/cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
+import { durationLabel, failRivalShapes, failUntilShorterThanSince, flagValue, parseCountFlag, parseGrepFlag, parseRoleListScope, parseSinceFlag, rejectFlagLookingValue } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_RUNS, HISTORY_MAX_RUNS, HISTORY_RESULT_FLAG_NAMES, HISTORY_SUMMARY_GROUPS, historyClass, parseHistoryResultClass, readRunRows, readRunRowsSince, runRows, summarizeRunRows, summarizeRunRowsByModel, runRowsMatchingGrep, runRowsOnModels, type HistoryResultClass, type RunRow } from "./history-data.js";
 import { renderModelSummary, renderRow, renderSummary, widenWidths, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
@@ -111,9 +111,7 @@ export async function cmdHistory(root: string, args: string[], seams: FollowSeam
   const followTail = follow ? readEventsTailWithEnd(root, HISTORY_FOLLOW_BUFFER_EVENTS) : null;
   const sinceMs = parseSinceFlag(rest, "history --since", LOGS_SINCE_MAX_MS);
   const untilMs = parseSinceFlag(rest, "history --until", LOGS_SINCE_MAX_MS, "--until");
-  if (untilMs !== null && sinceMs === null) fail("history --until requires --since");
-  if (untilMs !== null && sinceMs !== null && untilMs >= sinceMs)
-    fail(`history --until (${durationLabel(untilMs)}) must be shorter than --since (${durationLabel(sinceMs)})`);
+  failUntilShorterThanSince("history", untilMs, sinceMs);
   if (followTail !== null) {
     const limit = nRaw !== null ? parseCountFlag("-n", nRaw, HISTORY_MAX_RUNS) : HISTORY_DEFAULT_RUNS;
     // The seed goes through readRunRows, which widens its window until it finds `limit` rows;
