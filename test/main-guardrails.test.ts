@@ -172,7 +172,7 @@ test("revertWarnings: a blamed test quarantined since the revert warns it did no
 
 test("revertWarnings: a change merged again unchanged with main green warns the revert looks false", () => {
   const now = 1_000_000_000_000;
-  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid" });
+  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid", reason: "main-red" });
   const merged = ev({ type: "merged", ts: now - 8 * MIN, commit: "mmmmmmmmmmmmmmmmmmmmm", patchId: "shared-pid" });
   const check = ev({ type: "main_check", ts: now - 6 * MIN, status: "passed", durationMs: 120_000 });
   const out = revertWarnings([revert, merged, check], [], now);
@@ -183,7 +183,7 @@ test("revertWarnings: a change merged again unchanged with main green warns the 
 
 test("revertWarnings: a re-merged change whose following main_check failed does not warn", () => {
   const now = 1_000_000_000_000;
-  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid" });
+  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid", reason: "main-red" });
   const merged = ev({ type: "merged", ts: now - 8 * MIN, commit: "mmmmmmmmmmmmmmmmmmmmm", patchId: "shared-pid" });
   const check = ev({ type: "main_check", ts: now - 6 * MIN, status: "failed", durationMs: 120_000 });
   assert.equal(revertWarnings([revert, merged, check], [], now).length, 0);
@@ -191,7 +191,7 @@ test("revertWarnings: a re-merged change whose following main_check failed does 
 
 test("revertWarnings: a merged event with a different patch-id does not warn", () => {
   const now = 1_000_000_000_000;
-  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid" });
+  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid", reason: "main-red" });
   const merged = ev({ type: "merged", ts: now - 8 * MIN, commit: "mmmmmmmmmmmmmmmmmmmmm", patchId: "other-pid" });
   const check = ev({ type: "main_check", ts: now - 6 * MIN, status: "passed", durationMs: 120_000 });
   assert.equal(revertWarnings([revert, merged, check], [], now).length, 0);
@@ -199,7 +199,7 @@ test("revertWarnings: a merged event with a different patch-id does not warn", (
 
 test("revertWarnings: a merged event with no patch-id does not warn", () => {
   const now = 1_000_000_000_000;
-  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid" });
+  const revert = ev({ type: "main_revert", ts: now - 10 * MIN, commit: "rrrrrrrrrrrrrrrrrrrrr", patchId: "shared-pid", reason: "main-red" });
   const merged = ev({ type: "merged", ts: now - 8 * MIN, commit: "mmmmmmmmmmmmmmmmmmmmm" });
   const check = ev({ type: "main_check", ts: now - 6 * MIN, status: "passed", durationMs: 120_000 });
   assert.equal(revertWarnings([revert, merged, check], [], now).length, 0);
@@ -208,7 +208,7 @@ test("revertWarnings: a merged event with no patch-id does not warn", () => {
 test("revertWarnings: more than 5 reverts in 24 h warn naming the count; 5 do not", () => {
   const now = 1_000_000_000_000;
   const reverts = Array.from({ length: 6 }, (_, i) =>
-    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}` }),
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}`, reason: "main-red" }),
   );
   const out = revertWarnings(reverts, [], now);
   assert.equal(out.length, 1);
@@ -230,11 +230,39 @@ test("revertWarnings: post-merge-rejection reverts alone never trip the rate cei
   assert.deepEqual(revertWarnings(reverts, [], now), []);
   // The same count but as red-main reverts still fires the burst, for just the red-main set.
   const red = Array.from({ length: 6 }, (_, i) =>
-    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}` }),
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}`, reason: "main-red" }),
   );
   const out = revertWarnings(red, [], now);
   assert.equal(out.length, 1);
   assert.match(out[0]!, /6 reverts in the last 24 h/);
+});
+
+test("revertWarnings: reason-less post-rejection reverts read from the log never trip the ceiling", () => {
+  const now = 1_000_000_000_000;
+  // Eight reverts predating the reason split carry no `reason` and empty failingTests, but each
+  // matches an afterMerge `review_rejected` naming its commit (as post-merge-review.ts logs):
+  // they are intended rejection cycles, so the ceiling must not read them as a red-main burst.
+  const reverts = Array.from({ length: 8 }, (_, i) =>
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `rrrrrrrr${i}`, failingTests: [] }),
+  );
+  const rejected = reverts.map((r) =>
+    ev({ type: "review_rejected", ts: r.ts, afterMerge: true, head: r.commit, reasons: ["doc undercounts"] }),
+  );
+  assert.equal(revertGuardrail([...rejected, ...reverts], [], now), null);
+  assert.deepEqual(revertWarnings([...rejected, ...reverts], [], now), []);
+});
+
+test("revertWarnings: a reason-less red-main burst still trips the ceiling via its failingTests", () => {
+  const now = 1_000_000_000_000;
+  // A reason-less revert carrying the failing tests the main watch parsed is red-main even
+  // without the `reason` field: counting those keeps the burst alarm real for old events.
+  const reverts = Array.from({ length: 6 }, (_, i) =>
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}`, failingTests: ["test/T.ts"] }),
+  );
+  const out = revertWarnings(reverts, [], now);
+  assert.equal(out.length, 1);
+  assert.match(out[0]!, /6 reverts in the last 24 h/);
+  assert.match(out[0]!, /5-revert ceiling/);
 });
 
 test("the guardrail constants match the documented thresholds", () => {
@@ -256,7 +284,7 @@ test("revertGuardrail returns the count and phrases, and null when nothing fires
   assert.deepEqual(revertWarnings([revert], q, now), g!.phrases);
   // Six reverts in the day fire the burst: count 6 and the ceiling phrase.
   const burstRevs = Array.from({ length: 6 }, (_, i) =>
-    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}` }),
+    ev({ type: "main_revert", ts: now - i * MIN, commit: `cccccccc${i}`, reason: "main-red" }),
   );
   const burst = revertGuardrail(burstRevs, [], now);
   assert.ok(burst, "a revert burst fires");

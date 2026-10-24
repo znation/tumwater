@@ -11,7 +11,6 @@
  * Both take an injected `now` so tests never read the clock. */
 
 import { readEventsSince } from "../events/event-window.js";
-import { revertReasonOf } from "../events/event-read.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { DAY_MS, clockHm, humanAgo } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
@@ -125,6 +124,32 @@ export function quarantineWarning(entries: readonly { test: string; firstSeen: n
  * habit, distinct from a single false revert. */
 export const REVERT_RATE_LIMIT = 5;
 
+/** Whether a `main_revert` counts as red-main for the daily ceiling. A revert rejected by a
+ * post-merge review is an intended revision cycle, not a red-main revert. Events written after
+ * the reason split carry `reason` (post-review vs main-red, main-revert.ts). Older events
+ * predate the split and carry none; classify those from what they already carry instead of
+ * assuming they are red-main (revertReasonOf's absent-reason default is a display fallback): a
+ * non-empty `failingTests` means the main watch's check was red, a matching `afterMerge: true`
+ * `review_rejected` naming the reverted commit means a post-merge rejection, and an event with
+ * neither is an unknown cause and is never counted as red-main — a deploy lag cannot turn an
+ * intended rejection cycle into a daily-revert alarm. */
+function isRedMainRevert(r: HarnessEvent, events: readonly HarnessEvent[]): boolean {
+  if (r.reason === "post-review") return false;
+  if (typeof r.reason === "string") return true; // an explicit main-red (or other) reason
+  // reason-less: classify from the log (see the doc comment above).
+  if (Array.isArray(r.failingTests) && r.failingTests.length > 0) return true;
+  const commit = typeof r.commit === "string" ? r.commit : undefined;
+  if (commit !== undefined) {
+    if (
+      events.some(
+        (e) => e.type === "review_rejected" && e.afterMerge === true && e.head === commit,
+      )
+    )
+      return false; // a post-merge rejection; not red-main
+  }
+  return false; // unknown cause; excluded from the red-main count
+}
+
 /** One `main_revert` in the last 24 h looks false when either G2 test holds — its failure did
  * not reproduce (a test it names has been quarantined at or since the revert, or a later
  * `main_check`'s `quarantined` list names it), or its change came back unchanged and main
@@ -203,13 +228,7 @@ export function revertGuardrail(
   const reverts = events.filter(
     (e) => e.type === "main_revert" && typeof e.ts === "number" && e.ts >= cutoff,
   );
-  // A rejection revert (`reason: "post-review"` — a post-merge review rejecting an already
-  // landed commit, main-revert.ts) is an intended revision cycle, not a red-main revert: it
-  // carries no failingTests and a revision gets a new patch-id, so it can never look false and
-  // counting it against the daily ceiling reads a deliberate mechanism as a flaky-revert
-  // habit. Only red-main reverts count toward the rate; older events without `reason`
-  // predate the split and default to main-red.
-  const redReverts = reverts.filter((r) => revertReasonOf(r) === "main-red");
+  const redReverts = reverts.filter((r) => isRedMainRevert(r, events));
   if (redReverts.length === 0) return null;
   const phrases: string[] = [];
   if (redReverts.length > REVERT_RATE_LIMIT) {
