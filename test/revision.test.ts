@@ -680,9 +680,15 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
   await setRef(repo, rejectedRefName("improve"), sha);
 
   const prompts = path.join(tmpdir(), "revision-prompts.log");
+  // The pi marker lives in a separate freshly-created tmpdir: the fake pi touches it on EVERY
+  // invocation, so at read time its presence proves pi ran here (vs. writing to a stray path)
+  // and its absence proves the run short-circuited to `queued` without ever calling pi. Its
+  // own dir keeps a missing prompts file from being explained away by the two sharing a dir.
+  const piInvoked = path.join(tmpdir(), "revision-pi-invoked");
   await withPi(
     [
       `printf '%s\n' "$@" >> "${prompts}"`,
+      `touch "${piInvoked}"`,
       `echo resolved > seed.txt`,
       `printf '%s\n' '${assistantLine("ok\nSUMMARY: revised with markers resolved")}'`,
       `echo new > new.txt`,
@@ -694,7 +700,34 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       const outcome = await runner.run();
 
       assert.equal(outcome.result, "queued");
-      const prompt = fs.readFileSync(prompts, "utf8");
+      // A `queued` outcome with no prompts file is structurally impossible when pi ran (its
+      // first line writes the file), so a missing file is a pi-less short-circuit: dump what
+      // names which path. The cause is load-dependent and non-reproducible, so the next
+      // failure must read itself out (BUGS.md quarantine 2026-10-24).
+      let prompt: string;
+      try {
+        prompt = fs.readFileSync(prompts, "utf8");
+      } catch (err) {
+        const revisionEvents = eventsOfType(repo, "revision").map((e) => ({
+          action: e.action,
+          round: e.round,
+        }));
+        const queued = queuedMerges(repo).map((m) => ({
+          sha: m.sha,
+          revisionRound: m.revisionRound,
+        }));
+        assert.fail(
+          [
+            `reading ${prompts} failed: ${(err as Error).message}`,
+            `prompts-file-exists: ${fs.existsSync(prompts)}`,
+            `pi-invoked-marker-exists: ${fs.existsSync(piInvoked)}`,
+            `state.revision: ${JSON.stringify(runner.state.revision)}`,
+            `state.conflictHandback: ${JSON.stringify(runner.state.conflictHandback)}`,
+            `revision-events: ${JSON.stringify(revisionEvents)}`,
+            `queuedMerges: ${JSON.stringify(queued)}`,
+          ].join("\n"),
+        );
+      }
       assert.match(prompt, /revision 1\b/);
       assert.match(prompt, /conflict-handback/);
       assert.match(prompt, /Conflicted files:\n- seed\.txt/);

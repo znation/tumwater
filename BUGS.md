@@ -106,6 +106,10 @@ a hanging fake rejects within timeoutMs and its child is gone afterwards
 
 The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
 
+- **Progress 2026-10-24 (bugfix):** not reproduced offline. The failure is `ENOENT` reading `revision-prompts.log` despite an outcome already `queued` — structurally impossible when the fake pi ran, since its first line appends to the file on every invocation; the only pi-less `queued` short-circuits (recovery `enqueued`/`relief_wait`, `stageRunMerge`) need a merge pin or a branch ahead of main, which this fresh-repo test never creates. The test is now instrumented: the fake pi touches a distinct `revision-pi-invoked` marker, and a missing prompts file fails with a dump of that marker's existence, the runner's revision/conflict-handback state, the `revision`/`merge_queued` events, and the queued merge, naming which path short-circuited. Entry stays open.
+
+**Waiting for the next failure 2026-10-24 by bugfix: a pi-less `queued` short-circuit shows `pi-invoked-marker-exists: false` with the recovery/stage state naming its return; `true` means pi ran and merely wrote elsewhere, splitting the marker from the prompts path.**
+
 ~~~~
 a revision whose re-apply conflicts reaches the author with markers, not a plain rejection
 ~~~~
