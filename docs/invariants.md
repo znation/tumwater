@@ -4260,13 +4260,13 @@ the next poll instead of counting a failed run toward `POST_REVIEW_FAILURE_LIMIT
 fails its review, never approving an empty diff" and "a post-merge review git could not start keeps
 its entry without counting a failed run".
 
-### INV-BT4: an accepted post-merge review is removed without a review run, and a rejected one is refused
+### INV-BT4: an accepted post-merge review is removed without a review run, rejected or pending alike
 
 **Guarantee.** `acceptPostReview` removes only the named FIFO entry (resolved by position against
 `readPostReviews`, the same list `tumwater reviews` numbers), leaves every other entry in order, and
 logs one `warning` under the entry's role. An out-of-range position writes nothing and reports the
-current depth. An entry carrying `rejected` is refused without writing — it is waiting on its
-revert, and removing it would skip the revert. The sha-addressed `acceptPostReviewBySha` removes
+current depth. An entry carrying `rejected` is accepted like any pending one — its rejection stays
+recorded on main (Forward, never back), so there is no revert to skip. The sha-addressed `acceptPostReviewBySha` removes
 only the entry whose commit matches and reports `{ status: "gone" }` (writing nothing) when none
 matches, so the dashboard's Accept and the CLI's `--accept <n>` share one removal and can never
 drift on what accepting means. A failed store write warns and never throws (INV-BT2's write path),

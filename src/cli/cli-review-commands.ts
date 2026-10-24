@@ -90,9 +90,9 @@ export async function cmdReviews(root: string, args: string[]): Promise<void> {
  * review `tumwater reviews` lists, accepting the commit unreviewed at the operator's request.
  * Parsed the way `cmdQueueCancel` parses `--cancel`: `--accept <n>` the one valued flag,
  * `--json` the one boolean (at most once), `--help`/`-h` tolerated, anything else refused. An
- * out-of-range position fails naming the current depth; an already-rejected entry (or one
- * whose fix has merged) is refused and changes nothing — it stays on main with the reviewer's
- * reasons, so there is nothing to accept. */
+ * out-of-range position fails naming the current depth; an entry whose repair already merged
+ * (`fixed`) is refused. A rejected entry waits on nothing and is accepted like any pending one. */
+
 async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   const { json, position, rest } = scanPositionArgs(args, "--accept", "--accept 2");
   // The vocabulary an accept invocation accepts is exactly --accept and --json, both consumed
@@ -107,9 +107,7 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   if (outcome.status === "out-of-range") {
     fail(`no post-merge review at position ${position} (post-merge review queue holds ${outcome.depth})`);
   }
-  if (outcome.status === "rejected") {
-    fail(`post-merge review ${position} stays on main with the reviewer's reasons — there is nothing to accept`);
-  }
+
   if (outcome.status === "settled") {
     fail(`post-merge review ${position} already merged its fix on main — nothing to accept`);
   }

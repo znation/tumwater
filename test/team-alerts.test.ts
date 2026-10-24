@@ -1509,6 +1509,8 @@ test("a post-merge rejection burst raises one standing amber alert", () => {
   assert.match(alerts[0]!.title ?? "", /post-merge review rejections/);
   assert.match(alerts[0]!.detail ?? "", /bugfix/);
   assert.match(alerts[0]!.detail ?? "", /review\.afterMerge/);
+  assert.match(alerts[0]!.detail ?? "", /stays there with the reviewer's recorded reasons/, "the churn detail reads the recorded-finding wording, not a pending revert");
+  assert.doesNotMatch(alerts[0]!.detail ?? "", /revert|re-author/, "the churn detail reads the recorded-finding wording, not a pending revert");
   assert.deepEqual(alerts[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A null last argument adds none.
   assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null), []);

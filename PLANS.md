@@ -58,6 +58,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Follow-up 2026-10-24 by the operator:** this entry's surfaces change again under "Forward, never back" below — a rejected entry reads `fixed — <finding> (fix <sha>)`, and the accept affordances go entirely rather than being re-worded — so land it only as far as it goes; its wording half (no "waiting to revert", no "let the revert run") is what the newer plan keeps, and whatever is in flight now stays as it is.
 
+**Superseded 2026-10-24 by the feature role under part 3b/6 of "Forward, never back":** the "accept affordances go entirely" premise above is inverted by the landed part — a rejected entry now keeps its `--accept` affordance and is accepted like any pending one, so this entry's no-accept criteria no longer hold; its wording half (no "waiting to revert", no "let the revert run") is what part 3b/6 keeps.
+
 **Goal.** The shared renderer `postReviewStatusLabel` still prints `[rejected — waiting to revert: …]`, and `cmdReviewsAccept` still refuses a rejected entry with "waiting on its revert". After part 1/3 there is no revert to wait for: a rejected entry is forwarded to its author, or parked until a runner can take it. Name the forwarding state instead.
 
 **Approach.**
@@ -86,6 +88,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 **Follow-up 2026-10-24 by the operator:** same as part 2/3 — the dashboard and TUI wording this part fixes is replaced by "Forward, never back" below (a rejected entry reads `fixed — <finding> (fix <sha>)`, with no accept affordance to explain), so land it only as far as it goes and leave anything in flight as it is.
 
+**Superseded 2026-10-24 by the feature role under part 3b/6 of "Forward, never back":** the "no accept affordance" premise above is inverted by the landed part — a rejected entry now keeps its Accept affordance and is accepted like any pending one, landed by part 3b/6 on exactly these dashboard and TUI surfaces.
+
 **Goal.** The TUI Pending pane's two operator messages, the browser's hand-kept label and the GUI's accept-refusal error still tell the operator a rejected entry waits on a revert. After part 1/3 it awaits the author's follow-up instead; the three dashboard surfaces must say so and match `tumwater reviews`.
 
 **Approach.**
@@ -107,34 +111,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/tui-keys.test.ts: update the rejected accept-flash assertion to the new wording.
 - test/gui-client-pending.test.ts: update the rejected-label assertion.
 - test/gui-post-review-accept.test.ts: update the GUI 409 error assertion.
-
-### Forward, never back, part 3b/6: every surface reads a rejected entry as the reviewer's recorded finding, not a pending revert (planned 2026-10-24 by the plan role, split 2026-10-24 by the plan role from the held part 3/6; requires part 1/6 landed, since a rejected entry no longer fills the revert slot; independent of part 3a/6 and shares no file with it; docs/invariants.md's revert guarantees are part 4/6's and are left alone; touches src/review/post-merge-review-render.ts src/review/post-merge-review.ts src/ui/gui/gui-client-pending.ts src/review/post-merge-review-accept.ts src/cli/cli-review-commands.ts src/cli/help.ts src/ui/tui/tui-pane-pending.ts src/gui/gui-operator-commands.ts src/ui/team-alerts.ts src/ui/status-payload.ts docs/how-it-works.md docs/cli.md test/cli-reviews.test.ts test/tui-keys.test.ts test/gui-client-pending.test.ts test/gui-post-review-accept.test.ts test/team-alerts.test.ts test/status-payload.test.ts)
-
-**Previously held 1**
-
-**Goal.** Part 1/6 made a rejected commit stop filling the revert slot: a rejection is answered by the reviewer's own landed fix, and a rejection whose reply carried no fix is a recorded finding, not a state waiting for a revert. The renderer, the CLI, the TUI, the dashboard, the churn alert and their docs still say "waiting to revert" and "the rejection starts a revert and a re-author". This part removes every such claim so the surfaces agree with the code: a rejected entry reads `[rejected — <reasons>]`, and `--accept` retires it like any other terminal entry.
-
-**Approach.**
-- Shared label: in src/review/post-merge-review-render.ts, `postReviewStatusLabel`'s `rejected` branch returns `` `[rejected — ${entry.rejected!.map((r) => squash(r, 60)).join("; ")}]` `` (drop "waiting to revert: "), and its doc comment loses "still waiting on the revert". In src/review/post-merge-review.ts, the `PostReview.rejected` comment loses "and its revert has not been started yet (the revert slot was busy)", and the `POST_MERGE_REJECT_WARN` comment's "the pre-revert signal" becomes "the reviewer-fix signal". The `fixed`, `failing` and `waiting` branches are unchanged — part 1/6's `[fixed — the repair <sha> already merged on main]` already reads the fix.
-- GUI twin: src/ui/gui/gui-client-pending.ts's hand-kept `postReviewStatusLabel` `rejected` branch takes the same text and its comments lose "still waiting on the revert".
-- Accept: a rejected entry waits on nothing now, so it is acceptable. In src/review/post-merge-review-accept.ts, delete `removeAcceptedEntry`'s `if (entry.rejected) return { status: "rejected", commit: entry.commit };` guard and the `rejected` member of `AcceptPostReviewOutcome`, and reword the file's comments; in src/cli/cli-review-commands.ts, delete `cmdReviewsAccept`'s `outcome.status === "rejected"` branch and the doc-comment clause; in src/ui/tui/tui-pane-pending.ts, drop the "cannot be accepted until its revert runs — let the revert go, then review the revision" row line and the `outcome.status === "rejected"` flash branch; in src/gui/gui-operator-commands.ts, drop the `outcome.status === "rejected"` 409 branch and the comment naming it. In src/ui/gui/gui-client-pending.ts, the row's accept-button guard drops `!Array.isArray(e.rejected)` so a rejected row renders the two-click Accept like any pending row. The `fixed` guard (a landed repair is not acceptable) stays.
-- Alert and payload: src/ui/team-alerts.ts's `post-merge-churn` comment block and detail string ("the pre-revert signal", "costs a revert and a re-author") say the rejection is answered by the reviewer's own fix and the remedy is to narrow `review.afterMerge`; src/ui/status-payload.ts's `postMergeChurnAlert` doc comment takes the same wording. The alert's key, tone, title, count and actions are unchanged.
-- Docs: docs/how-it-works.md's post-merge-review bullet (a rejection "goes to the revert slot as above … back to its role as a revision") describes the reviewer's fix on top of main, and its "pre-revert signal" phrase takes the reviewer-fix wording; its red-main revert paragraphs stay for part 4/6. docs/cli.md's `tumwater reviews` clause, its `--accept` sentence and the Pending pane's `Ctrl+A` key row lose "waiting on its revert". docs/invariants.md is not touched (part 4/6). src/cli/help.ts's `tumwater reviews` stanza takes the same wording.
-
-**Files touched.** src/review/post-merge-review-render.ts src/review/post-merge-review.ts src/ui/gui/gui-client-pending.ts src/review/post-merge-review-accept.ts src/cli/cli-review-commands.ts src/cli/help.ts src/ui/tui/tui-pane-pending.ts src/gui/gui-operator-commands.ts src/ui/team-alerts.ts src/ui/status-payload.ts docs/how-it-works.md docs/cli.md test/cli-reviews.test.ts test/tui-keys.test.ts test/gui-client-pending.test.ts test/gui-post-review-accept.test.ts test/team-alerts.test.ts test/status-payload.test.ts
-
-**Acceptance criteria.**
-- `postReviewStatusLabel` and its GUI twin render `[rejected — <reasons>]`; no source file under src/ says a rejected post-merge review is waiting for a revert, and docs/how-it-works.md and docs/cli.md carry the recorded-finding wording.
-- `tumwater reviews --accept <n>` on a rejected entry retires it like any pending entry (logs the accepted-unreviewed warning and drops it); `--accept` on a `fixed` entry still fails with "already merged its fix on main".
-- The `post-merge-churn` alert's key, tone, title, count and actions are unchanged; only its detail and comment wording move off the revert.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/cli-reviews.test.ts: the list assertions read `[rejected — <reasons>]`; the accept-on-rejected case now asserts acceptance (the entry leaves the queue and the warning logs).
-- test/tui-keys.test.ts: a rejected row no longer prints the "cannot be accepted until its revert runs" line, and Ctrl+A on it now retires the entry.
-- test/gui-client-pending.test.ts: the rejected label assertion takes the new text, and the row renders an Accept button for a rejected entry.
-- test/gui-post-review-accept.test.ts: the accept-on-rejected case now answers 200 `accepted` and removes the entry.
-- test/team-alerts.test.ts and test/status-payload.test.ts: pin the new churn detail text, asserting no "revert".
 
 ### Forward, never back, part 4/6: the revert subsystem is deleted — no `main_revert` is emitted and a red main is healed forward (planned 2026-10-24 by the operator, split from the held part 2/2; requires part 3b/6 landed, since every surface must read the forward finding before the backward readers go; parts 5/6–6/6 then delete every reader of the historical events this part stops writing; touches src/baseline/main-revert.ts (deleted) src/baseline/main-red.ts src/baseline/main-watch.ts src/merge/merge-drain.ts src/merge/merge-pipeline.ts src/merge/merge-core.ts src/orchestrator/orchestrator.ts src/runner/revision.ts docs/invariants.md docs/how-it-works.md test/main-revert.test.ts (deleted) test/operator-revert.test.ts)
 

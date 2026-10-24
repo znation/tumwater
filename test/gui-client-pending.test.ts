@@ -503,12 +503,13 @@ test("postReviewsHtml is empty until a commit waits and names each entry otherwi
   assert.match(html, /feature abcdef12 · add the thing/);
   assert.match(html, /bugfix 01234567 · fix the thing · <span class='mono'>\[2 failed review runs — last: boom\]<\/span>/);
   assert.match(html, /docs 11111111 · doc the no-verdict · <span class='mono'>\[2 failed review runs\]<\/span>/);
-  assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected: &lt;revert&gt;; slow\]<\/span>/);
-  // A non-rejected entry carries a two-click Accept naming its full commit; a rejected entry
-  // renders none (the server would refuse it).
+  assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected — &lt;revert&gt;; slow\]<\/span>/);
+  // Every pending entry carries a two-click Accept naming its full commit — a rejected entry
+  // waits on nothing now, so it is acceptable like any pending one; only a settled fixed entry
+  // renders none.
   assert.match(html, /data-accept='abcdef1234567890'>Accept</);
   assert.match(html, /data-accept='0123456789abcdef'>Accept</);
-  assert.doesNotMatch(html, /data-accept='fedcba9876543210'/);
+  assert.match(html, /data-accept='fedcba9876543210'>Accept/);
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
@@ -521,7 +522,7 @@ test("a settled fixed review entry renders its state and no Accept button", () =
   assert.equal(postReviewState(fixed), "fixed");
   const html = postReviewsHtml([fixed]);
   assert.match(html, /feature abcdef12 · fixed item · <span class='mono'>\[fixed — the repair deadbeef already merged on main\]<\/span>/);
-  assert.doesNotMatch(html, /data-accept='abcdef1234567890'/, "a settled fixed entry renders no Accept button, like a rejected one");
+  assert.doesNotMatch(html, /data-accept='abcdef1234567890'/, "a settled fixed entry renders no Accept button");
 });
 
 test("the Post-merge reviews card shows each entry's waiting age", () => {
@@ -615,12 +616,12 @@ test("postReviewsHtml's Role picker keeps only the chosen role's entries and def
   assert.match(clean, /data-accept='fedcba9876543210'>Accept/);
   assert.doesNotMatch(clean, /data-accept='abcdef1234567890'/);
   assert.doesNotMatch(clean, /data-accept='0123456789abcdef'/);
-  // A rejected row still renders no Accept button under scope.
+  // A rejected row under scope still renders its Accept button.
   const rejected = postReviewsHtml([
     { role: "feature", commit: "aaaaaaaaaaaaaaaa", summary: "bad", rejected: ["<r>"] },
   ], "", "feature");
   assert.match(rejected, /feature aaaaaaaa · bad/);
-  assert.doesNotMatch(rejected, /data-accept='aaaaaaaaaaaaaaaa'/);
+  assert.match(rejected, /data-accept='aaaaaaaaaaaaaaaa'>Accept/);
 });
 
 test("postReviewsHtml's State picker keeps only the chosen states and defaults to All states", () => {

@@ -1022,19 +1022,20 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       actions: seeFailures(),
     });
   }
-  // Last day's post-merge review rejections — the signal for the `review.afterMerge`
-  // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is
-  // the costly kind: the commit already reached main and stays there with the reviewer's
-  // reasons, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is this alert.
-  // status-payload.ts's postMergeChurnAlert feeds it from the
-  // same `afterMerge: true` `review_rejected` events the report's postMergeRejectionsByRole
-  // folds, so the alert and the report cannot disagree on which rejections are post-merge.
+  // Last day's post-merge review rejections — the reviewer-fix signal for the `review.afterMerge`
+  // tiering (src/review/post-merge-review.ts `reviewMergedCommit`). A post-merge rejection is the
+  // costly kind: the commit already reached main, so the rejection is answered only by the
+  // reviewer's own fix, and the always-on signal for a day crossing POST_MERGE_REJECT_WARN is
+  // this alert ahead of the `reverts` ceiling. status-payload.ts's postMergeChurnAlert feeds it
+  // from the same `afterMerge: true` `review_rejected` events the report's
+  // postMergeRejectionsByRole folds, so the alert and the report cannot disagree on which
+  // rejections are post-merge.
   if (postMergeChurn) {
     out.push({
       key: "post-merge-churn",
       tone: "amber",
       title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
-      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main and stays there with the reviewer's reasons; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main and stays there with the reviewer's recorded reasons (never re-reviewed — Forward, never back); narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
       actions: seeFailures(),
     });
   }

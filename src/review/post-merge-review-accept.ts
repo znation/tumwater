@@ -13,26 +13,23 @@ import { shortSha } from "../text/format.js";
 /** What accepting an un-reviewed post-merge review entry did: `accepted` names the retired
  * entry's role, commit and summary (what one `warning` event logged); `out-of-range` carries
  * the current readable depth so the caller's failure can name it as the valid range;
- * `rejected` names the commit the operator must not accept — that entry is already reviewed and
- * stays on main with the reviewer's reasons, so there is nothing to accept. */
+ * `settled` names the commit the operator must not accept — a `fixed` entry's repair already
+ * merged. */
 export type AcceptPostReviewOutcome =
   | { status: "accepted"; role: string; commit: string; summary: string }
   | { status: "out-of-range"; depth: number }
-  | { status: "rejected"; commit: string }
   | { status: "settled"; commit: string };
 
 /** Remove one readable entry the operator accepts unreviewed: refuse it (writing nothing) when
- * it carries `rejected` — that entry is already reviewed and stays on main with the reviewer's
- * reasons, so accepting it unreviewed is meaningless — or when it carries
- * `fixed` — the repair already merged, so accepting it unreviewed is meaningless and the false
- * "accepted unreviewed" warning would mislead — otherwise settle it with no verdict
- * (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
+ * it carries `fixed` — the repair already merged, so accepting it unreviewed is meaningless
+ * and the false "accepted unreviewed" warning would mislead — otherwise settle it with no
+ * verdict (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
  * log one `warning` under the entry's role, and return the `accepted` outcome naming what was
- * retired. The single removal both `acceptPostReview` (by position) and `acceptPostReviewBySha`
+ * retired. A rejected entry waits on nothing, so it is accepted like any other pending entry.
+ * The single removal both `acceptPostReview` (by position) and `acceptPostReviewBySha`
  * (by sha) share, so the CLI and the dashboard's post-review-accept cannot drift on what
  * accepting means. */
 function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewOutcome {
-  if (entry.rejected) return { status: "rejected", commit: entry.commit };
   if (entry.fixed !== undefined) return { status: "settled", commit: entry.commit };
   settlePostReview(root, entry.commit, null);
   const message = `post-merge review of ${shortSha(entry.commit)} accepted unreviewed at the operator's request — the commit stays on main unreviewed`; // vocabulary-ok: the accepted-unreviewed wording those reasons it is the operator's choice
@@ -46,7 +43,8 @@ function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewO
  * the line `tumwater reviews` printed. An out-of-range position writes nothing and returns the
  * current readable depth; otherwise it runs the same `removeAcceptedEntry` the sha variant
  * shares, so the two never drift on what accepting means (see `removeAcceptedEntry` for the
- * removal, the nothing-to-accept guard, the warning, and the never-throws guarantee). */
+ * removal, the fixed-guard, the warning, and the never-throws guarantee). */
+
 export function acceptPostReview(root: string, position: number): AcceptPostReviewOutcome {
   const entries = readPostReviews(root);
   if (position < 1 || position > entries.length) return { status: "out-of-range", depth: entries.length };
@@ -54,7 +52,7 @@ export function acceptPostReview(root: string, position: number): AcceptPostRevi
 }
 
 /** What removing a pending post-merge review by its commit did: `accepted`/`out-of-range`/
- * `rejected` as `AcceptPostReviewOutcome` does (the sha variant never returns `out-of-range`);
+ * `settled` as `AcceptPostReviewOutcome` does (the sha variant never returns `out-of-range`);
  * `gone` — a concurrent drain already settled the entry, so the client gets data, not an error,
  * in the `/api/queue-cancel` gone idiom. */
 export type AcceptPostReviewByShaOutcome = AcceptPostReviewOutcome | { status: "gone" };

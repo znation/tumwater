@@ -284,9 +284,9 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
  * the browser twin of `tumwater reviews --accept <n>`, resolving by commit (the same removal
  * `acceptPostReviewBySha` the CLI's position variant shares). A `sha` that is not 4-64 hex
  * digits is a 400 and runs nothing. A sha no longer in the queue (a concurrent drain already
- * settled it) is a 200 `{ status: "gone" }` data, not an error. A `rejected` entry is a 409
- * carrying the CLI's nothing-to-accept wording and changes nothing; a `fixed` (already landed
- * its repair) entry is a 409 too and changes nothing. Otherwise it answers the
+ * settled it) is a 200 `{ status: "gone" }` data, not an error. A `fixed` (already landed
+ * its repair) entry is a 409 and changes nothing. A rejected entry waits on nothing and is
+ * accepted like any pending one. Otherwise it answers the
  * accepted entry's role/commit/summary and removes the entry. */
 export async function handlePostReviewAccept(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
@@ -295,8 +295,7 @@ export async function handlePostReviewAccept(req: http.IncomingMessage, res: htt
     return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
   const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
-  if (outcome.status === "rejected")
-    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} stays on main with the reviewer's reasons — there is nothing to accept` });
+
   if (outcome.status === "settled")
     return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} already merged its fix on main — nothing to accept` });
   if (outcome.status !== "accepted") return;

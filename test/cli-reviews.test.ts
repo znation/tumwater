@@ -40,7 +40,7 @@ test("reviews lists each entry in FIFO order with its role, sha, summary and sta
   assert.equal(r.code, 0);
   assert.match(r.stdout, /post-merge review queue \(2 entries\):/);
   assert.ok(r.stdout.indexOf("1. improve") < r.stdout.indexOf("2. clean"), "improve first, FIFO");
-  assert.match(r.stdout, /rejected: no tests/);
+  assert.match(r.stdout, /rejected — no tests/);
 });
 
 test("reviews prints an entry's waiting age and omits it for an entry without a timestamp", async () => {
@@ -64,7 +64,7 @@ test("reviews prints an entry's waiting age and omits it for an entry without a 
     r.stdout,
     new RegExp(`1\\. improve ${'a'.repeat(8)} · \\d+[mhd] ago · tidy the parser`),
   );
-  assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected: no tests\\]`));
+  assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected — no tests\\]`));
 });
 
 test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
@@ -269,13 +269,19 @@ test("reviews --accept failures leave the file unchanged", async () => {
   assert.deepEqual(readPostReviews(repo), before, "unknown flag changes no file");
 });
 
-test("reviews --accept refuses a rejected entry", async () => {
+test("reviews --accept retires a rejected entry like any pending one", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews accept reject test");
   seed(repo); // position 2 is clean, rejected
-  const before = readPostReviews(repo);
   const r = await cli(repo, "reviews", "--accept", "2");
-  assert.notEqual(r.code, 0);
-  assert.match(r.stderr, /post-merge review 2 stays on main with the reviewer's reasons — there is nothing to accept/);
-  assert.deepEqual(readPostReviews(repo), before, "a rejected entry changes no file");
+  assert.equal(r.code, 0);
+  assert.match(
+    r.stdout,
+    new RegExp(`accepted post-merge review entry 2 unreviewed: clean ${'b'.repeat(8)} — rejected`),
+  );
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => e.role),
+    ["improve"],
+    "the rejected entry is retired like any pending one",
+  );
 });

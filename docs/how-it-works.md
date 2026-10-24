@@ -282,23 +282,22 @@ discards a role's in-flight merge.
   unchanged with main staying green (a later `merged` event carries the culprit's `patchId` and the
   first `main_check` after it that ran the check passed) — and on more than 5 reverts in 24 h,
   naming each false-looking revert's culprit sha and the count when over the limit.
-  Rejection reverts are told apart from red-main ones by the `main_revert` event's `reason`
-  (post-review | main-red): a post-merge-review rejection is an intended revision cycle, so it
-  is never counted toward the ceiling or called false — `tumwater report`'s post-merge-rejection
-  table carries it instead. `main_revert` and `merged` events carry the culprit's and the merged commit's `patchId` (src/git/git.ts, `-U0`)
+  A post-merge-review rejection never emits a `main_revert` (a rejection never reverts, below), so
+  only red-main reverts are counted toward the ceiling or called false — `tumwater report`'s
+  post-merge-rejection table carries the rejections instead. `main_revert` and `merged` events carry the culprit's and the merged commit's `patchId` (src/git/git.ts, `-U0`)
   so the second test reads the event log.
 - A role listed in `review.afterMerge` is reviewed after merging: its change still passes the
   deterministic rejects and the gate check, then merges with no reviewer run. The `merged` commit
   is recorded in `.tumwater/state/post-review.json`, and the merge poll runs one review at a time
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
-  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection answers with the
-  reviewer's own landed fix commit through the ordinary change path when the review carries a
-  `FIX:` line (Forward, never back); otherwise the commit stays on main with the reviewer's
-  reasons recorded, and the entry is not re-reviewed. A review that ends three times with no
-  verdict is dropped with a warning. Two or more post-merge rejections in a day raise one
-  standing amber alert naming each role on the dashboard, the TUI and `tumwater status`, the
-  signal to narrow `review.afterMerge` for the noisy role or raise the authoring bar. The
-  `tumwater doctor` audit names the same roles in its `post-merge churn` row.
+  `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection never reverts:
+  the reviewer's own minimal fix is landed on top of main in the same run, and where the review
+  records a finding it cannot repair, the commit stays on main with the reviewer's reasons read as
+  that recorded finding. A review that ends three times with no verdict is dropped with a warning.
+  Two or more post-merge rejections in a day raise one standing amber alert naming each role on
+  the dashboard, the TUI and `tumwater status` — the reviewer-fix signal to narrow
+  `review.afterMerge` for the noisy role or raise the authoring bar. The `tumwater doctor` audit
+  names the same roles in its `post-merge churn` row.
   While the reviewer's provider stands under a failure hold, or its strong tier is unresolvable
   under the review gate, the roles a pre-merge review gates are held — but a role on
   `review.afterMerge` is not: it merges without a reviewer, so it keeps authoring and its

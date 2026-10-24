@@ -204,7 +204,7 @@ export function createPendingPane(session: TuiPaneSession) {
     const lines = [
       `review #${row.position} (Ctrl+A to accept): ${roleLabel(e.role)} ${shortSha(e.commit)} · ${squash(e.summary, 80)}` + (status === "" ? "" : ` · ${status}`),
     ];
-    if (e.rejected !== undefined) lines.push("stays on main with the reviewer's reasons — there is nothing to accept");
+
     return lines.join("\n");
   };
   // Resolve the selected row for a pending-pane action (Ctrl+X cancel, Ctrl+V top, Ctrl+A
@@ -512,10 +512,7 @@ export function createPendingPane(session: TuiPaneSession) {
             session.flashMessage(`accepted post-merge review of ${shortSha(outcome.commit)} unreviewed — ${outcome.summary}`);
             refresh();
             session.requestRender();
-          } else if (outcome.status === "rejected") {
-            session.flashMessage(`review #${review.position} stays on main with the reviewer's reasons — there is nothing to accept`);
-            refresh();
-            session.requestRender();
+
           } else if (outcome.status === "settled") {
             session.flashMessage(`review #${review.position} already merged its fix on main — nothing to accept`);
             refresh();

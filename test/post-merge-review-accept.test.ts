@@ -47,7 +47,7 @@ test("acceptPostReview removes only the named position and names what it retired
   );
 });
 
-test("acceptPostReview refuses a rejected entry without writing", () => {
+test("acceptPostReview retires a rejected entry like any pending one", () => {
   const root = makeRepo();
   writeFileDeep(
     postReviewPath(root),
@@ -58,11 +58,19 @@ test("acceptPostReview refuses a rejected entry without writing", () => {
       ],
     }),
   );
-  const seed = readPostReviews(root);
   const outcome = acceptPostReview(root, 2);
-  assert.deepEqual(outcome, { status: "rejected", commit: "b".repeat(40) });
-  assert.deepEqual(readPostReviews(root), seed, "nothing written on the rejected arm");
-  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 0);
+  assert.deepEqual(outcome, {
+    status: "accepted",
+    role: "clean",
+    commit: "b".repeat(40),
+    summary: "bad change",
+  });
+  assert.deepEqual(
+    readPostReviews(root).map((e) => e.role),
+    ["improve"],
+    "the rejected entry is retired like any pending one",
+  );
+  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 1, "one accept warning under clean");
 });
 
 test("acceptPostReview refuses a fixed (already-merged-repair) entry without writing", () => {
@@ -124,7 +132,7 @@ test("acceptPostReviewBySha removes the matching entry and reports a gone sha", 
   assert.equal(eventsOfType(root, "warning").length, 1, "a gone sha logs no warning");
 });
 
-test("acceptPostReviewBySha refuses a rejected entry without writing", () => {
+test("acceptPostReviewBySha retires a rejected entry like any pending one", () => {
   const root = makeRepo();
   writeFileDeep(
     postReviewPath(root),
@@ -135,9 +143,17 @@ test("acceptPostReviewBySha refuses a rejected entry without writing", () => {
       ],
     }),
   );
-  const seed = readPostReviews(root);
   const outcome = acceptPostReviewBySha(root, "b".repeat(40));
-  assert.deepEqual(outcome, { status: "rejected", commit: "b".repeat(40) });
-  assert.deepEqual(readPostReviews(root), seed, "nothing written on the rejected arm");
-  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 0);
+  assert.deepEqual(outcome, {
+    status: "accepted",
+    role: "clean",
+    commit: "b".repeat(40),
+    summary: "bad change",
+  });
+  assert.deepEqual(
+    readPostReviews(root).map((e) => e.role),
+    ["improve"],
+    "the rejected entry is retired like any pending one",
+  );
+  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 1, "one accept warning under clean");
 });

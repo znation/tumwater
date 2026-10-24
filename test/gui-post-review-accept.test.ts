@@ -56,19 +56,26 @@ test("POST /api/post-review-accept an unknown sha answers 200 gone and writes no
   assert.equal(eventsOfType(root, "warning").length, 0, "no warning is logged");
 });
 
-test("POST /api/post-review-accept a rejected sha answers 409 and leaves the file", async () => {
+test("POST /api/post-review-accept a rejected sha answers 200 accepted and removes it", async () => {
   const root = makeRepo();
   const b = "b".repeat(40);
   seed(root, [
     { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
     { commit: b, role: "clean", summary: "bad change", rejected: ["no tests"] },
   ]);
-  const before = readPostReviews(root);
   const { captured, data } = await post(root, { sha: b });
-  assert.equal(captured.status, 409);
-  assert.match((data as { error: string }).error, /stays on main with the reviewer's reasons — there is nothing to accept/);
-  assert.deepEqual(readPostReviews(root), before, "the rejected entry is left in place");
-  assert.equal(eventsOfType(root, "warning").length, 0, "no warning is logged");
+  assert.equal(captured.status, 200);
+  const d = data as { ok: boolean; status: string; role: string; commit: string; summary: string };
+  assert.equal(d.ok, true);
+  assert.equal(d.status, "accepted");
+  assert.equal(d.role, "clean");
+  assert.equal(d.commit, b);
+  assert.deepEqual(
+    readPostReviews(root).map((e) => e.role),
+    ["improve"],
+    "the matching rejected entry is removed, the other keeps FIFO order",
+  );
+  assert.equal(eventsOfType(root, "warning").length, 1, "one accept warning is logged");
 });
 
 test("POST /api/post-review-accept a settled fixed sha answers 409 and leaves the file", async () => {

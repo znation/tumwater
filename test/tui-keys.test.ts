@@ -3185,7 +3185,7 @@ test("the Pending pane selects a post-merge review after the merge rows and Ctrl
   assert.equal(keys.state().selectedQueue, null, "an accept returns to list mode");
 });
 
-test("a rejected Pending review row cannot be accepted with Ctrl+A", async () => {
+test("a rejected Pending review row is accepted with Ctrl+A like any pending one", async () => {
   const { root } = await pendingCancelRoot();
   const commit = "b".repeat(40);
   seedReview(root, commit, "feature", "bad change", { rejected: ["no tests"] });
@@ -3193,11 +3193,13 @@ test("a rejected Pending review row cannot be accepted with Ctrl+A", async () =>
   keys.handleKey(undefined, { name: "down" }); // feature (#1)
   keys.handleKey(undefined, { name: "down" }); // clean (#2)
   keys.handleKey(undefined, { name: "down" }); // review #1
+  assert.ok(!keys.state().queueDetail.includes("stays on main with the reviewer's reasons"), "a rejected row no longer prints the stays-on-main row line");
   keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
-  keys.handleKey(undefined, { ctrl: true, name: "a" }); // confirm → refused
-  await untilFlash(() => keys.state().flash ?? "", /stays on main with the reviewer's reasons/);
-  assert.equal(readPostReviews(root).length, 1, "the rejected entry is not removed");
-  assert.equal(eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit))).length, 0, "no accept warning for a rejected entry");
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // confirm → accepted
+  await untilFlash(() => keys.state().flash ?? "", /accepted post-merge review of /);
+  assert.ok(keys.state().flash!.includes(shortSha(commit)), "the flash names the accepted short sha");
+  assert.deepEqual(readPostReviews(root), [], "the rejected entry is removed like any pending one");
+  assert.equal(eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit))).length, 1, "one accept warning names the accepted sha");
 });
 
 test("Ctrl+A on a Pending merge row and Ctrl+X on a review row name the right action and change nothing", async () => {
