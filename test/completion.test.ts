@@ -12,6 +12,7 @@ import { cli } from "./helpers/cli-harness.js";
 import { MODEL_TIERS } from "../src/config/config-schema.js";
 import { parseConfigKey } from "../src/config/config-keys.js";
 import { HISTORY_RESULT_FLAG_NAMES } from "../src/history/history-data.js";
+import { POST_REVIEW_STATES } from "../src/review/post-merge-review-render.js";
 import { templateIds } from "../src/init/init-templates.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { logEvent } from "../src/events/events.js";
@@ -251,6 +252,8 @@ test("the bash script completes file names, template ids, and result classes aft
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--notes-file", "b"], 4, dir), ["brief.md"]);
   assert.deepEqual((await complete(script, ["tumwater", "init", "--template", ""], 3)).sort(), templateIds().sort());
   assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "p"], 3), ["problems"]);
+  assert.deepEqual(await complete(script, ["tumwater", "reviews", "--status", "wa"], 3), ["waiting"]);
+  assert.deepEqual(await complete(script, ["tumwater", "reviews", "--status", ""], 3), [...POST_REVIEW_STATES]);
 });
 
 test("the bash script completes event-type codes after logs --type", async () => {
@@ -311,6 +314,8 @@ test("the fish script completes values after --role, path flags, --template, and
   assert.ok(flagLines("type").some((l) => l.includes("__fish_complete_list , __tumwater_types")));
   assert.ok(lines.some((l) => l.startsWith("function __tumwater_results") && l.includes("problems")));
   assert.ok(lines.some((l) => l.startsWith("function __tumwater_types") && l.includes("merge_failed") && l.includes("run_start")));
+  assert.ok(flagLines("status").some((l) => l.includes("__fish_complete_list , __tumwater_review_states")));
+  assert.ok(lines.some((l) => l.startsWith("function __tumwater_review_states") && l.includes("rejected")));
   assert.ok(flagLines("thinking").some((l) => [...new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"])].every((w) => l.includes(w))));
   assert.ok(flagLines("by").some((l) => l.includes("-a") && l.includes("role") && l.includes("model")));
   const modelLine = (cmd: string) => flagLines("model").find((l) => l.includes(`__fish_seen_subcommand_from ${cmd}`)) ?? "";
@@ -342,6 +347,7 @@ test("the bash script completes the item after the last comma of --role, --resul
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "feature,feature-2,q"], 3), ["feature,feature-2,qa"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "merged,p"], 3), ["merged,problems"]);
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--type", "run_start,merge_f"], 3), ["run_start,merge_failed"]);
+  assert.deepEqual(await complete(script, ["tumwater", "reviews", "--status", "waiting,r"], 3), ["waiting,rejected"]);
   assert.deepEqual(await complete(script, ["tumwater", "history", "--role", "qa,"], 3), ["qa,feature", "qa,feature-2"]);
 });
 
@@ -354,12 +360,14 @@ test("the bash script skips the items a comma list already holds", async () => {
   const types = await complete(script, ["tumwater", "logs", "--type", "run_start,run_"], 3);
   assert.ok(!types.includes("run_start,run_start") && types.includes("run_start,run_end"));
   assert.deepEqual(await complete(script, ["tumwater", "history", "--model", "hf/m-b,"], 3), ["hf/m-b,hf/m-a:deepinfra"]);
+  const states = await complete(script, ["tumwater", "reviews", "--status", "waiting,"], 3);
+  assert.ok(!states.includes("waiting,waiting") && states.includes("waiting,rejected"));
 });
 
 test("the fish script filters comma-list sources through __tumwater_unlisted", () => {
   const lines = fishScriptLines();
   assert.ok(lines.some((l) => l.startsWith("function __tumwater_unlisted")));
-  for (const name of ["roles", "results", "types", "models"])
+  for (const name of ["roles", "results", "types", "models", "review_states"])
     assert.ok(lines.some((l) => l.startsWith(`function __tumwater_${name};`) && l.includes("| __tumwater_unlisted")), name);
 });
 

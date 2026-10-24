@@ -10,6 +10,7 @@ import { templateIds } from "../init/init-templates.js";
 import { DOCTOR_CHECK_NAMES } from "../doctor/doctor-check-names.js";
 import { allRoleIds } from "../roles/roles.js";
 import { EVENT_TYPE_LABELS } from "../events/event-labels.js";
+import { POST_REVIEW_STATES } from "../review/post-merge-review-render.js";
 import { HELP, helpStanzas } from "./help.js";
 
 export const SUPPORTED_SHELLS = ["bash", "zsh", "fish"] as const;
@@ -170,6 +171,12 @@ const EVENT_TYPE_CODES = Object.keys(EVENT_TYPE_LABELS).sort();
  * completes the moment THINKING_LEVELS grows. */
 const THINKING_LEVEL_WORDS = [...THINKING_LEVELS];
 
+/** The review states `reviews --status` filters by: the canonical POST_REVIEW_STATES set,
+ * spread preserving its insertion order, so `--status` completes the same vocabulary
+ * `parseReviewStatusList` accepts. One source, so a new state completes the moment
+ * POST_REVIEW_STATES grows. */
+const REVIEW_STATE_WORDS = [...POST_REVIEW_STATES];
+
 /** The doctor check names, each in plain double quotes, for the scripts to loop over. The names
  * hold no `"`, `$`, backtick or `\`, so plain double quotes are exact; a test pins this. */
 const DOCTOR_CHECK_WORDS = DOCTOR_CHECK_NAMES.map((n) => `"${n}"`).join(" ");
@@ -240,6 +247,10 @@ function bashScript(help: string): string {
     `    _tumwater_list "${EVENT_TYPE_CODES.join(" ")}" "$cur"`,
     `    return 0`,
     `  fi`,
+    `  if [ "$prev" = "--status" ]; then`,
+    `    _tumwater_list "${REVIEW_STATE_WORDS.join(" ")}" "$cur"`,
+    `    return 0`,
+    `  fi`,
     `  if [ "$prev" = "--thinking" ]; then`,
     `    COMPREPLY=( $(compgen -W "${THINKING_LEVEL_WORDS.join(" ")}" -- "$cur") )`,
     `    return 0`,
@@ -286,7 +297,8 @@ function bashScript(help: string): string {
 }
 
 /** The value suffix a fish flag line carries: what completes after the flag. `--role`, `--result`
- * and `--type` take comma lists, so they complete per item through `__fish_complete_list`,
+ * `--type` and `--status` take comma lists, so they complete per item through
+ * `__fish_complete_list`,
  * skipping the items already listed. */
 function fishFlagValue(command: string, flag: string): string {
   if (flag === "--role") return ` -x -a "(__fish_complete_list , __tumwater_roles)"`;
@@ -295,6 +307,7 @@ function fishFlagValue(command: string, flag: string): string {
   if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
   if (flag === "--result") return ` -x -a "(__fish_complete_list , __tumwater_results)"`;
   if (flag === "--type") return ` -x -a "(__fish_complete_list , __tumwater_types)"`;
+  if (flag === "--status") return ` -x -a "(__fish_complete_list , __tumwater_review_states)"`;
   if (flag === "--thinking") return ` -x -a "${THINKING_LEVEL_WORDS.join(" ")}"`;
   if (flag === "--by") return ` -x -a "${HISTORY_SUMMARY_GROUPS.join(" ")}"`;
   // `role --model` completes the closed tier set; `history --model` completes the log's selectors.
@@ -315,6 +328,7 @@ function fishScript(help: string): string {
     `function __tumwater_results; printf '%s\\n' ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")} | __tumwater_unlisted; end`,
     `function __tumwater_models; tumwater completion --models 2>/dev/null | __tumwater_unlisted; end`,
     `function __tumwater_types; printf '%s\\n' ${EVENT_TYPE_CODES.join(" ")} | __tumwater_unlisted; end`,
+    `function __tumwater_review_states; printf '%s\\n' ${REVIEW_STATE_WORDS.join(" ")} | __tumwater_unlisted; end`,
     `complete -c tumwater -n __fish_use_subcommand -a "${spec.commands.join(" ")}"`,
   ];
   for (const command of spec.commands) {
