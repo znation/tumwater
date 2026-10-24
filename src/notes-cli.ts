@@ -80,7 +80,7 @@ function main(): number {
         try {
           text = fs.readFileSync(flagArg, "utf8");
         } catch (err) {
-          return refuse(`cannot read ${flagArg}: ${errorMessage(err)}`);
+          return refuse(`cannot read ${JSON.stringify(flagArg)}: ${errorMessage(err)}`);
         }
         return writeNote(text);
       }

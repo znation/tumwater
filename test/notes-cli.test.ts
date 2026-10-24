@@ -143,10 +143,10 @@ test("write --file with a stray trailing argument exits 1 with usage", () => {
 
 test("write --file with an unreadable path exits 1 naming the path", () => {
   const notesPath = path.join(tmpdir(), "feature.md");
-  const missing = path.join(tmpdir(), "no-such-draft.txt");
+  const missing = path.join(tmpdir(), "no such draft.txt");
   const res = run(["write", "--file", missing], notesPath);
   assert.equal(res.status, 1);
-  assert.match(res.stderr, new RegExp(`cannot read ${missing}`));
+  assert.match(res.stderr, new RegExp(`cannot read ${JSON.stringify(missing)}`));
   assert.equal(noteText(notesPath), undefined, "no note is written");
 });
 
