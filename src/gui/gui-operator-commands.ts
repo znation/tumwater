@@ -13,6 +13,7 @@ import { cancelScheduledStopMessage, requestAbort, requestResetCounters, request
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
+import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop } from "../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
 import { loadConfigSafe } from "../config/config.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
@@ -102,6 +103,17 @@ export async function handleKillOrphans(req: http.IncomingMessage, res: http.Ser
   if (!body) return;
   const report = await kill(root);
   sendJson(res, 200, { ok: !("error" in report) && report.failed.length === 0, message: orphanKillLines(report).join("; ") });
+}
+
+/** Handle POST /api/doctor-drop-broken-pins: the dashboard Health card's Drop broken pins
+ * button — the same dropBrokenPins `tumwater doctor --drop-broken-pins` runs, answering its
+ * lines joined with "; ". `ok` is false when any pin could not be dropped. Same body discipline
+ * as /api/kill-orphans; `drop` is injectable so a test need not touch git. */
+export async function handleDropBrokenPins(req: http.IncomingMessage, res: http.ServerResponse, root: string, drop: (root: string) => Promise<BrokenPinDrop> = dropBrokenPins): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const result = await drop(root);
+  sendJson(res, 200, { ok: result.failed.length === 0, message: brokenPinDropLines(result).join("; ") });
 }
 
 /** Handle POST /api/doctor-commit-backlog: the dashboard Health card's Commit backlog button —

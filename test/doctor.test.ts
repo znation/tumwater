@@ -10,6 +10,7 @@ import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, sh, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
+import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
@@ -637,6 +638,36 @@ test("doctor --resync-install on a matched root says the tree already matches th
   assert.equal(doc.resyncInstall.pinned, true);
   const r = await cli(repo, "doctor", "--resync-install");
   assert.match(r.stdout, /^node_modules already matches package-lock\.json — nothing to re-sync\n/m);
+});
+
+test("doctor --drop-broken-pins starts the report without a blank line when no pins are broken", async () => {
+  const r = await cli(makeRepo(), "doctor", "--drop-broken-pins");
+  assert.doesNotMatch(r.stdout, /^\n/);
+});
+
+test("doctor --drop-broken-pins drops the row's broken pins before the report", async () => {
+  const seed = () => {
+    const repo = makeRepo();
+    writeFileDeep(path.join(repo, ".git", "refs", "tumwater", "merge", "broken"), `${"2".repeat(40)}\n`);
+    return repo;
+  };
+  const repo = seed();
+  const r = await cli(repo, "doctor", "--drop-broken-pins");
+  assert.match(r.stdout, /^1 dropped broken pin: refs\/tumwater\/merge\/broken names [0-9a-f]{8}\n\n/);
+  assert.equal(fs.existsSync(path.join(repo, ".git", "refs", "tumwater", "merge", "broken")), false, "the broken pin's ref is gone");
+  const repoJson = seed();
+  const json = await cli(repoJson, "doctor", "--drop-broken-pins", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.deepEqual(doc.brokenPinDrop, { dropped: [{ ref: "refs/tumwater/merge/broken", sha: "2".repeat(40) }], failed: [] });
+  assert.equal(doc.checks.find((c: { name: string }) => c.name === "tumwater pins").level, "ok");
+  // Without the flag the ref and the row stay as the check found them, and no drop is printed.
+  const repoPlain = seed();
+  const plain = await cli(repoPlain, "doctor");
+  assert.doesNotMatch(plain.stdout, /^1 dropped broken pin/);
+  assert.equal(fs.existsSync(path.join(repoPlain, ".git", "refs", "tumwater", "merge", "broken")), true);
+  const plainJson = JSON.parse((await cli(repoPlain, "doctor", "--json")).stdout);
+  assert.equal(plainJson.checks.find((c: { name: string }) => c.name === "tumwater pins").level, "fail");
+  assert.ok(!("brokenPinDrop" in plainJson));
 });
 
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {

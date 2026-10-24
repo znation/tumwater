@@ -332,6 +332,12 @@ export const COMMIT_BACKLOG_FLAG: FlagSpec = { names: ["--commit-backlog"] };
  * Value-less, like COMMIT_BACKLOG_FLAG. */
 export const RESYNC_INSTALL_FLAG: FlagSpec = { names: ["--resync-install"] };
 
+/** The `--drop-broken-pins` flag spec, accepted by `doctor`: first drop each `refs/tumwater/`
+ * pin whose commit is gone — the manual `git update-ref -d` the `tumwater pins` row names. The
+ * fourth mutating doctor flag, after `--kill-orphans`, `--commit-backlog` and `--resync-install`.
+ * Value-less, like RESYNC_INSTALL_FLAG. */
+export const DROP_BROKEN_PINS_FLAG: FlagSpec = { names: ["--drop-broken-pins"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };

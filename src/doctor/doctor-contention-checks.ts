@@ -15,7 +15,7 @@ import { defaultConfig, knownRoleIds, slotCount } from "../config/config.js";
 import { CUSTOM_NAME_RE, type TumwaterConfig } from "../config/config-schema.js";
 import { subdirectoryNames } from "../files/files.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
-import { commitExists, listBranches, refsUnder } from "../git/git.js";
+import { commitExists, deleteRefIfAt, listBranches, refSha, refsUnder } from "../git/git.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { eventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -340,14 +340,24 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
   return parts.length === 0 ? okOutcome("no branches left by disabled roles") : warnOutcome(parts.join("; "));
 }
 
-/** The "tumwater pins" row: fails when a `refs/tumwater/` pin (merge, rejected or legacy landing)
- * names a commit that is gone. It fails rather than warns because such a pin stops `git gc`
- * (and the `gc --auto` commits trigger), and a slot reset or leftover recovery only drops one
- * when it reaches it. Read-only: it lists refs and names the `git update-ref -d` fix. */
-export async function checkTumwaterPins(root: string): Promise<CheckOutcome> {
+/** The `refs/tumwater/` pins and, among them, the broken ones (whose commit is gone) — the one
+ * walk the `tumwater pins` row (checkTumwaterPins) and its reap (dropBrokenPins) share, so the
+ * two can never disagree on what a broken pin is. Filtered from `refsUnder(root,
+ * "refs/tumwater/")` by `!commitExists(root, pin.sha)`. */
+async function brokenPins(root: string): Promise<{ pins: { ref: string; sha: string }[]; broken: { ref: string; sha: string }[] }> {
   const pins = await refsUnder(root, "refs/tumwater/");
   const broken: { ref: string; sha: string }[] = [];
   for (const pin of pins) if (!(await commitExists(root, pin.sha))) broken.push(pin);
+  return { pins, broken };
+}
+
+/** The "tumwater pins" row: fails when a `refs/tumwater/` pin (merge, rejected or legacy landing)
+ * names a commit that is gone. It fails rather than warns because such a pin stops `git gc`
+ * (and the `gc --auto` commits trigger), and a slot reset or leftover recovery only drops one
+ * when it reaches it. Read-only: it lists refs and names the `git update-ref -d` fix (the
+ * `--drop-broken-pins` flag performs it). */
+export async function checkTumwaterPins(root: string): Promise<CheckOutcome> {
+  const { pins, broken } = await brokenPins(root);
   if (broken.length === 0) {
     return okOutcome(pins.length === 0 ? "no tumwater pins" : `${plural(pins.length, "tumwater pin")}, each naming a commit that exists`);
   }
@@ -355,6 +365,44 @@ export async function checkTumwaterPins(root: string): Promise<CheckOutcome> {
   return failOutcome(
     `${broken.map((p) => `${p.ref} names ${shortSha(p.sha)}, which is gone`).join("; ")} — git gc and a detached checkout abort on ${agree(n, "it", "them")}; \`git update-ref -d <ref>\` drops each (the work ${agree(n, "it", "they")} pinned is already lost)`,
   );
+}
+
+/** What `doctor --drop-broken-pins` and the dashboard's Drop broken pins button did: the pins
+ * whose ref is now gone (`dropped`) and the refs that still name a gone commit afterwards
+ * (`failed`). */
+export interface BrokenPinDrop {
+  dropped: { ref: string; sha: string }[];
+  failed: { ref: string; reason: string }[];
+}
+
+/** The lines `doctor --drop-broken-pins` prints (and the dashboard's Drop broken pins toast),
+ * one per dropped pin and, when any, one for the pins that could not be dropped. No lines for
+ * a run that dropped nothing and failed nothing. */
+export function brokenPinDropLines(drop: BrokenPinDrop): string[] {
+  const lines: string[] = [];
+  if (drop.dropped.length > 0)
+    lines.push(`${plural(drop.dropped.length, "dropped broken pin")}: ${drop.dropped.map((p) => `${p.ref} names ${shortSha(p.sha)}`).join(", ")}`);
+  if (drop.failed.length > 0)
+    lines.push(`${plural(drop.failed.length, "pin could not be dropped", "pins could not be dropped")}: ${drop.failed.map((f) => `${f.ref} — ${f.reason}`).join(", ")}`);
+  return lines;
+}
+
+/** Drop each broken `refs/tumwater/` pin — the reap behind `doctor --drop-broken-pins` and the
+ * dashboard's Drop broken pins button. Each pin is deleted only while it still names the broken
+ * sha (deleteRefIfAt's guarded `git update-ref -d`), so a ref that moved under us is never
+ * dropped; a ref that still names a gone commit afterwards is reported failed. Read-only checks
+ * never call this. */
+export async function dropBrokenPins(root: string): Promise<BrokenPinDrop> {
+  const { broken } = await brokenPins(root);
+  const dropped: { ref: string; sha: string }[] = [];
+  const failed: { ref: string; reason: string }[] = [];
+  for (const pin of broken) {
+    await deleteRefIfAt(root, pin.ref, pin.sha);
+    const still = await refSha(root, pin.ref);
+    if (still === null) dropped.push(pin);
+    else if (!(await commitExists(root, still))) failed.push({ ref: pin.ref, reason: `still names ${shortSha(still)}, which is gone` });
+  }
+  return { dropped, failed };
 }
 
 /** The ok detail of the instance check: non-zero counts, plans first, each pluralized. */

@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleCommitBacklog, handleResyncInstall, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
@@ -282,6 +282,18 @@ test("handleKillOrphans answers the kill's lines and ok", async () => {
   assert.deepEqual(killed.data, { ok: true, message: "killed pid 4242 (+1 descendant) node x" });
   const broken = await captureJson((res) => handleKillOrphans(fakeReq("{}"), res, root, async () => ({ error: "boom" })));
   assert.deepEqual(broken.data, { ok: false, message: "could not scan the process table — boom; nothing killed" });
+});
+
+test("handleDropBrokenPins answers the drop lines and ok", async () => {
+  const root = makeRepo();
+  const { data: dropped } = await captureJson((res) => handleDropBrokenPins(fakeReq("{}"), res, root, async () => ({ dropped: [{ ref: "refs/tumwater/merge/broken", sha: "2".repeat(40) }], failed: [] })));
+  assert.deepEqual(dropped, { ok: true, message: "1 dropped broken pin: refs/tumwater/merge/broken names 22222222" });
+  const { data: unDropped } = await captureJson((res) => handleDropBrokenPins(fakeReq("{}"), res, root, async () => ({ dropped: [], failed: [{ ref: "refs/tumwater/merge/broken", reason: "boom" }] })));
+  assert.deepEqual(unDropped, { ok: false, message: "1 pin could not be dropped: refs/tumwater/merge/broken — boom" });
+  let notCalled = true;
+  const { captured: badBody } = await captureJson((res) => handleDropBrokenPins(fakeReq("{nope"), res, root, async () => { notCalled = false; return { dropped: [], failed: [] }; }));
+  assert.equal(badBody.status, 400);
+  assert.equal(notCalled, true, "a malformed body never calls the drop seam");
 });
 
 test("handleCommitBacklog answers the commit lines and ok", async () => {

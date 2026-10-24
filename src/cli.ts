@@ -16,6 +16,7 @@ import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import type { BacklogCommitReport } from "./doctor/doctor-backlog.js";
 import type { RootInstallResync } from "./build/dep-install.js";
+import type { BrokenPinDrop } from "./doctor/doctor-contention-checks.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -49,6 +50,7 @@ import {
   KILL_ORPHANS_FLAG,
   COMMIT_BACKLOG_FLAG,
   RESYNC_INSTALL_FLAG,
+  DROP_BROKEN_PINS_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -207,7 +209,7 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG]);
+      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG]);
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
       let orphanKill: OrphanKillReport | undefined;
@@ -242,6 +244,18 @@ async function main(): Promise<void> {
           say("");
         }
       }
+      let brokenPinDrop: BrokenPinDrop | undefined;
+      if (args.includes("--drop-broken-pins")) {
+        const { dropBrokenPins, brokenPinDropLines } = await import("./doctor/doctor-contention-checks.js");
+        brokenPinDrop = await dropBrokenPins(root);
+        // The text form prints the drop before the report; --json keeps stdout one document,
+        // carrying the result as `brokenPinDrop` on the payload.
+        if (!args.includes("--json")) {
+          const lines = brokenPinDropLines(brokenPinDrop);
+          for (const line of lines) say(line);
+          if (lines.length > 0) say("");
+        }
+      }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
         "./doctor/doctor-render.js"
       );
@@ -261,9 +275,11 @@ async function main(): Promise<void> {
         backlogCommit === undefined ? withKill(payload) : withKill({ ...payload, backlogCommit });
       const withResyncInstall = <T extends object>(payload: T) =>
         resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
+      const withBrokenPinDrop = <T extends object>(payload: T) =>
+        brokenPinDrop === undefined ? withResyncInstall(payload) : withResyncInstall({ ...payload, brokenPinDrop });
       if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? withResyncInstall(problemsOnly(report)) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, args.includes("--json") ? withResyncInstall(report) : report, renderDoctor);
+        sayJsonOrRender(args, args.includes("--json") ? withBrokenPinDrop(problemsOnly(report)) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, args.includes("--json") ? withBrokenPinDrop(report) : report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

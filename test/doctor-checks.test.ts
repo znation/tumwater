@@ -36,6 +36,8 @@ import {
   checkTumwaterPins,
   checkWorkInstances,
   checkWorktreePool,
+  brokenPinDropLines,
+  dropBrokenPins,
 } from "../src/doctor/doctor-contention-checks.js";
 import {
   checkCodexAccount,
@@ -1354,6 +1356,54 @@ test("checkTumwaterPins fails naming a pin whose commit is gone and reads ok for
   assert.match(out.detail, /refs\/tumwater\/merge\/feature-5 names \w+, which is gone — git gc and a detached checkout abort on it; `git update-ref -d <ref>` drops each/);
   assert.doesNotMatch(out.detail, /refs\/tumwater\/rejected\/bugfix/);
   assert.equal(fs.existsSync(refFile), true);
+});
+
+test("dropBrokenPins drops only pins whose commit is gone", async () => {
+  const root = readyRepo();
+  // A healthy pin (its commit exists) and a broken pin (a ref naming a nonexistent sha).
+  sh(root, "git", "update-ref", "refs/tumwater/merge/feature", "HEAD");
+  const brokenRef = path.join(root, ".git", "refs", "tumwater", "rejected", "clean");
+  writeFileDeep(brokenRef, `${"2".repeat(40)}\n`);
+  const drop = await dropBrokenPins(root);
+  // Only the rejected pin is dropped, with the same { ref, sha } the walk found; the live
+  // merge pin is absent from dropped and still exists.
+  assert.deepEqual(drop.dropped, [{ ref: "refs/tumwater/rejected/clean", sha: "2".repeat(40) }]);
+  assert.deepEqual(drop.failed, []);
+  assert.equal(fs.existsSync(brokenRef), false);
+  assert.deepEqual(await checkTumwaterPins(root), { level: "ok", detail: "1 tumwater pin, each naming a commit that exists" });
+  // When only a broken pin exists, the drop clears it and the row reads no tumwater pins.
+  const rootOnly = readyRepo();
+  const onlyRef = path.join(rootOnly, ".git", "refs", "tumwater", "rejected", "clean");
+  writeFileDeep(onlyRef, `${"2".repeat(40)}\n`);
+  await dropBrokenPins(rootOnly);
+  assert.equal(fs.existsSync(onlyRef), false);
+  assert.deepEqual(await checkTumwaterPins(rootOnly), { level: "ok", detail: "no tumwater pins" });
+});
+
+test("brokenPinDropLines pluralizes dropped and failed counts and stays empty when both are", () => {
+  const sha = "2".repeat(40);
+  assert.deepEqual(brokenPinDropLines({ dropped: [], failed: [] }), []);
+  assert.deepEqual(
+    brokenPinDropLines({ dropped: [{ ref: "refs/tumwater/a", sha }], failed: [] }),
+    [`1 dropped broken pin: refs/tumwater/a names ${sha.slice(0, 8)}`],
+  );
+  assert.deepEqual(
+    brokenPinDropLines({ dropped: [], failed: [{ ref: "refs/tumwater/b", reason: "still gone" }] }),
+    ["1 pin could not be dropped: refs/tumwater/b — still gone"],
+  );
+  assert.deepEqual(
+    brokenPinDropLines({
+      dropped: [{ ref: "refs/tumwater/a", sha }],
+      failed: [
+        { ref: "refs/tumwater/b", reason: "r1" },
+        { ref: "refs/tumwater/c", reason: "r2" },
+      ],
+    }),
+    [
+      `1 dropped broken pin: refs/tumwater/a names ${sha.slice(0, 8)}`,
+      "2 pins could not be dropped: refs/tumwater/b — r1, refs/tumwater/c — r2",
+    ],
+  );
 });
 
 const buildEvent = (fields: Record<string, unknown>): HarnessEvent =>

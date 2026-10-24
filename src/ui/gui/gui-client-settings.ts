@@ -73,6 +73,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-drop-broken-pins' title=\"Drops each refs/tumwater/ pin whose commit is gone - the manual git update-ref -d the tumwater pins row names, like tumwater doctor --drop-broken-pins\">Drop broken pins</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title=\"Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install\">Re-sync install</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
@@ -219,6 +220,30 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     showFlash("Killing orphaned processes…");
     try {
       const d = await postJson("/api/kill-orphans", {});
+      showFlash((d.ok ? "" : "error: ") + d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
+  }
+  // The Health card's Drop broken pins button: a two-click confirm, then POST
+  // /api/doctor-drop-broken-pins runs the same drop as "tumwater doctor --drop-broken-pins" and
+  // the card re-runs its checks so the tumwater pins row repaints.
+  function paintDropButton() {
+    const btn = document.querySelector("button[data-action='doctor-drop-broken-pins']");
+    if (btn) btn.textContent = dropSlot.armed("broken-pins") ? "Confirm drop" : "Drop broken pins";
+  }
+  const dropSlot = confirmSlot(paintDropButton);
+  async function dropBrokenPinsClick() {
+    if (!dropSlot.armed("broken-pins")) {
+      dropSlot.arm("broken-pins");
+      return;
+    }
+    dropSlot.disarm();
+    paintDropButton();
+    showFlash("Dropping broken pins…");
+    try {
+      const d = await postJson("/api/doctor-drop-broken-pins", {});
       showFlash((d.ok ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));

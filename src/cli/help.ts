@@ -88,18 +88,20 @@ Usage:
                                    (merge runs and backlog tallies omitted); --until <duration>
                                    ends that window the given duration ago (requires --since);
                                    not combinable with --days
-  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install]
+  tumwater doctor [<check>...] [--json] [--reprobe] [--problems] [--kill-orphans] [--commit-backlog] [--resync-install] [--drop-broken-pins]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
                                    (read-only unless --kill-orphans, --commit-backlog
-                                   or --resync-install:
+                                   or --resync-install or --drop-broken-pins:
                                    --kill-orphans first kills the orphaned processes the orphans
                                    check lists, each with its descendants; --commit-backlog first commits each uncommitted tracked
                                    backlog or brief file (PLANS.md, BUGS.md, QUESTIONS.md, their archives, the
                                    brief) on the base branch under the primary-worktree lock, so a merge the
                                    dirty file blocks can proceed; --resync-install re-syncs the root checkout's
                                    install on demand under the merge lock, so the always-on install alert's
-                                   advice is one command; exit 0/1; --json prints the report object —
+                                   advice is one command; --drop-broken-pins first drops each refs/tumwater/
+                                   pin whose commit is gone — the manual git update-ref -d the tumwater pins
+                                   row names; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict; probes image-input models — --reprobe
                                    re-probes every one, bypassing the 7-day cache; --problems prints only the warn
