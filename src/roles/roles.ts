@@ -91,9 +91,9 @@ export function roleTier(role: string): number {
  * blocks nothing, and these roles get a `<main-known-red>` note instead): every role whose diff
  * can carry non-exempt (code) changes — on a red main such a diff is rejected deterministically
  * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
- * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
+ * (human prompts outrank autonomous gates, like the budget gate), ci (the designated healer
  * — its run executes the suite per "leave the project working" and can fix a red main through the
- * existing pre-merge gate; blocking it would leave only humans able to unblock the team), and
+ * existing pre-merge gate; blocking it would leave only the ci role able to unblock the team), and
  * plan/readme/steward/qa/selfcheck/feedback (markdown-only charter — their diffs are exempt
  * from the build pre-check via review.exemptPaths, so a red main does not block them). */
 export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([

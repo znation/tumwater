@@ -71,7 +71,7 @@ and one serial merge step merges them, so other roles keep running while a chang
   24 h, with their counts. A failure that repeats is attributed through main's own verdict at
   its tip: main passing (or no verdict) rejects the change with the check's output, no model run;
   main's check failing is not the change's failure, so its pin is kept for a later retry and the
-  failure goes to bugfix. Optionally, `check.gateCommand` names a cheaper check (say, only the
+  failure goes to ci. Optionally, `check.gateCommand` names a cheaper check (say, only the
   tests a diff touches) that this per-change step runs instead. It is off by default; tumwater's
   own team sets it to `npm run test:gate`. With a gate command set, the in-lock check is that
   gate command, unless `check.mergeCommand` names a cheaper check instead, or `""` opts back
@@ -79,7 +79,7 @@ and one serial merge step merges them, so other roles keep running while a chang
 `check.mergeCommand` names a cheaper check for that in-lock step (lint, compile and the change's
 affected tests). A merge whose rebased head the gate verified then runs nothing in the lock, and
 a green of the cheaper command never seeds main's verdict. The main watch runs the full check on
-main's tip after the merge: a break it finds is reverted, and the red-main gate, the bugfix note
+main's tip after the merge: a break it finds is reverted, and the red-main gate, the ci note
 read the watch's verdict instead of starting a full check (no verdict yet reads as green); the
 gate's re-attribution of a repeated failure still runs main's check fresh, as it does unset. Its in-lock `build_check` events carry `full: false`, so reports and
 doctor's merge-check median leave them out. Unset, `check.mergeCommand` falls back to
@@ -225,7 +225,7 @@ discards a role's in-flight merge.
   merges when it adds no new failures. Only when the failure names no test (another runner, a crash,
   a compile error) do code-producing roles pause authoring (the status shows "main's check is
   failing") until it passes again; bugfix, the director, and markdown-only roles keep going. A
-  newly-verified red main also queues a bugfix healer, so the healer starts on the next poll instead
+  newly-verified red main also queues a ci healer, so the healer starts on the next poll instead
   of waiting out its interval or deferral — once per failing set, not once per red commit — and that
   queued prompt no-ops (a "verify green" clause) if main turned green before it ran.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
@@ -240,7 +240,7 @@ discards a role's in-flight merge.
   when one is set, fast-forwards main under the merge lock and logs `main_revert`. A commit with no
   merging runner, one the director merged, a revert itself, or one already reverted is not
   reverted, and a revert that conflicts, fails its gate or loses the fast-forward is abandoned with
-  main unchanged; each of those queues bugfix's heal prompt naming the commit and the failing tests.
+  main unchanged; each of those queues ci's heal prompt naming the commit and the failing tests.
   After a successful revert the commit goes back to its role as a revision: the merging runner when
   it is idle with no queued change or pending revision, else the first such free runner of the same
   base role. It points that runner's `refs/tumwater/rejected/<role>` at the commit and records

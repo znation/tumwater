@@ -203,7 +203,7 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
   );
 }
 
-/** The note injected into the `bugfix` healer's prompt when main's own suite is red (PLANS.md
+/** The note injected into the `ci` healer's prompt when main's own suite is red (PLANS.md
  * "Red-main handoff"): the gate's warning event is harness-level and no role prompt reads it, so
  * the one role allowed to author on a red main is told what failed and that fixing it is this
  * run's job. The healer's normal charter is a starting point, not a fit — a red main blocks

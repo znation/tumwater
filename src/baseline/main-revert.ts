@@ -20,7 +20,7 @@ import { shortSha } from "../text/format.js";
 /** The automatic revert of a red main's culprit (plans/fast-merge.md, Lever 2, part 4b): the main
  * watch names the commit (a `main_culprit` event) and hands it here; the merge slot (drainMerge,
  * src/merge/merge-drain.ts) runs the revert serialized with merges. Anything that cannot be
- * reverted — or whose revert fails — falls back to bugfix's heal prompt naming the culprit. */
+ * reverted — or whose revert fails — falls back to ci's heal prompt naming the culprit. */
 
 /** What the main watch hands over for a named culprit. `tip` is the red head it was found at. */
 export interface MainCulprit {
@@ -49,7 +49,7 @@ export async function revertSkipReason(root: string, mainBranch: string, c: Main
   return null;
 }
 
-/** The main watch's culprit hand-off: starts the automatic revert, or falls back to bugfix's heal
+/** The main watch's culprit hand-off: starts the automatic revert, or falls back to ci's heal
  * prompt when the revert is skipped. Never rejects, because its caller discards the promise and an
  * unhandled rejection would end the orchestrator: a heal prompt that cannot be queued is warned. */
 export async function routeMainCulprit(
@@ -69,7 +69,7 @@ export async function routeMainCulprit(
     warnEventBestEffort(
       root,
       TUMWATER_SOURCE,
-      `not reverting ${shortSha(c.commit)} (${skip}) and could not queue the heal prompt for bugfix: ${errorMessage(err)}`,
+      `not reverting ${shortSha(c.commit)} (${skip}) and could not queue the heal prompt for ci: ${errorMessage(err)}`,
     );
   }
 }
@@ -96,11 +96,11 @@ export async function runMainRevert(
     try {
       if (toReviewer) await onFailed(c, reason);
       else queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
-      return toReviewer ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix";
+      return toReviewer ? "sent the reviewer's reasons to its role" : "queued the heal prompt for ci";
     } catch (err) {
       return toReviewer
         ? `could not send the reviewer's reasons to its role: ${errorMessage(err)}`
-        : `could not queue the heal prompt for bugfix: ${errorMessage(err)}`;
+        : `could not queue the heal prompt for ci: ${errorMessage(err)}`;
     }
   };
   try {

@@ -68,7 +68,7 @@ test("a named culprit is reverted on main, main_revert is logged and the next ve
   assert.equal(reverts[0]?.revert, headSha(root));
   assert.ok(!fs.existsSync(path.join(root, "bad.txt")));
   assert.match(sh(root, "git", "log", "-1", "--format=%s"), /^tumwater\(tumwater\): Revert /);
-  assert.equal(queuedFiles(root, "bugfix").length, 0);
+  assert.equal(queuedFiles(root, "ci").length, 0);
   await poll();
   assert.equal(eventsOfType(root, "main_check").at(-1)?.status, "passed");
   assert.equal(await revertSkipReason(root, "main", found[0]!), "a revert of it already merged");
@@ -105,12 +105,12 @@ test("a failing gate on the revert keeps main red and queues the heal prompt nam
   await runMainRevert(root, "main", config, found[0]!);
   assert.equal(headSha(root), before, "a red gate on the revert must not fast-forward main");
   assert.equal(eventsOfType(root, "main_revert").length, 0);
-  const files = queuedFiles(root, "bugfix");
+  const files = queuedFiles(root, "ci");
   assert.equal(files.length, 1);
   const sha = shortSha(b);
   const warnings = warningMessages(root);
   assert.equal(
-    warnings.filter((m) => m.includes(`could not revert ${sha}`) && m.includes("the gate command was failed on the revert") && m.includes("queued the heal prompt for bugfix")).length,
+    warnings.filter((m) => m.includes(`could not revert ${sha}`) && m.includes("the gate command was failed on the revert") && m.includes("queued the heal prompt for ci")).length,
     1,
   );
 });
@@ -121,7 +121,7 @@ test("a revert that conflicts leaves main alone and queues the heal prompt namin
   await runMainRevert(root, "main", defaultConfig(), found[0]!);
   assert.equal(headSha(root), before);
   assert.equal(eventsOfType(root, "main_revert").length, 0);
-  const files = queuedFiles(root, "bugfix");
+  const files = queuedFiles(root, "ci");
   assert.equal(files.length, 1);
   const prompt = fs.readFileSync(files[0]!, "utf8");
   assert.ok(prompt.includes(b.slice(0, 7)) && prompt.includes("first"), prompt);
@@ -130,7 +130,7 @@ test("a revert that conflicts leaves main alone and queues the heal prompt namin
 test("a conflicting revert whose heal prompt cannot be queued resolves and warns once that it was not queued", async () => {
   const { root, found } = await redMain("improve", true);
   const before = headSha(root);
-  const inbox = roleInboxDir(root, "bugfix");
+  const inbox = roleInboxDir(root, "ci");
   const restore = patchFsMethod("writeFileSync", (orig) => (target, ...rest) => {
     if (String(target).startsWith(inbox)) throw errnoError("ENOSPC");
     return orig(target, ...rest);
@@ -141,16 +141,16 @@ test("a conflicting revert whose heal prompt cannot be queued resolves and warns
     restore();
   }
   assert.equal(headSha(root), before);
-  assert.equal(queuedFiles(root, "bugfix").length, 0);
+  assert.equal(queuedFiles(root, "ci").length, 0);
   assert.equal(eventsOfType(root, "main_revert").length, 0);
   const warnings = warningMessages(root);
-  assert.equal(warnings.filter((m) => m.includes("could not revert") && /could not queue the heal prompt for bugfix: .*ENOSPC/.test(m)).length, 1);
+  assert.equal(warnings.filter((m) => m.includes("could not revert") && /could not queue the heal prompt for ci: .*ENOSPC/.test(m)).length, 1);
   assert.equal(warnings.filter((m) => m.includes("queued the heal prompt") && !m.includes("could not queue")).length, 0);
 });
 
 test("a skipped culprit whose heal prompt cannot be queued resolves and warns once that it was not queued", async () => {
   const { root, found } = await redMain(undefined);
-  const inbox = roleInboxDir(root, "bugfix");
+  const inbox = roleInboxDir(root, "ci");
   const restore = patchFsMethod("writeFileSync", (orig) => (target, ...rest) => {
     if (String(target).startsWith(inbox)) throw errnoError("ENOSPC");
     return orig(target, ...rest);
@@ -162,11 +162,11 @@ test("a skipped culprit whose heal prompt cannot be queued resolves and warns on
     restore();
   }
   assert.equal(started.length, 0);
-  assert.equal(queuedFiles(root, "bugfix").length, 0);
+  assert.equal(queuedFiles(root, "ci").length, 0);
   const warnings = warningMessages(root);
   assert.equal(warnings.length, 1);
   assert.ok(warnings[0]!.includes("no role runner merged it"));
-  assert.match(warnings[0]!, /could not queue the heal prompt for bugfix: .*ENOSPC/);
+  assert.match(warnings[0]!, /could not queue the heal prompt for ci: .*ENOSPC/);
 });
 
 test("a named culprit starts its revert, and a skipped one queues the heal prompt instead", async () => {
@@ -174,12 +174,12 @@ test("a named culprit starts its revert, and a skipped one queues the heal promp
   const started: MainCulprit[] = [];
   await routeMainCulprit(named.root, "main", named.found[0]!, (c) => started.push(c));
   assert.deepEqual(started, [named.found[0]]);
-  assert.equal(queuedFiles(named.root, "bugfix").length, 0);
+  assert.equal(queuedFiles(named.root, "ci").length, 0);
   const skipped = await redMain(undefined);
   const none: MainCulprit[] = [];
   await routeMainCulprit(skipped.root, "main", skipped.found[0]!, (c) => none.push(c));
   assert.equal(none.length, 0);
-  assert.equal(queuedFiles(skipped.root, "bugfix").length, 1);
+  assert.equal(queuedFiles(skipped.root, "ci").length, 1);
 });
 
 test("a post-review revert whose reviewer hand-off throws resolves and warns that the reasons were not sent", async () => {

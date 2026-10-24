@@ -400,11 +400,11 @@ test("checkMainRed: a passed merge check newer than the red run retires the hold
   assert.equal(checkMainRed(root, bcfg({})).level, "ok");
 });
 
-test("checkMainRed: the detail names the bugfix role as repairer only when one is enabled", () => {
+test("checkMainRed: the detail names the ci role as repairer only when one is enabled", () => {
   const without = checkMainRed(redRoot(), bcfg({}));
-  assert.match(without.detail, /no bugfix role is enabled/);
-  const withBugfix = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, bugfix: { enabled: true } } }));
-  assert.match(withBugfix.detail, /the bugfix role is exempt and repairs it/);
+  assert.match(without.detail, /no ci role is enabled/);
+  const withCi = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, ci: { enabled: true } } }));
+  assert.match(withCi.detail, /the ci role is exempt and repairs it/);
 });
 
 test("checkMainRed: a 31-min red with no role held warns (the G1 guardrail)", () => {

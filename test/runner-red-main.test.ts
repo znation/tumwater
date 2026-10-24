@@ -136,7 +136,7 @@ test("an exempt role runs normally while main is red — its markdown-only diff 
   );
 });
 
-test("the bugfix healer's fresh prompt carries the red-main handoff", async () => {
+test("the ci healer's fresh prompt carries the red-main handoff", async () => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "npm-runs");
   makeMainRed(repo, counter);
@@ -151,7 +151,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       `touch '${marker}'`,
     ].join("\n"),
     async () => {
-      const runner = makeRoleRunner(repo, "bugfix");
+      const runner = makeRoleRunner(repo, "ci");
       const outcome = await runner.run();
       assert.equal(outcome.result, "queued", "the healer authors on a red main (never blocked)");
       assert.ok(fs.existsSync(marker), "its pi run started");
@@ -161,10 +161,10 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       assert.ok(run.includes("baseline-failure-line"), "…naming the failure headline");
       assert.ok(run.includes("test"), "…and the failing script");
 
-      // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
+      // The healer's check is priced in the feed under ci, and the red SHA warns once.
       const checks = eventsOfType(repo, "build_check");
       assert.equal(checks.length, 1);
-      assert.equal(checks[0]!.source, "bugfix");
+      assert.equal(checks[0]!.source, "ci");
       assert.equal(checks[0]!.scope, "baseline");
       assert.equal(checks[0]!.status, "failed");
       assert.equal(mainRedHolds(repo).length, 1);

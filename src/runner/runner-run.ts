@@ -52,7 +52,7 @@ import { applyRevision, applyWithConflicts } from "./revision.js";
 import { conflictedFileHunks, hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { handlePiResultPhase } from "./runner-outcome.js";
-import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
+import { mainRedGate, mainRedHealNote } from "../baseline/main-red.js";
 import { extractFlow, extractFiled } from "../verdict/reply-contract.js";
 
 /** The model-fallback episode context a run start resolves (src/runner/model-fallback.ts): the
@@ -573,13 +573,13 @@ async function runWithWorktreePhase(
     // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
     // now — verify main's own suite before spending an authoring run on top of it. Only roles
     // whose diff can carry code changes are blocked; resume runs skip this by construction
-    // (their worktree is not pristine main). The `bugfix` healer is exempt because its fix is
+    // (their worktree is not pristine main). The `ci` healer is exempt because its fix is
     // the team's only way back to green, so instead of blocking it we hand it the failure
     //the same check runs, but a red main appends a <main-red>
     // note to this run's prompt so it reproduces and fixes that failure rather than hunting
     // blind.
-    if (ctx.baseRole === "bugfix") {
-      const note = await bugfixMainRedNote(ctx.root, ctx.role, wt);
+    if (ctx.baseRole === "ci") {
+      const note = await mainRedHealNote(ctx.root, ctx.role, wt);
       if (note) prompt = appendPromptNote(prompt, note);
     } else {
       const knownRed: string[][] = [];

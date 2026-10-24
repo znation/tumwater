@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { watchedBaseline, noteGreenBaseline } from "../src/baseline/main-baseline.js";
-import { bugfixMainRedNote, mainRedGate, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
+import { mainRedGate, mainRedHealNote, mainRedHealPrompt, mainTipVerdict } from "../src/baseline/main-red.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { isEligible } from "../src/scheduling/scheduling.js";
 import { defaultConfig, liveConfig } from "../src/config/config.js";
@@ -118,9 +118,9 @@ test("mainRedGate warns once per red SHA: a repeat run on the same HEAD re-block
     assert.equal(runsOf(counter), 1, "the verdict is cached per SHA — no second run");
     const holds = mainRedHolds(root);
     assert.equal(holds.length, 1, "one main_red_hold for the red SHA, not one per blocked run");
-    // The red discovery by a non-bugfix path queues exactly one healer prompt naming the
+    // The red discovery by a non-ci path queues exactly one healer prompt naming the
     // short SHA; the second blocked role on the same SHA adds no second prompt.
-    const prompts = queuedRolePrompts(root, "bugfix");
+    const prompts = queuedRolePrompts(root, "ci");
     assert.equal(prompts.length, 1, "one healer prompt per newly-verified red SHA");
     assert.ok(prompts[0]?.includes(shortSha(mainSha(root))), `prompt names the red SHA: ${prompts[0]}`);
   } finally {
@@ -213,13 +213,13 @@ test("mainRedGate's timeout warning names the bound the baseline check actually 
   );
 });
 
-test("bugfixMainRedNote hands the healer the failing script, headline, and output tail, warning once", async () => {
+test("mainRedHealNote hands the healer the failing script, headline, and output tail, warning once", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo healer-failure-line; echo a-second-tail-line; echo run >> ${counter}; exit 1`;
   const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
-    const note = await bugfixMainRedNote(root, "bugfix", wt);
+    const note = await mainRedHealNote(root, "ci", wt);
     assert.ok(note, "a red main yields a note for the healer");
     assert.match(note, /^<main-red>/);
     assert.match(note, /<\/main-red>$/);
@@ -233,7 +233,7 @@ test("bugfixMainRedNote hands the healer the failing script, headline, and outpu
     const events = readEvents(root);
     const checks = events.filter((e) => e.type === "build_check");
     assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.source, "bugfix");
+    assert.equal(checks[0]?.source, "ci");
     assert.equal(checks[0]?.scope, "baseline");
     assert.equal(checks[0]?.status, "failed");
     const holds = mainRedHolds(root);
@@ -255,13 +255,13 @@ test("bugfixMainRedNote hands the healer the failing script, headline, and outpu
   }
 });
 
-test("bugfixMainRedNote yields no note on a green main", async () => {
+test("mainRedHealNote yields no note on a green main", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo green-healer >> ${counter}; exit 0`;
   const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
-    assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+    assert.equal(await mainRedHealNote(root, "ci", wt), undefined);
     assert.equal(runsOf(counter), 1, "the green check still ran once");
     assert.equal(eventsOfType(root, "warning").length, 0);
   } finally {
@@ -269,15 +269,15 @@ test("bugfixMainRedNote yields no note on a green main", async () => {
   }
 });
 
-test("bugfixMainRedNote yields no note when no check is declared", async () => {
+test("mainRedHealNote yields no note when no check is declared", async () => {
   const base = tmpdir("mainred-bugfix-none-");
   const root = makeRepo(path.join(base, "project"));
   const wt = worktreeAt(root, "bugfix");
-  assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+  assert.equal(await mainRedHealNote(root, "ci", wt), undefined);
   assert.deepEqual(readEvents(root), [], "nothing to verify, nothing to say");
 });
 
-test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async () => {
+test("mainRedHealNote yields no note on an environmental skip (no npm)", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo skip-healer >> ${counter}; exit 1`;
   const { root, wt } = baselineFixture(ROLE, script);
@@ -285,7 +285,7 @@ test("bugfixMainRedNote yields no note on an environmental skip (no npm)", async
   const partialBin = gitOnlyBinDir("no-npm-bugfix-");
   const restorePath = pathReplace(partialBin);
   try {
-    assert.equal(await bugfixMainRedNote(root, "bugfix", wt), undefined);
+    assert.equal(await mainRedHealNote(root, "ci", wt), undefined);
     assert.equal(runsOf(counter), 0, "nothing ran");
     assert.equal(eventsOfType(root, "warning").length, 0);
   } finally {
@@ -461,35 +461,35 @@ test("mainTipVerdict runs the suite over a green inherited across doc commits, a
 });
 
 // The healer handoff (PLANS.md 2026-10-19): a verified-red main discovered by any path other
-// than bugfix's own run queues one bugfix prompt, so the healer becomes due on the next poll
-// instead of waiting out its own interval or deferral. bugfix finding its own red (via
-// bugfixMainRedNote) is the heal and queues nothing; green, non-blocked, and bugfix-own paths
-// all leave bugfix's inbox empty.
+// than ci's own run queues one ci prompt, so the healer becomes due on the next poll
+// instead of waiting out its own interval or deferral. ci finding its own red (via
+// mainRedHealNote) is the heal and queues nothing; green, non-blocked, and ci-own paths
+// all leave ci's inbox empty.
 
-test("bugfix's own red-main note queues nothing and still returns the note and warning", async () => {
+test("ci's own red-main note queues nothing and still returns the note and warning", async () => {
   const counter = path.join(tmpdir(), "runs");
   const script = `echo self-healer-failure; echo run >> ${counter}; exit 1`;
   const { root, wt } = baselineFixture(ROLE, script);
   const restore = fakeNpm(script);
   try {
-    const note = await bugfixMainRedNote(root, "bugfix", wt);
+    const note = await mainRedHealNote(root, "ci", wt);
     assert.ok(note, "the healer's own note still hands it the failure");
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "bugfix finding its own red queues no second run");
+    assert.equal(queuedRolePrompts(root, "ci").length, 0, "ci finding its own red queues no second run");
     assert.equal(mainRedHolds(root).length, 1, "the team-wide warning still logs once");
   } finally {
     restore();
   }
 });
 
-test("green main and a non-blocked role leave bugfix's inbox empty", async () => {
+test("green main and a non-blocked role leave ci's inbox empty", async () => {
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo ok >> ${counter}; exit 0`);
   const restore = fakeNpm(`echo ok >> ${counter}; exit 0`);
   try {
     assert.equal(await mainRedGate(root, ROLE, wt), null, "green main never blocks");
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "no red, no healer prompt");
+    assert.equal(queuedRolePrompts(root, "ci").length, 0, "no red, no healer prompt");
     assert.equal(await mainRedGate(root, "steward", wt), null, "non-blocked role passes through");
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 0, "a non-blocked role never queues the healer");
+    assert.equal(queuedRolePrompts(root, "ci").length, 0, "a non-blocked role never queues the healer");
   } finally {
     restore();
   }
@@ -504,11 +504,11 @@ test("mainRedHealPrompt returns one self-limiting line naming the short SHA", ()
   assert.match(prompt, /if it is still red, reproduce the failure and land the fix/);
 });
 
-test("a queued healer prompt makes a bugfix runner due on the next poll despite a future clock", () => {
-  // A fresh bugfix runner with an empty BUGS.md backlog, a future nextRunAt, and a no_change
+test("a queued healer prompt makes a ci runner due on the next poll despite a future clock", () => {
+  // A fresh ci runner with a future nextRunAt, and a no_change
   // last result is not due on its own — but a non-empty inbox makes it due for reason "inbox"
   // before any interval, backoff, or deferral check (isEligible, scheduling.ts).
-  const r = makeRoleRunner(makeRepo(), "bugfix");
+  const r = makeRoleRunner(makeRepo(), "ci");
   const now = Date.now();
   r.state.nextRunAt = now + 60 * 60 * 1000; // an hour out — not due on the clock
   r.state.lastRunEndedAt = now - 1000;
@@ -534,14 +534,14 @@ test("mainRedGate lets a role run on a red main that names its failing tests, on
     const message = (holds[0] as { message?: string }).message ?? "";
     assert.ok(message.includes("(2 failing tests: known-red-alpha, +1 more); changes that add no new failures still merge"), message);
     assert.deepEqual((holds[0] as { failingTests?: string[] }).failingTests, ["known-red-alpha", "known-red-beta"]);
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "the healer is told once");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "the healer is told once");
 
     // A second red commit with the same failing set sends no second heal prompt.
     sh(root, "git", "commit", "--allow-empty", "-q", "-m", "second-red");
     sh(wt, "git", "reset", "--hard", "main");
     assert.equal(await mainRedGate(root, ROLE, wt, undefined, () => {}), null);
     assert.equal(mainRedHolds(root).length, 2, "the new red SHA is still logged");
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "same failing set: one heal prompt");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "same failing set: one heal prompt");
   } finally {
     restore();
   }
@@ -571,7 +571,7 @@ test("with check.mergeCommand set, mainRedGate and mainTipVerdict read a cached 
   try {
     // No verdict yet reads as green: authoring proceeds, nothing runs.
     assert.equal(await mainRedGate(root, ROLE, wt), null);
-    assert.equal(await bugfixMainRedNote(root, ROLE, wt), undefined);
+    assert.equal(await mainRedHealNote(root, ROLE, wt), undefined);
     const config = liveConfig(root);
     const unknown = await mainTipVerdict(root, ROLE, "main", config);
     assert.equal(runsOf(counter), 1, "only the attribution without a verdict runs the check, as without the setting");

@@ -1,4 +1,4 @@
-import { baselineBlocked, BUGFIX_ROLE } from "../roles/roles.js";
+import { baselineBlocked } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { enqueueRolePrompt } from "../inbox/inbox.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
@@ -40,7 +40,7 @@ let lastMainRedSha: string | null = null;
 
 /** The key of the last failing set the healer was sent a prompt for: the sorted failing test
  * names, or the red SHA when the red names none. Two red commits with the same failing set send
- * one heal prompt, not one per commit; a green main observed by the gate or the bugfix handoff
+ * one heal prompt, not one per commit; a green main observed by the gate or the ci handoff
  * clears it, so a set that returns after green is healed again. */
 let lastHealKey: string | null = null;
 
@@ -62,11 +62,11 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
 
 /** Log the team-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
  * most once per process, and hand the red suite to the healer. Module-level (with
- * lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes the
+ * lastMainRedSha) so the gate and the ci handoff share one guard: whichever observes the
  * red first logs it, the other stays silent. `foundBy` is the role whose path verified the
- * red — when that role is not bugfix itself, one prompt is enqueued to bugfix's own inbox so
+ * red — when that role is not ci itself, one prompt is enqueued to ci's own inbox so
  * the healer runs on the orchestrator's next poll instead of waiting out its own interval or
- * deferral; bugfix finding its own red skips the enqueue because its running run already
+ * deferral; ci finding its own red skips the enqueue because its running run already
  * carries the note and IS the heal (and enqueuing from inside it would queue a second run). A
  * queued per-role prompt makes the role due by itself (`isEligible`, scheduling.ts, returns
  * `{ run: true, reason: "inbox" }` on a non-empty inbox before any interval, backoff, or
@@ -92,33 +92,33 @@ function warnMainRedOnce(
         ? `${mainRedPhrase(red.sha)} (${plural(named.length, "failing test")}: ${clipToWidth(named[0] ?? "", 80)}${named.length > 1 ? `, +${named.length - 1} more` : ""}); changes that add no new failures still merge`
         : redMainMessage(red, "code merges blocked until main is green"),
   });
-  // Bugfix is the only repairer, and it is exempt from mainRedGate — but it is a work role
-  // that with no open bugs defers like a maintenance role, so a red main discovered by any
-  // other path could sit unrepaired until bugfix's own interval or a coincidental wake.
+  // The ci role is the healer, and it is exempt from mainRedGate but schedules as an observer,
+  // so a red main discovered by any other path could sit unrepaired until ci's own interval or
+  // a coincidental wake.
   // Queue the heal: one prompt per newly-verified red SHA per process (a restart re-queues
   // once, desirable because the cache is cold then too). With named failures the key is the
   // failing set, so a second red commit with the same failures queues nothing.
   const healKey = named.length > 0 ? [...named].sort().join("\n") : red.sha;
   if (lastHealKey === healKey) return;
   lastHealKey = healKey;
-  if (baseRoleOf(foundBy) !== BUGFIX_ROLE) {
+  if (baseRoleOf(foundBy) !== "ci") {
     try {
-      enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha));
+      enqueueRolePrompt(root, "ci", mainRedHealPrompt(red.sha));
     } catch (err) {
       // Clear the key so a later verification retries the heal. lastMainRedSha stays set, so a
       // second call for this same SHA still returns early: the retry comes with the next red
       // SHA or a fresh process.
       lastHealKey = null;
-      warnEventBestEffort(root, foundBy, `could not queue the heal prompt for bugfix: ${errorMessage(err)}`);
+      warnEventBestEffort(root, foundBy, `could not queue the heal prompt for ci: ${errorMessage(err)}`);
     }
   }
 }
 
-/** The one-line, self-limiting directive queued for the bugfix healer when a non-bugfix path
+/** The one-line, self-limiting directive queued for the ci healer when a non-ci path
  * newly verifies a red main. It names the short SHA the check was reported red at, tells the
  * healer to verify main is green now, and to reproduce and land the fix only if it is still
  * red. The self-limiting wording is the green race's whole handling: if main turned green
- * before the healer consumes the prompt, bugfixMainRedNote returns undefined (no `<main-red>`
+ * before the healer consumes the prompt, mainRedHealNote returns undefined (no `<main-red>`
  * note is appended) and the "verify green" clause makes the run a no-op. */
 export function mainRedHealPrompt(
   sha: string,
@@ -131,20 +131,20 @@ export function mainRedHealPrompt(
   return `${base} The watch named ${shortSha(detail.culprit)} as the commit that turned it red.${tests}${tail}`;
 }
 
-/** Queue the heal prompt for bugfix with the culprit's detail: the fallback when the automatic
+/** Queue the heal prompt for ci with the culprit's detail: the fallback when the automatic
  * revert (src/baseline/main-revert.ts) is skipped or fails. */
 export function queueCulpritHeal(
   root: string,
   tip: string,
   detail: { culprit: string; failingTests: readonly string[]; outputTail?: readonly string[] },
 ): void {
-  enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(tip, detail));
+  enqueueRolePrompt(root, "ci", mainRedHealPrompt(tip, detail));
 }
 
 /** checkMainBaseline's per-run hook: log the one run per SHA (cache misses only) under the role
  * that paid for it, with its duration — the gate's build_check sibling, so both halves of the
  * team's deterministic verification are priced in the feed. The one logger for every baseline
- * check this module runs — the bugfix handoff, the authoring gate, and mainTipVerdict's tip
+ * check this module runs — the ci handoff, the authoring gate, and mainTipVerdict's tip
  * check (which review.ts's gate and merge-check-failures.ts's attributeRedCheck reach
  * through it) — so the event's shape cannot drift between them. */
 export function baselineCheckLogger(
@@ -154,14 +154,14 @@ export function baselineCheckLogger(
   return baselineCheckEventLogger(role, (event) => logEventBestEffort(root, event));
 }
 
-/** Red-main handoff for the `bugfix` healer: mainRedGate exempts
- * bugfix so the only role that can unblock the team may author, but its prompt then starts from
- * BUGS.md and knows nothing about the red suite. This runs the same per-SHA baseline check
+/** Red-main handoff for the `ci` healer: mainRedGate exempts
+ * ci so the only role that can unblock the team may author, but its prompt then starts from
+ * its own queue and knows nothing about the red suite. This runs the same per-SHA baseline check
  * (cache and provisional-red re-verification reused unchanged, so it costs at most the one run
  * the gate would have paid for) and, when main is red, returns the note that points the healer
  * at the failure. Returns undefined on green, no declared check, or an environmental skip — the
  * healer's run then proceeds exactly as it did before this existed. Never throws. */
-export async function bugfixMainRedNote(root: string, role: string, wt: string): Promise<string | undefined> {
+export async function mainRedHealNote(root: string, role: string, wt: string): Promise<string | undefined> {
   // The declared check is detected through the live config (plans/portability.md §6/7); a
   // broken file degrades to defaults, which declare none — the run then proceeds as before.
   const config = liveConfig(root);
@@ -254,7 +254,7 @@ export async function mainRedGate(
 /** What the review gate learns about main's current tip when a change's check failed twice
  * (mainTipVerdict): `green` — main passes (observed by a run on this tree, never inherited), so
  * the change broke the check; `red` — main fails
- * too, so the failure is not the change's and this module's gate and bugfix handoff own the
+ * too, so the failure is not the change's and this module's gate and ci handoff own the
  * repair; `unavailable` — no verdict could be had, with `why` for the rejection's reasons. */
 type MainTipVerdict =
   | { status: "green"; sha: string }

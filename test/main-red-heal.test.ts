@@ -35,24 +35,24 @@ test("a failing set queues one heal prompt in any order, and queues another afte
   try {
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "first red queues one prompt");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "first red queues one prompt");
 
     fs.writeFileSync(swap, "");
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
     assert.equal(mainRedHolds(root).length, 2, "the new red SHA still pages");
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "same set in another order: no second prompt");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "same set in another order: no second prompt");
 
     fs.writeFileSync(green, "");
     fs.rmSync(swap);
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "green main queues nothing");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "green main queues nothing");
 
     fs.rmSync(green);
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 2, "the set returning after green is healed again");
+    assert.equal(queuedRolePrompts(root, "ci").length, 2, "the set returning after green is healed again");
   } finally {
     restore();
   }
@@ -71,7 +71,7 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
   };
   try {
     newCommit();
-    const inbox = roleInboxDir(root, "bugfix");
+    const inbox = roleInboxDir(root, "ci");
     const undo = patchFsMethod("writeFileSync", (orig) => (...args: unknown[]) => {
       if (typeof args[0] === "string" && args[0].startsWith(inbox)) throw errnoError("ENOSPC");
       return orig(...args);
@@ -81,13 +81,13 @@ test("a heal prompt that cannot be queued warns, lets the gate resolve, and is q
     } finally {
       undo();
     }
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 0);
-    const warnings = warningMessages(root).filter((m) => /could not queue the heal prompt for bugfix: .*ENOSPC/.test(m));
+    assert.equal(queuedRolePrompts(root, "ci").length, 0);
+    const warnings = warningMessages(root).filter((m) => /could not queue the heal prompt for ci: .*ENOSPC/.test(m));
     assert.equal(warnings.length, 1, warningMessages(root).join("\n"));
 
     newCommit();
     assert.equal(await mainRedGate(root, "coverage", wt, undefined, () => {}), null);
-    assert.equal(queuedRolePrompts(root, "bugfix").length, 1, "the next red commit queues the heal");
+    assert.equal(queuedRolePrompts(root, "ci").length, 1, "the next red commit queues the heal");
   } finally {
     restore();
   }

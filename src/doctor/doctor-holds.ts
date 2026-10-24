@@ -295,9 +295,9 @@ export function checkMainRed(
   if (held.length > 0) {
     const err = held.find((s) => s.lastError)?.lastError;
     const cause = err ? ` — ${squash(err, 160)}` : "";
-    const healer = ids.some((id) => baseRoleOf(id) === "bugfix")
-      ? "; the bugfix role is exempt and repairs it"
-      : "; no bugfix role is enabled to repair it — fix main by hand or enable bugfix";
+    const healer = ids.some((id) => baseRoleOf(id) === "ci")
+      ? "; the ci role is exempt and repairs it"
+      : "; no ci role is enabled to repair it — fix main by hand or enable ci";
     phrases.push(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
   }
   const events = readEventsSince(root, DAY_MS).events;

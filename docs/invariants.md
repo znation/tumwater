@@ -596,7 +596,7 @@ targets an older commit that no check has called green".
 revert, and whose revert has not already merged. The watch names a culprit only after its red
 reproduced (the confirming re-run) and the last green commit below it is still green. Any other
 culprit, and any revert that conflicts, fails its gate or loses the fast-forward, leaves main
-unchanged and queues bugfix's heal prompt.
+unchanged and queues ci's heal prompt.
 
 **Binds.** `src/baseline/main-revert.ts`, `src/baseline/main-culprit.ts`, `src/merge/merge-drain.ts`,
 `src/orchestrator/orchestrator.ts`.
@@ -3174,11 +3174,11 @@ file untouched", "resolveBacklogInsertConflicts ignores non-backlog and non-root
 `test/backlog-conflicts-entries.test.ts` — "resolveBacklogInsertConflicts leaves an archive
 conflict the hunk settler cannot settle to the resolver".
 
-## Red-main healer: a red main pages once per SHA and queues bugfix once per failing set
+## Red-main healer: a red main pages once per SHA and queues ci once per failing set
 
 ### INV-AZ1: `main_red_hold` logs at most once per red SHA per process
 
-**Guarantee.** Whichever of `mainRedGate`, `bugfixMainRedNote` or `mainTipVerdict` sees a red SHA
+**Guarantee.** Whichever of `mainRedGate`, `mainRedHealNote` or `mainTipVerdict` sees a red SHA
 first logs the `main_red_hold` event; the others stay silent for that SHA.
 
 **Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`).
@@ -3189,15 +3189,15 @@ SHA".
 
 ### INV-AZ2: a heal prompt is queued once per failing set, and again after green
 
-**Guarantee.** bugfix is queued one heal prompt per failing set, keyed order-blind (by the SHA when
+**Guarantee.** ci is queued one heal prompt per failing set, keyed order-blind (by the SHA when
 the red names no complete set). A green main clears the key, so a set that returns is healed again.
-A red that bugfix found itself queues nothing.
+A red that ci found itself queues nothing.
 
-**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`, `bugfixMainRedNote`).
+**Binds.** `src/baseline/main-red.ts` (`warnMainRedOnce`, `mainRedGate`, `mainRedHealNote`).
 
 **Pinned by.** `test/main-red.test.ts` — "mainRedGate lets a role run on a red main that names its
-failing tests, once per failing set", "bugfix's own red-main note queues nothing and still returns
-the note and warning" and "green main and a non-blocked role leave bugfix's inbox empty";
+failing tests, once per failing set", "ci's own red-main note queues nothing and still returns
+the note and warning" and "green main and a non-blocked role leave ci's inbox empty";
 `test/main-red-heal.test.ts` — "a failing set queues one heal prompt in any order, and queues
 another after main turns green".
 
@@ -4532,7 +4532,7 @@ index, rather than skipping the preserve".
 
 ### INV-CO1: a failed automatic revert whose heal prompt or reviewer hand-off cannot be queued resolves, logs one warning saying the hand-off was not queued, and leaves main unchanged
 
-**Guarantee.** `runMainRevert` keeps its never-throws contract when the heal prompt or the reviewer hand-off itself fails (full disk, EACCES): the failure is caught, main is left as it was, and the one warning logged for the failed revert says "could not queue the heal prompt for bugfix" or "could not send the reviewer's reasons to its role" instead of claiming a prompt that was never queued.
+**Guarantee.** `runMainRevert` keeps its never-throws contract when the heal prompt or the reviewer hand-off itself fails (full disk, EACCES): the failure is caught, main is left as it was, and the one warning logged for the failed revert says "could not queue the heal prompt for ci" or "could not send the reviewer's reasons to its role" instead of claiming a prompt that was never queued.
 
 **Binds.** `src/baseline/main-revert.ts` (`runMainRevert`).
 
@@ -4563,7 +4563,7 @@ index, rather than skipping the preserve".
 
 ### INV-CR1: a culprit the main watch names whose revert is skipped and whose heal prompt cannot be queued resolves and warns once that it was not queued
 
-**Guarantee.** `routeMainCulprit` starts the automatic revert for a revertable culprit and otherwise queues bugfix's heal prompt. A heal prompt that cannot be queued (full disk, EACCES) is caught and warned once, so the promise the orchestrator discards never rejects and ends the process.
+**Guarantee.** `routeMainCulprit` starts the automatic revert for a revertable culprit and otherwise queues ci's heal prompt. A heal prompt that cannot be queued (full disk, EACCES) is caught and warned once, so the promise the orchestrator discards never rejects and ends the process.
 
 **Binds.** `src/baseline/main-revert.ts` (`routeMainCulprit`) and its one caller in `src/orchestrator/orchestrator.ts`.
 

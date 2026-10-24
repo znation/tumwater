@@ -5,6 +5,31 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### A `ci` role runs the CI workflow's own jobs at main's tip and fixes what fails, part 2/3: the red-main healer hand-off moves from `bugfix` to `ci` (planned 2026-10-24 by the plan role, split from part 1/2 of the held `ci` plan; requires part 1/3 landed, since the hand-off names the role that part adds; touches src/baseline/main-red.ts src/runner/runner-run.ts docs/how-it-works.md test/main-red.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** Main's two broken signals — the watch naming a red culprit and a CI step failing — reach different roles today: `bugfix` owns the red-main repair (`queueCulpritHeal`'s prompt, `runner-run.ts`'s `<main-red>` note branch, and its exemption from the red-main authoring block), while a failing CI step has no owner until a human or a post-merge reviewer finds it. With part 1/3's `ci` role in place, this part routes the hand-off to it, so both signals land in one queue of main repairs and no second role races it for the same tree; `bugfix` returns to its own charter (BUGS.md's backlog) with no heal prompt and no red-main note.
+
+**Approach.**
+- src/baseline/main-red.ts: the watch-culprit branch (`enqueueRolePrompt(root, BUGFIX_ROLE, mainRedHealPrompt(red.sha))`, :106) and `queueCulpritHeal` (:141) name the ci role (`"ci"`) instead of `BUGFIX_ROLE`, and the `baseRoleOf(foundBy) !== BUGFIX_ROLE` guard (:104) becomes `!== "ci"`, so a red main the ci role itself found does not re-queue a heal prompt to itself. The prompt text is unchanged (`mainRedHealPrompt` already names the culprit, the failing tests and the output tail; only its recipient changes), and the `could not queue the heal prompt for bugfix` warning (:108) names the healer role.
+- src/runner/runner-run.ts: the `ctx.baseRole === "bugfix"` branch (:580) keys on the ci base role instead, so the role that receives the hand-off is the one whose prompt carries the `<main-red>` failure note; a `bugfix` run falls through to the ordinary `mainRedGate` path. Rename the note helper `bugfixMainRedNote` (src/baseline/main-red.ts:157, its one production caller at runner-run.ts:581, and its cases in test/main-red.test.ts) to `mainRedHealNote`, so the name stops naming a role it no longer serves.
+- docs/how-it-works.md: every red-main hand-off sentence names `ci` — the merge-pipeline Check bullet's "the failure goes to bugfix", the merge bullet's "the bugfix note", the backlog paragraph's "queues a bugfix healer", and the watch's "queues bugfix's heal prompt naming the commit and the failing tests". The "one owner for a red main" paragraph lives in plans/fast-merge.md, not docs/how-it-works.md, and its D1 bullet already carries the 2026-10-24 supersede note naming the `ci` role, so both are read and left as-is.
+- No change to the watch's check, `mainRedHealPrompt`'s wording, or `BASELINE_BLOCKED_ROLES`: `ci` is already exempt because part 1/3 puts it in `OBSERVER_ROLES`, not through a bugfix-specific branch. The "Every commit is verified on main" plan below removes the authoring block entirely.
+
+**Files touched.** src/baseline/main-red.ts src/runner/runner-run.ts src/baseline/main-revert.ts src/doctor/doctor-holds.ts src/prompt/gate-notes.ts src/roles/roles.ts docs/how-it-works.md docs/invariants.md test/main-red.test.ts test/main-red-heal.test.ts test/main-revert.test.ts test/runner-red-main.test.ts test/doctor-holds.test.ts
+
+**Acceptance criteria.**
+- A main red that names a culprit queues exactly one heal prompt, to `ci` and not `bugfix`, and the ci role's prompt carries the `<main-red>` note naming the culprit and its failing tests; `bugfix` receives neither and its runs no longer carry that note.
+- `ci` is not in `BASELINE_BLOCKED_ROLES` (so a red main does not block it) — already true from part 1/3; no bugfix-specific exemption branch remains in the hand-off.
+- No doc sentence names `bugfix` as the red-main healer any more: the surviving `bugfix` mentions in docs/how-it-works.md are its own backlog/hold/flake lines and "bugfix ... keep going" during a red main, and plans/fast-merge.md's D1 supersede note already points at `ci`.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-red.test.ts: `the red-main hand-off goes to the ci role` — a watch culprit queues one prompt whose recipient is `ci` and whose text still names the culprit sha and its failing tests; the bugfix-recipient assertions invert. A second case pins that a run for `ci` gets the `<main-red>` note appended and a `bugfix` run does not. The renamed `mainRedHealNote` cases follow the function name.
+
+**Note (2026-10-24 by the feature role).** Implemented as planned; moving the hand-off's recipient off `bugfix` rippled into the code, docs and tests that pinned that recipient, which the plan's files list did not name, so they were updated and added to the list above: `src/baseline/main-revert.ts` (its "queued the heal prompt for …" warning strings), `src/doctor/doctor-holds.ts` (the repairer phrase keys on the ci role now), `src/prompt/gate-notes.ts` and `src/roles/roles.ts` (doc comments naming the healer), `docs/invariants.md` (the red-main-healer invariants and the revert hand-off guarantees), and the `test/main-red-heal.test.ts`, `test/main-revert.test.ts`, `test/runner-red-main.test.ts` and `test/doctor-holds.test.ts` cases that asserted the bugfix recipient or the old warning wording. A `bugfix` run now falls through to the ordinary `mainRedGate` path (bugfix is not in `BASELINE_BLOCKED_ROLES`, so a red main still does not block it), and the `ci`-own-red guard `!== "ci"` stops a red the ci role itself found from re-queuing a heal to itself. `npm run test:gate` passes.
+
 ### Split `teamAlerts` into ordered slice builders, part 1/5: the status/capacity and role-phase alerts move into `buildStatusAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; opens the series — parts 2/5–5/5 each require the part before them landed; touches src/ui/team-alerts.ts) — done 2026-10-24 by the feature role
 
 **Previously held 1**
