@@ -305,11 +305,17 @@ export async function resolveRunVerdict(ctx: RunVerdictContext): Promise<RunOutc
   // cherry-pick range, or the author reverting the edits while deciding — and the author's
   // NOTHING_TO_DO must end the change anyway, or every later run re-applies the same rejected
   // diff.
-  if (ctx.revisionRound !== undefined && s.revision && pi.nothingToDo) {
-    const { sha } = s.revision;
+  if (pi.nothingToDo && ctx.revisionRound !== undefined && (s.revision !== undefined || s.forwarded !== undefined)) {
+    const hadRevision = s.revision !== undefined;
+    const { sha } = s.revision ?? s.forwarded!;
     s.revision = undefined;
-    await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
-    await deleteRef(ctx.root, rejectedRefName(ctx.role));
+    s.forwarded = undefined;
+    if (hadRevision) {
+      // A forwarded drop has nothing to reset: the revert never ran, so no diff was re-applied and
+      // no rejected ref exists (runner-run.ts's forwarded branch makes no applyRevision).
+      await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
+      await deleteRef(ctx.root, rejectedRefName(ctx.role));
+    }
     // The drop's durable effects — the worktree reset, the rejected ref's deletion, and the
     // cleared state — have all taken effect; the event is observability, so an unwritable feed must
     // not end the run as an error and mask a change that really was dropped.

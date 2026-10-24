@@ -390,7 +390,12 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
     // (merge-core.ts), which deletes it when this merge merges and repoints it on a rejection.
     // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
     // rebuild a retriable revision's merge entry with its round when the queue marker is lost.
-    if (revisionRound !== undefined) s.revision = undefined;
+    if (revisionRound !== undefined) {
+      s.revision = undefined;
+      // A forwarded hand-back carries its round the same way; its `state.forwarded` is consumed
+      // once the follow-up stages, exactly like a revision's. Nothing left to re-apply either way.
+      s.forwarded = undefined;
+    }
     // The merge sits in the durable queue above and the commit is pinned; the event is
     // observability, so an unwritable feed must not reject a run whose work is already queued.
     logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit, summary });

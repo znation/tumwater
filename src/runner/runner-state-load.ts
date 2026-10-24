@@ -171,6 +171,11 @@ export function loadRunnerState(root: string, role: string): RunnerState {
         ? v.reasonCounts.map((c) => healNumber(c, 0))
         : undefined;
     });
+  if (s.forwarded !== undefined)
+    s.forwarded = healRecord(s.forwarded, (v) => {
+      v.round = healNumber(v.round, 0);
+      v.at = healNumber(v.at, 0);
+    });
   // A torn retry record reads as none: leftover recovery is the backstop for the pin.
   if (
     s.mainRedRetry !== undefined &&

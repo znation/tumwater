@@ -85,13 +85,16 @@ export async function runMainRevert(
   config: TumwaterConfig,
   c: MainCulprit,
   onReverted?: (c: MainCulprit) => Promise<void>,
-  onFailed?: (c: MainCulprit, reason: string) => void,
+  onFailed?: (c: MainCulprit, reason: string) => void | Promise<void>,
 ): Promise<void> {
-  /** Hand the failure to a role and return the warning's suffix saying truthfully what happened. */
-  const heal = (reason: string, outputTail?: string[]): string => {
+  /** Hand the failure to a role and return the warning's suffix saying truthfully what happened.
+   * `onFailed` may be async (a hand-back that records state, sendReviewToRole), so it is AWAITED
+   * inside the try: an un-awaited promise would leave a rejection unhandled and keep its error
+   * from this catch, silently losing heal's "could not send" handling. */
+  const heal = async (reason: string, outputTail?: string[]): Promise<string> => {
     const toReviewer = c.postReview && onFailed;
     try {
-      if (toReviewer) onFailed(c, reason);
+      if (toReviewer) await onFailed(c, reason);
       else queueCulpritHeal(root, c.tip, { culprit: c.commit, failingTests: c.failingTests, outputTail });
       return toReviewer ? "sent the reviewer's reasons to its role" : "queued the heal prompt for bugfix";
     } catch (err) {
@@ -144,7 +147,7 @@ export async function runMainRevert(
       return null;
     });
     if (failure !== null) {
-      const suffix = heal(failure.reason, failure.tail);
+      const suffix = await heal(failure.reason, failure.tail);
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "warning",
@@ -152,7 +155,7 @@ export async function runMainRevert(
       });
     }
   } catch (err) {
-    const suffix = heal(errorMessage(err));
+    const suffix = await heal(errorMessage(err));
     logEventBestEffort(root, {
       source: TUMWATER_SOURCE,
       type: "warning",

@@ -14,15 +14,19 @@ import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
-import { roleInboxDir, revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
+import { roleInboxDir, forwardedPendingPath, revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
 import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
-import { applyRevision, applyWithConflicts } from "../src/runner/revision.js";
+import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
 import { logEvent } from "../src/events/events.js";
 import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 import { patchId } from "../src/git/git.js";
 import { shortSha } from "../src/text/format.js";
+import { entryKey } from "../src/backlog/backlog-parts.js";
+import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
+import { refSha } from "../src/git/git.js";
+import { commitIn, makeRepo } from "./fixtures/repo-fixtures.js";
 
 const FAILING = "printf '✖ first (1.2ms)\\n✖ failing tests:\\n✖ first (1.2ms)\\n'";
 
@@ -188,21 +192,25 @@ test("a post-review revert whose reviewer hand-off throws resolves and warns tha
   assert.equal(warnings.filter((m) => m.includes("could not send the reviewer's reasons to its role: EACCES")).length, 1);
 });
 
-test("a post-review revert that fails keeps the commit on main and enqueues its role a prompt naming the reviewer's reasons", async () => {
+test("a post-review revert that fails keeps the commit on main and parks the forward with the reviewer's reasons", async () => {
   // The failed-revert fallback (merge-drain.ts sendReviewToRole): a rejection whose revert cannot
-  // merge leaves the commit on main and hands its role the reviewer's reasons in its inbox.
+  // merge leaves the commit on main and parks its role's forward in forwarded.json — NO inbox
+  // prompt, because an inbox-prompt run would sidestep runner-run.ts's forwarded branch (which
+  // needs userPrompt === null) and produce a fix with no Revision: trailer; the round rides
+  // state.forwarded at assignment instead.
   const { root, found } = await redMain("improve", true);
   const before = headSha(root);
   const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["breaks the contract"] } };
   const ctx = { root, mainBranch: "main" } as unknown as MergePipelineContext;
-  await runMainRevert(root, "main", defaultConfig(), c, undefined, (culprit, reason) => sendReviewToRole(ctx, culprit, reason));
+  await runMainRevert(root, "main", defaultConfig(), c, undefined, (culprit) => sendReviewToRole(ctx, culprit));
   assert.equal(headSha(root), before, "a conflicting revert leaves the commit on main");
   assert.equal(eventsOfType(root, "main_revert").length, 0);
-  const files = queuedFiles(root, "improve");
-  assert.equal(files.length, 1);
-  const prompt = fs.readFileSync(files[0]!, "utf8");
-  assert.match(prompt, /breaks the contract/);
-  assert.match(prompt, /still on main/);
+  assert.equal(queuedFiles(root, "improve").length, 0, "no inbox prompt — the forward rides state.forwarded");
+  const parked = readJson<{ forwarded: { commit: string; role: string; reasons: string[] }[] }>(forwardedPendingPath(root)).forwarded;
+  assert.equal(parked.length, 1, "the forward is parked awaiting a free runner");
+  assert.equal(parked[0]?.role, "improve");
+  assert.equal(parked[0]?.commit, c.commit);
+  assert.deepEqual(parked[0]?.reasons, ["breaks the contract"], "the parked record names the reviewer's reasons");
 });
 
 test("a director-merged, runnerless or revert culprit is skipped", async () => {
@@ -354,4 +362,64 @@ test("a failed reverted.json rewrite warns, and the next poll does not hand the 
   await assignPendingReverts(ctx);
   assert.equal(second.state.revision, undefined);
   assert.deepEqual(readJson(revertedPendingPath(root)), { reverted: [] });
+});
+
+test("a post-merge rejection chain that never converges holds its plan at the backstop", async () => {
+  // A reverted chain whose commit carries a Revision trailer one below the cap exhausts on this
+  // hand-back: the revision and the rejected ref are cleared, `revision exhausted` is logged, and
+  // the plan is held for the plan role with the surviving objections verbatim — the same end state
+  // a pre-merge rejection's exhaustion produces, instead of leaving it re-pickable.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "bad.txt"), "b");
+  commitIn(root, `breaks a test\n\nRevision: ${REVISION_BACKSTOP - 1}`);
+  const b = headSha(root);
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "# Plans\n\nIntro.\n\n## Planned\n\n### The convergence plan (planned 2026-10-01)\n\nBody.\n",
+  );
+  const runner = fakeRunner("improve", {
+    claim: {
+      file: "PLANS.md",
+      key: entryKey("The convergence plan (planned 2026-10-01)"),
+      title: "The convergence plan (planned 2026-10-01)",
+      at: Date.now(),
+      source: "assigned",
+    },
+  });
+  const ctx = { root, mainBranch: "main", runners: [runner] } as unknown as MergePipelineContext;
+  writeFileDeep(revertedPendingPath(root), JSON.stringify({ reverted: [{ commit: b, role: "improve", reasons: ["still wrong"] }] }));
+  await assignPendingReverts(ctx);
+  assert.equal(runner.state.revision, undefined, "the exhausted chain records no further round");
+  assert.equal(runner.state.lastReview?.exhausted, true, "the hand-back reads as final");
+  assert.equal(await refSha(root, rejectedRefName("improve")), null, "the rejected ref is deleted");
+  const md = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
+  const noteLine = md.split("\n").find((l) => l.startsWith("**Needs review"));
+  assert.ok(noteLine?.includes(CONVERGENCE_HOLD_MARKER), "the hold note carries the shared convergence marker");
+  assert.ok(noteLine?.includes("still wrong"), "the hold names the surviving objection verbatim");
+  assert.equal(eventsOfType(root, "revision").at(-1)?.action, "exhausted", "the exhaustion is logged");
+});
+
+test("the parked-forward case counts its round at assignment, not at the first enqueue", async () => {
+  // A forward with no free runner parks in forwarded.json — no inbox prompt (an inbox-prompt
+  // run would sidestep runner-run.ts's forwarded branch and produce a fix with no Revision:
+  // trailer) — and records no round; the round is counted only when assignPendingReverts hands
+  // the parked entry to a freed runner, so a plan can never hold before a runner has ever
+  // received the reasons.
+  const { root, b, found } = await redMain("improve");
+  const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["breaks the contract"] } };
+  const busy = fakeRunner("improve", { running: true });
+  const ctx = { root, mainBranch: "main", runners: [busy] } as unknown as MergePipelineContext;
+  await sendReviewToRole(ctx, c);
+  assert.equal(queuedFiles(root, "improve").length, 0, "no inbox prompt is enqueued");
+  assert.equal(busy.state.revision, undefined, "no round is counted at the first enqueue");
+  assert.equal(busy.state.lastReview, undefined, "no verdict is recorded while parked");
+  const parked = readJson<{ forwarded: { commit: string; role: string; reasons: string[] }[] }>(forwardedPendingPath(root)).forwarded;
+  assert.equal(parked.length, 1, "the forward is parked awaiting a free runner");
+  assert.equal(parked[0]?.commit, b);
+  busy.state.running = false;
+  await assignPendingReverts(ctx);
+  assert.equal((busy.state as RunnerState).forwarded?.round, 1, "the round is counted at assignment");
+  assert.equal((busy.state as RunnerState).revision, undefined, "a forward records no re-apply revision");
+  assert.equal((busy.state as RunnerState).lastReview?.verdict, "forwarded", "the assigned record is a forward, never a revert");
+  assert.deepEqual(readJson(forwardedPendingPath(root)), { forwarded: [] }, "the parked entry is dropped once assigned");
 });

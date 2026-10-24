@@ -336,6 +336,15 @@ export interface RunnerState {
    * `(prior N)` tag to a count. Absent for a runner with no outstanding rejection, so existing
    * state files read unchanged (and an older file without `reasonCounts` reads as all-new). */
   revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
+  /** A post-merge rejection handed FORWARD (recordForwardedChange, src/merge/merge-core.ts): the
+   * commit could not be reverted, so it is still on main and is fixed forward. Unlike `revision`
+   * there is NO diff to re-apply — the runner re-derives nothing and points no rejected ref (an
+   * on-main commit cannot be applied onto itself); instead runner-run.ts's forwarded branch makes
+   * the follow-up carry the same `round` through its stamped `Revision:` trailer, so a chain of
+   * forwards counts toward the same backstop as a reverted chain. Consumed (cleared) when the
+   * follow-up stages or is dropped; kept set across a failed run so the reasons ride on retries.
+   * Absent for a runner with no pending forward, so existing state files read unchanged. */
+  forwarded?: { sha: string; round: number; at: number };
 }
 
 /** Why a due runner was skipped by the scheduling poll (RunnerState.skipReason): either a
@@ -429,12 +438,13 @@ export function stateSkipReason(
 }
 
 /** True when the runner still owes follow-up work for its current task after a run: a rejected
- * change it must revise (state.revision) or a session it must resume (state.resumePending).
- * Both keep the instance bound to the same task, so the claim-release rule
+ * change it must revise (state.revision), a rejected change handed forward that it must fix on
+ * main (state.forwarded), or a session it must resume (state.resumePending).
+ * Both kinds of hand-back keep the instance bound to the same task, so the claim-release rule
  * (run/run-finalize.ts), the conflict-handback rule (run/run-apply.ts), and claims.ts's
  * idle test all read this one predicate instead of repeating the revision/resume conjunction. */
-export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "resumePending">): boolean {
-  return s.revision !== undefined || s.resumePending === true;
+export function hasOutstandingWork(s: Pick<RunnerState, "revision" | "forwarded" | "resumePending">): boolean {
+  return s.revision !== undefined || s.forwarded !== undefined || s.resumePending === true;
 }
 
 /** True when the runner got an explicit operator wake after its last completed run

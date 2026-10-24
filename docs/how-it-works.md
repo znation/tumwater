@@ -246,7 +246,17 @@ discards a role's in-flight merge.
   base role. It points that runner's `refs/tumwater/rejected/<role>` at the commit and records
   `reverted after merge: turned main red — <failing tests>` as the review to revise against. With no
   free runner it waits in `.tumwater/state/reverted.json`, assigned on a later merge poll and dropped
-  once assigned.
+  once assigned. A hand-back whose commit carries a `Revision` trailer counts one more round than it
+  says, and a chain that reaches the backstop ends exactly as a rejection's exhaustion does: the ref
+  and the revision are cleared and the PLANS.md plan is held for the plan role with the surviving
+  objections verbatim instead of being left re-pickable. A post-merge rejection whose revert is
+  skipped or fails stays on main and is handed forward the same way (`recordForwardedChange`
+  — a `forwarded` verdict, never a revert, with the same one round/backstop counter): the commit's
+  own runner when free, else the first free runner of its base role, and with no free runner the
+  reasons wait in `.tumwater/state/forwarded.json`, whose round is counted at assignment. A forward
+  is never a re-apply (the commit is still on main), so it records no rejected ref and no re-apply
+  revision: the runner's forwarded branch stamps the round on the follow-up's `Revision:` trailer
+  instead, keeping the chain counting toward the same backstop.
   A main left red over 30 minutes is surfaced: `tumwater doctor`'s `main's check` row and the
   selfcheck and feedback observers' shared digest's `## Fast merge guardrails` section report how long main has had no passing full
   check, the sha it has been red since, and its newest failing test. The same row and section warn
@@ -266,8 +276,12 @@ discards a role's in-flight merge.
   over `git diff <commit>^ <commit>` when a permit is free (`review_start`, `review_verdict` and
   `review_rejected` carry `afterMerge: true`). An approval ends it. A rejection goes to the revert
   slot as above, with the reviewer's reasons in place of the failing tests, and the commit goes
-  back to its role as a revision. A revert that conflicts leaves the commit on main and puts the
-  reasons in the role's inbox. A review that ends three times with no verdict is dropped with a
+  back to its role as a revision. A revert that conflicts (or is otherwise skipped) leaves the
+  commit on main and hands its role the reasons forward as a `forwarded` record — the same round
+  counter and backstop as a reverted chain, so it too holds the plan when exhausting — with no free
+  runner the reasons wait in `.tumwater/state/forwarded.json`, delivered when `assignPendingReverts`
+  hands one to a freed runner (the round is counted at that assignment, never at the first park, so a
+  plan cannot hold before a runner has received the reasons). A review that ends three times with no verdict is dropped with a
   warning. Two or more post-merge rejections in a day raise one standing amber alert naming each
   role on the dashboard, the TUI and `tumwater status` — the pre-revert signal to narrow
   `review.afterMerge` for the noisy role or raise the authoring bar before the revert ceiling is

@@ -19,6 +19,7 @@ import {
   buildMainKnownRedNote,
   buildRevisionNote,
   buildRejectedReviewNote,
+  buildForwardNote,
 } from "../prompt/gate-notes.js";
 import type { RunnerPi } from "./runner-pi.js";
 import {
@@ -702,6 +703,22 @@ async function runWithWorktreePhase(
         prompt = appendPromptNote(prompt, "The rejected diff no longer applies to current main.");
       }
     }
+  }
+  // A handed-forward post-merge rejection (plans/post-merge-fix-forward.md, recordForwardedChange):
+  // the revert was skipped or failed, so the commit is STILL ON MAIN and there is NO diff to
+  // re-apply — run state carries `state.forwarded`, not a re-apply `state.revision`, and no
+  // rejected ref exists. The author fixes forward on top of current main, but the round still
+  // rides: setting `revisionRound` stamps the follow-up's `Revision:` trailer, so the NEXT
+  // forward (or revert) of that commit reads the SAME counter and the chain still reaches the
+  // backstop. Unlike a revision there are no applied edits to resume or hand off, so the forward
+  // always runs fresh. The field is cleared at staging or on a nothing-to-do drop (run-stage.ts,
+  // run-verdict.ts); a failed run keeps it so the reasons ride on the retry.
+  if (s.forwarded !== undefined && ctx.role !== DIRECTOR_ROLE && userPrompt === null) {
+    const { sha, round } = s.forwarded;
+    const lastReviewOrEmpty = s.lastReview ?? { reasons: [] };
+    revisionRound = round;
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "forwarded", round, sha });
+    prompt = prependPromptNote(prompt, buildForwardNote(lastReviewOrEmpty, round));
   }
   // A handoff runs a FRESH session over the interrupted run's kept worktree. When that run had
   // already applied a conflict hand-back, the marker-bearing files are still there but the fresh

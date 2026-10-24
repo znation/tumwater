@@ -197,6 +197,14 @@ export function revertedPendingPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "reverted.json");
 }
 
+/** Post-merge rejections handed forward (a revert was skipped or failed, so the commit is still
+ * on main) still waiting for a free runner (.tumwater/state/forwarded.json; src/merge/
+ * merge-drain.ts): `{ forwarded: [{ commit, role, reasons }] }`, each entry dropped once assigned.
+ * Kept apart from reverted.json so the two hand-back paths cannot read each other's entries. */
+export function forwardedPendingPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "forwarded.json");
+}
+
 /** Merged commits awaiting their review after merging (src/review/post-merge-review.ts), for roles
  * listed in `review.afterMerge`: `{ pending: PostReview[] }`. Runtime state, never committed. */
 export function postReviewPath(root: string): string {
