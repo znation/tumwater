@@ -8,7 +8,8 @@
  * and the Merge queue card from the status payload, with a Role picker that keeps only the
  * chosen role's waiting merges under their whole-queue positions (the tumwater queue --role
  * twin) and a per-row Move to top / two-click Cancel pair on every non-first entry, and the
- * Post-merge reviews card from the status payload (`tumwater reviews` twin). Spliced
+ * Post-merge reviews card from the status payload, with a Role picker that keeps only
+ * the chosen role's entries (`tumwater reviews --role` twin). Spliced
  * into gui-client.ts's script, reaching its helpers (esc, getJson, icon,
  * errorPanel) through that concatenation. */
 export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
@@ -17,6 +18,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   let pendingOverlapRole = "";
   let pendingOverlapDir = "";
   let pendingQueueRole = "";
+  let pendingReviewRole = "";
   let pendingCancelSha = "";
   // The Merge queue card's per-row cancel, armed by a first click and fired by a second within
   // 5 s — the same confirmSlot two-click factory the drawer's note-clear/entry-cancel use, so a
@@ -242,11 +244,19 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return "";
   }
-  function postReviewsHtml(entries, armed = "") {
+  function postReviewsHtml(entries, armed = "", role = "") {
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
     }
-    const lines = entries.map((e) => {
+    const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
+    const active = role && roles.includes(role) ? role : "";
+    let head = "<div class='card-head'><h2>Post-merge reviews</h2></div>";
+    if (roles.length) {
+      head = "<div class='card-head'><h2>Post-merge reviews</h2><label><span class='sr-only'>Role</span><select class='field' id='pendingreviewrole'><option value=''>All roles</option>" +
+        roles.map((id) => "<option value='" + esc(id) + "'" + (id === active ? " selected" : "") + ">" + esc(roleLabel(id)) + "</option>").join("") + "</select></label></div>";
+    }
+    const kept = entries.filter((e) => !active || (e && e.role === active));
+    const lines = kept.map((e) => {
       const label = postReviewStatusLabel(e);
       let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
         " · " + esc(e.summary || "—") +
@@ -260,15 +270,18 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       }
       return line;
     }).join("");
-    return "<div class='card-head'><h2>Post-merge reviews</h2></div>" +
-      "<div class='queue-head'>post-merge reviews (" + esc(entries.length) + "):</div>" + lines;
+    return head +
+      "<div class='queue-head'>post-merge reviews (" + esc(active ? kept.length + " of " + entries.length : entries.length) + "):</div>" + lines;
   }
   // Paint the Post-merge reviews card from the polled status payload — the dashboard twin of
   // 'tumwater reviews', driven by the raw postReviews list statusPayload already carries.
   function renderPendingReviews(status) {
     const card = $("pendingreviews");
     if (!card) return;
-    card.innerHTML = postReviewsHtml(status && Array.isArray(status.postReviews) ? status.postReviews : [], reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "");
+    const entries = status && Array.isArray(status.postReviews) ? status.postReviews : [];
+    const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
+    if (!roles.has(pendingReviewRole)) pendingReviewRole = "";
+    card.innerHTML = postReviewsHtml(entries, reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "", pendingReviewRole);
   }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
@@ -373,6 +386,12 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       if (e.target.id === "pendingqueuerole") {
         pendingQueueRole = e.target.value;
         renderPendingQueue(lastStatus);
+      }
+    });
+    $("pendingreviews").addEventListener("change", (e) => {
+      if (e.target.id === "pendingreviewrole") {
+        pendingReviewRole = e.target.value;
+        renderPendingReviews(lastStatus);
       }
     });
     $("pendingoverlaps").addEventListener("click", (e) => {

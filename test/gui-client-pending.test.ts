@@ -524,3 +524,64 @@ test("postReviewsHtml arms the clicked commit's Accept as Confirm accept", () =>
   assert.match(armed, /data-accept='abcdef1234567890'>Accept</);
   assert.doesNotMatch(armed, /data-accept='abcdef1234567890'>Confirm accept/);
 });
+
+test("postReviewsHtml's Role picker keeps only the chosen role's entries and defaults to All roles", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string, role?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  const entries = [
+    { role: "feature", commit: "abcdef1234567890", summary: "add the thing" },
+    { role: "bugfix", commit: "0123456789abcdef", summary: "fix the thing", failures: 2 },
+    { role: "clean", commit: "fedcba9876543210", summary: "tidy" },
+  ];
+  // A chosen role keeps only its row.
+  const clean = postReviewsHtml(entries, "", "clean");
+  assert.match(clean, /clean fedcba98 · tidy/);
+  assert.doesNotMatch(clean, /feature abcdef12/);
+  assert.doesNotMatch(clean, /bugfix 01234567/);
+  // Queue-head shows kept of the whole-queue total under a role scope (the --role twin).
+  assert.match(clean, /post-merge reviews \(1 of 3\):/);
+  // The picker lists All roles first, each present role once in sorted order, and clean selected.
+  const picker = /id='pendingreviewrole'><option value=''>All roles<\/option>(.*?)<\/select>/.exec(clean);
+  assert.ok(picker, "picker with id pendingreviewrole present");
+  const inner = picker[1] ?? "";
+  const options = inner.match(/<option value='([^']+)'/g) || [];
+  assert.deepEqual(options.map((o) => o.replace(/^<option value='|'$/g, "")), ["bugfix", "clean", "feature"]);
+  assert.match(inner, /<option value='clean' selected>/);
+  assert.match(inner, /<option value='bugfix'>/);
+  assert.match(inner, /<option value='feature'>/);
+  // Default/all is byte-identical whether the role arg is omitted or empty, and shows all rows.
+  const all1 = postReviewsHtml(entries);
+  const all2 = postReviewsHtml(entries, "", "");
+  assert.equal(all1, all2);
+  assert.match(all1, /feature abcdef12/);
+  assert.match(all1, /bugfix 01234567/);
+  assert.match(all1, /clean fedcba98/);
+  assert.doesNotMatch(all1, / selected>/);
+  assert.doesNotMatch(all1, /undefined|NaN/);
+  // The unscoped head reports the whole-queue total.
+  assert.match(all1, /post-merge reviews \(3\):/);
+  // A role naming no entry falls back to every row.
+  const absent = postReviewsHtml(entries, "", "nobody");
+  assert.match(absent, /feature abcdef12/);
+  assert.match(absent, /bugfix 01234567/);
+  assert.match(absent, /clean fedcba98/);
+  // An empty or malformed list renders no picker and no undefined/NaN.
+  for (const malformed of [[], null, undefined]) {
+    const out = postReviewsHtml(malformed, "", "clean");
+    assert.match(out, /No merged commit is waiting/);
+    assert.doesNotMatch(out, /pendingreviewrole/);
+    assert.doesNotMatch(out, /undefined|NaN/);
+  }
+  // Each kept row keeps its data-accept commit.
+  assert.match(clean, /data-accept='fedcba9876543210'>Accept/);
+  assert.doesNotMatch(clean, /data-accept='abcdef1234567890'/);
+  assert.doesNotMatch(clean, /data-accept='0123456789abcdef'/);
+  // A rejected row still renders no Accept button under scope.
+  const rejected = postReviewsHtml([
+    { role: "feature", commit: "aaaaaaaaaaaaaaaa", summary: "bad", rejected: ["<r>"] },
+  ], "", "feature");
+  assert.match(rejected, /feature aaaaaaaa · bad/);
+  assert.doesNotMatch(rejected, /data-accept='aaaaaaaaaaaaaaaa'/);
+});
