@@ -377,7 +377,9 @@ before and after is a one-off job done by hand, not part of this.
   reverts are told apart from red-main ones by the event's `reason` (post-review | main-red)
   and are never counted toward the ceiling or called false: a post-merge-review rejection is
   an intended revision cycle, carried instead by `tumwater report`'s post-merge-rejection
-  table. An event without `reason` (an older build) defaults to main-red.
+  table. An event without `reason` (an older build) is classified from what it carries: a
+  non-empty `failingTests` keeps it red-main, a matching `afterMerge: true` `review_rejected`
+  marks a post-merge rejection and is excluded, and an event with neither defaults to red-main.
 - The detail names each false-looking revert (culprit sha and which test failed) and the count
   when over the limit.
 

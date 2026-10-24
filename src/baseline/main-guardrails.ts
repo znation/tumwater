@@ -130,9 +130,10 @@ export const REVERT_RATE_LIMIT = 5;
  * predate the split and carry none; classify those from what they already carry instead of
  * assuming they are red-main (revertReasonOf's absent-reason default is a display fallback): a
  * non-empty `failingTests` means the main watch's check was red, a matching `afterMerge: true`
- * `review_rejected` naming the reverted commit means a post-merge rejection, and an event with
- * neither is an unknown cause and is never counted as red-main — a deploy lag cannot turn an
- * intended rejection cycle into a daily-revert alarm. */
+ * `review_rejected` naming the reverted commit means a post-merge rejection and is excluded,
+ * and an event with neither signal is an unknown cause that still defaults to red-main (G2,
+ * plans/fast-merge.md) — so a deploy lag cannot turn an intended rejection cycle into a
+ * daily-revert alarm, while an older red-main revert the log cannot classify stays counted. */
 function isRedMainRevert(r: HarnessEvent, events: readonly HarnessEvent[]): boolean {
   if (r.reason === "post-review") return false;
   if (typeof r.reason === "string") return true; // an explicit main-red (or other) reason
@@ -147,7 +148,7 @@ function isRedMainRevert(r: HarnessEvent, events: readonly HarnessEvent[]): bool
     )
       return false; // a post-merge rejection; not red-main
   }
-  return false; // unknown cause; excluded from the red-main count
+  return true; // unknown cause: default to red-main, matching G2 (plans/fast-merge.md)
 }
 
 /** One `main_revert` in the last 24 h looks false when either G2 test holds — its failure did
