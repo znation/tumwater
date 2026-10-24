@@ -5,6 +5,25 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Every commit is verified on main, part 3b/3: a torn merge-queue head is dropped loudly and its change re-queued, so no landing waits forever on one unreadable file (planned 2026-10-24 by the operator, split from the held part 3/3; independent of parts 3a/3 and 3c/3–3f/3; touches src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts) — done 2026-10-24 by the feature role
+
+**Goal.** A torn or foreign queue head makes `headMerge` read null forever, and `dropTornHead` (src/merge/merge-verify.ts) drops it with a warning that names only the file. Nothing re-queues the change the file was meant to carry, so it waits for next-run leftover recovery while every healthy entry behind it is stranded for that poll. Drop the bad head loudly enough to name its role and put its change back on the queue, so the "nothing blocks a landing" rule holds even for a file the queue cannot read.
+
+**Approach.**
+- `staleHeadFile` (src/merge/merge-queue.ts) keeps returning the unreadable head; `dropTornHead` (src/merge/merge-verify.ts) reads the file's raw bytes before dropping it. `MergeEntry` serializes `role` first, so a torn write keeps a `"role":"<id>"` substring: recover it with a tolerant match (`/"role"\s*:\s*"([^"]+)"/`), not a JSON parse.
+- When a role is recovered, read that role's merge pin with `mergeRefName(role)` (src/paths.ts, `refs/tumwater/merge/<role>`); when it resolves, enqueue a fresh `MergeEntry` for that sha with `enqueueMerge` (the shape leftover recovery builds) before dropping the torn file, so the same poll's `queuedMergeFiles` sees it. A torn head with no recoverable role or no pin drops with the existing warning plus the file's role when known.
+- `readMergeQueue`/`dropMerge` and the rest of `drainVerify` are unchanged.
+
+**Files touched.** src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts
+
+**Acceptance criteria.**
+- A torn head is dropped and its recovered change is re-queued in the same poll (a subsequent `headMerge` reads the re-queued entry, not null); the warning names the torn file and, when recovered, its role.
+- A foreign or unrecoverable head is dropped with the file named and the queue advances; no healthy entry behind a torn head waits.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/merge-queue.test.ts: `a torn queue head is dropped and its change re-queued` — write a partially-serialized head carrying `role`/`sha`, run the drain's torn-head step, and assert the file is gone, a fresh entry for the same sha is queued, and one warning names the file; a head with no readable role drops with the warning and no re-queue.
+
 ### The watch's five diff-rule failures on main raise a standing amber alert on `tumwater status`, the dashboard and the TUI, so a diff the gate let through cannot sit on main unremarked (planned 2026-10-24 by the plan role; independent of every eligible plan — the in-flight `ci parity` badge plan edits src/ui/status-payload.ts (badge fields) and src/ui/status-render.ts (the badge span), the `Forward, never back` parts edit src/review, src/merge, src/verdict and docs/invariants.md, the `Every commit is verified on main` parts edit src/baseline, src/merge, src/config, src/orchestrator and src/runner (none adds a team alert or edits src/ui/team-alerts.ts), and the Ready-only plan edits src/ui/tui/tui-backlog.ts and its neighbours, not src/ui/tui/tui.tsx; it shares src/ui/status-payload.ts and src/ui/status-render.ts with the badge plan (additive: a badge field and span there, a `teamAlerts` reader and trailing argument here) and shares no file with any other waiting plan; touches src/ui/status-payload.ts src/ui/team-alerts.ts src/ui/status-render.ts src/ui/tui/tui.tsx docs/how-it-works.md test/status-payload.test.ts test/team-alerts.test.ts) — done 2026-10-24 by the feature role
 
 **Goal.** The main watch runs the review gate's five deterministic diff rules on every tip it covers (src/baseline/main-watch.ts `watchRules`), and a violation is logged as `warning` with the message `main's tip <short sha> fails the diff rules: <reason>` — the same reason text the gate rejects with. Nothing reads that warning: `tumwater doctor`'s `claimed bugs` row re-derives one rule (a false-fix claim) only on demand, the `mainred` alert is a build red, and the event log is the only surface. So a conflict marker, a protected edit, a leaked secret, a phantom fix claim or a broken backlog structure that reached main through a gate blind spot (the gate judges one change; the watch judges each first-parent commit's own diff) is invisible to an operator watching the dashboard. Add one read-only amber alert that surfaces the warning the watch already writes.

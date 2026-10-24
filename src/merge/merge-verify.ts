@@ -5,9 +5,12 @@ import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { providerWaitStage } from "./merge-slot.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { RoleRunner } from "../runner/runner.js";
-import { branchHead, isMergedInto } from "../git/git.js";
+import { branchHead, commitMessage, isMergedInto, refSha } from "../git/git.js";
+import { commitRunOf } from "../git/commit-message.js";
+import { recoveredMergeEntry, recoveredMetadata } from "../runner/leftover.js";
 import { addMergeChange, mergeUsage, removeMergeChange, setMergeChangeStatus } from "./merge-slot.js";
-import { dropMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
+import { dropMerge, enqueueMerge, entryRevisionFields, queuedMergeFiles, staleHeadFile, tornHeadRole, type MergeEntry } from "./merge-queue.js";
+import { mergeRefName } from "../paths.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { verifyRequest, type VerifyVerdict } from "./merge-batch.js";
@@ -56,17 +59,56 @@ export function resolveAuthor(ctx: MergePipelineContext, role: string): RoleRunn
 /** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
  * a hand-placed file) makes headMerge read null forever — nothing else drops it, stranding
  * every live entry behind it and pinning their authors' runs via the interlock. Drop it with
- * one warning; the healthy entries behind it are verified in the same poll. The crashed
- * entry's commit, if any, still rides its merge ref into next-run leftover recovery
- * (BUGS.md 2026-09-17). */
-function dropTornHead(root: string): void {
+ * one warning naming the file (and, when the head's raw bytes still carry a role, that role);
+ * the healthy entries behind it are verified in the same poll. When a role is recovered, that
+ * role's merge pin is read and, if it resolves, the change is re-queued fresh — in the same
+ * shape leftover recovery builds (recoveredMergeEntry: the commit message's real summary,
+ * body, high-friction flag, and revision round, plus the authoring run from its Run trailer) —
+ * before the drop, so the same poll's queuedMergeFiles sees it and no landing waits forever on
+ * the one unreadable file (BUGS.md 2026-09-17). The re-queue is best-effort: a write failure
+ * (ENOSPC/EMFILE) or an unreadable commit must not wedge the queue, so the torn head is still
+ * dropped (the pin survives and leftover recovery re-queues the full shape on the role's next
+ * run), and the drain's poll never aborts. A torn head with no recoverable role or no pin drops
+ * with the warning alone; the crashed entry's commit, if any, still rides its merge ref into
+ * next-run leftover recovery. Exported for test/merge-queue.test.ts's torn-head step. */
+export async function dropTornHead(root: string): Promise<void> {
   const stale = staleHeadFile(root);
   if (!stale) return;
+  const role = tornHeadRole(stale);
+  let requeued = false;
+  let requeueFailed = false;
+  if (role) {
+    const sha = await refSha(root, mergeRefName(role)).catch(() => null);
+    if (sha) {
+      try {
+        // The shape leftover recovery builds. `run` is recovered from the commit's Run trailer
+        // (the drain has no run number of its own) so session naming keeps the authoring run;
+        // a hand-made commit with no trailer falls back to the zero slot.
+        const meta = await recoveredMetadata(root, sha);
+        const message = await commitMessage(root, sha);
+        const run = message === null ? 0 : (commitRunOf(message) ?? 0);
+        enqueueMerge(root, recoveredMergeEntry(role, sha, meta, run));
+        requeued = true;
+      } catch {
+        // A re-queue that cannot be built or written (ENOSPC/EMFILE on the queue write, an
+        // unreadable commit) must not abort the poll or strand the head: drop it anyway and let
+        // the still-held pin feed next-run leftover recovery, which rebuilds the full shape.
+        requeueFailed = true;
+      }
+    }
+  }
   dropMerge(stale);
+  const roleNote = !role
+    ? ""
+    : requeued
+      ? `; ${role}'s pinned change was re-queued`
+      : requeueFailed
+        ? `; ${role}'s pinned change could not be re-queued — left for leftover recovery`
+        : `; ${role}'s pin is unreadable — left for leftover recovery`;
   warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
-    `merge queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue keeps moving`,
+    `merge queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue keeps moving${roleNote}`,
   );
 }
 
@@ -105,7 +147,7 @@ async function mergedIntoMain(root: string, sha: string, mainBranch: string, hea
  * run, with its marker record; a crash mid-verification leaves both entry and ref, so the entry is
  * verified again — the established crash semantics. */
 export async function drainVerify(ctx: MergePipelineContext, p: MergePipeline): Promise<void> {
-  dropTornHead(ctx.root);
+  await dropTornHead(ctx.root);
   const queue = queuedMergeFiles(ctx.root);
   // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
   // spawn), serving every entry's cached dedupe verdict below.

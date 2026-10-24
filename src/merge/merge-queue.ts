@@ -309,6 +309,25 @@ export function staleHeadFile(root: string): string | null {
   return readEntry(file) === null ? file : null;
 }
 
+/** The role a torn queue file was being written for, recovered from its raw bytes: MergeEntry
+ * serializes `role` first, so even a head a crash cut mid-write keeps a `"role":"<id>"`
+ * substring the drain can read back without a JSON parse. Tolerant by design — the regex, not
+ * a JSON.parse — because the file's tail is exactly the part the tear may have lost. Null when
+ * the file has no readable role: a foreign file, or a tear that cut the write before the role
+ * landed. Best-effort: an unreadable file reads as null, never a throw. The drain uses it to
+ * name the torn head's owner and re-queue its pinned change before dropping the file. */
+export function tornHeadRole(file: string): string | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+  const m = /"role"\s*:\s*"([^"]+)"/.exec(raw);
+  if (!m) return null;
+  return canonicalRoleId(m[1]!);
+}
+
 /** Remove one queued merge's file after its merge outcome — terminal or not (a
  * non-terminal outcome keeps the merge ref; the retry is the role's next fresh run, not a
  * queue re-drain). ENOENT is a no-op: a concurrent drop between listing and removal is a

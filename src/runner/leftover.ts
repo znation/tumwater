@@ -245,25 +245,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     // RunnerState.conflictHandback (the pin survives until that re-apply).
     return { kind: "handback", sha, summary, attempts };
   }
-  const entry: MergeEntry = {
-    role: ctx.role,
-    sha,
-    run: ctx.runNumber,
-    // Name what merges, not merely that a recovery happened: the recovered commit's own subject
-    // rides the merge, so the failure digest's "Merged in the window" can correlate a
-    // recovered merge with the work it names (BUGS.md 2026-09-21). Unreadable messages fall
-    // back to the bare provenance label.
-    summary: meta.subject
-      ? `recovered leftover work from ${ctx.role}: ${meta.subject}`
-      : `recovered leftover work from ${ctx.role}`,
-    body: meta.body,
-    highFriction: meta.highFriction || undefined,
-    // A retriable revision keeps its round from the commit's Revision trailer, so its next
-    // rejection records the following round (not round 1 again) and a recovered merge still
-    // deletes the rejected ref (plans/revise-rejected.md). Absent on a fresh change.
-    ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
-    enqueuedAt: Date.now(),
-  };
+  const entry = recoveredMergeEntry(ctx.role, sha, meta, ctx.runNumber);
   enqueueMerge(ctx.root, entry);
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
@@ -274,8 +256,39 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
  * predates the contract or the message cannot be read. Recovery merges through the same gate
  * as a fresh run, so it must present those fields the same way — otherwise a flagged change
  * is silently reviewed as routine (BUGS.md 2026-09-19), and the merged event names the
- * recovery but not the work (BUGS.md 2026-09-21). */
-async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
+ * recovery but not the work (BUGS.md 2026-09-21). The merge drain's torn-head step
+ * (dropTornHead) reads it too, so a change it re-queues keeps exactly this shape. */
+export async function recoveredMetadata(root: string, sha: string): Promise<CommitMetadata> {
   const message = await commitMessage(root, sha);
   return message ? parseCommitMetadata(message) : {};
+}
+
+/** The queue entry leftover recovery builds for a recovered commit: the pinned sha plus the
+ * summary, body, and high-friction flag read back from its commit message, and the revision
+ * round from its Revision trailer. Also the exact shape the merge drain's torn-head step
+ * (dropTornHead, merge-verify.ts) re-queues through — so a torn file whose change is
+ * re-queued keeps the flag/round its authoring run stamped and is never silently reviewed as
+ * routine (BUGS.md 2026-09-19). A recovery never carries `priorReview` (run-stage fills it
+ * only from RunnerState.lastReview on a run that held the rejected diff; a recovery's author
+ * is gone). */
+export function recoveredMergeEntry(role: string, sha: string, meta: CommitMetadata, run: number): MergeEntry {
+  return {
+    role,
+    sha,
+    run,
+    // Name what merges, not merely that a recovery happened: the recovered commit's own subject
+    // rides the merge, so the failure digest's "Merged in the window" can correlate a
+    // recovered merge with the work it names (BUGS.md 2026-09-21). Unreadable messages fall
+    // back to the bare provenance label.
+    summary: meta.subject
+      ? `recovered leftover work from ${role}: ${meta.subject}`
+      : `recovered leftover work from ${role}`,
+    body: meta.body,
+    highFriction: meta.highFriction || undefined,
+    // A retriable revision keeps its round from the commit's Revision trailer, so its next
+    // rejection records the following round (not round 1 again) and a recovered merge still
+    // deletes the rejected ref (plans/revise-rejected.md). Absent on a fresh change.
+    ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
+    enqueuedAt: Date.now(),
+  };
 }

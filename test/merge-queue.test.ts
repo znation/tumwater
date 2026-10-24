@@ -18,10 +18,13 @@ import {
   staleHeadFile,
 } from "../src/merge/merge-queue.js";
 import { queueEntryMergeLabel, renderMergeQueue, revisionNote, retryNote } from "../src/merge/merge-queue-render.js";
-import { mergeQueueDir } from "../src/paths.js";
+import { dropTornHead } from "../src/merge/merge-verify.js";
+import { mergeQueueDir, mergeRefName } from "../src/paths.js";
+import { setRef } from "../src/git/git.js";
+import { readEvents } from "../src/events/event-read.js";
 import type { MergeEntry } from "../src/merge/merge-queue.js";
-import { dieMidWrite } from "./helpers/fs-faults.js";
-import { makeRepo } from "./fixtures/repo-fixtures.js";
+import { dieMidWrite, errnoError, patchFsMethod } from "./helpers/fs-faults.js";
+import { mainSha, makeRepo, seedCommit } from "./fixtures/repo-fixtures.js";
 
 function entry(role: string, sha: string, run = 1): MergeEntry {
   return { role, sha, run, summary: `summary from ${role} #${run}`, enqueuedAt: Date.now() };
@@ -352,6 +355,96 @@ test("renderMergeQueue marks a high-friction entry and leaves an ordinary one al
   // A hand-edited non-boolean does not fabricate the marker.
   const nonBool = { ...plain, sha: "c".repeat(40), highFriction: "yes" } as unknown as MergeEntry;
   assert.ok(!renderMergeQueue({ entries: [nonBool], unreadable: 0 }, now).includes("high friction"));
+});
+test("a torn queue head is dropped and its change re-queued from the recovered pin in leftover-recovery shape, or dropped with no re-queue", async () => {
+  // The drain's torn-head step (dropTornHead). A torn head — a partial write mid-enqueue — keeps
+  // `"role":"<id>"` because MergeEntry serializes role first; the drain drops it loudly AND
+  // re-queues the change it was writing, reading the pinned sha back from the role's merge ref
+  // and the commit message's subject/body/friction/revision/run, so a landing does not wait
+  // forever on the one unreadable file and a re-queued change is not silently reviewed as
+  // routine (BUGS.md 2026-09-19). A head with no readable role drops with the warning alone and
+  // nothing re-queued.
+  const repo = makeRepo();
+  const dir = mergeQueueDir(repo);
+  fs.mkdirSync(dir, { recursive: true });
+  // The pinned commit carries a real harness-stamped message: subject + body + the Run/Friction/
+  // Revision trailers recovery reads back. mainSha after the seed is that commit.
+  seedCommit(
+    repo,
+    "work.txt",
+    "the work\n",
+    "tumwater(improve): fix the north\n\nWHY: the north is broken\n\nRISK: low\n\nVERIFIED: ran the checks\n\nRun: improve #7 · turns 41 · ctx 123k\nFriction: high (41 turns / 62m)\nRevision: 2",
+  );
+  const sha = mainSha(repo);
+  const torn = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(torn, '{"role": "improve", "sha": "');
+  await setRef(repo, mergeRefName("improve"), sha);
+  assert.equal(staleHeadFile(repo), torn, "the torn head is the unreadable head");
+
+  await dropTornHead(repo);
+
+  assert.equal(staleHeadFile(repo), null, "the torn file is gone");
+  const requeued = queuedMerges(repo);
+  assert.equal(requeued.length, 1, "exactly the recovered change is queued in the torn file's place");
+  assert.equal(requeued[0]!.role, "improve");
+  assert.equal(requeued[0]!.sha, sha, "the re-queued entry carries the pinned sha, not the file's partial one");
+  // The shape leftover recovery builds: the commit's real summary, body, high-friction flag,
+  // revision round, and authoring run ride the re-queued entry.
+  assert.equal(requeued[0]!.summary, "recovered leftover work from improve: fix the north");
+  assert.match(requeued[0]!.body ?? "", /WHY: the north is broken/, "the author's body rides the re-queue");
+  assert.equal(requeued[0]!.highFriction, true, "a high-friction change keeps its flag and is not reviewed as routine");
+  assert.equal(requeued[0]!.revisionRound, 2, "a revision keeps its round (no revision-round reset)");
+  assert.equal(requeued[0]!.run, 7, "the authoring run is recovered from the Run trailer");
+  assert.ok(headMerge(repo), "a subsequent headMerge reads the re-queued entry, not null");
+  const warns = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warns.length, 1, "one harness warning for the drop");
+  assert.match(String(warns[0]!.message), /0000000000-000000-1\.json/, "the warning names the torn file");
+  assert.match(String(warns[0]!.message), /improve/, "the warning names the recovered role");
+
+  // A torn head with no readable role drops the same way but with no re-queue.
+  const repo2 = makeRepo();
+  const dir2 = mergeQueueDir(repo2);
+  fs.mkdirSync(dir2, { recursive: true });
+  const torn2 = path.join(dir2, "0000000000-000000-1.json");
+  fs.writeFileSync(torn2, "mid-write garbage cut before any role landed ");
+  await dropTornHead(repo2);
+  assert.equal(staleHeadFile(repo2), null, "the unreadable head is gone");
+  assert.equal(queueDepth(repo2), 0, "nothing re-queued without a recoverable role");
+  const warns2 = readEvents(repo2).filter((e) => e.type === "warning");
+  assert.equal(warns2.length, 1, "one warning even without a recoverable role");
+  assert.match(String(warns2[0]!.message), /0000000000-000000-1\.json/, "the warning still names the file");
+});
+
+test("a torn queue head whose re-queue cannot write is still dropped so the queue advances", async () => {
+  // An ENOSPC/EMFILE on the re-queue's queue-file write must not wedge the queue or abort the
+  // drain poll: the torn head is dropped anyway (the pin survives for next-run leftover
+  // recovery), not left to strand every healthy entry behind it.
+  const repo = makeRepo();
+  const dir = mergeQueueDir(repo);
+  fs.mkdirSync(dir, { recursive: true });
+  const torn = path.join(dir, "0000000000-000000-1.json");
+  fs.writeFileSync(torn, '{"role": "improve", "sha": "');
+  await setRef(repo, mergeRefName("improve"), mainSha(repo));
+  assert.equal(staleHeadFile(repo), torn, "the torn head is the unreadable head");
+
+  // The enqueue's atomic write (writeJsonAtomic -> fs.writeFileSync) fails; the events feed and
+  // the drop's rmSync use other entry points, so only the re-queue's own queue-file write is
+  // faulted (scoped to the queue dir so the warning still makes it out).
+  const undo = patchFsMethod("writeFileSync", (orig) => (file: unknown, ...rest: unknown[]) => {
+    if (typeof file === "string" && file.startsWith(mergeQueueDir(repo))) throw errnoError("ENOSPC");
+    return orig(file, ...rest);
+  });
+  try {
+    await dropTornHead(repo);
+  } finally {
+    undo();
+  }
+  assert.equal(staleHeadFile(repo), null, "the torn head is dropped even when the re-queue cannot write");
+  assert.equal(queueDepth(repo), 0, "nothing re-queued when the write failed");
+  const warns = readEvents(repo).filter((e) => e.type === "warning");
+  assert.equal(warns.length, 1, "one warning still names the drop");
+  assert.match(String(warns[0]!.message), /0000000000-000000-1\.json/, "the warning names the torn file");
+  assert.match(String(warns[0]!.message), /could not be re-queued — left for leftover recovery/, "the warning explains the re-queue failed");
 });
 
 

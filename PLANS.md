@@ -358,27 +358,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/tui-keys.test.ts: `Ctrl+O on the Backlog view toggles ready-only` — feed a Ctrl+O key with the Backlog view selected, assert the pane's `state().backlogReadyOnly` flips and a second press restores it, and that Ctrl+O on a non-Backlog view does not set it.
 - test/gui-client-team.test.ts: `the Ready only toggle hides the Blocked section` — extend `backlogScope`'s expose list with the toggle, seed a payload carrying a pickable and a held plan, assert the rendered html carries the `Blocked` divider and the held row, toggle and re-render, and assert the held title and divider are gone while the pickable row remains.
 
-### Every commit is verified on main, part 3b/3: a torn merge-queue head is dropped loudly and its change re-queued, so no landing waits forever on one unreadable file (planned 2026-10-24 by the operator, split from the held part 3/3; independent of parts 3a/3 and 3c/3–3f/3; touches src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts)
-
-**Previously held 2**
-
-**Goal.** A torn or foreign queue head makes `headMerge` read null forever, and `dropTornHead` (src/merge/merge-verify.ts) drops it with a warning that names only the file. Nothing re-queues the change the file was meant to carry, so it waits for next-run leftover recovery while every healthy entry behind it is stranded for that poll. Drop the bad head loudly enough to name its role and put its change back on the queue, so the "nothing blocks a landing" rule holds even for a file the queue cannot read.
-
-**Approach.**
-- `staleHeadFile` (src/merge/merge-queue.ts) keeps returning the unreadable head; `dropTornHead` (src/merge/merge-verify.ts) reads the file's raw bytes before dropping it. `MergeEntry` serializes `role` first, so a torn write keeps a `"role":"<id>"` substring: recover it with a tolerant match (`/"role"\s*:\s*"([^"]+)"/`), not a JSON parse.
-- When a role is recovered, read that role's merge pin with `mergeRefName(role)` (src/paths.ts, `refs/tumwater/merge/<role>`); when it resolves, enqueue a fresh `MergeEntry` for that sha with `enqueueMerge` (the shape leftover recovery builds) before dropping the torn file, so the same poll's `queuedMergeFiles` sees it. A torn head with no recoverable role or no pin drops with the existing warning plus the file's role when known.
-- `readMergeQueue`/`dropMerge` and the rest of `drainVerify` are unchanged.
-
-**Files touched.** src/merge/merge-queue.ts src/merge/merge-verify.ts docs/invariants.md test/merge-queue.test.ts
-
-**Acceptance criteria.**
-- A torn head is dropped and its recovered change is re-queued in the same poll (a subsequent `headMerge` reads the re-queued entry, not null); the warning names the torn file and, when recovered, its role.
-- A foreign or unrecoverable head is dropped with the file named and the queue advances; no healthy entry behind a torn head waits.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/merge-queue.test.ts: `a torn queue head is dropped and its change re-queued` — write a partially-serialized head carrying `role`/`sha`, run the drain's torn-head step, and assert the file is gone, a fresh entry for the same sha is queued, and one warning names the file; a head with no readable role drops with the warning and no re-queue.
-
 ### Every commit is verified on main, part 3c/3: review moves after landing — no role is reviewed before its commit merges, and only a secret leak or a protected edit refuses a diff (planned 2026-10-24 by the operator, split from the held part 3/3; requires part 2/3 landed; independent of parts 3a/3 and 3b/3; part 3d/3 below deletes the `review.afterMerge` surfaces this part leaves inert, and part 3e/3 deletes the pre-merge reviewer plumbing this part leaves unreferenced; touches src/review/review.ts src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/leftover.ts src/orchestrator/scheduling-skip.ts src/orchestrator/orchestrator-scheduling.ts src/orchestrator/scheduling-scope.ts src/orchestrator/orchestrator-poll.ts docs/how-it-works.md test/review.test.ts test/post-merge-review.test.ts test/merge-drain.test.ts)
 
 **Needs review 2026-10-24 by feature: too large for one run (held 3)**

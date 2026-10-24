@@ -2150,6 +2150,21 @@ rethrown.
 "removeQueueFile reports false for a file that already vanished" and "removeQueueFile rethrows
 errors other than ENOENT".
 
+### INV-AG5: a torn merge-queue head is dropped and its recovered change re-queued from the role's pin, so the queue advances and no landing waits on the one unreadable file
+
+**Guarantee.** When the merge queue's oldest file is unreadable (torn or foreign) but its raw bytes
+still carry a role (`"role":"<id>"`), `dropTornHead` reads that role's merge pin
+(`refs/tumwater/merge/<role>`) and, when the pin resolves, enqueues a fresh entry for that pinned
+sha before dropping the file — so the same poll's `queuedMergeFiles` sees the change and `headMerge`
+reads the re-queued entry, never null forever. A torn head with no readable role, or a recovered
+role with no resolvable pin, is dropped with the warning alone. In every case exactly one warning
+names the torn file and, when a role was recovered, that role.
+
+**Binds.** `src/merge/merge-verify.ts` (`dropTornHead`), `src/merge/merge-queue.ts` (`tornHeadRole`).
+
+**Pinned by.** `test/merge-queue.test.ts` — "a torn queue head is dropped and its change re-queued
+from the recovered pin in leftover-recovery shape, or dropped with no re-queue".
+
 ## Deferred prompts: only the writer's exact marker defers or is stripped, and a prompt is due at its stamp
 
 `tumwater prompt --at` keeps the deferral inside the queue file's text, so no queue format migrates.
