@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split `teamAlerts` into ordered slice builders, part 2/5: the backlog hold and doctor-feed alerts move into `buildBacklogAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 1/5 landed, since it edits the `teamAlerts` body part 1/5 restructures; touches src/ui/team-alerts.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** Part 2 moves the next eight contiguous alerts of `teamAlerts`, in order: `questions`, `refused`, `operator-held`, `stalled-plans`, `plan-dependencies`, `stranded-plans`, `backlog-headings`, `validation-gaps`. Same rule as part 1/5: the run moves verbatim into a named builder called at the same position, so the emitted order is unchanged.
+
+**Approach.**
+- Add `interface BacklogAlertsInput` holding exactly `questions: readonly string[]`, `refused: readonly RefusedEntry[]`, `operatorHeld: readonly RefusedEntry[]`, `stalledPlans: readonly StalledPlan[]`, `planDependency: PlanDependencyProblem | null`, `strandedPlans: readonly StrandedPlanEntry[]`, `duplicatedHeadings: readonly BacklogHeadingDuplicate[]`, `validationGaps: readonly ValidationGapProblem[]`.
+- Move the eight blocks, comments and block-local derivations (`first`, the `moreDetail` folds) included, into `function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }))` at the same position, between the part 1/5 call and the `stale-bugs` block.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The eight `key` literals appear only inside `buildBacklogAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `grep -n "buildBacklogAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
 ### A `ci` role runs the CI workflow's own jobs at main's tip and fixes what fails, part 2/3: the red-main healer hand-off moves from `bugfix` to `ci` (planned 2026-10-24 by the plan role, split from part 1/2 of the held `ci` plan; requires part 1/3 landed, since the hand-off names the role that part adds; touches src/baseline/main-red.ts src/runner/runner-run.ts docs/how-it-works.md test/main-red.test.ts) — done 2026-10-24 by the feature role
 
 **Previously held 1**
