@@ -3199,6 +3199,26 @@ test("a key between the two Pending Ctrl+A presses disarms the accept", async ()
   assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #2/, "the press re-arms the now-selected row");
 });
 
+test("a Pending Ctrl+A confirm re-reads the review queue and refuses when it changed", async () => {
+  const { root } = await pendingCancelRoot();
+  const commit = "b".repeat(40);
+  seedReview(root, commit, "feature", "review me", { failures: 1 });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // feature (#1)
+  keys.handleKey(undefined, { name: "down" }); // clean (#2)
+  keys.handleKey(undefined, { name: "down" }); // review #1
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
+  assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #1/);
+  // The queue changes between the arming press and the confirming press: the entry at this
+  // review's position is now a different commit, so the re-read guard must refuse rather
+  // than accept the wrong (or now-gone) revision.
+  writeJsonFile(postReviewPath(root), { pending: [{ commit: "e".repeat(40), role: "feature", summary: "replaced" }] });
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // confirm → guard
+  await untilFlash(() => keys.state().flash ?? "", /the review queue changed/);
+  assert.equal(readPostReviews(root).length, 1, "the changed review entry is not accepted");
+  assert.equal(eventsOfType(root, "warning").length, 0, "no accept warning is written for a changed queue");
+});
+
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {
   assert.equal(
     pendingOverlapsText({ mainBranch: "main", state: "ready", overlaps: [] }),
