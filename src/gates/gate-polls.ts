@@ -1,15 +1,13 @@
-import type { TumwaterConfig, FallbackModelConfig, ModelTier } from "../config/config-schema.js";
+import type { TumwaterConfig, ModelTier } from "../config/config-schema.js";
 import type { BudgetGate } from "../budget/budget.js";
+import { applyBudgetGateWiring } from "../budget/budget-wiring.js";
 import {
-  gateRoleConfig,
   newBudgetGateState,
   pollBudgetGate,
-  runOnPair,
   subscriptionBackendOf,
   type BudgetGateState,
 } from "./budget-gates.js";
 import { backendsInUse } from "./startup-gate.js";
-import { fallbackDemotion, type FallbackDemotion } from "../budget/fallback-breaker.js";
 import { newPauseGateState, pollPauseGates, type PauseGateState } from "./pause-gates.js";
 import { newStreakGateState, pollStreakGate, type StreakGateState } from "./streak-gate.js";
 import {
@@ -51,8 +49,6 @@ import type { RoleRunner } from "../runner/runner.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instancePauseKey, runnerEnabled } from "../roles/runner-ids.js";
 import { queuedMergeRoles } from "../merge/merge-queue.js";
-import { MODEL_TIERS } from "../config/config-schema.js";
-import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
 import { configForRole, roleSeamTier, windowReserveFor, withModelOverrides } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
@@ -241,108 +237,31 @@ export function pollTeamGates(
     liveConfig,
     modelsPath,
   });
-  // Publish what observers cannot derive themselves: every pair's demotion — a per-tier
-  // fallback can demote a pair the legacy single `fallback` never names, and a dashboard that
-  // only sees the engaged pair's verdict would show a tier's roles running while the
-  // scheduler holds them (part 5c/8) — plus the engaged pair's own (the legacy
-  // `fallbackDemoted` field, what `tumwater doctor` and the failure digest read) and the
-  // gate's own spend/cap pair — summed over the runners' live states, which every
-  // persisted-file reader lags by the in-flight runs' charges. Both rewritten only when they
-  // change, like the build status; the exit removes the whole file, so no stale pair survives
-  // a stop.
-  const demotions: Record<string, FallbackDemotion> = {};
-  for (const [name, b] of Object.entries(states.budget.breakers)) {
-    const d = fallbackDemotion(b);
-    if (d) demotions[name] = d;
-  }
-  const engagedDemotion =
-    states.budget.engaged !== null ? demotions[states.budget.engaged] : undefined;
-  const budget = { spentUsd, capUsd };
-  publishInfoFields(root, info, [
-    ["fallbackDemotions", demotions],
-    ["fallbackDemoted", engagedDemotion],
-    ["budget", budget],
-    ["chain", Object.keys(chain).length > 0 ? chain : undefined],
-  ]);
-  // One fallback_switched per poll in which a tier's pair or step changed (a return to the
-  // primary reads `to: null`, reason "available").
-  const switched: Record<string, { from: string | null; to: string | null; reason: string }> = {};
-  const prevChain = states.budget.prevChain;
-  for (const tier of MODEL_TIERS) {
-    const was = prevChain[tier];
-    const cur = chain[tier];
-    if (was?.pair === cur?.pair && was?.step === cur?.step) continue;
-    switched[tier] = { from: was?.pair ?? null, to: cur?.pair ?? null, reason: cur?.reason ?? "available" };
-  }
-  if (Object.keys(switched).length > 0)
-    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "fallback_switched", tiers: switched });
-  states.budget.prevChain = chain;
-  // The director keeps the live config — an explicit human prompt outranks the
-  // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
-  // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
-  // the reload, can never run on the wrong model.
-  for (const r of runners) {
-    r.config = gateRoleConfig(r.role, liveConfig, roleConfig, directorConfig);
-    // An image reroute must never spend past the daily cap: while the gate has the team on
-    // its free fallback pairs, a reroute looks only among those pairs (plans/image-input.md
-    // "Reroute target" "Regime"). Set beside the config assignment so the scheduler's regime
-    // and the roles' never disagree.
-    r.budgetFallbackActive = onFallback;
-  }
-
-  // The budget reopened: a run that started on a fallback pair keeps it until it ends, so hand
-  // those runs back — abort them resumably (session and worktree edits kept) and let their next
-  // run continue the same session on the primary, whose config the assignment above already
-  // installed (PLANS.md 2026-09-30). Per-tier fallbacks put different roles on different pairs
-  // (part 5c/8), so the match runs over EVERY pair the price-based resolution hands out, not only
-  // one. A run started on the primary keeps running, the director is exempt, and the merges (the
-  // slot's own runs) are untouched. One event per pair names who was handed back, so the resulting
-  // aborted runs read as the budget reopening, not as unexplained failures. The subscription
-  // window reset (below the cap): the same hand-back for the pairs the window move used. A window
-  // that resets while the cap still holds hands back nothing.
-  const handBack = gateResumed || (windowResumedBackends.length > 0 && !budgetActive);
-  // The window handback names the backend whose window resumed (the entry's goal) — not the
-  // handed-back pair's own backend: for claude-only the fallback pair carries no backend (it would
-  // read undefined), and with two subscription backends it would name the opposite one. A pair
-  // belongs to those resumed backends whose tiers' price-resolved pair it is.
-  const resumedBackendSet = new Set<string>(windowResumedBackends);
-  const resumedBackendForPair = (leftPair: FallbackModelConfig): string | undefined => {
-    for (const tier of MODEL_TIERS) {
-      const p = priceResolved[tier]?.pair;
-      if (p && p.provider === leftPair.provider && p.model === leftPair.model) {
-        const b = subscriptionBackendOf(withModelOverrides(liveConfig, tier, {}), accounts);
-        if (b !== null && resumedBackendSet.has(b)) return b;
-      }
-    }
-    return undefined;
-  };
-  if (handBack && fallbackPairs.length > 0) {
-    // A cap reopen while the window is still used up leaves the window's tiers on their
-    // fallback pairs: handing those runs back would abort them to restart on the same pair.
-    const stillMoved = (Object.keys(windowTiers) as (keyof typeof windowTiers)[]).flatMap((t) => {
-      const p = priceResolved[t].pair;
-      return p ? [p] : [];
-    });
-    for (const leftPair of fallbackPairs) {
-      if (stillMoved.some((p) => p.provider === leftPair.provider && p.model === leftPair.model)) continue;
-      const matching = runners.filter(
-        (r) => r.role !== DIRECTOR_ROLE && runOnPair(r.runModelPair(), leftPair),
-      );
-      if (matching.length > 0) {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "budget_handback",
-          roles: matching.map((r) => r.role),
-          provider: leftPair.provider,
-          model: leftPair.model,
-          ...(gateResumed
-            ? {}
-            : { reason: "window", backend: resumedBackendForPair(leftPair) }),
-        });
-        for (const r of matching) r.handBackRun();
-      }
-    }
-  }
+  // The budget wiring (demotions publish, fallback_switched event, per-runner config/cap
+  // assignment, cap-reopen and window hand-back) lives in src/budget/budget-wiring.ts
+  // (part 5c/8, part 2e/9) along with the whole budget concern.
+  applyBudgetGateWiring({
+    root,
+    runners,
+    liveConfig,
+    info,
+    accounts,
+    budget: states.budget,
+    view: {
+      roleConfig,
+      directorConfig,
+      onFallback,
+      resumed: gateResumed,
+      pairs: fallbackPairs,
+      priceResolved,
+      budgetActive,
+      windowTiers,
+      windowResumedBackends,
+      chain,
+      spentUsd,
+      capUsd,
+    },
+  });
 
   // The pause gates (src/gates/pause-gates.ts owns the reads, the edge-triggered pause/resume
   // events, and the cross-poll bookkeeping): the operator pause's marker and the per-role pause's

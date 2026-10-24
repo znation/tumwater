@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Move `pollTeamGates`'s budget wiring into `src/budget`, part 1/2: the fallback publish, per-runner config assignment and cap-reopen/window hand-back move into a new `budget-wiring` module (planned 2026-10-24 by the plan role, split from the held single wiring entry; this is the part the "too large for one run" hold was lifted for; lands after the `Split pollBudgetGate` plan above; touches src/gates/gate-polls.ts src/budget/budget-wiring.ts (new) test/gate-polls.test.ts test/budget-wiring.test.ts (new)) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** `src/gates/gate-polls.ts`'s `pollTeamGates` is the orchestrator's wiring hub, and the ~115 lines right after its `pollBudgetGate` destructure are the budget-and-window action half: the demotions publish (the `fallbackDemotions`/`fallbackDemoted`/`budget`/`chain` info fields), the `fallback_switched` event and `prevChain`/`switched` bookkeeping, the per-runner `gateRoleConfig` + `budgetFallbackActive` assignment, and the cap-reopen/window hand-back (`budget_handback` event + `handBackRun`). `src/budget` already owns the reads and the view derivation (`budget-gates.ts`, `fallback-breaker.ts`), so this half moves under it and `pollTeamGates` keeps only the call. Part 2/2 moves the per-tier pause subject sets into the same module; after the series the whole budget concern lives under `src/budget` and `pollTeamGates` is a thin pass over the gate modules.
+
+**Approach.** One coherent restructure, no behavior change. The `Split pollBudgetGate` plan above is the natural owner of the region's imports, so land this after it.
+- New `src/budget/budget-wiring.ts` exports `applyBudgetGateWiring(input)`; `input` carries `{ root, runners, liveConfig, info, accounts, budget, view }`, where `budget` is `states.budget` (`breakers`/`engaged`/`prevChain`) and `view` is the `pollBudgetGate` return fields the block reads (`gate`, `roleConfig`, `directorConfig`, `onFallback`, `resumed`, `windowResumedBackends`, `windowTiers`, `fallbackPairs`, `priceResolved`, `budgetActive`, `chain`). The function performs the demotions publish, the `fallback_switched` event with the `prevChain` write, the per-runner assignment, and the hand-back loop exactly as `pollTeamGates` does today, mutating the `RoleRunner`s in place (`config`, `budgetFallbackActive`, `handBackRun()`); it returns `void`, because the block reassigns no `pollTeamGates` local — the destructured `gate`/`roleConfig`/`directorConfig`/`budgetActive`/`servingResolved`/`priceResolved`/`windowTiers` are `const`s the block never writes, so `pollTeamGates` gets nothing back.
+- Move the hand-back's local `resumedBackendSet`/`resumedBackendForPair` into the module. Keep `gateRoleConfig`, `runOnPair` and `subscriptionBackendOf` exported from `src/gates/budget-gates.ts` (other `pollTeamGates` blocks and `src/merge/merge-verify.ts` import them) and import them into the module; import `fallbackDemotion`, `MODEL_TIERS`, `withModelOverrides`, `DIRECTOR_ROLE`, `logEventBestEffort`/`TUMWATER_SOURCE` and `publishInfoFields`/`OrchestratorInfo` from their existing homes. The `accounts` read stays in `pollTeamGates` (the window/team-hold block uses it too) and is passed in.
+- `pollTeamGates` keeps its destructure, its other blocks, its `TeamGatePoll` return shape, and its subject-set block (part 2/2 moves that). It calls `applyBudgetGateWiring` where the moved block sits today.
+- Docs: `docs/invariants.md`'s budget section has no `Binds` line for the publish/hand-back to re-point (its only `src/gates/gate-polls.ts` budget binds are INV-M2's re-trust, which stays in `pollBudgetGate`, and INV-M3's `windowMovedRoles`, part 2/2's), so this part changes no docs file.
+
+**Files touched.** src/gates/gate-polls.ts src/budget/budget-wiring.ts (new) test/gate-polls.test.ts test/budget-wiring.test.ts (new)
+
+**Acceptance criteria.**
+- `npm run test:gate` passes with no assertion change except import-path edits; the existing `test/gate-polls.test.ts` budget assertions (`fallback_switched`, `budget_handback`, `fallbackDemotions`, the per-runner `budgetFallbackActive` flag) stay green unchanged.
+- `grep -rn "budget-wiring" src test` finds the new module, its one production importer (`gate-polls.ts`) and its new test.
+- `pollTeamGates`'s published `fallbackDemotions`/`fallbackDemoted`/`budget`/`chain` fields and its `fallback_switched`/`budget_handback` events are unchanged for a fixed gate/view state, and the per-runner `config`/`budgetFallbackActive` assignment is unchanged.
+- `pollTeamGates`'s `TeamGatePoll` return shape is byte-identical (same fields, same ordering).
+- The module's doc comment names it the budget wiring (demotions publish, per-runner assignment, hand-back) and cites the same plan references (`part 5c/8`, `2e/9`) the moved comments carry.
+- `npm run test:gate` passes.
+
+**Tests.**
+- `test/gate-polls.test.ts`: existing assertions stay green unchanged (the moved body is still exercised through `pollTeamGates`).
+- `test/budget-wiring.test.ts` (new): one test that `applyBudgetGateWiring` at a fixed gate/view state publishes the same `fallbackDemotions`/`fallbackDemoted`/`budget`/`chain` info fields and logs the same `fallback_switched` event; one that a cap reopen hands matching fallback runs back (the `budget_handback` event and `handBackRun`), so the moved body is pinned in its new home.
+
 ### Split `pollBudgetGate`'s fallback-and-view half out of `src/gates/budget-gates.ts` (planned 2026-10-24 by the organize role) — done 2026-10-24 by the feature role
 
 **Goal.** `src/gates/budget-gates.ts` is 692 lines (3.5× the project's 197-line median) and holds one responsibility too many in a single function: `pollBudgetGate` (lines 244–621, ~378 lines) first decides the gate and emits its edge-triggered events, then derives the fallback config view the roles run under, and both halves share the function's local state and reads. A change to one half (a new subscription-backend rule, a new window-move) forces a read of the other, and the view derivation — the purest, most testable piece — stays buried under the event half. Splitting the view+window derivation out gives each half a plain function boundary and its own tests, mirroring how `stage-path-checks.ts` split `stage-check.ts` and how the vote/failure guards live under `src/budget/`.

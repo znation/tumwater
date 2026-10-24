@@ -42,8 +42,9 @@ import {
  * claude + pi fleets, part 2/4"): the backend is the step's own, else its tier primary's
  * resolved backend (the tier entry's, else the top level's, else pi). A pair routed to a
  * non-pi backend carries that backend as `backend` and its name as `provider` — the key the
- * budget gate's handback (gate-polls.ts's runOnPair against the run's seamHoldKey capture,
- * runner-run.ts's setRunPair) matches on — and the id passes to it as written (routeModel); a
+ * budget gate's handback (src/budget/budget-wiring.ts's runOnPair against the run's
+ * seamHoldKey capture, runner-run.ts's setRunPair) matches on — and the id passes to it as
+ * written (routeModel); a
  * pi pair keeps its own provider (a bare pi selector keeps undefined). */
 function seamKeyedPairFields(
   config: TumwaterConfig,
