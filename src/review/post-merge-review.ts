@@ -56,8 +56,8 @@ export interface PostMergeRejection {
 
 /** The bar a day's post-merge rejections must reach before the `post-merge-churn` amber alert
  * (src/ui/team-alerts.ts) fires: one post-merge rejection is the tiering's ordinary cost, two in
- * a day is a role whose already-landed changes keep being turned back — an operator's signal
- * to narrow `review.afterMerge` or raise the authoring bar. */
+ * a day is a role whose already-landed changes keep being turned back — the pre-revert signal
+ * for an operator to narrow `review.afterMerge` or raise the authoring bar. */
 export const POST_MERGE_REJECT_WARN = 2;
 
 /** How far back the post-merge-churn rule looks — one day, the 24 h event-window convention
