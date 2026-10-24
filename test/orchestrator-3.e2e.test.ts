@@ -208,12 +208,15 @@ test("a queue entry surviving a restart drains through the gate on next start", 
 
 test("an entry whose sha main already holds is dropped at the drain without a merge run", async () => {
   const repo = await makeFastRepo("dedup drain e2e test", ["clean"]);
-  // Every reviewer run increments its own counter — a deduped drain must burn none of them.
+  // Every PRE-merge gate review increments its own counter — a deduped drain must burn none of
+  // them. Part 3g/3 also queues a post-merge review for the merge that lands here, so the fake
+  // settles that review (its prompt is the only one naming an "already on main" commit) without
+  // counting it: the counter stays scoped to the pre-merge gate this test is about.
   const rev = path.join(tmpdir(), "interlock-review-count");
   const did = path.join(tmpdir(), "dedup-did");
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) n=$(cat '${rev}' 2>/dev/null || echo 0); echo $((n+1)) > '${rev}'; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
+      `for a in "$@"; do case "$a" in *"already on main"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; *"VERDICT:"*) n=$(cat '${rev}' 2>/dev/null || echo 0); echo $((n+1)) > '${rev}'; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
       `if [ -f '${did}' ]; then printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'; else touch '${did}'; printf '%s\n' '${assistantLine("done\nSUMMARY: add hello file")}'; fi`,
       `echo hello > hello.txt`,
     ].join("\n"),
@@ -606,7 +609,10 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
   // Merge-queue speed 2c through the scheduler's own wiring: every verify takes one of the shared
   // maxConcurrent permits (the authors are interlocked, so no role run holds one), verifyLimit
   // keeps the fourth for authoring, all three reviews run together (each records how many were
-  // in flight as it started), and the merge slot merges every change.
+  // in flight as it started), and the merge slot merges every change. The fake samples only the
+  // PRE-merge gate reviews in samples.log — a post-merge review (part 3g/3, its prompt the only
+  // one naming an "already on main" commit) is settled without sampling, so it can't skew the
+  // pre-merge overlap count or the one-review-per-change invariant this test asserts.
   const repo = makeRepo();
   await initProject(repo, "verification stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
@@ -617,7 +623,7 @@ test("maxConcurrent 4 verifies three queued changes at once on the live orchestr
   const runDir = tmpdir();
   const restore = fakePi(
     [
-      `for a in "$@"; do case "$a" in *"VERDICT:"*)`,
+      `for a in "$@"; do case "$a" in *"already on main"*) printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; *"VERDICT:"*)`,
       `d='${runDir}/runs'; mkdir -p "$d"; f=$(mktemp "$d/run.XXXXXX")`,
       `n=0; for x in "$d"/run.*; do n=$((n+1)); done; echo "$n" >> '${runDir}/samples.log'`,
       `sleep 3; rm -f "$f"; printf '%s\n' '${assistantLine("VERDICT: approve")}'; exit 0;; esac; done`,
