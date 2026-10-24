@@ -960,3 +960,18 @@ test("mainRuleFailures fires on a day's diff-rule warnings", () => {
   assert.equal(mainRuleFailures(old, now), null);
   assert.equal(MAIN_RULE_FAILURE_WINDOW_MS, 24 * 60 * 60_000);
 });
+
+test("the payload carries the stale-claims alert", () => {
+  const now = Date.now();
+  // A clean repo raises no stale-claims alert.
+  const clean = makeRepo();
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "stale-claims"), undefined);
+  // A seeded gone claim on a configured role makes the payload's alerts carry it.
+  const root = makeRepo();
+  saveRunnerState(root, {
+    ...freshRunnerState("feature"),
+    claim: { file: "PLANS.md", key: "gone", title: "Gone", at: now, source: "assigned" },
+  });
+  const alerts = (statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts;
+  assert.ok(alerts.find((a) => a.key === "stale-claims"), "a gone claim raises the stale-claims alert");
+});

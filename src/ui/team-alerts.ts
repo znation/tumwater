@@ -13,6 +13,7 @@ import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-stru
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
+import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -230,7 +231,7 @@ export interface AlertRole {
  * role (capped to the first three so the banner does not overflow), each opening that role's
  * pane. Shared by the failing, stuck, and no-image-target alerts, so the button shape and its
  * cap cannot drift between them. */
-function openRoleActions(roles: readonly AlertRole[]): Array<{ label: string; act: string; arg: string }> {
+function openRoleActions(roles: ReadonlyArray<{ role: string }>): Array<{ label: string; act: string; arg: string }> {
   return roles.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
 }
 
@@ -283,6 +284,7 @@ interface StatusAlertsInput {
     "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
   >;
   roles: readonly AlertRole[];
+  staleClaims: readonly ClaimState[];
 }
 
 /** The status/capacity and role-phase alerts, in emission order: a spent budget
@@ -293,7 +295,7 @@ interface StatusAlertsInput {
  * alerts at the position this run used to occupy, so the emitted key order is
  * unchanged. */
 function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
-  const { snap, roles } = input;
+  const { snap, roles, staleClaims } = input;
   const out: TeamAlert[] = [];
   const b = snap.budget;
   const onFallback = chainFragments(snap.chain);
@@ -458,6 +460,27 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
               actions: [],
             },
     );
+  }
+  // A work-instance claim the operator should act on without running `tumwater doctor`
+  // (src/scheduling/claim-entries.ts, the doctor's `parallel instances` row): a stopped
+  // instance holding an entry that left its role's section, or idle past the scheduler's
+  // release window, is an amber ask. One detail line per claim, worded like the doctor row so
+  // the two cannot drift; actions open the first three claimed roles. Nothing when empty.
+  if (staleClaims.length > 0) {
+    const noun = (c: ClaimState) => (c.file === "BUGS.md" ? "bug" : "plan");
+    out.push({
+      key: "stale-claims",
+      tone: "amber",
+      title: `${plural(staleClaims.length, "work-instance claim is", "work-instance claims are")} stale`,
+      detail: staleClaims
+        .map((c) =>
+          c.kind === "gone"
+            ? `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed`
+            : `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${c.hours}h`,
+        )
+        .join("; "),
+      actions: openRoleActions(staleClaims.map((c) => ({ role: c.id }))),
+    });
   }
   return out;
 }
@@ -1206,9 +1229,10 @@ export function teamAlerts(
   postReviewRisk: PostReviewRisk | null = null,
   droppedPostReviews: DroppedPostReviews | null = null,
   mainRuleFailure: MainRuleFailure | null = null,
+  staleClaims: readonly ClaimState[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
-  out.push(...buildStatusAlerts({ snap, roles }));
+  out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));

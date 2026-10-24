@@ -25,7 +25,7 @@ import { errorMessage, joinParts, textOr } from "../text/text.js";
 import { rankCountEntries } from "../collections.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { INSTANCE_ROLES, runnerEnabled, runnerIds } from "../roles/runner-ids.js";
-import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
+import { staleClaimEntries } from "../scheduling/claim-entries.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
@@ -436,13 +436,10 @@ export function checkWorkInstances(
   now = Date.now(),
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
-  const claims: Array<{ id: string; title: string; key: string; at: number; file: string }> = [];
-  for (const id of runnerIds(config)) {
-    const claim = loadRunnerState(root, id).claim;
-    if (claim) claims.push({ id, title: claim.title, key: claim.key, at: claim.at, file: claim.file });
-  }
-  const gone = claims.filter((c) => !listedKeys(root, c.id).has(c.key));
-  const stale = claims.filter((c) => !gone.includes(c) && now - c.at > CLAIM_IDLE_MAX_MS);
+  const claims = runnerIds(config).map((id) => loadRunnerState(root, id).claim).filter((c) => c !== undefined);
+  const entries = staleClaimEntries(root, runnerIds(config), now);
+  const gone = entries.filter((e) => e.kind === "gone");
+  const stale = entries.filter((e) => e.kind === "idle");
   const multi = Object.entries(config.roles)
     .filter(
       ([id, role]) => INSTANCE_ROLES.has(id) && role.enabled && (role.instances ?? 1) > 1,
@@ -455,10 +452,7 @@ export function checkWorkInstances(
   const noun = (c: { file: string }) => (c.file === "BUGS.md" ? "bug" : "plan");
   const parts: string[] = [
     ...gone.map((c) => `claimed ${noun(c)} "${c.title}" (${c.id}) names an entry no longer listed`),
-    ...stale.map(
-      (c) =>
-        `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
-    ),
+    ...stale.map((c) => `claimed ${noun(c)} "${c.title}" (${c.id}) has been idle ${c.hours}h`),
   ];
   if (smallPool)
     parts.push(

@@ -1509,3 +1509,29 @@ test("a main diff-rule failure raises one standing amber alert", () => {
   // A trailing null adds none.
   assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null).find((a) => a.key === "main-diff-rules"), undefined);
 });
+
+test("the stale-claims alert names a gone and an idle claim", () => {
+  const now = Date.now();
+  // staleClaims is the trailing parameter; the 23 preceding defaults (refused…mainRuleFailure)
+  // are passed explicitly so it lands in its slot.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [
+    { id: "feature-2", file: "PLANS.md", title: "Gone", kind: "gone", hours: 0 },
+    { id: "bugfix-2", file: "BUGS.md", title: "An open bug", kind: "idle", hours: 25 },
+  ]);
+  const only = alerts.filter((a) => a.key === "stale-claims");
+  assert.deepEqual(only.map((a) => [a.key, a.tone, a.title]), [["stale-claims", "amber", "2 work-instance claims are stale"]]);
+  assert.ok(only[0]!.detail.includes('claimed plan "Gone" (feature-2) names an entry no longer listed'));
+  assert.ok(only[0]!.detail.includes('claimed bug "An open bug" (bugfix-2) has been idle 25h'));
+  assert.deepEqual(only[0]!.actions, [
+    { label: "Open feature #2", act: "role", arg: "feature-2" },
+    { label: "Open bugfix #2", act: "role", arg: "bugfix-2" },
+  ]);
+  // An empty list raises no stale-claims alert.
+  const none = teamAlerts(base, [], [], now);
+  assert.equal(none.filter((a) => a.key === "stale-claims").length, 0);
+  // A single claim names its state with the singular verb.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [
+    { id: "feature-2", file: "PLANS.md", title: "Gone", kind: "gone", hours: 0 },
+  ]);
+  assert.deepEqual(one.filter((a) => a.key === "stale-claims").map((a) => a.title), ["1 work-instance claim is stale"]);
+});
