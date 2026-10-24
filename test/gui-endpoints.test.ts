@@ -996,7 +996,7 @@ function serveConfigUnset(root: string, body: unknown) {
 
 test("handleConfig returns exactly the curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
-  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customRoles: [{ name: "watch", task: "watch" }] });
+  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customRoles: [{ name: "watch", task: "watch" }], check: { command: "npm test" } });
   const { captured, data } = await serveConfig(root);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
@@ -1011,6 +1011,12 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.notify, null);
   // agents resolves to the default empty map when the file names none.
   assert.deepEqual(cfg.backends, {});
+  // The declared check serves its file value (an object), null when unset.
+  assert.deepEqual(cfg.check, { command: "npm test" });
+  const unsetRoot = tmpdir();
+  writeJsonFile(configPath(unsetRoot), { model: "gpt-5" });
+  const unsetServed = await serveConfig(unsetRoot);
+  assert.equal((unsetServed.data as Record<string, unknown>).check, null);
   // The run-concurrency knobs: maxConcurrent resolves to loadConfig's default (6) when the
   // file does not set it, and the two optional keys read null.
   assert.equal(cfg.maxConcurrent, 6);
@@ -1083,6 +1089,30 @@ test("handleConfigSet writes the run-concurrency knobs and refuses a type-invali
   assert.equal((served.data as Record<string, unknown>).maxConcurrent, 6);
   assert.equal((served.data as Record<string, unknown>).worktreeSlots, null);
   assert.equal((served.data as Record<string, unknown>).maxConcurrentPerProvider, null);
+});
+
+test("handleConfigSet writes the declared check and refuses an invalid one byte-identically", async () => {
+  const root = tmpdir();
+  const ok = await serveConfigSet(root, { key: "check", value: { command: "npm test" } });
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { ok: true, key: "check", value: { command: "npm test" } });
+  // The file on disk holds the object, polled live by the running team; GET serves it back.
+  const onDisk = readJson(configPath(root)) as Record<string, unknown>;
+  assert.deepEqual(onDisk.check, { command: "npm test" });
+  const served = await serveConfig(root);
+  assert.deepEqual((served.data as Record<string, unknown>).check, { command: "npm test" });
+  // A value validateConfig refuses (command not a non-blank string) answers 400 and leaves the
+  // file byte-identical — the same whole-candidate write path every other curated key uses.
+  const before = fs.readFileSync(configPath(root), "utf8");
+  const bad = await serveConfigSet(root, { key: "check", value: { command: 42 } });
+  assert.equal(bad.captured.status, 400);
+  assert.equal(fs.readFileSync(configPath(root), "utf8"), before, "the refused write leaves the file byte-identical");
+  // POST /api/config-unset removes it; GET then serves null.
+  await serveConfigUnset(root, { key: "check" });
+  const afterUnset = readJson(configPath(root)) as Record<string, unknown>;
+  assert.equal("check" in afterUnset, false);
+  const servedAfterUnset = await serveConfig(root);
+  assert.equal((servedAfterUnset.data as Record<string, unknown>).check, null);
 });
 
 test("handleBudget refuses a finite-but-unrepresentable cap with the shared screen's message", async () => {

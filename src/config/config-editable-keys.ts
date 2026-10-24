@@ -35,4 +35,7 @@ export const EDITABLE_CONFIG_KEYS = [
   // The per-backend section (plans/agent-backends.md, part 4a/7): the whole `agents` object is
   // edited here as JSON. The CLI's dotted `backends.<id>.bin`/`.args` merge one field at a time.
   "backends",
+  // The declared check (plans/portability.md §6/7, the no-check row): its Settings row is the
+  // surfaced remedy for the amber `no-check` alert — set `check.command` and the alert clears.
+  "check",
 ] as const;

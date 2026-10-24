@@ -47,7 +47,7 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings, SETTINGS_KEYS } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, maxConcurrentPerProvider: { anthropic: 4 }, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } } });
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, maxConcurrent: 6, maxConcurrentPerProvider: { anthropic: 4 }, worktreeSlots: 9, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } }, check: { command: "npm test" } });
   // The browser list is a hand copy of the server constant; pin key and order to it so the
   // two cannot drift — an added editable key must appear here too.
   assert.deepEqual(SETTINGS_KEYS.map(([key]) => key), [...EDITABLE_CONFIG_KEYS]);
@@ -79,6 +79,10 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   assert.match(html, /<label for='set-maxConcurrentChecks'>Max concurrent checks<span class='settings-key'>maxConcurrentChecks<\/span><\/label>/);
   // The claudeWindowReserve row renders under its curated label.
   assert.match(html, /<label for='set-claudeWindowReserve'>Claude window reserve \(backends\.claude\.windowReserve\)<span class='settings-key'>claudeWindowReserve<\/span><\/label>/);
+  // The check row (the no-check alert's surfaced remedy): an object value renders as compact
+  // JSON, exactly as backends does, under its Declared check label.
+  assert.match(html, /<label for='set-check'>Declared check \(JSON\)<span class='settings-key'>check<\/span><\/label>/);
+  assert.match(html, /id='set-check' value='\{&quot;command&quot;:&quot;npm test&quot;\}'/);
 });
 
 test("fetchSettings builds the panel and fills it from GET /api/config; a failure renders the error panel", async () => {

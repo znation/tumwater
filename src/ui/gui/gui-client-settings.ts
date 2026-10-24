@@ -41,6 +41,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["quietHours", "Quiet hours"],
     ["notify", "Notify hook"],
     ["backends", "Agent backends (JSON)"],
+    // The no-check alert's surfaced remedy: set check.command here and the alert clears.
+    ["check", "Declared check (JSON)"],
   ];
   // One row per key: the current value into an inline field (esc'd, like every rendered
   // value on the page), Save submits the row's form. A null (unset) key renders empty —
