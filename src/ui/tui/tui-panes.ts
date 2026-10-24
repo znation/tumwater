@@ -49,6 +49,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.killOrphansArmed = false;
     session.armedDropBrokenPins = session.dropBrokenPinsArmed;
     session.dropBrokenPinsArmed = false;
+    session.armedRetireLeftovers = session.retireLeftoversArmed;
+    session.retireLeftoversArmed = false;
     session.armedRevert = session.revertArmed;
     session.revertArmed = null;
     session.armedQueue = session.queueArmed;
@@ -186,6 +188,10 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // Health owns Ctrl+U (re-sync install) ahead of the pane router's fallthrough; off the
     // Health view it falls through so the prompt-line editor keeps Ctrl+U (kill-to-start).
     if (key.ctrl && key.name === "u" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // Health owns Ctrl+L (retire leftovers) ahead of the pane router's fallthrough; off the
+    // Health view it falls through so the Activity fallback shift (view 0) and the
+    // instructions editor on a role's Transcript keep their current meanings.
+    if (key.ctrl && key.name === "l" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") {
       // Ctrl+Y's transcript change-step arm (the diffstat toggle) is routed first and falls
       // through off it, so History keeps its Summary cycle on every other view.

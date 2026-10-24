@@ -2,7 +2,7 @@ import { REPORT_SINCE_MAX_MS } from "../../events/event-window.js";
 import type { ChangeOverlapsView, TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import type { OrphanKillReport } from "../../doctor/doctor-orphans.js";
-import type { BrokenPinDrop } from "../../doctor/doctor-contention-checks.js";
+import type { BrokenPinDrop, LeftoverRetireReport } from "../../doctor/doctor-contention-checks.js";
 import type { BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import type { previewRevert, revertMergedCommit } from "../../operator/revert.js";
 import type { RunDetail } from "../../run/run-detail-data.js";
@@ -41,6 +41,7 @@ export interface TuiPanesDeps {
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
+  retireLeftovers(root: string): Promise<LeftoverRetireReport>;
   runPatch(root: string, detail: RunDetail): Promise<string>;
 }
 
@@ -174,6 +175,10 @@ export interface TuiPaneSession {
   armedDropBrokenPins: boolean;
   /** The Health pane's pending second Ctrl+S; moved to `armedDropBrokenPins` by beginKey. */
   dropBrokenPinsArmed: boolean;
+  /** The armed retire-leftovers reap (first Ctrl+L on the Health pane), read by the second. */
+  armedRetireLeftovers: boolean;
+  /** The Health pane's pending second Ctrl+L; moved to `armedRetireLeftovers` by beginKey. */
+  retireLeftoversArmed: boolean;
   /** The armed run revert (first Ctrl+V on a History trail): the full sha a second Ctrl+V
    * reverts. */
   armedRevert: string | null;
@@ -206,6 +211,7 @@ export interface TuiPaneSession {
   revertCommit: typeof revertMergedCommit;
   collectChange(root: string, role: string, opts?: { path?: string; stat?: boolean }): Promise<RoleChangeView>;
   runStat(root: string, detail: RunDetail): Promise<string>;
+  retireLeftovers(root: string): Promise<LeftoverRetireReport>;
   runPatch(root: string, detail: RunDetail): Promise<string>;
 }
 
@@ -230,6 +236,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     killOrphansArmed: false,
     armedDropBrokenPins: false,
     dropBrokenPinsArmed: false,
+    armedRetireLeftovers: false,
+    retireLeftoversArmed: false,
     armedRevert: null,
     revertArmed: null,
     armedQueue: null,
@@ -248,6 +256,7 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     runDoctor: deps.runDoctor,
     killOrphans: deps.killOrphans,
     dropBrokenPins: deps.dropBrokenPins,
+    retireLeftovers: deps.retireLeftovers,
     commitBacklog: deps.commitBacklog,
     previewRevert: deps.previewRevert,
     revertCommit: deps.revertCommit,

@@ -8,7 +8,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleReviewAfterMerge, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleDropBrokenPins, handleCommitBacklog, handleResyncInstall, handleRetireLeftovers, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
@@ -294,6 +294,18 @@ test("handleDropBrokenPins answers the drop lines and ok", async () => {
   const { captured: badBody } = await captureJson((res) => handleDropBrokenPins(fakeReq("{nope"), res, root, async () => { notCalled = false; return { dropped: [], failed: [] }; }));
   assert.equal(badBody.status, 400);
   assert.equal(notCalled, true, "a malformed body never calls the drop seam");
+});
+
+test("handleRetireLeftovers answers the retire lines and ok", async () => {
+  const root = makeRepo();
+  const { data: retired } = await captureJson((res) => handleRetireLeftovers(fakeReq("{}"), res, root, async () => ({ retired: [{ role: "clean", removed: ["branch"] }], failed: [] })));
+  assert.deepEqual(retired, { ok: true, message: "retired clean: the branch (tumwater/clean)" });
+  const { data: refused } = await captureJson((res) => handleRetireLeftovers(fakeReq("{}"), res, root, async () => ({ retired: [], failed: [{ role: "dedupe", reason: "boom" }] })));
+  assert.deepEqual(refused, { ok: false, message: "failed to retire dedupe: boom" });
+  let notCalled = true;
+  const { captured: badBody } = await captureJson((res) => handleRetireLeftovers(fakeReq("{nope"), res, root, async () => { notCalled = false; return { retired: [], failed: [] }; }));
+  assert.equal(badBody.status, 400);
+  assert.equal(notCalled, true, "a malformed body never calls the retire seam");
 });
 
 test("handleCommitBacklog answers the commit lines and ok", async () => {

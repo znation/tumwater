@@ -77,7 +77,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-drop-broken-pins' title=\"Drops each refs/tumwater/ pin whose commit is gone - the manual git update-ref -d the tumwater pins row names, like tumwater doctor --drop-broken-pins\">Drop broken pins</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title=\"Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install\">Re-sync install</button></div>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title=\"Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install\">Re-sync install</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-retire-leftovers' title=\"Retire every disabled role's leftover worktree, branch and merge ref in one pass, like tumwater doctor --retire-leftovers (or tumwater retire --role <id> per role)\">Retire leftovers</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
@@ -247,6 +248,33 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     try {
       const d = await postJson("/api/doctor-drop-broken-pins", {});
       showFlash((d.ok ? "" : "error: ") + d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
+  }
+  // The Health card's Retire leftovers button: a two-click confirm, then POST
+  // /api/doctor-retire-leftovers runs the same reap as "tumwater doctor --retire-leftovers" and
+  // the card re-runs its checks so the leftover-role-branches row repaints. ok is false when a
+  // role's retire was refused, and its lines still flash so the operator sees who was left.
+  function paintRetireLeftoversButton() {
+    const btn = document.querySelector("button[data-action='doctor-retire-leftovers']");
+    if (btn) btn.textContent = retireLeftoversSlot.armed("retire-leftovers") ? "Confirm retire" : "Retire leftovers";
+  }
+  const retireLeftoversSlot = confirmSlot(paintRetireLeftoversButton);
+  async function retireLeftoversClick() {
+    if (!retireLeftoversSlot.armed("retire-leftovers")) {
+      retireLeftoversSlot.arm("retire-leftovers");
+      return;
+    }
+    retireLeftoversSlot.disarm();
+    paintRetireLeftoversButton();
+    showFlash("Retiring every disabled role's leftovers…");
+    try {
+      const d = await postJson("/api/doctor-retire-leftovers", {});
+      // The shared leftoverRetireLines join is empty when nothing is retirable, so the
+      // button falls back to the same none-left sentence the TUI Health key flashes.
+      showFlash((d.ok ? "" : "error: ") + (d.message || "no leftover roles to retire"));
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }

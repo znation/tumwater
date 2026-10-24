@@ -30,17 +30,19 @@ interface SettingsFns {
   confirmRetire(role: string): Promise<void>;
   killOrphansClick(): Promise<void>;
   dropBrokenPinsClick(): Promise<void>;
+  retireLeftoversClick(): Promise<void>;
   commitBacklogClick(): Promise<void>;
   resyncInstallClick(): Promise<void>;
   reprobeDoctorClick(): Promise<void>;
   paintKillButton(): void;
   paintDropButton(): void;
+  paintRetireLeftoversButton(): void;
 }
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "err-message", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "commitBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton", "paintDropButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "dropBrokenPinsClick", "retireLeftoversClick", "commitBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton", "paintDropButton", "paintRetireLeftoversButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -542,6 +544,67 @@ test("dropBrokenPinsClick arms on the first click and posts /api/doctor-drop-bro
   assert.deepEqual(flashes, ["Dropping broken pins…", "1 dropped broken pin: refs/tumwater/merge/broken names 22222222"]);
   assert.equal(button.textContent, "Drop broken pins");
   assert.equal(doctorFetches, 1);
+});
+
+test("retireLeftoversClick arms on the first click and posts /api/doctor-retire-leftovers on the second", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armed = false;
+  let doctorFetches = 0;
+  const button = { textContent: "" };
+  const { retireLeftoversClick, paintRetireLeftoversButton } = settingsScope({
+    confirmSlot: () => ({
+      armed: () => armed,
+      arm: () => { armed = true; },
+      disarm: () => { armed = false; },
+    }),
+    document: { querySelector: () => button },
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => {
+      doctorFetches++;
+      return { checks: [] };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "retired clean: branch" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await retireLeftoversClick();
+  assert.deepEqual(posts, []);
+  paintRetireLeftoversButton();
+  assert.equal(button.textContent, "Confirm retire");
+  await retireLeftoversClick();
+  assert.deepEqual(posts, [{ path: "/api/doctor-retire-leftovers", body: {} }]);
+  assert.deepEqual(flashes, ["Retiring every disabled role's leftovers…", "retired clean: branch"]);
+  assert.equal(button.textContent, "Retire leftovers");
+  assert.equal(doctorFetches, 1);
+});
+
+test("retireLeftoversClick flashes `no leftover roles to retire` when the reap retires nothing", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armed = false;
+  const button = { textContent: "" };
+  const { retireLeftoversClick, paintRetireLeftoversButton } = settingsScope({
+    confirmSlot: () => ({
+      armed: () => armed,
+      arm: () => { armed = true; },
+      disarm: () => { armed = false; },
+    }),
+    document: { querySelector: () => button },
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => ({ checks: [] }),
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await retireLeftoversClick();
+  paintRetireLeftoversButton();
+  await retireLeftoversClick();
+  assert.deepEqual(flashes, ["Retiring every disabled role's leftovers…", "no leftover roles to retire"]);
 });
 
 test("commitBacklogClick posts /api/doctor-commit-backlog and reruns the doctor", async () => {

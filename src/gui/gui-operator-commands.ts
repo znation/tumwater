@@ -13,7 +13,7 @@ import { cancelScheduledStopMessage, requestAbort, requestResetCounters, request
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { killOrphans, orphanKillLines, type OrphanKillReport } from "../doctor/doctor-orphans.js";
-import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop } from "../doctor/doctor-contention-checks.js";
+import { dropBrokenPins, brokenPinDropLines, type BrokenPinDrop, retireLeftovers, leftoverRetireLines, type LeftoverRetireReport } from "../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, backlogCommitMessage, type BacklogCommitReport } from "../doctor/doctor-backlog.js";
 import { loadConfigSafe } from "../config/config.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
@@ -114,6 +114,18 @@ export async function handleDropBrokenPins(req: http.IncomingMessage, res: http.
   if (!body) return;
   const result = await drop(root);
   sendJson(res, 200, { ok: result.failed.length === 0, message: brokenPinDropLines(result).join("; ") });
+}
+
+/** Handle POST /api/doctor-retire-leftovers: the dashboard Health card's Retire leftovers
+ * button — the same retireLeftovers `tumwater doctor --retire-leftovers` runs (with the loaded
+ * config, never `--force`), answering its lines joined with "; ". `ok` is false when any role's
+ * retire was refused. Same body discipline as /api/kill-orphans; `retire` is injectable so a
+ * test need not touch git. */
+export async function handleRetireLeftovers(req: http.IncomingMessage, res: http.ServerResponse, root: string, retire: (root: string) => Promise<LeftoverRetireReport> = (r) => retireLeftovers(r, loadConfigSafe(r).config)): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const report = await retire(root);
+  sendJson(res, 200, { ok: report.failed.length === 0, message: leftoverRetireLines(report).join("; ") });
 }
 
 /** Handle POST /api/doctor-commit-backlog: the dashboard Health card's Commit backlog button —

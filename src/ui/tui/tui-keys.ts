@@ -3,7 +3,7 @@ import { runDetailPatch, runDetailStat } from "../../run/run-detail-render.js";
 import { collectTeamChanges, collectRoleChange, collectChangeOverlaps, type ChangeOverlapsView, type TeamChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { killOrphans, type OrphanKillReport } from "../../doctor/doctor-orphans.js";
-import { dropBrokenPins, type BrokenPinDrop } from "../../doctor/doctor-contention-checks.js";
+import { dropBrokenPins, retireLeftovers, type BrokenPinDrop, type LeftoverRetireReport } from "../../doctor/doctor-contention-checks.js";
 import { commitUncommittedBacklog, type BacklogCommitReport } from "../../doctor/doctor-backlog.js";
 import { loadConfigSafe } from "../../config/config.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
@@ -46,6 +46,9 @@ interface TuiKeysDeps {
   /** Seam for the Health tab's Ctrl+S arm; defaults to `dropBrokenPins` so tests need not touch
    * real `refs/tumwater/` refs or run git. */
   dropBrokenPins?(root: string): Promise<BrokenPinDrop>;
+  /** Seam for the Health tab's Ctrl+L arm; defaults to `retireLeftovers` (with the loaded
+   * config, never `--force`) so tests need not run git or touch real branches/refs. */
+  retireLeftovers?(root: string): Promise<LeftoverRetireReport>;
   /** Seam for the Health tab's Ctrl+A commit-backlog; defaults to `commitUncommittedBacklog` so
    * tests need not run git on a throwaway root. */
   commitBacklog?(root: string): Promise<BacklogCommitReport>;
@@ -317,6 +320,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const runDoctorSeam = deps.runDoctor ?? ((r: string, p: "never" | "all") => runDoctor(r, undefined, undefined, p));
   const killOrphansSeam = deps.killOrphans ?? ((r: string) => killOrphans(r));
   const dropBrokenPinsSeam = deps.dropBrokenPins ?? ((r: string) => dropBrokenPins(r));
+  const retireLeftoversSeam = deps.retireLeftovers ?? ((r: string) => retireLeftovers(r, loadConfigSafe(r).config));
   const commitBacklogSeam = deps.commitBacklog ?? ((r: string) => commitUncommittedBacklog(r, loadConfigSafe(r).config));
   const previewRevertSeam = deps.previewRevert ?? previewRevert;
   const revertCommit = deps.revertCommit ?? revertMergedCommit;
@@ -365,6 +369,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     runDoctor: runDoctorSeam,
     killOrphans: killOrphansSeam,
     dropBrokenPins: dropBrokenPinsSeam,
+    retireLeftovers: retireLeftoversSeam,
     commitBacklog: commitBacklogSeam,
     previewRevert: previewRevertSeam,
     revertCommit,

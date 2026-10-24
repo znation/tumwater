@@ -5105,6 +5105,83 @@ test("Ctrl+S off the Health view never drops", () => {
   assert.equal(h.drops(), 0);
 });
 
+function retireLeftoversHarness(onView: number, report: { retired: { role: string; removed: string[] }[]; failed: { role: string; reason: string }[] }) {
+  const root = makeRoot();
+  const doctorReport: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let retires = 0;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(doctorReport);
+    },
+    retireLeftovers: () => {
+      retires += 1;
+      return Promise.resolve(report);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < onView; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  return { keys, retires: () => retires, doctors: () => doctors };
+}
+
+test("Ctrl+L twice on the Health view retires every disabled role's leftovers and flashes the lines", async () => {
+  const h = retireLeftoversHarness(7, { retired: [{ role: "clean", removed: ["branch"] }], failed: [] });
+  assert.equal(h.keys.state().view, 7);
+  await Promise.resolve();
+  const before = h.doctors();
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(h.retires(), 0);
+  assert.match(h.keys.state().flash!, /press Ctrl\+L again/);
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(h.retires(), 1);
+  await waitFor(() => (h.keys.state().flash ?? "").includes("tumwater/clean"), "the retire flash");
+  assert.equal(h.keys.state().flash, "retired clean: the branch (tumwater/clean)");
+  assert.equal(h.doctors(), before + 1);
+});
+
+test("Ctrl+L twice on the Health view flashes no leftover roles to retire when the report is empty", async () => {
+  const h = retireLeftoversHarness(7, { retired: [], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  await waitFor(() => (h.keys.state().flash ?? "") === "no leftover roles to retire", "the no-retire flash");
+  assert.equal(h.keys.state().flash, "no leftover roles to retire");
+});
+
+test("a key between two Ctrl+L presses on the Health view disarms the retire", () => {
+  const h = retireLeftoversHarness(7, { retired: [{ role: "clean", removed: ["branch"] }], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "o" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(h.retires(), 0);
+});
+
+test("Ctrl+L on the Health view with text typed on the prompt line retires nothing and leaves the prompt", () => {
+  const h = retireLeftoversHarness(7, { retired: [{ role: "clean", removed: ["branch"] }], failed: [] });
+  h.keys.handleKey("x", { name: "x" });
+  assert.equal(h.keys.state().input, "x");
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(h.retires(), 0);
+  assert.equal(h.keys.state().input, "x", "the key was not swallowed; the prompt is untouched");
+});
+
+test("Ctrl+L off the Health view never retires", () => {
+  const h = retireLeftoversHarness(0, { retired: [{ role: "clean", removed: ["branch"] }], failed: [] });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  h.keys.handleKey(undefined, { ctrl: true, name: "l" });
+  assert.equal(h.retires(), 0);
+});
+
 test("Ctrl+A on the Health view commits the dirty backlog and flashes the lines", async () => {
   const root = makeRoot();
   const report: DoctorReport = {

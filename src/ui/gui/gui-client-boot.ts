@@ -88,6 +88,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (clickClosest(ev, "button[data-action='doctor-drop-broken-pins']")) { ev.preventDefault(); dropBrokenPinsClick(); }
     if (clickClosest(ev, "button[data-action='doctor-commit-backlog']")) { ev.preventDefault(); commitBacklogClick(); }
     if (clickClosest(ev, "button[data-action='doctor-resync-install']")) { ev.preventDefault(); resyncInstallClick(); }
+    if (clickClosest(ev, "button[data-action='doctor-retire-leftovers']")) { ev.preventDefault(); retireLeftoversClick(); }
     if (clickClosest(ev, "button[data-action='notify-test']")) { ev.preventDefault(); testNotify(); }
     const retire = clickClosest(ev, "button[data-action='retire']");
     if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }

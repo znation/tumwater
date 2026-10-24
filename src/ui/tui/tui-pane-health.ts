@@ -5,7 +5,7 @@ import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
 import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
-import { brokenPinDropLines } from "../../doctor/doctor-contention-checks.js";
+import { brokenPinDropLines, leftoverRetireLines } from "../../doctor/doctor-contention-checks.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
@@ -244,6 +244,42 @@ export function createHealthPane(session: TuiPaneSession) {
       void resyncRootInstall(session.root).then(
         (r) => {
           session.flashMessage(rootInstallResyncLines(r).join("; "));
+          void run();
+          session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "l" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7) {
+      // Ctrl+L on the Health pane, pressed twice, retires every disabled role's leftover
+      // worktree, branch and merge ref in one pass — the terminal twin of `tumwater doctor
+      // --retire-leftovers` and the dashboard Health card's Retire leftovers, all reached
+      // through the same retireLeftovers (with the loaded config, never `--force`). The first
+      // press only arms (beginKey disarms on any other key) and flashes what a second press
+      // does; the second flashes the same lines the CLI prints, joined with "; " (or
+      // `no leftover roles to retire` when nothing is retirable), then re-runs the checks so
+      // the leftover-role-branches row reflects the reap. A failure flashes instead of killing
+      // the TUI. Off the Health view Ctrl+L keeps the Activity fallback editor (view 0) and the
+      // instructions editor on a role's Transcript.
+      if (!session.armedRetireLeftovers) {
+        session.retireLeftoversArmed = true;
+        session.flashMessage(
+          "press Ctrl+L again to retire every disabled role's leftover worktree, branch and merge ref — any other key keeps them",
+        );
+        session.requestRender();
+        return true;
+      }
+      session.flashMessage("retiring every disabled role's leftovers …");
+      session.requestRender();
+      void session.retireLeftovers(session.root).then(
+        (report) => {
+          const lines = leftoverRetireLines(report);
+          session.flashMessage(lines.length > 0 ? lines.join("; ") : "no leftover roles to retire");
           void run();
           session.paneScroll = 0;
           session.requestRender();
