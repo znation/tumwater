@@ -1,11 +1,10 @@
 import { andMore, readBacklogChecked, FIX_CLAIMS_CHECKED, FIX_CLAIM_HEADING_MAX, REFUSAL_NOTE_MAX, STALE_QUESTION_DAYS, STALE_BUG_DAYS, STALE_WAIT_DAYS } from "./doctor-backlog.js";
 import { truncate } from "../text/text.js";
-import { ageInDays, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, filingDate, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { plannedPartKeys, plansWaitingOn, prerequisitesMerged } from "../backlog/backlog-parts.js";
-import { fixedEntriesAt } from "../verdict/fix-claim.js";
 import { lastDate } from "../backlog/backlog-md.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { stringList } from "../files/json-object.js";
@@ -206,15 +205,15 @@ export function staleWaitingBugRows(root: string, now = Date.now()): Array<{ ind
     .sort((a, b) => b.days - a.days || a.index - b.index);
 }
 
-/** Regressed fixes — a newest-10 BUGS.md Fixed record whose heading quotes a test name that a
- * gate or merge check has failed on since the day after its fix (the heading carries only a
- * date, so a same-day failure cannot be told from the one the fix answered), unless an Open bug
- * already quotes the same test, which means the regression is filed. A warn, never a fail, and
- * doctor writes nothing to BUGS.md. */
-export function checkRegressedFixes(root: string): CheckOutcome {
-  const doc = readBacklogChecked(root, "BUGS.md");
-  if (typeof doc !== "string") return doc;
-  const candidates = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
+/** The regression candidates for the `regressed fixes` feed: a newest-FIX_CLAIMS_CHECKED BUGS.md
+ * Fixed record whose heading quotes a test name and carries a `YYYY-MM-DD` date, unless an Open
+ * bug already quotes the same test (which means the regression is filed). Shared by the doctor's
+ * `regressed fixes` row (checkRegressedFixes) and the always-on regressed-fixes alert, so the two
+ * cannot drift on the selection. `since` is the day-after the fix date — the recurrence scan's
+ * boundary (the heading carries only a date, so a same-day failure cannot be told from the one
+ * the fix answered). Returns `[]` when no candidate has both a quoted test and a date. */
+export function regressedFixCandidates(root: string): RegressedFixCandidate[] {
+  const candidates = fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
     const name = quotedTestName(entry.title);
     const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
     if (name === null || date === null) return [];
@@ -222,21 +221,60 @@ export function checkRegressedFixes(root: string): CheckOutcome {
     return Number.isNaN(since) ? [] : [{ title: entry.title, name, date, since }];
   });
   const open = candidates.length > 0 ? openBugEntries(root).map((e) => quotedTestName(e.title)) : [];
-  const unfiled = candidates.filter((c) => !open.includes(c.name));
-  if (unfiled.length > 0) {
-    const { events } = readEventsSince(root, sinceWindowMs(unfiled.map((c) => c.since)));
-    const regressed = unfiled.flatMap((c) => {
-      const mentions = failureMentions(events, c.name, c.since);
-      const newest = mentions[mentions.length - 1];
-      return newest ? [{ ...c, newest }] : [];
-    });
-    const [first, ...rest] = regressed;
-    if (first) {
-      const more = andMore(rest, (c) => `"${truncate(c.title, FIX_CLAIM_HEADING_MAX)}"`);
-      return warnOutcome(`BUGS.md Fixed record "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" quotes a test that failed again after its ${first.date} fix ` +
-        `(${formatTimestamp(first.newest.ts)}: ${truncate(first.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
-        "file it as a new bug with `tumwater bug`, quoting the test name and citing the Fixed record");
-    }
+  return candidates.filter((c) => !open.includes(c.name));
+}
+
+/** The candidates whose quoted test actually failed again, in candidate order: one
+ * `failureMentions` per candidate over `events`, keeping the last mention (the doctor's exact
+ * match). The caller supplies the event window — the doctor reads back to the oldest candidate's
+ * day-after, the always-on alert the trailing day. */
+export function matchedRegressedFixes(
+  candidates: readonly RegressedFixCandidate[],
+  events: readonly HarnessEvent[],
+): RegressedFix[] {
+  return candidates.flatMap((c) => {
+    const mentions = failureMentions(events, c.name, c.since);
+    const newest = mentions[mentions.length - 1];
+    return newest ? [{ ...c, newest }] : [];
+  });
+}
+
+/** The doctor's `regressed fixes` warn sentence, verbatim, or null when nothing regressed. */
+export function regressedFixesPhrase(regressed: readonly RegressedFix[]): string | null {
+  const [first, ...rest] = regressed;
+  if (!first) return null;
+  const more = andMore(rest, (c) => `"${truncate(c.title, FIX_CLAIM_HEADING_MAX)}"`);
+  return `BUGS.md Fixed record "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" quotes a test that failed again after its ${first.date} fix ` +
+    `(${formatTimestamp(first.newest.ts)}: ${truncate(first.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
+    "file it as a new bug with `tumwater bug`, quoting the test name and citing the Fixed record";
+}
+
+/** A Fixed record whose heading quotes a test name and carries a `YYYY-MM-DD` fix date — one
+ * regressed-fix candidate that is not already filed as an Open bug. */
+export interface RegressedFixCandidate {
+  title: string;
+  name: string;
+  date: string;
+  since: number;
+}
+
+/** A RegressedFixCandidate whose quoted test actually failed again: the candidate plus the last
+ * matching failure event (its ts and text). */
+export interface RegressedFix extends RegressedFixCandidate {
+  newest: { ts: number; text: string };
+}
+
+/** Regressed fixes — a newest-10 BUGS.md Fixed record whose heading quotes a test name that a
+ * gate or merge check has failed on since the day after its fix, unless an Open bug already
+ * quotes the same test. A warn, never a fail, and doctor writes nothing to BUGS.md. */
+export function checkRegressedFixes(root: string): CheckOutcome {
+  const doc = readBacklogChecked(root, "BUGS.md");
+  if (typeof doc !== "string") return doc;
+  const candidates = regressedFixCandidates(root);
+  if (candidates.length > 0) {
+    const { events } = readEventsSince(root, sinceWindowMs(candidates.map((c) => c.since)));
+    const phrase = regressedFixesPhrase(matchedRegressedFixes(candidates, events));
+    if (phrase !== null) return warnOutcome(phrase);
   }
   return okOutcome("no recently Fixed bug's quoted test has failed since its fix");
 }

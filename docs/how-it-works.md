@@ -270,7 +270,8 @@ discards a role's in-flight merge.
   `tumwater doctor`'s `flaky checks` row (an always-on alert, not just a doctor row, when a
   check flapped more than once in the last day) and the selfcheck digest warn when a quarantined test's
   age passes 3 days (naming the oldest, with its BUGS.md heading or "not filed") or when the list
-  holds more than 10 tests. `tumwater quarantine [--json]` lists the current list — every entry
+  holds more than 10 tests. A Fixed record whose quoted test fails again is likewise a standing
+  always-on alert (the doctor's `regressed fixes` row) until a day passes or the failure is filed. `tumwater quarantine [--json]` lists the current list — every entry
   oldest first with its age, flake count, last sighting and filed bug.
 - Failed runs retry on a shorter ladder, capped at ten minutes. Three failures in a row mark a
   role `failing` until it has a healthy run.
@@ -477,7 +478,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
   the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
-  backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a pause), the prompt
+  backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose quoted test failed again in the last day, a pause), the prompt
   box, today's progress, the roles grouped by what they are doing,
   the backlog, and the notable activity — a `Loop picker` and a case-insensitive Search box narrow
   the events the card carries, and an active picker or Search filter also searches the log's

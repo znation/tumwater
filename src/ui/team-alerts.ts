@@ -11,7 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck } from "./status-payload.js";
+import type { CapacityBottleneck, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -316,6 +316,7 @@ export function teamAlerts(
   primaryOverwrite: PrimaryOverwriteBlock | null = null,
   contention: readonly CapacityBottleneck[] = [],
   flappedChecks: FlappedChecks | null = null,
+  regressedFixes: RegressedFixAlert | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -910,6 +911,20 @@ export function teamAlerts(
       title: plural(contention.length, "capacity bottleneck in the last day", "capacity bottlenecks in the last day"),
       detail: contention.map((c) => `${c.name}: ${squash(c.detail, 200)}`).join(" · "),
       actions: [],
+    });
+  }
+  // A Fixed record whose quoted test failed again in the trailing day — the always-on twin of
+  // the doctor's `regressed fixes` row (doctor-backlog-bugs.ts checkRegressedFixes).
+  // status-payload.ts's regressedFixesAlert feeds it the same candidate selection, failureMentions
+  // match and verbatim sentence, so the alert and the doctor cannot drift on the trigger or the
+  // wording; the Failures view shows the naming events.
+  if (regressedFixes) {
+    out.push({
+      key: "regressed-fixes",
+      tone: "amber",
+      title: plural(regressedFixes.count, "Fixed test has regressed", "Fixed tests have regressed"),
+      detail: regressedFixes.detail,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
   if (!snap.running) {

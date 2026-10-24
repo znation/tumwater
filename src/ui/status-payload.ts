@@ -25,7 +25,7 @@ import { flappedChecksPhrase } from "../doctor/doctor-project-checks.js";
 import { readPostReviews } from "../review/post-merge-review.js";
 import { staleQueuedMergeRows, STALE_BUG_DAYS, staleQueuedPromptRows, skippedMergeQueueFiles } from "../doctor/doctor-backlog.js";
 import { NOTIFY_CHECK_WINDOW_MS } from "../doctor/doctor-notify.js";
-import { staleWaitingBugRows } from "../doctor/doctor-backlog-bugs.js";
+import { matchedRegressedFixes, regressedFixCandidates, regressedFixesPhrase, staleWaitingBugRows, type RegressedFix, type RegressedFixCandidate } from "../doctor/doctor-backlog-bugs.js";
 
 /** How many recent events the payload carries — enough for the dashboard's activity feed to
  * still show a screenful of notable events (merges, failures, questions) after it filters
@@ -179,6 +179,30 @@ export function capacityContention(root: string, now = Date.now()): CapacityBott
  * dirty primary file is a standing amber banner until the file is committed and the refusals
  * age out. */
 export const PRIMARY_OVERWRITE_WINDOW_MS = 24 * 60 * 60_000;
+/** How far back the regressed-fixes alert looks — one day, so a recently Fixed test that failed
+ * again is a standing amber alert until a day passes (or the failure is filed). The doctor's
+ * own `regressed fixes` row keeps its since-the-fix read; this is the alert's daily trigger, the
+ * same trailing day the primary-overwrite and notify alerts read. */
+export const REGRESSED_FIX_WINDOW_MS = 24 * 60 * 60_000;
+/** A Fixed record whose quoted test failed again in the trailing day — the always-on feed for the
+ * `regressed-fixes` team alert (src/ui/team-alerts.ts), carrying the doctor's own sentence
+ * (regressedFixesPhrase) so the alert and the `regressed fixes` row cannot drift on the wording.
+ * null when no Fixed record's quoted test failed in the window. */
+export interface RegressedFixAlert {
+  count: number;
+  detail: string;
+}
+/** The always-on twin of the doctor's `regressed fixes` row (src/doctor/doctor-backlog-bugs.ts
+ * checkRegressedFixes): the same candidate selection (regressedFixCandidates) and the same
+ * failureMentions match (matchedRegressedFixes) and sentence (regressedFixesPhrase), read off the
+ * trailing REGRESSED_FIX_WINDOW_MS of events (the doctor, whose window is since each fix, still
+ * warns on an older recurrence). An unreadable event log yields none. */
+export function regressedFixesAlert(root: string, now = Date.now()): RegressedFixAlert | null {
+  const candidates: RegressedFixCandidate[] = regressedFixCandidates(root);
+  const rows: RegressedFix[] = matchedRegressedFixes(candidates, eventsSince(root, REGRESSED_FIX_WINDOW_MS, now));
+  const detail = regressedFixesPhrase(rows);
+  return detail === null ? null : { count: rows.length, detail };
+}
 /** The exact substring merge-git.ts's overwrite blocker logs in its `warning` event, so this
  * feed matches the refusal and nothing the merge path does not say (see merge-git.ts
  * `overwriteBlockedReason`). */
@@ -541,6 +565,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now)),
   };
 }

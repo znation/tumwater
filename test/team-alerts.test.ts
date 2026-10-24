@@ -1331,7 +1331,6 @@ test("a capacity bottleneck raises one standing amber alert carrying the doctor'
   assert.equal(contentionAlert?.tone, "amber");
   assert.match(contentionAlert?.title ?? "", /capacity bottleneck/);
 });
-
 test("a flapping check raises one standing amber alert carrying the doctor's phrase", () => {
   const now = Date.now();
   const flapped = { count: 2, detail: 'checks flapped more than once in the last 24h: "database test failed" ×3 (and 1 more: "network test failed" ×2)' };
@@ -1359,3 +1358,34 @@ test("a flapping check raises one standing amber alert carrying the doctor's phr
   const clean = makeRepo();
   assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "flapped-checks"), undefined);
 });
+
+test("a regressed Fixed record raises one standing amber alert carrying the doctor's sentence", () => {
+  const now = Date.now();
+  const y = stampDaysAgo(1, now);
+  const detail = `BUGS.md Fixed record "quoted test regressed" quotes a test that failed again after its ${y} fix (${now}: ✖ aQuotedTestNameThatIsLongEnough failed again) — file it as a new bug with \`tumwater bug\`, quoting the test name and citing the Fixed record`;
+  const regressed = { count: 1, detail };
+  // regressedFixes is the 23rd positional argument, after contention and flappedChecks; one
+  // position earlier it would land in the flapped-checks slot and raise no regressed-fixes alert.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, regressed);
+  assert.deepEqual(alerts.map((a) => [a.key, a.tone]), [["regressed-fixes", "amber"]]);
+  assert.match(alerts[0]!.title ?? "", /Fixed test has regressed/);
+  assert.equal(alerts[0]!.detail, detail);
+  assert.deepEqual(alerts[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A null last argument adds no alert.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null).filter((a) => a.key === "regressed-fixes").length, 0);
+  // The full pipeline carries the same alert through statusPayload over a seeded Fixed record
+  // and failure event, pinning the argument position end to end.
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "BUGS.md"), `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
+  writeEvents(root, [{ ts: now, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string }> };
+  const fixAlert = payload.alerts.find((a) => a.key === "regressed-fixes");
+  assert.equal(fixAlert?.tone, "amber");
+  assert.match(fixAlert?.title ?? "", /Fixed test has regressed/);
+});
+
+// A whole calendar day `n` days before `now`, as a `YYYY-MM-DD` stamp.
+function stampDaysAgo(n: number, now: number = Date.now()): string {
+  const d = new Date(now - n * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}

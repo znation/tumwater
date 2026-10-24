@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS } from "../src/ui/status-payload.js";
+import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
@@ -26,7 +27,7 @@ import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { writeEvents, writeLogLines, writeOrchestratorMarker, writeMarker } from "./fixtures/log-fixtures.js";
-import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { warnEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -793,7 +794,6 @@ test("capacityContention carries the doctor's warnings and nothing under thresho
   ]);
   assert.deepEqual(capacityContention(quiet, now), []);
 });
-
 test("flappedChecksAlert carries the doctor's phrase and nothing under the bar", () => {
   const root = makeRepo();
   warnEvent(root, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
@@ -810,4 +810,41 @@ test("flappedChecksAlert carries the doctor's phrase and nothing under the bar",
   warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 3s");
   warnEvent(old, "bugfix", FLAKY_WARNING_PREFIX + "test failed after 9s");
   assert.equal(flappedChecksAlert(old, Date.now() + 25 * 3600_000), null);
+});
+
+// A whole calendar day `n` days before `now`, as a `YYYY-MM-DD` stamp — the same relative
+// fixture trick the doctor-backlog tests use, so the fix date and the failure's age never
+// collide with the real wall clock.
+const stampDaysAgo = (n: number, now: number = Date.now()): string => {
+  const d = new Date(now - n * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+test("regressedFixesAlert carries the doctor's sentence for a fix whose test failed again", () => {
+  const now = Date.now();
+  const y = stampDaysAgo(1, now);
+  const root = tmpdir("status-regressed-fixes-");
+  fs.writeFileSync(path.join(root, "BUGS.md"),
+    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
+  writeEvents(root, [{ ts: now, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
+  const alert = regressedFixesAlert(root, now);
+  assert.notEqual(alert, null);
+  assert.equal(alert!.count, 1);
+  // The alert's detail is exactly the doctor's row sentence for the same fixture — the trigger
+  // and the wording cannot drift.
+  assert.equal(alert!.detail, checkRegressedFixes(root).detail);
+  // A record with no matching failure raises none.
+  const clean = tmpdir("status-regressed-fixes-clean-");
+  fs.writeFileSync(path.join(clean, "BUGS.md"),
+    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
+  assert.equal(regressedFixesAlert(clean, now), null);
+  // A matching failure 25h old, under the `now` seam, is outside the alert's one-day window and
+  // raises none — the doctor, whose window is since the fix, still warns (the documented
+  // window difference).
+  const old = tmpdir("status-regressed-fixes-old-");
+  fs.writeFileSync(path.join(old, "BUGS.md"),
+    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "aQuotedTestNameThatIsLongEnough" flaked (found by bugfix ${stampDaysAgo(5, now)}) — fixed ${y}\n\nFix.\n\n`);
+  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "review", type: "warning", message: "✖ aQuotedTestNameThatIsLongEnough failed again" }]);
+  assert.ok(25 * 3600_000 > REGRESSED_FIX_WINDOW_MS, "the 25h-old failure predates the alert's daily window");
+  assert.equal(regressedFixesAlert(old, now), null);
 });
