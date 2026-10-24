@@ -1,20 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { gateRoleConfig, newBudgetGateState, pollBudgetGate, runOnPair } from "../src/gates/budget-gates.js";
-import { applyFallbackModel, resolveTierFallbacks } from "../src/config/config-fallbacks.js";
+import { budgetFallbackView } from "../src/budget/budget-fallback-view.js";
+import { applyFallbackModel, resolveTierFallbacks, tierChainSteps } from "../src/config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
-import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
-import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
+import { BUDGET_WARNING_FRACTION, modelPairName } from "../src/budget/budget.js";
+import { fallbackServingPair, IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import { readEvents } from "../src/events/event-read.js";
 import { spentRunnerState } from "./fixtures/runner-fixtures.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
+import { MODEL_TIERS } from "../src/config/config-schema.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { eventTypes } from "./fixtures/log-fixtures.js";
 import { paidFallbackConfig } from "./fixtures/config-fixtures.js";
-import { configForRole, reviewRunConfig } from "../src/config/config-views.js";
+import { configForRole, reviewRunConfig, windowReserveFor } from "../src/config/config-views.js";
 import { reviewHoldKey } from "../src/orchestrator/orchestrator-scheduling.js";
-import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { writeAccount } from "../src/agent/subscription-account.js";
+import { claudeWindowUsedUp, writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { readAccount, writeAccount } from "../src/agent/subscription-account.js";
+import { piPairFree, readPiProviders } from "../src/pi/pi-models.js";
 import { defaultConfig } from "../src/config/config.js";
 import { MODELS_JSON, PAID_ONLY_JSON, writeModelsFile, writeOpencodeCache } from "./fixtures/models-fixtures.js";
 /** A team at a paid top-level model, a free fallback configured, one role pinned to the
@@ -1037,4 +1040,61 @@ test("a reviewer pinned to a healthy subscription backend stays put while anothe
   const seam = reviewRunConfig(out.roleConfig);
   assert.equal(seam.model, "claude-sonnet-5-5", "the healthy-backend reviewer keeps its pin and does not fall to the tier's pair");
   assert.equal(seam.provider, undefined, "the claude backend takes no provider");
+});
+
+test("budget-fallback-view derives the same fallback view and fromKey for a fixed config/window state", () => {
+  const root = tmpdir("budget-fallback-view-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  const state = newBudgetGateState(cfg);
+  const now = Date.now();
+  const providers = readPiProviders(models);
+  const catalog = writeOpencodeCache(root);
+  const accounts = (backend: string) => readAccount(root, backend);
+  const windowOutFor = (backend: string) => claudeWindowUsedUp(accounts(backend), now, true, windowReserveFor(cfg, backend));
+  const directorWindowOutFor = (backend: string) => claudeWindowUsedUp(accounts(backend), now);
+  const pairFreeAt = (p: Parameters<typeof piPairFree>[1]) => piPairFree(providers, p, accounts, catalog);
+  const priceResolved = resolveTierFallbacks(cfg, pairFreeAt);
+  const servingResolved = resolveTierFallbacks(cfg, (p) => pairFreeAt(p) && fallbackServingPair(state.breakers, modelPairName(p)));
+  const chainPairs = tierChainSteps(cfg).map((s) => s.pair).filter(pairFreeAt);
+  const pairNames: string[] = [];
+  for (const tier of MODEL_TIERS) {
+    const p = priceResolved[tier].pair;
+    if (p) {
+      const n = modelPairName(p);
+      if (!pairNames.includes(n)) pairNames.push(n);
+    }
+  }
+
+  const view = budgetFallbackView({
+    state,
+    config: cfg,
+    now,
+    states: [spentRunnerState("feature", 10)],
+    providers,
+    catalog,
+    accounts,
+    windowOutFor,
+    directorWindowOutFor,
+    priceResolved,
+    servingResolved,
+    chainPairs,
+    pairNames,
+    reached: true,
+  });
+
+  // The moved body, pinned in its new home: the cap's view strips the paid top-level model
+  // and the per-role/reviewer overrides to the free fallback, and the fromKey records the cap
+  // so a config or resolution change re-derives it.
+  assert.equal(view.onFallback, true);
+  assert.equal(state.from, cfg);
+  assert.equal(state.fromKey, "c||free/qwen-free,free/qwen-free,free/qwen-free");
+  assert.equal(view.roleConfig, state.fallbackConfig, "the poll's roleConfig is the derived fallbackConfig");
+  assert.deepEqual(view.roleConfig.model, {
+    small: "free/qwen-free",
+    default: "free/qwen-free",
+    strong: "free/qwen-free",
+  });
+  assert.equal(view.roleConfig.roles.feature?.model, undefined, "the paid feature override is dropped");
+  assert.equal(view.roleConfig.review.model, undefined, "the paid reviewer override is dropped");
 });

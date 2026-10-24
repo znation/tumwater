@@ -3976,7 +3976,7 @@ step whose own daily cap is spent (spend at or over the cap) reads "step-cap". "
 prior Claude step that has extra usage, which is a Claude step after a Claude primary, on an
 account that refuses overage; a pi primary's first Claude step reads "cap".
 
-**Binds.** `src/gates/budget-gates.ts` (`chainInfo`, `fallbackServingPair`, `pairDailyCost`).
+**Binds.** `src/budget/budget-fallback-view.ts` (`chainInfo`, `fallbackServingPair`, `pairDailyCost`).
 
 **Pinned by.** `test/budget-chain-info.test.ts` — "chainInfo names a demoted prior step, ahead of
 its spent step cap", "chainInfo names a prior step whose own cap is spent as step-cap, back at
@@ -3990,7 +3990,7 @@ only when it is priced".
 midnight for "step-cap" and "cap". "demoted" and "overage" carry none. `spentUsd` and `capUsd`
 appear only when the active step has its own cap and is priced.
 
-**Binds.** `src/gates/budget-gates.ts` (`chainInfo`).
+**Binds.** `src/budget/budget-fallback-view.ts` (`chainInfo`).
 
 **Pinned by.** `test/budget-chain-info.test.ts` — "chainInfo names a prior step whose own cap is
 spent as step-cap, back at local midnight; under it the reason is cap", "chainInfo tells a reserve

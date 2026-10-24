@@ -216,7 +216,8 @@ export function pollTeamGates(
   const accounts = (backend: string) => readAccount(root, backend, now);
 
   // Daily cost budget gate (src/gates/budget-gates.ts owns the reads, the edge-triggered
-  // budget_* events, the breaker re-key, and the fallback config view): the orchestrator
+  // budget_* events, and the breaker re-key; the fallback config view it derives lives in
+  // src/budget/budget-fallback-view.ts): the orchestrator
   // owns only the wiring — the demotion publish below and the per-runner assignment at
   // the bottom of this block.
   const {

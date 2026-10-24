@@ -439,27 +439,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Split `pollBudgetGate`'s fallback-and-view half out of `src/gates/budget-gates.ts` (planned 2026-10-24 by the organize role)
-
-**Goal.** `src/gates/budget-gates.ts` is 692 lines (3.5× the project's 197-line median) and holds one responsibility too many in a single function: `pollBudgetGate` (lines 244–621, ~378 lines) first decides the gate and emits its edge-triggered events, then derives the fallback config view the roles run under, and both halves share the function's local state and reads. A change to one half (a new subscription-backend rule, a new window-move) forces a read of the other, and the view derivation — the purest, most testable piece — stays buried under the event half. Splitting the view+window derivation out gives each half a plain function boundary and its own tests, mirroring how `stage-path-checks.ts` split `stage-check.ts` and how the vote/failure guards live under `src/budget/`.
-
-**Approach.** Do not start the split now; this entry is the plan. When implemented, the change is one coherent restructure (no behavior change) that leaves `src/gates/budget-gates.ts` for the verdict/event phase and moves the rest of `pollBudgetGate`'s body into a new module. `src/budget` is the home of the spell it calls (`budget.js`, `fallback-breaker.js`), so the new module goes there.
-- New `src/budget/budget-fallback-view.ts` owns everything in `pollBudgetGate` from `onFallback` through the end of the function: the seam/backends walk and used-up window moves (`windowOut`, `movedBackends`, `windowMove`, `windowTiers`, `windowResumedBackends`, `windowResumed`), the motion keys (`resolvedKey`, `movedKey`, `fromKey`), the two view derivations (`fallbackConfig`/`directorConfig` and their keys), the `movedTiers`/`applyFallbackModel` application, and `chainInfo`. Its one entry reads the same inputs the moved body reads (`state`, `liveConfig`, `accounts`, `windowOutFor`/`directorWindowOutFor`, `priceResolved`, `pairFreeAt`, the `reached`/`gate` flags) and returns the view fields `BudgetGatePoll` carries, so `pollBudgetGate` keeps its call signature and `src/gates/gate-polls.ts`'s destructure of it is untouched.
-- `pollBudgetGate` (src/gates/budget-gates.ts) keeps the spend read, the price/demotion resolutions, the breaker re-key, the `budgetGate` decision, the warning/transition events and `topDailySpenders` — its first ~110 lines unchanged — then calls the new module for the view fields, so the function shrinks to roughly its pre-view size and both modules compile against the same `BudgetGatePoll` shape.
-- Move the doc-bearing interfaces and constants the view half uses alongside it (`BudgetGateState`'s view fields stay where they are; the module-scope `MODEL_TIERS`/`seamsInUse`/`tierChainSteps`/`chainInfo` imports move with the moved body). Re-export what `budget-gates.ts` still exports so no importer's name changes.
-- Docs: docs/invariants.md's budget-gate and fallback-view paragraphs re-point their `src/` bind lines at the new module where they name `pollBudgetGate`'s body.
-
-**Files touched.** src/gates/budget-gates.ts src/budget/budget-fallback-view.ts (new) docs/invariants.md test/budget-gates.test.ts test/budget.test.ts (the split must not change an existing assertion)
-
-**Acceptance criteria.**
-- `npm run test:gate` passes with no assertion change except import-path edits, and `grep -rn "budget-fallback-view"` finds its one production importer (budget-gates.ts) plus its new test.
-- `pollBudgetGate`'s call site in `src/gates/gate-polls.ts` is byte-identical in what it destructures: same `BudgetGatePoll` fields, same ordering.
-- The two halves are separable in prose: the view module's doc comment names it the fallback-view derivation and cites the same plan references (`part 5b/8`, `part 5c/8`, `6a/7`) the moved comments carry.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/budget-gates.test.ts / test/budget.test.ts: existing assertions stay green unchanged; add one test that the view module returns the same fallback view and `fromKey` for a fixed config/window state, so the moved body is pinned in its new home.
-
 ### Move `pollTeamGates`'s budget wiring into `src/budget`, part 1/2: the fallback publish, per-runner config assignment and cap-reopen/window hand-back move into a new `budget-wiring` module (planned 2026-10-24 by the plan role, split from the held single wiring entry; this is the part the "too large for one run" hold was lifted for; lands after the `Split pollBudgetGate` plan above; touches src/gates/gate-polls.ts src/budget/budget-wiring.ts (new) test/gate-polls.test.ts test/budget-wiring.test.ts (new))
 
 **Previously held 1**
