@@ -74,7 +74,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
     const run = Number.isFinite(e.run) ? e.run : "?";
     const note = Number.isFinite(e.revisionRound) ? " · revision " + e.revisionRound + (Number.isFinite(e.priorObjections) && e.priorObjections > 0 ? " · " + plural(e.priorObjections, "prior objection") : "") : "";
-    const retry = typeof e.retry === "string" ? " · re-queued after " + e.retry + (Number.isFinite(e.notBefore) && e.notBefore > now ? " · eligible in " + humanSeconds(Math.max(0, Math.round((e.notBefore - now) / 1000))) : "") : "";
+    const retry = typeof e.retry === "string" ? " · re-queued after " + e.retry + (Number.isFinite(e.retryCount) && e.retryCount > 1 ? " · ×" + e.retryCount : "") + (Number.isFinite(e.notBefore) && e.notBefore > now ? " · eligible in " + humanSeconds(Math.max(0, Math.round((e.notBefore - now) / 1000))) : "") : "";
     let line = "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
       " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
       " ago" + (label && typeof label === "string" ? " · [" + esc(label) + "]" : "") +

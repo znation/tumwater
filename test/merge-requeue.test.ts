@@ -60,9 +60,23 @@ test("a merge_blocked change is re-queued at once with its original summary and 
   assert.equal(queued[0]!.run, 7);
   assert.equal(queued[0]!.retry, "merge_blocked");
   assert.equal(queued[0]!.notBefore, undefined);
+  assert.equal(queued[0]!.retryCount, 1);
   const ev = eventsOfType(root, "merge_queued").at(-1)!;
   assert.equal(ev.retry, "merge_blocked");
   assert.equal(ev.summary, "add a");
+
+  // Re-queue the re-queued entry again: the count survives, and the fields an entry carries
+  // are unchanged by it.
+  const second = headMerge(root);
+  assert.ok(second);
+  await settleMergeOutcome(root, second.entry, state, "merge_blocked", 5, NO_USAGE, second.file, "main");
+  const again = queuedMerges(root);
+  assert.equal(again.length, 1);
+  assert.equal(again[0]!.retryCount, 2);
+  assert.equal(again[0]!.retry, "merge_blocked");
+  assert.equal(again[0]!.sha, entry.sha);
+  assert.equal(again[0]!.summary, "add a");
+  assert.equal(again[0]!.run, 7);
 });
 
 test("a review_error re-queue waits 60 s; a held reviewer config error does not re-queue", async () => {

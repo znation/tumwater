@@ -41,12 +41,14 @@ export function revisionNote(entry: Pick<MergeEntry, "revisionRound" | "priorRev
 }
 
 /** One re-queued entry's what-brought-it-back note:
- * `re-queued after <result>`, plus ` · eligible in <duration>` while a `review_error` 60 s
- * deferral still holds (its `notBefore` in the future). "" for a fresh entry with no `retry`
- * field, so a first submission's queue line is byte-identical. */
-export function retryNote(entry: Pick<MergeEntry, "retry" | "notBefore">, now: number): string {
+ * `re-queued after <result>`, plus ` · ×<n>` while it has bounced more than once, plus
+ * ` · eligible in <duration>` while a `review_error` 60 s deferral still holds (its `notBefore`
+ * in the future). "" for a fresh entry with no `retry` field, so a first submission's queue
+ * line is byte-identical. */
+export function retryNote(entry: Pick<MergeEntry, "retry" | "notBefore" | "retryCount">, now: number): string {
   if (entry.retry === undefined) return "";
   let note = `re-queued after ${entry.retry}`;
+  if ((entry.retryCount ?? 0) > 1) note += ` · ×${entry.retryCount}`;
   if (entry.notBefore !== undefined && entry.notBefore > now) {
     note += ` · eligible in ${humanSeconds(secondsUntil(entry.notBefore, now))}`;
   }

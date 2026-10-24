@@ -145,6 +145,18 @@ test("pendingQueueHtml names a re-queued entry's retry and its deferral", () => 
   assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · add the thing/, "a fresh entry's line is unchanged");
   assert.match(html, /2\. bugfix run #7 · 01234567 · 5s ago · re-queued after review_error · eligible in 42s · re-queue the thing/);
   assert.doesNotMatch(html, /undefined|NaN/);
+  // A bounce count renders after the result for a repeat re-queue, and a first re-queue and a
+  // non-number carry no × (a `retryCount` of 0 or 1 is not a bounce).
+  const bounced = pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "deadbeef", run: 3, summary: "stuck retrying", enqueuedAt: now - 2_000, retry: "merge_blocked", retryCount: 3 },
+  ] }, now);
+  assert.match(bounced, /re-queued after merge_blocked · ×3 · stuck retrying/);
+  assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now, retry: "merge_blocked", retryCount: 1 },
+  ] }, now), /×/);
+  assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now, retry: "merge_blocked", retryCount: NaN },
+  ] }, now), /×|NaN/);
   // A row without retry/notBefore renders neither clause and no undefined/NaN.
   const plain = pendingQueueHtml({ depth: 1, entries: [
     { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now },

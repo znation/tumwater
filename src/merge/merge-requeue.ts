@@ -26,6 +26,7 @@ function retryEntry(from: Omit<MergeEntry, "sha">, sha: string, result: string):
     ...rest,
     sha,
     retry: result,
+    retryCount: (from.retryCount ?? 0) + 1,
     enqueuedAt: Date.now(),
     ...(result === "review_error" ? { notBefore: Date.now() + REVIEW_ERROR_RETRY_MS } : {}),
   };

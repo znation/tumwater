@@ -288,7 +288,10 @@ test("retryNote names why a re-queued entry is back and its deferral", () => {
   const now = 1_000_000;
   assert.equal(retryNote({}, now), "");
   assert.equal(retryNote({ retry: "merge_blocked" }, now), "re-queued after merge_blocked");
+  assert.equal(retryNote({ retry: "merge_blocked", retryCount: 1 }, now), "re-queued after merge_blocked");
+  assert.equal(retryNote({ retry: "merge_blocked", retryCount: 3 }, now), "re-queued after merge_blocked · ×3");
   assert.equal(retryNote({ retry: "review_error", notBefore: now + 42_000 }, now), "re-queued after review_error · eligible in 42s");
+  assert.equal(retryNote({ retry: "review_error", retryCount: 3, notBefore: now + 42_000 }, now), "re-queued after review_error · ×3 · eligible in 42s");
   // A notBefore in the past appends no eligibility clause.
   assert.equal(retryNote({ retry: "review_error", notBefore: now - 1 }, now), "re-queued after review_error");
 });
@@ -321,6 +324,20 @@ test("renderMergeQueue names why a re-queued entry is back between its merge tag
   assert.equal(lines[1], "  1. improve run #3 · aaaaaaaa · 5s ago · tidy", "a fresh entry's line is unchanged");
   assert.equal(lines[2], "  2. feature run #7 · bbbbbbbb · 4s ago · re-queued after review_error · eligible in 42s · re-queue the thing");
   assert.equal(lines[3], "  3. organize run #1 · cccccccc · 3s ago · re-queued after merge_blocked · blocked clean");
+});
+
+test("renderMergeQueue carries a re-queued entry's bounce count between its retry and revision notes", () => {
+  const now = 1_000_000;
+  const entries = [
+    { role: "feature", sha: "a".repeat(40), run: 7, summary: "fresh", enqueuedAt: now - 5_000 },
+    { role: "organize", sha: "b".repeat(40), run: 1, summary: "first retry", enqueuedAt: now - 4_000, retry: "merge_blocked" },
+    { role: "improve", sha: "c".repeat(40), run: 2, summary: "stuck retrying", enqueuedAt: now - 3_000, retry: "merge_blocked", retryCount: 3 },
+  ];
+  const view = { entries, unreadable: 0 };
+  const lines = renderMergeQueue(view, now).split("\n");
+  assert.equal(lines[1], "  1. feature run #7 · aaaaaaaa · 5s ago · fresh", "a fresh entry's line is unchanged");
+  assert.equal(lines[2], "  2. organize run #1 · bbbbbbbb · 4s ago · re-queued after merge_blocked · first retry", "a first retry's line is unchanged");
+  assert.equal(lines[3], "  3. improve run #2 · cccccccc · 3s ago · re-queued after merge_blocked · ×3 · stuck retrying");
 });
 
 test("renderMergeQueue marks a high-friction entry and leaves an ordinary one alone", () => {

@@ -74,6 +74,10 @@ export interface MergeEntry {
    * attempt this entry re-queues, absent for an author's or a recovery's entry. Logged on the
    * re-queue's `merge_queued` event only. */
   retry?: string;
+  /** How many times the pipeline has re-queued this change, absent for a fresh entry and a
+   * recovery's entry; informational, not an ordering key — the filename still orders the queue
+   * by the current attempt's `enqueuedAt`. */
+  retryCount?: number;
 }
 
 let seq = 0;
@@ -191,7 +195,8 @@ function isMergeEntry(v: unknown): v is MergeEntry {
     (e.revisionRound === undefined || nonNegativeNumber(e.revisionRound, null) !== null) &&
     (e.priorReview === undefined || isPriorReview(e.priorReview)) &&
     (e.notBefore === undefined || nonNegativeNumber(e.notBefore, null) !== null) &&
-    (e.retry === undefined || typeof e.retry === "string")
+    (e.retry === undefined || typeof e.retry === "string") &&
+    (e.retryCount === undefined || nonNegativeNumber(e.retryCount, null) !== null)
   );
 }
 
