@@ -82,6 +82,31 @@ reverts in the one merge slot.
 | F | **Cut rejections at the source**: narrow `review.afterMerge` for the noisy role, or raise the authoring bar | config only | Re-buys the reviewer thrash the tiering was built to fix — the same 53% reject rate, now serial and pre-merge again |
 | G | **Operator accept-unreviewed** (exists today: `tumwater reviews --accept <n>`, the dashboard's two-click Accept) | operator attention | Nothing structural; it is a per-entry override, not a policy |
 
+## Decision (2026-10-24, by the operator)
+
+Overrules the arm table's preference for keeping authorship separate, and closes the landing order
+below.
+
+1. **Arm A — the reviewer fixes, and only the reviewer fixes.** On a post-merge finding the reviewer
+   makes the minimal fix in its worktree and commits it on top of main; nothing is handed back to
+   the authoring role and no revert is started. The independence objection is explicitly overruled
+   ("I don't think it's really an issue that it's the same author and reviewer"): at this project's
+   reject rate the second reader was nominal anyway.
+2. **The reviewer reviews every commit it has not reviewed, including its own fix** — the fix
+   lands, enters the same queue, and is read on a later iteration. A round counter and the
+   backstop keep that from looping forever; its dead end is a **Needs review** hold naming the
+   surviving findings, never a revert.
+3. **Nothing is ever taken off main** — neither a post-merge finding nor a red-main culprit. The
+   revert subsystem goes with the 5-revert ceiling, the `reason` tag and the revision hand-back; a
+   red main is healed forward by bugfix's existing prompt.
+4. **The deterministic gates move to every commit that hits main** — lint, compile, the declared
+   check and the pre-check rules run on main's new tip, and no model verdict blocks a landing (the
+   pre-merge tiering goes with it); the full suite and e2e stay the `ci` role's own cadence.
+
+Implementation lives in PLANS.md: "Forward, never back…" (1–3) and "Every commit is verified on
+main…" (4). Landing order items 1–4 and arms B–G below are closed by this decision and kept only
+as the record of what was weighed.
+
 ## Measurement (2026-10-24): the trailing window's 11 rejections, classified
 
 Landing order 1 below, done. The 11 `tumwater(tumwater): Revert <sha>` commits main took off in
@@ -146,9 +171,9 @@ whose stated change is not in the diff).
    `review.afterMerge` (F) and keep every post-merge rejection reverting? The trailing window's 12
    reason texts answer it. **The measurement (2026-10-24) answers it for the class: 8 of 11 are
    editorial — forwarding is right for the majority, and the 3 that are not are exactly the ones a
-   revert protects. Whether the class gate (D) or the blanket forward (C — what PLANS.md's
-   three-part series implements today) lands is the operator's call, and this measurement is the
-   evidence either way.**
+   revert protects. Whether the class gate (D) or the blanket forward (C) landed was the operator's
+   call, and the Decision section above makes it: blanket forward, with the fix authored by the
+   reviewer that found the problem.
 2. Is "main stays green but holds rejected content, until the follow-up lands" acceptable for a
    bounded window? The red-main watch cannot see it — the next post-merge review of the follow-up
    is the only check that will.
