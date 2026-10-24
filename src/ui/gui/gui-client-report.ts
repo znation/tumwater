@@ -316,6 +316,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-tip:start
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
+        (seriesHasAny(d, "postMergeRejectionsByRole") ? block("Post-merge rejections by role", chartPostMergeRejectionsByRole(d)) : "") +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "refusalsByRole") ? block("Refusals by role", chartRefusalsByRole(d)) : "") +
         (seriesHasAny(d, "revertsByRole") ? block("Reverts by role", chartRevertsByRole(d)) : "") +

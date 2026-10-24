@@ -238,6 +238,38 @@ test("the Rejections by role chart stacks per role in the runs order and stays e
   assert.equal(parseRects(emptySvg).length, 0, "a missing map renders no segments");
 });
 
+test("the Post-merge rejections by role chart stacks per role and stays empty without a map", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartRunsByRole(d: ReportData): string;
+    chartPostMergeRejectionsByRole(d: ReportData): string;
+  }
+  const { reportRoleOrder, chartRunsByRole, chartPostMergeRejectionsByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartRunsByRole", "chartPostMergeRejectionsByRole"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  // A role that rejected post-merge but never ran (qa) still keeps a stack row.
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { rejectionsByRole: { feature: 2, bugfix: 1 }, postMergeRejectionsByRole: { feature: 2, bugfix: 1 } }),
+    mkDay("2026-09-02", { feature: 1 }, { rejectionsByRole: { qa: 1 }, postMergeRejectionsByRole: { qa: 1 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.equal(titles(chartPostMergeRejectionsByRole(data)).length, 3, "one segment per (day, role) with a post-merge rejection");
+  assert.ok(titles(chartPostMergeRejectionsByRole(data)).some((t) => t.includes("2026-09-01 · feature: 2 post-merge rejections")));
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartPostMergeRejectionsByRole(data)), legendOf(chartRunsByRole(data)), "same per-role order and colors as the runs element");
+  // A missing postMergeRejectionsByRole map renders the element empty (no segments).
+  const none = mkDay("2026-09-01", { feature: 2 });
+  const emptySvg = chartPostMergeRejectionsByRole({ ...data, series: [none, { ...none, date: "2026-09-02" }] });
+  assert.equal(titles(emptySvg).length, 0, "a missing map renders no segments");
+});
+
 test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny gates them", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
@@ -495,6 +527,20 @@ test("the Usage render chain gates the Reverts by role chart right after Refusal
   assert.match(chain, /seriesHasAny\(d, "revertsByRole"\) \? block\("Reverts by role", chartRevertsByRole\(d\)\) : ""/);
   // Exactly one such gated term.
   assert.equal((chain.match(/block\("Reverts by role", chartRevertsByRole\(d\)\)/g) || []).length, 1);
+});
+
+test("the Usage render chain gates the Post-merge rejections by role chart right after Rejections by role", () => {
+  // The usage view's render chain must name the Post-merge rejections by role chart exactly
+  // once, gated on the series really carrying post-merge rejections, sitting right after the
+  // Rejections by role term.
+  const chain = GUI_CLIENT_REPORT_JS;
+  const rejections = chain.indexOf('block("Rejections by role"');
+  const postMerge = chain.indexOf('block("Post-merge rejections by role"');
+  assert.ok(rejections >= 0, "the Rejections by role term exists");
+  assert.ok(postMerge > rejections, "Post-merge rejections by role sits after Rejections by role in the chain");
+  assert.match(chain, /seriesHasAny\(d, "postMergeRejectionsByRole"\) \? block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\)\) : ""/);
+  // Exactly one such gated term.
+  assert.equal((chain.match(/block\("Post-merge rejections by role", chartPostMergeRejectionsByRole\(d\)\)/g) || []).length, 1);
 });
 
 test("the Tokens by role chart stacks per role and matches the runs legend", () => {

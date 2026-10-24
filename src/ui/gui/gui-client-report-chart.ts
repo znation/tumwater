@@ -316,6 +316,11 @@ export const GUI_CLIENT_REPORT_CHART_JS = String.raw`
   function chartRejectionsByRole(data) {
     return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);
   }
+  // Post-merge rejections (an already-landed commit the reviewer turned back, so it starts
+  // a revert and a re-author), per role, drawn the same way. A subset of rejectionsByRole.
+  function chartPostMergeRejectionsByRole(data) {
+    return roleStackChart(data, "postMergeRejectionsByRole", (n) => plural(n, "post-merge rejection"), countAxis, true);
+  }
   // Revisions (rework rounds after a rejection), per role, drawn the same way.
   function chartRevisionsByRole(data) {
     return roleStackChart(data, "revisionsByRole", (n) => plural(n, "revision"), countAxis, true);
