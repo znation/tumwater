@@ -55,10 +55,15 @@ export interface RunDetail {
    * out or the merge was a no-op fast-forward (which logs none). */
   mergedSha: string | null;
   /** The revert of this run's merged change — an automatic main-watch revert (`kind: "main"`,
-   * from a `main_revert` event) or an operator's deliberate `tumwater revert` (`kind:
+   * from a `main_revert` event, carrying `reason` — `main-red` for the main watch's red check,
+   * `post-review` for a post-merge review rejection — defaulting to `main-red` when the event
+   * predates the reason split) or an operator's deliberate `tumwater revert` (`kind:
    * "operator"`, from an `operator_revert` event) — matched by the event's `runner` (this role)
    * and its `commit` (the run's landed or pinned sha); null when there is none. */
-  reverted: { kind: "main" | "operator"; sha: string; revert: string; failingTests: string[] } | null;
+  reverted:
+    | { kind: "main"; reason: "main-red" | "post-review"; sha: string; revert: string; failingTests: string[] }
+    | { kind: "operator"; sha: string; revert: string; failingTests: string[] }
+    | null;
 }
 
 /** The commit a run pinned: the `commit` of the first `merge_queued`/`merge_done` event in its
@@ -191,9 +196,11 @@ function detailFrom(
  * whose `runner` is this role (an instance run's base role — it commits `tumwater(feature): …`)
  * and whose `commit` is the run's landed (`mergedSha`) or pinned
  * (`runCommitSha`) sha — the latter catching a no-op fast-forward that logs no `merged` event.
- * `kind` names which sort of revert it is; `revert` names the inverse commit (empty when the
- * source logged none) and `failingTests` the tests an automatic `main_revert` named (empty when
- * absent); null when nothing matches. */
+ * `kind` names which sort of revert it is; a main revert's `reason` names whether the main
+ * watch's check or a post-merge review rejected the culprit (`post-review`, else `main-red`
+ * when the event carries none — the events.ts default); `revert` names the inverse commit
+ * (empty when the source logged none) and `failingTests` the tests an automatic `main_revert`
+ * named (empty when absent); null when nothing matches. */
 function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reverted"] {
   const targetSha = d.mergedSha ?? runCommitSha(d);
   for (let i = all.length - 1; i >= 0; i--) {
@@ -204,11 +211,23 @@ function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reve
     // the merged event logged. Match either. The commit-sha check below still disambiguates.
     if (typeof e.runner !== "string" || (e.runner !== d.role && e.runner !== baseRoleOf(d.role))) continue;
     if (typeof e.commit !== "string" || e.commit !== targetSha) continue;
+    const failingTests = Array.isArray(e.failingTests) ? (e.failingTests as string[]) : [];
+    if (e.type === "main_revert") {
+      return {
+        kind: "main",
+        // absent, older or unknown reason reads as main-red — the events.ts default (e.reason is
+        // unknown through the event index signature, like e.failingTests)
+        reason: e.reason === "post-review" ? "post-review" : "main-red",
+        sha: e.commit,
+        revert: typeof e.revert === "string" ? e.revert : "",
+        failingTests,
+      };
+    }
     return {
-      kind: e.type === "main_revert" ? "main" : "operator", // vocabulary-ok: the deliberate-revert kind value names the operator role
+      kind: "operator", // vocabulary-ok: the deliberate-revert kind value names the operator role
       sha: e.commit,
       revert: typeof e.revert === "string" ? e.revert : "",
-      failingTests: Array.isArray(e.failingTests) ? (e.failingTests as string[]) : [],
+      failingTests,
     };
   }
   return null;

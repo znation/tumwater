@@ -66,7 +66,9 @@ export function renderRunDetail(d: RunDetail): string {
   if (d.reverted !== null) {
     header += ` · reverted ${shortSha(d.reverted.sha)}`;
     if (d.reverted.kind === "main") {
-      if (d.reverted.failingTests[0] !== undefined) header += ` (failing: ${d.reverted.failingTests[0]})`;
+      if (d.reverted.reason === "post-review") header += ` (post-merge review rejection)`;
+      else if (d.reverted.failingTests[0] !== undefined) header += ` (failing: ${d.reverted.failingTests[0]})`;
+      else header += ` (main's check failed)`;
     } else {
       header += ` (by operator)`; // vocabulary-ok: the deliberate-revert writer this header names
     }

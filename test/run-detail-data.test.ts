@@ -258,10 +258,11 @@ test("a run's main_revert names the automatic revert of its landed sha", () => {
     startEvent({ ts: 1000, run: 1 }),
     merged(1050, "landed1"),
     endEvent({ ts: 1100, run: 1, result: "changed" }),
-    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "feature", failingTests: ["a.test.ts", "b.test.ts"] }), // retired-name-ok: legacy event field in a fixture
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "feature", failingTests: ["a.test.ts", "b.test.ts"], reason: "post-review" }), // retired-name-ok: legacy event field in a fixture
   ]);
   assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
     kind: "main",
+    reason: "post-review",
     sha: "landed1",
     revert: "rev1",
     failingTests: ["a.test.ts", "b.test.ts"],
@@ -284,6 +285,22 @@ test("a run's main_revert names the automatic revert of its landed sha", () => {
     ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "other", revert: "rev1", runner: "feature", failingTests: [] }), // retired-name-ok: legacy event field in a fixture
   ]);
   assert.equal(readRunDetail(wrongCommit, "feature", 1)!.reverted, null);
+  // A main_revert written before the reason split (no reason field) reads as main-red — the
+  // events.ts default.
+  const old = tmpdir();
+  writeEvents(old, [
+    startEvent({ ts: 1000, run: 1 }),
+    merged(1050, "landed1"),
+    endEvent({ ts: 1100, run: 1, result: "changed" }),
+    ev({ ts: 1300, source: "tumwater", loop: "tumwater", type: "main_revert", commit: "landed1", revert: "rev1", runner: "feature", failingTests: [] }), // retired-name-ok: legacy event field in a fixture
+  ]);
+  assert.deepEqual(readRunDetail(old, "feature", 1)!.reverted, {
+    kind: "main",
+    reason: "main-red",
+    sha: "landed1",
+    revert: "rev1",
+    failingTests: [],
+  });
   const none = tmpdir();
   writeEvents(none, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 1100, run: 1, result: "changed" })]);
   assert.equal(readRunDetail(none, "feature", 1)!.reverted, null);
@@ -302,6 +319,7 @@ test("a no-op fast-forward run matches its main_revert through the pinned commit
   // reverted.sha names that pinned commit.
   assert.deepEqual(readRunDetail(root, "feature", 1)!.reverted, {
     kind: "main",
+    reason: "main-red",
     sha: "pin1",
     revert: "rev1",
     failingTests: ["a.test.ts"],
