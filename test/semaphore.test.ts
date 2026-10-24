@@ -576,3 +576,22 @@ test("snapshot reports team and per-key in-use, caps and waiters", async () => {
   assert.deepEqual(snap.byKey["b"], { inUse: 1, limit: 3, waiting: 0 });
   bHold.release();
 });
+
+test("rekeying a paused lease moves its key without touching any accounting", async () => {
+  const sem = new Semaphore(2);
+  sem.setKeyCaps({ a: 1, b: 1 });
+  const l = await sem.acquireLease(0, "a"); // a 1/1, team 1/2
+  assert.equal(l.key, "a");
+  l.pause(); // paused: the lease holds no permit and no key slot
+  assert.deepEqual([sem.snapshot().inUse, sem.snapshot().byKey["a"]?.inUse ?? 0], [0, 0]);
+
+  await l.rekey("b"); // while paused the move is a pure key change, never a double give-back
+  assert.equal(l.key, "b", "the re-key moves the paused lease onto b");
+
+  // Nothing is held on the new key either, because the lease is still paused.
+  const snap = sem.snapshot();
+  assert.equal(snap.byKey["b"]?.inUse ?? 0, 0, "a paused re-key holds no slot on its new key");
+  assert.equal(snap.inUse, 0, "a paused re-key holds no team permit");
+  l.release(); // releasing a still-paused lease is a no-op
+  assert.equal(sem.snapshot().inUse, 0);
+});
