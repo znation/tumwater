@@ -1,5 +1,5 @@
 import { claudeUtilizationPct } from "../agent/claude/claude-account.js";
-import { eventRole, eventRun, eventUsage, revertReasonOf } from "./event-read.js";
+import { eventRole, eventRun, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
@@ -442,7 +442,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}; last green ${shortSha(String(e.green ?? ""))}`;
     }
     case "main_revert":
-      return `reverted ${shortSha(String(e.commit ?? ""))} (merged by ${textOr(e.runner)}) as ${shortSha(String(e.revert ?? ""))}${revertReasonOf(e) === "post-review" ? ", after a post-merge review rejected it" : ", main's check had flagged it"}`;
+      return `reverted ${shortSha(String(e.commit ?? ""))} (merged by ${textOr(e.runner)}) as ${shortSha(String(e.revert ?? ""))}${e.reason === "post-review" ? ", after a post-merge review rejected it" : ", main's check had flagged it"}`;
     case "operator_revert": {
       const undid = typeof e.runner === "string" && e.runner !== "" ? `, undid ${e.runner}` : "";
       return `reverted ${shortSha(String(e.commit ?? ""))} (by operator) as ${shortSha(String(e.revert ?? ""))}${undid}`; // vocabulary-ok: the deliberate-revert writer is the operator role

@@ -6,7 +6,7 @@
  * src/failure/failure-render.ts as a pure function of the collected data. */
 import type { RunResult } from "../run/run-outcome.js";
 import type { HarnessEvent } from "../events/events.js";
-import { eventRole, eventUsage, revertReasonOf, runSpanMs, runStartMap } from "../events/event-read.js";
+import { eventRole, eventUsage, runSpanMs, runStartMap } from "../events/event-read.js";
 import { errorTextOrPlaceholder, normalizeClusterKey, poolTimeoutKey, sortedRoles, truncateExample } from "./failure-cluster.js";
 import { resolveQueuedResult, bucketMergeEvents } from "../history/history-queued.js";
 import { nonNegativeNumber, stringList } from "../files/json-object.js";
@@ -371,11 +371,10 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
         key = `reverted\u0000${role}`;
         kind = "reverted";
         const tests = Array.isArray(revertedEv.failingTests) ? (revertedEv.failingTests as string[]) : [];
-        // An absent or unknown reason reads as main-red, the events.ts contract
-        // (revertReasonOf, src/events/event-read.ts). A post-review revert records the
-        // reviewer's reasons, not a failing test, so its empty failingTests still names the
-        // cause instead of leaving the example blank (INV-C3).
-        const revertedReason = revertReasonOf(revertedEv);
+        // An absent or unknown reason reads as main-red, the events.ts contract. A post-review
+        // revert records the reviewer's reasons, not a failing test, so its empty failingTests
+        // still names the cause instead of leaving the example blank (INV-C3).
+        const revertedReason = revertedEv.reason === "post-review" ? "post-review" : "main-red";
         example =
           tests[0] !== undefined
             ? truncateExample(tests[0])

@@ -11,7 +11,7 @@
  * and the CLI command in run-detail.ts. */
 import { HISTORY_SCAN_MAX_EVENTS } from "../history/history-data.js";
 import { bucketMergeEvents, resolveQueuedResult } from "../history/history-queued.js";
-import { eventUsage, readEvents, revertReasonOf, runSpanMs, runStartMap } from "../events/event-read.js";
+import { eventUsage, readEvents, runSpanMs, runStartMap } from "../events/event-read.js";
 import { outcomeText, usageText } from "../events/event-format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -215,9 +215,9 @@ function revertedOf(d: RunDetail, all: readonly HarnessEvent[]): RunDetail["reve
     if (e.type === "main_revert") {
       return {
         kind: "main",
-        // absent, older or unknown reason reads as main-red — the events.ts default
-        // (revertReasonOf, src/events/event-read.ts)
-        reason: revertReasonOf(e),
+        // absent, older or unknown reason reads as main-red — the events.ts default (e.reason is
+        // unknown through the event index signature, like e.failingTests)
+        reason: e.reason === "post-review" ? "post-review" : "main-red",
         sha: e.commit,
         revert: typeof e.revert === "string" ? e.revert : "",
         failingTests,

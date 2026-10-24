@@ -147,22 +147,6 @@ export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }
 
-/** A `main_revert` event's rejection reason, normalized to the events.ts contract: `post-review`
- * for a post-merge review rejection, `main-red` for anything else — an absent, older or unknown
- * `reason` predates the split and must read as `main-red` (the events.ts default, spelled in
- * main-revert.ts where the field is written). The two read sites that turn a revert's reason
- * into `"post-review" | "main-red"` (run-detail-data.ts's revertedOf and failure/time-spend.ts's
- * loss ranking) used to each hand-roll the ternary with its own twin copy of this comment; the
- * default now lives here once, beside the other event-field readers, so the reader and the
- * writer cannot drift on what an absent or unrecognized reason means. `reason` is unknown
- * through the index signature (like `failingTests`), hence the strict equality on the single
- * recognized value. event-format.ts's sentence choice compares this result;
- * main-guardrails.ts's red-revert filter reads the same union off already-normalized
- * aggregations. */
-export function revertReasonOf(ev: HarnessEvent): "post-review" | "main-red" {
-  return ev.reason === "post-review" ? "post-review" : "main-red";
-}
-
 /** The event-tail size readEvents falls back to when a caller omits `limit` — a working
  * handful of a busy team's recent activity, small enough that the per-poll tail read stays
  * cheap. Exported so a caller that starts a scan at the default (status-polls.ts's
