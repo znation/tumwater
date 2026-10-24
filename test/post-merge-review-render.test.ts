@@ -135,6 +135,28 @@ test("an entry with neither rejected nor failures carries no suffix", () => {
   assert.ok(!out.includes("["), out);
 });
 
+test("renderPostReviews prints the wait since an entry was queued", () => {
+  const whole = [
+    e({ commit: "a".repeat(40), role: "improve", summary: "tidy the parser", enqueuedAt: 1_000 }),
+    e({ commit: "b".repeat(40), role: "clean", summary: "split the module", enqueuedAt: 3_601_000 }),
+    e({ commit: "c".repeat(40), role: "feature", summary: "no timestamp" }),
+  ];
+  // Two entries with enqueuedAt 3 600 000 and 0 ms before the fixed now read 1h ago and 0s ago
+  // between the short sha and the summary; the no-enqueuedAt entry prints the pre-change line.
+  const now = 3_601_000;
+  assert.equal(
+    renderPostReviews(whole, undefined, now),
+    [
+      "post-merge review queue (3 entries):",
+      `  1. improve ${'a'.repeat(40).slice(0, 8)} · 1h ago · tidy the parser`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · 0s ago · split the module`,
+      `  3. feature ${'c'.repeat(40).slice(0, 8)} · no timestamp`,
+    ].join("\n"),
+  );
+  // With no now the whole render is byte-identical to the unscoped pre-change line.
+  assert.equal(renderPostReviews(whole, undefined, undefined), renderPostReviews(whole));
+});
+
 test("a postReviewStatusLabel names the rejection or the failed-run count", () => {
   assert.equal(postReviewStatusLabel(e({})), "");
   assert.equal(postReviewStatusLabel(e({ failures: 2 })), "[2 failed review runs]");

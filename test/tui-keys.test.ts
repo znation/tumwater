@@ -2332,25 +2332,28 @@ test("the Pending pane renders the durable merge queue on entry, above the resol
 
 test("the Pending pane shows the post-merge review queue above the roster", async () => {
   const root = makeRoot();
-  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
-  writeJsonFile(postReviewPath(root), { pending: [{ commit: "b".repeat(40), role: "feature", summary: "review me", failures: 2 }] });
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 3_600_000 });
+  writeJsonFile(postReviewPath(root), { pending: [{ commit: "b".repeat(40), role: "feature", summary: "review me", failures: 2 }, { commit: "c".repeat(40), role: "clean", summary: "add tests", enqueuedAt: 0 }] });
   const team = { mainBranch: "main", roles: [] };
   const keys = createTuiKeys({
     root,
     quit: () => {},
     requestRender: () => {},
-    now: () => 0,
+    now: () => 3_600_000,
     collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
     collectPending: () => new Promise<typeof team>(() => {}),
   });
   keys.syncSnapshot(0, false, [], false);
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
-  const queued = renderMergeQueue(readMergeQueue(root), 0);
-  const reviews = renderPostReviews(readPostReviews(root));
+  const queued = renderMergeQueue(readMergeQueue(root), 3_600_000);
+  const reviews = renderPostReviews(readPostReviews(root), undefined, 3_600_000);
   const cache = keys.state().paneCache ?? "";
   assert.equal(cache, queued + "\n\n" + reviews);
-  assert.match(cache, /post-merge review queue \(1 entry\):/);
+  assert.match(cache, /post-merge review queue \(2 entries\):/);
   assert.match(cache, /feature bbbbbbbb · review me · \[2 failed review runs\]/);
+  // The enqueuedAt entry prints its age between the short sha and the summary; the no-timestamp
+  // entry above reads unchanged.
+  assert.match(cache, /clean cccccccc · 1h ago · add tests/);
 });
 
 test("a Pending collector resolution after the operator cycled away does not cache onto the new view", async () => {

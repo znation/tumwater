@@ -264,7 +264,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         return "";
     }
   }
-  function postReviewsHtml(entries, armed = "", role = "", state = "") {
+  function postReviewsHtml(entries, armed = "", role = "", state = "", now = 0) {
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
     }
@@ -283,7 +283,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     const kept = entries.filter((e) => (!active || (e && e.role === active)) && (!activeState || postReviewState(e) === activeState));
     const lines = kept.map((e) => {
       const label = postReviewStatusLabel(e);
+      const age = typeof e.enqueuedAt === "number" && Number.isFinite(now)
+        ? " · " + esc(humanSeconds(Math.max(0, Math.round((now - e.enqueuedAt) / 1000)))) + " ago"
+        : "";
       let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
+        age +
         " · " + esc(e.summary || "—") +
         (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
       // A two-click Accept on every well-formed entry not waiting on its revert (the server
@@ -311,7 +315,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     if (!roles.has(pendingReviewRole)) pendingReviewRole = "";
     const states = new Set(entries.map(postReviewState));
     if (!states.has(pendingReviewState)) pendingReviewState = "";
-    card.innerHTML = postReviewsHtml(entries, reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "", pendingReviewRole, pendingReviewState);
+    card.innerHTML = postReviewsHtml(entries, reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "", pendingReviewRole, pendingReviewState, Date.now());
   }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of

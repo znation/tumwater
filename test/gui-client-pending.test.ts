@@ -512,6 +512,29 @@ test("postReviewsHtml is empty until a commit waits and names each entry otherwi
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
+test("the Post-merge reviews card shows each entry's waiting age", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string, role?: string, state?: string, now?: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const html = postReviewsHtml(
+    [
+      { role: "feature", commit: "abcdef1234567890", summary: "add the thing", enqueuedAt: now - 3_600_000 },
+      { role: "clean", commit: "fedcba9876543210", summary: "tidy" },
+    ],
+    "",
+    "",
+    "",
+    now,
+  );
+  // 3 600 000 ms before now reads 1h ago between the short sha and the summary; the entry with
+  // no enqueuedAt renders the pre-change line.
+  assert.match(html, /feature abcdef12 · 1h ago · add the thing/);
+  assert.match(html, /clean fedcba98 · tidy/);
+  assert.doesNotMatch(html, /undefined|NaN/);
+});
+
 test("postReviewsHtml arms the clicked commit's Accept as Confirm accept", () => {
   const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string): string }>(
     ["format", "labels", "pending-table"],

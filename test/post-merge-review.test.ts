@@ -333,6 +333,55 @@ test("a failed post-review.json write after a revert warns and still frees the m
   assert.match(String(warnings[0]!.message), /pr write refused/);
 });
 
+test("readPostReviews drops a non-numeric enqueuedAt and omits the field when absent", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.dirname(postReviewPath(root)), { recursive: true });
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "s", enqueuedAt: 42 },
+        { commit: "b".repeat(40), role: "improve", summary: "t", enqueuedAt: "yesterday" },
+        { commit: "c".repeat(40), role: "improve", summary: "u" },
+      ],
+    }),
+  );
+  assert.deepEqual(readPostReviews(root), [
+    { commit: "a".repeat(40), role: "improve", summary: "s", enqueuedAt: 42 },
+    { commit: "b".repeat(40), role: "improve", summary: "t" },
+    { commit: "c".repeat(40), role: "improve", summary: "u" },
+  ]);
+});
+
+test("addPostReview stamps enqueuedAt and a re-queued entry and a failed run keep it", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "x.txt"), "x");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "add x");
+  const commit = headSha(root);
+  // A first add with a fixed now stamps that instant; a re-add of the same commit keeps it.
+  addPostReview(root, { commit, role: "improve", summary: "add x" }, 1_000);
+  assert.deepEqual(readPostReviews(root), [{ commit, role: "improve", summary: "add x", enqueuedAt: 1_000 }]);
+  addPostReview(root, { commit, role: "improve", summary: "add x" }, 5_000);
+  assert.deepEqual(readPostReviews(root), [{ commit, role: "improve", summary: "add x", enqueuedAt: 1_000 }]);
+  // A verdict-less run through drainPostReviews preserves the original stamp on the kept entry.
+  const ctx = {
+    root,
+    mainBranch: "main",
+    liveConfig: defaultConfig(),
+    runners: [fakeRunner("improve", "")],
+    semaphore: new Semaphore(2),
+    signal: new AbortController().signal,
+    startHeld: () => false,
+  } as unknown as MergePipelineContext;
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const kept = readPostReviews(root);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]!.enqueuedAt, 1_000);
+});
+
 test("a failed post-review.json write in the revert skip check still logs why it does not revert", async () => {
   const { root, commit, ctx } = setup("VERDICT: approve\n1. fine");
   fs.writeFileSync(

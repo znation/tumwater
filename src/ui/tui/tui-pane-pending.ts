@@ -159,7 +159,7 @@ export function createPendingPane(session: TuiPaneSession) {
   const reviewsHead = (): string => {
     if (lastReviews.length === 0) return "";
     const scoped = scopedReviews();
-    return renderPostReviews(scoped.entries, scoped.scope);
+    return renderPostReviews(scoped.entries, scoped.scope, session.now());
   };
   const queueAndReviews = (): string => {
     const q = queueHead();

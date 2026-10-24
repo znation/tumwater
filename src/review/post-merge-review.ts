@@ -31,6 +31,10 @@ export interface PostReview {
    * entry is settled or removed. */
   lastFailure?: string;
   rejected?: string[];
+  /** When the entry was first queued for review, epoch ms; absent on an entry an older file
+   * wrote. `settlePostReview` already spreads `next`, so a failed re-settle and a rejection
+   * keep the original stamp. */
+  enqueuedAt?: number;
 }
 
 /** A commit's review is dropped, with a warning, after this many runs with no verdict. */
@@ -103,7 +107,7 @@ export function readPostReviews(root: string): PostReview[] {
   const entries: PostReview[] = [];
   for (const raw of saved.pending as unknown[]) {
     if (!isJsonObject(raw)) continue;
-    const { commit, role, summary, body, failures, lastFailure, rejected } = raw;
+    const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt } = raw;
     if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
     if (rejected !== undefined && !Array.isArray(rejected)) continue;
     const entry: PostReview = { commit, role, summary };
@@ -111,6 +115,7 @@ export function readPostReviews(root: string): PostReview[] {
     if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
     if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
     if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+    if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
     entries.push(entry);
   }
   return entries;
@@ -121,9 +126,15 @@ function writePostReviews(root: string, pending: PostReview[]): void {
 }
 
 /** Queue the merged commit for its review. Never throws: a failed write warns and leaves the file
- * as it was, so the commit goes unreviewed. */
-export function addPostReview(root: string, entry: PostReview): void {
-  writePostReviews(root, [...readPostReviews(root).filter((e) => e.commit !== entry.commit), entry]);
+ * as it was, so the commit goes unreviewed. Stamps `enqueuedAt` when the entry carries none —
+ * the file's existing stamp on a re-add of a known commit, else `now` (the default clock when the
+ * write path drives the drain) — so a re-queued entry keeps its original stamp and tests can pin
+ * a fixed instant. */
+export function addPostReview(root: string, entry: PostReview, now: number = Date.now()): void {
+  const rest = readPostReviews(root);
+  const prior = rest.find((e) => e.commit === entry.commit)?.enqueuedAt;
+  const stamped: PostReview = { ...entry, enqueuedAt: entry.enqueuedAt ?? prior ?? now };
+  writePostReviews(root, [...rest.filter((e) => e.commit !== entry.commit), stamped]);
 }
 
 /** Replace the entry for `commit` with `next`, or drop it when `next` is null. Never throws: a

@@ -548,7 +548,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   `tumwater diff --overlaps` (`GET /api/diff?overlaps=1[&role=<ids>][&path=<path>]`; clicking a listed file shows each role's change to it, `GET /api/diff?role=<id>&path=<path>`, the twin of `diff --role --path`; its Role picker keeps only the files the chosen role holds, each still naming every holder, the `diff --overlaps --role` twin, and its Folder picker keeps only the files at or under the chosen directory, the `diff --overlaps --path` twin), and shows a role's full unmerged patch in its drawer (its Stat only toggle shows the diffstat instead, `GET /api/diff?role=<id>&stat=1`, the twin of `diff --role --stat`), which also lists that role's waiting merges
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
-  commits `review.afterMerge` put aside for post-merge review, each with its rejected (still
+  commits `review.afterMerge` put aside for post-merge review, each row naming the wait since the
+  commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
+  timestamp) matching `tumwater queue`'s age, each with its rejected (still
   waiting on the revert) or failed-review status, and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which the
   `post-merge-risk` alert's shared advice names as the deliberate accept-unreviewed action). A review one failed run from the

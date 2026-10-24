@@ -83,7 +83,7 @@ export async function cmdReviews(root: string, args: string[]): Promise<void> {
     entries = scoped.entries;
     scope = scoped.scope;
   }
-  sayJsonOrRender(args, { pending: entries }, () => renderPostReviews(entries, scope));
+  sayJsonOrRender(args, { pending: entries }, () => renderPostReviews(entries, scope, Date.now()));
 }
 
 /** The `tumwater reviews --accept <n>` branch (PLANS.md): remove the Nth pending post-merge

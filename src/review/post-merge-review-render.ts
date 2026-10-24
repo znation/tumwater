@@ -1,15 +1,17 @@
 /** The renderer behind `tumwater reviews` — the operator-facing text for the post-merge review
  * queue (.tumwater/state/post-review.json): one line per well-formed entry in the given order,
- * plus a `post-merge review queue (N):` header. Pure function of the entry list — no I/O and no
- * clock read (an entry carries no timestamp, so there is no age line; a reader wanting the
- * commit's age uses `tumwater history <role>`), so a test can pin its output exactly. The
- * `merge queue empty` convention (src/merge/merge-queue-render.ts) is reused for the empty case. */
+ * plus a `post-merge review queue (N):` header. Pure function of the entry list — the optional
+ * `now` is the only clock input, and when it is a number and an entry carries `enqueuedAt` the
+ * line names the wait since the entry was first queued, exactly as the merge queue names its
+ * age — so a test can pin its output exactly. The `merge queue empty` convention
+ * (src/merge/merge-queue-render.ts) is reused for the empty case. */
 
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { squash } from "../text/text.js";
 import { filterKeepPositions } from "../collections.js";
 import { plural } from "../text/phrases.js";
+import { humanAgo } from "../text/datetime.js";
 import type { PostReview } from "./post-merge-review.js";
 
 /** The one state every observer surface narrows on: `rejected` when the reviewer turned the
@@ -74,20 +76,25 @@ export function scopePostReviews(
 }
 
 /** The text `tumwater reviews` prints. A totally empty queue renders `post-merge review queue
- * empty`; otherwise a header and one line per entry — position, role, short commit, squashed
- * summary, and the status suffix from `postReviewStatusLabel`, appended as `" · " + label` only
- * when it is non-empty. With the optional `scope` (`reviews --role`/`--status`: `entries`
- * already holds only the kept entries', `positions` their 1-based places in the whole queue,
- * `total` the whole queue's entry count, and `filter` the `--role`/`--status` filter text when
- * one is active) each line keeps its whole-queue number and the header reads
+ * empty`; otherwise a header and one line per entry — position, role, short commit, and, when
+ * `now` and the entry's `enqueuedAt` are both numbers, the wait since the commit was queued
+ * (`<age> ago`, between the short commit and the summary) — then the squashed summary and the
+ * status suffix from `postReviewStatusLabel`, appended as `" · " + label` only when it is
+ * non-empty. Without a `now`, or for an entry with no `enqueuedAt`, the line is byte-identical
+ * to before, so an older `post-review.json` and every existing renderer test read unchanged.
+ * With the optional `scope` (`reviews --role`/`--status`: `entries` already holds only the kept
+ * entries', `positions` their 1-based places in the whole queue, `total` the whole queue's
+ * entry count, and `filter` the `--role`/`--status` filter text when one is active) each line
+ * keeps its whole-queue number and the header reads
  * `post-merge review queue (<kept> of <total>, <filter>):`, where `<filter>` is `scope.filter`
  * when set else `--role <ids>`. A scope that keeps nothing of a non-empty queue prints
  * `no post-merge reviews matching <filter> (post-merge review queue holds <total>)` when a
- * filter is set, else `no post-merge reviews for <ids> (…)`. Without `scope` the output is
- * byte-identical to before. */
+ * filter is set, else `no post-merge reviews for <ids> (…)`. Without `scope` and `now` the
+ * output is byte-identical to before. */
 export function renderPostReviews(
   entries: readonly PostReview[],
   scope?: { roles: readonly string[]; positions: readonly number[]; total: number; filter?: string },
+  now?: number,
 ): string {
   const total = scope ? scope.total : entries.length;
   if (total === 0) return "post-merge review queue empty";
@@ -103,7 +110,11 @@ export function renderPostReviews(
   entries.forEach((entry, i) => {
     const label = postReviewStatusLabel(entry);
     const suffix = label === "" ? "" : ` · ${label}`;
-    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)} · ${squash(entry.summary, 80)}${suffix}`);
+    const age =
+      typeof now === "number" && typeof entry.enqueuedAt === "number"
+        ? ` · ${humanAgo(entry.enqueuedAt, now)}`
+        : "";
+    lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(entry.role)} ${shortSha(entry.commit)}${age} · ${squash(entry.summary, 80)}${suffix}`);
   });
   return lines.join("\n");
 }

@@ -43,6 +43,30 @@ test("reviews lists each entry in FIFO order with its role, sha, summary and sta
   assert.match(r.stdout, /rejected — waiting to revert: no tests/);
 });
 
+test("reviews prints an entry's waiting age and omits it for an entry without a timestamp", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews age test");
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser", enqueuedAt: Date.now() - 3_600_000 },
+        { commit: "b".repeat(40), role: "clean", summary: "rejected", rejected: ["no tests"] },
+      ],
+    }),
+  );
+  const r = await cli(repo, "reviews");
+  assert.equal(r.code, 0);
+  // The enqueued entry prints `1. improve sha · <age> ago · tidy the parser`; the no-timestamp
+  // entry prints no age between its sha and its summary — the same `\d+s ago` regex convention
+  // test/cli-queue.test.ts pins `tumwater queue`'s age with.
+  assert.match(
+    r.stdout,
+    new RegExp(`1\\. improve ${'a'.repeat(8)} · \\d+[mhd] ago · tidy the parser`),
+  );
+  assert.match(r.stdout, new RegExp(`2\\. clean ${'b'.repeat(8)} · rejected · \\[rejected — waiting to revert: no tests\\]`));
+});
+
 test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews role test");
