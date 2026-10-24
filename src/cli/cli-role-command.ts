@@ -51,6 +51,13 @@ function plainDecimalToJson(raw: string): string | null {
   return /^\d*\.?\d+$/.test(raw) ? String(Number(raw)) : null;
 }
 
+/** Detect exponent spellings that the cap, interval and instances writes must reject
+ * before JSON parsing can turn them into otherwise valid numeric config values. Other
+ * invalid spellings fall through to the config validator, which names the key. */
+function isExponentSpelling(raw: string): boolean {
+  return raw.trim() !== "" && plainDecimalToJson(raw) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(raw.trim());
+}
+
 /** `role`'s min-run-interval write flags: clear it, or set it to a second count (0 is
  * back-to-back). */
 const CLEAR_MIN_RUN_INTERVAL_SPEC = { names: ["--clear-min-run-interval"] };
@@ -298,7 +305,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // already a plain decimal, so the exponent form is exactly the silent-write set; hex,
     // negative and non-numeric spellings fall through to the write path, whose
     // validateConfig message names the key.
-    if (cap.trim() !== "" && plainDecimalToJson(cap) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(cap.trim()))
+    if (isExponentSpelling(cap))
       fail(`${cfgKey} must be a plain dollar amount like 25, 12.50, or .5 — no +/-, exponent, or hex notation`);
     writeRoleConfigKey(root, base, clearCap, cap, cfgKey, "daily cap", (v) => plainDecimalToJson(v) ?? v, (v) => v);
     return;
@@ -326,7 +333,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // plain decimal, so the exponent form is exactly the silent-write set; hex, negative and
     // non-numeric spellings fall through to the write path, whose validateConfig message
     // names the key.
-    if (secs.trim() !== "" && plainDecimalToJson(secs) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(secs.trim()))
+    if (isExponentSpelling(secs))
       fail(`${cfgKey} must be a plain second count like 300, 0.5, or .5 — no +/-, exponent, or hex notation`);
     writeRoleConfigKey(root, base, clearInterval, secs, cfgKey, "min run interval", (v) => plainDecimalToJson(v) ?? v, (v) => `${v}s`);
     return;
@@ -356,7 +363,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     // or out ("9e0" → 9 too) — is refused here, while fractional, hex, negative and plain
     // out-of-range integer spellings fall through to the write path, whose validateConfig
     // message names the key.
-    if (n.trim() !== "" && plainDecimalToJson(n) === null && /^\d+(\.\d+)?[eE][+-]?\d+$/.test(n.trim()))
+    if (isExponentSpelling(n))
       fail(`${cfgKey} must be a plain integer from 1 to 8 — no exponent notation`);
     // An absent count already means 1 (instanceCount's default), so asking for 1 is a no-op —
     // but only for a role that may split; any other role falls through to validateConfig's refusal.
