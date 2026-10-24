@@ -214,6 +214,16 @@ function setLowerMedian(day: ReportDay, key: DayMedianKey, ms: number[]): void {
   if (ms.length > 0) day[key] = lowerMedian(ms);
 }
 
+/** Set one per-day role/product map cell only when the day actually has entries (`map`
+ * non-empty), so a map-free day keeps its exact pre-feature shape (the field stays absent).
+ * The single home of that guard — the day collector's per-role-and-product map cells all
+ * followed it inline before. */
+function setMapIfNonempty(day: ReportDay, key: string, map: Record<string, number> | undefined): void {
+  if (map !== undefined && Object.keys(map).length > 0) {
+    (day as unknown as Record<string, Record<string, number>>)[key] = map;
+  }
+}
+
 /** Aggregate team usage over exactly `days` local calendar days ending today, from the event
  * log (run_end/merged) and the backlog history (`## Done` in PLANS.md and PLANS-DONE.md,
  * `## Fixed` in BUGS.md and BUGS-FIXED.md). */
@@ -249,16 +259,11 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.tokensByRole = fold.tokensByRole;
       day.costByRole = fold.costByRole;
       // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
-      if (Object.keys(fold.rejectionsByRole).length > 0)
-        day.rejectionsByRole = fold.rejectionsByRole;
-      if (Object.keys(fold.postMergeRejectionsByRole).length > 0)
-        day.postMergeRejectionsByRole = fold.postMergeRejectionsByRole;
-      if (Object.keys(fold.revisionsByRole).length > 0)
-        day.revisionsByRole = fold.revisionsByRole;
-      if (Object.keys(fold.refusalsByRole).length > 0)
-        day.refusalsByRole = fold.refusalsByRole;
-      if (Object.keys(fold.revertsByRole).length > 0)
-        day.revertsByRole = fold.revertsByRole;
+      setMapIfNonempty(day, "rejectionsByRole", fold.rejectionsByRole);
+      setMapIfNonempty(day, "postMergeRejectionsByRole", fold.postMergeRejectionsByRole);
+      setMapIfNonempty(day, "revisionsByRole", fold.revisionsByRole);
+      setMapIfNonempty(day, "refusalsByRole", fold.refusalsByRole);
+      setMapIfNonempty(day, "revertsByRole", fold.revertsByRole);
       // Checks belong to the merge slot, so only the team series carries the median.
       setLowerMedian(day, "checkMedianMs", fold.checkDurationsMs);
       if (fold.checkFailures > 0) day.checkFailures = fold.checkFailures;
@@ -274,12 +279,9 @@ export function collectReport(root: string, days: number, role?: string | readon
       // series carries the median, mirroring checkMedianMs.
       setLowerMedian(day, "reviewMedianMs", fold.reviewDurationsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
-      if (Object.keys(fold.failedRunsByRole).length > 0)
-        day.failedRunsByRole = fold.failedRunsByRole;
-      if (Object.keys(fold.fallbacksByRole).length > 0)
-        day.fallbacksByRole = fold.fallbacksByRole;
-      if (Object.keys(fold.imageReroutesByRole).length > 0)
-        day.imageReroutesByRole = fold.imageReroutesByRole;
+      setMapIfNonempty(day, "failedRunsByRole", fold.failedRunsByRole);
+      setMapIfNonempty(day, "fallbacksByRole", fold.fallbacksByRole);
+      setMapIfNonempty(day, "imageReroutesByRole", fold.imageReroutesByRole);
       day.commits = fold.commits;
       day.commitsByRole = fold.commitsByRole;
       day.workCommits = fold.workCommits;
@@ -287,26 +289,23 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.costUsd = fold.costUsd;
       // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
       if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
-      if (Object.keys(fold.notionalByRole).length > 0) day.notionalByRole = fold.notionalByRole;
+      setMapIfNonempty(day, "notionalByRole", fold.notionalByRole);
       // Only set when a provider actually spent (zero means absent), so a provider-free day
       // keeps its exact pre-feature shape and `report --json` omits the maps when empty.
-      if (Object.keys(fold.costByProvider).length > 0) day.costByProvider = fold.costByProvider;
-      if (Object.keys(fold.notionalByProvider).length > 0)
-        day.notionalByProvider = fold.notionalByProvider;
+      setMapIfNonempty(day, "costByProvider", fold.costByProvider);
+      setMapIfNonempty(day, "notionalByProvider", fold.notionalByProvider);
       // Backends are a team attribution (a backend is not a role), so only the team series
       // carries the map; only set when a backend actually spent (zero means absent), so a
       // backend-free day keeps its exact pre-feature shape.
-      if (Object.keys(fold.notionalByBackend).length > 0)
-        day.notionalByBackend = fold.notionalByBackend;
+      setMapIfNonempty(day, "notionalByBackend", fold.notionalByBackend);
       // Models are a team attribution (a model is not a role), so only the team series
       // carries the map; only set when a modelled start happened (zero means absent), so a
       // model-less day keeps its exact pre-feature shape.
-      if (Object.keys(fold.runsByModel).length > 0) day.runsByModel = fold.runsByModel;
+      setMapIfNonempty(day, "runsByModel", fold.runsByModel);
       // Deferred runs are a team attribution (a reason is not a role), so only the team
       // series carries the map; only set when a day actually deferred (zero means absent),
       // so a deferral-free day keeps its exact pre-feature shape.
-      if (Object.keys(fold.deferredByReason).length > 0)
-        day.deferredByReason = fold.deferredByReason;
+      setMapIfNonempty(day, "deferredByReason", fold.deferredByReason);
       day.mergeRuns = fold.mergeRuns;
       day.mergeTokens = fold.mergeTokens;
       day.mergeCostUsd = fold.mergeCostUsd;
@@ -314,15 +313,13 @@ export function collectReport(root: string, days: number, role?: string | readon
       if ((fold.mergeFailed ?? 0) > 0) day.mergeFailed = fold.mergeFailed;
       // Only set when a role actually merged/failed that day (zero means absent), so a
       // merge-free day keeps its exact pre-feature shape.
-      if (Object.keys(fold.mergedByRole).length > 0) day.mergedByRole = fold.mergedByRole;
-      if (Object.keys(fold.mergeFailedByRole).length > 0)
-        day.mergeFailedByRole = fold.mergeFailedByRole;
+      setMapIfNonempty(day, "mergedByRole", fold.mergedByRole);
+      setMapIfNonempty(day, "mergeFailedByRole", fold.mergeFailedByRole);
       // Reason codes are a team attribution (a result is not a role), so only the team
       // series carries the map; only set when nonzero, so a failure-free day keeps its
       // exact pre-feature shape. The role branch below leaves it unset — merge runs are
       // the merge slot's.
-      if (Object.keys(fold.mergeFailedByReason).length > 0)
-        day.mergeFailedByReason = fold.mergeFailedByReason;
+      setMapIfNonempty(day, "mergeFailedByReason", fold.mergeFailedByReason);
     } else {
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
       // the named role's runs/tokens/cost and (base-role-keyed) commits. The scope is the
@@ -335,22 +332,14 @@ export function collectReport(root: string, days: number, role?: string | readon
       day.runsByRole = narrowToRole(fold.runsByRole, bases);
       day.tokensByRole = narrowToRole(fold.tokensByRole, bases);
       day.costByRole = narrowToRole(fold.costByRole, bases);
-      const rejs = narrowToRole(fold.rejectionsByRole, bases);
-      if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
-      const pmRejs = narrowToRole(fold.postMergeRejectionsByRole, bases);
-      if (Object.keys(pmRejs).length > 0) day.postMergeRejectionsByRole = pmRejs;
-      const revs = narrowToRole(fold.revisionsByRole, bases);
-      if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
-      const refusals = narrowToRole(fold.refusalsByRole, bases);
-      if (Object.keys(refusals).length > 0) day.refusalsByRole = refusals;
-      const reverts = narrowToRole(fold.revertsByRole, bases);
-      if (Object.keys(reverts).length > 0) day.revertsByRole = reverts;
-      const fails = narrowToRole(fold.failedRunsByRole, bases);
-      if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
-      const falls = narrowToRole(fold.fallbacksByRole, bases);
-      if (Object.keys(falls).length > 0) day.fallbacksByRole = falls;
-      const reroutes = narrowToRole(fold.imageReroutesByRole, bases);
-      if (Object.keys(reroutes).length > 0) day.imageReroutesByRole = reroutes;
+      setMapIfNonempty(day, "rejectionsByRole", narrowToRole(fold.rejectionsByRole, bases));
+      setMapIfNonempty(day, "postMergeRejectionsByRole", narrowToRole(fold.postMergeRejectionsByRole, bases));
+      setMapIfNonempty(day, "revisionsByRole", narrowToRole(fold.revisionsByRole, bases));
+      setMapIfNonempty(day, "refusalsByRole", narrowToRole(fold.refusalsByRole, bases));
+      setMapIfNonempty(day, "revertsByRole", narrowToRole(fold.revertsByRole, bases));
+      setMapIfNonempty(day, "failedRunsByRole", narrowToRole(fold.failedRunsByRole, bases));
+      setMapIfNonempty(day, "fallbacksByRole", narrowToRole(fold.fallbacksByRole, bases));
+      setMapIfNonempty(day, "imageReroutesByRole", narrowToRole(fold.imageReroutesByRole, bases));
       day.commits = commits;
       day.commitsByRole = narrowToRole(fold.commitsByRole, bases);
       const tierCommits = (tier: string): number =>
@@ -366,10 +355,8 @@ export function collectReport(root: string, days: number, role?: string | readon
       // Merge runs belong to the merge slot, not this role, so the role-scoped series
       // keeps them unset (matching the merge-share fields) — the render omits the merge
       // line for a scoped report, so these are carried only for shape consistency.
-      const mergeDone = narrowToRole(fold.mergedByRole, bases);
-      if (Object.keys(mergeDone).length > 0) day.mergedByRole = mergeDone;
-      const mergeDoneFailed = narrowToRole(fold.mergeFailedByRole, bases);
-      if (Object.keys(mergeDoneFailed).length > 0) day.mergeFailedByRole = mergeDoneFailed;
+      setMapIfNonempty(day, "mergedByRole", narrowToRole(fold.mergedByRole, bases));
+      setMapIfNonempty(day, "mergeFailedByRole", narrowToRole(fold.mergeFailedByRole, bases));
     }
   }
 
