@@ -3,9 +3,13 @@
 
 import { baseRoleOf, instanceIndex } from "./runner-ids.js";
 
-/** An instance id as `feature #2`; any other id (a bare role, `director`, a custom role,
- * `feature-1`) unchanged. */
+/** The shared display labels that differ from a role's id (the shared table every surface that
+ * shows a role label reads through roleLabel, and the dashboard client's hand-kept copy). ci
+ * renders as "CI"; every other id — a bare role, a custom role, an instance — renders as its id. */
+export const ROLE_LABELS: Readonly<Record<string, string>> = { ci: "CI" };
+
 export function roleLabel(runnerId: string): string {
   const base = baseRoleOf(runnerId);
-  return base === runnerId ? runnerId : `${base} #${instanceIndex(runnerId)}`;
+  const label = Object.prototype.hasOwnProperty.call(ROLE_LABELS, base) ? ROLE_LABELS[base]! : base;
+  return base === runnerId ? label : `${label} #${instanceIndex(runnerId)}`;
 }

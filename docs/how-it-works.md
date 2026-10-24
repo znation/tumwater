@@ -209,7 +209,7 @@ discards a role's in-flight merge.
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has
   work a feature or bugfix instance can take (refused, needs-review/replan, waiting-for-the-next-failure and blocked entries do
-  not count). `qa`, `selfcheck` and `feedback` are never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
+  not count). `qa`, `selfcheck`, `feedback` and `ci` are never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
   open bugs it has nothing assigned and defers like one — with the difference that any
   feature, bugfix, director, you or another human wakes it (your own `tumwater brief`, `plan`, `bug`
   and `questions answer` edits count) (a deferral only holds while no qualifying work has merged),

@@ -10,6 +10,7 @@ import {
   roleById,
   unknownRoleMessage,
 } from "../src/roles/roles.js";
+import { roleLabel } from "../src/roles/role-labels.js";
 
 // role-catalog.ts is the single source of truth for which roles exist (roles.ts re-exports it).
 // Its structural invariants are
@@ -47,9 +48,11 @@ test("BASELINE_BLOCKED_ROLES is exactly the code-producing catalog roles", () =>
   // Red-main policy (src/baseline/main-red.ts): while main's own suite is red, only roles whose
   // diff can carry non-exempt (code) changes are blocked from starting an authoring run. Exempt:
   // bugfix — the designated healer; blocking it would leave only humans able to unblock a
-  // red main — and the markdown-only charter roles plan/readme/steward/qa/selfcheck, whose
-  // diffs are review-exempt by construction. The director is not a catalog role at all.
-  const exempt = new Set([DIRECTOR_ROLE, "bugfix", "plan", "readme", "steward", "qa", "selfcheck", "feedback"]);
+  // red main — the markdown-only charter roles plan/readme/steward/qa/selfcheck, whose
+  // diffs are review-exempt by construction, and the observers feedback and ci (a ci role must
+  // be able to author the fix that turns a red main green, part 2/3 of the ci plan). The
+  // director is not a catalog role at all.
+  const exempt = new Set([DIRECTOR_ROLE, "bugfix", "plan", "readme", "steward", "qa", "selfcheck", "feedback", "ci"]);
   const expected = ROLES.map((r) => r.id).filter((id) => !exempt.has(id));
   assert.deepEqual(
     [...BASELINE_BLOCKED_ROLES].sort(),
@@ -76,6 +79,24 @@ test("OBSERVER_ROLES are catalog roles excluded from DEFERRABLE_ROLES", () => {
     assert.ok(roleById(id), `observer ${JSON.stringify(id)} exists in the catalog`);
     assert.ok(!DEFERRABLE_ROLES.has(id), `${id} is an observer, so it never defers`);
   }
+});
+
+test("the ci role exists after qa, is an observer, and is blocked by nothing", () => {
+  // A ci role runs the CI workflow's own jobs at main's tip (part 1/3): its no_change means
+  // "checked, green", so it schedules on the observer interval and never defers; it authors
+  // code fixes, so it carries no baseline block (part 2/3 needs it to author while main is red).
+  const ci = roleById("ci");
+  assert.ok(ci, "roleById('ci') returns a role");
+  assert.equal(ci.title, "CI parity runner");
+  assert.equal(ci.tier, "default");
+  assert.equal(ROLES.filter((r) => r.id === "ci").length, 1, "ci appears exactly once");
+  const ids = ROLES.map((r) => r.id);
+  assert.ok(ids.indexOf("ci") > ids.indexOf("qa"), "ci sits after qa in catalog order");
+  assert.ok(OBSERVER_ROLES.has("ci"), "ci is an observer");
+  assert.ok(!DEFERRABLE_ROLES.has("ci"), "ci is an observer, so it never defers");
+  assert.ok(!BASELINE_BLOCKED_ROLES.has("ci"), "ci is not baseline-blocked");
+  assert.ok(allRoleIds().includes("ci"), "allRoleIds lists ci");
+  assert.equal(roleLabel("ci"), "CI", "ci renders as CI in role labels");
 });
 
 test("allRoleIds lists every catalog role exactly once, director appended last", () => {

@@ -386,6 +386,36 @@ The FLOW line — required on every run: your final reply carries one result-car
    ${NOTHING_TO_DO}`,
   },
   {
+    id: "ci",
+    tier: "default",
+    title: "CI parity runner",
+    find: `Run the CI workflow's own jobs against main's tip and repair what fails. You close the gap
+between what GitHub CI runs and what the team's own merge gate skips: the workflow's test job runs
+the project's whole test suite and e2e suite, while the merge gate runs only the affected tests —
+so only you run the whole thing where it counts, before a user, a release tag, or a post-merge
+reviewer finds what a green gate missed.
+
+Steps:
+   1. Read .github/workflows/ci.yml fresh each run and execute its jobs' own run: steps verbatim
+      against main's tip in this worktree, in order — for an npm project like this repo, that is
+      \`npm ci\`, then \`npm test\`, then \`npm run test:e2e\`; when the tip is a push-to-main tip,
+      also \`npm pack\` (the workflow's package job). The actions/checkout, setup-node and git
+      identity are this worktree's own. Reading the workflow means a step added to it is picked
+      up without a code change.
+   2. A failing step is the work: reproduce it, fix the source/tests/docs it names, re-run that
+      step until green, and commit the fix as the run's one change. A step that fails once and
+      passes on the re-run is a flake — file ONE BUGS.md entry naming the test and the flake and
+      change nothing else.
+   3. Whatever a failing step's own cause you cannot fix is filed in BUGS.md with the failing
+      output quoted.
+
+Boundaries:
+   - You never edit .github/workflows/* (you read them) and never weaken a test to make a step
+     pass.
+   - Your product is a verdict and a fix: when everything is green, declare nothing-to-do (here
+     \`no_change\` means "checked, green") rather than inventing busywork.`,
+  },
+  {
     id: "selfcheck",
     tier: "default",
     title: "self-check: files tumwater bugs from its own failure log",

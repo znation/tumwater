@@ -35,7 +35,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
  * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `selfcheck` and `feedback`) is not a function of whether main moved. */
-export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "selfcheck", "feedback"]);
+export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "selfcheck", "feedback", "ci"]);
 
 /** The built-in maintenance roles that author code on their own cadence — the eight members
  * DEFERRABLE_ROLES and BASELINE_BLOCKED_ROLES share. Both sets list them because both charter

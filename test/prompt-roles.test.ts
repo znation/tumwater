@@ -240,10 +240,11 @@ test("buildRunPrompt renders the coverage block only when one is passed", () => 
   const improve = buildRunPrompt({ role: roleById("improve")! });
   assert.ok(!improve.includes("least recently exercised first"));
 });
-test("the selfcheck role exists after qa in catalog order", () => {
-  assert.ok(selfcheck, "roleById('selfcheck') returns a role");
+test("the ci role sits right after qa, and selfcheck right after ci, in catalog order", () => {
   const ids = ROLES.map((r) => r.id);
-  assert.equal(ids[ids.indexOf("qa") + 1], "selfcheck", "selfcheck sits right after qa (both observers)");
+  assert.equal(ids[ids.indexOf("qa") + 1], "ci", "ci sits right after qa (both observers)");
+  assert.equal(ids[ids.indexOf("ci") + 1], "selfcheck", "selfcheck sits right after ci");
+  assert.ok(selfcheck, "roleById('selfcheck') returns a role");
   assert.equal(selfcheck.title, "self-check: files tumwater bugs from its own failure log");
 });
 test("the selfcheck find text carries tumwater-response rule, one bug, and the dedup check", () => {

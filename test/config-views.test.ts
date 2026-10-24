@@ -827,49 +827,49 @@ test("teamModelLabel qualifies a non-pi backend's model id once", () => {
 // spells its backend with the `backend` key.
 const ROUTING_GOLDENS: Record<string, string[]> = {
   "string model": [
-    "pi|anthropic|claude-sonnet-5-5|high <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "pi|anthropic|claude-sonnet-5-5|high <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "string model legacy provider": [
-    "pi|qwenrunner|qwen3.8-27b|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "pi|qwenrunner|qwen3.8-27b|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "map with tier entry and inherited default": [
-    "pi|qwenrunner|qwen3.8-27b|- <- 13:feature,bugfix,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
+    "pi|qwenrunner|qwen3.8-27b|- <- 14:feature,bugfix,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward",
     "pi|huggingface|zai-org/GLM-5.3-Flash:together|low <- 4:plan,director,review,resolver"
   ],
   "claude id under backend claude": [
-    "claude|-|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "claude|-|claude-opus-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "claude-named provider under pi": [
-    "pi|claude|claude-opus-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "pi|claude|claude-opus-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "gateway id under backend opencode": [
-    "opencode|-|anthropic/claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "opencode|-|anthropic/claude-sonnet-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "anthropic id under claude backend": [
-    "claude|-|anthropic/claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "claude|-|anthropic/claude-sonnet-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "claude backend no model": [
-    "claude|-|claude-sonnet-5-5|- <- 12:feature,bugfix,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward",
+    "claude|-|claude-sonnet-5-5|- <- 13:feature,bugfix,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward",
     "claude|-|claude-opus-5-5|- <- 4:plan,director,review,resolver",
     "claude|-|claude-haiku-5-5|- <- 1:readme"
   ],
   "opencode backend no model": [
-    "opencode|-|-|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "opencode|-|-|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "role selector override": [
     "claude|-|claude-haiku-5-5|low <- 1:feature",
-    "pi|qwenrunner|qwen3.8-27b|- <- 16:bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver"
+    "pi|qwenrunner|qwen3.8-27b|- <- 17:bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver"
   ],
   "role tier-name override": [
     "claude|-|claude-opus-5-5|- <- 5:feature,plan,director,review,resolver",
-    "pi|qwenrunner|qwen3.8-27b|- <- 12:bugfix,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward"
+    "pi|qwenrunner|qwen3.8-27b|- <- 13:bugfix,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward"
   ],
   "review override": [
-    "pi|qwenrunner|qwen3.8-27b|- <- 16:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,resolver",
+    "pi|qwenrunner|qwen3.8-27b|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,resolver",
     "opencode|-|anthropic/claude-sonnet-5-5|- <- 1:review"
   ],
   "fallback chain": [
-    "claude|-|claude-sonnet-5-5|- <- 17:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,security,robustness,improve,steward,director,review,resolver",
+    "claude|-|claude-sonnet-5-5|- <- 18:feature,bugfix,plan,readme,organize,coverage,clean,dedupe,perf,qa,ci,security,robustness,improve,steward,director,review,resolver",
     "pi|qwenrunner|qwen3.8-27b|- <- 1:fallback:default",
     "claude|-|claude-haiku-5-5|- <- 1:fallback:default#1"
   ]
