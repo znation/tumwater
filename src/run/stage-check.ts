@@ -95,6 +95,21 @@ const PLANS_ARCHIVE = finishedArchiveOf("PLANS.md").archive;
 const baseFileText = (wt: string, mainBranch: string, file: string): Promise<string | undefined> =>
   changeBaseRev(wt, mainBranch).then((rev) => fileContentAt(wt, rev, file)).catch(() => undefined);
 
+/** `file`'s worktree text and its text at the change's merge-base with `mainBranch`, fetched in
+ * one call: every ordering finding that compares a backlog file's head to its base reads both the
+ * same way, so the pair is read together rather than re-stated at each call site. `base` is
+ * undefined when the merge-base or the read fails (the same guard `baseFileText` carries). */
+async function headAndBase(
+  wt: string,
+  mainBranch: string,
+  file: string,
+): Promise<{ head: string; base: string | undefined }> {
+  return {
+    head: readTextOrNull(path.join(wt, file)) ?? "",
+    base: await baseFileText(wt, mainBranch, file),
+  };
+}
+
 /** Append the reason `check` resolves to, if any, to `findings`; a check that rejects adds
  * nothing, as staging never fails on a best-effort check. */
 const pushReason = async (findings: string[], check: Promise<string | undefined>): Promise<void> => {
@@ -121,8 +136,7 @@ export async function stageCheckFindings(
   const findings: string[] = [];
   await pushReason(findings, backlogStructureReason(wt, mainBranch, files));
   if (files.includes("PLANS.md")) {
-    const head = readTextOrNull(path.join(wt, "PLANS.md")) ?? "";
-    const base = await baseFileText(wt, mainBranch, "PLANS.md");
+    const { head, base } = await headAndBase(wt, mainBranch, "PLANS.md");
     // Finished plans are archived in PLANS-DONE.md (plans/backlog-archive.md): a requires clause
     // naming a merged part resolves there, on both sides of the comparison alike.
     const archived = parseEntryDetails(readTextOrNull(path.join(wt, PLANS_ARCHIVE)) ?? "", "Done").map((e) => e.title);
@@ -160,22 +174,19 @@ export async function stageCheckFindings(
     findings.push(...greps);
   }
   if (baseRoleOf(role) === "bugfix" && files.includes("BUGS.md")) {
-    const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
-    const base = await baseFileText(wt, mainBranch, "BUGS.md");
+    const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
     const waiting = base === undefined ? undefined : waitingNoteFinding(head, base);
     if (waiting !== undefined) findings.push(waiting);
   }
   if (files.includes("BUGS.md")) {
-    const head = readTextOrNull(path.join(wt, "BUGS.md")) ?? "";
-    const base = await baseFileText(wt, mainBranch, "BUGS.md");
+    const { head, base } = await headAndBase(wt, mainBranch, "BUGS.md");
     const refusal = base === undefined ? undefined : ungroundedRefusalFinding("BUGS.md", head, base);
     if (refusal !== undefined) findings.push(refusal);
   }
   for (const file of PLACEHOLDER_FILES) {
     if (!files.includes(file)) continue;
-    const head = readTextOrNull(path.join(wt, file)) ?? "";
-    const base = (await baseFileText(wt, mainBranch, file)) ?? "";
-    const stray = strayPlaceholderFinding(file, head, base);
+    const { head, base } = await headAndBase(wt, mainBranch, file);
+    const stray = strayPlaceholderFinding(file, head, base ?? "");
     if (stray !== undefined) findings.push(stray);
   }
   await pushReason(findings, protectedEditReason(wt, mainBranch, files, role));
