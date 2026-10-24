@@ -133,6 +133,15 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   sendJson(res, 200, { ok: true, message });
 }
 
+/** The file-addressed prompt handlers' shared role prologue: validate the optional role
+ * (400 sent on a present-but-invalid one and null returned, so the caller stops) and default
+ * an absent role to the director's queue. The same optional-role rule handlePromptCancel,
+ * handlePromptEdit and handlePromptTop state once instead of a guard-plus-default pair. */
+function promptFileRole(body: Record<string, unknown>, res: http.ServerResponse, root: string): string | null {
+  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return null;
+  return body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+}
+
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —
  * the dashboard's per-row cancel affordance, the file-addressed twin of the CLI's
  * position-addressed `prompt --cancel`. The role is optional (absent cancels from the
@@ -144,8 +153,8 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
 export async function handlePromptCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "feature", "file": "<stamp>-<seq>-<pid>.md"}');
   if (!body) return;
-  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
-  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const role = promptFileRole(body, res, root);
+  if (role === null) return;
   if (rejectBadQueueFileName(res, body.file)) return;
   const outcome = cancelQueuedFile(root, role, body.file as string);
   sendJson(
@@ -172,8 +181,8 @@ export async function handlePromptCancel(req: http.IncomingMessage, res: http.Se
 export async function handlePromptEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md", "text": "..."}');
   if (!body) return;
-  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
-  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const role = promptFileRole(body, res, root);
+  if (role === null) return;
   if (rejectBadQueueFileName(res, body.file)) return;
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
@@ -216,8 +225,8 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
 export async function handlePromptTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md"}');
   if (!body) return;
-  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
-  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  const role = promptFileRole(body, res, root);
+  if (role === null) return;
   if (rejectBadQueueFileName(res, body.file)) return;
   let outcome: FileTopOutcome;
   try {
