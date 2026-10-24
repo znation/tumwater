@@ -69,7 +69,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
 
   r = await cli(repo, "help", "extra");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no help topic: extra/);
+  assert.match(r.stderr, /no help topic: "extra"/);
 
   // Stray non-flag tokens are rejected too.
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");

@@ -551,7 +551,7 @@ async function main(): Promise<void> {
         if (topic === null) {
           const suggestion = suggestCommand(name);
           fail(
-            `no help topic: ${name}${didYouMean(suggestion)} (try \`tumwater help\` for the full command list)`,
+            `no help topic: ${JSON.stringify(name)}${didYouMean(suggestion)} (try \`tumwater help\` for the full command list)`,
           );
         }
         say(topic);
@@ -563,7 +563,7 @@ async function main(): Promise<void> {
     default: {
       const suggestion = suggestCommand(command);
       fail(
-        `unknown command: ${command}${didYouMean(suggestion)} (try \`tumwater help\`)`,
+        `unknown command: ${JSON.stringify(command)}${didYouMean(suggestion)} (try \`tumwater help\`)`,
       );
     }
   }

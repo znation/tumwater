@@ -57,7 +57,7 @@ test("--help and -h answer like `help` — the flag spellings are commands thems
 
     const mistyped = await cli(dir, flag, "statis");
     assert.equal(mistyped.code, 1);
-    assert.match(mistyped.stderr, /no help topic: statis — did you mean `status`\?/);
+    assert.match(mistyped.stderr, /no help topic: "statis" — did you mean `status`\?/);
   }
 });
 
@@ -108,19 +108,19 @@ test("version prints the package version", async () => {
 test("unknown command fails with a hint", async () => {
   const r = await cli(tmpdir(), "frobnicate");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown command: frobnicate/);
+  assert.match(r.stderr, /unknown command: "frobnicate"/);
 });
 
 test("a mistyped command suggests the closest listed one", async () => {
   const r = await cli(tmpdir(), "statis");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown command: statis — did you mean `status`\?/);
+  assert.match(r.stderr, /unknown command: "statis" — did you mean `status`\?/);
 });
 
 test("a mistyped help topic suggests the closest command too", async () => {
   const r = await cli(tmpdir(), "help", "statu");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no help topic: statu — did you mean `status`\?/);
+  assert.match(r.stderr, /no help topic: "statu" — did you mean `status`\?/);
 });
 
 test("<command> --help prints that command's help topic", async () => {
@@ -141,7 +141,7 @@ test("<command> --help prints that command's help topic", async () => {
 test("help --help prints the help command's own topic", async () => {
   // The convention covers every command, help included: `help --help`/`help -h` must answer
   // with the help topic, not fall through to a topic lookup for the literal flag text
-  // (exit 1, "no help topic: --help — did you mean `help`?").
+  // (exit 1, "no help topic: \"--help\" — did you mean `help`?").
   for (const args of [["help", "--help"], ["help", "-h"]]) {
     const r = await cli(tmpdir(), ...args);
     assert.equal(r.code, 0, `${args.join(" ")}: ${r.stderr}`);
@@ -174,7 +174,7 @@ test("help takes at most one command name", async () => {
 test("--help does not rescue an unknown command", async () => {
   const r = await cli(tmpdir(), "frobnicate", "--help");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unknown command: frobnicate/);
+  assert.match(r.stderr, /unknown command: "frobnicate"/);
 });
 
 test("a free-form text command carrying a --help token files the text, not the help topic", async () => {
