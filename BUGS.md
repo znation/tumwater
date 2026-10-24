@@ -110,23 +110,6 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 a revision whose re-apply conflicts reaches the author with markers, not a plain rejection
 ~~~~
 
-**Progress 2026-10-24 by bugfix: not reproduced.** The test's fake pi appends to its prompts log
-on EVERY pi invocation (the shim's first line), and a fresh repo with no merge pin and a branch at
-main cannot reach the two pi-less `"queued"` returns — recovery `enqueued`/`relief_wait` needs a
-merge pin or a branch ahead of main, and `stageRunMerge` runs after the authoring pi — so a
-`"queued"` outcome that leaves the prompts file unwritten is structurally hard to reconcile and
-the cause must be read from the next occurrence. This run instrumented the test so it does: a
-distinct `piRan` marker plus, on a missing prompts file, a dump of the runner's post-run
-revision/conflictHandback state, the `revision`/`conflict_handback`/`merge_queued` events and the
-queued merge — settling whether the fake pi ever ran and, if not, which state/events accompanied
-the short-circuit.
-
-**Waiting for the next failure 2026-10-24 by bugfix: the test now reports whether the fake pi's
-`piRan` marker exists, the runner's post-run revision/conflictHandback state, the logged
-revision/conflict_handback/merge_queued events, and the queued merge — naming a pi-less `queued`
-short-circuit (marker absent, state/events unmoved) apart from a pi run that wrote the prompts
-elsewhere (marker present).**
-
 ## Fixed
 
 ## Verified
