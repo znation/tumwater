@@ -611,7 +611,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
   label (`[merging 2m · reviewing]`, `[approved, waiting to merge]`) on an entry a running team
-  is merging. The post-merge review queue prints between the queue and the roster as a block
+  is merging, and a `high friction` marker on an entry whose authoring run burned past the
+  friction thresholds (`highFriction`, the flag that makes the reviewer apply extra scrutiny).
+  The post-merge review queue prints between the queue and the roster as a block
   from the same `readPostReviews`/`renderPostReviews` pair `tumwater reviews` uses, so the two
   surfaces are the observer twins of the CLI command.
   Each Merge queue row carries a two-click Cancel (the first click arms it, a second within 5 s

@@ -107,7 +107,8 @@ export function renderMergeQueue(
       const noteTag = note ? ` · ${note}` : "";
       const retry = retryNote(e, now);
       const retryTag = retry ? ` · ${retry}` : "";
-      lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${retryTag}${noteTag} · ${e.summary}`);
+      const frictionTag = e.highFriction === true ? " · high friction" : "";
+      lines.push(`  ${scope ? scope.positions[i] : i + 1}. ${roleLabel(e.role)} run #${e.run} · ${shortSha(e.sha)} · ${age}${tag}${frictionTag}${retryTag}${noteTag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

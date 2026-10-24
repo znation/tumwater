@@ -713,6 +713,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   await initProject(repo, "retired keys test");
   saveRunnerState(repo, freshRunnerState("qa"));
   enqueueMerge(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "feature", sha: "def5678", run: 9, summary: "churny", enqueuedAt: Date.now(), highFriction: true });
   writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]); // retired-name-ok: legacy event field in a fixture
   const payload = statusPayload(repo) as {
     roles: Array<Record<string, unknown>>;
@@ -737,6 +738,9 @@ test("the status payload carries no retired script key anywhere in its tree", as
   assert.ok(!("agent" in payload.budget));
   assert.ok(payload.eventItems.every((it) => !("loop" in it) && "source" in it));
   assert.ok(payload.mergeQueue.entries.every((e) => !("tick" in e) && "run" in e));
+  const bySha = Object.fromEntries(payload.mergeQueue.entries.map((e) => [e.sha, e]));
+  assert.equal(bySha["def5678"]?.highFriction, true, "the high-friction entry's projection carries the flag");
+  assert.equal(bySha["abc1234"]?.highFriction, undefined, "the ordinary entry's projection omits it");
 });
 
 test("status payload scoped to a role lists only that role and keeps the team budget", async () => {

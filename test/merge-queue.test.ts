@@ -323,6 +323,21 @@ test("renderMergeQueue names why a re-queued entry is back between its merge tag
   assert.equal(lines[3], "  3. organize run #1 · cccccccc · 3s ago · re-queued after merge_blocked · blocked clean");
 });
 
+test("renderMergeQueue marks a high-friction entry and leaves an ordinary one alone", () => {
+  const now = 1_000_000;
+  const plain = { role: "feature", sha: "a".repeat(40), run: 3, summary: "tidy", enqueuedAt: now - 5_000 };
+  const friction = { ...plain, sha: "b".repeat(40), summary: "churn the thing", highFriction: true };
+  const view = { entries: [friction, plain], unreadable: 0 };
+  const lines = renderMergeQueue(view, now).split("\n");
+  assert.match(lines[1]!, / · high friction /, "the high-friction entry carries the marker");
+  assert.ok(!lines[2]!.includes("high friction"), "the ordinary entry carries none");
+  assert.equal(lines[2], renderMergeQueue({ entries: [plain], unreadable: 0 }, now).split("\n")[1]!.replace(/^  \d+\. /, "  2. "), "the ordinary entry's line is byte-identical to its one-entry render apart from its queue position");
+  // A hand-edited non-boolean does not fabricate the marker.
+  const nonBool = { ...plain, sha: "c".repeat(40), highFriction: "yes" } as unknown as MergeEntry;
+  assert.ok(!renderMergeQueue({ entries: [nonBool], unreadable: 0 }, now).includes("high friction"));
+});
+
+
 test("readMergeQueue reads a missing queue dir as empty with no skips", () => {
   const repo = makeRepo();
   assert.ok(!fs.existsSync(mergeQueueDir(repo)), "no queue dir before the first enqueue");

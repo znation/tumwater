@@ -78,6 +78,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     let line = "<div class='mono clamp1' style='padding:3px 0'>" + position + ". " + esc(e.role ? roleLabel(e.role) : "?") +
       " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
       " ago" + (label && typeof label === "string" ? " · [" + esc(label) + "]" : "") +
+      (e.highFriction === true ? " · high friction" : "") +
       retry +
       note +
       " · " + esc(e.summary || "—") + "</div>";

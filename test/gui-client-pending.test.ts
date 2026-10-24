@@ -152,6 +152,25 @@ test("pendingQueueHtml names a re-queued entry's retry and its deferral", () => 
   assert.doesNotMatch(plain, /re-queued|eligible|undefined|NaN/);
 });
 
+test("pendingQueueHtml marks a high-friction entry and leaves the rest alone", () => {
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
+    ["format", "labels", "pending-table"],
+    ["pendingQueueHtml"],
+  );
+  const now = 1_000_000_000_000;
+  const q = { depth: 2, entries: [
+    { role: "feature", sha: "abcdef1234567890", run: 42, summary: "churn the thing", enqueuedAt: now - 180_000, highFriction: true },
+    { role: "bugfix", sha: "0123456789abcdef", run: 7, summary: "add the thing", enqueuedAt: now - 5_000 },
+  ] };
+  const html = pendingQueueHtml(q, now);
+  assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · high friction · churn the thing/, "the high-friction entry carries the marker");
+  assert.doesNotMatch(html, /2\. bugfix[^<]*high friction/);
+  // A non-boolean flag does not fabricate the marker.
+  assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: [
+    { role: "qa", sha: "abcdef12", run: 1, summary: "s", enqueuedAt: now, highFriction: "yes" },
+  ] }, now), /high friction/);
+});
+
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
