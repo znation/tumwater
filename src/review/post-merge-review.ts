@@ -20,8 +20,9 @@ import type { GateRunsPi } from "../runner/runner-pi.js";
 import { parseVerdict } from "./review-verdict.js";
 
 /** A merged commit of a role listed in `review.afterMerge`, waiting for its review
- * (.tumwater/state/post-review.json). `rejected` holds the reviewer's reasons once it rejected the
- * commit and its revert has not been started yet (the revert slot was busy). */
+ * (.tumwater/state/post-review.json). `rejected` holds the reviewer's reasons when a rejecting
+ * review found no fix to land; the entry is kept as the record of the rejection and is never
+ * re-reviewed or reverted (Forward, never back 1/6). */
 export interface PostReview {
   commit: string;
   role: string;

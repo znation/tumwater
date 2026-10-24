@@ -296,7 +296,7 @@ export async function handlePostReviewAccept(req: http.IncomingMessage, res: htt
   const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status === "rejected")
-    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} is rejected and waiting on its revert — let the revert run, then review the revision` });
+    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} is already rejected — its review turned the commit back, so accepting it unreviewed is meaningless` });
   if (outcome.status === "settled")
     return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} already merged its fix on main — nothing to accept` });
   if (outcome.status !== "accepted") return;

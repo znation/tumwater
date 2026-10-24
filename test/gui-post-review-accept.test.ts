@@ -66,7 +66,7 @@ test("POST /api/post-review-accept a rejected sha answers 409 and leaves the fil
   const before = readPostReviews(root);
   const { captured, data } = await post(root, { sha: b });
   assert.equal(captured.status, 409);
-  assert.match((data as { error: string }).error, /rejected and waiting on its revert — let the revert run, then review the revision/);
+  assert.match((data as { error: string }).error, /already rejected — its review turned the commit back, so accepting it unreviewed is meaningless/);
   assert.deepEqual(readPostReviews(root), before, "the rejected entry is left in place");
   assert.equal(eventsOfType(root, "warning").length, 0, "no warning is logged");
 });
