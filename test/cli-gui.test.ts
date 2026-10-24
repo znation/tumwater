@@ -9,7 +9,7 @@ import { distDir, buildInfoPath } from "../src/build/build-info.js";
 import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
+import { GUI_TOKEN_ENV, cmdGui, lanAddresses, stripTokenFromArgv, type GuiSeams } from "../src/gui/gui-command.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
@@ -542,21 +542,92 @@ test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token
   ]);
 
   // With a token every printed URL — banner and LAN lines alike — carries the ?token= suffix
-  // an operator can open directly, and the warning names the token as the gate.
+  // an operator can open directly, and the warning names the token as the gate. The direct
+  // `--token` flag also gets the ps-exposure warning (first line), since the secret transits
+  // the command line. The flag call seeds GUI_TOKEN_ENV as its production side effect (so a
+  // reexec inherits the secret by env); this test restores it, or the seeded env would silently
+  // token-gate any later real dashboard child spawned in this file that was given no token.
+  const prevToken = process.env[GUI_TOKEN_ENV];
   const gated: string[] = [];
-  await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
-    startGui: startRecorder(started),
-    lanAddresses: lan,
-    say: (t) => gated.push(t),
-    serve: QUIET_SERVE,
-  });
+  try {
+    await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
+      startGui: startRecorder(started),
+      lanAddresses: lan,
+      say: (t) => gated.push(t),
+      serve: QUIET_SERVE,
+    });
+  } finally {
+    if (prevToken === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prevToken;
+  }
   assert.deepEqual(gated, [
+    "--token on the command line is visible to any local user in ps; prefer TUMWATER_GUI_TOKEN to keep the secret off the process list",
     "tumwater gui at http://127.0.0.1:7180/?token=s3cret — Ctrl+C to stop",
     "             also at http://192.168.1.50:7180/?token=s3cret",
     "             also at http://10.0.0.2:7180/?token=s3cret",
     "listening on ALL interfaces — token-protected; prompting the director requires the token",
   ]);
   assert.deepEqual(started.slice(-1), [{ port: 7180, allInterfaces: true, token: "s3cret" }]);
+});
+
+// BUGS.md 2026-10-24: the gate token must reach the server by environment, never argv — ps /proc
+// cmdlines are world-readable. cmdGui reads the token from the `--token` flag OR
+// TUMWATER_GUI_TOKEN, and when the flag was used it seeds the env var so a self-reload's re-run
+// and every child keep the secret off the command line. A `run --gui`/`start --gui` supervisor
+// passes the token to its dashboard child via GUI_TOKEN_ENV (never in the child's args), so this
+// also pins that the environment carries the token into cmdGui when no `--token` is present.
+test("cmdGui carries the gate token by env (TUMWATER_GUI_TOKEN), from the flag or the environment", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui token env");
+  const prev = process.env[GUI_TOKEN_ENV];
+  const restore = () => {
+    if (prev === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prev;
+  };
+  try {
+    // A direct `--token` flag seeds the env var — the durable channel — so the token survives
+    // reexec by env while the secret stays out of argv.
+    const fromFlag: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+    await cmdGui(repo, ["--token", "s3cret"], {
+      startGui: startRecorder(fromFlag),
+      say: () => {},
+      serve: QUIET_SERVE,
+    });
+    assert.deepEqual(fromFlag, [{ port: 7180, allInterfaces: false, token: "s3cret" }]);
+    assert.equal(process.env[GUI_TOKEN_ENV], "s3cret");
+
+    // A supervisor-spawned child arrives with the token in the environment (and no `--token`
+    // in its args): cmdGui must still gate on it.
+    const fromEnv: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+    await cmdGui(repo, [], {
+      startGui: startRecorder(fromEnv),
+      say: () => {},
+      serve: QUIET_SERVE,
+    });
+    assert.deepEqual(fromEnv, [{ port: 7180, allInterfaces: false, token: "s3cret" }]);
+  } finally {
+    restore();
+  }
+});
+
+test("stripTokenFromArgv removes a --token <secret> pair in place, and only that", () => {
+  // The argv-cleanliness the bug pins: a long-lived process that typed `--token <secret>` must
+  // lose the pair from its own argv once the value is parsed into the env, so a self-reload's
+  // re-run (process.argv.slice(1)) no longer re-writes the secret to a fresh command line.
+  const withToken = ["node", "cli.js", "start", "--gui", "--token", "s3cret", "--for", "2h"];
+  assert.equal(stripTokenFromArgv(withToken), true);
+  assert.deepEqual(withToken, ["node", "cli.js", "start", "--gui", "--for", "2h"]);
+
+  // No token — nothing to hide, a no-op.
+  const clean = ["node", "cli.js", "gui"];
+  assert.equal(stripTokenFromArgv(clean), false);
+  assert.deepEqual(clean, ["node", "cli.js", "gui"]);
+
+  // A valueless trailing --token is a CI validation error, not a secret: leaving it alone keeps
+  // the error visible rather than hiding the one malformed flag.
+  const valueless = ["node", "cli.js", "gui", "--token"];
+  assert.equal(stripTokenFromArgv(valueless), false);
+  assert.deepEqual(valueless, ["node", "cli.js", "gui", "--token"]);
 });
 
 test("cmdGui turns a taken port into the friendly port-in-use error and rethrows the rest", async () => {
