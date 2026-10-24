@@ -29,14 +29,6 @@ export function lanAddresses(
   return out;
 }
 
-/** The environment variable that carries the dashboard gate token to a `gui` server process
- * without putting the secret on the command line: the durable channel for the token is the
- * environment (only a process that already owns it passes it on), so the token never
- * transits the world-readable argv a `run --gui` supervisor or a self-reload hands a child.
- * `cmdGui` seeds it from the `--token` flag when the flag was used, and a `run --gui`
- * supervisor passes the token to its dashboard child through it instead of guiArgs/argv. */
-export const GUI_TOKEN_ENV = "TUMWATER_GUI_TOKEN";
-
 /** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
  * callers omit it and get the real server, interfaces, stdout, and wait; tests inject fakes
@@ -71,22 +63,7 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
   // drift; its flag-looking-value case names `tumwater gui` here.
   const problem = tokenValueProblem(args, "tumwater gui");
   if (problem) fail(problem);
-  const flagToken = flagValue(args, "--token");
-  const token = flagToken ?? process.env[GUI_TOKEN_ENV] ?? "";
-  if (flagToken !== null) {
-    // The `--token` flag is a convenience that still transits the command line, so it shows
-    // up in `ps`/`/proc/<pid>/cmdline` to any local user (the world-readable channel). Carry
-    // the token forward by environment only: seed the env var now and drop the secret from
-    // this process's argv, so a self-reload's re-run and every child keep it off the process
-    // table. The operator could instead pre-set TUMWATER_GUI_TOKEN to avoid typing it at all;
-    // that advice is the warning printed below.
-    process.env[GUI_TOKEN_ENV] = token;
-    print(
-      "--token on the command line is visible to any local user in ps; prefer TUMWATER_GUI_TOKEN to keep the secret off the process list",
-    );
-    const t = process.argv.indexOf("--token");
-    if (t >= 0) process.argv.splice(t, 2);
-  }
+  const token = flagValue(args, "--token") ?? "";
   try {
     await start(root, port, allInterfaces, token);
   } catch (err) {
