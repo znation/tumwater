@@ -40,5 +40,7 @@ export async function editBriefText(root: string, text: string): Promise<BriefEd
   });
   if (typeof changed === "string") return { ok: false, error: changed };
   const committed = changed && (await commitOperatorBacklogEdit(root, name, stampedSubject("operator", "Edit brief"))); // vocabulary-ok: commit prefix stays
-  return { ok: true, file: name, changed, committed };
+  // A commit that fails is rolled back by commitOperatorBacklogEdit, so on disk the brief is
+  // unchanged: report changed accordingly (nothing persisted) instead of claiming the edit landed.
+  return { ok: true, file: name, changed: changed && committed, committed };
 }

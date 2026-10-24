@@ -38,20 +38,46 @@ test("filing commits only the backlog file and leaves other staged paths staged"
   assert.equal(sh(repo, "git", "status", "--porcelain").trim(), "A  other.txt");
 });
 
-test("off the base branch the entry stays uncommitted, and the helper returns false without throwing", async () => {
+test("off the base branch the entry is rolled back, and the helper returns false without throwing", async () => {
   const repo = await initializedRepo();
   const head = sh(repo, "git", "rev-parse", "HEAD");
+  const clean = sh(repo, "git", "show", "HEAD:BUGS.md");
   sh(repo, "git", "checkout", "-q", "-b", "side");
   const cfg = loadConfig(repo);
   cfg.baseBranch = "main";
   writeConfig(repo, cfg);
   const filed = await cli(repo, "bug", "q");
   assert.equal(filed.code, 0);
+  // The write could not be committed (off the base branch), so it is rolled back rather than
+  // left dirty to block every merge touching BUGS.md (the bugfix for the stuck primary).
+  // tumwater.json stays the one dirty path: writeConfig's own uncommitted edit, not the write.
   assert.match(filed.stderr, /warning: BUGS\.md was written but not committed to main/);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
-  assert.match(sh(repo, "git", "status", "--porcelain"), /BUGS\.md/);
+  assert.ok(!sh(repo, "git", "status", "--porcelain").includes("BUGS.md"));
+  assert.equal(sh(repo, "git", "show", "HEAD:BUGS.md"), clean);
   assert.equal(await commitOperatorBacklogEdit(repo, "BUGS.md", "tumwater(operator): x"), false);
   assert.equal(await commitOperatorBacklogEdit(tmpdir(), "BUGS.md", "tumwater(operator): x"), false);
+});
+
+test("a backlog write whose commit fails is rolled back to its committed state, leaving the checkout clean", async () => {
+  const repo = await initializedRepo();
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  const committed = sh(repo, "git", "show", "HEAD:PLANS.md");
+  // A planted git-commit failure (a pre-commit hook that exits nonzero) after a write: the
+  // failed commit must restore the file so the primary checkout never stays dirty (the
+  // reproduce in the "stuck primary" bug: BUGS.md lines 70-79).
+  fs.mkdirSync(path.join(repo, ".git", "hooks"), { recursive: true });
+  fs.writeFileSync(path.join(repo, ".git", "hooks", "pre-commit"), "#!/bin/sh\nexit 1\n");
+  fs.chmodSync(path.join(repo, ".git", "hooks", "pre-commit"), 0o755);
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), plans.replace("## Planned\n", "## Planned\n\n### stuck\n\nbody\n"));
+  const ok = await commitOperatorBacklogEdit(repo, "PLANS.md", "tumwater(operator): x");
+  assert.equal(ok, false);
+  // The failed commit left the checkout clean: PLANS.md is back to its committed state, so no
+  // merge is refused over an uncommitted backlog file.
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+  assert.equal(sh(repo, "git", "show", "HEAD:PLANS.md"), committed);
 });
 
 test("POST /api/backlog-file commits the entry on main", async () => {

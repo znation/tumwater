@@ -46,18 +46,21 @@ test("brief --file --json names the successful edit with changed and committed",
   assert.deepEqual(JSON.parse(again.stdout), { file: "README.md", changed: false, committed: false });
 });
 
-test("brief --file on a head off the base branch reports the edit without claiming a commit", async () => {
+test("brief --file on a head off the base branch rolls the edit back and reports it uncommitted", async () => {
   const repo = await initializedRepo();
+  const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
   // On a detached HEAD the primary is not the base branch, so editBriefText writes the
-  // new prompt but commitOperatorBacklogEdit declines (never touching git) — the human-facing
-  // message must not claim "(committed to main)".
+  // new prompt but commitOperatorBacklogEdit declines (never touching git) and rolls the file
+  // back to its committed state — the brief must not claim "(committed to main)", and the
+  // checkout must not be left dirty to block merges.
   sh(repo, "git", "checkout", "--detach");
   const r = await cli(repo, "brief", "--file", promptFile("Off main prompt.\n"));
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /brief updated in README\.md/);
+  assert.match(r.stdout, /brief unchanged/);
   assert.doesNotMatch(r.stdout, /committed to main/);
-  // The write landed even though nothing was committed.
-  assert.match((await cli(repo, "brief")).stdout, /Off main prompt\./);
+  // The write was rolled back: the checkout is clean and the brief is unchanged.
+  assert.equal(sh(repo, "git", "status", "--porcelain"), "");
+  assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
 });
 
 test("brief --file refuses empty, over-long, and marker-bearing text without touching the brief", async () => {
