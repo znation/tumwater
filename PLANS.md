@@ -416,28 +416,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Split `teamAlerts` into ordered slice builders, part 1/5: the status/capacity and role-phase alerts move into `buildStatusAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; opens the series — parts 2/5–5/5 each require the part before them landed; touches src/ui/team-alerts.ts)
-
-**Previously held 1**
-
-**Goal.** `teamAlerts` is one ~750-line function appending ~41 alerts in a fixed order, and its reviewers rejected the one-run move of every block into four `src/ui/team-alerts/*` modules: the emitted order interleaves the domains, so a fixed module map plus an order-preserving assembler needs a design decision a single gate-green run cannot hold. This series instead extracts contiguous runs of the alert order into module-level builder functions inside `src/ui/team-alerts.ts`, one part per run; `teamAlerts` calls each builder at the position of the run it replaces, so the emitted `key` order is unchanged and no cross-module ordering or shared context type is needed. The shared helpers (`entryListDetail`, `moreDetail`, `openRoleActions`, `seeFailures`, `andJoin`, `listRoles`, `listRoleIds`, `stuckDetail`, `localizeInstants`) stay in the module, in scope for every builder, and each builder takes a local input type naming exactly the fields its blocks read. Moving the builders into `src/ui/team-alerts/*` modules is deliberately out of scope for this series. Part 1 moves the first ten alerts: `chain`, `fallback`, `budget`, `role-cap`, `disk`, `install`, `mainred`, `failing`, `stuck`, `build`.
-
-**Approach.**
-- Add `interface StatusAlertsInput` beside the existing module-level helper functions, holding `snap` (the same Pick of `budget`, `chain`, `disk`, `rootInstallDrift`, `capPaused`, `budgetPausedRoles`, `build` that the ten blocks read) and `roles: readonly AlertRole[]`.
-- Move the ten `if (...) { out.push({...}) }` blocks verbatim — each with its preceding comment and its `key`/`tone`/`title`/`detail`/`actions` literal — into `function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[]`, keeping the block-local derivations that currently sit in `teamAlerts`'s body (`b`, `onFallback`, `capPausedRoles`, `drift`, `red`, `failing`, `stuck`) inside the builder in their current order. The builder declares its own `const out: TeamAlert[] = []` and returns it.
-- In `teamAlerts`, replace the moved run with `out.push(...buildStatusAlerts({ snap, roles }))` at the same position, right after the function's `const out: TeamAlert[] = []` line; the remaining blocks and the function's signature and doc comment are untouched.
-
-**Files touched.** src/ui/team-alerts.ts
-
-**Acceptance criteria.**
-- `teamAlerts` emits the same alerts in the same `key` order for every existing test scenario; `test/team-alerts.test.ts` passes with no assertion change.
-- Every block of the slice — its guard, its `key` literal and its comment — appears only inside `buildStatusAlerts`; no alert's wording was rewritten.
-- `grep -n "buildStatusAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call, and the call sits after the type/helper declarations and before the `questions` block (the block part 2/5 later moves).
-- `npm run test:gate` passes.
-
-**Tests.**
-- `test/team-alerts.test.ts`: unchanged, still green (its ordering assertions pin the concatenated key order).
-
 ### Split `teamAlerts` into ordered slice builders, part 2/5: the backlog hold and doctor-feed alerts move into `buildBacklogAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 1/5 landed, since it edits the `teamAlerts` body part 1/5 restructures; touches src/ui/team-alerts.ts)
 
 **Previously held 1**
