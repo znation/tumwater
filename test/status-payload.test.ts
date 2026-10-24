@@ -1030,3 +1030,27 @@ test("the payload carries the stale-claims alert", () => {
   const alerts = (statusPayload(root, now) as { alerts: Array<{ key: string }> }).alerts;
   assert.ok(alerts.find((a) => a.key === "stale-claims"), "a gone claim raises the stale-claims alert");
 });
+
+test("the payload's noDeclaredCheck follows detectBuildCheck", () => {
+  const now = Date.now();
+  // A fresh makeRepo's fixture declares no build check (no check.command and no qualifying
+  // package.json + node_modules on the walked-up root) — the same state the doctor `check`
+  // row warns on.
+  const root = makeRepo();
+  assert.equal(snapshot(root, undefined, now).noDeclaredCheck, true, "no declared check is surfaced on the snapshot");
+  const payload = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string; tone: string }> };
+  assert.equal(payload.noDeclaredCheck, true, "the machine-readable payload field is present");
+  const alert = payload.alerts.find((a) => a.key === "no-check");
+  assert.ok(alert, "no declared check raises the no-check alert");
+  assert.equal(alert!.tone, "amber");
+  assert.match(alert!.key, /no-check/);
+
+  // Declaring check.command for the same repo turns the field and the alert off.
+  const cfg = loadConfig(root);
+  cfg.check = { command: "npm test" };
+  saveConfig(root, cfg);
+  assert.equal(snapshot(root, undefined, now).noDeclaredCheck, undefined);
+  const payload2 = statusPayload(root, now) as { noDeclaredCheck?: boolean; alerts: Array<{ key: string }> };
+  assert.equal(payload2.noDeclaredCheck, undefined, "no noDeclaredCheck key with a declared check");
+  assert.equal(payload2.alerts.find((a) => a.key === "no-check"), undefined);
+});

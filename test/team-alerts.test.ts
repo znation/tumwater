@@ -1105,6 +1105,22 @@ test("root install drift raises one amber install alert naming up to five packag
   assert.match(seven, /\(a, b, c, d, e, \+2 more\)/);
 });
 
+test("no declared check raises one amber no-check alert", () => {
+  const alerts = (noDeclaredCheck?: boolean) =>
+    teamAlerts({ ...base, noDeclaredCheck }, [], [], Date.now()).filter((a) => a.key === "no-check");
+  const one = alerts(true);
+  assert.equal(one.length, 1);
+  assert.equal(one[0]?.tone, "amber");
+  assert.match(one[0]?.title ?? "", /safety gates are off/);
+  assert.match(one[0]?.detail ?? "", /check\.command/);
+  assert.match(one[0]?.detail ?? "", /build pre-check/);
+  assert.match(one[0]?.detail ?? "", /red-main baseline/);
+  assert.match(one[0]?.detail ?? "", /redeploy's green check/);
+  assert.deepEqual(one[0]?.actions, []);
+  assert.deepEqual(alerts(undefined), []);
+  assert.deepEqual(alerts(false), []);
+});
+
 test("a broken plan-dependency clause raises a standing amber alert right after the refused alert", () => {
   const now = Date.now();
   const msg = 'PLANS.md plan "S, part 2/2: b" names S 1/2 as a prerequisite without a `requires … landed` clause — the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`';

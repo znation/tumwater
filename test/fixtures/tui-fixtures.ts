@@ -182,6 +182,10 @@ export async function makeTuiRepo(): Promise<string> {
   const repo = makeRepo();
   await initProject(repo, "Build a thing.");
   const cfg = loadConfig(repo);
+  // Declare a check so the always-on `no-check` alert stays off: makeTuiRepo's initialized
+  // repo walks up to no package.json/node_modules, which would otherwise raise the no-check
+  // attention line and shift the exact header lines the TUI attention tests assert on.
+  cfg.check = { command: "npm test" };
   for (const [id, rc] of Object.entries(cfg.roles)) rc.enabled = id === "clean";
   saveConfig(repo, cfg);
   return repo;

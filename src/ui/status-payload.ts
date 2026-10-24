@@ -558,6 +558,11 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // re-derive (or drift from) it. Empty string/no tone without a parity record, so the
     // panel renders exactly as before.
     ciParityBadge: ciParityBadge(snap.ciParity, now),
+    // The raw machine-readable twin of the amber `no-check` alert (present only when no
+    // deterministic check is declared, so `tumwater status --json` scripts can read the same
+    // state before the dashboard/TUI render it as an alert). Omitted (absent) when a check is
+    // declared, the same omit-undefined idiom as ciParity.
+    ...(snap.noDeclaredCheck ? { noDeclaredCheck: true } : {}),
     ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and

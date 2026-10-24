@@ -297,6 +297,7 @@ interface StatusAlertsInput {
   snap: Pick<
     StatusSnapshot,
     "budget" | "chain" | "disk" | "rootInstallDrift" | "capPaused" | "budgetPausedRoles" | "build"
+    | "noDeclaredCheck"
   >;
   roles: readonly AlertRole[];
   staleClaims: readonly ClaimState[];
@@ -396,6 +397,20 @@ function buildStatusAlerts(input: StatusAlertsInput): TeamAlert[] {
       tone: "amber",
       title: "The root install is behind package-lock.json",
       detail: `${plural(drift.length, "direct dependency", "direct dependencies")} not installed as pinned (${names}). Run npm install in the project's root checkout; until then each check installs into its own tree, and \`tumwater doctor\` names the last re-sync failure.`,
+      actions: [],
+    });
+  }
+  // No deterministic build check is declared (detectBuildCheck returned null): the review
+  // gate's build pre-check, the red-main baseline and redeploy's green check have nothing to
+  // run, and the header badge renders nothing (mainCheckBadge needs a build_check event).
+  // The same state the doctor `check` row warns on, raised as a standing alert on the always-on
+  // surfaces. Independent of team state (running or stopped), like the install alert beside it.
+  if (snap.noDeclaredCheck) {
+    out.push({
+      key: "no-check",
+      tone: "amber",
+      title: "No project check is declared — the safety gates are off",
+      detail: "The review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run. Set \`check.command\` in tumwater.json (or add a test/typecheck/build npm script) so merges are verified.",
       actions: [],
     });
   }
@@ -1264,6 +1279,7 @@ export function teamAlerts(
     | "inQuietHours"
     | "disk"
     | "rootInstallDrift"
+    | "noDeclaredCheck"
     | "imageProbeFailures"
     | "chain"
     | "capPaused"

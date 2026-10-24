@@ -25,6 +25,7 @@ import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
 import { collectRootInstallDrift } from "./status-install.js";
+import { detectBuildCheck } from "../build/build-check-detect.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -365,6 +366,13 @@ export interface StatusSnapshot {
    * repo the ci role has never run), so the surfaces render exactly as before the badge
    * existed. */
   ciParity?: CiParityStatus;
+  /** True when no deterministic build check is declared — `detectBuildCheck(root, config)`
+   * returned null (no `check.command` and no qualifying npm `package.json` on the walked-up
+   * root) — the doctor `check` row's warning state (src/doctor/doctor-project-checks.ts's
+   * checkBuildCheck). Present only in that state, so the always-on amber `no-check` alert
+   * surfaces the silent state on `tumwater status`, the dashboard and the TUI; absent
+   * otherwise, so the surfaces render exactly as before. */
+  noDeclaredCheck?: boolean;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -562,6 +570,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
     ciParity: ciParityForPoll(root, cfg),
+    noDeclaredCheck: detectBuildCheck(root, cfg) === null ? true : undefined,
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the
