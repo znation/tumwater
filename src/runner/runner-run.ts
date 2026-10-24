@@ -3,7 +3,6 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { RunOutcome } from "../run/run-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { RunnerState } from "./runner-state.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
 import { git, gitTry } from "../git/git-run.js";
@@ -26,6 +25,7 @@ import {
   modelSelectorField,
   resolvedBackendConfig,
   reviewRunConfig,
+  reviewedAfterMerge,
   scheduleConfigForRole,
   seamHoldKey,
   withModelOverrides,
@@ -555,7 +555,7 @@ async function runWithWorktreePhase(
       recovered &&
       !(
         recovered.kind === "already_queued" &&
-        (ctx.config.review.afterMerge ?? []).includes(baseRoleOf(ctx.role))
+        reviewedAfterMerge(ctx.config, ctx.role)
       )
     ) {
       // Every recovery kind ends the run here — EXCEPT `already_queued` for a post-merge-review

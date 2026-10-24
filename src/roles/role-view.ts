@@ -20,7 +20,7 @@ import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleRunPrompt } from "../run/run-prompt.js";
-import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
+import { configForRole, resolvedModelFields, reviewedAfterMerge, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
 import { readOpencodeCache } from "../agent/opencode/opencode-catalog.js";
@@ -133,6 +133,13 @@ export interface RoleViewPayload {
    * so a payload without one stays byte-identical to before. Resolved through the base role
    * like the min-run-interval override, so an instance id shows the count its runs carry. */
   instances?: number;
+  /** Whether the review gate reviews this role's commits AFTER they merge
+   * (config-views.ts's reviewedAfterMerge, the one membership test the gate, the runner's
+   * `already_queued` recovery arm and this view share). Present only while review is enabled
+   * (`review.enabled !== false`) and `review.afterMerge` lists the role's base id — absent
+   * for a pre-merge-reviewed role or when the gate is off, matching the absent-when-default
+   * pattern of `imageReroute`/`instances`. */
+  reviewedAfterMerge?: true;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
   instructions: string | null;
   /** The role's own find-something-to-do text verbatim (a custom role's `task`), or null
@@ -434,6 +441,11 @@ export function rolePayload(
     // so the merged cfg tells presence exactly. Resolved through the base role like the
     // instructions and min-run-interval override.
     ...(cfg.roles[base]?.instances !== undefined ? { instances: cfg.roles[base].instances } : {}),
+    // Whether the review gate reviews this role's commits after they merge — the role page's
+    // `- Review: after merge` line. Present only while review is enabled and review.afterMerge
+    // lists the role's base id, so a pre-merge-reviewed role or a gate-off config leaves the
+    // payload (and its render) unchanged.
+    ...(cfg.review.enabled && reviewedAfterMerge(cfg, role) ? { reviewedAfterMerge: true } : {}),
     // The roles.<base>.instructions override verbatim — resolved through the base role like
     // the cap and quiet hours, so an instance id shows (and can edit) the override its runs
     // carry (run-prompt reads config.roles[base]); null when unset.

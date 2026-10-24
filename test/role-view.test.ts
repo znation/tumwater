@@ -129,6 +129,23 @@ test("renderRoleMarkdown prints the Instances line only when a count is configur
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Instances:/);
 });
 
+test("the role view names after-merge review only while review.afterMerge covers the role", () => {
+  const dir = root();
+  // The default review.afterMerge lists bugfix (not feature): the role view names it.
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, true);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewedAfterMerge, undefined);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review: after merge/);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Review:/);
+  // A config that moves the membership flips both answers.
+  writeConfig(dir, { review: { afterMerge: ["feature"] } });
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).reviewedAfterMerge, true);
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, undefined);
+  // A review gate disabled leaves the field absent even when afterMerge lists the role.
+  writeConfig(dir, { review: { enabled: false, afterMerge: ["bugfix"] } });
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).reviewedAfterMerge, undefined);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS)), /- Review:/);
+});
+
 test("the payload carries the raw model-triple overrides only when the file sets them", () => {
   const dir = root();
   // A config that sets provider/model/thinking only through roles feature: the resolved

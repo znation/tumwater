@@ -69,6 +69,7 @@ export const GUI_CLIENT_DRAWER_CONFIG_JS = String.raw`
         : "unknown";
       rows.push(kvRow("Images", images));
     }
+    if (view.reviewedAfterMerge === true) rows.push(kvRow("Review", "after merge"));
     if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
       const fb = view.modelFallback;
       const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";

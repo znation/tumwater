@@ -8,7 +8,7 @@ import { resetWorktreeToMain } from "../git/worktree.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
 import { recordReview } from "../run/run-apply.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
+import { reviewedAfterMerge } from "../config/config-views.js";
 import { errorMessage } from "../text/text.js";
 import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
@@ -348,7 +348,7 @@ async function reviewAttempt(
   // part 12): it starts here, in its own checkout of this head, while the reviewer run below
   // starts in the change's own slot. An already-approved patch has no reviewer to overlap, and
   // with no free slot (or no way to lease one) the check runs first, as it always did.
-  const afterMerge = (config.review.afterMerge ?? []).includes(baseRoleOf(role));
+  const afterMerge = reviewedAfterMerge(config, role);
   let overlap: CheckOverlap | undefined;
   if (!retry.pre) {
     const lease = patchApproved || afterMerge ? null : await leaseCheckSlot(ctx, head);

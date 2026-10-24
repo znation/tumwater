@@ -786,6 +786,23 @@ test("the Configuration section names the resolved seam's context window", async
   assert.doesNotMatch(legacy.paintedFor("drawerrole"), /Context window/);
 });
 
+test("the Configuration section names after-merge review only when the payload carries it", async () => {
+  const mk = (extra: object) => openDrawer(["toggleRole"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/local", modelTier: "default", ...extra } },
+  });
+
+  const known = mk({ reviewedAfterMerge: true });
+  known.scope.toggleRole("clean");
+  await flush();
+  assert.match(known.paintedFor("drawerrole"), /<dt>Review<\/dt><dd[^>]*>after merge<\/dd>/);
+
+  const absent = mk({});
+  absent.scope.toggleRole("clean");
+  await flush();
+  assert.doesNotMatch(absent.paintedFor("drawerrole"), /<dt>Review<\/dt>/);
+});
+
 test("the Configuration section paints a Quiet hours own-window row and a read-only fleet row", async () => {
   const mk = (extra: object) => openDrawer(["toggleRole"], {
     status: workingStatus(),

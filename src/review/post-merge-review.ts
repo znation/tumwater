@@ -1,6 +1,6 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir } from "../paths.js";
-import { reviewRunConfig } from "../config/config-views.js";
+import { reviewedAfterMerge, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
@@ -8,7 +8,6 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt } from "../prompt/gate-prompts.js";
-import { baseRoleOf } from "../roles/runner-ids.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { eventRole } from "../events/event-read.js";
@@ -68,9 +67,11 @@ export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostM
     .sort((a, b) => b.count - a.count || (a.role < b.role ? -1 : a.role > b.role ? 1 : 0));
 }
 
-/** Whether `role`'s changes are reviewed after merging instead of before. */
+/** Whether `role`'s changes are reviewed after merging instead of before. One home for the
+ * membership test, config-views.ts's reviewedAfterMerge — the same predicate the review gate,
+ * the runner's `already_queued` recovery arm and the role view read. */
 export function isAfterMergeRole(config: TumwaterConfig, role: string): boolean {
-  return (config.review.afterMerge ?? []).includes(baseRoleOf(role));
+  return reviewedAfterMerge(config, role);
 }
 
 /** The queued entries. A torn or hand-edited entry (not an object with a string commit, role and

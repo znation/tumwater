@@ -255,6 +255,12 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
           : "no"
         : "unknown";
   lines.push(`- Images: ${images}`);
+  // Whether the review gate reviews this role's commits after they merge (role-view.ts's
+  // reviewedAfterMerge). Present only while review.enabled is on and review.afterMerge lists
+  // the role's base id — a pre-merge-reviewed role or a gate-off config omits the line.
+  if (p.reviewedAfterMerge) {
+    lines.push(`- Review: after merge (a rejected change is reverted off main and re-authored)`);
+  }
   // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
   // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
   if (p.modelFallback) {
