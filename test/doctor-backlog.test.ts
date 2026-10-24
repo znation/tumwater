@@ -999,37 +999,6 @@ test("failureMentions collects flake warnings and rejection reasons naming the t
   assert.equal(failureMentions(events, FLAKY_TEST, 100)[2]?.text, `✖ ${FLAKY_TEST}`);
 });
 
-test("failureMentions ignores warnings that merely name the test without a flake shape", () => {
-  const ev = (e: Record<string, unknown>) => ({ source: "review", ...e }) as unknown as HarnessEvent;
-  const events = [
-    // the quarantine lifecycle warning settleQuarantine writes: names the test, is not a failure
-    ev({ ts: 50, type: "warning", message: `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open` }),
-    ev({ ts: 60, type: "warning", message: `quarantine expired ${FLAKY_TEST}: window closed` }),
-  ];
-  assert.deepEqual(failureMentions(events, FLAKY_TEST, 0), []);
-});
-
-test("checkWaitingBugs stays ok for a quarantine-release warning naming the test without a flake", () => {
-  // the reported bug: a quarantine release line was quoted as the failure that satisfied a
-  // hold; it names the test without being a flake, so it must prove neither a recurrence here
-  // nor a regression below.
-  const dir = tmpdir("doctor-waiting-quarantine-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
-    `**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: the message names the pid**\n`);
-  logEvent(dir, { source: "baseline", type: "warning", message: `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open` });
-  assert.equal(checkWaitingBugs(dir).level, "ok");
-  assert.match(checkWaitingBugs(dir).detail, /is held until it fails again/);
-});
-
-test("checkRegressedFixes stays ok for a quarantine-release warning naming the test", () => {
-  const dir = tmpdir("doctor-regressed-quarantine-");
-  fs.writeFileSync(path.join(dir, "BUGS.md"),
-    `## Open\n\n## Fixed\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)}) — fixed ${daysAgoStamp(2)}\n\nFix.\n\n`);
-  logEvent(dir, { source: "baseline", type: "warning", message: `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open` });
-  assert.equal(checkRegressedFixes(dir).level, "ok");
-});
-
 test("checkWaitingBugs warns when the held bug's test failed again after the note's day", () => {
   const out = checkWaitingBugs(recurrenceRoot(2, `✖ ${FLAKY_TEST}`));
   assert.equal(out.level, "warn");

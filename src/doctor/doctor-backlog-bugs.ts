@@ -89,24 +89,14 @@ export function waitingNoteDate(note: string): string | null {
   return /\d{4}-\d{2}-\d{2}/.exec(note)?.[0] ?? null;
 }
 
-/** The check-failure glyph the harness writes immediately before a failing test's name in its
- * flake warnings (gate and merge, `… — flaky: ✖ <name>…`) and in a check's own failing-test
- * wording (`✖ <name> failed…`, and a review_rejected reason). Requiring the name to follow it
- * is what tells a real failure from a warning that merely names the test — a quarantine
- * release/expiry quotes the name in its own prose without the glyph, so it cannot be quoted as
- * the failure that proves a flake came back. */
-const FAIL_TEST_GLYPH = "✖ ";
-
 /** Every event at or after `sinceMs` that records a failure naming `name`: a `warning` whose
- * message marks the name as a failing test (`✖ <name>`, as the gate and merge flake warnings
- * and a check's own failing-test wording write it), or a `review_rejected` with a reason that
- * includes it (its text is the first such reason). In event order. A warning that merely
- * contains the name in its prose — a quarantine release, a merge-blocked note quoting a path,
- * a role's own words — is not a failure and is not returned. */
+ * message includes it (gate and merge flake warnings, a merge check kept for one retry), or a
+ * `review_rejected` with a reason that includes it (its text is the first such reason). In
+ * event order. */
 export function failureMentions(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string }[] {
   return events.flatMap((e) => {
     if (typeof e.ts !== "number" || e.ts < sinceMs) return [];
-    if (e.type === "warning" && typeof e.message === "string" && e.message.includes(FAIL_TEST_GLYPH + name)) return [{ ts: e.ts, text: e.message }];
+    if (e.type === "warning" && typeof e.message === "string" && e.message.includes(name)) return [{ ts: e.ts, text: e.message }];
     if (e.type === "review_rejected") {
       const reason = stringList(e.reasons).find((r) => r.includes(name));
       if (reason !== undefined) return [{ ts: e.ts, text: reason }];
