@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, planDependencyProblem, validationGapProblems, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps, duplicatedBacklogHeadings, fixClaimProblems, planDependencyProblem, validationGapProblems, type DuplicatedBacklogHeading } from "../src/doctor/doctor-backlog-plans.js";
 import { ageInDays } from "../src/backlog/backlog.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs, failureMentions, quotedTestName, staleWaitingBugRows, waitingNoteDate } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, atRiskPostReviews, atRiskPostReviewsPhrase, POST_REVIEW_AT_RISK_FAILURES, checkStalePrompts, checkStaleQueuedMerges, checkUncommittedBacklog, commitUncommittedBacklog, dirtyBacklogFiles, mergeWaitPhrase, skippedMergeQueueFiles, backlogCommitLines, backlogCommitMessage } from "../src/doctor/doctor-backlog.js";
@@ -55,6 +55,18 @@ test("checkFixClaims reads ok for a record whose symbols exist — one live symb
   const r = checkFixClaims(fixClaimsRepo(["`liveSymbol()` now does it.", "`liveSymbol` and `renamedSinceThen` both changed."]));
   assert.equal(r.level, "ok", r.detail);
   assert.match(r.detail, /newest 2 Fixed record/);
+});
+
+test("checkFixClaims and fixClaimProblems agree on the false record", () => {
+  // The doctor's row and the always-on alert share one scan (fixClaimProblems), so they cannot
+  // name different records: the message must carry the same heading the alert would render.
+  const root = fixClaimsRepo(["`liveSymbol` is real.", "`runScriptGroup` and `signalTree` vanished."]);
+  const [first] = fixClaimProblems(root);
+  assert.ok(first, "the fake record must be a problem for the agreement to be observable");
+  const r = checkFixClaims(root);
+  assert.equal(r.level, "warn");
+  assert.ok(r.detail.includes(`"${first.heading}" as Fixed`), r.detail);
+  assert.ok(r.detail.includes("runScriptGroup, signalTree"), r.detail);
 });
 
 test("checkFixClaims warns naming the heading and missing symbols of a record whose symbols are all absent", () => {

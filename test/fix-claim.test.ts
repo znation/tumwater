@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   bugEntryBody,
+  cachedSourceHaystack,
   falseFixReason,
   fixSymbols,
   fixedHeadings,
@@ -14,6 +15,7 @@ import {
   sourceHaystack,
   unbackedSymbols,
 } from "../src/verdict/fix-claim.js";
+import { fixClaimProblems } from "../src/doctor/doctor-backlog-plans.js";
 import { aheadOfMain } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -337,6 +339,47 @@ test("sourceHaystack still excludes markdown living under the walked source dirs
   const haystack = sourceHaystack(root);
   assert.ok(haystack.includes("const marker = 1;"));
   assert.ok(!haystack.includes("claimed here"), "a doc haystack would back any claim");
+});
+
+test("cachedSourceHaystack caches on the stat signature and re-reads on a change", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  const file = path.join(root, "src", "a.ts");
+  fs.writeFileSync(file, "const versionOne = 1;\n");
+  const first = cachedSourceHaystack(root);
+  assert.equal(first, sourceHaystack(root), "the cache is transparent on a fresh tree");
+  assert.ok(first.includes("const versionOne = 1;"));
+  // A second call on an unchanged tree returns the cached text.
+  assert.equal(cachedSourceHaystack(root), first);
+  // An unchanged tree is served from the cache — no file is re-read (the equality above is
+  // the observable sign; the signature walk is stat-only).
+  assert.equal(cachedSourceHaystack(root), first);
+  // Rewriting the file (a different mtime/size) invalidates the signature: the next call
+  // reflects the new content, and stays transparent.
+  fs.writeFileSync(file, "const v2 = 2;\n");
+  const second = cachedSourceHaystack(root);
+  assert.ok(second.includes("const v2 = 2;"));
+  assert.ok(!second.includes("const versionOne = 1;"));
+  assert.equal(second, sourceHaystack(root), "the cache stays transparent after a change");
+});
+
+test("fixClaimProblems names a record whose symbols are all absent", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function liveSymbol() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n### Still broken (found by qa 2026-09-22)\n\n## Fixed\n\n### Phantom bug: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** \`ghostPhantom\` merged.\n`,
+  );
+  const problems = fixClaimProblems(root);
+  assert.ok(problems.length > 0, "the phantom record must be a problem");
+  const first = problems[0]!;
+  assert.equal(first.heading, "Phantom bug: details (found by qa 2026-09-20, fixed 2026-09-21)");
+  assert.deepEqual(first.missing, ["ghostPhantom"]);
+  // Adding the symbol's text to a src/ file (the stat-keyed haystack re-reads on the change)
+  // empties the problem set for the same record.
+  fs.writeFileSync(path.join(root, "src", "real.ts"), "export function ghostPhantom() {}\n");
+  assert.deepEqual(fixClaimProblems(root), []);
 });
 
 test("falseFixReason passes an md-only Fixed edit in a non-JS (Rust) project", async () => {

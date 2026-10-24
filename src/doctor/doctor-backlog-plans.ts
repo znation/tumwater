@@ -9,7 +9,7 @@ import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { liveFinishedHistory } from "../backlog/backlog-archive.js";
-import { fixSymbols, fixedEntriesAt, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
+import { fixSymbols, missingSymbolNames, cachedSourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { plural } from "../text/phrases.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
@@ -37,23 +37,10 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 export function checkFixClaims(root: string): CheckOutcome {
   const doc = readBacklogChecked(root, "BUGS.md");
   if (typeof doc !== "string") return doc;
-  // One parse feeds every record's title and body: bugEntryBody re-parsed the whole document
-  // per heading, and BUGS.md grows without bound, so the newest-10 scan paid 1 + 10 full-document
-  // walks where one suffices.
-  const records = fixedEntriesAt(root, doc).slice(0, FIX_CLAIMS_CHECKED);
-  // The haystack walks src/, test/ and scripts/: build it only once a record names something.
-  let haystack: string | undefined;
-  const phantoms: Array<{ heading: string; missing: string[] }> = [];
-  for (const { title: heading, body } of records) {
-    const symbols = fixSymbols(body);
-    if (symbols.length === 0) continue;
-    haystack ??= sourceHaystack(root);
-    const missing = unbackedSymbols(root, symbols, haystack);
-    if (missing.length === symbols.length) phantoms.push({ heading, missing });
-  }
-  const [first, ...rest] = phantoms;
+  const problems = fixClaimProblems(root);
+  const [first, ...rest] = problems;
   if (!first)
-    return okOutcome(`newest ${records.length} Fixed record(s) name code that exists on this tree`);
+    return okOutcome(`newest ${fixClaimRecords(root).length} Fixed record(s) name code that exists on this tree`);
   // falseFixReason's message shape: the heading, then up to 3 missing names.
   const { heading, missing } = first;
   const names = missingSymbolNames(missing);
@@ -61,6 +48,52 @@ export function checkFixClaims(root: string): CheckOutcome {
   const more = andMore(rest, (p) => `"${truncate(p.heading, FIX_CLAIM_HEADING_MAX)}"`, "record(s)");
   return warnOutcome(`BUGS.md records "${heading}" as Fixed, but none of the symbols its Fix paragraph names ` +
       `exist on this tree: ${names}${more} — land the fix or keep the bug Open / refresh a stale record`);
+}
+
+/** One problem found by the shared fix-claim scan (fixClaimProblems, below): a newest Fixed
+ * record whose Fix paragraph names (`missing`) only symbols absent from the tree — the phantom
+ * signature the review chain has burned on. `heading` is the record's title. The scan keeps
+ * record order, so the first problem is the one the doctor's message names — the always-on
+ * alert and the doctor stay in step by sharing this one scan. */
+export interface FixClaimProblem {
+  heading: string;
+  missing: string[];
+}
+
+/** The fix-claim rows shared by the doctor's check and the always-on alert: each newest Fixed
+ * record classified through fixSymbols and unbackedSymbols — the gate's own parsing and
+ * existence rules — against ONE cachedSourceHaystack built for the whole scan, keeping a record
+ * only when EVERY symbol its Fix paragraph names is absent, and skipping a record that names no
+ * symbols (pure-documentation fixes are legitimate). */
+function classifyFixClaims(records: readonly BacklogEntry[], root: string): FixClaimProblem[] {
+  const problems: FixClaimProblem[] = [];
+  let haystack: string | undefined;
+  for (const { title, body } of records) {
+    const symbols = fixSymbols(body);
+    if (symbols.length === 0) continue;
+    haystack ??= cachedSourceHaystack(root);
+    const missing = unbackedSymbols(root, symbols, haystack);
+    if (missing.length === symbols.length) problems.push({ heading: title, missing });
+  }
+  return problems;
+}
+
+/** The ONE shared fix-claim scan: the newest Fixed records (bounded to FIX_CLAIMS_CHECKED so
+ * pre-convention history never warns forever) as fixedBugEntries reads them — the stat-cached
+ * section reader BUGS.md + BUGS-FIXED.md, bodies kept whole — classified through
+ * classifyFixClaims. Reading through this same reader (and not a one-off fixedEntriesAt walk) is
+ * what keeps the alert and the doctor on the identical problem set; there is only one scan. */
+function fixClaimRecords(root: string): BacklogEntry[] {
+  return fixedBugEntries(root).slice(0, FIX_CLAIMS_CHECKED);
+}
+
+/** The problems the ONE shared fix-claim scan found among the newest Fixed records at `root`
+ * (empty when BUGS.md is unreadable or every newest Fixed record names at least one live
+ * symbol). Feeds the always-on amber alert through the stat-cached fixedBugEntries reader and
+ * cachedSourceHaystack, so it stays in step with the doctor and adds no re-read to the 1 Hz TUI
+ * and status-poll path. */
+export function fixClaimProblems(root: string): FixClaimProblem[] {
+  return classifyFixClaims(fixClaimRecords(root), root);
 }
 
 /** One problem found by the shared validation-gap scan (validationGapRecords, below): a newest

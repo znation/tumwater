@@ -46,7 +46,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
-import { readTextOrNull, walkFiles } from "../files/files.js";
+import { readTextOrNull, statOrNull, walkFiles } from "../files/files.js";
 import {
   fenceTracker,
   finishedArchiveOf,
@@ -231,6 +231,60 @@ export function sourceHaystack(root: string): string {
     if (text !== null) parts.push(text); // Missing or unreadable contributes nothing.
   }
   return parts.join("\n");
+}
+
+/** One held build of the haystack: the path+mtime+size signature each file's bytes were read
+ * under, plus the concatenated text. The signature is what a later call compares; a match means
+ * every file the haystack reads has the same identity/size it was read with, so the cached text
+ * is returned without a single file read. (mtime+size misses a same-size overwrite within the
+ * same clock tick, the same inherent limit every stat-keyed cache in the project shares.) */
+interface HaystackCacheEntry {
+  signature: string;
+  text: string;
+}
+
+/** The module-level cache backing cachedSourceHaystack, keyed by root. Cleared wholesale past a
+ * small cap, like the other stat caches (src/files/stat-cache.ts) — evicting only costs one
+ * re-walk and re-read per tree on the next call. */
+const sourceHaystackCache = new Map<string, HaystackCacheEntry>();
+const HAYSTACK_CACHE_MAX = 64;
+
+/** sourceHaystack with a stat-keyed cache so the always-on observer poll reads the tree only
+ * when a file changed: the first call per root walks the tree once and, on every later call,
+ * builds a signature from each file's path + mtimeMs + size (all stat-only, sorted so the walk
+ * order cannot matter) and returns the cached text unchanged when the signature matches, or
+ * re-reads on a change. Transparent — its return equals sourceHaystack(root) for the same tree —
+ * so the merge gate keeps calling sourceHaystack and never notices the cache. */
+export function cachedSourceHaystack(root: string): string {
+  const signature = sourceHaystackSignature(root);
+  const cached = sourceHaystackCache.get(root);
+  if (cached?.signature === signature) return cached.text;
+  const text = sourceHaystack(root);
+  if (sourceHaystackCache.size >= HAYSTACK_CACHE_MAX) sourceHaystackCache.clear();
+  sourceHaystackCache.set(root, { signature, text });
+  return text;
+}
+
+/** The stat-only signature a cachedSourceHaystack call compares: every source file the haystack
+ * reads (docs excluded, exactly as sourceHaystack does) plus package.json/tsconfig.json, each as
+ * `path:mtimeMs:size`. Sorted so the walk order cannot matter; an unreadable or missing file
+ * contributes nothing, the same way sourceHaystack skips it — except a file that is stat-able
+ * but unreadable, which contributes its stat but read nothing: the cache then keys on a byte-for-
+ * byte consistent shape, never stale text. */
+function sourceHaystackSignature(root: string): string {
+  const sigs: string[] = [];
+  const docExts = new Set([".md", ".markdown"]);
+  const add = (p: string): void => {
+    const st = statOrNull(p);
+    if (st?.isFile()) sigs.push(`${p}:${st.mtimeMs}:${st.size}`);
+  };
+  walkSourceFiles(root, (p, entry) => {
+    if (docExts.has(extname(entry.name).toLowerCase())) return;
+    add(p);
+  });
+  for (const file of ["package.json", "tsconfig.json"]) add(join(root, file));
+  sigs.sort();
+  return sigs.join("|");
 }
 
 /** Every file under the source dirs the haystack reads (src/, test/, scripts/), node_modules and

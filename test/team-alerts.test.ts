@@ -1330,6 +1330,28 @@ test("a bad Validation gap trace raises one amber alert", () => {
   assert.deepEqual(both.map((a) => a.key), ["stranded-plans", "validation-gaps"]);
 });
 
+test("the false-fixes alert names the first record and folds the rest", () => {
+  const now = Date.now();
+  const fixClaims = [
+    { heading: "Phantom fix: details", missing: ["runScriptGroup", "signalTree"] },
+    { heading: "Second phantom: details", missing: ["ghost"] },
+  ];
+  // fixClaims is the final positional argument, after validationGaps, reverts, notifyFailures,
+  // primaryOverwrite, contention, flappedChecks, regressedFixes, postMergeChurn,
+  // postReviewRisk, droppedPostReviews, mainRuleFailure, staleClaims and staleQuestions.
+  const alerts = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, [], [], fixClaims);
+  const ff = alerts.filter((a) => a.key === "false-fixes");
+  assert.deepEqual(ff.map((a) => [a.key, a.tone, a.title]), [["false-fixes", "amber", "2 Fixed records name code that is not on this tree"]]);
+  assert.match(ff[0]!.detail ?? "", /BUGS\.md records "Phantom fix: details" as Fixed/);
+  assert.match(ff[0]!.detail ?? "", /runScriptGroup, signalTree/);
+  assert.match(ff[0]!.detail ?? "", /"Second phantom: details"/);
+  assert.match(ff[0]!.detail ?? "", /land the fix or keep the bug Open \/ refresh a stale record/);
+  assert.deepEqual(ff[0]!.actions, []);
+  // An empty list and the bare call add no false-fixes alert.
+  assert.equal(teamAlerts(base, [], [], now).filter((a) => a.key === "false-fixes").length, 0);
+  assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null, []), []);
+});
+
 test("statusPayload and renderStatus carry a validation-gaps alert from BUGS.md, and none without one", () => {
   const now = Date.now();
   const root = makeRepo();

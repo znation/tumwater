@@ -10,7 +10,7 @@
 import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
-import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
+import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
@@ -19,6 +19,7 @@ import { chainFragments, pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
+import { missingSymbolNames } from "../verdict/fix-claim.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp, humanAgo, humanUntil } from "../text/datetime.js";
@@ -509,6 +510,7 @@ interface BacklogAlertsInput {
   strandedPlans: readonly StrandedPlanEntry[];
   duplicatedHeadings: readonly BacklogHeadingDuplicate[];
   validationGaps: readonly ValidationGapProblem[];
+  fixClaims: readonly FixClaimProblem[];
 }
 
 /** The backlog alerts, in emission order: open questions, refused entries, operator-held
@@ -529,6 +531,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     strandedPlans,
     duplicatedHeadings,
     validationGaps,
+    fixClaims,
   } = input;
   if (questions.length) {
     out.push({
@@ -707,6 +710,29 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       title: plural(validationGaps.length, "Fixed record has a validation-gap problem", "Fixed records have validation-gap problems"),
       detail:
         `BUGS.md "${first.title}" ${reason}${more} — every Fixed entry writes exactly one known **Validation gap:** tag (write \`none\` rather than omitting it), and an unclear-invariant fix pins its reconstructed guarantee in docs/invariants.md`,
+      // The fix is editing BUGS.md.
+      actions: [],
+    });
+  }
+  // A newest Fixed record whose Fix paragraph names only code absent from the tree (the
+  // doctor's `claimed bugs` check, src/doctor/doctor-backlog-plans.ts checkFixClaims) is the
+  // always-on twin of that doctor row: a fix claim that names no live symbol is invisible to
+  // every consumer that reads BUGS.md (BUGS-FIXED.md's long fight over an already-fixed entry),
+  // so it asks (amber) the way the validation-gaps alert does, naming the first record and the
+  // missing symbols. It is fed from the same scan (fixClaimProblems over fixClaimRecords) the
+  // doctor's check uses, so the alert and the doctor cannot drift on the problem set, and that
+  // scan reads the tree only when a file changed (cachedSourceHaystack), so it adds no re-read
+  // to the 1 Hz poll path. The fix is editing BUGS.md, so it has no buttons.
+  if (fixClaims.length) {
+    const first = fixClaims[0]!;
+    const rest = fixClaims.slice(1);
+    const more = rest.length ? ` · ${joinWithMore(rest.map((p) => `"${p.heading}"`), 3)}` : "";
+    out.push({
+      key: "false-fixes",
+      tone: "amber",
+      title: plural(fixClaims.length, "Fixed record names code that is not on this tree", "Fixed records name code that is not on this tree"),
+      detail:
+        `BUGS.md records "${first.heading}" as Fixed, but none of the symbols its Fix paragraph names exist on this tree: ${missingSymbolNames(first.missing)}${more} — land the fix or keep the bug Open / refresh a stale record`,
       // The fix is editing BUGS.md.
       actions: [],
     });
@@ -1270,10 +1296,11 @@ export function teamAlerts(
   mainRuleFailure: MainRuleFailure | null = null,
   staleClaims: readonly ClaimState[] = [],
   staleQuestions: readonly StaleQuestion[] = [],
+  fixClaims: readonly FixClaimProblem[] = [],
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
-  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));

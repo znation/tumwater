@@ -307,6 +307,31 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.equal(alerts.find((a) => a.key === "refused")?.title, "2 refused entries wait on your decision");
 });
 
+test("the status payload carries the false-fixes alert, and none without one", () => {
+  const now = Date.now();
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, "src"), { recursive: true });
+  fs.writeFileSync(path.join(repo, "src", "real.ts"), "export function liveSymbol() {}\n");
+  writeBacklogFile(repo, "BUGS.md", [
+    { heading: "## Open", body: "### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n" },
+    { heading: "## Fixed", body: "### Phantom bug: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** `ghostSymbol` merged.\n" },
+  ]);
+  const alerts = (statusPayload(repo, now) as { alerts: Array<{ key: string; title?: string; detail?: string }> }).alerts;
+  const alert = alerts.find((a) => a.key === "false-fixes");
+  assert.equal(alert?.title, "1 Fixed record names code that is not on this tree");
+  assert.match(alert?.detail ?? "", /"Phantom bug: details \(found by qa 2026-09-20, fixed 2026-09-21\)"/);
+  assert.match(alert?.detail ?? "", /ghostSymbol/);
+  // A repo whose Fixed record names a live symbol carries no false-fixes alert.
+  const clean = makeRepo();
+  fs.mkdirSync(path.join(clean, "src"), { recursive: true });
+  fs.writeFileSync(path.join(clean, "src", "real.ts"), "export function ghostSymbol() {}\n");
+  writeBacklogFile(clean, "BUGS.md", [
+    { heading: "## Open", body: "### Still broken (found by qa 2026-09-22)\n\n**Fix:** someday.\n" },
+    { heading: "## Fixed", body: "### Real bug: details (found by qa 2026-09-20, fixed 2026-09-21)\n\n**Symptom:** it broke.\n\n**Fix:** `ghostSymbol` merged.\n" },
+  ]);
+  assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "false-fixes"), undefined);
+});
+
 test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {
   const repo = makeRepo();
   writeBacklogFile(repo, "PLANS.md", [
