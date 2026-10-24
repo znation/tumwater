@@ -29,6 +29,29 @@ export function lanAddresses(
   return out;
 }
 
+/** The env var that carries the dashboard gate token between a supervisor and its dashboard
+ * child, and across a re-exec'd dashboard generation — and from a direct `--token` flag into
+ * the process's own durable env. Process env is what a spawn hands a child intact (`childEnv`
+ * in process.ts, and reexecSelf's own childEnv), whereas argv is what /proc/<pid>/cmdline
+ * exposes to every local user and what a reload re-runs verbatim — so the secret must travel
+ * by env, never argv. `cmdGui` seeds it from `--token` when the flag is given, and a
+ * `run --gui` supervisor passes the token to its dashboard child through it instead of
+ * guiArgs/argv. */
+export const GUI_TOKEN_ENV = "TUMWATER_GUI_TOKEN";
+
+/** Remove a `--token <secret>` pair from argv in place, so a process that typed the secret on
+ * the command line stops exposing it in `ps`/`/proc/<pid>/cmdline` the moment cmdGui has copied
+ * it into TUMWATER_GUI_TOKEN. Only a `--token` that has a following, non-flag value token is
+ * removed: a valueless trailing `--token`, or one followed by another flag (both CLI errors
+ * tokenValueProblem rejects), is left alone — deleting it would hide the operator's mistake
+ * rather than surface it. Exported so the splice branch itself is unit-tested. */
+export function stripTokenFromArgv(argv: string[]): void {
+  const t = argv.indexOf("--token");
+  if (t < 0) return;
+  const next = t + 1 < argv.length ? argv[t + 1] : undefined;
+  if (next !== undefined && !next.startsWith("--")) void argv.splice(t, 2);
+}
+
 /** Injectable seams for cmdGui, mirroring runTui's TuiSeams: the server it starts, the LAN
  * address list and the printer its banner names, and the serve-until-Ctrl+C wait. Production
  * callers omit it and get the real server, interfaces, stdout, and wait; tests inject fakes
@@ -63,7 +86,21 @@ export async function cmdGui(root: string, args: string[], seams: GuiSeams = {})
   // drift; its flag-looking-value case names `tumwater gui` here.
   const problem = tokenValueProblem(args, "tumwater gui");
   if (problem) fail(problem);
-  const token = flagValue(args, "--token") ?? "";
+  const flagToken = flagValue(args, "--token");
+  const token = flagToken ?? process.env[GUI_TOKEN_ENV] ?? "";
+  if (flagToken !== null) {
+    // The `--token` flag is a convenience that still transits the command line, so it shows up
+    // in `ps`/`/proc/<pid>/cmdline` to any local user (the world-readable channel). Carry the
+    // token forward by environment only: seed the env var now and drop the secret from this
+    // process's argv, so a self-reload's re-run and every child keep it off the process table.
+    // The operator could instead pre-set TUMWATER_GUI_TOKEN to avoid typing it at all; that
+    // advice is the warning printed below.
+    process.env[GUI_TOKEN_ENV] = token;
+    print(
+      "--token on the command line is visible to any local user in ps; prefer TUMWATER_GUI_TOKEN to keep the secret off the process list",
+    );
+    stripTokenFromArgv(process.argv);
+  }
   try {
     await start(root, port, allInterfaces, token);
   } catch (err) {
