@@ -11,7 +11,7 @@
 import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
-import { firstTrimmedLineStartingWith } from "../text/text.js";
+import { escapeRegExp, firstTrimmedLineStartingWith } from "../text/text.js";
 import { HELD_TAG_PREFIX, NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, PRIOR_HELD_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
@@ -33,7 +33,7 @@ export const OPERATOR_HOLD_THRESHOLD = 3;
  * but non-numeric `(held …)` tag is 0 (and stops the scan), so a malformed tag never throws.
  * Pure over the body text — the data-layer read half of the convergence backstop. */
 export function heldCount(body: string): number {
-  const tagRe = new RegExp(`${HELD_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)\\)`);
+  const tagRe = new RegExp(`${escapeRegExp(HELD_TAG_PREFIX)}(\\d+)\\)`);
   for (const raw of body.split("\n")) {
     const line = raw.trimStart();
     const note = line.startsWith(NEEDS_REVIEW_PREFIX) || line.startsWith(NEEDS_REPLAN_PREFIX);
@@ -59,7 +59,7 @@ function lineHeldCount(line: string): number | undefined {
   const trimmed = line.trimStart();
   const isNote = trimmed.startsWith(NEEDS_REVIEW_PREFIX) || trimmed.startsWith(NEEDS_REPLAN_PREFIX);
   if (!isNote) return undefined;
-  const tag = new RegExp(`${HELD_TAG_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)\\)`).exec(trimmed);
+  const tag = new RegExp(`${escapeRegExp(HELD_TAG_PREFIX)}(\\d+)\\)`).exec(trimmed);
   return tag === null ? undefined : Number(tag[1]);
 }
 

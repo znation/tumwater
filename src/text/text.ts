@@ -59,6 +59,18 @@ export function errorFirstLine(err: unknown): string {
   return errorMessage(err).trim().split("\n")[0] as string;
 }
 
+/** `s` with every regex metacharacter escaped, so it can be dropped into a `RegExp` and match
+ * only its literal text — the one spelling of the standard `replace(/[.*+?^${}()|[\]\\]/g,
+ * "\\$&")` escape, previously repeated at every site that turned an untrusted string (a
+ * provider id, a series/held-tag prefix, a role-note token, a config fragment) into a
+ * word-bounded or anchored match. Careful callers build `new RegExp(escapeRegExp(s))` and then
+ * append the boundaries (`\\b`, `^`, `)`) they want on top; this helper escapes only, never
+ * anchors, so the caller keeps control of the surrounding pattern. The presentation-only
+ * contract is inherited from the module: node built-ins alone, so any layer can import it. */
+export function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** The first line of `body` that begins with `prefix` once trimmed, trimmed; undefined when no
  * line does. Used by the backlog's hold-note text and the answered-question preview. */
 export function firstTrimmedLineStartingWith(body: string, prefix: string): string | undefined {

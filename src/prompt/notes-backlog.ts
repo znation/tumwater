@@ -23,7 +23,7 @@
 import { entryHoldAgainst, type EntryHold } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { entryKey, partKey, plannedPartKeys, seriesPart } from "../backlog/backlog-parts.js";
-import { collapseWhitespace } from "../text/text.js";
+import { collapseWhitespace, escapeRegExp } from "../text/text.js";
 
 /** The live backlog a note's claims are checked against: the planned entries in file order, the
  * Open bugs in file order, and the done plan titles (PLANS.md plus PLANS-DONE.md). */
@@ -94,7 +94,7 @@ function firstWord(name: string): string {
 
 /** Whether `lowerLine` contains `token` on word boundaries (both already lowercased). */
 function lineHas(lowerLine: string, token: string): boolean {
-  const quoted = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const quoted = escapeRegExp(token);
   return new RegExp(`\\b${quoted}\\b`).test(lowerLine);
 }
 

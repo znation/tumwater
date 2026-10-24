@@ -7,6 +7,7 @@ import { opencodeModelKey, readOpencodeCache } from "../agent/opencode/opencode-
 import { opencodeDbPath } from "../paths.js";
 import { envPath, isDirectory, readTextOrNull, statOrNull, treeBytes } from "../files/files.js";
 import { formatBytes, tokenWindowLabel } from "../text/format.js";
+import { escapeRegExp } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import {
@@ -76,7 +77,7 @@ async function opencodeAuthLists(
   } catch {
     // Not an array-shaped JSON payload — fall through to the word-bounded text match.
   }
-  const esc = provider.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc = escapeRegExp(provider);
   return new RegExp(`(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|$)`).test(text);
 }
 
