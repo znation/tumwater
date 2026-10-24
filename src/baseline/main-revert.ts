@@ -88,7 +88,7 @@ export async function runMainRevert(
   onFailed?: (c: MainCulprit, reason: string) => void | Promise<void>,
 ): Promise<void> {
   /** Hand the failure to a role and return the warning's suffix saying truthfully what happened.
-   * `onFailed` may be async (a hand-back that records state, sendReviewToRole), so it is AWAITED
+   * `onFailed` may be async (a hand-back that records state), so it is AWAITED
    * inside the try: an un-awaited promise would leave a rejection unhandled and keep its error
    * from this catch, silently losing heal's "could not send" handling. */
   const heal = async (reason: string, outputTail?: string[]): Promise<string> => {

@@ -6,7 +6,7 @@ import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/run
 import { CONVERGENCE_HOLD_MARKER } from "../src/roles/role-guidance.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-notes.js";
 import { verifyRequest } from "../src/merge/merge-batch.js";
-import { recordForwardedChange, recordRevertedChange } from "../src/merge/merge-core.js";
+import { recordRevertedChange } from "../src/merge/merge-core.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -831,92 +831,30 @@ test("a fresh merge leaves a pending revision's rejected ref alone", async () =>
   assert.equal(await refSha(root, rejectedRefName(role)), rejected, "the pending revision's ref survives");
 });
 
-test("a forwarded post-merge rejection records the same round as a reverted one", async () => {
-  // A forward (the commit is still on main) and a revert hand the author's change back with the
-  // SAME one shared counter: a commit's `Revision` trailer plus one, ending at the backstop. The
-  // two hand-backs must therefore agree on every round, and at the cap they must end identically.
+test("a reverted post-merge rejection records one past the commit's Revision trailer", async () => {
+  // The reverted hand-back (recordRevertedChange) drives the SAME round/backstop counter as a
+  // rejection: the next round is one past the commit's `Revision` trailer, and at the cap the
+  // chain ends exactly as a rejection's exhaustion does.
   const root = makeRepo();
-  // Two commits with identical messages (one for the forwarded record, one for the reverted):
-  // `tag` distinguishes the working-tree edit each one commits so the second commit is not empty.
-  const mk = (msg: string, tag: string): { sha: string; sha2: string } => {
+  const mk = (msg: string, tag: string): string => {
     fs.writeFileSync(path.join(root, "a.txt"), tag);
     commitIn(root, msg);
-    const sha = headSha(root);
-    fs.writeFileSync(path.join(root, "a.txt"), tag + "b");
-    commitIn(root, msg);
-    return { sha, sha2: headSha(root) };
+    return headSha(root);
   };
-  const fwdRole = "feature";
   const revRole = "feature-2";
-  const mid = mk("edit a\n\nRevision: 2", "first"); // revisions 2 → round 3, not exhausted
-  const fwdState = freshRunnerState(fwdRole);
+  const mid = mk("edit a\n\nRevision: 2", "first"); // revision 2 → round 3, not exhausted
   const revState = freshRunnerState(revRole);
-  // A forward records NO rejected ref (the commit is still on main — nothing to re-apply onto
-  // itself), so unlike the reverted side no ref is set up.
-  await setRef(root, rejectedRefName(revRole), mid.sha2);
-  await recordForwardedChange(root, fwdRole, fwdState, mid.sha, ["still wrong"]);
-  await recordRevertedChange(root, revRole, revState, mid.sha2, ["still wrong"]);
-  assert.equal(fwdState.forwarded?.round, 3, "the forwarded record counts the same round");
-  assert.equal(revState.revision?.round, 3, "the reverted record counts the same round");
-  assert.equal(fwdState.revision, undefined, "a forward records no re-apply revision");
-  assert.equal(await refSha(root, rejectedRefName(fwdRole)), null, "a forward points no rejected ref");
-  assert.equal(fwdState.lastReview?.verdict, "forwarded", "a forward never reads as a revert");
+  await recordRevertedChange(root, revRole, revState, mid, ["still wrong"]);
+  assert.equal(revState.revision?.round, 3, "the reverted record counts one past the trailer");
+  assert.equal(revState.revision?.sha, mid, "the reverted record names the commit to re-apply");
   assert.equal(revState.lastReview?.verdict, "reverted");
-  assert.equal(fwdState.lastReview?.head, mid.sha, "the forwarded record names the commit");
+  assert.equal(await refSha(root, rejectedRefName(revRole)), mid, "the reverted hand-back points the rejected ref");
 
-  // Identical backstop: a trailer one below the cap ends both chains exactly the same way.
+  // Identical backstop: a trailer one below the cap ends the chain like a rejection exhausts.
   const cap = mk(`edit b\n\nRevision: ${REVISION_BACKSTOP - 1}`, "cap");
-  const fwdEx = freshRunnerState(fwdRole);
   const revEx = freshRunnerState(revRole);
-  await setRef(root, rejectedRefName(revRole), cap.sha2);
-  await recordForwardedChange(root, fwdRole, fwdEx, cap.sha, ["still wrong"]);
-  await recordRevertedChange(root, revRole, revEx, cap.sha2, ["still wrong"]);
-  assert.equal(fwdEx.forwarded, undefined, "the forwarded chain is cleared at the backstop");
-  assert.equal(fwdEx.revision, undefined, "the forwarded chain records no revision");
+  await recordRevertedChange(root, revRole, revEx, cap, ["still wrong"]);
   assert.equal(revEx.revision, undefined, "the reverted chain is cleared at the backstop");
-  assert.equal(fwdEx.lastReview?.exhausted, true, "the forwarded exhaustion is final");
   assert.equal(revEx.lastReview?.exhausted, true, "the reverted exhaustion is final");
-  assert.equal(await refSha(root, rejectedRefName(fwdRole)), null, "the forwarded ref is deleted (never set)");
   assert.equal(await refSha(root, rejectedRefName(revRole)), null, "the reverted ref is deleted");
-});
-
-test("a runner consuming a forwarded hand-back carries the round and re-applies nothing", async () => {
-  // Objection-2 pin: a forwarded record is consumed by a REAL runner (not just handed off
-  // directly). Because the commit is still ON MAIN, the runner must fix forward WITHOUT
-  // attempting applyRevision (no rejected ref, no "revision applied" event) — yet the follow-up
-  // still carries the round, both on its queued merge entry and in its stamped `Revision:`
-  // trailer, so the chain keeps counting toward the same backstop.
-  const repo = await initializedRepo();
-  fs.writeFileSync(path.join(repo, "seed.txt"), "breaks it\n");
-  commitIn(repo, "the change that stayed on main\n\nRevision: 2"); // next forward is round 3
-  const sha = headSha(repo);
-
-  const prompts = path.join(tmpdir(), "forward-runs.log");
-  await withPi(
-    [
-      `printf '%s\n' "$@" >> "${prompts}"`,
-      `echo fixed > seed.txt`,
-      `printf '%s\n' '${assistantLine("ok\nSUMMARY: fix forward\nWHY: the review")}'`,
-      `echo followup > followup.txt`,
-    ].join("\n"),
-    async () => {
-      const runner = makeRoleRunner(repo, "improve");
-      runner.state.lastReview = { verdict: "forwarded", reasons: ["still wrong"], head: sha, at: Date.now() };
-      runner.state.forwarded = { sha, round: 3, at: Date.now() };
-      const outcome = await runner.run();
-
-      assert.equal(outcome.result, "queued");
-      const prompt = fs.readFileSync(prompts, "utf8");
-      assert.match(prompt, /revision 3\b/, "the forward names its round");
-      assert.match(prompt, /still wrong/, "the forward carries the objections");
-      assert.doesNotMatch(prompt, /already in the worktree as uncommitted edits/, "a forward re-applies nothing");
-      const entry = queuedMerges(repo)[0]!;
-      assert.equal(entry.revisionRound, 3, "the follow-up's queued merge carries the round");
-      assert.match(sh(repo, "git", "show", "-s", "--format=%B", entry.sha), /Revision: 3/, "the follow-up's commit stamps the Revision: 3 trailer");
-      assert.deepEqual(eventsOfType(repo, "revision").map((e) => e.action), ["forwarded"], "no applyRevision is attempted");
-      assert.equal(await refSha(repo, rejectedRefName("improve")), null, "no rejected ref for an on-main forward");
-      assert.equal(runner.state.forwarded, undefined, "the forward is consumed by staging");
-      assert.equal(runner.state.revision, undefined, "no re-apply revision is left");
-    },
-  );
 });

@@ -392,9 +392,6 @@ export async function stageRunMerge(ctx: RunStageContext): Promise<RunOutcome> {
     // rebuild a retriable revision's merge entry with its round when the queue marker is lost.
     if (revisionRound !== undefined) {
       s.revision = undefined;
-      // A forwarded hand-back carries its round the same way; its `state.forwarded` is consumed
-      // once the follow-up stages, exactly like a revision's. Nothing left to re-apply either way.
-      s.forwarded = undefined;
     }
     // The merge sits in the durable queue above and the commit is pinned; the event is
     // observability, so an unwritable feed must not reject a run whose work is already queued.

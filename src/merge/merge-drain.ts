@@ -9,8 +9,8 @@ import { warnEventBestEffort, tryOrWarn, TUMWATER_SOURCE } from "../events/event
 import { hasOutstandingWork, saveRunnerState } from "../runner/runner-state.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, stringList } from "../files/json-object.js";
-import { recordForwardedChange, recordRevertedChange } from "./merge-core.js";
-import { forwardedPendingPath, revertedPendingPath } from "../paths.js";
+import { recordRevertedChange } from "./merge-core.js";
+import { revertedPendingPath } from "../paths.js";
 
 import { addPostReview, isAfterMergeRole, settlePostReview } from "../review/post-merge-review.js";
 import { drainPostReviews } from "./merge-post-review.js";
@@ -18,7 +18,6 @@ import { subscribeEvents } from "../events/events.js";
 import { treeDiffFiles } from "../git/git-diff.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { shortSha } from "../text/format.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import type { RoleRunner } from "../runner/runner.js";
 import {
@@ -101,17 +100,6 @@ async function handBackRevert(ctx: MergePipelineContext, pending: PendingRevert)
   return true;
 }
 
-/** Hand a parked forward to a free runner of its role through recordForwardedChange. The round is
- * counted HERE, at assignment — not at the first enqueue — so a plan can never hold before a
- * runner has received the reasons. Returns whether one took it, with its state saved. */
-async function handBackForward(ctx: MergePipelineContext, pending: PendingRevert): Promise<boolean> {
-  const taker = freeTaker(ctx, pending.role);
-  if (taker === undefined) return false;
-  await recordForwardedChange(ctx.root, taker.role, taker.state, pending.commit, pending.reasons);
-  tryOrWarn(ctx.root, taker.role, "save the forwarded change's record", () => saveRunnerState(ctx.root, taker.state));
-  return true;
-}
-
 /** After the revert merges: hand the culprit back to its author's role, or park it in
  * reverted.json when no runner of that role is free. */
 async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Promise<void> {
@@ -120,20 +108,6 @@ async function handBackReverted(ctx: MergePipelineContext, c: MainCulprit): Prom
   if (await handBackRevert(ctx, pending)) return;
   const file = revertedPendingPath(ctx.root);
   writeJsonAtomic(file, { reverted: [...pendingReverts(ctx.root), pending] });
-}
-
-/** The parked forwarded post-merge rejections (forwarded.json). A torn or hand-edited entry (not
- * an object with a string commit, a string role and an array of reasons) is dropped, and the next
- * rewrite leaves it out. */
-function pendingForwards(root: string): PendingRevert[] {
-  const saved = readJsonFile<{ forwarded?: unknown }>(forwardedPendingPath(root));
-  if (!Array.isArray(saved?.forwarded)) return [];
-  const pending: PendingRevert[] = [];
-  for (const e of saved.forwarded as unknown[]) {
-    if (!isJsonObject(e) || typeof e.commit !== "string" || typeof e.role !== "string" || !Array.isArray(e.reasons)) continue;
-    pending.push({ commit: e.commit, role: e.role, reasons: stringList(e.reasons) });
-  }
-  return pending;
 }
 
 /** The parked reverted changes. A torn or hand-edited entry (not an object with a string commit, a
@@ -149,35 +123,6 @@ function pendingReverts(root: string): PendingRevert[] {
   return pending;
 }
 
-/** A rejected commit whose revert failed stays on main: hand it forward through
- * recordForwardedChange to the first free runner of the commit's role (round counted at the
- * hand-back), or — with no free runner — park it in forwarded.json, where assignPendingReverts
- * counts the round at assignment (recordForwardedChange) rather than at the first hand-back, so a
- * plan can never be held before a runner has received the reasons. No inbox prompt is enqueued:
- * the forward rides `state.forwarded` alone — runner-run.ts's forwarded branch requires a
- * prompt-free run (userPrompt === null) so it can stamp the follow-up's `Revision:` trailer, and
- * an inbox-prompt run would sidestep that branch and produce a fix with no round (objection pin).
- * The commit is still on main, so its record is a `forwarded` verdict, never a revert. Exported
- * for the assertion in test/main-revert.test.ts. Never throws. */
-export async function sendReviewToRole(ctx: MergePipelineContext, c: MainCulprit): Promise<void> {
-  if (c.runner === undefined || c.postReview === undefined) return;
-  const taker = freeTaker(ctx, c.runner);
-  if (taker !== undefined) {
-    try {
-      await recordForwardedChange(ctx.root, taker.role, taker.state, c.commit, c.postReview.reasons);
-      tryOrWarn(ctx.root, taker.role, "save the forwarded change's record", () => saveRunnerState(ctx.root, taker.state));
-    } catch (err) {
-      warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `could not record the forward of ${shortSha(c.commit)}: ${errorMessage(err)}`);
-    }
-    return;
-  }
-  try {
-    writeJsonAtomic(forwardedPendingPath(ctx.root), { forwarded: [...pendingForwards(ctx.root), { commit: c.commit, role: c.runner, reasons: c.postReview.reasons }] });
-  } catch (err) {
-    warnEventBestEffort(ctx.root, TUMWATER_SOURCE, `could not park the forward of ${shortSha(c.commit)}: ${errorMessage(err)}`);
-  }
-}
-
 /** Each poll: assign the parked reverted changes to runners that have freed up, dropping each
  * one once assigned. It never throws, because the poll loop calls it with no catch; the
  * already-assigned check keeps a retry after a failed rewrite from handing a commit out twice. */
@@ -191,16 +136,6 @@ export async function assignPendingReverts(ctx: MergePipelineContext): Promise<v
   if (leftReverted.length < reverted.length)
     tryOrWarn(ctx.root, TUMWATER_SOURCE, "rewrite the pending reverted changes", () =>
       writeJsonAtomic(revertedPendingPath(ctx.root), { reverted: leftReverted }),
-    );
-  const forwards = pendingForwards(ctx.root);
-  const leftForwards: PendingRevert[] = [];
-  for (const pending of forwards) {
-    const assigned = (ctx.runners ?? []).some((r) => r.state.lastReview?.verdict === "forwarded" && r.state.lastReview.head === pending.commit);
-    if (!assigned && !(await handBackForward(ctx, pending))) leftForwards.push(pending);
-  }
-  if (leftForwards.length < forwards.length)
-    tryOrWarn(ctx.root, TUMWATER_SOURCE, "rewrite the pending forwarded changes", () =>
-      writeJsonAtomic(forwardedPendingPath(ctx.root), { forwarded: leftForwards }),
     );
 }
 
@@ -271,7 +206,7 @@ function startRevert(ctx: MergePipelineContext, p: MergePipeline, culprit: MainC
     roles: [],
     userAborted: false,
   };
-  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c), (c) => sendReviewToRole(ctx, c)).finally(() => {
+  const task = runMainRevert(ctx.root, ctx.mainBranch, ctx.liveConfig, culprit, (c) => handBackReverted(ctx, c), undefined).finally(() => {
     if (culprit.postReview) settlePostReview(ctx.root, culprit.commit, null);
     p.merge = null;
   });

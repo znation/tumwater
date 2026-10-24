@@ -89,35 +89,6 @@ or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} i
 tumwater drops the change.`;
 }
 
-/** The note injected into a role's run prompt when a post-merge rejection was handed FORWARD
- * (plans/post-merge-fix-forward.md, runner-run.ts's forwarded branch): the revert was skipped or
- * failed, so the rejected commit is STILL ON MAIN and is fixed forward — there is no re-applied
- * diff in the worktree and the author authors a fresh change on top of current main, unlike a
- * revision's re-apply. The round is the SAME counter a reverted chain carries, so the follow-up's
- * `Revision:` trailer keeps the chain counting toward the same backstop. A pure function so its
- * shape is pinned in tests. */
-export function buildForwardNote(
-  review: { reasons: string[] },
-  round: number,
-): string {
-  const list = numberedList(review.reasons, NO_REASONS);
-  return `Your previous change could not be reverted and is still on main — fix forward on top of current main; this is revision ${round}. This run's ONE task is that fix; author a new change, do not re-apply the old one.
-The review objections were:\n${list}
-Fix each numbered objection with the smallest edit that resolves it, and keep everything else as it
-is. When an objection is about a build-check failure in a test the change does not touch that you
-cannot reproduce, say so in RISK and keep the change as it is. Rewrite the closing block so it
-describes the WHOLE change as it now stands:
-${SUMMARY_BLOCK}
-Add one Objection N: <done|dropped|unchanged-by-design because …> line to the closing block for
-each numbered objection above (N is the objection's number): this run's commit body carries them,
-so the re-review reads your answer to each objection beside the diff. Say "done" when the fix is in
-this change, "dropped" when you removed what the objection targeted, or "unchanged-by-design because …"
-when you kept it and why.
-When an objection shows the change should not exist (its premise is disproven, it duplicates main,
-or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and
-tumwater drops the change.`;
-}
-
 /** The note appended to a work instance's run prompt when it holds a claim (plans/parallel-
  * work-instances.md "Claims", part 4/7): the harness has already picked its entry, so the
  * charter's choosing step is replaced. A pure function so its shape is pinned in tests; the

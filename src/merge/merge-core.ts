@@ -393,30 +393,25 @@ async function recordRejectedChange(
 }
 
 /** Hand a change whose revert merged back to a runner as a revision (plans/fast-merge.md, part
- * 4c), or hand a post-merge rejection that could not be reverted forward so its role fixes on top
- * of main (plans/post-merge-fix-forward.md). Both drive ONE round/backstop counter so the two
- * hand-back paths cannot drift: the next round is one past the commit's `Revision` trailer, and
- * at REVISION_BACKSTOP the chain ends exactly as a rejection's exhaustion does
+ * 4c) — the post-merge revert hand-back. The next round is one past the commit's `Revision`
+ * trailer, and at REVISION_BACKSTOP the chain ends exactly as a rejection's exhaustion does
  * (recordRejectedChange): the ref and the revision are cleared, the PLANS.md plan is held for
  * the plan role with the surviving objections verbatim (holdEntryAfterExhaustion — a BUGS.md
  * claim is never held), and `revision exhausted` is logged so the report's per-role revision line
- * counts the exhausted chain where rejections already are. `state.lastReview` names what
- * actually happened: a `reverted` verdict means the revert merged (the author re-applies), a
- * `forwarded` verdict means the commit is still on main, never reverted — so no surface reads a
- * revert that never ran. The director never receives either. */
+ * counts the exhausted chain where rejections already are. `state.lastReview.verdict` is always
+ * `reverted` — the revert merged, so the author re-applies. The director never receives it. */
 async function handBackChange(
   root: string,
   role: string,
   state: RunnerState,
   commit: string,
   reasons: string[],
-  verdict: "reverted" | "forwarded",
 ): Promise<void> {
   if (role === DIRECTOR_ROLE) return;
   const message = (await gitTry(root, "log", "-1", "--format=%B", commit)) ?? "";
   const nextRound = (revisionRoundOf(message) ?? 0) + 1;
   const exhausted = nextRound >= REVISION_BACKSTOP;
-  state.lastReview = { verdict, reasons, head: commit, at: Date.now(), ...(exhausted ? { exhausted } : {}) };
+  state.lastReview = { verdict: "reverted", reasons, head: commit, at: Date.now(), ...(exhausted ? { exhausted } : {}) };
   if (exhausted) {
     state.revision = undefined;
     await deleteRef(root, rejectedRefName(role));
@@ -427,23 +422,12 @@ async function handBackChange(
     logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: commit });
     return;
   }
-  if (verdict === "forwarded") {
-    // A forward is NOT a re-apply: the commit is still on main, so there is no rejected ref to
-    // point and no state.revision to re-apply — the runner would otherwise try to applyRevision
-    // an on-main commit (an empty `sha..sha` range), fail, clear the revision, and lose the
-    // round. The runner carries the round on its follow-up instead (runner-run.ts's forwarded
-    // branch, which stamps the follow-up's `Revision` trailer), so the counter still advances
-    // toward the same backstop.
-    state.forwarded = { sha: commit, round: nextRound, at: Date.now() };
-  } else {
-    await setRef(root, rejectedRefName(role), commit);
-    state.revision = { sha: commit, round: nextRound, at: Date.now(), reasonCounts: reasons.map(() => 0) };
-  }
+  await setRef(root, rejectedRefName(role), commit);
+  state.revision = { sha: commit, round: nextRound, at: Date.now(), reasonCounts: reasons.map(() => 0) };
 }
 
 /** Hand a change that turned main red back to a runner as a revision, and at the backstop hold
- * the plan exactly as a rejection's exhaustion does. Returns nothing; see handBackChange for the
- * one round/backstop counter it shares with the forwarded path. */
+ * the plan exactly as a rejection's exhaustion does. handBackChange's only caller. */
 export async function recordRevertedChange(
   root: string,
   role: string,
@@ -451,21 +435,7 @@ export async function recordRevertedChange(
   commit: string,
   reasons: string[],
 ): Promise<void> {
-  await handBackChange(root, role, state, commit, reasons, "reverted");
-}
-
-/** Record the forwarded hand-back of a post-merge rejection whose revert was skipped or failed
- * (plans/post-merge-fix-forward.md): the commit is still on main, not reverted, so the verdict
- * says `forwarded` and no surface reads a revert that never ran. Same round arithmetic and
- * REVISION_BACKSTOP handling as recordRevertedChange (one shared counter, handBackChange). */
-export async function recordForwardedChange(
-  root: string,
-  role: string,
-  state: RunnerState,
-  commit: string,
-  reasons: string[],
-): Promise<void> {
-  await handBackChange(root, role, state, commit, reasons, "forwarded");
+  await handBackChange(root, role, state, commit, reasons);
 }
 
 /** Merge a head that already passed its OWN gate in its verify — the merge slot's one-change merge

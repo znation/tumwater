@@ -5,6 +5,32 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Forward, never back, part 1b/6: the failed-forward hand-back machinery is deleted — a rejected commit is answered only by the reviewer's own fix (planned 2026-10-24 by the plan role, split from the held part 1/6; requires part 1/6 landed, since the plumbing this part deletes is dead only once a rejection stops filling the revert slot; touches src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-stage.ts src/prompt/gate-notes.ts src/paths.ts docs/how-it-works.md docs/invariants.md test/main-revert.test.ts test/revision.test.ts test/merge-drain.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 2**
+
+**Goal.** Once part 1/6 answers a post-merge rejection with the reviewer's own landed fix, the fallback that handed the reviewer's reasons to the authoring role has no reachable caller: `sendReviewToRole` (src/merge/merge-drain.ts) is passed only as `runMainRevert`'s `onFailed`, which runs only for a culprit carrying `postReview`, and part 1/6 removes the only place that sets `postReview` (`drainPostReviews` in src/merge/merge-post-review.ts). This part deletes that whole path — the parked `forwarded.json` queue, `recordForwardedChange`, the runner's `state.forwarded` follow-up and its note — so no code, state file or doc names a hand-back that can no longer happen.
+
+**Approach.**
+- src/merge/merge-drain.ts: delete `sendReviewToRole`, `handBackForward`, `pendingForwards` and `assignPendingReverts`' forward loop, and stop passing `sendReviewToRole` as `runMainRevert`'s `onFailed` in `startRevert` (a red-main culprit carries no `postReview`, so the callback is never needed).
+- src/merge/merge-core.ts: delete `recordForwardedChange` and `handBackChange`'s `"forwarded"` arm and its `verdict` parameter, so `recordRevertedChange` is `handBackChange`'s only caller.
+- src/runner/runner-state.ts: delete the `forwarded` field and drop it from `hasOutstandingWork`'s parameter and predicate; src/runner/runner-state-load.ts drops its heal; src/runner/runner-run.ts drops the forwarded follow-up branch; src/run/run-verdict.ts and src/run/run-stage.ts drop their `state.forwarded` consumption arms.
+- src/prompt/gate-notes.ts: delete `buildForwardNote`; src/paths.ts deletes `forwardedPendingPath`.
+- Docs: docs/how-it-works.md's forwarded-record paragraphs and docs/invariants.md's forwarded-hand-back guarantee and its bindings describe the deleted path and go with it; the revert hand-back they sit beside stays until parts 4/6–6/6.
+
+**Files touched.** src/merge/merge-drain.ts src/merge/merge-core.ts src/runner/runner-run.ts src/runner/runner-state.ts src/runner/runner-state-load.ts src/run/run-verdict.ts src/run/run-stage.ts src/prompt/gate-notes.ts src/paths.ts docs/how-it-works.md docs/invariants.md test/main-revert.test.ts test/revision.test.ts test/merge-drain.test.ts
+
+**Acceptance criteria.**
+- No forwarded hand-back remains: `grep -rn "sendReviewToRole\|recordForwardedChange\|forwardedPendingPath\|buildForwardNote\|\.forwarded" src/` finds none, `RunnerState` has no `forwarded` field, and `hasOutstandingWork` reads only `revision` and `resumePending`.
+- No doc describes a forwarded hand-back and `forwarded.json` is named nowhere in src/ or docs/.
+- The revert hand-back (`recordRevertedChange`, `state.revision`) is untouched and its tests still pass.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/main-revert.test.ts: drop the `sendReviewToRole`/parked-forward cases and the `forwardedPendingPath` import; keep the operator-revert and red-main cases.
+- test/revision.test.ts: drop "a forwarded post-merge rejection records the same round as a reverted one" and "a runner consuming a forwarded hand-back carries the round and re-applies nothing"; keep the reverted-chain cases.
+- docs/invariants.md: remove the forwarded-hand-back guarantee and its bindings.
+
 ### Forward, never back, part 1/6: the reviewer's fix-forward prompt replaces the revert slot, so a post-merge rejection never reverts (planned 2026-10-24 by the plan role; requires part 1a/6 landed, since the harness that commits and lands the reviewer's fix is part 1a/6, and the switch that asks for an edit merges only once that landing path is the running build; its scope split again 2026-10-24 by the plan role — part 1b/6 below deletes the failed-forward hand-back plumbing this part leaves with no caller; split from the held parts 1/2–2/2; supersedes the accounting plan and parts 1/3–3/3 of "A post-merge rejection stops reverting" above; design half: plans/post-merge-fix-forward.md "Decision"; part 2/6 below accounts and bounds the self-fix chain, part 3/6 files a review that never reaches a verdict and updates every surface, and parts 4/6–6/6 delete the revert machinery this part stops using; lands before "Every commit is verified on main" part 3/3 below, which removes the last pre-merge block; touches src/merge/merge-post-review.ts src/prompt/gate-prompts.ts test/gate-prompts.test.ts) — done 2026-10-24 by the feature role
 
 **Previously held 3**

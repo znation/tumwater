@@ -3754,38 +3754,26 @@ Only git's own answer, a missing object or a conflict no settler resolves, drops
 reporting a diff that no longer applies" and "a revision whose re-apply git could not start keeps
 the revision and its ref for the next run".
 
-### INV-BH6: a post-merge hand-back (revert or forward) counts one shared round and holds its plan at the backstop like a rejection
+### INV-BH6: a post-merge revert hand-back counts one round and holds its plan at the backstop like a rejection
 
-**Guarantee.** Both post-merge hand-back paths — `recordRevertedChange` (the revert merged; the
-author re-applies) and `recordForwardedChange` (the revert was skipped or failed, so the commit is
-still on main and is fixed forward) — drive the SAME round/backstop counter: the next round is one
-past the commit's `Revision` trailer, and at `REVISION_BACKSTOP` the chain ends exactly as a
-rejection's exhaustion does — the revision and the rejected ref are cleared, `revision exhausted`
-is logged (so the report's per-role revision line counts it where rejections already are), and the
-PLANS.md plan is held for the plan role with the surviving objections verbatim
-(`holdEntryAfterExhaustion`, the convergence rule; a BUGS.md claim is never held), so an exhausted
-post-merge chain is not left re-pickable to restart the cycle. The two paths cannot drift: neither
-recomputes the counter, they share `handBackChange`. A FORWARD is never a re-apply: because the
-commit is still on main it records no `state.revision` and points no `refs/tumwater/rejected/<role>`
-ref (an on-main commit cannot be applied onto itself — an empty `sha..sha` range), and the runner's
-forwarded branch (runner-run.ts) carries the round on the follow-up's stamped `Revision:` trailer
-instead, so the counter still advances. The `state.lastReview` verdict names what
-actually happened — `reverted` only when the revert merged, `forwarded` when the commit is still on
-main — so no surface reads a revert that never ran. A forward with no free runner parks in
-`.tumwater/state/forwarded.json` (apart from reverted.json) and counts its round only when
-`assignPendingReverts` hands it to a freed runner, so a plan can never hold before a runner has
-received the reasons. The director never receives either hand-back.
+**Guarantee.** The post-merge revert hand-back (`recordRevertedChange`, src/merge/merge-core.ts)
+drives the SAME round/backstop counter as a rejection: the next round is one past the commit's
+`Revision` trailer, and at `REVISION_BACKSTOP` the chain ends exactly as a rejection's exhaustion
+does — the revision and the rejected ref are cleared, `revision exhausted` is logged (so the
+report's per-role revision line counts it where rejections already are), and the PLANS.md plan is
+held for the plan role with the surviving objections verbatim (`holdEntryAfterExhaustion`, the
+convergence rule; a BUGS.md claim is never held), so an exhausted post-merge chain is not left
+re-pickable to restart the cycle. The author re-applies the reverted commit as a revision:
+`state.lastReview.verdict` is `reverted`, `state.revision` names the commit (one past its
+`Revision` trailer), and `refs/tumwater/rejected/<role>` points it, so no surface reads a revert
+that never ran. The director never receives the hand-back.
 
-**Binds.** `src/merge/merge-core.ts` (`handBackChange`, `recordRevertedChange`,
-`recordForwardedChange`); `src/merge/merge-drain.ts` (`sendReviewToRole`, `assignPendingReverts`);
-`src/runner/revision.ts` (`REVISION_BACKSTOP`, `holdEntryAfterExhaustion`); `src/runner/runner-run.ts`
-(the forwarded branch that carries the round to the follow-up).
+**Binds.** `src/merge/merge-core.ts` (`handBackChange`, `recordRevertedChange`);
+`src/runner/revision.ts` (`REVISION_BACKSTOP`, `holdEntryAfterExhaustion`).
 
 **Pinned by.** `test/main-revert.test.ts` — "a post-merge rejection chain that never converges holds
-its plan at the backstop" and "the parked-forward case counts its round at assignment, not at the
-first enqueue"; `test/revision.test.ts` — "a forwarded post-merge rejection records the same round as
-a reverted one" and "a runner consuming a forwarded hand-back carries the round and re-applies
-nothing".
+its plan at the backstop"; `test/revision.test.ts` — "a reverted post-merge rejection records one
+past the commit's Revision trailer".
 
 ## Batch merge: a stack merges as one fast-forward on its own check, and only a full check that passed on exactly the merged tip seeds main's baseline
 

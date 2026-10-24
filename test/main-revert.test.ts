@@ -5,7 +5,7 @@ import path from "node:path";
 import { createMainWatch } from "../src/baseline/main-watch.js";
 import { revertSkipReason, routeMainCulprit, runMainRevert, type MainCulprit } from "../src/baseline/main-revert.js";
 import { defaultConfig } from "../src/config/config.js";
-import { assignPendingReverts, drainMerge, sendReviewToRole } from "../src/merge/merge-drain.js";
+import { assignPendingReverts, drainMerge } from "../src/merge/merge-drain.js";
 import { newMergePipeline, type MergePipelineContext } from "../src/merge/merge-pipeline.js";
 import { queuedFiles } from "../src/inbox/inbox.js";
 import { baselineFixture } from "./fixtures/runner-fixtures.js";
@@ -14,7 +14,7 @@ import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { freshRunnerState, type RunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { baseRoleOf } from "../src/roles/runner-ids.js";
-import { roleInboxDir, forwardedPendingPath, revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
+import { roleInboxDir, revertedPendingPath, rejectedRefName, statePath } from "../src/paths.js";
 import { errnoError, failRenameSyncOn, patchFsMethod } from "./helpers/fs-faults.js";
 import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/runner/revision.js";
 import { clearSupersededRejection } from "../src/run/run-apply.js";
@@ -191,27 +191,6 @@ test("a post-review revert whose reviewer hand-off throws resolves and warns tha
   });
   const warnings = warningMessages(root);
   assert.equal(warnings.filter((m) => m.includes("could not send the reviewer's reasons to its role: EACCES")).length, 1);
-});
-
-test("a post-review revert that fails keeps the commit on main and parks the forward with the reviewer's reasons", async () => {
-  // The failed-revert fallback (merge-drain.ts sendReviewToRole): a rejection whose revert cannot
-  // merge leaves the commit on main and parks its role's forward in forwarded.json — NO inbox
-  // prompt, because an inbox-prompt run would sidestep runner-run.ts's forwarded branch (which
-  // needs userPrompt === null) and produce a fix with no Revision: trailer; the round rides
-  // state.forwarded at assignment instead.
-  const { root, found } = await redMain("improve", true);
-  const before = headSha(root);
-  const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["breaks the contract"] } };
-  const ctx = { root, mainBranch: "main" } as unknown as MergePipelineContext;
-  await runMainRevert(root, "main", defaultConfig(), c, undefined, (culprit) => sendReviewToRole(ctx, culprit));
-  assert.equal(headSha(root), before, "a conflicting revert leaves the commit on main");
-  assert.equal(eventsOfType(root, "main_revert").length, 0);
-  assert.equal(queuedFiles(root, "improve").length, 0, "no inbox prompt — the forward rides state.forwarded");
-  const parked = readJson<{ forwarded: { commit: string; role: string; reasons: string[] }[] }>(forwardedPendingPath(root)).forwarded;
-  assert.equal(parked.length, 1, "the forward is parked awaiting a free runner");
-  assert.equal(parked[0]?.role, "improve");
-  assert.equal(parked[0]?.commit, c.commit);
-  assert.deepEqual(parked[0]?.reasons, ["breaks the contract"], "the parked record names the reviewer's reasons");
 });
 
 test("a director-merged, runnerless or revert culprit is skipped", async () => {
@@ -400,27 +379,3 @@ test("a post-merge rejection chain that never converges holds its plan at the ba
   assert.equal(eventsOfType(root, "revision").at(-1)?.action, "exhausted", "the exhaustion is logged");
 });
 
-test("the parked-forward case counts its round at assignment, not at the first enqueue", async () => {
-  // A forward with no free runner parks in forwarded.json — no inbox prompt (an inbox-prompt
-  // run would sidestep runner-run.ts's forwarded branch and produce a fix with no Revision:
-  // trailer) — and records no round; the round is counted only when assignPendingReverts hands
-  // the parked entry to a freed runner, so a plan can never hold before a runner has ever
-  // received the reasons.
-  const { root, b, found } = await redMain("improve");
-  const c: MainCulprit = { ...found[0]!, postReview: { reasons: ["breaks the contract"] } };
-  const busy = fakeRunner("improve", { running: true });
-  const ctx = { root, mainBranch: "main", runners: [busy] } as unknown as MergePipelineContext;
-  await sendReviewToRole(ctx, c);
-  assert.equal(queuedFiles(root, "improve").length, 0, "no inbox prompt is enqueued");
-  assert.equal(busy.state.revision, undefined, "no round is counted at the first enqueue");
-  assert.equal(busy.state.lastReview, undefined, "no verdict is recorded while parked");
-  const parked = readJson<{ forwarded: { commit: string; role: string; reasons: string[] }[] }>(forwardedPendingPath(root)).forwarded;
-  assert.equal(parked.length, 1, "the forward is parked awaiting a free runner");
-  assert.equal(parked[0]?.commit, b);
-  busy.state.running = false;
-  await assignPendingReverts(ctx);
-  assert.equal((busy.state as RunnerState).forwarded?.round, 1, "the round is counted at assignment");
-  assert.equal((busy.state as RunnerState).revision, undefined, "a forward records no re-apply revision");
-  assert.equal((busy.state as RunnerState).lastReview?.verdict, "forwarded", "the assigned record is a forward, never a revert");
-  assert.deepEqual(readJson(forwardedPendingPath(root)), { forwarded: [] }, "the parked entry is dropped once assigned");
-});
