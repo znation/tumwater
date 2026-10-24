@@ -30,6 +30,7 @@ interface SettingsFns {
   confirmRetire(role: string): Promise<void>;
   killOrphansClick(): Promise<void>;
   commitBacklogClick(): Promise<void>;
+  resyncInstallClick(): Promise<void>;
   reprobeDoctorClick(): Promise<void>;
   paintKillButton(): void;
 }
@@ -37,7 +38,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "commitBacklogClick", "reprobeDoctorClick", "paintKillButton"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "enableRole", "confirmRetire", "killOrphansClick", "commitBacklogClick", "resyncInstallClick", "reprobeDoctorClick", "paintKillButton"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -521,6 +522,28 @@ test("commitBacklogClick posts /api/doctor-commit-backlog and reruns the doctor"
   await commitBacklogClick();
   assert.deepEqual(posts, [{ path: "/api/doctor-commit-backlog", body: {} }]);
   assert.deepEqual(flashes, ["Committing the uncommitted backlog/brief files…", "committed PLANS.md on main"]);
+  assert.equal(doctorFetches, 1);
+});
+
+test("resyncInstallClick posts /api/doctor-resync-install, flashes the re-sync line and reruns the doctor", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let doctorFetches = 0;
+  const { resyncInstallClick } = settingsScope({
+    $: () => ({ innerHTML: "", dataset: {} }),
+    getJson: async () => {
+      doctorFetches++;
+      return { checks: [] };
+    },
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return { ok: true, message: "re-synced the root install (a, b) in 1s" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await resyncInstallClick();
+  assert.deepEqual(posts, [{ path: "/api/doctor-resync-install", body: {} }]);
+  assert.deepEqual(flashes, ["Re-syncing the root install…", "re-synced the root install (a, b) in 1s"]);
   assert.equal(doctorFetches, 1);
 });
 

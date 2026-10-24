@@ -506,14 +506,19 @@ validation, and atomic write, so you never have to hand-edit the file.
   config set` uses, and Clear retracts through the same path `tumwater config unset` uses, so the
   field reverts to the key's default (unsetting the daily spend cap restores the default 50). The
   view also runs `tumwater doctor`'s checks on each open in a `Health check` card, with a Re-run
-  button. The view also lists disabled roles that still keep a worktree, branch, merge ref, or
+  button. Its Re-sync install button is the twin of `tumwater doctor --resync-install`
+  (POST /api/doctor-resync-install through the same `resyncRootInstall`) — the repair for the
+  `install` amber alert, which reads the drift live and clears once the install lands. The view
+  also lists disabled roles that still keep a worktree, branch, merge ref, or
   paused marker, each with what `tumwater retire` would remove and a two-click Retire button; a
   role the safety rails object to shows the objections and the `--force` command instead,
   because the dashboard never forces.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each role's Transcript, Backlog, Usage, Failures, History, Pending,
   Inbox, Health (the same checks `tumwater doctor` prints, re-run on each entry), and Brief (the
-  brief `tumwater brief` prints, read-only). Activity keeps the live tail and `PgUp`/`PgDn` page
+  brief `tumwater brief` prints, read-only). On Health, `Ctrl+U` is the terminal twin of
+  `tumwater doctor --resync-install` — the dashboard Health card's Re-sync install button and the
+  repair for the `install` amber alert. Activity keeps the live tail and `PgUp`/`PgDn` page
   it back through a fixed 200-event tail, the bottom of the page resuming the live tail; `Ctrl+G`
   scopes the feed to the team or one raw roster id (the same exact-role scopes History uses) and
   `/` on an empty prompt line opens a free-text search over the same loaded tail. Both filters

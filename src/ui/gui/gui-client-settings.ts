@@ -73,7 +73,8 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-reprobe' title='Re-probe every image-input model (spends one model call each), like tumwater doctor --reprobe'>Re-probe models</button>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-kill-orphans'>Kill orphans</button>" +
-      "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button></div>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-commit-backlog' title='Commit each uncommitted tracked backlog or brief file on main, like tumwater doctor --commit-backlog'>Commit backlog</button>" +
+      "<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title=\"Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install\">Re-sync install</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
@@ -233,6 +234,21 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     showFlash("Committing the uncommitted backlog/brief files…");
     try {
       const d = await postJson("/api/doctor-commit-backlog", {});
+      showFlash((d.ok ? "" : "error: ") + d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchDoctor();
+  }
+  // The Health card's Re-sync install button: a single click, because the re-sync is the doctor's
+  // own recommended repair and is a no-op when the install already matches the lockfile, POSTing
+  // /api/doctor-resync-install — the same resyncRootInstall "tumwater doctor --resync-install"
+  // runs — flashing the shared line (nothing to re-sync when the tree matches), then re-running
+  // the checks so the root-install row and the install amber alert clear once the drift is gone.
+  async function resyncInstallClick() {
+    showFlash("Re-syncing the root install…");
+    try {
+      const d = await postJson("/api/doctor-resync-install", {});
       showFlash((d.ok ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));

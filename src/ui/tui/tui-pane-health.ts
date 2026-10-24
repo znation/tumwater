@@ -4,6 +4,7 @@ import { backlogCommitMessage } from "../../doctor/doctor-backlog.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
 import { testNotifyHook } from "../../cli/notify-command.js";
+import { resyncRootInstall, rootInstallResyncLines } from "../../build/dep-install.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
@@ -181,6 +182,31 @@ export function createHealthPane(session: TuiPaneSession) {
       void session.killOrphans(session.root).then(
         (report) => {
           session.flashMessage(orphanKillLines(report).join("; "));
+          void run();
+          session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "u" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7) {
+      // Ctrl+U on the Health pane re-syncs the root checkout's install now — the terminal twin
+      // of `tumwater doctor --resync-install` and the dashboard Health card's Re-sync install,
+      // all reached through the same resyncRootInstall, so the `install` row/alert's advice is
+      // one action and clears once the install lands. It flashes the same line the CLI prints
+      // (rootInstallResyncLines, joined with "; "), then re-runs the checks so the `root
+      // install` row refreshes. A failure flashes instead of killing the TUI. Ctrl+U stays the
+      // prompt-line editor's kill-to-start while text is typed or an editor holds the line, and
+      // is unbound on every other view.
+      session.flashMessage("re-syncing the root install …");
+      session.requestRender();
+      void resyncRootInstall(session.root).then(
+        (r) => {
+          session.flashMessage(rootInstallResyncLines(r).join("; "));
           void run();
           session.paneScroll = 0;
           session.requestRender();

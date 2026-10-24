@@ -4556,6 +4556,54 @@ test("Ctrl+A off the Health view commits nothing", () => {
   assert.equal(commits, 0);
 });
 
+test("Ctrl+U on the Health view re-syncs the root install and flashes the lines", async () => {
+  const root = makeRoot();
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true }); // the merge lock dir
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let doctors = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => {
+      doctors += 1;
+      return Promise.resolve(report);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health (roleIds.length + 7)
+  assert.equal(keys.state().view, 7);
+  await Promise.resolve();
+  const before = doctors;
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  await waitFor(() => (keys.state().flash ?? "").includes("nothing to re-sync"), "the nothing-to-re-sync flash");
+  assert.equal(keys.state().flash, "no package-lock.json to match — nothing to re-sync");
+  assert.equal(doctors, before + 1, "the checks re-run after the re-sync");
+});
+
+test("Ctrl+U off the Health view re-syncs nothing", () => {
+  const root = makeRoot();
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>(() => {}),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  assert.equal(keys.state().view, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "u" });
+  // Activity keeps the prompt-line editor's Ctrl+U (kill-to-start), so no re-sync flash lands.
+  assert.equal(keys.state().flash, null);
+});
+
 test("Ctrl+N on the Health view with no notify configured flashes the missing-setting wording and leaves the report", async () => {
   const root = makeRoot();
   const report: DoctorReport = {

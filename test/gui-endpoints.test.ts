@@ -8,7 +8,8 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { runNotFoundLastMessage } from "../src/run/run-detail.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleRun, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleCommitBacklog, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleRoleCap, handleRoleEnable, handleRoleDisable, handleRoleInstances, handleRoleInterval, handleRoleInstructions, handleRoleModel, handleRoleQuietHours, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleKillOrphans, handleCommitBacklog, handleResyncInstall, handleDoctorReprobe, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { rootInstallResyncLines, type RootInstallResync } from "../src/build/dep-install.js";
 import { renderRunDetail } from "../src/run/run-detail-render.js";
 import { readRunDetail, type RunDetail } from "../src/run/run-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -300,6 +301,25 @@ test("handleCommitBacklog answers the commit lines and ok", async () => {
   const badBody = await captureJson((res) => handleCommitBacklog(fakeReq("{nope"), res, root, async () => { notCalled = false; return { base: "main", committed: [], failed: [], skipped: null }; }));
   assert.equal(badBody.captured.status, 400);
   assert.equal(notCalled, true, "a malformed body never calls the commit seam");
+});
+
+test("handleResyncInstall answers the re-sync lines and ok", async () => {
+  const root = makeRepo();
+  const report = (shape: RootInstallResync) =>
+    captureJson((res) => handleResyncInstall(fakeReq("{}"), res, root, async () => shape));
+  const noDrift = await report({ attempted: false, ok: true, packages: [], durationMs: 0, pinned: true });
+  assert.equal(noDrift.captured.status, 200);
+  assert.deepEqual(noDrift.data, { ok: true, message: rootInstallResyncLines({ attempted: false, ok: true, packages: [], durationMs: 0, pinned: true }).join("; ") });
+  const lockedOut = await report({ attempted: false, ok: true, packages: [], durationMs: 0, pinned: false });
+  assert.deepEqual(lockedOut.data, { ok: true, message: rootInstallResyncLines({ attempted: false, ok: true, packages: [], durationMs: 0, pinned: false }).join("; ") });
+  const reSynced = await report({ attempted: true, ok: true, packages: ["a", "b"], durationMs: 1234, pinned: true });
+  assert.deepEqual(reSynced.data, { ok: true, message: rootInstallResyncLines({ attempted: true, ok: true, packages: ["a", "b"], durationMs: 1234, pinned: true }).join("; ") });
+  const failed = await report({ attempted: true, ok: false, packages: [], durationMs: 0, pinned: true, detail: "boom" });
+  assert.deepEqual(failed.data, { ok: false, message: rootInstallResyncLines({ attempted: true, ok: false, packages: [], durationMs: 0, pinned: true, detail: "boom" }).join("; ") });
+  let notCalled = true;
+  const badBody = await captureJson((res) => handleResyncInstall(fakeReq("{nope"), res, root, async () => { notCalled = false; return { attempted: false, ok: true, packages: [], durationMs: 0, pinned: true }; }));
+  assert.equal(badBody.captured.status, 400);
+  assert.equal(notCalled, true, "a malformed body never calls the resync seam");
 });
 
 test("handleReclaim with no worktrees answers nothing to reclaim", async () => {

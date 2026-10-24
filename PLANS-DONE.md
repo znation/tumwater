@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Root-install re-sync, part 2/2: the dashboard Health card and the TUI Health tab run it, not only `tumwater doctor --resync-install` (planned 2026-10-23 by the plan role; requires part 1/2 landed; independent of the waiting series — the four in-flight alert plans and the blocked notify alert append one parameter and one block to src/ui/team-alerts.ts and edit src/ui/status-payload.ts, src/ui/status-render.ts and src/ui/tui/tui.tsx, none of this plan's files; touches src/gui/gui-operator-commands.ts src/gui/gui-server.ts src/gui/gui-endpoint-commands.ts src/ui/gui/gui-client-settings.ts src/ui/gui/gui-client-boot.ts src/ui/tui/tui-pane-health.ts src/ui/tui/tui-panes.ts src/ui/tui/tui-frame.ts docs/how-it-works.md test/gui-endpoints.test.ts test/gui-client-settings.test.ts test/tui-keys.test.ts test/tui-frame.test.ts) — done 2026-10-23 by the feature role
+
+**Goal.** Every other doctor recovery verb reaches both Health surfaces — Kill orphans, Re-probe models, reclaim, `notify --test`, and `commit-backlog` — but the `root install` row's repair (`npm install` in the root) is terminal-only. Give the drift the same reach: a Re-sync install button on the dashboard Health card and Ctrl+U on the TUI Health tab, both through `resyncRootInstall`, so the alert's advice is one action and the row (and the `install` alert, which reads the drift live) clears once the install lands.
+
+**Approach.**
+- src/gui/gui-operator-commands.ts: add `export async function handleResyncInstall(req, res, root, resync: (root: string) => Promise<RootInstallResync> = resyncRootInstall): Promise<void>` — `readPostBody(req, res, "{}")`, `const r = await resync(root)`, then `sendJson(res, 200, { ok: r.ok, message: rootInstallResyncLines(r).join("; ") })`. The injectable `resync` mirrors `handleKillOrphans`'s `kill`/`handleCommitBacklog`'s `commit`; the module doc comment's handler list gains resync-install.
+- src/gui/gui-server.ts: route `"POST /api/doctor-resync-install": (req, res) => handleResyncInstall(req, res, root)` beside `/api/doctor-commit-backlog`.
+- src/ui/gui/gui-client-settings.ts: add a `<button type='button' class='btn btn-sm' data-action='doctor-resync-install' title='Re-sync the root checkout's install after a failed post-merge re-sync, like tumwater doctor --resync-install'>Re-sync install</button>` to the Health card's button row (beside Commit backlog) and a single-click handler beside Commit backlog's — POST the route, flash `d.message`, then re-run the checks so the `root install` row repaints.
+- src/ui/tui/tui-pane-health.ts: add a Ctrl+U arm gated like the Ctrl+K arm (`key.ctrl && key.name === "u" && promptLineFree(ctx.es) && (ctx.es.input ?? "") === "" && session.view === session.roleIds.length + 7`): it calls `resyncRootInstall(session.root)` directly (import it and `rootInstallResyncLines` from ../../build/dep-install.js) and, in the promise callbacks, `session.flashMessage(rootInstallResyncLines(r).join("; "))`, `void run()`, `session.paneScroll = 0` and `session.requestRender()`, or `session.flashError(err)` and `session.requestRender()` on rejection. No new session method, so src/ui/tui/tui.tsx is untouched.
+- src/ui/tui/tui-frame.ts: the Health pane's hint line gains `Ctrl+U re-sync install` (beside its Ctrl+E reclaim / Ctrl+A commit backlog entries).
+- docs/how-it-works.md: in the Health/doctor sentence, name the dashboard Health card's Re-sync install button and the TUI Health Ctrl+U as the twin of `tumwater doctor --resync-install` and the repair for the `install` row/alert.
+
+**Tests.**
+- test/gui-endpoints.test.ts, `handleResyncInstall answers the re-sync lines`: an injected `resync` returning the no-drift, ok and failed shapes gives `ok` matching the report and a `message` equal to `rootInstallResyncLines(r).join("; ")`; a malformed body answers 400 and never calls the seam. test/gui-client-settings.test.ts pins `resyncInstallClick` POSTs /api/doctor-resync-install, flashes the re-sync line and re-runs the doctor.
+- test/tui-frame.test.ts, the Health hint contains `Ctrl+U` with its label. test/tui-keys.test.ts pins the Ctrl+U arm re-syncs the root install on the Health view, re-runs the checks, and stays unbound off it (off-Health Ctrl+U remains the prompt-line kill-to-start).
+
+**Acceptance criteria.**
+- The dashboard Health card and the TUI Health tab run the same `resyncRootInstall` the CLI runs, paint the same `rootInstallResyncLines` line, and re-run the checks so the `root install` row and the `install` amber alert clear once the drift is gone; a failure flashes the line instead of throwing.
+- The TUI arm leaves the prompt-line editor's Ctrl+U (kill-to-start) intact while text is typed, like Ctrl+K's arm.
+- docs/how-it-works.md names both surfaces; `npm run test:gate` passes.
+
 ### Interlock relief, part 1/4: The relief run holds its commit on the branch, and its row does not join the earlier change's verdict (planned 2026-10-23 by user; design in plans/interlock-relief.md "The decision" and "What lands"; split of the oversized Interlock relief part 1/2 — the scheduler admission is part 3/4, the recovery arms part 2/4; touches src/run/run-stage.ts src/run/run-outcome.ts src/run/run-finalize.ts src/history/history-queued.ts test/run-stage.test.ts test/history-data.test.ts) — done 2026-10-23 by the feature role
 **Previously held 1**
 

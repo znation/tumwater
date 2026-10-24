@@ -7,6 +7,7 @@
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
  */
+import { resyncRootInstall, rootInstallResyncLines, type RootInstallResync } from "../build/dep-install.js";
 import { cancelScheduledStopMessage, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
@@ -118,6 +119,25 @@ export async function handleCommitBacklog(
   if (!body) return;
   const report = await commit(root);
   sendJson(res, 200, { ok: report.failed.length === 0, message: backlogCommitMessage(report), committed: report.committed, failed: report.failed, skipped: report.skipped, base: report.base });
+}
+
+/** Handle POST /api/doctor-resync-install: the dashboard Health card's Re-sync install button —
+ * the terminal twin of `tumwater doctor --resync-install` and the TUI's Ctrl+U, all reached
+ * through the same resyncRootInstall. It answers the same lines the CLI prints
+ * (rootInstallResyncLines, joined with "; "), its `ok` matching the report so the card can
+ * repaint. Same body discipline as /api/kill-orphans; `resync` is injectable so a test need not
+ * hold the merge lock or touch the registry. resyncRootInstall never throws, so a lock/blog
+ * failure lands as the failure line, not a 500. */
+export async function handleResyncInstall(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  root: string,
+  resync: (root: string) => Promise<RootInstallResync> = resyncRootInstall,
+): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const r = await resync(root);
+  sendJson(res, 200, { ok: r.ok, message: rootInstallResyncLines(r).join("; ") });
 }
 
 /** Handle POST /api/doctor-reprobe: the dashboard Health card's Re-probe models button, the
