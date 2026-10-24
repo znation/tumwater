@@ -9,7 +9,7 @@ import { distDir, buildInfoPath } from "../src/build/build-info.js";
 import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
-import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
+import { cmdGui, GUI_TOKEN_ENV, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { SUPERVISED_ENV } from "../src/process/supervisor.js";
@@ -544,12 +544,19 @@ test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token
   // With a token every printed URL — banner and LAN lines alike — carries the ?token= suffix
   // an operator can open directly, and the warning names the token as the gate.
   const gated: string[] = [];
-  await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
-    startGui: startRecorder(started),
-    lanAddresses: lan,
-    say: (t) => gated.push(t),
-    serve: QUIET_SERVE,
-  });
+  const prevToken = process.env[GUI_TOKEN_ENV]; // cmdGui's --token path seeds this env var
+  try {
+    await cmdGui(repo, ["--all-interfaces", "--token", "s3cret"], {
+      startGui: startRecorder(started),
+      lanAddresses: lan,
+      say: (t) => gated.push(t),
+      serve: QUIET_SERVE,
+    });
+  } finally {
+    // undone so the seeded env var cannot leak across tests in this file
+    if (prevToken === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prevToken;
+  }
   assert.deepEqual(gated, [
     "tumwater gui at http://127.0.0.1:7180/?token=s3cret — Ctrl+C to stop",
     "             also at http://192.168.1.50:7180/?token=s3cret",
@@ -557,6 +564,37 @@ test("cmdGui --all-interfaces names the LAN URLs and the exposure warning, token
     "listening on ALL interfaces — token-protected; prompting the director requires the token",
   ]);
   assert.deepEqual(started.slice(-1), [{ port: 7180, allInterfaces: true, token: "s3cret" }]);
+});
+
+test("cmdGui reads the gate token from GUI_TOKEN_ENV when no --token is on the command line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cmdGui env token seam");
+  const lines: string[] = [];
+  const started: Array<{ port: number; allInterfaces: boolean; token: string }> = [];
+  const prev = process.env[GUI_TOKEN_ENV];
+  process.env[GUI_TOKEN_ENV] = "envs3cret";
+  try {
+    await cmdGui(repo, ["--all-interfaces"], {
+      startGui: startRecorder(started),
+      lanAddresses: () => ["192.168.1.50"],
+      say: (t) => lines.push(t),
+      serve: QUIET_SERVE,
+    });
+  } finally {
+    if (prev === undefined) delete process.env[GUI_TOKEN_ENV];
+    else process.env[GUI_TOKEN_ENV] = prev;
+  }
+  // The env-carried secret gates the server and is named in the banner's token-bearing URL the
+  // same way a typed --token would be: the `run --gui` dashboard child and a reloaded generation
+  // (which travel by env, never argv) authenticate with it, so the secret never lands on a
+  // command line the OS process table exposes. Without the env fallback this got token "" and
+  // served the dashboard unauthenticated.
+  assert.deepEqual(started, [{ port: 7180, allInterfaces: true, token: "envs3cret" }]);
+  assert.deepEqual(lines, [
+    "tumwater gui at http://127.0.0.1:7180/?token=envs3cret — Ctrl+C to stop",
+    "             also at http://192.168.1.50:7180/?token=envs3cret",
+    "listening on ALL interfaces — token-protected; prompting the director requires the token",
+  ]);
 });
 
 test("cmdGui turns a taken port into the friendly port-in-use error and rethrows the rest", async () => {
