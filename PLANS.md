@@ -333,6 +333,8 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 
 ### Every commit is verified on main, part 3/3: the pre-merge blocks come off — no in-lock gate run, no pre-merge model verdict, no red-main authoring block (planned 2026-10-24 by the operator, split from the held single plan; requires part 2/3 landed, since a landing stops being checked on the way in only once the whole deterministic set runs on the watched tip and the tip is the culprit; touches src/merge/merge-verify.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/review/review.ts src/review/review-followup.ts (deleted) src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts src/doctor/doctor-holds.ts src/config/config-schema.ts src/config/config-views.ts src/config/config.ts src/orchestrator/ docs/config.md docs/how-it-works.md test/merge-verify.test.ts test/merge-to-main.test.ts test/review.test.ts test/main-red.test.ts test/runner-run.test.ts test/config.test.ts)
 
+**Needs review 2026-10-24 by feature: too large for one run (held 2)**
+
 **Previously held 1**
 
 **Goal.** A commit is never stopped on its way to main. With the watch verifying every new tip, the checks that stood in front of a landing are redundant and go: the in-lock gate run (142–330 s per merge, plans/fast-merge.md), the pre-merge model verdict and the permit it holds, the batch check with its largest-passing-prefix bisect, and the red-main authoring block, which existed only to avoid diffs the pre-merge verdict would reject. The trade becomes explicit: a broken commit sits on main between its landing and its fix (minutes), and the fix is the healer's.
