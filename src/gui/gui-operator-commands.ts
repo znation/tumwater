@@ -232,6 +232,17 @@ export async function handleRevert(req: http.IncomingMessage, res: http.ServerRe
     message: `main is now ${shortSha(result.headSha)}${followUp === null ? "" : ` — ${followUp}`}`,
   });
 }
+/** Refuse cancellation or reordering of a sha named by the live merge marker. */
+function rejectInFlightMerge(res: http.ServerResponse, root: string, sha: string): boolean {
+  const view = readMergeQueue(root);
+  const normalized = sha.toLowerCase();
+  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
+  if (!inFlight || !((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === normalized) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === normalized)))
+    return false;
+  sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(sha)}\`` });
+  return true;
+}
+
 /** Handle POST /api/queue-cancel: the Merge queue card row's two-click Cancel — the browser
  * twin of `tumwater queue --cancel <n>`, resolving by pinned sha (the same removal
  * `cancelQueuedMergeBySha` the CLI's position variant shares). A `sha` that is not 4-64 hex
@@ -244,11 +255,7 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
   if (!body) return;
   if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
     return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
-  const view = readMergeQueue(root);
-  const sha = body.sha.toLowerCase();
-  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  if (inFlight && ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === sha) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === sha)))
-    return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
+  if (rejectInFlightMerge(res, root, body.sha)) return;
   const outcome: CancelQueuedByShaOutcome = await cancelQueuedMergeBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status !== "cancelled") return;
@@ -300,11 +307,7 @@ export async function handleQueueTop(req: http.IncomingMessage, res: http.Server
   if (!body) return;
   if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
     return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
-  const view = readMergeQueue(root);
-  const sha = body.sha.toLowerCase();
-  const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  if (inFlight && ((typeof inFlight.sha === "string" && inFlight.sha.toLowerCase() === sha) || mergeChanges(inFlight).some((c) => c.sha.toLowerCase() === sha)))
-    return sendJson(res, 409, { error: `this merge is being merged right now — wait for it to land, then \`tumwater revert ${shortSha(body.sha)}\`` });
+  if (rejectInFlightMerge(res, root, body.sha)) return;
   const outcome: TopQueuedByShaOutcome = moveQueuedMergeToTopBySha(root, body.sha);
   if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
   if (outcome.status === "already-first")
