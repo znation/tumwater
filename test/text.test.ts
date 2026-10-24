@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { collapseWhitespace, gotSuffix, parseNonNegativeInt, parsePositiveInt, pathTokens, squash, stripTerminalControls, truncate, truncateWithNote } from "../src/text/text.js";
+import { asList, collapseWhitespace, errorFirstLine, firstTrimmedLineStartingWith, gotSuffix, isNonBlankString, joinParts, joinWithMore, parseNonNegativeInt, parsePositiveInt, pathTokens, splitCommaList, splitCommaListUnique, squash, stripTerminalControls, textOr, tooLongMessage, trimLeadingBlankLines, trimTrailingBlankLines, truncate, truncateWithNote } from "../src/text/text.js";
 import { hasLoneSurrogate } from "./helpers/oracles.js";
 
 // text.ts is the single home of the one-line label semantics every display surface
@@ -181,4 +181,107 @@ test("pathTokens returns each distinct path-shaped token in order", () => {
   assert.deepEqual(pathTokens("see `src/a/b.ts`, src/a/b.ts and (test/c.test.ts)."), ["src/a/b.ts", "test/c.test.ts"]);
   assert.deepEqual(pathTokens("plain words"), []);
   assert.deepEqual(pathTokens("README.md"), []);
+});
+
+// The helpers below back every message and label surface, yet in the suite they were reached
+// only through their consumers, so a merge that shifts which branch a consumer hits could move
+// a behavior change off any assertion. Pin each one directly, including joinWithMore's
+// "+N more" overflow path.
+
+test("textOr keeps strings and finite numbers, and falls back for anything else", () => {
+  assert.equal(textOr("hi"), "hi");
+  assert.equal(textOr(""), "");
+  assert.equal(textOr(42), "42");
+  assert.equal(textOr(0), "0");
+  assert.equal(textOr(-1.5), "-1.5");
+  assert.equal(textOr(undefined), "?");
+  assert.equal(textOr(null), "?");
+  assert.equal(textOr(NaN), "?");
+  assert.equal(textOr(Infinity), "?");
+  assert.equal(textOr(true), "?");
+  assert.equal(textOr({}), "?");
+  assert.equal(textOr([1]), "?");
+  assert.equal(textOr(undefined, "n/a"), "n/a");
+});
+
+test("errorFirstLine returns the trimmed first line of the error message", () => {
+  assert.equal(errorFirstLine(new Error("first line\nsecond line")), "first line");
+  assert.equal(errorFirstLine(new Error("  padded\n  second")), "padded");
+  assert.equal(errorFirstLine("a thrown string"), "a thrown string");
+  assert.equal(errorFirstLine(new Error("single")), "single");
+});
+
+test("firstTrimmedLineStartingWith finds the first trimmed line with a prefix", () => {
+  const body = "intro\n  **Refused 2026-10-24 by coverage: too big\nnext";
+  assert.equal(firstTrimmedLineStartingWith(body, "**Refused"), "**Refused 2026-10-24 by coverage: too big");
+  assert.equal(firstTrimmedLineStartingWith(body, "nope"), undefined);
+  assert.equal(firstTrimmedLineStartingWith("plain", "p"), "plain");
+});
+
+test("isNonBlankString narrows strings with non-whitespace content", () => {
+  assert.equal(isNonBlankString("hi"), true);
+  assert.equal(isNonBlankString("  x "), true);
+  assert.equal(isNonBlankString(""), false);
+  assert.equal(isNonBlankString("   "), false);
+  assert.equal(isNonBlankString("\t\n"), false);
+  assert.equal(isNonBlankString(0), false);
+  assert.equal(isNonBlankString(null), false);
+  assert.equal(isNonBlankString(undefined), false);
+  assert.equal(isNonBlankString([]), false);
+});
+
+test("splitCommaList splits, trims, and drops blank pieces in order", () => {
+  assert.deepEqual(splitCommaList("a, b ,  ,c"), ["a", "b", "c"]);
+  assert.deepEqual(splitCommaList(""), []);
+  assert.deepEqual(splitCommaList("  "), []);
+  assert.deepEqual(splitCommaList("solo"), ["solo"]);
+});
+
+test("splitCommaListUnique keeps the first occurrence of each piece", () => {
+  assert.deepEqual(splitCommaListUnique("a,b,a,c,b"), ["a", "b", "c"]);
+  assert.deepEqual(splitCommaListUnique("a"), ["a"]);
+});
+
+test("asList wraps a string and passes an array through untouched", () => {
+  assert.deepEqual(asList("role-a"), ["role-a"]);
+  assert.deepEqual(asList(["role-a", "role-b"]), ["role-a", "role-b"]);
+  assert.deepEqual(asList([]), []);
+});
+
+test("trimLeadingBlankLines and trimTrailingBlankLines drop blank lines in place", () => {
+  const lead = ["", " ", "\t", "x", "y"];
+  trimLeadingBlankLines(lead);
+  assert.deepEqual(lead, ["x", "y"]);
+
+  const allBlank = ["", " "];
+  trimLeadingBlankLines(allBlank);
+  assert.deepEqual(allBlank, []);
+
+  const trail = ["x", "y", " ", ""];
+  trimTrailingBlankLines(trail);
+  assert.deepEqual(trail, ["x", "y"]);
+
+  const emptyLead: string[] = [];
+  trimLeadingBlankLines(emptyLead);
+  assert.deepEqual(emptyLead, []);
+});
+
+test("joinParts drops falsy fragments and joins the rest with the separator", () => {
+  assert.equal(joinParts(["a", undefined, "b", null, false, "", "c"]), "a; b; c");
+  assert.equal(joinParts(["a", "b"], " | "), "a | b");
+  assert.equal(joinParts([]), "");
+  assert.equal(joinParts([undefined, false, ""]), "");
+  assert.equal(joinParts(["only"], ","), "only");
+});
+
+test("tooLongMessage names the subject, length, cap, and tail in one sentence", () => {
+  assert.equal(tooLongMessage("the brief text", 300, 200, "shorten it"), "the brief text is 300 chars — shorten it to at most 200: shorten it");
+});
+
+test("joinWithMore shows the first items and appends +N more when any are left out", () => {
+  assert.equal(joinWithMore(["a", "b"], 5), "a, b");
+  assert.equal(joinWithMore(["a", "b"], 2), "a, b");
+  assert.equal(joinWithMore(["a", "b", "c", "d"], 2), "a, b, +2 more");
+  assert.equal(joinWithMore(["a", "b", "c"], 1, " | "), "a | +2 more");
+  assert.equal(joinWithMore([], 3), "");
 });
