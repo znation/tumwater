@@ -120,6 +120,51 @@ test("requiredParts keeps the parts keyword out of a named series and bare refs 
   );
 });
 
+test("requiredParts strips a trailing 'parts' from a named series and threads it to later bare refs", () => {
+  // The reported shape: the named series keeps the word "parts", and a bare ref after "and"
+  // inherits the entry's own series instead of the clause's named one.
+  assert.deepEqual(
+    requiredParts(
+      "Check-permit priority, part 2/2: x (planned 2026-10-23 by user; requires reviewer-as-role parts 1/4 and 3/4 landed)",
+    ),
+    [
+      { series: "reviewer-as-role", part: "1", of: 4 },
+      { series: "reviewer-as-role", part: "3", of: 4 },
+    ],
+  );
+  // A second named series: the bare ref after "and" belongs to the named series, not the entry's.
+  assert.deepEqual(
+    requiredParts(
+      "Worktree pool, part 2/5: x (planned 2026-10-06; requires Disk floor parts 1/4 and 3/4 landed)",
+    ),
+    [
+      { series: "Disk floor", part: "1", of: 4 },
+      { series: "Disk floor", part: "3", of: 4 },
+    ],
+  );
+  // A range on a named `<Series> parts` ref resolves against that series too.
+  assert.deepEqual(
+    requiredParts("Worktree pool, part 2/5: x (planned 2026-10-06; requires Disk floor parts 1/4–3/4 landed)"),
+    [
+      { series: "Disk floor", part: "1", of: 4 },
+      { series: "Disk floor", part: "2", of: 4 },
+      { series: "Disk floor", part: "3", of: 4 },
+    ],
+  );
+  // Multiple named series in one clause: each bare follow-on ref keeps its own named series.
+  assert.deepEqual(
+    requiredParts(
+      "Worktree pool, part 2/5: x (planned 2026-10-06; requires Disk floor parts 1/4 and 1/5, Robust parts 2/2 and 2/3 landed)",
+    ),
+    [
+      { series: "Disk floor", part: "1", of: 4 },
+      { series: "Disk floor", part: "1", of: 5 },
+      { series: "Robust", part: "2", of: 2 },
+      { series: "Robust", part: "2", of: 3 },
+    ],
+  );
+});
+
 test("requiredParts returns [] for a clause that does not parse and for a heading with no clause", () => {
   assert.deepEqual(requiredParts("Foo, part 1/2: x (planned 2026-10-01; merge that plan first)"), []);
   assert.deepEqual(requiredParts("Foo, part 1/2: x"), []);
