@@ -2573,6 +2573,24 @@ test("Ctrl+N on the Pending pane with no overlaps flashes and keeps the pane", a
   assert.equal(keys.state().flash, "no overlapping files to step through");
 });
 
+test("a rejecting change collector in a Pending overlap drill flashes the error and keeps the pane", async () => {
+  const keys = createTuiKeys({
+    root: makeRoot(),
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "ready" as const, overlaps: [{ path: "src/a.ts", roles: ["feature"] }] }),
+    collectChange: () => Promise.reject(new Error("collect boom")),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  await settle();
+  keys.handleKey(undefined, { ctrl: true, name: "n" }); // drill into the overlap's change
+  await settle();
+  assert.match(keys.state().flash!, /error: collect boom/);
+});
+
 test("Ctrl+R on the Pending pane closes an open overlap drill-down", async () => {
   const keys = drillKeys([{ path: "src/a.ts", roles: ["feature", "feature-2"] }]);
   await settle();
