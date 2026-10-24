@@ -108,6 +108,15 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     return ((lastStatus && lastStatus[file]) || [])[Number(index)];
   }
   function runAct(act, arg) {
+    // Six drawer edits end identically: clear the edit's in-progress flag, reload the role
+    // row, and toast the server's message (or a fallback when it sends none). Only the flag to
+    // clear and the fallback wording differ, so all six saves read one helper here; the cap
+    // save returns value-shaped text and stays inline at its call site.
+    const settingDone = (resetEditing, fallback) => (d) => {
+      resetEditing();
+      loadDrawerRole(arg);
+      return d && typeof d.message === "string" ? d.message : fallback;
+    };
     if (act === "role") openRole(arg);
     else if (act === "close") closeDrawer();
     else if (act === "view") location.hash = arg;
@@ -226,11 +235,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         if (!noteClearArmed(arg)) { armNoteClear(arg); return; }
         disarmNoteClear();
       }
-      postAction("/api/role-notes", { role: arg, text }, (d) => {
-        noteEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Notes updated";
-      });
+      postAction("/api/role-notes", { role: arg, text }, settingDone(() => { noteEditing = null; }, "Notes updated"));
     } else if (act === "cap-edit") {
       startCapEdit(arg, drawerRole?.view?.dailyCap?.capUsd ?? 0);
     } else if (act === "cap-discard") {
@@ -282,11 +287,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         return;
       }
       const value = raw === "" ? null : Number(raw);
-      postAction("/api/role-interval", { role: arg, minRunIntervalSeconds: value }, (d) => {
-        intervalEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Min run interval updated";
-      });
+      postAction("/api/role-interval", { role: arg, minRunIntervalSeconds: value }, settingDone(() => { intervalEditing = null; }, "Min run interval updated"));
     } else if (act === "instances-edit") {
       startInstancesEdit(arg, drawerRole?.view?.instances ?? "");
     } else if (act === "instances-discard") {
@@ -315,11 +316,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
         return;
       }
       const value = raw === "" ? null : Number(raw);
-      postAction("/api/role-instances", { role: arg, instances: value }, (d) => {
-        instancesEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Instances updated";
-      });
+      postAction("/api/role-instances", { role: arg, instances: value }, settingDone(() => { instancesEditing = null; }, "Instances updated"));
     } else if (act === "instructions-edit") {
       startInstructionsEdit(arg, drawerRole?.view?.instructions ?? "");
     } else if (act === "instructions-discard") {
@@ -327,11 +324,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     } else if (act === "instructions-save") {
       const box = $("instructionsedittext");
       const text = box ? box.value : "";
-      postAction("/api/role-instructions", { role: arg, text }, (d) => {
-        instructionsEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Instructions updated";
-      });
+      postAction("/api/role-instructions", { role: arg, text }, settingDone(() => { instructionsEditing = null; }, "Instructions updated"));
     } else if (act === "quiet-edit") {
       startQuietEdit(arg, drawerRole?.view?.quietHours?.find((w) => w && w.scope === "role")?.window ?? "");
     } else if (act === "quiet-discard") {
@@ -342,11 +335,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       // A text input has no badInput guard; an empty value reaches the server's clear branch,
       // and a malformed window is refused by checkQuietHours, flashed through postAction's
       // error path.
-      postAction("/api/role-quiet-hours", { role: arg, window }, (d) => {
-        quietEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Quiet hours updated";
-      });
+      postAction("/api/role-quiet-hours", { role: arg, window }, settingDone(() => { quietEditing = null; }, "Quiet hours updated"));
     } else if (act === "model-edit") {
       startModelEdit(arg, { provider: drawerRole?.view?.providerOverride ?? "", model: drawerRole?.view?.modelOverride ?? "", thinking: drawerRole?.view?.thinkingOverride ?? "" });
     } else if (act === "model-discard") {
@@ -361,11 +350,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       const provider = providerBox ? providerBox.value.trim() : "";
       const model = modelBox ? modelBox.value.trim() : "";
       const thinking = thinkingBox ? thinkingBox.value.trim() : "";
-      postAction("/api/role-model", { role: arg, provider, model, thinking }, (d) => {
-        modelEditing = null;
-        loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Model overrides updated";
-      });
+      postAction("/api/role-model", { role: arg, provider, model, thinking }, settingDone(() => { modelEditing = null; }, "Model overrides updated"));
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);
