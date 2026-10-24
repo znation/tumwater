@@ -178,6 +178,11 @@ export interface TuiPaneSession {
   armedQueue: { position: number; sha: string } | null;
   /** The Pending pane's pending second Ctrl+X; moved to `armedQueue` by beginKey. */
   queueArmed: { position: number; sha: string } | null;
+  /** The armed post-merge-review accept (first Ctrl+A on a selected Pending review row), read
+   * by the second: the armed entry's whole-list position and commit. */
+  armedReview: { position: number; commit: string } | null;
+  /** The Pending pane's pending second Ctrl+A; moved to `armedReview` by beginKey. */
+  reviewArmed: { position: number; commit: string } | null;
   root: string;
   now(): number;
   requestRender(): void;
@@ -220,6 +225,8 @@ export function createTuiPaneSession(deps: TuiPanesDeps): TuiPaneSession {
     revertArmed: null,
     armedQueue: null,
     queueArmed: null,
+    armedReview: null,
+    reviewArmed: null,
     root: deps.root,
     now: deps.now,
     requestRender: deps.requestRender,

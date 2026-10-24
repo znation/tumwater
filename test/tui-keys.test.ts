@@ -22,6 +22,7 @@ import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type Merg
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
 import { renderPostReviews } from "../src/review/post-review-render.js";
+import { shortSha } from "../src/text/format.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
@@ -2920,6 +2921,88 @@ test("the Pending pane's Ctrl+V still opens the attach editor on the Activity vi
   keys.handleKey(undefined, { ctrl: true, name: "v" });
   assert.equal(keys.state().attachMode, true, "Ctrl+V on Activity opens the attach editor");
   assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the queue is untouched");
+});
+
+/** A single non-rejected post-merge review entry on a repo, so the Pending pane has a review
+ * row to select below its merge rows. */
+function seedReview(root: string, commit: string, role: string, summary: string, extra: Record<string, unknown> = {}): void {
+  writeJsonFile(postReviewPath(root), { pending: [{ commit, role, summary, ...extra }] });
+}
+
+test("the Pending pane selects a post-merge review after the merge rows and Ctrl+A twice accepts it", async () => {
+  const { root } = await pendingCancelRoot();
+  const commit = "b".repeat(40);
+  seedReview(root, commit, "feature", "review me", { failures: 1 });
+  const keys = openPending(root);
+  // ↓ over the two merges to the single review row (position 1 in the review list).
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { name: "down" });
+  assert.equal(keys.state().selectedQueue, 2, "the review is the pane's third row");
+  assert.match(keys.state().queueDetail, /^review #1 \(Ctrl\+A to accept\): feature /);
+  assert.ok(keys.state().queueDetail.includes("[1 failed review run]"), "the review detail carries the status suffix");
+
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // first press arms
+  assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #1/);
+  assert.equal(readPostReviews(root).length, 1, "the first press changes nothing");
+
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // second press confirms (async)
+  await untilFlash(() => keys.state().flash ?? "", /accepted post-merge review of /);
+  assert.ok(keys.state().flash!.includes(shortSha(commit)), "the flash names the accepted short sha");
+  assert.deepEqual(readPostReviews(root), [], "the accepted entry is gone from the queue");
+  const warnings = eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit)));
+  assert.equal(warnings.length, 1, "exactly one warning names the accepted sha");
+  assert.equal(keys.state().selectedQueue, null, "an accept returns to list mode");
+});
+
+test("a rejected Pending review row cannot be accepted with Ctrl+A", async () => {
+  const { root } = await pendingCancelRoot();
+  const commit = "b".repeat(40);
+  seedReview(root, commit, "feature", "bad change", { rejected: ["no tests"] });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // feature (#1)
+  keys.handleKey(undefined, { name: "down" }); // clean (#2)
+  keys.handleKey(undefined, { name: "down" }); // review #1
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // confirm → refused
+  await untilFlash(() => keys.state().flash ?? "", /rejected and waiting on its revert/);
+  assert.equal(readPostReviews(root).length, 1, "the rejected entry is not removed");
+  assert.equal(eventsOfType(root, "warning").filter((e) => String(e.message).includes(shortSha(commit))).length, 0, "no accept warning for a rejected entry");
+});
+
+test("Ctrl+A on a Pending merge row and Ctrl+X on a review row name the right action and change nothing", async () => {
+  const { root } = await pendingCancelRoot();
+  const commit = "b".repeat(40);
+  seedReview(root, commit, "feature", "review me");
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // select merge #1 (feature)
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.match(keys.state().flash!, /queued merge — Ctrl\+X/);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the merge queue is untouched");
+  assert.equal(readPostReviews(root).length, 1, "the review queue is untouched");
+  keys.handleKey(undefined, { name: "down" }); // clean (#2)
+  keys.handleKey(undefined, { name: "down" }); // review #1
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.match(keys.state().flash!, /post-merge review — Ctrl\+A/);
+  assert.deepEqual(queuedMerges(root).map((e) => e.role), ["feature", "clean"], "the merge queue is still untouched");
+  assert.equal(readPostReviews(root).length, 1, "the review queue is still untouched");
+});
+
+test("a key between the two Pending Ctrl+A presses disarms the accept", async () => {
+  const { root } = await pendingCancelRoot();
+  const first = "b".repeat(40);
+  const second = "c".repeat(40);
+  writeJsonFile(postReviewPath(root), { pending: [{ commit: first, role: "feature", summary: "one" }, { commit: second, role: "clean", summary: "two" }] });
+  const keys = openPending(root);
+  keys.handleKey(undefined, { name: "down" }); // feature (#1)
+  keys.handleKey(undefined, { name: "down" }); // clean (#2)
+  keys.handleKey(undefined, { name: "down" }); // review #1
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // arm review #1
+  assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #1/);
+  keys.handleKey(undefined, { name: "down" }); // an intermediate key moves the arming; now on review #2
+  keys.handleKey(undefined, { ctrl: true, name: "a" }); // now re-arms on the newly selected row, changing nothing
+  assert.equal(readPostReviews(root).length, 2, "the intermediate key disarmed the second press");
+  assert.match(keys.state().flash!, /press Ctrl\+A again to accept review #2/, "the press re-arms the now-selected row");
 });
 
 test("pendingOverlapsText states an empty overlap list and omits a no-base one", () => {

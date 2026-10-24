@@ -51,6 +51,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     session.revertArmed = null;
     session.armedQueue = session.queueArmed;
     session.queueArmed = null;
+    session.armedReview = session.reviewArmed;
+    session.reviewArmed = null;
   };
 
   /** The per-key pane snapshot the editors' open arms read. */
@@ -167,6 +169,9 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     // view's Ctrl+A (the answer editor) is handled by tui-editor-answer.ts, which the key
     // dispatcher consults before this router, so this case never shadows it.
     if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+    // Pending owns Ctrl+A on its own view (the two-step post-merge-review accept), routed after
+    // Health's so the Health commit-backlog arm keeps its view's slot.
+    if (key.ctrl && key.name === "a" && session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
     // Health owns Ctrl+U (re-sync install) ahead of the pane router's fallthrough; off the
     // Health view it falls through so the prompt-line editor keeps Ctrl+U (kill-to-start).
     if (key.ctrl && key.name === "u" && session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
