@@ -880,6 +880,21 @@ test("postMergeChurnAlert fires on a day's post-merge rejection burst", () => {
     { ts: now - 25 * 3600_000, source: "clean", type: "review_rejected", afterMerge: true },
   ]);
   assert.equal(postMergeChurnAlert(old, now), null);
+  // Instance runner ids fold into their base role, so one base role's churn is one row matching
+  // the alert's base-role remedy rather than `bugfix`/`bugfix #2`/`bugfix #5` sibling rows.
+  const instanced = makeRepo();
+  writeEvents(instanced, [
+    { ts: now - 60_000, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "bugfix-2", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "bugfix-5", type: "review_rejected", afterMerge: true },
+    { ts: now - 60_000, source: "clean", type: "review_rejected", afterMerge: true },
+  ]);
+  const instancedBurst = postMergeChurnAlert(instanced, now);
+  assert.ok(instancedBurst !== null);
+  assert.deepEqual(instancedBurst!.roles, [
+    { role: "bugfix", count: 3 },
+    { role: "clean", count: 1 },
+  ]);
   // The window constant is the day the alert actually reads under.
   assert.equal(POST_MERGE_REJECT_WINDOW_MS, 24 * 60 * 60_000);
 });

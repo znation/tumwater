@@ -479,3 +479,18 @@ test("postMergeRejectionCounts groups a day's post-merge rejections and ignores 
     { role: "clean", count: 1 },
   ]);
 });
+
+test("postMergeRejectionCounts folds instance runner ids into their base role", () => {
+  const events: HarnessEvent[] = [
+    { ts: 1, source: "bugfix", type: "review_rejected", afterMerge: true },
+    { ts: 2, source: "bugfix-2", type: "review_rejected", afterMerge: true },
+    { ts: 3, source: "bugfix-5", type: "review_rejected", afterMerge: true },
+    { ts: 4, source: "clean", type: "review_rejected", afterMerge: true },
+  ];
+  // One base role's churn is one row, matching `review.afterMerge`'s base-role keys and the
+  // alert's "narrow the noisy role" remedy, instead of splitting `bugfix`/`bugfix #2`/`bugfix #5`.
+  assert.deepEqual(postMergeRejectionCounts(events), [
+    { role: "bugfix", count: 3 },
+    { role: "clean", count: 1 },
+  ]);
+});

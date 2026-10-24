@@ -11,6 +11,7 @@ import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { eventRole } from "../events/event-read.js";
+import { baseRoleOf } from "../roles/runner-ids.js";
 import type { HarnessEvent } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
@@ -53,16 +54,19 @@ export const POST_MERGE_REJECT_WARN = 2;
  * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it). */
 export const POST_MERGE_REJECT_WINDOW_MS = 24 * 60 * 60_000;
 
-/** Group the `afterMerge: true` `review_rejected` events of `events` by role — the same
+/** Group the `afterMerge: true` `review_rejected` events of `events` by base role — the same
  * `e.type === "review_rejected" && e.afterMerge === true` test the report fold
  * (src/report/report-fold.ts `postMergeRejectionsByRole`) applies, so the churn alert and the
- * report cannot disagree on which rejections are post-merge. Pre-merge rejections and other
- * event types contribute nothing. */
+ * report cannot disagree on which rejections are post-merge. The key is the event's base role
+ * (`baseRoleOf(eventRole(ev))`), not the raw source: an event's `source` is the runner id
+ * (`bugfix-2`), and both the alert's remedy ("narrow `review.afterMerge`") and the scoped
+ * report are keyed by base role, so one base role's churn must read as one row. Pre-merge
+ * rejections and other event types contribute nothing. */
 export function postMergeRejectionCounts(events: readonly HarnessEvent[]): PostMergeRejection[] {
   const byRole = new Map<string, number>();
   for (const ev of events) {
     if (ev.type === "review_rejected" && ev.afterMerge === true) {
-      const role = eventRole(ev);
+      const role = baseRoleOf(eventRole(ev));
       byRole.set(role, (byRole.get(role) ?? 0) + 1);
     }
   }
