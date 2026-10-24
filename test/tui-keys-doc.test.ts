@@ -57,3 +57,38 @@ test("docs/cli.md's TUI keys table names no Ctrl key the TUI lacks", () => {
   const handled = handledCtrlKeys();
   assert.deepEqual([...documentedCtrlKeys()].filter((k) => !handled.has(k)).sort(), []);
 });
+
+test("the Health view's hint and docs rows name the same Ctrl keys", () => {
+  const hinted = new Set<string>();
+  for (const line of read("../../src/ui/tui/tui-frame.ts").split("\n")) {
+    if (!line.includes(`view.kind === "health") keys =`)) continue;
+    for (const m of line.matchAll(/Ctrl\+([A-Z])/g)) hinted.add(m[1]!);
+  }
+  assert.ok(hinted.size > 0, "found the Health hint line");
+
+  const doc = read("../../docs/cli.md");
+  const start = doc.indexOf("## TUI keys");
+  assert.notEqual(start, -1, "docs/cli.md has a `## TUI keys` section");
+  const rest = doc.slice(start + "## TUI keys".length);
+  const next = rest.search(/^## /m);
+  const section = next === -1 ? rest : rest.slice(0, next);
+  const documentedHealth = new Set<string>();
+  const documentedAny = new Set<string>();
+  for (const line of section.split("\n")) {
+    const cells = line.split("|").map((c) => c.trim());
+    const key = cells[1] ?? "";
+    const where = cells[2] ?? "";
+    if (/Ctrl\+([A-Z])/.test(key)) {
+      const letters = [...key.matchAll(/Ctrl\+([A-Z])/g)].map((m) => m[1]!);
+      if (/\bany view\b/.test(where)) for (const k of letters) documentedAny.add(k);
+      if (/\bHealth\b/.test(where)) for (const k of letters) documentedHealth.add(k);
+    }
+  }
+  // Every Health hint key is documented for Health or for any view (catches a missing Ctrl+U row).
+  assert.deepEqual(
+    [...hinted].filter((k) => !documentedHealth.has(k) && !documentedAny.has(k)).sort(),
+    [],
+  );
+  // No docs Health key is unhinted (catches a missing Ctrl+S hint entry); any-view keys stay out.
+  assert.deepEqual([...documentedHealth].filter((k) => !hinted.has(k)).sort(), []);
+});
