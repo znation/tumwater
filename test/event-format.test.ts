@@ -122,6 +122,36 @@ test("formatEvent renders operator_revert naming the revert, the inverse, and th
   assert.doesNotMatch(unstamped, /undid/);
 });
 
+test("formatEvent renders main_revert naming the cause (post-review vs main's check)", () => {
+  const postReview = formatEvent({
+    ts: 0,
+    source: "tumwater",
+    type: "main_revert",
+    commit: "abcdef1234567890",
+    revert: "9999999",
+    runner: "feature",
+    reason: "post-review",
+  } as never);
+  assert.match(postReview, /reverted abcdef12 \(merged by feature\) as 9999999, after a post-merge review rejected it/);
+  // The cause must not read as though the rejection named the revert sha.
+  assert.doesNotMatch(postReview, /rejected it as 9999999/);
+  assert.doesNotMatch(postReview, /main's check had flagged it/);
+  const redMain = formatEvent({
+    ts: 0,
+    source: "tumwater",
+    type: "main_revert",
+    commit: "abcdef1234567890",
+    revert: "9999999",
+    runner: "feature",
+    reason: "main-red",
+  } as never);
+  assert.match(redMain, /reverted abcdef12 \(merged by feature\) as 9999999, main's check had flagged it/);
+  assert.doesNotMatch(redMain, /post-merge review rejected it/);
+  // An event written before the reason split defaults to the main-red branch.
+  const legacy = formatEvent({ ts: 0, source: "tumwater", type: "main_revert", commit: "abcdef1234567890", revert: "9999999", runner: "feature" } as never);
+  assert.match(legacy, /main's check had flagged it/);
+});
+
 test("formatEvent prints an instance id as its role label and the harness source as tumwater", () => {
   const run = formatEvent({ ts: 0, source: "feature-2", type: "run_end", run: 12, result: "no_change" } as never);
   assert.match(run, /^\S+ \S+ feature #2 run #12 no change$/);
