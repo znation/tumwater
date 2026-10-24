@@ -2,12 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  checkFallbackChain,
-  checkFallbackModel,
-  checkImageInput,
-  checkTierModels,
-} from "../src/doctor/doctor-model-checks.js";
+import { checkImageInput, checkTierModels } from "../src/doctor/doctor-model-checks.js";
+import { checkFallbackChain, checkFallbackModel } from "../src/doctor/doctor-fallback-checks.js";
 import {
   parsePiModelList,
   piListedModels,
@@ -38,8 +34,8 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { readJson } from "./helpers/json-read.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts,
-// src/doctor/doctor-pi-checks.ts, src/doctor/doctor-claude-checks.ts,
-// src/doctor/doctor-opencode-checks.ts):
+// src/doctor/doctor-fallback-checks.ts, src/doctor/doctor-pi-checks.ts,
+// src/doctor/doctor-claude-checks.ts, src/doctor/doctor-opencode-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
 // credential probe. Every branch is exercised with an injected `modelsPath`/`auth` stub, and
 // the probe with a fake pi on PATH — never a real model or network call. The environment and
