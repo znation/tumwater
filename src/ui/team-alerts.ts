@@ -206,6 +206,15 @@ function moreDetail(
   return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
 }
 
+/** The display noun for a backlog-file discriminator ("plans" | "bugs", the `file` on
+ * RefusedEntry/StalledEntry and the claim-facing ClaimState): BUGS.md is a "Bug" and
+ * PLANS.md is a "Plan", and the singular command noun quoted in the alerts is the lowercase
+ * form, so the amber alerts' headline nouns and the `tumwater bug|plan` commands they name
+ * cannot drift from one another. */
+function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
+  return file === "bugs" ? "Bug" : "Plan";
+}
+
 /** Something that needs the operator — or that they should know — about the team as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
  * payload as `alerts`) and the TUI's attention lines. `tone` ranks it (red and amber ask for
@@ -588,7 +597,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       key: "refused",
       tone: "amber",
       title: `${plural(refused.length, "refused entry waits", "refused entries wait")} on your decision`,
-      detail: `Refused ${first.file === "bugs" ? "bug" : "plan"}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
+      detail: `Refused ${entryKindLabel(first.file).toLowerCase()}: ${entryListDetail(refused.map((r) => r.title))} · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`,
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
@@ -606,8 +615,8 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       tone: "amber",
       title: `${plural(operatorHeld.length, "backlog entry is held", "backlog entries are held")} for you to release`,
       detail: operatorHeld.some((r) => r.file === "bugs") && operatorHeld.some((r) => r.file === "plans")
-        ? operatorHeld.map((r) => `${r.file === "bugs" ? "Bug" : "Plan"} ${stripEntryStamp(r.title)} (tumwater ${r.file === "bugs" ? "bug" : "plan"} --release)`).join("; ")
-        : `${first.file === "bugs" ? "Bug" : "Plan"} ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater ${first.file === "bugs" ? "bug" : "plan"} --release`,
+        ? operatorHeld.map((r) => `${entryKindLabel(r.file)} ${stripEntryStamp(r.title)} (tumwater ${entryKindLabel(r.file).toLowerCase()} --release)`).join("; ")
+        : `${entryKindLabel(first.file)} ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater ${entryKindLabel(first.file).toLowerCase()} --release`,
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
@@ -626,7 +635,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       key: "stalled-entries",
       tone: "amber",
       title: `${plural(stalledEntries.length, "backlog entry is stalled", "backlog entries are stalled")} in review`,
-      detail: `${first.file === "bugs" ? "Bug" : "Plan"} ${entryListDetail(stalledEntries.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
+      detail: `${entryKindLabel(first.file)} ${entryListDetail(stalledEntries.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
