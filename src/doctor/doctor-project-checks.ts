@@ -31,7 +31,7 @@ import { KNOWN_FLAKE_WINDOW_MS, loadQuarantine, repeatedFlakeCounts } from "../r
 import { POST_MERGE_REJECT_WINDOW_MS, postMergeChurn } from "../review/post-merge-review.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { quarantineWarning } from "../baseline/main-guardrails.js";
-import { readCiParity, currentCiParityState, parityIsCurrent } from "../run/ci-parity.js";
+import { readCiParity, currentCiParityState, parityIsCurrent, ciParityStalled, CI_PARITY_STALE_MS } from "../run/ci-parity.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
@@ -345,9 +345,12 @@ function currentHead(root: string): Promise<string | null> {
  * reads "no CI parity recorded yet" (ok); a failed record is a `warn` naming the covered
  * tip/lock (the ci role's contract is to fix or file what it finds, so a lingering failed record
  * is actionable until the next green run); the `current`/`stale` split is `parityIsCurrent`'s
- * one home, so the row and the ci prompt block cannot drift. Stale is `ok`, never `warn`/`fail`:
- * main moves on every merge and the ci role runs on its own clock, so a post-merge gap is normal
- * and must not turn the Health card or the exit code red. Read-only against .tumwater/. */
+ * one home, so the row and the ci prompt block cannot drift. Stale is normally `ok` — main moves
+ * on every merge and the ci role runs on its own clock, so a post-merge gap is normal and must
+ * not turn the Health card or the exit code red. A stale verdict that stays stale past
+ * `CI_PARITY_STALE_MS` (ciParityStalled) is a stall — the full suite has silently stopped
+ * covering new tips — and warns, alongside the standing `ci-stale` alert. Read-only against
+ * .tumwater/. */
 export function checkCiParity(
   root: string,
   config?: { baseBranch?: string } | null,
@@ -368,6 +371,20 @@ export function checkCiParity(
   if (parityIsCurrent(entry, tip, lockHash)) {
     return okOutcome(
       `current — CI covered main at ${shortSha(tip)} @ lock ${shortSha(lockHash)}, passed ${age} ago`,
+    );
+  }
+  // A stale verdict is normal right after a merge (main moves and the ci role runs on its own
+  // clock), but one that stays stale past CI_PARITY_STALE_MS is a stall: the full suite has
+  // silently stopped covering new tips. The doctor warn and the standing `ci-stale` alert share
+  // this one predicate (ciParityStalled), so the row and the alert cannot disagree on when a
+  // gap is a problem. Inside the window the existing friendly stale wording stands.
+  if (ciParityStalled({ state: "stale", lastRunAt: entry.lastRunAt }, now)) {
+    return warnOutcome(
+      `stale and stalled — the last run covered ${shortSha(entry.tip)} @ lock ${shortSha(
+        entry.lockHash,
+      )} ${age} ago (${entry.result}); main is now ${shortSha(tip)} @ lock ${shortSha(
+        lockHash,
+      )} — no full-suite run has covered a tip in over ${CI_PARITY_STALE_MS / DAY_MS} days, so the ci role is disabled, paused, or unable to record`,
     );
   }
   return okOutcome(

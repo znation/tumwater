@@ -238,8 +238,11 @@ discards a role's in-flight merge.
   actually run on this tip, while `tumwater doctor`'s `ci parity` row (and the dashboard Health card
   and TUI Health tab that render the same rows) is the exact surface answering "is main verified by
   CI?" — `current` when the last green run covered the current tip and lock, `stale` while main has since
-  moved (still ok, since the ci role runs on its own clock), and a `warn` when the last run failed; both
-  read the same `parityIsCurrent` rule, so a `current` badge and a `current` prompt block cannot disagree.
+  moved (still ok, since the ci role runs on its own clock), a `warn` when the last run failed, and a
+  `warn` when a `stale` verdict has stayed stale past the stall window — the full suite has silently
+  stopped covering new tips, twin of the standing `ci-stale` alert; both read the same `parityIsCurrent`
+  rule for `current`/`stale` and the shared `ciParityStalled` predicate for the stall, so a `current`
+  badge and a `current` prompt block cannot disagree.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
@@ -522,6 +525,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   a burst of post-merge review rejections, each an already-merged commit,
   a post-merge review one failed run from being dropped,
   a post-merge review dropped after repeated failures, leaving its commit on main unreviewed,
+  the `ci` role's full suite stalled over three days without covering a new tip (the `ci-stale`
+  alert, the always-on twin of the doctor's `ci parity` warn — the full suite has silently
+  stopped covering main's tip, so the ci role is disabled, paused, or unable to record),
   the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose Fix paragraph names code that is not on the tree, a Fixed record whose quoted test failed again in the last day, a project with no declared check (the review gate's build pre-check, the red-main baseline and redeploy's green check have nothing to run), a pause), the prompt

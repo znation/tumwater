@@ -16,6 +16,7 @@ import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeQueueDir, quarantinePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { postReviewPath } from "../src/paths.js";
+import { CI_PARITY_STALE_MS } from "../src/run/ci-parity.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { warnEvent } from "../src/events/events.js";
 import { notifyExitWarning } from "../src/events/notify.js";
@@ -1592,6 +1593,32 @@ test("a main diff-rule failure raises one standing amber alert", () => {
   assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
   // A trailing null adds none.
   assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null).find((a) => a.key === "main-diff-rules"), undefined);
+});
+
+test("a stalled ci parity raises the ci-stale alert", () => {
+  const now = Date.now();
+  // A stale record past the stall window raises exactly one amber ci-stale alert.
+  const stalled = {
+    state: "stale" as const,
+    covered: "0123456789abcdef0123456789abcdef01234567",
+    lastRunAt: now - CI_PARITY_STALE_MS - 60_000,
+  };
+  const alerts = teamAlerts({ ...base, ciParity: stalled }, [], [], now);
+  const only = alerts.filter((a) => a.key === "ci-stale");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /not covered a tip in over 3 days/);
+  assert.match(only[0]!.detail, /01234567/);
+  assert.match(only[0]!.detail, /ci role/);
+  assert.doesNotMatch(only[0]!.detail, /ago ago/, "humanAgo already appends \" ago\", the detail must not repeat it");
+  assert.deepEqual(only[0]!.actions, [], "the fix is a role toggle the drawer already has, so no action button");
+
+  // Inside the window the same record raises no ci-stale alert.
+  const fresh = { state: "stale" as const, covered: "01234567", lastRunAt: now - CI_PARITY_STALE_MS };
+  assert.equal(teamAlerts({ ...base, ciParity: fresh }, [], [], now).find((a) => a.key === "ci-stale"), undefined);
+  // No record, and a current record, raise no ci-stale alert either.
+  assert.equal(teamAlerts({ ...base, ciParity: undefined }, [], [], now).find((a) => a.key === "ci-stale"), undefined);
+  assert.equal(teamAlerts({ ...base, ciParity: { state: "current", covered: "x", lastRunAt: 0 } }, [], [], now).find((a) => a.key === "ci-stale"), undefined);
 });
 
 test("the stale-claims alert names a gone and an idle claim", () => {

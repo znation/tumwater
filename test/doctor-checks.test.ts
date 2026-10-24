@@ -51,7 +51,7 @@ import {
   checkCodexWriteGuard,
 } from "../src/doctor/doctor-codex-checks.js";
 import { GIT_MISSING_MESSAGE } from "../src/git/git-run.js";
-import { recordParity } from "../src/run/ci-parity.js";
+import { CI_PARITY_STALE_MS, recordParity } from "../src/run/ci-parity.js";
 import { checkFeedbackFiling } from "../src/doctor/doctor-model-checks.js";
 import { fakeGh } from "./fakes/fake-gh.js";
 import { fakeCodexAppServer } from "./fakes/fake-codex.js";
@@ -1363,6 +1363,32 @@ test("checkCiParity reads current, stale and failed parities", () => {
     level: "ok",
     detail: "no CI parity recorded yet — the ci role has not completed a workflow run",
   });
+});
+
+test("checkCiParity warns once a passing record is stale past the stall window", () => {
+  const now = Date.now();
+  const lock = JSON.stringify({ lockfileVersion: 3, packages: {} });
+  // A stale record still inside the stall window keeps the friendly ok stale row.
+  const fresh = readyRepo();
+  fs.writeFileSync(path.join(fresh, "package-lock.json"), lock);
+  recordParity(fresh, headSha(fresh), "passed", now - CI_PARITY_STALE_MS);
+  sh(fresh, "git", "add", "-A");
+  sh(fresh, "git", "commit", "-m", "move main");
+  const freshStale = checkCiParity(fresh, undefined, now);
+  assert.equal(freshStale.level, "ok");
+  assert.match(freshStale.detail, /^stale — the last run covered /);
+
+  // The same record past the window is a warn naming both tips and the stall.
+  const stalled = readyRepo();
+  fs.writeFileSync(path.join(stalled, "package-lock.json"), lock);
+  recordParity(stalled, headSha(stalled), "passed", now - CI_PARITY_STALE_MS - 60_000);
+  sh(stalled, "git", "add", "-A");
+  sh(stalled, "git", "commit", "-m", "move main");
+  const warn = checkCiParity(stalled, undefined, now);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /stalled/);
+  assert.match(warn.detail, /main is now /);
+  assert.match(warn.detail, /disabled, paused, or unable to record/);
 });
 
 test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {

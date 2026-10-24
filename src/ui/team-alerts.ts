@@ -16,13 +16,14 @@ import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
+import { CI_PARITY_STALE_MS, ciParityStalled } from "../run/ci-parity.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { missingSymbolNames } from "../verdict/fix-claim.js";
 import { STALL_RE, duration } from "./run-progress-model.js";
-import { formatGB, usd, usdCap } from "../text/format.js";
-import { formatTimestamp, humanAgo, humanUntil } from "../text/datetime.js";
+import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
+import { DAY_MS, formatTimestamp, humanAgo, humanUntil } from "../text/datetime.js";
 import { joinWithMore, squash } from "../text/text.js";
 import { roleLabel } from "../roles/role-labels.js";
 
@@ -943,21 +944,23 @@ interface MergeAlertsInput {
   postReviewRisk: PostReviewRisk | null;
   droppedPostReviews: DroppedPostReviews | null;
   mainRuleFailure: MainRuleFailure | null;
+  ciParity?: StatusSnapshot["ciParity"];
   now: number;
 }
 
 /** The quarantine, flapped-check, revert and post-merge review alerts, in emission order: a
  * stale or oversized flake quarantine, checks flapping more than once, reverts off main, a
  * burst of post-merge review rejections, a post-merge review one failed run from being
- * dropped, a post-merge review the drain dropped leaves its commit on main unreviewed, and a
- * main tip the watch's diff rules rejected.
+ * dropped, a post-merge review the drain dropped leaves its commit on main unreviewed, a
+ * main tip the watch's diff rules rejected, and the ci role's full suite stalled over three
+ * days without covering a new tip.
  * Extracted from teamAlerts (part 4/5 of the teamAlerts split) so the shared module stays
  * small; the input names exactly the fields this run reads (including `now`, which the
  * quarantine and dropped-post-reviews age lines need). The caller pushes the returned alerts
  * at the position this run used to occupy, so the emitted key order is unchanged. */
 function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now } = input;
+  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity, now } = input;
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
@@ -1069,6 +1072,26 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       title: `${plural(mainRuleFailure.count, "diff-rule failure on main", "diff-rule failures on main")} in the last day`,
       detail: `most recently ${humanAgo(mainRuleFailure.latestTs, now)}: ${squash(mainRuleFailure.latestMessage, 160)} — the gate approved a diff the watch's five rules reject, so main carries what the gate would refuse; repair the tip or revert it with \`tumwater revert <sha>\``,
       actions: seeFailures(),
+    });
+  }
+  // The ci role's full suite silently stopped covering new tips — the always-on twin of the
+  // doctor's `ci parity` row (doctor-project-checks.ts checkCiParity), read from the same
+  // ciParityStalled predicate and CI_PARITY_STALE_MS threshold so the alert and the row cannot
+  // disagree on when a post-merge gap is a stall. A `stale` record is normal right after a
+  // merge (main moves on every merge and the role runs on its own clock), but one that stays
+  // stale past three days means the role that is now the full suite's own runner has silently
+  // stopped covering new tips (disabled, paused, wedged, or failing before it records). The
+  // fix is a role toggle the role drawer already has, so there is no action button here.
+  if (ciParity && ciParityStalled(ciParity, now)) {
+    out.push({
+      key: "ci-stale",
+      tone: "amber",
+      title: `main's full suite has not covered a tip in over ${CI_PARITY_STALE_MS / DAY_MS} days`,
+      detail: `the ci role's last full-suite run covered ${shortSha(ciParity.covered)} ${humanAgo(
+        ciParity.lastRunAt,
+        now,
+      )}; main has moved since, so no full-suite run covers the current tip — the ci role is disabled, paused, or unable to record; resume or enable it, or check \`tumwater doctor\``,
+      actions: [],
     });
   }
   return out;
@@ -1286,6 +1309,7 @@ export function teamAlerts(
     | "budgetPausedRoles"
     | "maintenanceQuota"
     | "providerHolds"
+    | "ciParity"
   >,
   questions: readonly string[],
   roles: readonly AlertRole[],
@@ -1321,7 +1345,7 @@ export function teamAlerts(
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
   out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, ciParity: snap.ciParity, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));
 
   return out;

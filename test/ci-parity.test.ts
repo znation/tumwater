@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  CI_PARITY_STALE_MS,
+  ciParityStalled,
   lockHashOf,
   parityBlockFor,
   parityIsCurrent,
@@ -192,6 +194,28 @@ test("parityBlockFor renders current when the recorded tip is a short sha of the
   const stale = parityBlockFor(root, { baseBranch: "main" });
   assert.ok(stale, "main moved so the abbreviated tip is stale");
   assert.match(stale!, /stale/);
+});
+
+test("ciParityStalled is the one stall rule", () => {
+  const now = NOW;
+  const stale = { state: "stale" as const, lastRunAt: now - CI_PARITY_STALE_MS - 1 };
+  assert.equal(ciParityStalled(stale, now), true, "a stale record past the window is stalled");
+  assert.equal(
+    ciParityStalled({ state: "stale", lastRunAt: now - CI_PARITY_STALE_MS }, now),
+    false,
+    "exactly at the window it is not yet stalled",
+  );
+  assert.equal(
+    ciParityStalled({ state: "current", lastRunAt: now - CI_PARITY_STALE_MS - 1 }, now),
+    false,
+    "a current record is verified for the tip, never stalled",
+  );
+  assert.equal(
+    ciParityStalled({ state: "failed", lastRunAt: now - CI_PARITY_STALE_MS - 1 }, now),
+    false,
+    "a failed record already warns, not via the stall rule",
+  );
+  assert.equal(ciParityStalled(undefined, now), false, "no record is not stalled");
 });
 
 function shortId(id: string): string {

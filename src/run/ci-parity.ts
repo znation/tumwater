@@ -6,15 +6,37 @@
  * moved (and the lock is unchanged) since a green run, the role declares nothing-to-do in one
  * model run instead of re-running the whole suite. The ledger is gitignored runtime state
  * under .tumwater/state/ and degrades to "no data" on any missing or malformed file: an
- * observer must never fail a run on bookkeeping (the same policy as qa-coverage.ts). */
+ * observer must never fail a run on bookkeeping (the same policy as qa-coverage.ts). A stale
+ * verdict that stays stale past `CI_PARITY_STALE_MS` is a stall — the full suite has silently
+ * stopped covering new tips — surfaced as a doctor warn and a standing `ci-stale` alert through
+ * the one `ciParityStalled` predicate. */
 
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { ciParityPath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
 import { currentBranchFromHeadFile, readBranchHead, targetBranch } from "../git/git.js";
+import { DAY_MS } from "../text/datetime.js";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import path from "node:path";
+
+/** A stale verdict that stays stale past this window is a stall: the `ci` role — now the
+ * full suite's own runner — has silently stopped covering new tips (disabled, paused, wedged,
+ * or failing before it records). The doctor `ci parity` warn and the standing `ci-stale` alert
+ * share this one threshold, so the surfaces cannot disagree on when stale is a problem. */
+export const CI_PARITY_STALE_MS = 3 * DAY_MS;
+
+/** True only when a parity record exists, reads `stale` (a `failed` record already warns and
+ * a `current` one is verified for the tip), and has not covered a tip within the stall
+ * window. Parameter is structural — not `CiParityStatus` — so the status-polls → ci-parity
+ * import edge stays one-way. This is the single stall predicate shared by the doctor row and
+ * the alert. */
+export function ciParityStalled(
+  parity: { state: "current" | "stale" | "failed"; lastRunAt: number } | undefined,
+  now: number,
+): boolean {
+  return !!parity && parity.state === "stale" && now - parity.lastRunAt > CI_PARITY_STALE_MS;
+}
 
 /** One CI run's record of what it covered and how it went. `tip` is the main tip the run
  * actually exercised — the sha named on the run's `CI:` line, so a fresh session that
