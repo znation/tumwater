@@ -131,6 +131,14 @@ revision/conflict_handback/merge_queued events, and the queued merge — naming 
 short-circuit (marker absent, state/events unmoved) apart from a pi run that wrote the prompts
 elsewhere (marker present).**
 
+### `every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still records` failed, then passed on the same tree (quarantined by tumwater 2026-10-24)
+
+The check failed on this test and then passed on a re-run of the same tree, so tumwater quarantined it: it counts as a known failure until this entry leaves `## Open`. Find why it is unstable and fix it.
+
+~~~~
+every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still records
+~~~~
+
 ## Fixed
 
 ## Verified
