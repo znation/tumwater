@@ -96,10 +96,15 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return line;
   }
+  // The todo/queued merge entries of a status merge queue document, or [] when the document
+  // is null/absent or its entries are missing or malformed — so callers never guard the shape.
+  function mergeQueueEntries(mergeQueue) {
+    return mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
+  }
   // The role drawer's Merge queue section: only this role's waiting merges, each under its
   // whole-queue position (labels run parallel to the whole queue). "" when it has none.
   function drawerQueueHtml(mergeQueue, role, now, labels) {
-    const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
+    const entries = mergeQueueEntries(mergeQueue);
     let kept = 0;
     const lines = entries.map((e, i) => {
       if (!e || e.role !== role) return "";
@@ -121,7 +126,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // tumwater queue --role twin); "All roles" (the default) shows every line.
   function pendingQueueHtml(mergeQueue, now, labels, role = "", cancelArmedSha = "") {
     const depth = mergeQueue && Number.isFinite(mergeQueue.depth) ? mergeQueue.depth : 0;
-    const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
+    const entries = mergeQueueEntries(mergeQueue);
     const roles = [...new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"))].sort();
     const active = role && roles.includes(role) ? role : "";
     let head = "<div class='card-head'><h2>Merge queue</h2></div>";
@@ -270,7 +275,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function renderPendingQueue(status) {
     const card = $("pendingqueue");
     if (!card) return;
-    const entries = status && status.mergeQueue && Array.isArray(status.mergeQueue.entries) ? status.mergeQueue.entries : [];
+    const entries = mergeQueueEntries(status && status.mergeQueue);
     const roles = new Set(entries.map((e) => e && e.role).filter((r) => typeof r === "string"));
     if (!roles.has(pendingQueueRole)) pendingQueueRole = "";
     card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels, pendingQueueRole, queueCancelSlot.armed(pendingCancelSha) ? pendingCancelSha : "");
