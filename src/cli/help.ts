@@ -247,7 +247,7 @@ Usage:
                                    execution order (so it merges next when ready), preserving any
                                    notBefore deferral, refusing an entry a live merge is merging and
                                    --role/-f, and answering already-first for position 1
-  tumwater reviews [--accept <n>] [--json]
+  tumwater reviews [--accept <n>] [--role <id>[,<id>...]] [--json]
                                    List the post-merge review queue (\.tumwater/state
                                    /post-review.json) in FIFO order: one line per merged commit
                                    waiting for its review — position, role, short sha, summary,
@@ -255,7 +255,10 @@ Usage:
                                    (\`[rejected — waiting to revert: …]\`) or its
                                    failed-review-run count (\`[N failed review runs]\`); an empty
                                    queue prints \`post-merge review queue empty\`; --json prints
-                                   the normalized { pending: [...] } list for scripts; --accept <n>
+                                   the normalized { pending: [...] } list for scripts; --role
+                                   keeps only the listed roles' entries (a base role id taking
+                                   its instances too), each under its position in the whole
+                                   queue; --accept <n>
                                    removes the Nth queued entry (the position \`tumwater reviews\`
                                    prints) as deliberately accepted unreviewed, logging a warning;
                                    it refuses an entry already rejected and waiting on its revert;

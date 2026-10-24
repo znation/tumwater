@@ -43,6 +43,37 @@ test("reviews lists each entry in FIFO order with its role, sha, summary and sta
   assert.match(r.stdout, /rejected — waiting to revert: no tests/);
 });
 
+test("reviews --role keeps only the listed roles' entries under their whole-queue positions", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews role test");
+  seed(repo); // improve then clean
+
+  const scoped = await cli(repo, "reviews", "--role", "clean");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.stdout, /post-merge review queue \(1 of 2, --role clean\):/);
+  assert.match(scoped.stdout, /\n\s+2\. clean/);
+  assert.ok(!scoped.stdout.includes("improve"), "only the clean entry prints");
+
+  const nomatch = await cli(repo, "reviews", "--role", "feature");
+  assert.equal(nomatch.code, 0);
+  assert.match(nomatch.stdout, /no post-merge reviews for feature \(post-merge review queue holds 2\)/);
+
+  const json = await cli(repo, "reviews", "--json", "--role", "clean");
+  assert.equal(json.code, 0);
+  const doc = JSON.parse(json.stdout) as { pending: { role: string }[] };
+  assert.equal(doc.pending.length, 1);
+  assert.equal(doc.pending[0]!.role, "clean");
+
+  const accept = await cli(repo, "reviews", "--accept", "1", "--role", "clean");
+  assert.notEqual(accept.code, 0);
+  assert.match(accept.stderr, /--role/);
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => e.role),
+    ["improve", "clean"],
+    "a refused --role accept changes nothing",
+  );
+});
+
 test("reviews --json prints the normalized pending list", async () => {
   const repo = makeRepo();
   await initProject(repo, "reviews json test");

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPostReviews, postReviewStatusLabel } from "../src/review/post-merge-review-render.js";
+import { renderPostReviews, scopePostReviews, postReviewStatusLabel } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned
@@ -12,6 +12,47 @@ function e(overrides: Partial<PostReview>): PostReview {
 
 test("an empty queue renders the empty line", () => {
   assert.equal(renderPostReviews([]), "post-merge review queue empty");
+});
+
+test("scopePostReviews keeps the matching entries under their whole-queue positions", () => {
+  const whole = [
+    e({ commit: "a".repeat(40), role: "improve", summary: "tidy the parser" }),
+    e({ commit: "b".repeat(40), role: "clean", summary: "rejected", rejected: ["no tests"] }),
+  ];
+  const { entries, scope } = scopePostReviews(whole, ["clean"], (role) => role === "clean");
+  assert.deepEqual(entries.map((x) => x.role), ["clean"]);
+  assert.deepEqual(scope, { roles: ["clean"], positions: [2], total: 2 });
+});
+
+test("renderPostReviews prints whole-queue positions under a scope", () => {
+  const whole = [
+    e({ commit: "a".repeat(40), role: "improve", summary: "tidy the parser" }),
+    e({ commit: "b".repeat(40), role: "clean", summary: "rejected", rejected: ["no tests"] }),
+  ];
+  const { entries, scope } = scopePostReviews(whole, ["clean"], (role) => role === "clean");
+  // Scoped: header names the kept count and the role; the kept entry keeps position 2.
+  assert.equal(
+    renderPostReviews(entries, scope),
+    [
+      "post-merge review queue (1 of 2, --role clean):",
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
+    ].join("\n"),
+  );
+  // A scope that keeps nothing of a non-empty queue names the whole-queue depth.
+  const none = scopePostReviews(whole, ["feature"], (role) => role === "feature");
+  assert.equal(renderPostReviews(none.entries, none.scope), "no post-merge reviews for feature (post-merge review queue holds 2)");
+  // A scope over an empty queue still prints the empty line.
+  const empty = scopePostReviews([], ["clean"], (role) => role === "clean");
+  assert.equal(renderPostReviews(empty.entries, empty.scope), "post-merge review queue empty");
+  // Without a scope the unscoped render is byte-identical to the pinned whole-queue line.
+  assert.equal(
+    renderPostReviews(whole),
+    [
+      "post-merge review queue (2 entries):",
+      `  1. improve ${'a'.repeat(40).slice(0, 8)} · tidy the parser`,
+      `  2. clean ${'b'.repeat(40).slice(0, 8)} · rejected · [rejected — waiting to revert: no tests]`,
+    ].join("\n"),
+  );
 });
 
 test("entries render in input order with role, short sha and summary", () => {
