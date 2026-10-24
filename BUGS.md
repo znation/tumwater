@@ -139,6 +139,10 @@ The check failed on this test and then passed on a re-run of the same tree, so t
 every PLANS.md citation in a src/ or test/ comment names an entry PLANS.md still records
 ~~~~
 
+**Progress 2026-10-24 by bugfix:** not reproduced offline — the test is fully deterministic on file contents: a pure scan of the live `src/**/*.ts` and `test/**/*.ts` comment text against `planEntries` of PLANS.md + PLANS-DONE.md (case-insensitive substring match on 12675 recorded headings/Done bullets), and a scratch reimplementation over this tree reported zero stale citations. Grep of every test file and fixture shows none writes to the real `src/`, `test/`, PLANS.md, or PLANS-DONE.md (all fixtures write under a per-process mkdtemp), so the same-tree failure-then-pass cannot come from within the run. The plausible seed is the cross-process archive step — tumwater moving finished entries out of PLANS.md into the 12k-entry PLANS-DONE.md — catching the gate's module-load read at a moment the two files were momentarily inconsistent. The failure message already names the cause (the exact stale `file:line — "label"` citations), so the next flake reads out which label was transiently unmatched.
+
+**Waiting for the next failure 2026-10-24 by bugfix: the failure message lists the stale `file:line — "label"` citations it found; check the unmatched label against the PLANS.md+PLANS-DONE.md union — a label that resolves on a re-run and is absent at the read moment points at the cross-process archive window (entry in neither file mid-move) rather than a persistent stale pointer.**
+
 ## Fixed
 
 ## Verified
