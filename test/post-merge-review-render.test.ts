@@ -29,6 +29,19 @@ test("postReviewState names the precedence the status label uses", () => {
   assert.equal(postReviewState(e({ rejected: [] })), "rejected");
   assert.equal(postReviewState(e({ failures: 1 })), "failing");
   assert.equal(postReviewState(e({})), "waiting");
+  assert.equal(postReviewState(e({ fixed: "f".repeat(40) })), "fixed");
+  // The terminal fixed record outranks every pending marker it might also carry.
+  assert.equal(postReviewState(e({ fixed: "f".repeat(40), rejected: ["x"], failures: 2 })), "fixed");
+});
+
+test("a settled fixed record is taught to the readers as terminal, not pending", () => {
+  // postReviewStatusLabel names it rather than leaving the empty (waiting) suffix.
+  assert.equal(
+    postReviewStatusLabel(e({ fixed: "f".repeat(40) })),
+    `[fixed — the repair ${'f'.repeat(40).slice(0, 8)} already merged on main]`,
+  );
+  // renderPostReviews shows the same suffix, so an observer no longer reads it as pending.
+  assert.match(renderPostReviews([e({ fixed: "f".repeat(40) })]), /· \[fixed — the repair/);
 });
 
 test("scopePostReviews's status filter keeps whole-queue positions", () => {

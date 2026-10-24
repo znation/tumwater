@@ -71,6 +71,21 @@ test("POST /api/post-review-accept a rejected sha answers 409 and leaves the fil
   assert.equal(eventsOfType(root, "warning").length, 0, "no warning is logged");
 });
 
+test("POST /api/post-review-accept a settled fixed sha answers 409 and leaves the file", async () => {
+  const root = makeRepo();
+  const b = "b".repeat(40);
+  seed(root, [
+    { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+    { commit: b, role: "clean", summary: "fixed change", fixed: "c".repeat(40) },
+  ]);
+  const before = readPostReviews(root);
+  const { captured, data } = await post(root, { sha: b });
+  assert.equal(captured.status, 409);
+  assert.match((data as { error: string }).error, /already merged its fix on main — nothing to accept/);
+  assert.deepEqual(readPostReviews(root), before, "the settled fixed entry is left in place");
+  assert.equal(eventsOfType(root, "warning").length, 0, "no warning is logged");
+});
+
 test("POST /api/post-review-accept a missing or non-hex sha answers 400 and writes nothing", async () => {
   const root = makeRepo();
   seed(root, [{ commit: "a".repeat(40), role: "improve", summary: "tidy the parser" }]);

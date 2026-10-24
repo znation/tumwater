@@ -31,14 +31,8 @@ import {
   type MergePipelineContext,
   type ApprovedMerge,
 } from "./merge-pipeline.js";
-import { drainVerify, VERIFY_TIER } from "./merge-verify.js";
+import { drainVerify, MERGE_TIER } from "./merge-verify.js";
 import type { RunResult } from "../run/run-outcome.js";
-
-/** The tier the merge slot's conflict-resolution runs wait at: ahead of any verification parked for
- * a permit, because the merge is the one serial step every queued change waits on. (Nothing that
- * holds a permit ever waits on the merge: no verification takes the merge lock, and the resolver
- * runs outside it — merge-to-main.ts's mergeToMain — so this cannot deadlock.) */
-const MERGE_TIER = VERIFY_TIER - 1;
 
 /** Whether a merged change from `role` still needs a post-merge review: the pre-merge gate skips
  * review when it is disabled or the diff is exempt, so those changes queue none either. A

@@ -512,6 +512,18 @@ test("postReviewsHtml is empty until a commit waits and names each entry otherwi
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
+test("a settled fixed review entry renders its state and no Accept button", () => {
+  const { postReviewsHtml, postReviewState } = clientScope<{
+    postReviewsHtml(entries: unknown, armed?: string): string;
+    postReviewState(e: unknown): string;
+  }>(["format", "labels", "pending-table"], ["postReviewsHtml", "postReviewState"]);
+  const fixed = { role: "feature", commit: "abcdef1234567890", summary: "fixed item", fixed: "deadbeef12345678" };
+  assert.equal(postReviewState(fixed), "fixed");
+  const html = postReviewsHtml([fixed]);
+  assert.match(html, /feature abcdef12 · fixed item · <span class='mono'>\[fixed — the repair deadbeef already merged on main\]<\/span>/);
+  assert.doesNotMatch(html, /data-accept='abcdef1234567890'/, "a settled fixed entry renders no Accept button, like a rejected one");
+});
+
 test("the Post-merge reviews card shows each entry's waiting age", () => {
   const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string, role?: string, state?: string, now?: number): string }>(
     ["format", "labels", "pending-table"],

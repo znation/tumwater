@@ -7,6 +7,7 @@ import {
   extractFiled,
   extractFlow,
   extractRefusal,
+  fixLine,
   hasVerdictLine,
   isNegatedRefusal,
   isNothingToDo,
@@ -368,4 +369,33 @@ test("extractFiled requires the number and a non-empty title", () => {
 test("extractFiled returns null when absent, empty, or only mid-sentence", () => {
   assert.equal(extractFiled("no filed line here\nSUMMARY: did it"), null);
   assert.equal(extractFiled("I considered FILED: #12 — retry but did not file"), null);
+});
+
+// The post-merge review's rejecting reply may pair its verdict with a FIX line (Forward never
+// back 1a/6): `FIX: <comma-separated paths>` naming the files the reviewer edited in the review
+// worktree. Anchored at line start; the paths are required, so a bare or truncated `FIX:` records
+// nothing and the review stays a plain reject (the same fail-closed lesson as the FLOW verdict,
+// BUGS.md 2026-09-23). A bare `FIX:` must not borrow the following line as its paths.
+
+test("fixLine parses a comma-separated path list", () => {
+  assert.deepEqual(fixLine("VERDICT: reject\n1. breaks it\nFIX: a.ts, b.ts"), ["a.ts", "b.ts"]);
+  assert.deepEqual(fixLine("FIX: src/a.ts, src/b.ts"), ["src/a.ts", "src/b.ts"]);
+});
+
+test("fixLine records nothing for a bare or truncated line or a mid-sentence mention", () => {
+  assert.equal(fixLine("FIX:"), null); // bare: no paths
+  assert.equal(fixLine("FIX: "), null);
+  assert.equal(fixLine("FIX: ,"), null); // commas but no path
+  assert.equal(fixLine("FIX:  ,  "), null);
+  assert.equal(fixLine("I considered FIX: a.ts but did not edit it"), null); // mid-sentence
+  assert.equal(fixLine("no fix line here\nSUMMARY: did it"), null);
+});
+
+test("fixLine does not borrow the next line as paths (fail-closed on a bare FIX)", () => {
+  // A reply truncated right after `FIX:` must not read the following line as comma-separated
+  // paths — the opposite would be the fail-open parse the fail-closed contract forbids.
+  assert.equal(fixLine("VERDICT: reject\n1. breaks it\nFIX:\nthe reply ends mid-list"), null);
+  assert.equal(fixLine("FIX:\nnext line is reply prose"), null);
+  // A path that ends cleanly on its own line is still parsed.
+  assert.deepEqual(fixLine("VERDICT: reject\nFIX: a.ts\nmore prose"), ["a.ts"]);
 });

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { DIRECTOR_ROLE } from "./roles/roles.js";
 import { isDirectory } from "./files/files.js";
+import { shortSha } from "./text/format.js";
 
 /** All harness runtime state lives under <repo>/.tumwater (gitignored). */
 export const STATE_DIR = ".tumwater";
@@ -576,6 +577,15 @@ export function legacyLandingRefName(role: string): string {
  * the head reachable here stops git gc from collecting the one commit the revision re-applies. */
 export function rejectedRefName(role: string): string {
   return `refs/tumwater/rejected/${role}`;
+}
+
+/** The ref holding a post-merge reviewer's repair while it lands (Forward never back 1a/6):
+ * set to the reviewed commit C at review start, advanced to the ONE `tumwater(reviewer): Fix …`
+ * commit the reviewer's worktree edit makes, and merged through the ordinary change path before
+ * the entry settles `fixed`. Living under refs/tumwater/ means the startup pin housekeeping
+ * (dropDanglingTumwaterPins) sees it; it is deleted once the merge settles. */
+export function reviewFixRef(sha: string): string {
+  return `refs/tumwater/review-fix/${shortSha(sha)}`;
 }
 
 /** Where redeploy stages compiled builds before swapping one into dist/ — under .tumwater/ so a

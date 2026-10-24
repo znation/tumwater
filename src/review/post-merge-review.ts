@@ -1,9 +1,10 @@
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir } from "../paths.js";
+import { postReviewPath, postReviewWorktreePath, nativeLogPath, piLogPath, reviewRunSessionDir, reviewFixRef } from "../paths.js";
 import { reviewedAfterMerge, reviewRunConfig } from "../config/config-views.js";
 import { logEventBestEffort, TUMWATER_SOURCE, tryOrWarn } from "../events/events.js";
 import { isJsonObject } from "../files/json-object.js";
 import { git, gitCouldNotStart, gitTry } from "../git/git-run.js";
+import { commitAll, deleteRef, setRef } from "../git/git.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { readPrinciples } from "../prompt/principles.js";
@@ -12,6 +13,7 @@ import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
 import { eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
+import { fixLine } from "../verdict/reply-contract.js";
 import type { HarnessEvent } from "../events/events.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { GateRunsPi } from "../runner/runner-pi.js";
@@ -31,6 +33,10 @@ export interface PostReview {
    * entry is settled or removed. */
   lastFailure?: string;
   rejected?: string[];
+  /** The sha of the reviewer's landed fix commit, when the review repaired what it found instead
+   * of rejecting (Forward never back 1a/6). The entry then names both shas: `commit` is the
+   * reviewed commit C and `fixed` the one fix commit that merged on top of it. */
+  fixed?: string;
   /** When the entry was first queued for review, epoch ms; absent on an entry an older file
    * wrote. `settlePostReview` already spreads `next`, so a failed re-settle and a rejection
    * keep the original stamp. */
@@ -107,7 +113,7 @@ export function readPostReviews(root: string): PostReview[] {
   const entries: PostReview[] = [];
   for (const raw of saved.pending as unknown[]) {
     if (!isJsonObject(raw)) continue;
-    const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt } = raw;
+    const { commit, role, summary, body, failures, lastFailure, rejected, enqueuedAt, fixed } = raw;
     if (typeof commit !== "string" || typeof role !== "string" || typeof summary !== "string") continue;
     if (rejected !== undefined && !Array.isArray(rejected)) continue;
     const entry: PostReview = { commit, role, summary };
@@ -115,6 +121,7 @@ export function readPostReviews(root: string): PostReview[] {
     if (typeof failures === "number" && Number.isFinite(failures)) entry.failures = failures;
     if (typeof lastFailure === "string") entry.lastFailure = lastFailure;
     if (Array.isArray(rejected)) entry.rejected = rejected.filter((r): r is string => typeof r === "string");
+    if (typeof fixed === "string") entry.fixed = fixed;
     if (typeof enqueuedAt === "number" && Number.isFinite(enqueuedAt) && enqueuedAt >= 0) entry.enqueuedAt = enqueuedAt;
     entries.push(entry);
   }
@@ -147,7 +154,29 @@ export function settlePostReview(root: string, commit: string, next: PostReview 
 type PostReviewOutcome =
   | { kind: "approve"; reasons: string[] }
   | { kind: "reject"; reasons: string[] }
+  | { kind: "fixed"; fix: string; reasons: string[] }
   | { kind: "failed"; detail: string };
+
+/** Cut a review finding's first reason short enough to ride a commit subject (the
+ * `tumwater(reviewer): Fix …` subject names it): trimmed of leading/trailing and repeated
+ * whitespace, clipped at a word boundary around 100 chars with an ellipsis. */
+function clipFixReason(reason: string): string {
+  const trimmed = reason.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= 100) return trimmed;
+  return `${trimmed.slice(0, 97).replace(/\s+\S*$/, "")}…`;
+}
+
+/** Commit the review worktree's edited paths as the one `tumwater(reviewer): Fix <short sha> —
+ * <first finding>` fix commit, made by the harness's own git call (never pi) — commitAll stages
+ * and commits everything, so however the reviewer edited a path, the single commit captures it
+ * on top of the reviewed commit C (the detached HEAD the worktree reset to); the caller advances
+ * the review-fix ref to the returned sha. Returns the new commit's full sha. */
+async function commitReviewerFix(wt: string, commit: string, reasons: string[]): Promise<string> {
+  const first = reasons[0] ? clipFixReason(reasons[0]) : "the reviewed change";
+  const subject = `tumwater(reviewer): Fix ${shortSha(commit)} — ${first}`;
+  const body = reasons.map((r, i) => `${i + 1}. ${r}`).join("\n");
+  return commitAll(wt, body ? `${subject}\n\n${body}` : subject);
+}
 
 /** Review the merged commit C: the usual reviewer prompt over `git diff C^ C`, run in a detached
  * checkout of C. Logs `review_start` and `review_verdict` / `review_rejected` with
@@ -166,12 +195,23 @@ export async function reviewMergedCommit(
   try {
     const reviewCfg = reviewRunConfig(config);
     const startedAt = Date.now();
-    const pi = await useWorktree(root, postReviewWorktreePath(root), async () => {
+    const fixRef = reviewFixRef(commit);
+    // The whole review — the detached checkout, the reviewer run, and (on a repair) the status
+    // read, the fix commit and its ref — runs under one hold of the post-review worktree
+    // (plans/disk-floor.md part 2/4), so nothing can reset or reuse the shared worktree between
+    // the reviewer's edit and the commit that captures it.
+    return await useWorktree(root, postReviewWorktreePath(root), async () => {
+      // The review-fix ref tracks the reviewed commit C (and later the reviewer's fix commit), so
+      // a repair survives as a durable reachable ref the pin housekeeping sees. The ref is reset
+      // to C at every review and ensureDetachedWorktree hard-resets the worktree to C, so a
+      // leftover ref or edit from an earlier review cannot change what is reviewed. Checking the
+      // worktree out at C itself (not the ref) keeps the "git could not start" semantics of the
+      // detached checkout it replaces: a review whose git cannot start throws gitCouldNotStart.
       const wt = await ensureDetachedWorktree(root, postReviewWorktreePath(root), commit);
-      await gitTry(wt, "checkout", "--detach", "--force", commit);
+      await setRef(root, fixRef, commit);
       const diff = await git(wt, "diff", `${commit}^`, commit);
       logEventBestEffort(root, { source: role, type: "review_start", head: commit, afterMerge: true });
-      return runGatePi({
+      const pi = await runGatePi({
         cwd: wt,
         kind: "gate",
         prompt: buildReviewPrompt(diff, entry.summary, entry.body, readPrinciples(root), undefined, `${commit}^`),
@@ -183,16 +223,35 @@ export async function reviewMergedCommit(
         label: "review",
         signal,
       });
+      const verdict = pi.ok && !pi.aborted ? parseVerdict(pi.verdictText ?? "") : null;
+      if (!verdict) {
+        await deleteRef(root, fixRef);
+        return { kind: "failed", detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply" };
+      }
+      const durationMs = Date.now() - startedAt;
+      // One record for the reviewed commit C whatever way the review ends — reject or approve —
+      // so the fix-forward landing does not lose the verdict that motivated it.
+      if (verdict.verdict === "reject") {
+        logEventBestEffort(root, { source: role, type: "review_rejected", head: commit, reasons: verdict.reasons, durationMs, afterMerge: true });
+      } else {
+        logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
+      }
+      // A rejecting review whose reply carries a FIX: line and whose worktree holds an edit
+      // survives as one fix commit on the review ref, kept for merge-post-review.ts to land on
+      // main through the ordinary change path. A clean worktree or a reply with no FIX line keeps
+      // today's outcomes and deletes the ref.
+      const paths = pi.ok && !pi.aborted ? fixLine(pi.verdictText ?? "") : null;
+      if (paths && verdict.verdict === "reject" && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
+        const fix = await commitReviewerFix(wt, commit, verdict.reasons);
+        // Advance the review-fix ref from C to the new fix commit, so the repair is reachable and
+        // the merge-post-review landing (which checks the fix out by this sha) finds it.
+        await setRef(root, fixRef, fix);
+        return { kind: "fixed", fix, reasons: verdict.reasons };
+      }
+      await deleteRef(root, fixRef);
+      if (verdict.verdict === "reject") return { kind: "reject", reasons: verdict.reasons };
+      return { kind: "approve", reasons: verdict.reasons };
     });
-    const verdict = pi.ok && !pi.aborted ? parseVerdict(pi.verdictText ?? "") : null;
-    if (!verdict) return { kind: "failed", detail: pi.errorMessage ?? "no parseable VERDICT line in the reviewer's reply" };
-    const durationMs = Date.now() - startedAt;
-    if (verdict.verdict === "reject") {
-      logEventBestEffort(root, { source: role, type: "review_rejected", head: commit, reasons: verdict.reasons, durationMs, afterMerge: true });
-      return { kind: "reject", reasons: verdict.reasons };
-    }
-    logEventBestEffort(root, { source: role, type: "review_verdict", head: commit, reason: verdict.reasons[0], durationMs, afterMerge: true });
-    return { kind: "approve", reasons: verdict.reasons };
   } catch (err) {
     if (gitCouldNotStart(err)) throw err;
     return { kind: "failed", detail: errorMessage(err) };

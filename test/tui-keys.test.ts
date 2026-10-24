@@ -2749,7 +2749,10 @@ test("Ctrl+O on the Pending pane cycles the post-merge review state filter under
   assert.ok(cache().includes(" 3. qa "), "the rejected entry keeps its whole-queue position 3");
 
   ctrlO(keys);
-  assert.ok(cache().includes(whole), "the fourth press returns to the whole review block byte-for-byte");
+  assert.ok(cache().includes("no post-merge reviews matching --status fixed (post-merge review queue holds 3)"), "the fourth press selects the terminal fixed state, which the queue holds none of");
+
+  ctrlO(keys);
+  assert.ok(cache().includes(whole), "the fifth press returns to the whole review block byte-for-byte");
 });
 
 test("Ctrl+O on the Pending pane with a state the queue does not hold prints the no-match line, not an empty block", async () => {
@@ -2766,6 +2769,8 @@ test("Ctrl+O on the Pending pane with a state the queue does not hold prints the
   ctrlO(keys); // → rejected
   assert.ok(cache().includes("no post-merge reviews matching --status rejected (post-merge review queue holds 2)"), "the no-match line repeats for the second empty state");
   assert.ok(!cache().includes("post-merge review queue ("), "no empty block header is painted");
+  ctrlO(keys); // → fixed
+  assert.ok(cache().includes("no post-merge reviews matching --status fixed (post-merge review queue holds 2)"), "the no-match line repeats for the terminal fixed state");
   ctrlO(keys); // → all
   assert.ok(cache().includes("post-merge review queue (2 entries):"), "back to the unfiltered header");
 });

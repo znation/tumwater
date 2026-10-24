@@ -221,6 +221,8 @@ export const POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1;
  * A review that has already been rejected is left out: the drain settles a rejection as
  * `{ ...entry, rejected }` (it preserves `failures`) and never re-runs it, so a rejected commit
  * is not waiting on a verdict and must not read as one failed run from being dropped.
+ * A review that has already landed its fix (`fixed` set) is left out too — it is a settled
+ * record naming both shas, not a verdict-less entry the next run could drop.
  * One traversal shared by the doctor's `post-merge reviews` row (checkPostReviews) and the
  * always-on `post-merge-risk` team alert (src/ui/status-payload.ts postReviewRiskAlert), so the
  * two surfaces select the same entries and cannot drift. Reads .tumwater/state/post-review.json
@@ -228,7 +230,7 @@ export const POST_REVIEW_AT_RISK_FAILURES = POST_REVIEW_FAILURE_LIMIT - 1;
  * `[]` and never throws. */
 export function atRiskPostReviews(root: string): AtRiskPostReview[] {
   return readPostReviews(root)
-    .filter((e) => e.rejected === undefined && (e.failures ?? 0) >= POST_REVIEW_AT_RISK_FAILURES)
+    .filter((e) => e.rejected === undefined && e.fixed === undefined && (e.failures ?? 0) >= POST_REVIEW_AT_RISK_FAILURES)
     .map((e) => ({ commit: e.commit, role: e.role, summary: e.summary, failures: e.failures ?? 0 }));
 }
 

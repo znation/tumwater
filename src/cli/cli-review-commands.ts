@@ -109,6 +109,9 @@ async function cmdReviewsAccept(root: string, args: string[]): Promise<void> {
   if (outcome.status === "rejected") {
     fail(`post-merge review ${position} is rejected and waiting on its revert — let the revert run, then review the revision`);
   }
+  if (outcome.status === "settled") {
+    fail(`post-merge review ${position} already merged its fix on main — nothing to accept`);
+  }
   if (json) {
     sayJson({ accepted: { role: outcome.role, commit: outcome.commit, summary: outcome.summary } });
   } else {

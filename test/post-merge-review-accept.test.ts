@@ -65,6 +65,24 @@ test("acceptPostReview refuses a rejected entry without writing", () => {
   assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 0);
 });
 
+test("acceptPostReview refuses a fixed (already-merged-repair) entry without writing", () => {
+  const root = makeRepo();
+  writeFileDeep(
+    postReviewPath(root),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+        { commit: "b".repeat(40), role: "clean", summary: "fixed change", fixed: "c".repeat(40) },
+      ],
+    }),
+  );
+  const seed = readPostReviews(root);
+  const outcome = acceptPostReview(root, 2);
+  assert.deepEqual(outcome, { status: "settled", commit: "b".repeat(40) });
+  assert.deepEqual(readPostReviews(root), seed, "nothing written on the settled arm");
+  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 0, "a settled entry logs no false accept-unreviewed warning");
+});
+
 test("acceptPostReview reports the depth out of range", () => {
   const root = makeRepo();
   seedMany(root);

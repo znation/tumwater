@@ -12,12 +12,12 @@ import { addPostReview, readPostReviews, POST_REVIEW_FAILURE_LIMIT, postMergeRej
 import type { HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
-import { postReviewPath, rejectedRefName } from "../src/paths.js";
+import { postReviewPath, rejectedRefName, reviewFixRef } from "../src/paths.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { piRanMarker, reviewerStub, withPi } from "./fakes/fake-pi.js";
+import { piRanMarker, piRunResult, reviewerStub, withPi } from "./fakes/fake-pi.js";
 import { APPROVE, drained, entry, makePipeline, pinnedCommit, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
@@ -542,4 +542,161 @@ test("postMergeRejectionCounts folds instance runner ids into their base role", 
     { role: "bugfix", count: 3 },
     { role: "clean", count: 1 },
   ]);
+});
+
+/** A post-merge reviewer that repairs what it rejected: writes `x.txt` into the review worktree
+ * and replies with a `FIX:` line alongside a rejecting verdict (Forward never back 1a/6). */
+function fixingRunner(role: string): RoleRunner {
+  return {
+    role,
+    baseRole: role,
+    state: freshRunnerState(role),
+    runGatePi: async (opts: { cwd: string }) => {
+      fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
+      return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+    },
+  } as unknown as RoleRunner;
+}
+
+test("the harness commits and lands a reviewer's edit as one fix", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  // main fast-forwarded to exactly one new commit whose parent is the reviewed commit.
+  const tip = headSha(root);
+  assert.equal(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the fix's parent is the reviewed commit");
+  const subject = sh(root, "git", "log", "-1", "--format=%s", tip).trim();
+  assert.match(subject, new RegExp(`^tumwater\\(reviewer\\): Fix ${commit.slice(0, 8)}`));
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "fixed\n", "the repair landed on main");
+  // The reviewed commit's verdict is still recorded before the fix-forward.
+  assert.equal(eventsOfType(root, "review_rejected").length, 1);
+  assert.equal(eventsOfType(root, "review_rejected")[0]!.head, commit);
+  // The entry settles `fixed` naming both shas, and the review-fix ref is gone.
+  const settled = readPostReviews(root);
+  assert.equal(settled.length, 1);
+  assert.equal(settled[0]!.commit, commit);
+  assert.equal(settled[0]!.fixed, tip);
+  assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "the review-fix ref is deleted once the merge settles");
+});
+
+test("a fix that lands on a main which moved under the review records the actually-merged sha", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  // The reviewer advances main (another role's commit lands) while the review is in flight, then
+  // returns its fix: mergeToMain rebases the fix onto the moved tip, so the landed commit is a
+  // different sha than the pre-rebase fix — and `fixed` must name that actually-merged commit
+  // (from the landed merge's `merged` event), not the fix commit the review created.
+  (ctx as { runners: RoleRunner[] }).runners = [
+    {
+      role: "improve",
+      baseRole: "improve",
+      state: freshRunnerState("improve"),
+      runGatePi: async (opts: { cwd: string }) => {
+        fs.writeFileSync(path.join(root, "y.txt"), "other\n");
+        sh(root, "git", "add", "-A");
+        sh(root, "git", "commit", "-m", "another role lands concurrently");
+        fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
+        return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      },
+    } as unknown as RoleRunner,
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  // The fix rebased onto the concurrent commit, not the reviewed commit: main moved under the
+  // review, so the landed sha differs from the pre-rebase fix sha.
+  assert.notEqual(sh(root, "git", "rev-parse", `${tip}^`).trim(), commit, "the fix rebased onto the moved main");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "fixed\n", "the repair landed on main");
+  assert.equal(fs.readFileSync(path.join(root, "y.txt"), "utf8"), "other\n", "the concurrent commit is preserved under the fix");
+  const settled = readPostReviews(root);
+  assert.equal(settled.length, 1);
+  assert.equal(settled[0]!.fixed, tip, "fixed names the actually-rebased landed commit, not the pre-rebase fix");
+  const merged = eventsOfType(root, "merged").slice(-1)[0]!;
+  assert.equal(merged.commit, tip, "the landed merge's event recorded the merged sha");
+});
+
+test("a fix whose landing fails keeps the entry and leaves main unmoved", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  // Dirty the primary checkout's x.txt so the fix's fast-forward is refused: main stays put and
+  // the entry is kept (failure recorded) for the next poll's retry.
+  fs.writeFileSync(path.join(root, "x.txt"), "local\n");
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(headSha(root), commit, "main stays at the reviewed commit");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "local\n");
+  const kept = readPostReviews(root);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]!.fixed, undefined, "no fix is recorded on a failed landing");
+  assert.match(kept[0]!.lastFailure ?? "", /fix did not merge/);
+  assert.ok(eventsOfType(root, "warning").some((e) => String(e.message).includes("could not merge")), "the failed landing warns");
+});
+
+test("a fix whose conflict resolution diverges outside the fix is withheld (recheckResolved retry)", async () => {
+  const { root, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  // The fix edits x.txt, and a concurrent main commit also rewrites x.txt during the review, so
+  // landing the fix rebases onto a conflicting main. The merge conflict resolver then resolves
+  // it with bytes outside the reviewed fix's scope ("sneaky extra" is a line the fix never
+  // added), so mergeReviewerFix's recheckResolved ({"verdict":"retry"}) withholds the landing
+  // and main stays unmoved: a resolution the reviewer never judged must not merge on the
+  // in-lock build check alone (BUGS.md 2026-10-01).
+  let concurrent: string | undefined;
+  let resolverRuns = 0;
+  (ctx as { runners: RoleRunner[] }).runners = [
+    {
+      role: "improve",
+      baseRole: "improve",
+      state: freshRunnerState("improve"),
+      runGatePi: async (opts: { cwd: string }) => {
+        fs.writeFileSync(path.join(root, "x.txt"), "main\n");
+        sh(root, "git", "add", "--", "x.txt");
+        sh(root, "git", "commit", "-m", "main lands a conflicting edit");
+        concurrent = headSha(root);
+        fs.writeFileSync(path.join(opts.cwd, "x.txt"), "fixed\n");
+        return { ok: true, verdictText: "VERDICT: reject\n1. breaks the contract\nFIX: x.txt" };
+      },
+      runMergePi: async (wt: string) => {
+        resolverRuns++;
+        fs.writeFileSync(path.join(wt, "x.txt"), "fixed\nsneaky extra\n");
+        return piRunResult({ finalText: "resolved" });
+      },
+    } as unknown as RoleRunner,
+  ];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(headSha(root), concurrent, "main stays at the concurrent commit — the fix never lands");
+  assert.equal(resolverRuns, 1, "the conflict path ran the resolver exactly once");
+  assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "main\n", "the diverging resolution never reaches main");
+  const kept = readPostReviews(root);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]!.fixed, undefined, "no fix is recorded on a withheld landing");
+  assert.match(kept[0]!.lastFailure ?? "", /fix did not merge: merge_conflict/);
+});
+
+test("a fix whose landing keeps failing is dropped at POST_REVIEW_FAILURE_LIMIT", async () => {
+  const { root, commit, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  fs.writeFileSync(path.join(root, "x.txt"), "local\n"); // every landing is refused fast-forward
+  for (let i = 0; i < POST_REVIEW_FAILURE_LIMIT; i++) {
+    const p = newMergePipeline();
+    drainPostReviews(ctx, p);
+    await p.postReview!.promise;
+  }
+  assert.equal(headSha(root), commit, "main stays at the reviewed commit");
+  const kept = readPostReviews(root);
+  assert.equal(kept.length, 0, "the review is dropped once fix landings hit POST_REVIEW_FAILURE_LIMIT");
+  assert.ok(
+    eventsOfType(root, "warning").some((e) => String(e.message).includes("dropping the post-merge review of")),
+    "the drop warns with the dropped-post-reviews marker",
+  );
+  assert.equal(headSha(root), commit);
+  assert.equal(
+    sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(),
+    "",
+    "the review-fix ref is deleted when a fix is dropped at the limit",
+  );
 });

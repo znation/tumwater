@@ -220,6 +220,24 @@ export function extractCiResult(text: string): CiResult | null {
   return { sha: match[1].toLowerCase(), result: match[2]!.toLowerCase() as "passed" | "failed" };
 }
 
+/** The paths a post-merge review's rejecting reply pairs with its verdict to declare a repair
+ * (Forward never back 1a/6): `FIX: <comma-separated paths>` naming the files the reviewer edited
+ * in the review worktree. Unlike `labeledLine` — whose `\s` can span the newline, so
+ * a bare `FIX:` with no content of its own would borrow the next line and read as paths — this
+ * regex anchors its content to ONE line: the label is anchored at line start (a mid-sentence
+ * mention is ignored), the content is captured on the same line, and each comma-separated path is
+ * whitespace-trimmed. The paths are required — a bare `FIX:` (or a reply truncated so the line
+ * carries none) records nothing and the review stays a plain reject, the same fail-closed lesson
+ * as qa's FLOW line (BUGS.md 2026-09-23). null when no usable one-line list exists. */
+export function fixLine(text: string): string[] | null {
+  const match = /^[ \t]*FIX:[ \t]*(.+?)[ \t]*$/m.exec(text);
+  if (!match) return null;
+  const paths = match[1]!
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  return paths.length > 0 ? paths : null;
+}
 /** The result of one `feedback` run's filing: which GitHub issue it filed, and its title. */
 export interface FiledResult {
   issue: number;

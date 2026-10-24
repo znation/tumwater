@@ -14,20 +14,24 @@ import { plural } from "../text/phrases.js";
 import { humanAgo } from "../text/datetime.js";
 import type { PostReview } from "./post-merge-review.js";
 
-/** The one state every observer surface narrows on: `rejected` when the reviewer turned the
- * commit back (empty `rejected` array still counts), `failing` when the review runs keep ending
- * without a verdict (`failures` positive), else `waiting`. The precedence matches what
- * postReviewStatusLabel already printed — an entry can never be both — so the status label and
- * `tumwater reviews --status` share this one definition and cannot drift. */
+/** The one state every observer surface narrows on: `fixed` when the repair already merged
+ * (the terminal Forward-never-back 1a/6 record — naming both shas, it is not pending anything),
+ * `rejected` when the reviewer turned the commit back (empty `rejected` array still counts),
+ * `failing` when the review runs keep ending without a verdict (`failures` positive), else
+ * `waiting`. The precedence matches what postReviewStatusLabel already printed — an entry can
+ * never be both — so the status label and `tumwater reviews --status` share this one definition
+ * and cannot drift. */
 export function postReviewState(entry: PostReview): PostReviewState {
+  if (entry.fixed !== undefined) return "fixed";
   if (entry.rejected !== undefined) return "rejected";
   if (typeof entry.failures === "number" && entry.failures > 0) return "failing";
   return "waiting";
 }
 
 /** The states `tumwater reviews --status` accepts, in the order the filter's error message
- * lists them. `postReviewState` is the definition; this only names the vocabulary. */
-export const POST_REVIEW_STATES = ["waiting", "failing", "rejected"] as const;
+ * lists them (the terminal `fixed` last). `postReviewState` is the definition; this only names
+ * the vocabulary. */
+export const POST_REVIEW_STATES = ["waiting", "failing", "rejected", "fixed"] as const;
 export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
 
 /** The bracketed status suffix one post-merge review entry carries on every observer surface
@@ -41,6 +45,8 @@ export type PostReviewState = (typeof POST_REVIEW_STATES)[number];
  * CLI, the dashboard and the TUI share one status wording and cannot drift. */
 export function postReviewStatusLabel(entry: PostReview): string {
   switch (postReviewState(entry)) {
+    case "fixed":
+      return `[fixed — the repair ${shortSha(entry.fixed!)} already merged on main]`;
     case "rejected":
       return `[rejected — waiting to revert: ${entry.rejected!.map((r) => squash(r, 60)).join("; ")}]`;
     case "failing": {

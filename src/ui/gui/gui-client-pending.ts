@@ -237,22 +237,26 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // --status' names them — the browser twin of POST_REVIEW_STATES
   // (src/review/post-merge-review-render.ts), so the page and the CLI cannot drift on what a
   // state means. Hand-kept because the inline script cannot import the server renderer.
-  const POST_REVIEW_STATE_ORDER = ["waiting", "failing", "rejected"];
+  const POST_REVIEW_STATE_ORDER = ["waiting", "failing", "rejected", "fixed"];
   // One post-merge review entry's state — the browser twin of the server's 'postReviewState'
-  // (src/review/post-merge-review-render.ts), literal in its 'rejected' branch: 'rejected'
-  // when 'rejected' is set (an empty array still counts; statusPayload's entries come from
-  // readPostReviews, which only ever stores an array or leaves it off), else 'failing' when
-  // the review runs keep ending without a verdict ('failures' positive), else 'waiting'. The
-  // precedence matches postReviewStatusLabel and 'tumwater reviews --status'; pinned against
-  // the server predicate by test so the browser and the server cannot disagree on what
-  // rejected/failing/waiting mean.
+  // (src/review/post-merge-review-render.ts), literal in its 'rejected' branch: 'fixed' when
+  // the repair already merged (the terminal Forward-never-back 1a/6 record — naming both shas,
+  // it is not pending anything), 'rejected' when 'rejected' is set (an empty array still
+  // counts; statusPayload's entries come from readPostReviews, which only ever stores an array
+  // or leaves it off), else 'failing' when the review runs keep ending without a verdict
+  // ('failures' positive), else 'waiting'. The precedence matches postReviewStatusLabel and
+  // 'tumwater reviews --status'; pinned against the server predicate by test so the browser and
+  // the server cannot disagree on what fixed/rejected/failing/waiting mean.
   function postReviewState(e) {
+    if (e && e.fixed !== undefined) return "fixed";
     if (e && e.rejected !== undefined) return "rejected";
     if (e && typeof e.failures === "number" && e.failures > 0) return "failing";
     return "waiting";
   }
   function postReviewStatusLabel(e) {
     switch (postReviewState(e)) {
+      case "fixed":
+        return "[fixed — the repair " + shortSha(e.fixed) + " already merged on main]";
       case "rejected":
         return "[rejected — waiting to revert: " + e.rejected.map((r) => squashText(r, 60)).join("; ") + "]";
       case "failing":
@@ -290,11 +294,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
         age +
         " · " + esc(e.summary || "—") +
         (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
-      // A two-click Accept on every well-formed entry not waiting on its revert (the server
-      // refuses a rejected entry, so it renders no button): armed by the first click, fired by
-      // the second within 5 s (the confirmSlot guard), so a stray click cannot accept an entry
-      // unreviewed. Threaded the way pendingQueueHtml threads cancelArmedSha.
-      if (e && !Array.isArray(e.rejected) && typeof e.commit === "string") {
+      // A two-click Accept on every well-formed entry not waiting on its revert and not already
+      // settled fixed (the server refuses both, so it renders no button): armed by the first
+      // click, fired by the second within 5 s (the confirmSlot guard), so a stray click cannot
+      // accept an entry unreviewed. Threaded the way pendingQueueHtml threads cancelArmedSha.
+      if (e && !Array.isArray(e.rejected) && e.fixed === undefined && typeof e.commit === "string") {
         line += "<button type='button' class='btn btn-sm' data-accept='" + esc(e.commit) + "'>" + (armed === e.commit ? "Confirm accept" : "Accept") + "</button>";
       }
       return line;

@@ -18,18 +18,22 @@ import { shortSha } from "../text/format.js";
 export type AcceptPostReviewOutcome =
   | { status: "accepted"; role: string; commit: string; summary: string }
   | { status: "out-of-range"; depth: number }
-  | { status: "rejected"; commit: string };
+  | { status: "rejected"; commit: string }
+  | { status: "settled"; commit: string };
 
 /** Remove one readable entry the operator accepts unreviewed: refuse it (writing nothing) when
  * it carries `rejected` — that entry is waiting on its revert, and removing it would skip the
- * revert (the revert must run first, then the revision can be reviewed) — otherwise settle it
- * with no verdict (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
+ * revert (the revert must run first, then the revision can be reviewed) — or when it carries
+ * `fixed` — the repair already merged, so accepting it unreviewed is meaningless and the false
+ * "accepted unreviewed" warning would mislead — otherwise settle it with no verdict
+ * (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
  * log one `warning` under the entry's role, and return the `accepted` outcome naming what was
  * retired. The single removal both `acceptPostReview` (by position) and `acceptPostReviewBySha`
  * (by sha) share, so the CLI and the dashboard's post-review-accept cannot drift on what
  * accepting means. */
 function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewOutcome {
   if (entry.rejected) return { status: "rejected", commit: entry.commit };
+  if (entry.fixed !== undefined) return { status: "settled", commit: entry.commit };
   settlePostReview(root, entry.commit, null);
   const message = `post-merge review of ${shortSha(entry.commit)} accepted unreviewed at the operator's request — the commit stays on main unreviewed`; // vocabulary-ok: the accepted-unreviewed wording those reasons it is the operator's choice
   warnEventBestEffort(root, entry.role, message);

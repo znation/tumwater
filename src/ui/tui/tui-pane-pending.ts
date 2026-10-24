@@ -516,6 +516,10 @@ export function createPendingPane(session: TuiPaneSession) {
             session.flashMessage(`review #${review.position} is rejected and waiting on its revert — let the revert run, then review the revision`);
             refresh();
             session.requestRender();
+          } else if (outcome.status === "settled") {
+            session.flashMessage(`review #${review.position} already merged its fix on main — nothing to accept`);
+            refresh();
+            session.requestRender();
           } else {
             session.flashMessage("the review queue changed — try again");
             refresh();

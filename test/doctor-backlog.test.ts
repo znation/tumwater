@@ -1240,6 +1240,7 @@ test("atRiskPostReviews and atRiskPostReviewsPhrase preserve order, exclude unde
       { commit: "3".repeat(40), role: "improve", summary: "b" },
       { commit: "4".repeat(40), role: "clean", summary: "c", failures: POST_REVIEW_AT_RISK_FAILURES },
       { commit: "5".repeat(40), role: "feature", summary: "d", failures: POST_REVIEW_AT_RISK_FAILURES, rejected: ["no"] },
+      { commit: "6".repeat(40), role: "clean", summary: "e", failures: POST_REVIEW_AT_RISK_FAILURES, fixed: "7".repeat(40) },
     ],
   });
   const rows = atRiskPostReviews(root);
