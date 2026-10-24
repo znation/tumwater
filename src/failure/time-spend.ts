@@ -61,8 +61,9 @@ export interface TimeSpendRow {
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
  * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
  * refusal summary (the deliberate objection that blocks the entry), the shared no-text
- * placeholder for a merge failure, a reverted cause's revert's first failing test, or ""
- * for a no_change cause. */
+ * placeholder for a merge failure, a reverted cause's revert's first failing test (or, when
+ * the revert names no failing test, "post-merge review rejection" for a post-review revert
+ * and "main's check failed" for a red-main one), or "" for a no_change cause. */
 export interface LossCause {
   kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused" | "reverted";
   roles: string[]; // unique, sorted
@@ -362,14 +363,24 @@ export function timeAndSpend(runEvents: HarnessEvent[], allEvents: HarnessEvent[
       // separate loss lens. The join is revertedOf's (src/run/run-detail-data.ts): the revert's
       // runner is this role and its commit is the run's LANDED `merged` sha — not the pin, which
       // a pre-landing rebase moved — so a rebased landing is still priced, exactly as a rebased
-      // rejection is (BUGS.md 2026-10-10). The example is that revert's first failing test.
+      // rejection is (BUGS.md 2026-10-10). The example is that revert's first failing test, or its
+      // cause (post-merge review rejection | main's check failed) when it names none.
       const mergedSha = mergedShaOf(role, mergedByRunner, resolvedOutcome.outcome, textOr(resolvedOutcome.outcome.commit, resolvedOutcome.sha));
       const revertedEv = revertedByKey.get(`${role}\u0000${mergedSha}`);
       if (revertedEv !== undefined) {
         key = `reverted\u0000${role}`;
         kind = "reverted";
         const tests = Array.isArray(revertedEv.failingTests) ? (revertedEv.failingTests as string[]) : [];
-        example = tests[0] !== undefined ? truncateExample(tests[0]) : "";
+        // An absent or unknown reason reads as main-red, the events.ts contract. A post-review
+        // revert records the reviewer's reasons, not a failing test, so its empty failingTests
+        // still names the cause instead of leaving the example blank (INV-C3).
+        const revertedReason = revertedEv.reason === "post-review" ? "post-review" : "main-red";
+        example =
+          tests[0] !== undefined
+            ? truncateExample(tests[0])
+            : revertedReason === "post-review"
+              ? "post-merge review rejection"
+              : "main's check failed";
       }
     }
     if (key === null) continue;

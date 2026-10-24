@@ -371,3 +371,35 @@ test("a main-reverted merge prices its authoring span as a reverted loss cause",
   const md = renderFailureMarkdown(data);
   assert.match(md, /reverted off main on feature — a\.test\.ts flaked/);
 });
+
+test("a post-review revert names its cause instead of leaving a blank example", () => {
+  // A `main_revert` whose `failingTests` is empty rendered its `reverted` cause with a blank
+  // example — indistinguishable from a red-main revert that named no test, and a violation of
+  // the LossCause contract that the example names why. The cause now names post-merge review
+  // rejection when the revert's reason is post-review, and main's check failed for a red-main
+  // one, while an absent reason still reads as main-red.
+  const root = tmpdir();
+  const head = (c: string) => c.repeat(40);
+  writeEvents(root, [
+    // Role 1: a post-review revert (failingTests empty, reason post-review).
+    { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("a"), summary: "feature change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 11), loop: "feature", type: "merged", commit: head("a"), summary: "feature change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("a"), result: "changed", durationMs: 3_600_000 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 13), source: "tumwater", type: "main_revert", commit: head("a"), revert: head("r"), runner: "feature", reason: "post-review", failingTests: [] },
+    // Role 2: a red-main revert with no failing test.
+    { ts: at(0, 14), loop: "bugfix", type: "merge_queued", commit: head("b"), summary: "bugfix change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 15), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 16), loop: "bugfix", type: "merged", commit: head("b"), summary: "bugfix change" }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 17), loop: "bugfix", type: "merge_done", commit: head("b"), result: "changed", durationMs: 3_600_000 }, // retired-name-ok: legacy event field in a fixture
+    { ts: at(0, 18), source: "tumwater", type: "main_revert", commit: head("b"), revert: head("s"), runner: "bugfix", reason: "main-red", failingTests: [] },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const f = data.lossCauses.find((c) => c.kind === "reverted" && c.roles.includes("feature"));
+  const b = data.lossCauses.find((c) => c.kind === "reverted" && c.roles.includes("bugfix"));
+  assert.equal(f?.example, "post-merge review rejection", "a post-review revert names its cause, not a blank example");
+  assert.equal(b?.example, "main's check failed", "a red-main revert with no failing test names main's check failed");
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /reverted off main on feature — post-merge review rejection/);
+  assert.match(md, /reverted off main on bugfix — main's check failed/);
+});

@@ -264,6 +264,8 @@ names (by its `runner` and `commit`) as a `reverted` loss cause carrying the run
 span and the revert's first failing test, while the role × outcome table keeps that run in the
 `merged` column — the ranking is the separate "what did not survive" lens, so the cause is
 additive, exactly as a review-rejected span is both error-class in the table and its own loss. A
+`main_revert` whose `failingTests` is empty prices its `reverted` cause as `post-merge review
+rejection` when its `reason` is `post-review` and `main's check failed` otherwise. A
 `main_revert` naming a different commit or runner adds no cause, and a revert whose culprit run
 is outside the window adds none (no authoring span is known).
 
