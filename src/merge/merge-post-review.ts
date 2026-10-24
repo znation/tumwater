@@ -14,7 +14,9 @@ import {
   type PostReview,
 } from "../review/post-merge-review.js";
 import { shortSha } from "../text/format.js";
-import { errorMessage } from "../text/text.js";
+import { formatDate } from "../text/datetime.js";
+import { collapseWhitespace, errorMessage } from "../text/text.js";
+import { fileBugsOnMain } from "../backlog/backlog-archive.js";
 import { abortOnShutdown, acquireUnlessAborted, guardMergeTask, type InFlightMerge, type MergePipeline, type MergePipelineContext } from "./merge-pipeline.js";
 import { resolveWaitStage } from "./merge-slot.js";
 import { mergeToMain } from "./merge-to-main.js";
@@ -66,6 +68,7 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
         warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);
         if (failures >= POST_REVIEW_FAILURE_LIMIT) {
           warnEventBestEffort(root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed runs; it stays on main unreviewed`);
+          await fileDroppedReview(ctx, entry, outcome.detail);
           settlePostReview(root, entry.commit, null);
         } else settlePostReview(root, entry.commit, { ...entry, failures, lastFailure: outcome.detail });
       }
@@ -78,6 +81,36 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
   })();
   task.promise = guardMergeTask(root, `post-merge review of ${shortSha(entry.commit)}`, run);
   return task;
+}
+
+/** File a post-merge review that is being dropped at POST_REVIEW_FAILURE_LIMIT (its commit stays
+ * on main, so it becomes ordinary backlog work a role can pick up) as one BUGS.md `## Open`
+ * entry in a best-effort `tumwater(operator):` commit. A skipped filing (off-base checkout or a
+ * BUGS.md with uncommitted changes) or a throw logs one warning and returns, so a filing problem
+ * never prevents the entry from being dropped and never throws out of the drain. */
+async function fileDroppedReview(ctx: MergePipelineContext, entry: PostReview, failure: string): Promise<void> {
+  const root = ctx.root;
+  try {
+    const outcome = await fileBugsOnMain(
+      root,
+      [
+        {
+          title: `post-merge review of ${shortSha(entry.commit)} never reached a verdict (found by the review role ${formatDate(new Date())})`,
+          // The failure text is untrusted and can carry newlines (a backend/stderr trace) or a
+          // `## `/code-fence line that would make appendBugEntryLocked call fail() and exit the
+          // whole drain; folding it to one line keeps the body structurally sound, so a hostile
+          // failure skips the filing via the ordinary throw path instead of killing the process.
+          body: collapseWhitespace(`The post-merge review of commit \`${entry.commit}\` (${entry.summary}) never reached a verdict: ${failure}. It stays on main as ordinary unreviewed backlog work.`),
+        },
+      ],
+      () => "File an unreviewed post-merge commit in BUGS.md",
+    );
+    if (outcome.status === "skipped") {
+      warnEventBestEffort(root, entry.role, `could not file the dropped post-merge review of ${shortSha(entry.commit)} in BUGS.md (${outcome.reason})`);
+    }
+  } catch (err) {
+    warnEventBestEffort(root, entry.role, `could not file the dropped post-merge review of ${shortSha(entry.commit)} in BUGS.md: ${errorMessage(err)}`);
+  }
 }
 
 /** Land a reviewer's fix commit on main through the ordinary change path — mergeToMain, whose
@@ -177,6 +210,7 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
   if (failures >= POST_REVIEW_FAILURE_LIMIT) {
     warnEventBestEffort(ctx.root, entry.role, `dropping the post-merge review of ${shortSha(entry.commit)} after ${failures} failed fix merges; the fix stays unreviewed`);
     await deleteRef(ctx.root, reviewFixRef(entry.commit)); // the merge gave up on the fix; the ref must not pin it forever
+    await fileDroppedReview(ctx, entry, `fix did not merge: ${result}`);
     settlePostReview(ctx.root, entry.commit, null);
     return;
   }

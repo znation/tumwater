@@ -12,6 +12,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { freshRunnerState } from "../src/runner/runner-state.js";
 import type { RoleRunner } from "../src/runner/runner.js";
 import { postReviewPath, reviewFixRef } from "../src/paths.js";
+import { shortSha } from "../src/text/format.js";
 import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
@@ -20,7 +21,7 @@ import { piRanMarker, piRunResult, reviewerStub, withPi } from "./fakes/fake-pi.
 import { APPROVE, drained, entry, makePipeline, pinnedCommit, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
-import { setRef } from "../src/git/git.js";
+import { isMergedInto, setRef } from "../src/git/git.js";
 import { sleep } from "./helpers/wait.js";
 import { UNSTARTABLE_GIT_ARG } from "./helpers/git-faults.js";
 
@@ -481,6 +482,37 @@ test("a verdict-less review past the failure limit drops the entry, warns, and s
       .some((m) => m.includes("stays on main unreviewed")),
     "the drop warns that the commit stays on main unreviewed",
   );
+  const bugs = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(bugs.split("### post-merge review of").length - 1, 1, "exactly one BUGS.md Open entry is filed for the dropped review");
+  assert.match(bugs, new RegExp(`post-merge review of ${shortSha(commit)} never reached a verdict`), "the filed entry names the dropped commit's short sha");
+  assert.match(bugs, /more/, "the filed entry's body names the reviewed commit's summary");
+});
+
+test("a dirty BUGS.md skips the dropped-review filing but still drops the review", async () => {
+  // A filing problem (here a BUGS.md with uncommitted changes) never prevents the entry from
+  // being dropped and never throws out of the drain.
+  const { root, ctx } = setup(""); // a reviewer that runs but returns no verdict
+  fs.appendFileSync(path.join(root, "x.txt"), "more\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "more");
+  const commit = headSha(root);
+  const seeded = "# Bugs\n\n## Open\n\n_None yet._\n\n## Fixed\n";
+  fs.writeFileSync(path.join(root, "BUGS.md"), seeded);
+  sh(root, "git", "add", "--", "BUGS.md");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.appendFileSync(path.join(root, "BUGS.md"), "\nstray edit\n"); // BUGS.md is now dirty
+  const dirty = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "improve", summary: "more", failures: POST_REVIEW_FAILURE_LIMIT - 1 }] }),
+  );
+  const commitsBefore = sh(root, "git", "rev-list", "--count", "HEAD");
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(readPostReviews(root).length, 0, "the entry is dropped despite the skipped filing");
+  assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commitsBefore, "no filing commit was made");
+  assert.equal(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), dirty, "the dirty BUGS.md is left untouched");
 });
 
 test("postMergeRejectionCounts groups a day's post-merge rejections and ignores pre-merge ones", () => {
@@ -714,17 +746,21 @@ test("a fix whose landing keeps failing is dropped at POST_REVIEW_FAILURE_LIMIT"
     drainPostReviews(ctx, p);
     await p.postReview!.promise;
   }
-  assert.equal(headSha(root), commit, "main stays at the reviewed commit");
+  assert.ok(await isMergedInto(root, commit, "main"), "the reviewed commit stays on main");
   const kept = readPostReviews(root);
   assert.equal(kept.length, 0, "the review is dropped once fix landings hit POST_REVIEW_FAILURE_LIMIT");
   assert.ok(
     eventsOfType(root, "warning").some((e) => String(e.message).includes("dropping the post-merge review of")),
     "the drop warns with the dropped-post-reviews marker",
   );
-  assert.equal(headSha(root), commit);
+  assert.ok(await isMergedInto(root, commit, "main"), "the reviewed commit stays on main after the BUGS.md filing");
   assert.equal(
     sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(),
     "",
     "the review-fix ref is deleted when a fix is dropped at the limit",
   );
+  const bugs = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(bugs.split("### post-merge review of").length - 1, 1, "exactly one BUGS.md Open entry is filed for the dropped review");
+  assert.match(bugs, new RegExp(`post-merge review of ${shortSha(commit)} never reached a verdict`), "the filed entry names the dropped commit's short sha");
+  assert.match(bugs, /add x/, "the filed entry's body names the reviewed commit's summary");
 });

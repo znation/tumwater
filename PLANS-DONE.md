@@ -5,6 +5,29 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Forward, never back, part 3a/6: a post-merge review dropped at its failure cap files its commit as backlog work (planned 2026-10-24 by the plan role, split 2026-10-24 by the plan role from the held part 3/6; requires part 1/6 landed, since the drop sites and the entries they leave are part 1/6's; independent of part 3b/6 and shares no file with it; touches src/merge/merge-post-review.ts src/backlog/backlog-archive.ts test/post-merge-review.test.ts test/backlog-archive.test.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** A post-merge review that never reaches a verdict disappears today: in `startPostReview` (src/merge/merge-post-review.ts) a third failed run warns "stays on main unreviewed" and `settlePostReview(root, entry.commit, null)` drops the entry, and the failed-fix-merge cap in `mergeReviewerFix` drops it the same way. The commit stays on main with nothing but an event line naming it. This part leaves the commit on main *and* files one BUGS.md `## Open` entry naming it, so an unreviewed commit becomes ordinary backlog work a role can pick up.
+
+**Approach.**
+- src/backlog/backlog-archive.ts: extract the body of `fileQuarantineBugsOnMain` — the `withLock(mergeLockDir(root), …)` + `withPrimaryWorktreeLockAsync` wrapper, the primary-on-base-branch check, the `git status --porcelain -- BUGS.md` cleanliness check, the read and `restoreBugs`/`writeTextAtomic` rollback, the `appendBugEntryLocked` appends, and the `tumwater(operator):` `git commit` — into an exported `fileBugsOnMain(root, entries: readonly { title: string; body: string }[], subject: string, opts?: { lockTimeoutMs?: number })`. `fileQuarantineBugsOnMain` becomes a thin caller that maps each `{ test, tail }` to its `quarantineTitlePrefix(test) + date + ")"` title and its body and passes the existing "File N quarantined flaky tests in BUGS.md" subject, so its behavior and tests stay as they are.
+- src/merge/merge-post-review.ts: add a best-effort `fileDroppedReview(root, entry, failure)`: build one entry (title `` `post-merge review of ${shortSha(entry.commit)} never reached a verdict (found by the review role ${formatDate(new Date())})` ``, body naming `entry.summary` and the `failure` text) and call `fileBugsOnMain(root, [entry], "File an unreviewed post-merge commit in BUGS.md")`; on `{ status: "skipped" }` or a throw, log one `warnEventBestEffort(root, entry.role, …)` and return, so a filing problem never stops the drop. Import `formatDate` from ../text/datetime.js and `fileBugsOnMain` from ../backlog/backlog-archive.js.
+- Call `await fileDroppedReview(...)` before the two `settlePostReview(root, entry.commit, null)` drop sites: in `startPostReview` when `failures >= POST_REVIEW_FAILURE_LIMIT`, passing `outcome.detail`; in `mergeReviewerFix` when `failures >= POST_REVIEW_FAILURE_LIMIT`, passing `` `fix did not merge: ${result}` ``. File before settling, keep the existing warnings and the `deleteRef(reviewFixRef(...))` calls, and leave the `exhausted` (REVISION_BACKSTOP) arm alone — it records its own surviving findings.
+
+**Files touched.** src/merge/merge-post-review.ts src/backlog/backlog-archive.ts test/post-merge-review.test.ts test/backlog-archive.test.ts
+
+**Acceptance criteria.**
+- A post-merge review dropped at `POST_REVIEW_FAILURE_LIMIT`, on either the verdict-less path or the failed-fix-merge path, leaves the commit on main, drops the entry, and leaves exactly one BUGS.md `## Open` entry whose heading names the commit's short sha and whose body names its summary and the failure.
+- `fileQuarantineBugsOnMain`'s behavior is unchanged: it still files one entry per new flaky test, skips on a dirty BUGS.md or an off-base checkout, restores BUGS.md on a failed append or commit, and commits with its existing subject.
+- A filing that is skipped (off-base checkout or a BUGS.md with uncommitted changes) or throws never prevents the entry from being dropped and never throws out of the drain.
+- `npm run test:gate` passes.
+
+**Tests.**
+- test/post-merge-review.test.ts: extend "a verdict-less review past the failure limit drops the entry, warns, and starts no revert" to assert exactly one BUGS.md `## Open` entry names the dropped commit's short sha and its summary; extend "a fix whose landing keeps failing is dropped at POST_REVIEW_FAILURE_LIMIT" the same way; add a case where BUGS.md is uncommitted, so the filing skips and the entry is still dropped.
+- test/backlog-archive.test.ts: keep the `fileQuarantineBugsOnMain` cases green and add one `fileBugsOnMain` case with an arbitrary title and body (the extracted helper files and commits it).
+
 ### Every commit is verified on main, part 3g/3: every merged commit queues a post-landing review, whatever its role (planned 2026-10-24 by the plan role, split from the too-large part 3c/3; independent of the other parts in files; touches src/merge/merge-drain.ts test/merge-drain.test.ts test/post-merge-review.test.ts) — done 2026-10-24 by the feature role
 
 **Previously held 3**

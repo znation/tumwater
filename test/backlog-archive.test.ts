@@ -7,6 +7,7 @@ import {
   archiveFinishedOnMain,
   archiveFinishedText,
   archiveNewFinishedEntries,
+  fileBugsOnMain,
   fileQuarantineBugsOnMain,
   archiveTemplate,
   liveFinishedHistory,
@@ -479,6 +480,42 @@ test("fileQuarantineBugsOnMain skips and leaves BUGS.md in place when BUGS.md ca
   assert.equal(sh(root, "git", "status", "--porcelain"), "");
   assert.equal(sh(root, "git", "rev-list", "--count", "HEAD"), commits);
   assert.equal((await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }])).status, "filed");
+});
+
+test("fileBugsOnMain files an arbitrary entry and commits it under the operator subject", async () => {
+  const root = makeRepo();
+  const seeded = "# Bugs\n\n## Open\n\n## Fixed\n";
+  seedCommit(root, "BUGS.md", seeded, "seed");
+  ignoreInRepo(root, ".tumwater/");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const outcome = await fileBugsOnMain(
+    root,
+    [{ title: "an arbitrary heading", body: "an arbitrary body" }],
+    () => "File an arbitrary entry",
+  );
+  assert.equal(outcome.status, "filed");
+  assert.deepEqual(outcome.status === "filed" ? outcome.headings : [], ["an arbitrary heading"]);
+  const text = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.match(text, /### an arbitrary heading/);
+  assert.match(text, /an arbitrary body/);
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), "tumwater(operator): File an arbitrary entry");
+  assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), Number(commits) + 1);
+  assert.equal(sh(root, "git", "status", "--porcelain"), "");
+});
+
+test("a mixed already-open/new quarantine batch files only the new entries and sizes the subject by them", async () => {
+  const root = makeRepo();
+  const seeded =
+    "# Bugs\n\n## Open\n\n### `flaky one` failed, then passed on the same tree (quarantined by tumwater 2026-10-24)\n\nAlready here.\n\n## Fixed\n";
+  seedCommit(root, "BUGS.md", seeded, "seed");
+  ignoreInRepo(root, ".tumwater/");
+  const commits = sh(root, "git", "rev-list", "--count", "HEAD");
+  const filed = await fileQuarantineBugsOnMain(root, [{ test: "flaky one" }, { test: "flaky two" }]);
+  assert.equal(filed.status, "filed");
+  assert.equal(sh(root, "git", "log", "-1", "--format=%s"), "tumwater(operator): File 1 quarantined flaky test in BUGS.md");
+  const text = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
+  assert.equal(text.split("(quarantined by tumwater").length - 1, 2, "flaky one stays as its single existing entry; only flaky two is appended");
+  assert.equal(Number(sh(root, "git", "rev-list", "--count", "HEAD")), Number(commits) + 1);
 });
 
 test("archiveFinishedOnMain skips and leaves the archive intact when an archive file cannot be read", async () => {
