@@ -72,8 +72,7 @@ and `tumwater logs -f` check it, `tumwater brief --file <path>` replaces the bri
 `tumwater bug` file backlog entries, `tumwater revert <sha>` undoes one merged change on main,
 and `tumwater pause`, `resume`, `wake`, and `stop` control the roles. `tumwater doctor` audits the team and `tumwater report` shows usage and cost. `gui
 --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
-so pair it with `--token <secret>` — the dashboard carries the token by environment
-(`TUMWATER_GUI_TOKEN`), never on its command line, which any local user can read via `ps`.
+so pair it with `--token <secret>`.
 
 `tumwater prompt --attach <image>` gives a role an image to read at its next run. When a role's
 model cannot read images, the command refuses the attachment up front (naming the fix) unless

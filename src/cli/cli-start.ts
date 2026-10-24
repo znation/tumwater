@@ -332,19 +332,12 @@ export function armScheduledStopWatch(root: string, onStop: () => void, quiet = 
 export function guiChildPlan(runArgs: string[]): {
   spawnGui: boolean;
   spawnTui: boolean;
-  /** The dashboard flags the child gets (`["--port", N]` then `["--all-interfaces"]` when
-   * given), threaded into spawnGuiChild so a one-command `run --gui` serves the dashboard
-   * exactly as a direct `tumwater gui` invocation would. The port is parsed here (parsePortFlag
-   * has already run its shape gate on the dispatcher, so this is the same value re-typed for
-   * the child). The gate token is deliberately NOT in guiArgs: the secret must never ride the
-   * child's argv (world-readable via ps) — it travels in `guiToken` to the child's env instead
-   * (see superviseDashboard), which a reexec also inherits without re-writing the secret to a
-   * fresh command line. */
+  /** The dashboard flags the child gets (`["--port", N]` then `["--all-interfaces"]` then
+   * `["--token", <secret>]` when given), threaded into spawnGuiChild so a one-command
+   * `run --gui` serves the dashboard exactly as a direct `tumwater gui` invocation would. The
+   * port is parsed here (parsePortFlag has already run its shape gate on the dispatcher, so
+   * this is the same value re-typed for the child). */
   guiArgs: string[];
-  /** The gate token, when the operator gave one, for the dashboard child's env — never argv:
-   * it is threaded into the child's env (GUI_TOKEN_ENV) so `cmdGui` reads it from the
-   * environment rather than argv, which would be visible to any local user in ps. */
-  guiToken: string | undefined;
   orchestratorArgs: string[];
   /** The stdio the supervised children (the run child and, when `--gui`, the dashboard child)
    * get: `"inherit"` on a plain `run`/`run --gui`, but silent when a TUI is hosted — the
@@ -378,16 +371,11 @@ export function guiChildPlan(runArgs: string[]): {
   const guiArgs: string[] = [];
   if (port !== null) guiArgs.push("--port", String(port));
   if (runArgs.includes("--all-interfaces")) guiArgs.push("--all-interfaces");
-  // The token is returned separately (guiToken) and reaches the child through its env, never
-  // guiArgs/argv: a secret on the command line is world-readable (/proc/<pid>/cmdline) and is
-  // re-run verbatim by a self-reload onto each new generation. The skip set still drops the
-  // operator's --token pair from the orchestrator generation (its cmdStart would refuse a
-  // dashboard flag without --gui, and a self-redeploy hand-off must never forward it).
+  if (tokenRaw !== undefined) guiArgs.push("--token", tokenRaw);
   return {
     spawnGui: runArgs.includes("--gui"),
     spawnTui: runArgs.includes("--tui"),
     guiArgs,
-    guiToken: tokenRaw,
     orchestratorArgs: runArgs.filter(
       (arg, i) => arg !== "--gui" && arg !== "--tui" && arg !== "--all-interfaces" && !skip.has(i),
     ),
@@ -401,22 +389,11 @@ export function guiChildPlan(runArgs: string[]): {
  * redeploy and exits on its own if this supervisor dies outright (SIGKILL, a crash) — a killed
  * supervisor never leaves a dashboard holding its port. Any other dashboard exit (a failed bind
  * prints its own message and exits) ends this loop and leaves the team running. */
-async function superviseDashboard(
-  signal: AbortSignal,
-  guiToken: string | undefined,
-  stdio: StdioOptions = "inherit",
-  guiArgs: string[] = [],
-): Promise<void> {
+async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "inherit", guiArgs: string[] = []): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
-  const { GUI_TOKEN_ENV } = await import("../gui/gui-command.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
-  // The gate token rides in the child's env, not its argv: /proc/<pid>/cmdline is world-readable,
-  // and the child's self-reload (reexecSelf, which propagates env via childEnv) would otherwise
-  // re-run the secret onto each fresh generation.
-  const env: NodeJS.ProcessEnv = { [DASHBOARD_CHILD_ENV]: String(process.pid) };
-  if (guiToken !== undefined) env[GUI_TOKEN_ENV] = guiToken;
   for (;;) {
-    const exit = await spawnGuiChild(signal, env, stdio, guiArgs);
+    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) }, stdio, guiArgs);
     if (signal.aborted || exit.code !== RESTART_EXIT_CODE) return;
   }
 }
@@ -431,14 +408,7 @@ async function superviseStartCommand(root: string, runArgs: string[], branchArg:
   // The supervisor machinery loads lazily, like cmdStart's orchestrator import above: a command
   // that never boots the team never compiles it.
   const { RUN_WINDOW_START_ENV, teamDownEvent, spawnStartChild, superviseStart } = await import("../process/supervisor.js");
-  const { stripTokenFromArgv } = await import("../gui/gui-command.js");
   const plan = guiChildPlan(runArgs);
-  // The long-lived supervisor typed the secret on its own command line (`start --gui --token`),
-  // so it carries `--token <secret>` in ITS argv for its whole lifetime — ps-readable by any
-  // local user even though the dashboard child no longer does. Drop the pair from this
-  // process's argv now that guiChildPlan has the token: the dashboard child still receives it
-  // (via GUI_TOKEN_ENV), and the secret is gone from the supervisor's process table.
-  if (plan.guiToken !== undefined) stripTokenFromArgv(process.argv);
   // A TUI owns the terminal, so it can only be hosted when this supervisor's own stdin and
   // stdout are a TTY — the same guard runTui enforces. Check before booting a team a TUI
   // could never drive, surfacing the actionable tuiTerminalError instead of letting runTui's
@@ -484,7 +454,7 @@ async function superviseStartCommand(root: string, runArgs: string[], branchArg:
         guiController.abort();
       })
     : Promise.resolve();
-  const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.guiToken, plan.childStdio, plan.guiArgs) : Promise.resolve();
+  const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.childStdio, plan.guiArgs) : Promise.resolve();
   const code = await superviseStart(
     {
       spawnChild: (signal) =>
