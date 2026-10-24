@@ -7,6 +7,7 @@
 import { humanAgo, humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
+import { filterKeepPositions } from "../collections.js";
 import { plural } from "../text/phrases.js";
 import type { MergeEntry, MergeQueueView } from "./merge-queue.js";
 import { mergeChanges, MERGE_STAGE_LABELS, type MergeInFlight } from "./merge-slot.js";
@@ -64,13 +65,8 @@ export function scopeMergeQueue(
   roles: readonly string[],
   keep: (role: string) => boolean,
 ): { view: MergeQueueView; scope: { roles: readonly string[]; positions: number[]; total: number } } {
-  const positions: number[] = [];
-  const entries = whole.entries.filter((e, i) => {
-    const kept = keep(e.role);
-    if (kept) positions.push(i + 1);
-    return kept;
-  });
-  return { view: { ...whole, entries }, scope: { roles, positions, total: whole.entries.length } };
+  const { kept, positions } = filterKeepPositions(whole.entries, (e) => keep(e.role));
+  return { view: { ...whole, entries: kept }, scope: { roles, positions, total: whole.entries.length } };
 }
 
 /** Render the queue as the text `tumwater queue` prints: a `merge queue (<depth>):` header then

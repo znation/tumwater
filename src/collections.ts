@@ -33,6 +33,23 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
   return created;
 }
 
+/** Filter a list by a keep predicate, returning the kept items and each kept item's 1-based
+ * position in the original list — the single home of the "keep some, but number by the whole
+ * list" step, shared by the two queue-scope twins `scopeMergeQueue` (src/merge/
+ * merge-queue-render.ts) and `scopePostReviews` (src/review/post-merge-review-render.ts), so
+ * `tumwater queue --role` and `tumwater reviews --role` keep the same whole-queue positions
+ * a later position-addressed verb (`--cancel`, `--accept`) still addresses. The predicate runs
+ * once per item, in input order; positions run 1..length, not a kept-only renumbering. */
+export function filterKeepPositions<T>(items: readonly T[], keep: (item: T) => boolean): { kept: T[]; positions: number[] } {
+  const positions: number[] = [];
+  const kept = items.filter((item, i) => {
+    const isKept = keep(item);
+    if (isKept) positions.push(i + 1);
+    return isKept;
+  });
+  return { kept, positions };
+}
+
 /** Increment a Map counter, seeding a missing key at 1 — the single home of the
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
  * (src/team/failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the

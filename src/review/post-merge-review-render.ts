@@ -8,6 +8,7 @@
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { squash } from "../text/text.js";
+import { filterKeepPositions } from "../collections.js";
 import { plural } from "../text/phrases.js";
 import type { PostReview } from "./post-merge-review.js";
 
@@ -34,20 +35,16 @@ export function postReviewStatusLabel(entry: PostReview): string {
 
 /** Narrows a whole post-merge review list to the entries whose role `keep` accepts, and returns
  * the `scope` renderPostReviews takes: the kept roles, each kept entry's 1-based place in the
- * whole list, and the whole list's entry count. Mirrors `scopeMergeQueue` (src/merge/
- * merge-queue-render.ts) so `tumwater reviews --role` keeps the same whole-queue positions
- * `--accept <n>` still addresses. */
+ * whole list, and the whole list's entry count. The filtering-and-positioning step is the
+ * shared `filterKeepPositions` (src/collections.ts) that `scopeMergeQueue` (src/merge/
+ * merge-queue-render.ts) also uses, so `tumwater reviews --role` keeps the same whole-queue
+ * positions `--accept <n>` still addresses. */
 export function scopePostReviews(
   entries: readonly PostReview[],
   roles: readonly string[],
   keep: (role: string) => boolean,
 ): { entries: PostReview[]; scope: { roles: readonly string[]; positions: number[]; total: number } } {
-  const positions: number[] = [];
-  const kept = entries.filter((e, i) => {
-    const isKept = keep(e.role);
-    if (isKept) positions.push(i + 1);
-    return isKept;
-  });
+  const { kept, positions } = filterKeepPositions(entries, (e) => keep(e.role));
   return { entries: kept, scope: { roles, positions, total: entries.length } };
 }
 
