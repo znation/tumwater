@@ -18,7 +18,7 @@ import { teamAlerts } from "./team-alerts.js";
 import type { TeamAlert } from "./team-alerts.js";
 import { openQuestions } from "../backlog/backlog.js";
 import { operatorHeldEntries, refusedEntries, stalledPlanEntries } from "../backlog/backlog-eligibility.js";
-import { capacityContention, flappedChecksAlert, notifyFailures, planDependencyAlert, postMergeChurnAlert, postReviewRiskAlert, primaryOverwriteBlocks, quarantineAlert, regressedFixesAlert, revertAlert, skippedMergeFiles, staleMerges, staleOpenBugs, stalePrompts, staleWaitingBugs } from "./status-payload.js";
+import { capacityContention, droppedPostReviewsAlert, flappedChecksAlert, notifyFailures, planDependencyAlert, postMergeChurnAlert, postReviewRiskAlert, primaryOverwriteBlocks, quarantineAlert, regressedFixesAlert, revertAlert, skippedMergeFiles, staleMerges, staleOpenBugs, stalePrompts, staleWaitingBugs } from "./status-payload.js";
 import { strandedPlanEntriesFor } from "../backlog/backlog-structure.js";
 import { duplicatedBacklogHeadings, validationGapProblems } from "../doctor/doctor-backlog-plans.js";
 
@@ -492,7 +492,7 @@ export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: numb
   // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
   // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
   // there would render twice in the TUI.
-  const alerts = teamAlerts(snap, openQuestions(root), roles, Date.now(), refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root), stalePrompts(root), staleMerges(root), planDependencyAlert(root), staleWaitingBugs(root), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root), notifyFailures(root), primaryOverwriteBlocks(root), capacityContention(root), flappedChecksAlert(root), regressedFixesAlert(root, Date.now()), postMergeChurnAlert(root), postReviewRiskAlert(root)).filter((a) => a.key !== "stopped");
+  const alerts = teamAlerts(snap, openQuestions(root), roles, Date.now(), refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root), stalePrompts(root), staleMerges(root), planDependencyAlert(root), staleWaitingBugs(root), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root), notifyFailures(root), primaryOverwriteBlocks(root), capacityContention(root), flappedChecksAlert(root), regressedFixesAlert(root, Date.now()), postMergeChurnAlert(root), postReviewRiskAlert(root), droppedPostReviewsAlert(root)).filter((a) => a.key !== "stopped");
   const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);
   const text = lines.map(plainText);
   return [...text.slice(0, 2), ...banner, ...text.slice(2)].join("\n");

@@ -173,6 +173,10 @@ export function capacityContention(root: string, now = Date.now()): CapacityBott
  * dirty primary file is a standing amber banner until the file is committed and the refusals
  * age out. */
 export const PRIMARY_OVERWRITE_WINDOW_MS = 24 * 60 * 60_000;
+/** How far back the dropped-post-review alert looks — one day, the 24 h event-window convention
+ * every event-reading alert uses (PRIMARY_OVERWRITE_WINDOW_MS sorts beside it), so a review the
+ * drain dropped stays a standing amber notice until a day passes. */
+export const DROPPED_POST_REVIEW_WINDOW_MS = 24 * 60 * 60_000;
 /** How far back the regressed-fixes alert looks — one day, so a recently Fixed test that failed
  * again is a standing amber alert until a day passes (or the failure is filed). The doctor's
  * own `regressed fixes` row keeps its since-the-fix read; this is the alert's daily trigger, the
@@ -281,6 +285,32 @@ export function postReviewRiskAlert(root: string): PostReviewRisk | null {
   const rows = atRiskPostReviews(root);
   const detail = atRiskPostReviewsPhrase(rows);
   return detail === null ? null : { count: rows.length, detail };
+}
+/** The exact substring the drain's drop branch logs in its `warning` event (src/merge/
+ * merge-post-review.ts at POST_REVIEW_FAILURE_LIMIT), so this feed matches a real drop and not
+ * the per-run `the post-merge review of <sha> failed (…)` warning the at-risk alert already
+ * covers — status-payload.ts's DROPPED_POST_REVIEW_MARKER is the same string, so the feed and
+ * the drain cannot drift on what a drop is. */
+const DROPPED_POST_REVIEW_MARKER = "dropping the post-merge review of";
+/** A post-merge review the drain dropped in the trailing day (src/merge/merge-post-review.ts
+ * `startPostReview` at POST_REVIEW_FAILURE_LIMIT, src/review/post-merge-review.ts) — the commit
+ * is permanently on main beyond the review gate with only this `warning` event to say so. count
+ * is the drops in the window, latestTs the most recent one's event stamp, latestMessage its
+ * squashed wording. */
+export interface DroppedPostReviews {
+  count: number;
+  latestTs: number;
+  latestMessage: string;
+}
+/** The always-on feed for the `dropped-post-reviews` team alert (src/ui/team-alerts.ts): reads
+ * only the `warning` event the drain's drop branch already writes, so it reaches the status
+ * poll without touching the review state and cannot drift from the drop. null when the day
+ * holds no such warning. eventsSince degrades an unreadable log, so one bounded event scan
+ * needs no try/catch (the primaryOverwriteBlocks precedent). */
+export function droppedPostReviewsAlert(root: string, now = Date.now()): DroppedPostReviews | null {
+  const hits = eventsSince(root, DROPPED_POST_REVIEW_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(DROPPED_POST_REVIEW_MARKER));
+  const latest = hits[hits.length - 1];
+  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
 }
 /** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
  * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
@@ -605,6 +635,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now)),
   };
 }

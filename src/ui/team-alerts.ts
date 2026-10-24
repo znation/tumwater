@@ -11,7 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, DroppedPostReviews, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -287,8 +287,9 @@ function localizeInstants(text: string): string {
  * review or Needs replan note, checks that flapped more than once in the last day, a stale or
  * oversized flake quarantine, a revert off main that
  * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, the fleet waiting
- * on capacity slots (workspace, provider or
+ * already reached main, a post-merge review one failed run from being dropped, a post-merge
+ * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
+ * waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
  * stopped team.
@@ -338,6 +339,7 @@ export function teamAlerts(
   regressedFixes: RegressedFixAlert | null = null,
   postMergeChurn: PostMergeChurn | null = null,
   postReviewRisk: PostReviewRisk | null = null,
+  droppedPostReviews: DroppedPostReviews | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   const b = snap.budget;
@@ -886,6 +888,21 @@ export function teamAlerts(
       title: `${plural(postReviewRisk.count, "post-merge review is", "post-merge reviews are")} one failed run from being dropped`,
       detail: postReviewRisk.detail,
       actions: seeFailures(),
+    });
+  }
+  // A post-merge review the drain actually dropped — the commit it leaves on main unreviewed
+  // (src/merge/merge-post-review.ts `startPostReview` at POST_REVIEW_FAILURE_LIMIT). Reads only
+  // the `warning` event the drop branch writes, after the at-risk alert is moot: the entry is
+  // gone, so no surface names the commit without this. droppedPostReviewsAlert feeds it from
+  // the same DROPPED_POST_REVIEW_MARKER the drain's message carries, so the alert and the drain
+  // cannot drift on what a drop is (the per-run failed-review warning never matches).
+  if (droppedPostReviews) {
+    out.push({
+      key: "dropped-post-reviews",
+      tone: "amber",
+      title: `${plural(droppedPostReviews.count, "post-merge review was dropped", "post-merge reviews were dropped")} in the last day — ${plural(droppedPostReviews.count, "the commit sits", "the commits sit")} on main unreviewed`,
+      detail: `most recently ${humanAgo(droppedPostReviews.latestTs, now)}: ${squash(droppedPostReviews.latestMessage, 160)} — the reviewer kept failing past \`POST_REVIEW_FAILURE_LIMIT\`, so the commit is beyond the review gate; fix the reviewer backend so later commits are reviewed`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:

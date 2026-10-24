@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
@@ -891,4 +891,32 @@ test("postReviewRiskAlert carries the doctor's sentence for an at-risk review", 
   writeJsonFile(postReviewPath(root), { pending: [{ commit, role: "improve", summary: "add x", failures: 1 }] });
   assert.equal(postReviewRiskAlert(root), null);
   assert.equal(postReviewRiskAlert(makeRepo()), null);
+});
+
+test("droppedPostReviewsAlert fires on a day's dropped post-merge reviews", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 120_000, source: "bugfix", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" },
+    { ts: now - 60_000, source: "clean", type: "warning", message: "the post-merge review of fedcba98 failed (no parseable VERDICT line)" },
+    { ts: now - 30_000, source: "readme", type: "warning", message: "dropping the post-merge review of 0123456a after 3 failed runs; it stays on main unreviewed" },
+  ]);
+  const alert = droppedPostReviewsAlert(root, now);
+  assert.notEqual(alert, null);
+  assert.equal(alert!.count, 2, "the failed-run line is excluded");
+  assert.equal(alert!.latestMessage, "dropping the post-merge review of 0123456a after 3 failed runs; it stays on main unreviewed");
+  assert.equal(alert!.latestTs, now - 30_000);
+  // A pre-merge rejection and a non-warning event each read null — only the drop warning fires.
+  const rejected = makeRepo();
+  writeEvents(rejected, [{ ts: now - 60_000, source: "bugfix", type: "review_rejected", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
+  assert.equal(droppedPostReviewsAlert(rejected, now), null);
+  const nonWarning = makeRepo();
+  writeEvents(nonWarning, [{ ts: now - 60_000, source: "readme", type: "merge", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
+  assert.equal(droppedPostReviewsAlert(nonWarning, now), null);
+  // A drop 25 h old, outside the day's window under the pinned `now`, raises none.
+  const old = makeRepo();
+  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "bugfix", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
+  assert.ok(25 * 3600_000 > DROPPED_POST_REVIEW_WINDOW_MS, "the 25h-old drop predates the alert's daily window");
+  assert.equal(droppedPostReviewsAlert(old, now), null);
+  assert.equal(DROPPED_POST_REVIEW_WINDOW_MS, 24 * 60 * 60_000);
 });

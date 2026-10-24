@@ -501,6 +501,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
   a burst of post-merge review rejections, each an already-merged commit,
   a post-merge review one failed run from being dropped,
+  a post-merge review dropped after repeated failures, leaving its commit on main unreviewed,
   the fleet waiting on capacity slots (workspace, provider or check) — the doctor's three
   contention rows read the same waits and name the knob, a plan filed under the wrong
   backlog section, a duplicated backlog section heading, a Fixed record whose Validation gap trace is missing or unrecognized, a Fixed record whose quoted test failed again in the last day, a pause), the prompt
@@ -531,7 +532,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   commits `review.afterMerge` put aside for post-merge review, each with its rejected (still
   waiting on the revert) or failed-review status. A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every
-  surface and a `post-merge reviews` doctor row. Its Settings view shows the
+  surface and a `post-merge reviews` doctor row, and a review the drain actually drops
+  raises the standing amber `dropped-post-reviews` alert describing the unreviewed commit.
+  Its Settings view shows the
   curated top-level config keys (provider, model, fallback, the daily spend cap, quiet hours, the
   notify hook) with inline Save and Clear buttons: Save writes through the same path `tumwater
   config set` uses, and Clear retracts through the same path `tumwater config unset` uses, so the

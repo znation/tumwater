@@ -1464,3 +1464,31 @@ test("an at-risk post-merge review raises one standing amber alert", () => {
   const clean = makeRepo();
   assert.equal((statusPayload(clean, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "post-merge-risk"), undefined);
 });
+
+test("a dropped post-merge review raises one standing amber alert", () => {
+  const now = Date.now();
+  const droppedPostReviews = { count: 2, latestTs: now - 60_000, latestMessage: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" };
+  // droppedPostReviews is the 26th positional argument, after postReviewRisk; one position
+  // earlier it would land in the post-merge-risk slot and raise no alert.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, droppedPostReviews);
+  const only = one.filter((a) => a.key === "dropped-post-reviews");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /post-merge reviews were dropped in the last day/);
+  assert.match(only[0]!.detail, /dropping the post-merge review of ab12cd3e/);
+  assert.match(only[0]!.detail, /POST_REVIEW_FAILURE_LIMIT/);
+  assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A trailing null adds none.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null).find((a) => a.key === "dropped-post-reviews"), undefined);
+  // End to end through statusPayload over a seeded drop warning, pinning the reader and the
+  // argument position.
+  const root = makeRepo();
+  writeEvents(root, [{ ts: now - 60_000, source: "bugfix", type: "warning", message: "dropping the post-merge review of ab12cd3e after 3 failed runs; it stays on main unreviewed" }]);
+  const payload = statusPayload(root, now) as { alerts: Array<{ key: string; tone?: string; title?: string; detail?: string }> };
+  const alert = payload.alerts.find((a) => a.key === "dropped-post-reviews");
+  assert.equal(alert?.tone, "amber");
+  assert.match(alert?.title ?? "", /post-merge review was dropped in the last day/);
+  assert.match(alert?.detail ?? "", /ab12cd3e/);
+  const clean2 = makeRepo();
+  assert.equal((statusPayload(clean2, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "dropped-post-reviews"), undefined);
+});
