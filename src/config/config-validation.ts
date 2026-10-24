@@ -245,6 +245,20 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         `${at}provider "${provider}" is the retired backend namespace but this section runs on pi — write backend: "${provider}" beside the model and drop the provider`,
       );
   };
+  // A section that carries its own model/backend pair — `review` and a custom role's entry —
+  // runs the same five checks: the model-triple shape, the empty-selector-half screen
+  // (checkSelectorHalves), the entry's backend resolution (checkEntryBackend), and the
+  // retired-spelling plus legacy-provider pair checks against the resolved provider/backend.
+  // The two blocks differ only in their config label (`at`, with a trailing dot, and `atBase`,
+  // without one), so they share this one sequence and the problem order cannot drift.
+  const checkModelTripleEntry = (o: Record<string, unknown>, at: string, atBase: string): void => {
+    checkModelTriple(o, at, "tier-name");
+    checkSelectorHalves(o, at, "model", o.provider ?? r.provider, problems);
+    checkEntryBackend(o, atBase, problems);
+    if ((o.provider ?? r.provider) === undefined)
+      checkRetiredSelector(`${atBase}.model`, o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
+    checkLegacyProvider(o.provider ?? r.provider, at, typeof o.backend === "string" ? o.backend : topBackend);
+  };
   validateModelBlock(r, problems, { checkModelTriple, checkString, topBackend, checkLegacyProvider });
   validateAgentsBlock(r, problems, rawFile, {
     checkString,
@@ -368,12 +382,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
         if (fix) problems.push(`review.exemptPaths[${i}] ${fix} (got ${show(p)})`);
       });
     }
-    checkModelTriple(o, "review.", "tier-name");
-    checkSelectorHalves(o, "review.", "model", o.provider ?? r.provider, problems);
-    checkEntryBackend(o, "review", problems);
-    if ((o.provider ?? r.provider) === undefined)
-      checkRetiredSelector("review.model", o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
-    checkLegacyProvider(o.provider ?? r.provider, "review.", typeof o.backend === "string" ? o.backend : topBackend);
+    checkModelTripleEntry(o, "review.", "review");
     checkNumber(o, "review.", "timeoutSeconds", DURATION_POSITIVE);
   });
 
@@ -475,12 +484,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
               PREFILL_REASON,
             ),
           );
-        checkModelTriple(o, `roles.${id}.`, "tier-name");
-        checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
-        checkEntryBackend(o, `roles.${id}`, problems);
-        if ((o.provider ?? r.provider) === undefined)
-          checkRetiredSelector(`roles.${id}.model`, o.model, typeof o.backend === "string" ? o.backend : topBackend, problems);
-        checkLegacyProvider(o.provider ?? r.provider, `roles.${id}.`, typeof o.backend === "string" ? o.backend : topBackend);
+        checkModelTripleEntry(o, `roles.${id}.`, `roles.${id}`);
         checkBoolean(o, `roles.${id}.`, "enabled");
         checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
         // Only feature and bugfix may split (src/roles/runner-ids.ts INSTANCE_ROLES); an
