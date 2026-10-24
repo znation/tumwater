@@ -178,7 +178,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // of team runs" and plans/codex-backend.md §4): a leading `~` expands; the value must be an
   // absolute path after expansion, or claude would resolve a relative CLAUDE_CONFIG_DIR (and
   // codex a relative CODEX_HOME) from the run's cwd and write transcripts somewhere
-  // unexpected. Only claude and codex accept the key, so it is inert nowhere else.
+  // unexpected. Only claude and codex accept the key, so it is inert nowhere else. The nested
+  // reserve spelling (part 2b/9): the same 0 < f ≤ 1 rule the top-level `claudeWindowReserve`
+  // map gets, so a bad entry can never silently no-op a reserve.
   const checkBackendConfig = (entry: Record<string, unknown>, prefix: string): void => {
     checkString(entry, `${prefix}.`, "configDir", false);
     if (typeof entry.configDir === "string" && entry.configDir !== "")
