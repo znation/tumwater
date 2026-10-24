@@ -7,6 +7,7 @@ import { useWorktree } from "../git/worktree-use.js";
 import { postReviewWorktreePath, reviewFixRef } from "../paths.js";
 import {
   POST_REVIEW_FAILURE_LIMIT,
+  addPostReview,
   readPostReviews,
   reviewMergedCommit,
   settlePostReview,
@@ -56,7 +57,11 @@ function startPostReview(ctx: MergePipelineContext, p: MergePipeline, entry: Pos
       if (outcome.kind === "approve") settlePostReview(root, entry.commit, null);
       else if (outcome.kind === "reject") settlePostReview(root, entry.commit, { ...entry, rejected: outcome.reasons });
       else if (outcome.kind === "fixed") await mergeReviewerFix(ctx, entry, outcome.fix);
-      else {
+      else if (outcome.kind === "exhausted") {
+        // A self-fix chain at the backstop: reviewMergedCommit has already recorded the surviving
+        // findings; the entry is cleared so nothing re-reviews it (Forward never back 2/6).
+        settlePostReview(root, entry.commit, null);
+      } else {
         const failures = (entry.failures ?? 0) + 1;
         warnEventBestEffort(root, entry.role, `the post-merge review of ${shortSha(entry.commit)} failed (${outcome.detail})`);
         if (failures >= POST_REVIEW_FAILURE_LIMIT) {
@@ -159,6 +164,10 @@ async function mergeReviewerFix(ctx: MergePipelineContext, entry: PostReview, fi
     const merged = mergedMine.get(entry.role) ?? (await headOf(ctx.root, ctx.mainBranch));
     await deleteRef(ctx.root, reviewFixRef(entry.commit)); // the fix is on main; the ref has done its job
     settlePostReview(ctx.root, entry.commit, { ...entry, fixed: merged }); // the entry names the landed fix
+    // A landed fix is a new post-review entry (Forward never back 2/6): re-queue it so the next
+    // iteration reviews it like any unreviewed commit, counting its round toward the same
+    // REVISION_BACKSTOP — the round lives on the fix commit's `Revision:` trailer.
+    addPostReview(ctx.root, { commit: merged, role: entry.role, summary: entry.summary });
     return;
   }
   // A failed merge: main is unmoved, the fix ref survives. Count it against the drop limit -

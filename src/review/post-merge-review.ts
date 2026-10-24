@@ -11,6 +11,8 @@ import { readPrinciples } from "../prompt/principles.js";
 import { buildReviewPrompt } from "../prompt/gate-prompts.js";
 import { shortSha } from "../text/format.js";
 import { errorMessage } from "../text/text.js";
+import { revisionRoundOf } from "../git/commit-message.js";
+import { REVISION_BACKSTOP } from "../runner/revision.js";
 import { eventRole } from "../events/event-read.js";
 import { baseRoleOf } from "../roles/runner-ids.js";
 import { fixLine } from "../verdict/reply-contract.js";
@@ -155,7 +157,11 @@ type PostReviewOutcome =
   | { kind: "approve"; reasons: string[] }
   | { kind: "reject"; reasons: string[] }
   | { kind: "fixed"; fix: string; reasons: string[] }
-  | { kind: "failed"; detail: string };
+  | { kind: "failed"; detail: string }
+  /** A self-fix chain reached REVISION_BACKSTOP: the reviewer stops fixing, records the
+   * surviving findings and clears the entry (Forward never back 2/6). The answered plan needs
+   * no hold — it was archived to PLANS-DONE.md when its implementation landed. */
+  | { kind: "exhausted"; reasons: string[] };
 
 /** Cut a review finding's first reason short enough to ride a commit subject (the
  * `tumwater(reviewer): Fix …` subject names it): trimmed of leading/trailing and repeated
@@ -170,12 +176,16 @@ function clipFixReason(reason: string): string {
  * <first finding>` fix commit, made by the harness's own git call (never pi) — commitAll stages
  * and commits everything, so however the reviewer edited a path, the single commit captures it
  * on top of the reviewed commit C (the detached HEAD the worktree reset to); the caller advances
- * the review-fix ref to the returned sha. Returns the new commit's full sha. */
-async function commitReviewerFix(wt: string, commit: string, reasons: string[]): Promise<string> {
+ * the review-fix ref to the returned sha. The harness stamps the fix's body with the `Revision:`
+ * trailer one past the reviewed commit's round, so the next review of the fix reads its own round
+ * from the same place a rejection's hand-back reads it (Forward never back 2/6) and the self-fix
+ * chain counts toward the shared REVISION_BACKSTOP. Returns the new commit's full sha. */
+async function commitReviewerFix(wt: string, commit: string, reasons: string[], nextRound: number): Promise<string> {
   const first = reasons[0] ? clipFixReason(reasons[0]) : "the reviewed change";
   const subject = `tumwater(reviewer): Fix ${shortSha(commit)} — ${first}`;
   const body = reasons.map((r, i) => `${i + 1}. ${r}`).join("\n");
-  return commitAll(wt, body ? `${subject}\n\n${body}` : subject);
+  const withRound = body ? `${body}\nRevision: ${nextRound}` : `Revision: ${nextRound}`;
+  return commitAll(wt, `${subject}\n\n${withRound}`);
 }
 
 /** Review the merged commit C: the usual reviewer prompt over `git diff C^ C`, run in a detached
@@ -242,7 +252,26 @@ export async function reviewMergedCommit(
       // today's outcomes and deletes the ref.
       const paths = pi.ok && !pi.aborted ? fixLine(pi.verdictText ?? "") : null;
       if (paths && verdict.verdict === "reject" && (await gitTry(wt, "status", "--porcelain"))?.trim().length) {
-        const fix = await commitReviewerFix(wt, commit, verdict.reasons);
+        // The self-fix chain's round is one past the reviewed commit's `Revision:` trailer; at
+        // REVISION_BACKSTOP the reviewer stops fixing and records the surviving findings — the
+        // same terminal stop as a rejection's exhaustion, one shared counter, never a second
+        // one (Forward never back 2/6). The answered plan is deliberately NOT held here: it was
+        // already archived to PLANS-DONE.md when its implementation landed, so it is no longer
+        // under `## Planned` and there is nothing left to hold or re-pick.
+        const reviewedMessage = (await gitTry(root, "log", "-1", "--format=%B", commit)) ?? "";
+        const nextRound = (revisionRoundOf(reviewedMessage) ?? 0) + 1;
+        if (nextRound >= REVISION_BACKSTOP) {
+          await deleteRef(root, fixRef); // the chain stops here; nothing to land
+          logEventBestEffort(root, {
+            source: entry.role,
+            type: "revision",
+            action: "exhausted",
+            round: nextRound,
+            sha: commit,
+          });
+          return { kind: "exhausted", reasons: verdict.reasons };
+        }
+        const fix = await commitReviewerFix(wt, commit, verdict.reasons, nextRound);
         // Advance the review-fix ref from C to the new fix commit, so the repair is reachable and
         // the merge-post-review landing (which checks the fix out by this sha) finds it.
         await setRef(root, fixRef, fix);

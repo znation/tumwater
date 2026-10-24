@@ -539,11 +539,20 @@ test("the harness commits and lands a reviewer's edit as one fix", async () => {
   // The reviewed commit's verdict is still recorded before the fix-forward.
   assert.equal(eventsOfType(root, "review_rejected").length, 1);
   assert.equal(eventsOfType(root, "review_rejected")[0]!.head, commit);
-  // The entry settles `fixed` naming both shas, and the review-fix ref is gone.
+  // The entry settles `fixed` naming both shas, the landed fix is re-queued as a new post-review
+  // entry so the next iteration reviews it (Forward never back 2/6); the review-fix ref is gone.
   const settled = readPostReviews(root);
-  assert.equal(settled.length, 1);
-  assert.equal(settled[0]!.commit, commit);
-  assert.equal(settled[0]!.fixed, tip);
+  assert.equal(settled.length, 2, "the reviewed entry settles fixed and the landed fix is a new post-review entry");
+  const fixedRec = settled.find((e) => e.commit === commit)!;
+  assert.equal(fixedRec.fixed, tip);
+  const fixEntry = settled.find((e) => e.commit === tip)!;
+  assert.ok(fixEntry, "the landed fix is re-queued as its own entry");
+  assert.equal(fixEntry.rejected, undefined, "the re-queued fix is pending (not rejected)");
+  assert.equal(fixEntry.fixed, undefined, "the re-queued fix is pending (not yet settled)");
+  assert.equal(fixEntry.summary, "add x", "the re-queued fix entry keeps the reviewed change's summary");
+  // The fix commit carries the reviewed commit's round + 1: no Revision trailer on the reviewed
+  // commit (round 0), so the fix is round 1.
+  assert.match(sh(root, "git", "log", "-1", "--format=%B", tip).trim(), /^Revision: 1$/m, "the fix carries the next revision round");
   assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "the review-fix ref is deleted once the merge settles");
 });
 
@@ -577,8 +586,9 @@ test("a fix that lands on a main which moved under the review records the actual
   assert.equal(fs.readFileSync(path.join(root, "x.txt"), "utf8"), "fixed\n", "the repair landed on main");
   assert.equal(fs.readFileSync(path.join(root, "y.txt"), "utf8"), "other\n", "the concurrent commit is preserved under the fix");
   const settled = readPostReviews(root);
-  assert.equal(settled.length, 1);
-  assert.equal(settled[0]!.fixed, tip, "fixed names the actually-rebased landed commit, not the pre-rebase fix");
+  assert.equal(settled.length, 2, "the landed fix is also re-queued as a new post-review entry");
+  const fixedRec = settled.find((e) => e.fixed !== undefined)!;
+  assert.equal(fixedRec.fixed, tip, "fixed names the actually-rebased landed commit, not the pre-rebase fix");
   const merged = eventsOfType(root, "merged").slice(-1)[0]!;
   assert.equal(merged.commit, tip, "the landed merge's event recorded the merged sha");
 });
@@ -599,6 +609,55 @@ test("a fix whose landing fails keeps the entry and leaves main unmoved", async 
   assert.equal(kept[0]!.fixed, undefined, "no fix is recorded on a failed landing");
   assert.match(kept[0]!.lastFailure ?? "", /fix did not merge/);
   assert.ok(eventsOfType(root, "warning").some((e) => String(e.message).includes("could not merge")), "the failed landing warns");
+});
+
+test("a reviewer's fix commit carries the next revision round", async () => {
+  const { root, ctx } = setup("VERDICT: reject\n1. still broken");
+  // The reviewed commit is itself a round-1 fix whose body carries `Revision: 1`; the next fix
+  // the reviewer makes must carry `Revision: 2` — one past the reviewed commit's round — so the
+  // self-fix chain counts toward the shared REVISION_BACKSTOP (Forward never back 2/6).
+  fs.appendFileSync(path.join(root, "x.txt"), "more\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "the fix\n\nRevision: 1");
+  const commit = headSha(root);
+  fs.writeFileSync(postReviewPath(root), JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x" }] }));
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  const tip = headSha(root);
+  assert.notEqual(tip, commit, "a new fix landed on top of the round-1 fix");
+  assert.match(sh(root, "git", "log", "-1", "--format=%B", tip).trim(), /^Revision: 2$/m, "the next fix carries one past the reviewed commit's round");
+});
+
+test("a self-fix chain stops at the backstop and clears the entry", async () => {
+  const { root, ctx } = setup("VERDICT: reject\n1. breaks the contract");
+  // The reviewed commit is a round-5 fix — one short of REVISION_BACKSTOP (6) — so the next fix
+  // would be round 6, where the chain must stop: the reviewer records its surviving reasons
+  // instead of another fix landing. The answered plan lives under `## Done` (its implementation
+  // landed and was archived before the reviewed commit), not `## Planned`, so there is nothing
+  // to hold — the real post-merge flow never has a live `## Planned` entry for a reviewed
+  // commit (Forward never back 2/6).
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n_None yet._\n\n## Done\n\n### The shipped plan (planned 2026-10-24 by user) — done 2026-10-24 by user\n\nBody.\n",
+  );
+  fs.appendFileSync(path.join(root, "x.txt"), "more\n");
+  sh(root, "git", "add", "--", "x.txt");
+  sh(root, "git", "commit", "-m", "fix\n\nRevision: 5");
+  const commit = headSha(root);
+  fs.writeFileSync(
+    postReviewPath(root),
+    JSON.stringify({ pending: [{ commit, role: "improve", summary: "add x" }] }),
+  );
+  (ctx as { runners: RoleRunner[] }).runners = [fixingRunner("improve")];
+  const p = newMergePipeline();
+  drainPostReviews(ctx, p);
+  await p.postReview!.promise;
+  assert.equal(headSha(root), commit, "no fix commit is created at the backstop — main stays at the reviewed commit");
+  assert.equal(sh(root, "git", "for-each-ref", reviewFixRef(commit)).trim(), "", "no review-fix ref points anywhere");
+  assert.equal(readPostReviews(root).length, 0, "the exhausted entry is cleared");
+  assert.ok(!fs.readFileSync(path.join(root, "PLANS.md"), "utf8").includes("**Needs review"), "no hold note is fabricated: a landed-and-archived plan has nothing to hold");
 });
 
 test("a fix whose conflict resolution diverges outside the fix is withheld (recheckResolved retry)", async () => {
