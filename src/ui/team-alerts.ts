@@ -234,6 +234,14 @@ function openRoleActions(roles: readonly AlertRole[]): Array<{ label: string; ac
   return roles.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role }));
 }
 
+/** The dashboard's "See failures" button: opens the failures view. Shared by every alert
+ * whose remedy is inspecting the failing runs/checks (main-red, quarantine, flapped checks,
+ * reverts, post-merge churn and risk, regressed fixes, image-probe), so the button's label
+ * and action cannot drift between them. */
+function seeFailures(): Array<{ label: string; act: string; arg: string }> {
+  return [{ label: "See failures", act: "view", arg: "failures" }];
+}
+
 /** Natural English list of the given names: “a and b” for one or two, “a, b, and c”
  * beyond that. Shared by the role-row and held-id banners so the wording cannot drift. */
 function andJoin(names: readonly string[]): string {
@@ -426,7 +434,7 @@ export function teamAlerts(
       tone: "red",
       title: `main's check is failing — ${plural(red.length, "role is", "roles are")} blocked`,
       detail: "Code roles stop authoring until main's check passes, and pick up on their own once it does.",
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // A role whose own failure streak is at or past the alarm threshold (onErrorStreak — an
@@ -813,7 +821,7 @@ export function teamAlerts(
       title: `${plural(quarantined.count, "test")} in the flake quarantine — the gate is excusing their failures`,
       detail:
         `${quarantined.warning} · oldest: ${squash(quarantined.oldestTest, 80)} (${humanAgo(quarantined.oldestFirstSeen, now)}) — a quarantined test counts as a known failure until its filed bug leaves BUGS.md \`## Open\`, so fix the test or file the missing bug`,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // Checks that flapped more than once in the last day — the always-on twin of the doctor's
@@ -829,7 +837,7 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(flappedChecks.count, "check has", "checks have")} flapped more than once in the last day`,
       detail: `${flappedChecks.detail} — a flapping check pays the gate's one re-run on every merge it touches; fix it or file it with \`tumwater bug\``,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // A revert off main — the always-on twin of the doctor's `main's check` revert rule
@@ -847,7 +855,7 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(reverts.count, "revert off main", "reverts off main")} in the last day`,
       detail: `${reverts.phrases.join("; ")} — the main watch takes a change off main when main's full check flags it; fix the failing test or the revert repeats`,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // Last day's post-merge review rejections — the pre-revert signal for the `review.afterMerge`
@@ -863,7 +871,7 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(postMergeChurn.count, "post-merge review rejection", "post-merge review rejections")} in the last day`,
       detail: `${postMergeChurn.roles.map((r) => `${roleLabel(r.role)} ×${r.count}`).join(", ")} — each commit already reached main, so a post-merge rejection costs a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // A post-merge review one failed run from being dropped — the always-on twin of the doctor's
@@ -877,7 +885,7 @@ export function teamAlerts(
       tone: "amber",
       title: `${plural(postReviewRisk.count, "post-merge review is", "post-merge reviews are")} one failed run from being dropped`,
       detail: postReviewRisk.detail,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
@@ -971,7 +979,7 @@ export function teamAlerts(
       tone: "amber",
       title: plural(regressedFixes.count, "Fixed test has regressed", "Fixed tests have regressed"),
       detail: regressedFixes.detail,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   if (!snap.running) {
@@ -1016,7 +1024,7 @@ export function teamAlerts(
       tone: "amber",
       title: `A claimed image-capable model failed doctor's probe`,
       detail: `${snap.imageProbeFailures.join(", ")} declare image input but failed the live probe — run \`tumwater doctor --reprobe\` to re-check.`,
-      actions: [{ label: "See failures", act: "view", arg: "failures" }],
+      actions: seeFailures(),
     });
   }
   return out;
