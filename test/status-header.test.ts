@@ -223,6 +223,21 @@ test("the status header carries a mainCheck badge only after a merge-scope check
   assert.match(red, /· main a{8}: red$/);
 });
 
+// The ci parity badge (src/run/ci-parity.ts, read through status-polls.ts's ciParityForPoll):
+// the always-visible twin of the `ci parity` doctor row, riding the header right after the
+// fast main check. It appears only while a parity record exists — a repo the ci role has never
+// run keeps the header byte-identical.
+test("the status header carries a ci badge only while a parity record exists", () => {
+  const none = headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }])));
+  assert.doesNotMatch(none, /· ci /, "no parity record: no ci badge");
+
+  const snap = snapshotWith([{ role: "clean" }]);
+  snap.ciParity = { state: "stale", covered: "abcdef0", lastRunAt: Date.now() - 5 * 60_000 };
+  const stale = headerOf(renderStatus(tmpdir(), snap));
+  // The main-check badge precedes the ci badge; the age is rendered from the real clock.
+  assert.match(stale, /· ci: stale — covered abcdef0 /);
+});
+
 // The disk floor (plans/disk-floor.md, part 4/4): the header carries the published free space,
 // the hold verdict — an operator sees why the team stopped without
 // reading events. No disk block keeps the header byte-identical.

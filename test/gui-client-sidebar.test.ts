@@ -151,6 +151,22 @@ test("the sidebar shows a Stops in row only for a windowed run", () => {
   assert.doesNotMatch(panels.statuschips!, /Stops in/);
 });
 
+test("the sidebar renders the ci parity badge beside the Main check row", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({
+    running: true,
+    pid: 123,
+    ciParityBadge: " · ci: stale — covered abcdef0 5m ago",
+    ciParityTone: "blue",
+  });
+  // badgeLabel upcases the first character for the row's label style, toned by the shared map.
+  assert.match(panels.statuschips!, /Ci: stale — covered abcdef0 5m ago/);
+  assert.match(panels.statuschips!, /t-blue/, "a stale badge is toned blue");
+
+  renderSidebar({ running: true, pid: 123, ciParityBadge: "", ciParityTone: undefined });
+  assert.doesNotMatch(panels.statuschips!, /Ci: /, "an empty badge leaves the panel unchanged");
+});
+
 test("the Stops in row's explanation names stop --in for a scheduled stop and start --for otherwise", () => {
   const { renderSidebar, panels } = sidebarScope();
   renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5, scheduledStopAt: 5 });

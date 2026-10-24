@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   lockHashOf,
   parityBlockFor,
+  parityIsCurrent,
   readCiParity,
   recordParity,
   renderParityBlock,
@@ -74,6 +75,17 @@ test("lockHashOf changes when package-lock.json content changes", () => {
   assert.match(first, /^[0-9a-f]{64}$/);
   fs.writeFileSync(pkg, '{"lockfileVersion":3, "deps":{}}\n');
   assert.notEqual(lockHashOf(root), first, "a changed lock file hashes differently");
+});
+
+test("parityIsCurrent is the one current rule", () => {
+  const entry = { tip: TIP, lockHash: HASH, result: "passed" as const, lastRunAt: NOW };
+  assert.equal(parityIsCurrent(entry, TIP, HASH), true, "a matching tip and lock hash is current");
+  assert.equal(parityIsCurrent({ ...entry, tip: TIP.slice(0, 7) }, TIP, HASH), true, "an abbreviated recorded tip still matches the full head's shared prefix");
+  const moved = "fedcba9876543210fedcba9876543210fedcba98";
+  assert.equal(parityIsCurrent(entry, moved, HASH), false, "a moved tip is not current");
+  assert.equal(parityIsCurrent(entry, TIP, "9999" + HASH.slice(4)), false, "a changed lock hash is not current");
+  assert.equal(parityIsCurrent({ ...entry, result: "failed" }, TIP, HASH), false, "a failed last run is not current");
+  assert.equal(parityIsCurrent(entry, "", HASH), false, "an unresolvable tip is never current");
 });
 
 test("renderParityBlock declares current for the recorded green tip with a matching lock hash", () => {

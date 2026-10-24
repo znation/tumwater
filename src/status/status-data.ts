@@ -9,7 +9,7 @@ import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import type { SubscriptionWindowBlock } from "../agent/subscription-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
-import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
+import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, ciParityForPoll, type CiParityStatus, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingTeamPause } from "../team/team-state.js";
@@ -358,6 +358,13 @@ export interface StatusSnapshot {
    * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
    * provider part of the team line appears only while any key carries a cap. */
   permits?: PermitSnapshot;
+  /** The ci observer's parity ledger's glance verdict (src/run/ci-parity.ts, read through
+   * status-polls.ts's ciParityForPoll): whether the last full-suite run has covered main's
+   * current tip with the current lock — the badge's answer to "has the expensive verification
+   * behind a green main actually run on this tip?". Absent when no parity record exists (a
+   * repo the ci role has never run), so the surfaces render exactly as before the badge
+   * existed. */
+  ciParity?: CiParityStatus;
   /** The check-permit pool's live state as the orchestrator published it; only while it runs. */
   checkPermits?: CheckPermitSnapshot;
   /** The workspace pool's live state as the running orchestrator published it; absent
@@ -554,6 +561,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     inQuietHours: quiet.inWindow,
     mergeQueue,
     mainCheck: mainCheckForPoll(root, cfg),
+    ciParity: ciParityForPoll(root, cfg),
     // The disk floor's published state (plans/disk-floor.md, part 4/4): only while the
     // orchestrator runs — the exit removes the info file, so a stale file beside a dead pid
     // must not speak for a stopped team — and only when the last poll could measure the

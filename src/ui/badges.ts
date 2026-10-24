@@ -5,7 +5,7 @@ import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { clockHm, humanUntil } from "../text/datetime.js";
+import { clockHm, humanAgo, humanUntil } from "../text/datetime.js";
 import { pauseReasonSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
@@ -261,6 +261,35 @@ export function budgetBadge(
  * preformatted, so the GUI page cannot drift from this string. */
 export function mergeBadge(mergeQueue: { depth: number }): string {
   return mergeQueue.depth > 0 ? ` · merge queue: ${mergeQueue.depth}` : "";
+}
+
+/** The ci parity badge — the status header's always-visible twin of the `ci parity` doctor
+ * row: the answer to "has the full suite covered main's tip?" at a glance, without running
+ * doctor. `current` reads `ci: covered <sha> <age> ago` beside the main check so a green main
+ * names the expensive verification behind it and how long ago it ran; `stale` (main or the
+ * lock moved since) names the covered sha and its age; `failed` names where the last full
+ * suite failed. Empty when there is no parity record — a repo the ci role has never run — so
+ * the header stays byte-identical. The `current` decision is parityIsCurrent's (through the
+ * snapshot's ciParityForPoll), the same predicate the ci prompt block and the doctor row use,
+ * so the badge can never disagree with them. humanAgo gives the shared past-direction phrase;
+ * shortSha shortens the covered tip the same way the main-check badge shortens main's. */
+export function ciParityBadge(parity: StatusSnapshot["ciParity"], now: number): string {
+  if (!parity) return "";
+  const sha = shortSha(parity.covered);
+  const age = humanAgo(parity.lastRunAt, now);
+  if (parity.state === "current") return ` · ci: covered ${sha} ${age}`;
+  if (parity.state === "failed") return ` · ci: failed at ${sha} ${age}`;
+  return ` · ci: stale — covered ${sha} ${age}`;
+}
+
+/** The one state→tone map for the ci parity badge, shared by the CLI/TUI header and the
+ * browser sidebar row so a `current` badge is green, `failed` red, `stale` blue, and an
+ * absent one renders with no tone (and, per the badge, no text at all). */
+export function ciParityTone(parity: StatusSnapshot["ciParity"]): "green" | "red" | "blue" | undefined {
+  if (!parity) return undefined;
+  if (parity.state === "current") return "green";
+  if (parity.state === "failed") return "red";
+  return "blue";
 }
 
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is

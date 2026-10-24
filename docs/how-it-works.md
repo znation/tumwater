@@ -229,10 +229,14 @@ discards a role's in-flight merge.
   of waiting out its interval or deferral — once per failing set, not once per red commit — and that
   queued prompt no-ops (a "verify green" clause) if main turned green before it ran. Separately, the
   `ci` role runs the workflow's own full suite and e2e at main's tip on its own clock and records what
-  it covered in the CI-parity ledger; `tumwater doctor`'s `ci parity` row (and the dashboard Health card
-  and TUI Health tab that render the same rows) is the operator surface answering "is main verified by
+  it covered in the CI-parity ledger. The main-check line on `tumwater status`, the TUI header and the
+  dashboard's team panel carries a `ci: covered <sha> <age> ago` badge as the glance surface (its tone
+  follows the verdict) so an operator can tell whether the expensive verification behind a green main has
+  actually run on this tip, while `tumwater doctor`'s `ci parity` row (and the dashboard Health card
+  and TUI Health tab that render the same rows) is the exact surface answering "is main verified by
   CI?" — `current` when the last green run covered the current tip and lock, `stale` while main has since
-  moved (still ok, since the ci role runs on its own clock), and a `warn` when the last run failed.
+  moved (still ok, since the ci role runs on its own clock), and a `warn` when the last run failed; both
+  read the same `parityIsCurrent` rule, so a `current` badge and a `current` prompt block cannot disagree.
 - A main watch runs the full check on main's tip in the background whenever the head moves (one run
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and

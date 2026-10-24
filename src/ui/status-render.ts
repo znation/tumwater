@@ -7,7 +7,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { formatTime, humanAgo, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCheckVerdict, ciParityBadge, ciParityTone, pauseBadge, roleWakeMarker, permitsBadge, checksBadge, quietBadge, runWindowBadge, wakeBadge, workspacesBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, roleRowCells, onErrorStreak, sortRolesByState } from "./status-model.js";
 import { runProgress } from "./run-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -276,6 +276,11 @@ export function renderStatusSpans(
       // every branch is a Tone, so the cast cannot widen the value.
       ? mainCheckVerdict(snap.mainCheck.status, "yellow").tone as Tone
       : undefined),
+    // The ci parity badge (the full suite's glance verdict) rides immediately after the fast
+    // main check: `· ci: covered <sha> <age> ago` when the ledger's last green run covered
+    // this tip with this lock, `stale`/`failed` otherwise. Empty without a parity record,
+    // so a quiet team's header stays byte-identical. ciParityTone is the one state→tone map.
+    ...badgeSpans(ciParityBadge(snap.ciParity, now), ciParityTone(snap.ciParity)),
     ...badgeSpans(pauseBadge(snap.pausedUntil, now, snap.pauseReason), "yellow"),
     ...badgeSpans(wakeBadge(snap.scheduledWake, now), "blue"),
     // Quiet hours 2/2 rides the header last: the window as standing information whenever it

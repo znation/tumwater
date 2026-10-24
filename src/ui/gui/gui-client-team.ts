@@ -68,6 +68,17 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
         rows += row(tone, icon(glyph),
           "Main " + word + esc(counts), (stripBadge(d.mainCheckBadge) + (c.at ? " — checked " + fmtAgo(c.at) : "")).trim());
       }
+      // The ci parity row (the full suite's glance verdict): the payload's preformatted
+      // ciParityBadge/ciParityTone, upcased for the row's label style like the other badges —
+      // the same answer the TUI/status header carries, so the two surfaces cannot drift —
+      // toned by the shared ciParityTone map (current→green, failed→red, stale→blue).
+      if (d.ciParityBadge) {
+        rows += row(d.ciParityTone, icon("check"),
+          esc(badgeLabel(d.ciParityBadge)),
+          "The last full-suite run the ci role recorded: covered a tip and how long ago, " +
+          "current when that tip with this lock still is main's head, stale when main or the lock " +
+          "has moved since, failed when the suite failed on it.");
+      }
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
       // TUI/status header carries, so the two surfaces cannot drift — and names the free space,

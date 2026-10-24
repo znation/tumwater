@@ -13,7 +13,7 @@ import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { scopeSnapshotToRoles, snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, permitsBadge, checksBadge, quietBadge, runWindowBadge, workspacesBadge } from "./badges.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { configForStatus } from "../status/status-polls.js";
 import { isActivePhase, roleRowCells, onErrorStreak } from "./status-model.js";
@@ -529,6 +529,13 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     // pausedUntil.
     ...(snap.mainCheck ? { mainCheck: snap.mainCheck } : {}),
     mainCheckBadge: mainCheckBadge(snap.mainCheck),
+    // The ci parity badge and its tone, preformatted through badges.ts's ciParityBadge/
+    // ciParityTone — the same string and state→tone the TUI/status header renders — so the
+    // page's sidebar row carries the full suite's glance verdict verbatim and cannot
+    // re-derive (or drift from) it. Empty string/no tone without a parity record, so the
+    // panel renders exactly as before.
+    ciParityBadge: ciParityBadge(snap.ciParity, now),
+    ciParityTone: ciParityTone(snap.ciParity),
     // The check's counts fragment, preformatted through badges.ts's mainCountsFragment so
     // the page renders the pass/skip/fail breakdown verbatim and cannot re-derive (and
     // drift from) it — the sidebar's "Main green · …" row reads this field, not the raw

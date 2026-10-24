@@ -5,7 +5,7 @@
  * travels with the per-role display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, chainBadge, subscriptionWindowTone, diskBadge, mergeBadge, mainCheckBadge, mainCountsFragment, ciParityBadge, ciParityTone, pauseBadge, pauseCountdown, permitsBadge, checksBadge, runWindowBadge, workspacesBadge, wakeBadge, roleWakeMarker } from "../src/ui/badges.js";
 import type { SubscriptionWindowBlock } from "../src/agent/subscription-account.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -180,6 +180,32 @@ test("mainCheckBadge renders the shared counts fragment", () => {
 // header stays byte-identical. A disk block absent (an older orchestrator, an unmeasurable
 // volume) renders nothing, exactly as before the field existed. A recorded reclaim rides the
 // fragment whenever it has run, so its size and age stand even after space recovers.
+test("ciParityBadge phrases each state and omits none", () => {
+  const sha = "a".repeat(40);
+  // A same-instant age renders `0s ago`; fixed pairs keep the phrase stable across clocks.
+  assert.equal(ciParityBadge(undefined, 0), "", "no parity record: no badge");
+  assert.equal(
+    ciParityBadge({ state: "current", covered: sha, lastRunAt: 0 }, 0),
+    " · ci: covered aaaaaaaa 0s ago",
+  );
+  assert.equal(
+    ciParityBadge({ state: "stale", covered: sha, lastRunAt: 0 }, 0),
+    " · ci: stale — covered aaaaaaaa 0s ago",
+  );
+  assert.equal(
+    ciParityBadge({ state: "failed", covered: sha, lastRunAt: 0 }, 0),
+    " · ci: failed at aaaaaaaa 0s ago",
+  );
+});
+
+test("ciParityTone is the one state-to-tone map", () => {
+  const sha = "a".repeat(40);
+  assert.equal(ciParityTone({ state: "current", covered: sha, lastRunAt: 0 }), "green");
+  assert.equal(ciParityTone({ state: "failed", covered: sha, lastRunAt: 0 }), "red");
+  assert.equal(ciParityTone({ state: "stale", covered: sha, lastRunAt: 0 }), "blue");
+  assert.equal(ciParityTone(undefined), undefined);
+});
+
 test("permitsBadge shows the team line slots and stays byte-identical without a pool", () => {
   assert.equal(permitsBadge(undefined), "", "no permit snapshot: header unchanged");
   // A map-less team publishes an empty byKey (no caps), so the whole badge stays empty and

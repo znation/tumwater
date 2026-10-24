@@ -17,6 +17,7 @@ import {
   newMaintenanceWindowCounter,
 } from "../gates/maintenance-quota.js";
 import { commitTier } from "../roles/roles.js";
+import { currentCiParityState, parityIsCurrent, readCiParity } from "../run/ci-parity.js";
 
 /** The per-poll cached readers behind status/status-data.ts's snapshot(): one poll's view of the
  * three inputs that cost real reads — main's newest merge-scope build check (a stat-cached
@@ -207,6 +208,33 @@ export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckSt
     ...(counts ? { counts } : {}),
     at: check.ts,
   };
+}
+
+/** The ciParity field's shape (StatusSnapshot's contract): the `ci` ledger's glance verdict
+ * beside the fast main check. `state` is the doctor's own `current`/`stale`/`failed` reading
+ * (the same rule renderParityBlock applies to the ci prompt), `covered` is the tip the last
+ * full-suite run actually exercised as the ledger recorded it (an abbreviated sha the run
+ * named on its `CI:` line), and `lastRunAt` is that run's stamp. Absent — the field is
+ * optional — when no parity record exists (a repo the ci role has never run), so the surfaces
+ * render exactly as before the badge existed. */
+export interface CiParityStatus {
+  state: "current" | "stale" | "failed";
+  covered: string;
+  lastRunAt: number;
+}
+
+/** The parity ledger's glance verdict for one status poll, or undefined when there is no
+ * record yet. Mirrors mainCheckForPoll's shape — a pure read, no spawn, no write: read the
+ * record, resolve the current main tip and lock hash the same way the ci prompt's parity
+ * block does (currentCiParityState), and classify current/stale/failed with the single
+ * parityIsCurrent predicate so a `current` badge and a `current` prompt block cannot
+ * disagree. A missing or malformed ledger reads as undefined — no badge, never a throw. */
+export function ciParityForPoll(root: string, cfg: TumwaterConfig): CiParityStatus | undefined {
+  const entry = readCiParity(root);
+  if (!entry) return undefined;
+  const { tip, lockHash } = currentCiParityState(root, cfg);
+  const state = entry.result === "failed" ? "failed" : parityIsCurrent(entry, tip, lockHash) ? "current" : "stale";
+  return { state, covered: entry.tip, lastRunAt: entry.lastRunAt };
 }
 
 /** The 4/5 cross-check against the queue: the marker as observers may display it, or
