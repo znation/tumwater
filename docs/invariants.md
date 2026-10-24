@@ -596,16 +596,17 @@ targets an older commit that no check has called green".
 
 ## Main's red culprit
 
-### INV-L1: an automatic revert only reverts a commit a non-director role merged, whose red reproduced and whose parent side is green
+### INV-L1: an automatic revert only reverts a commit a non-director role merged, whose red reproduced
 
 **Guarantee.** The revert task queued from a `main_culprit` event reverts only a commit that a
 `merged` event credits to a runner whose base role is not the director, that is not itself a
 revert, and whose revert has not already merged. The watch names a culprit only after its red
-reproduced (the confirming re-run) and the last green commit below it is still green. Any other
+reproduced (the confirming re-run): the newest checked red head is its own culprit — the watch
+re-checks and names the tip, never an older commit. Any other
 culprit, and any revert that conflicts, fails its gate or loses the fast-forward, leaves main
 unchanged and queues ci's heal prompt.
 
-**Binds.** `src/baseline/main-revert.ts`, `src/baseline/main-culprit.ts`, `src/merge/merge-drain.ts`,
+**Binds.** `src/baseline/main-revert.ts`, `src/baseline/main-watch.ts`, `src/merge/merge-drain.ts`,
 `src/orchestrator/orchestrator.ts`.
 
 **Pinned by.** `test/main-revert.test.ts` — "a named culprit is reverted on main…", "a revert that
@@ -3611,7 +3612,7 @@ that fails then passes on the gate's re-run is quarantined; a later failure of o
 on without a re-run"; `test/merger.test.ts` — "a red in-lock merge check whose immediate re-run
 passes merges and quarantines the failing test"; `test/main-watch.test.ts` — "a red whose
 confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main" and "a
-red naming only quarantined tests is recorded passed and starts no bisect".
+red naming only quarantined tests is recorded passed and starts no culprit".
 
 ### INV-BI2: an empty list, or one at `FAILING_TESTS_MAX`, is neither quarantined nor counted as only quarantined
 

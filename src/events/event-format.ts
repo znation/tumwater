@@ -439,7 +439,7 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "main_culprit": {
       const by = typeof e.runner === "string" && e.runner !== "" ? ` (merged by ${e.runner})` : "";
-      return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}; last green ${shortSha(String(e.green ?? ""))}`;
+      return `main turned red at ${shortSha(String(e.commit ?? ""))}${by}`;
     }
     case "main_revert":
       return `reverted ${shortSha(String(e.commit ?? ""))} (merged by ${textOr(e.runner)}) as ${shortSha(String(e.revert ?? ""))}${revertReasonOf(e) === "post-review" ? ", after a post-merge review rejected it" : ", main's check had flagged it"}`;

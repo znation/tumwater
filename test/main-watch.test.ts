@@ -148,66 +148,57 @@ test("a failing list at the parser's cap is never counted as only known failures
   assert.equal(onlyKnownMainFailures(root, names), null);
 });
 
-// The culprit search (src/baseline/main-culprit.ts): the check fails while bad.txt is tracked or
-// the flag file exists, so a test turns main red with a
-// commit and the environment red with the flag.
-function culpritFixture(): { root: string; flag: string } {
-  const flag = path.join(tmpdir(), "env-red");
-  const script = `[ -f ${flag} ] && exit 1; [ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`;
-  return { root: baselineFixture("improve", script).root, flag };
+// The red tip's own attribution ("Every commit is verified on main, part 2/3"): the watch checks
+// each new tip, so the newest head is the culprit for whatever it finds. The check fails while
+// bad.txt is tracked, so a test turns main red with a commit and asserts the tip names itself.
+function culpritFixture(): { root: string } {
+  const script = `[ -f bad.txt ] && { ${FAILING_OUTPUT}; exit 1; }; echo ok`;
+  return { root: baselineFixture("improve", script).root };
 }
 
-test("a red tip names the first red commit, its merging runner and the failing tests", async () => {
+test("a red tip names itself as the culprit, with its merging runner and the failing tests", async () => {
   const { root } = culpritFixture();
   const watch = createMainWatch(root, "main");
   await watchAt(watch, root); // the seed commit G: green, cached
-  const g = headSha(root);
-  change(root, "a.txt", "a");
-  const b = change(root, "bad.txt", "b");
+  const b = change(root, "bad.txt", "b"); // the red tip itself
   logEvent(root, { source: "improve", type: "merged", commit: b, summary: "breaks a test" });
-  change(root, "README.md", "docs");
   await watchAt(watch, root);
   const culprits = eventsOfType(root, "main_culprit");
   assert.equal(culprits.length, 1);
   assert.equal(culprits[0]?.commit, b);
   assert.equal(culprits[0]?.runner, "improve");
-  assert.equal(culprits[0]?.green, g);
   assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
   await watchAt(watch, root);
-  assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not search again");
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
 });
 
-test("a culprit with no merged event is named without a runner", async () => {
+test("a red tip with no merged event is named without a runner", async () => {
   const { root } = culpritFixture();
   const watch = createMainWatch(root, "main");
   await watchAt(watch, root);
   const b = change(root, "bad.txt", "b");
   await watchAt(watch, root);
   const culprit = eventsOfType(root, "main_culprit")[0];
-  assert.equal(culprit?.commit, b);
+  assert.equal(culprit?.commit, b, "the tip is its own culprit");
   assert.equal("runner" in (culprit ?? {}), false);
+  assert.deepEqual(culprit?.failingTests, ["first", "second", "third"]);
 });
 
-test("a last green that is red now too is not attributed", async () => {
-  const { root, flag } = culpritFixture();
-  const watch = createMainWatch(root, "main");
-  await watchAt(watch, root);
-  change(root, "a.txt", "a");
-  fs.writeFileSync(flag, "");
-  await watchAt(watch, root);
-  assert.equal(eventsOfType(root, "main_culprit").length, 0);
-  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
-  assert.ok(warnings.some((m) => m.includes("is red now too — not attributing")), warnings.join("|"));
-});
-
-test("a red tip with no cached green below it warns that none was found", async () => {
+test("a red whose breaking commit is intermediate still names the newest tip as the culprit", async () => {
   const { root } = culpritFixture();
   const watch = createMainWatch(root, "main");
-  change(root, "bad.txt", "b"); // the seed was never checked, so no verdict is cached below the tip
+  await watchAt(watch, root); // the seed commit G: green, cached
+  change(root, "bad.txt", "b"); // the intermediate commit that actually breaks the build
+  const tip = change(root, "good.txt", "g"); // a later commit on top; its tree is still red
+  logEvent(root, { source: "improve", type: "merged", commit: tip, summary: "breaks a test" });
   await watchAt(watch, root);
-  assert.equal(eventsOfType(root, "main_culprit").length, 0);
-  const warnings = eventsOfType(root, "warning").map((e) => String(e.message));
-  assert.ok(warnings.some((m) => m.includes("no green commit within 50 first-parent commits")), warnings.join("|"));
+  const culprits = eventsOfType(root, "main_culprit");
+  assert.equal(culprits.length, 1);
+  assert.equal(culprits[0]?.commit, tip, "the newest head is named, not the intermediate breaking commit");
+  assert.equal(culprits[0]?.runner, "improve");
+  assert.deepEqual(culprits[0]?.failingTests, ["first", "second", "third"]);
+  await watchAt(watch, root);
+  assert.equal(eventsOfType(root, "main_culprit").length, 1, "a repeat poll does not attribute again");
 });
 
 test("a red whose confirming re-run passes quarantines the failing tests and files one BUGS.md entry on main", async () => {
@@ -231,7 +222,7 @@ test("a red whose confirming re-run passes quarantines the failing tests and fil
   assert.deepEqual(onlyKnownMainFailures(root, ["first"]), ["first"]);
 });
 
-test("a red naming only quarantined tests is recorded passed and starts no bisect", async () => {
+test("a red naming only quarantined tests is recorded passed and starts no culprit", async () => {
   const { root } = baselineFixture("improve", `${FAILING_OUTPUT}; exit 1`);
   quarantineTests(root, ["first", "second", "third"], "");
   const watch = createMainWatch(root, "main");

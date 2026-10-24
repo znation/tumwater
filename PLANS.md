@@ -331,29 +331,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 **Tests.**
 - test/time-spend.test.ts / test/report-data.test.ts: drop the `reverted` loss-cause and `revertsByRole` cases, and keep one case pinning that an `operator_revert` still folds into the report's operator-revert count while no automatic revert does.
 
-### Every commit is verified on main, part 2/3: the newest head is the culprit — the bisect is deleted (planned 2026-10-24 by the operator, split from the held single plan; requires part 1/3 landed, so a rule failure added there is attributed to the tip the same way a build red is; part 3/3 below then takes the pre-merge blocks off; touches src/baseline/main-watch.ts src/baseline/main-culprit.ts (deleted) docs/how-it-works.md docs/invariants.md test/main-watch.test.ts)
-
-**Previously held 1**
-
-**Goal.** A red is attributed without a search. The watch checks each new tip, so the tip is the culprit for whatever it finds; the first-parent walk, its fresh last-green re-check and its doc-only skip have nothing left to reconstruct. This part deletes that search. The confirming re-run that turns a one-off flake into a quarantine and the sleep-span skip stay; only the attribution search goes.
-
-**Approach.**
-- Delete src/baseline/main-culprit.ts: `findRedCulprit`, `CULPRIT_SEARCH_MAX`, `OWNER_EVENT_TAIL`, `RedCulprit`, and its imports. Remove the `findRedCulprit` import and call from src/baseline/main-watch.ts's `watchOnce`; keep the merged-event owner helper that part 1/3 added.
-- Name the tip: on a red `baseline`, the watch logs one `main_culprit` event for `baseline.sha` carrying its `failingTests` and, when the newest `merged` event names it, its `runner`, then calls `onCulprit?.({ commit: baseline.sha, failingTests: baseline.failingTests ?? [], tip: baseline.sha, ...(runner ? { runner } : {}) })`. The `environment`/`unattributed` warning branches and their reasons go, because there is no search left to fail.
-- Keep, unchanged: the confirming re-run (`reverifyRed`) and the `quarantineTests` call it feeds, the sleep-span skip, and the once-per-red-head guard (`lastWatched` already holds the head).
-- Docs: docs/how-it-works.md's culprit paragraph says the newest head is the culprit; docs/invariants.md's attribution guarantee is re-pointed (its pre-merge halves remain part 3/3's).
-
-**Files touched.** src/baseline/main-watch.ts src/baseline/main-culprit.ts (deleted) docs/how-it-works.md docs/invariants.md test/main-watch.test.ts
-
-**Acceptance criteria.**
-- A red tip names exactly that head, logs its `main_culprit` event with its failing tests and, when known, its merging runner, and queues the healer's prompt; no first-parent walk, last-green re-check, doc-only skip or `environment`/`unattributed` warning runs.
-- A red the confirming re-run turns green is quarantined, not attributed, exactly as today.
-- `src/baseline/main-culprit.ts` is gone, nothing imports it, and `findRedCulprit`/`CULPRIT_SEARCH_MAX` have no reference in `src/`.
-- `npm run test:gate` passes.
-
-**Tests.**
-- test/main-watch.test.ts: replace the culprit-search cases (`a red tip names the first red commit, its merging runner and the failing tests`, `a culprit with no merged event is named without a runner`, `a last green that is red now too is not attributed`, `a red tip with no cached green below it warns that none was found`) with `a red tip names itself as the culprit` — one case with a merging runner and one without — and keep the confirming re-run/quarantine and sleep-span cases; no assertion mentions a last-green search.
-
 ### Every commit is verified on main, part 3/3: the pre-merge blocks come off — no in-lock gate run, no pre-merge model verdict, no red-main authoring block (planned 2026-10-24 by the operator, split from the held single plan; requires part 2/3 landed, since a landing stops being checked on the way in only once the whole deterministic set runs on the watched tip and the tip is the culprit; touches src/merge/merge-verify.ts src/merge/merge-to-main.ts src/merge/merge-batch.ts src/review/review.ts src/review/review-followup.ts (deleted) src/baseline/main-red.ts src/roles/roles.ts src/runner/runner-run.ts src/doctor/doctor-holds.ts src/config/config-schema.ts src/config/config-views.ts src/config/config.ts src/orchestrator/ docs/config.md docs/how-it-works.md test/merge-verify.test.ts test/merge-to-main.test.ts test/review.test.ts test/main-red.test.ts test/runner-run.test.ts test/config.test.ts)
 
 **Previously held 1**

@@ -37,7 +37,9 @@ function change(root: string, file: string, content: string): string {
   return headSha(root);
 }
 
-/** G green, A green, B (bad.txt) red; the watch's culprit callback collects what it is handed. */
+/** G green, A green, B (bad.txt) red; the watch's culprit callback collects what it is handed.
+ * The red commit B is the tip when its poll names it (the newest head is the culprit, part 2/3);
+ * `laterEditToB` adds a second edit to the same file on top, so reverting B conflicts with it. */
 async function redMain(runner: string | undefined, laterEditToB = false) {
   const root = baselineFixture("improve", `[ -f bad.txt ] && { ${FAILING}; exit 1; }; echo ok`).root;
   const found: MainCulprit[] = [];
@@ -48,11 +50,10 @@ async function redMain(runner: string | undefined, laterEditToB = false) {
   };
   await poll();
   change(root, "a.txt", "a");
-  const b = change(root, "bad.txt", "b");
+  const b = change(root, "bad.txt", "b"); // B red — the tip this poll names as its own culprit
   if (runner !== undefined) logEvent(root, { source: runner, type: "merged", commit: b, summary: "breaks a test" });
-  if (laterEditToB) change(root, "bad.txt", "b2");
-  change(root, "README.md", "docs");
   await poll();
+  if (laterEditToB) change(root, "bad.txt", "b2"); // on top of B, so reverting B conflicts with it
   return { root, b, found, poll };
 }
 

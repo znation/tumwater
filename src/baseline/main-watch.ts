@@ -1,5 +1,4 @@
 import { checkMainBaseline } from "./main-baseline.js";
-import { findRedCulprit } from "./main-culprit.js";
 import type { MainCulprit } from "./main-revert.js";
 import { baselineCheckLogger, withMainTipWorktree } from "./main-red.js";
 import { CHECK_TIER } from "../concurrency/check-permit.js";
@@ -26,10 +25,11 @@ import { diffRuleReasons } from "../review/diff-rules.js";
 
 /** The main watch: after main's head moves, run the full check on the new tip in the `_gate-main`
  * mirror and record the verdict — a `main_check` event, and the failing tests on the red baseline
- * (which persists beside the greens). On a red tip it also names the first-parent commit that
- * turned main red (a `main_culprit` event, or a warning when none can be named). No run, gate or
- * merge waits on it; the culprit goes to the optional `onCulprit` callback, which the orchestrator
- * wires to the merge slot's revert (plans/fast-merge.md, Lever 2, parts 3, 4a and 4b).
+ * (which persists beside the greens). The watch checks every new red tip, so the newest head is
+ * the culprit for what it finds: on a red tip it logs a `main_culprit` event naming that head
+ * (with its merging runner when a recent merged event names one). No run, gate or merge waits on
+ * it; the culprit goes to the optional `onCulprit` callback, which the orchestrator wires to the
+ * merge slot's revert (plans/fast-merge.md, Lever 2, parts 3, 4a and 4b).
  *
  * One watch run is in flight at a time, and it covers every commit since the last watched head; a
  * head that moves during a run is watched next. The run goes through checkMainBaseline, so a
@@ -133,8 +133,7 @@ export function createMainWatch(
       // brief/protected-file content, secrets, backlog structure) against a base revision, so the
       // mirror checkout must sit ON the commit being judged — not on the tip — or an intermediate
       // commit would be compared against the tip's content of its touched files rather than its
-      // own. The range is walked oldest-first, ending back on the tip, so the caller's later step
-      // (the build-red bisect on this same worktree) still sees the tip checkout.
+      // own. The range is walked oldest-first and ends back on the tip.
       const commits =
         base === undefined
           ? [tip]
@@ -159,9 +158,8 @@ export function createMainWatch(
             type: "warning",
             message: `main's tip ${shortSha(tip)} fails the diff rules: ${ruleReason}`,
           });
-          // A finding stops the walk mid-range; put the mirror back on the tip so the caller's
-          // build-red path (findRedCulprit) still sees its checkout. The first finding across the
-          // range is reported once, like the gate's short-circuit.
+          // A finding stops the walk mid-range; put the mirror back on the tip. The first finding
+          // across the range is reported once, like the gate's short-circuit.
           await git(wt, "checkout", "-q", "--detach", "--force", tip);
           return;
         }
@@ -170,7 +168,7 @@ export function createMainWatch(
 
     if (!detectBuildCheck(root, config)) {
       // No declared build check: nothing to watch for a build red, but the diff rules still run on
-      // the tip. The build-red path (bisect, culprit) below is what never runs here.
+      // the tip. The build-red path below is what never runs here.
       await withMainTipWorktree(root, mainBranch, async (wt) => {
         await watchRules(wt, lastWatched, await headOf(wt));
       });
@@ -202,7 +200,7 @@ export function createMainWatch(
         return void (lastWatched = tip);
       }
       lastWatched = baseline.sha;
-      // A red naming only quarantined tests counts as green: no bisect, no redeploy hold.
+      // A red naming only quarantined tests counts as green: no redeploy hold.
       const quarantined = baseline.status === "red" ? onlyQuarantined(root, baseline.failingTests) : null;
       const red = baseline.status === "red" && !quarantined;
       knownFailures.set(root, red ? (baseline.failingTests ?? []) : []);
@@ -222,37 +220,27 @@ export function createMainWatch(
         ...(baseline.inheritedFrom !== undefined ? { inherited: true } : {}),
       });
       // The diff rules judge the tip whether the build is green or red; the build-red path below
-      // keeps its bisect (its whole-tip culprit attribution is part 2/3's to add), so the two red
-      // kinds are judged independently.
+      // names the whole tip as the culprit, so the two red kinds are judged independently.
       await watchRules(wt, previous, baseline.sha);
       if (!red) return;
-      // Once per red head: lastWatched already holds it, so a later poll does not search again.
-      const found = await findRedCulprit(root, wt, config, baseline);
-      if (found.kind === "culprit") {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "main_culprit",
-          commit: found.commit,
-          ...(found.runner !== undefined ? { runner: found.runner } : {}),
-          failingTests: found.failingTests,
-          green: found.green,
-        });
-        onCulprit?.({
-          commit: found.commit,
-          ...(found.runner !== undefined ? { runner: found.runner } : {}),
-          failingTests: found.failingTests,
-          tip: baseline.sha,
-        });
-      } else {
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "warning",
-          message:
-            found.kind === "environment"
-              ? `main's last green commit ${shortSha(found.green)} is red now too — not attributing`
-              : `main watch could not name the commit that turned main red: ${found.reason}`,
-        });
-      }
+      // The newest head is the culprit ("Every commit is verified on main, part 2/3"): the watch
+      // checks each new red tip, so whatever it found belongs to the head it checked. Once per red
+      // head — lastWatched already holds it, so a later poll does not attribute it again — name
+      // the tip with its own failing tests and, when the newest merged event names it, its runner.
+      const runner = mergingRoleOf(root, baseline.sha);
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "main_culprit",
+        commit: baseline.sha,
+        ...(runner !== undefined ? { runner } : {}),
+        failingTests: baseline.failingTests ?? [],
+      });
+      onCulprit?.({
+        commit: baseline.sha,
+        ...(runner !== undefined ? { runner } : {}),
+        failingTests: baseline.failingTests ?? [],
+        tip: baseline.sha,
+      });
     });
   }
 

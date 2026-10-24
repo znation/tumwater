@@ -232,8 +232,9 @@ discards a role's in-flight merge.
   at a time, covering every commit since the last watched head; a red is re-run once before it counts;
   a doc-only tip inherits its green). It logs a `main_check` event with the failing test titles and
   saves reds beside the greens in `.tumwater/state/baseline-verdicts.json`. On a red tip it also
-  bisects the first-parent commits since the last green and logs a `main_culprit` event naming the
-  commit, its merging runner and the failing tests (or a warning when it cannot name one). The watch
+  names that head as its own culprit — the watch checks every new tip, so the newest head carries
+  whatever it found — logging a `main_culprit` event with the head, its merging runner and the
+  failing tests. The watch
   also runs the review gate's five deterministic diff rules — conflict markers, protected edits,
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
@@ -303,8 +304,8 @@ discards a role's in-flight merge.
   confirming re-run each add the failing tests the failed run named to
   `.tumwater/state/quarantine.json` (newest 100). A quarantined test counts as a known failure
   everywhere: a gate or merge check failing only known tests goes on, the watch records a red
-  naming only quarantined tests as passed (`quarantined: [tests]`) with no bisect, and the culprit
-  search treats such a red as green. The watch files one BUGS.md `## Open` entry per newly
+  naming only quarantined tests as passed (`quarantined: [tests]`) with no culprit, and such a red
+  is never attributed. The watch files one BUGS.md `## Open` entry per newly
   quarantined test, committed on main under the merge and primary-worktree locks (it warns and
   retries on a later poll when the checkout is dirty or off main). A test leaves quarantine when its
   entry is no longer under `## Open`; a later flake puts it back. The 24 h headline excuse
