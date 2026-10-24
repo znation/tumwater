@@ -11,6 +11,7 @@
  * Both take an injected `now` so tests never read the clock. */
 
 import { readEventsSince } from "../events/event-window.js";
+import { revertReasonOf } from "../events/event-read.js";
 import { loadQuarantine } from "../review/known-flakes.js";
 import { DAY_MS, clockHm, humanAgo } from "../text/datetime.js";
 import { shortSha } from "../text/format.js";
@@ -208,7 +209,7 @@ export function revertGuardrail(
   // counting it against the daily ceiling reads a deliberate mechanism as a flaky-revert
   // habit. Only red-main reverts count toward the rate; older events without `reason`
   // predate the split and default to main-red.
-  const redReverts = reverts.filter((r) => r.reason !== "post-review");
+  const redReverts = reverts.filter((r) => revertReasonOf(r) === "main-red");
   if (redReverts.length === 0) return null;
   const phrases: string[] = [];
   if (redReverts.length > REVERT_RATE_LIMIT) {

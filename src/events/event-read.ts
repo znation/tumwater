@@ -147,6 +147,12 @@ export function runSpanMs(ev: HarnessEvent, starts: Map<string, number>): number
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }
 
+/** Normalize a raw `main_revert` reason to the events.ts contract: `post-review` for a
+ * post-merge review rejection, `main-red` otherwise, including absent or unknown reasons. */
+export function revertReasonOf(ev: HarnessEvent): "post-review" | "main-red" {
+  return ev.reason === "post-review" ? "post-review" : "main-red";
+}
+
 /** The event-tail size readEvents falls back to when a caller omits `limit` — a working
  * handful of a busy team's recent activity, small enough that the per-poll tail read stays
  * cheap. Exported so a caller that starts a scan at the default (status-polls.ts's
