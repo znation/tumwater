@@ -522,8 +522,11 @@ export function narrowToRole(
 /** A per-role map scoped to the base roles of a report: the full map as-is when no scope is
  * set (a team report), else the same map narrowed to `bases` — narrowToRole's zero-means-absent
  * rule, so a scoped report never invents a zero entry. The one home of the "keep everything,
- * or keep only the named base role" rule: the 13 per-role/pair fields of the `--since` report's
- * output all shape through it, so the scoping rule cannot drift between them. */
+ * or keep only the named base role" rule: all 21 per-role, reason-keyed, and team-attribution
+ * fields of the `--since` report's output shape through it — the four team maps
+ * (costByProvider, notionalByProvider, notionalByBackend, runsByModel) narrow to empty in a
+ * scoped window (a provider/backend/model is not a role) but still shape through it — so the
+ * scoping rule cannot drift between them. */
 export function scopedByRole(
   record: Record<string, number>,
   bases: readonly string[] | undefined,
