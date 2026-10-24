@@ -5,7 +5,7 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { postReviewPath } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
-import { acceptPostReview, acceptPostReviewBySha } from "../src/review/post-review-accept.js";
+import { acceptPostReview, acceptPostReviewBySha } from "../src/review/post-merge-review-accept.js";
 import { shortSha } from "../src/text/format.js";
 
 // acceptPostReview: the operator's deliberate retire of a pending post-merge review — the

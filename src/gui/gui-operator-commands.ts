@@ -21,7 +21,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
 import { cancelQueuedMergeBySha, type CancelQueuedByShaOutcome } from "../merge/merge-cancel.js";
-import { acceptPostReviewBySha, type AcceptPostReviewByShaOutcome } from "../review/post-review-accept.js";
+import { acceptPostReviewBySha, type AcceptPostReviewByShaOutcome } from "../review/post-merge-review-accept.js";
 import { moveQueuedMergeToTopBySha, type TopQueuedByShaOutcome } from "../merge/merge-top.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { mergeChanges } from "../merge/merge-slot.js";

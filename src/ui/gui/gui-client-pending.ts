@@ -221,7 +221,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // page already polls. Empty (or a missing/malformed list) shows the empty line. A malformed
   // entry renders a stand-in rather than undefined/NaN.
   // The status suffix — the browser twin of postReviewStatusLabel
-  // (src/review/post-review-render.ts):
+  // (src/review/post-merge-review-render.ts):
   // the rejected reasons (still waiting on the revert) when 'rejected' is set, else the
   // verdict-less failed-review-run count when positive, else "". Hand-kept copy because the
   // script cannot import the server renderer; pinned by the client test against the CLI wording.

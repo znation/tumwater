@@ -4229,9 +4229,9 @@ matches, so the dashboard's Accept and the CLI's `--accept <n>` share one remova
 drift on what accepting means. A failed store write warns and never throws (INV-BT2's write path),
 so neither accept variant can throw out of its command.
 
-**Binds.** `src/review/post-review-accept.ts` (`acceptPostReview`, `acceptPostReviewBySha`).
+**Binds.** `src/review/post-merge-review-accept.ts` (`acceptPostReview`, `acceptPostReviewBySha`).
 
-**Pinned by.** `test/post-review-accept.test.ts`, `test/gui-post-review-accept.test.ts`.
+**Pinned by.** `test/post-merge-review-accept.test.ts`, `test/gui-post-review-accept.test.ts`.
 
 ## Image-probe cache: a foreign entry reads as unprobed
 

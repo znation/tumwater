@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderPostReviews, postReviewStatusLabel } from "../src/review/post-review-render.js";
+import { renderPostReviews, postReviewStatusLabel } from "../src/review/post-merge-review-render.js";
 import type { PostReview } from "../src/review/post-merge-review.js";
 
 // The renderer behind `tumwater reviews`: pure text for the post-merge review queue, pinned

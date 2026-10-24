@@ -21,7 +21,7 @@ import { renderRoleChange, renderRoleChanges } from "../src/change/change-render
 import { enqueueMerge, queuedMergeFiles, queuedMerges, readMergeQueue, type MergeQueueView } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
-import { renderPostReviews } from "../src/review/post-review-render.js";
+import { renderPostReviews } from "../src/review/post-merge-review-render.js";
 import { shortSha } from "../src/text/format.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";

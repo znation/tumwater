@@ -13,8 +13,8 @@ import { sayJsonOrRender, say, sayJson, fail } from "./cli-output.js";
 import { refuseTeamWorkspace, requireReadyRepo } from "./cli-repo-gate.js";
 import { parsePositionFlag, rejectRepeatFlag } from "./cli-args.js";
 import { readPostReviews } from "../review/post-merge-review.js";
-import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-review-accept.js";
-import { renderPostReviews } from "../review/post-review-render.js";
+import { acceptPostReview, type AcceptPostReviewOutcome } from "../review/post-merge-review-accept.js";
+import { renderPostReviews } from "../review/post-merge-review-render.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 
