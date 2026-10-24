@@ -829,73 +829,27 @@ function buildBacklogFeedAlerts(input: BacklogFeedAlertsInput): TeamAlert[] {
   return out;
 }
 
-/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
- * main, roles failing run after run, roles that look stuck, a stale running build, open
- * questions, refused entries, stale bugs, a failed notify page, a dirty primary
- * checkout refusing merges, a stranded inbox
- * prompt, a stalled merge queue, a
- * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
- * review or Needs replan note, checks that flapped more than once in the last day, a stale or
- * oversized flake quarantine, a revert off main that
- * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
- * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
- * waiting on capacity slots (workspace, provider or
- * check), a plan filed under the wrong backlog section, a duplicated
- * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
- * stopped team.
- * `now` is passed so a timed
- * pause's countdown agrees with the rest of the frame. */
-export function teamAlerts(
-  snap: Pick<
-    StatusSnapshot,
-    | "running"
-    | "budget"
-    | "build"
-    | "paused"
-    | "pausedUntil"
-    | "pauseReason"
-    | "quietHours"
-    | "inQuietHours"
-    | "disk"
-    | "rootInstallDrift"
-    | "imageProbeFailures"
-    | "chain"
-    | "capPaused"
-    | "budgetPausedRoles"
-    | "maintenanceQuota"
-    | "providerHolds"
-  >,
-  questions: readonly string[],
-  roles: readonly AlertRole[],
-  now: number,
-  refused: readonly RefusedEntry[] = [],
-  operatorHeld: readonly RefusedEntry[] = [],
-  staleBugs: readonly StaleBug[] = [],
-  stalePrompts: readonly StalePrompt[] = [],
-  staleMerges: readonly StaleMerge[] = [],
-  planDependency: PlanDependencyProblem | null = null,
-  staleWaitingBugs: readonly StaleWaitingBug[] = [],
-  skippedMergeFiles: readonly string[] = [],
-  stalledPlans: readonly StalledPlan[] = [],
-  quarantined: QuarantinedTests | null = null,
-  strandedPlans: readonly StrandedPlanEntry[] = [],
-  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
-  validationGaps: readonly ValidationGapProblem[] = [],
-  reverts: RevertWarning | null = null,
-  notifyFailure: NotifyFailure | null = null,
-  primaryOverwrite: PrimaryOverwriteBlock | null = null,
-  contention: readonly CapacityBottleneck[] = [],
-  flappedChecks: FlappedChecks | null = null,
-  regressedFixes: RegressedFixAlert | null = null,
-  postMergeChurn: PostMergeChurn | null = null,
-  postReviewRisk: PostReviewRisk | null = null,
-  droppedPostReviews: DroppedPostReviews | null = null,
-): TeamAlert[] {
+interface MergeAlertsInput {
+  quarantined: QuarantinedTests | null;
+  flappedChecks: FlappedChecks | null;
+  reverts: RevertWarning | null;
+  postMergeChurn: PostMergeChurn | null;
+  postReviewRisk: PostReviewRisk | null;
+  droppedPostReviews: DroppedPostReviews | null;
+  now: number;
+}
+
+/** The quarantine, flapped-check, revert and post-merge review alerts, in emission order: a
+ * stale or oversized flake quarantine, checks flapping more than once, reverts off main, a
+ * burst of post-merge review rejections, a post-merge review one failed run from being
+ * dropped, and a post-merge review the drain dropped leaves its commit on main unreviewed.
+ * Extracted from teamAlerts (part 4/5 of the teamAlerts split) so the shared module stays
+ * small; the input names exactly the fields this run reads (including `now`, which the
+ * quarantine and dropped-post-reviews age lines need). The caller pushes the returned alerts
+ * at the position this run used to occupy, so the emitted key order is unchanged. */
+function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  out.push(...buildStatusAlerts({ snap, roles }));
-  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
-  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
+  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now } = input;
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
@@ -992,6 +946,77 @@ export function teamAlerts(
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
+  return out;
+}
+
+/** Everything about the team that needs the operator, most urgent first: a spent budget, a red
+ * main, roles failing run after run, roles that look stuck, a stale running build, open
+ * questions, refused entries, stale bugs, a failed notify page, a dirty primary
+ * checkout refusing merges, a stranded inbox
+ * prompt, a stalled merge queue, a
+ * waiting bug held a week, a merge-queue file the reader skips, a plan stalled by a Needs
+ * review or Needs replan note, checks that flapped more than once in the last day, a stale or
+ * oversized flake quarantine, a revert off main that
+ * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
+ * already reached main, a post-merge review one failed run from being dropped, a post-merge
+ * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
+ * waiting on capacity slots (workspace, provider or
+ * check), a plan filed under the wrong backlog section, a duplicated
+ * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
+ * stopped team.
+ * `now` is passed so a timed
+ * pause's countdown agrees with the rest of the frame. */
+export function teamAlerts(
+  snap: Pick<
+    StatusSnapshot,
+    | "running"
+    | "budget"
+    | "build"
+    | "paused"
+    | "pausedUntil"
+    | "pauseReason"
+    | "quietHours"
+    | "inQuietHours"
+    | "disk"
+    | "rootInstallDrift"
+    | "imageProbeFailures"
+    | "chain"
+    | "capPaused"
+    | "budgetPausedRoles"
+    | "maintenanceQuota"
+    | "providerHolds"
+  >,
+  questions: readonly string[],
+  roles: readonly AlertRole[],
+  now: number,
+  refused: readonly RefusedEntry[] = [],
+  operatorHeld: readonly RefusedEntry[] = [],
+  staleBugs: readonly StaleBug[] = [],
+  stalePrompts: readonly StalePrompt[] = [],
+  staleMerges: readonly StaleMerge[] = [],
+  planDependency: PlanDependencyProblem | null = null,
+  staleWaitingBugs: readonly StaleWaitingBug[] = [],
+  skippedMergeFiles: readonly string[] = [],
+  stalledPlans: readonly StalledPlan[] = [],
+  quarantined: QuarantinedTests | null = null,
+  strandedPlans: readonly StrandedPlanEntry[] = [],
+  duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
+  validationGaps: readonly ValidationGapProblem[] = [],
+  reverts: RevertWarning | null = null,
+  notifyFailure: NotifyFailure | null = null,
+  primaryOverwrite: PrimaryOverwriteBlock | null = null,
+  contention: readonly CapacityBottleneck[] = [],
+  flappedChecks: FlappedChecks | null = null,
+  regressedFixes: RegressedFixAlert | null = null,
+  postMergeChurn: PostMergeChurn | null = null,
+  postReviewRisk: PostReviewRisk | null = null,
+  droppedPostReviews: DroppedPostReviews | null = null,
+): TeamAlert[] {
+  const out: TeamAlert[] = [];
+  out.push(...buildStatusAlerts({ snap, roles }));
+  out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
+  out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now }));
   // Quiet hours (plans: "Quiet hours … part 2/2, observability") informs rather than asks:
   // the team holding to a schedule is not a problem, but an operator watching idle roles
   // inside the window needs the same explanation the pause alert gives a paused team —

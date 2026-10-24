@@ -5,6 +5,27 @@ only grows: search it with grep, or read one entry by its line range. Never read
 
 ## Done
 
+### Split `teamAlerts` into ordered slice builders, part 4/5: the main-watch and merge alerts move into `buildMergeAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 3/5 landed, since it edits the `teamAlerts` body part 3/5 restructures; touches src/ui/team-alerts.ts) — done 2026-10-24 by the feature role
+
+**Previously held 1**
+
+**Goal.** Part 4 moves the next six contiguous alerts: `quarantine`, `flapped-checks`, `reverts`, `post-merge-churn`, `post-merge-risk`, `dropped-post-reviews`. Same rule as part 1/5.
+
+**Approach.**
+- Add `interface MergeAlertsInput` holding `quarantined: QuarantinedTests | null`, `flappedChecks: FlappedChecks | null`, `reverts: RevertWarning | null`, `postMergeChurn: PostMergeChurn | null`, `postReviewRisk: PostReviewRisk | null`, `droppedPostReviews: DroppedPostReviews | null`, and `now: number`. (The plan's `roles` field was dropped: none of the six blocks read the `roles` parameter — only the role-independent `seeFailures()` and the block-local `postMergeChurn.roles` data — while the `quarantine` and `dropped-post-reviews` age lines call `humanAgo(..., now)`, so `now` moved in instead.)
+- Move the six blocks, comments and `seeFailures()` uses into `function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[]`.
+- In `teamAlerts`, replace the run with `out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now }))` at the same position, between the part 3/5 call and the `quiet` block.
+
+**Files touched.** src/ui/team-alerts.ts
+
+**Acceptance criteria.**
+- The six `key` literals appear only inside `buildMergeAlerts`; the slice's guards and comments moved with them and no wording changed.
+- `grep -n "buildMergeAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
+- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
+
+**Tests.**
+- `test/team-alerts.test.ts`: unchanged, still green.
+
 ### `tumwater reviews`, the TUI Pending review block and the dashboard's Post-merge reviews card name each entry's waiting age, the merge queue's age twin (planned 2026-10-24 by the plan role; independent of every eligible plan — the `ci` parts edit src/roles, docs/glossary.md and docs/how-it-works.md, the "Every commit is verified on main" parts edit src/baseline, src/merge and src/config, the budget-wiring part edits src/gates and src/budget, and the `teamAlerts` parts edit src/ui/team-alerts.ts; none of them edits src/review/post-merge-review.ts, src/review/post-merge-review-render.ts, src/cli/cli-review-commands.ts, src/ui/tui/tui-pane-pending.ts, src/ui/gui/gui-client-pending.ts or src/ui/status-payload.ts. It shares docs/cli.md with the blocked post-merge-rejection part 2/3 and docs/how-it-works.md's post-merge sentence with the `ci` series as neighbouring clauses, so whichever lands second rebases there; touches src/review/post-merge-review.ts src/review/post-merge-review-render.ts src/cli/cli-review-commands.ts src/ui/tui/tui-pane-pending.ts src/ui/gui/gui-client-pending.ts docs/cli.md docs/how-it-works.md test/post-merge-review.test.ts test/post-merge-review-render.test.ts test/cli-reviews.test.ts test/tui-keys.test.ts test/gui-client-pending.test.ts) — done 2026-10-24 by the feature role
 
 **Goal.** `tumwater queue` prints each waiting change's age (`renderMergeQueue`, src/merge/merge-queue-render.ts, `sha · <age> ago · summary`), and the dashboard Merge queue card mirrors it. The post-merge review queue is the sibling durable queue and has no age: `renderPostReviews` (src/review/post-merge-review-render.ts) prints position, role, short sha, summary and status only, and its module doc comment says outright that "an entry carries no timestamp, so there is no age line". Position cannot stand in for age: `settlePostReview` (src/review/post-merge-review.ts) rewrites the entry to the END of the file on every failed review run and every rejection (`[...rest, next]`), so an entry that has waited longest can print at the bottom. The operator reading the `post-merge-churn` / `dropped-post-reviews` alerts on the surface that raised them cannot tell a review queued four minutes ago from one queued four days ago. Store when each entry was first queued and render the age on all three surfaces, one wording, exactly as the merge queue does.

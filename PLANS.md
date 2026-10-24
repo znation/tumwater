@@ -366,27 +366,6 @@ tumwater then archives them in PLANS-DONE.md, so this file holds only open work.
 - test/merge-verify.test.ts / test/merge-queue.test.ts: `a torn queue head warns and re-queues its change` — plant an unreadable head file and assert one warning names it, the change is re-queued rather than dropped, and the queue advances past it.
 - test/config.test.ts: `review.afterMerge is gone` — the key is absent from the schema, from a rendered default config and from `tumwater config`'s listing, while an old config carrying it still loads (the path every removed key takes).
 
-### Split `teamAlerts` into ordered slice builders, part 4/5: the main-watch and merge alerts move into `buildMergeAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 3/5 landed, since it edits the `teamAlerts` body part 3/5 restructures; touches src/ui/team-alerts.ts)
-
-**Previously held 1**
-
-**Goal.** Part 4 moves the next six contiguous alerts: `quarantine`, `flapped-checks`, `reverts`, `post-merge-churn`, `post-merge-risk`, `dropped-post-reviews`. Same rule as part 1/5.
-
-**Approach.**
-- Add `interface MergeAlertsInput` holding `quarantined: QuarantinedTests | null`, `flappedChecks: FlappedChecks | null`, `reverts: RevertWarning | null`, `postMergeChurn: PostMergeChurn | null`, `postReviewRisk: PostReviewRisk | null`, `droppedPostReviews: DroppedPostReviews | null`, and `roles: readonly AlertRole[]` (the `reverts` and `dropped-post-reviews` blocks read it).
-- Move the six blocks, comments and `seeFailures()` uses into `function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[]`.
-- In `teamAlerts`, replace the run with `out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, roles }))` at the same position, between the part 3/5 call and the `quiet` block.
-
-**Files touched.** src/ui/team-alerts.ts
-
-**Acceptance criteria.**
-- The six `key` literals appear only inside `buildMergeAlerts`; the slice's guards and comments moved with them and no wording changed.
-- `grep -n "buildMergeAlerts" src/ui/team-alerts.ts` finds the declaration and exactly one call.
-- `test/team-alerts.test.ts` passes with no assertion change; `npm run test:gate` passes.
-
-**Tests.**
-- `test/team-alerts.test.ts`: unchanged, still green.
-
 ### Split `teamAlerts` into ordered slice builders, part 5/5: the tail alerts (quiet, maintenance, provider hold, paused, contention, regressed fixes, stopped, images) move into `buildTailAlerts` (planned 2026-10-24 by the plan role, split from the held single `teamAlerts`-split entry; requires part 4/5 landed, since it edits the `teamAlerts` body part 4/5 restructures; touches src/ui/team-alerts.ts)
 
 **Previously held 1**
