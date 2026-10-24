@@ -64,7 +64,6 @@ test("guiChildPlan strips --gui and reports it, leaving other args untouched", (
     spawnGui: true,
     spawnTui: false,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: [],
     childStdio: "inherit",
   });
@@ -72,7 +71,6 @@ test("guiChildPlan strips --gui and reports it, leaving other args untouched", (
     spawnGui: true,
     spawnTui: false,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: "inherit",
   });
@@ -80,7 +78,6 @@ test("guiChildPlan strips --gui and reports it, leaving other args untouched", (
     spawnGui: false,
     spawnTui: false,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: ["--once", "--role", "clean"],
     childStdio: "inherit",
   });
@@ -94,7 +91,6 @@ test("guiChildPlan threads --port onto the dashboard child and strips it from th
     spawnGui: true,
     spawnTui: false,
     guiArgs: ["--port", "8123"],
-    guiToken: undefined,
     orchestratorArgs: [],
     childStdio: "inherit",
   });
@@ -102,25 +98,22 @@ test("guiChildPlan threads --port onto the dashboard child and strips it from th
     spawnGui: true,
     spawnTui: false,
     guiArgs: ["--port", "8123"],
-    guiToken: undefined,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: "inherit",
   });
 });
 
-// `run --gui` also threads --all-interfaces onto the dashboard child and returns the --token
-// secret as `guiToken` (the remaining `tumwater gui` dashboard flags, in the fixed order
-// and strips all three from the orchestrator generation (whose cmdStart, seeing any dashboard
-// flag without --gui, would refuse it, and whose self-redeploy must never forward a dashboard
-// flag it is not serving itself). The secret is returned separately and reaches the child via
-// its env — never via guiArgs/argv, which the OS process table exposes to every local user and
-// which a child's self-reload re-runs verbatim onto each new generation.
-test("guiChildPlan threads --all-interfaces onto the dashboard child, returns --token as guiToken, and strips them from the orchestrator", () => {
+// `run --gui` also threads --all-interfaces and the --token secret onto the dashboard child
+// (the remaining `tumwater gui` dashboard flags), in the fixed order --port, --all-interfaces,
+// --token — the same flags a direct `tumwater gui` invocation would get — and strips all three
+// from the orchestrator generation (whose cmdStart, seeing any dashboard flag without --gui,
+// would refuse it, and whose self-redeploy must never forward a dashboard flag it is not
+// serving itself). Neither the value-less --all-interfaces nor the secret value survives.
+test("guiChildPlan threads --all-interfaces and --token onto the dashboard child and strips them from the orchestrator", () => {
   assert.deepEqual(guiChildPlan(["--gui", "--all-interfaces", "--token", "s3cret"]), {
     spawnGui: true,
     spawnTui: false,
-    guiArgs: ["--all-interfaces"],
-    guiToken: "s3cret",
+    guiArgs: ["--all-interfaces", "--token", "s3cret"],
     orchestratorArgs: [],
     childStdio: "inherit",
   });
@@ -129,8 +122,7 @@ test("guiChildPlan threads --all-interfaces onto the dashboard child, returns --
     {
       spawnGui: true,
       spawnTui: false,
-      guiArgs: ["--port", "8123", "--all-interfaces"],
-      guiToken: "s3cret",
+      guiArgs: ["--port", "8123", "--all-interfaces", "--token", "s3cret"],
       orchestratorArgs: ["--branch", "x", "--for", "2h"],
       childStdio: "inherit",
     },
@@ -146,7 +138,6 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
     spawnGui: false,
     spawnTui: true,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: [],
     childStdio: ["ignore", "ignore", "ignore"],
   });
@@ -154,7 +145,6 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
     spawnGui: true,
     spawnTui: true,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: [],
     childStdio: ["ignore", "ignore", "ignore"],
   });
@@ -162,7 +152,6 @@ test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the c
     spawnGui: false,
     spawnTui: true,
     guiArgs: [],
-    guiToken: undefined,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
     childStdio: ["ignore", "ignore", "ignore"],
   });
