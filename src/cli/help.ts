@@ -247,16 +247,20 @@ Usage:
                                    execution order (so it merges next when ready), preserving any
                                    notBefore deferral, refusing an entry a live merge is merging and
                                    --role/-f, and answering already-first for position 1
-  tumwater reviews [--json]       List the post-merge review queue (\.tumwater/state
+  tumwater reviews [--accept <n>] [--json]
+                                   List the post-merge review queue (\.tumwater/state
                                    /post-review.json) in FIFO order: one line per merged commit
                                    waiting for its review — position, role, short sha, summary,
                                    and either its rejected reasons
                                    (\`[rejected — waiting to revert: …]\`) or its
                                    failed-review-run count (\`[N failed review runs]\`); an empty
                                    queue prints \`post-merge review queue empty\`; --json prints
-                                   the normalized { pending: [...] } list for scripts; read-only,
-                                   no ready-repo gate (a missing or torn file degrades to the
-                                   empty or well-formed list)
+                                   the normalized { pending: [...] } list for scripts; --accept <n>
+                                   removes the Nth queued entry (the position \`tumwater reviews\`
+                                   prints) as deliberately accepted unreviewed, logging a warning;
+                                   it refuses an entry already rejected and waiting on its revert;
+                                   no ready-repo gate for the read, a missing or torn file degrades
+                                   to the empty or well-formed list
   tumwater backlog [--ready] [--grep <text>] [-f/--follow] [--json]
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable

@@ -93,3 +93,80 @@ test("reviews is read-only: readPostReviews reads back the same entries", async 
   assert.deepEqual(after, before);
   assert.equal(after.length, 2);
 });
+
+function seedAccept(repo: string): void {
+  writeFileDeep(
+    postReviewPath(repo),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+        { commit: "b".repeat(40), role: "clean", summary: "rework the docs" },
+        { commit: "c".repeat(40), role: "coverage", summary: "add integration tests" },
+      ],
+    }),
+  );
+}
+
+test("reviews --accept <n> removes the entry and prints the accepted line", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews accept test");
+  seedAccept(repo);
+  const r = await cli(repo, "reviews", "--accept", "2");
+  assert.equal(r.code, 0);
+  assert.match(
+    r.stdout,
+    new RegExp(`accepted post-merge review entry 2 unreviewed: clean ${"b".repeat(8)} — rework the docs`),
+  );
+  assert.deepEqual(
+    readPostReviews(repo).map((e) => e.role),
+    ["improve", "coverage"],
+    "the accepted entry is gone, the others keep order",
+  );
+});
+
+test("reviews --accept <n> --json prints the accepted object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews accept json test");
+  seedAccept(repo);
+  const r = await cli(repo, "reviews", "--accept", "2", "--json");
+  assert.equal(r.code, 0);
+  const doc = JSON.parse(r.stdout) as { accepted: { role: string; commit: string; summary: string } };
+  assert.deepEqual(doc.accepted, {
+    role: "clean",
+    commit: "b".repeat(40),
+    summary: "rework the docs",
+  });
+});
+
+test("reviews --accept failures leave the file unchanged", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews accept fail test");
+  seedAccept(repo);
+  const before = readPostReviews(repo);
+
+  const noPos = await cli(repo, "reviews", "--accept");
+  assert.notEqual(noPos.code, 0);
+  assert.match(noPos.stderr, /--accept needs a position number/);
+  assert.deepEqual(readPostReviews(repo), before, "missing position changes no file");
+
+  const outOfRange = await cli(repo, "reviews", "--accept", "9");
+  assert.notEqual(outOfRange.code, 0);
+  assert.match(outOfRange.stderr, /no post-merge review at position 9 \(post-merge review queue holds 3\)/);
+  assert.deepEqual(readPostReviews(repo), before, "out-of-range changes no file");
+
+  const bogus = await cli(repo, "reviews", "--accept", "1", "--bogus");
+  assert.notEqual(bogus.code, 0);
+  assert.match(bogus.stderr, /--bogus/);
+  assert.deepEqual(readPostReviews(repo), before, "unknown flag changes no file");
+});
+
+test("reviews --accept refuses a rejected entry", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "reviews accept reject test");
+  seed(repo); // position 2 is clean, rejected
+  const before = readPostReviews(repo);
+  const r = await cli(repo, "reviews", "--accept", "2");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /post-merge review 2 is rejected and waiting on its revert — let the revert run, then review the revision/);
+  assert.deepEqual(readPostReviews(repo), before, "a rejected entry changes no file");
+});
