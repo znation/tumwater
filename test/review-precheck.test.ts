@@ -29,7 +29,7 @@ import { shortSha } from "../src/text/format.js";
 import { eventsOfType, warningMessages, warningMessagesOf } from "./fixtures/log-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
 import { commitIn, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { logPromptsTo, piRanMarker, readRunBlocks, reviewerStub, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
+import { logPromptsTo, piRanMarker, readRunBlocks, reviewerStub, TOUCH_SESSION, withPi, withReviewerStub } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { gateCtx, gateFixture, reviewGate, ROLE } from "./fixtures/gate-fixtures.js";
 import { scriptedSampler, woke } from "./helpers/sleep-clock.js";
@@ -58,7 +58,7 @@ test("gate pre-check compiles the worktree against the root install — a health
   commitIn(wt, "wip change");
 
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-fix: "rejected" by the build check
     assert.ok(fs.existsSync(marker)); // …with no reviewer run; now it reaches pi
@@ -206,7 +206,7 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
 
   // Any pi run at all touches the marker: none may start — not a fix run, not the reviewer.
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
@@ -238,7 +238,7 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
   seedGreenMain(root);
 
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
@@ -282,7 +282,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
   seedGreenMain(root);
 
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { state, result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
@@ -306,7 +306,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
   );
   const movedMainSha = uniqueMain(root);
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike against this head stays exactly as it was
     const head = await headOf(wt, "HEAD");
@@ -355,7 +355,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     },
   };
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the author's failure is the safe default");
@@ -427,7 +427,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
     message: `gate check failed then passed on retry — flaky: ${flakyHeadline}`,
   });
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
@@ -466,7 +466,7 @@ test("a repeat failure with no recorded flake re-runs main fresh instead of trus
   );
   seedGreenMain(root); // an earlier merge verified this SHA green; the test now fails on it
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const state = freshRunnerState(ROLE);
     state.unreviewFailures = 1; // an earlier reviewer strike stays exactly as it was
     const head = await headOf(wt, "HEAD");
@@ -504,7 +504,7 @@ test("a configured check.command gates a merge in a repo with no npm install at 
 
   // Main is green (seeded), so the repeat failure is the change's: rejected with no pi run.
   const marker = path.join(tmpdir(), "pi-ran-command-check");
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const state = freshRunnerState(ROLE);
     const result = await reviewAheadOfMain(ctx, state);
     assert.equal(result.decision, "rejected", "the configured check's failure gates the merge");
@@ -545,7 +545,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
   );
   uniqueMain(root);
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const controller = new AbortController();
     controller.abort(); // harness shutdown already in progress
     const { state, result } = await reviewGate(root, wt, { signal: controller.signal });
@@ -561,7 +561,7 @@ test("a shutdown during a failing pre-check fails closed before main is consulte
 test("gate pre-check timeout warns and still proceeds to the model review", async () => {
   const { root, wt } = await gateBuildFixture("sleep 5"); // hangs past the shortened cap
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { result } = await reviewGate(root, wt, { buildCheckTimeoutMs: 400 });
     assert.equal(result.decision, "approved"); // a timeout is environmental — not fail-closed
     assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the merge path
@@ -579,7 +579,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 // absent even when the model approves (asserted in the timeout test above).
 test("a green pre-check hands its verified head to the merge path", async () => {
   const { root, wt } = await greenBuildFixture();
-  await withPi(reviewerStub(), async () => {
+  await withReviewerStub(undefined, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved"); // pre-check passed AND the reviewer approved
     assert.equal(result.verifiedHead, await headOf(wt, "HEAD")); // exactly the tree the pre-check ran green on
@@ -675,7 +675,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
   // approval covers the diff's review, never the check.
   const red = path.join(tmpdir(), "red");
   const { root, wt } = await gateBuildFixture(`test ! -f '${red}'`, undefined, "build", "echo ok");
-  await withPi(reviewerStub(), async () => {
+  await withReviewerStub(undefined, async () => {
     const state = freshRunnerState(ROLE);
     assert.equal((await reviewAheadOfMain(gateCtx(root, wt), state)).decision, "approved");
     await moveMainAndRebase(root, wt);
@@ -936,7 +936,7 @@ test("a gate failure of only main's known failures goes on to review with no fre
   const marker = piRanMarker();
   const baselineRuns = () => buildCheckEvents(root).filter((e) => e.startsWith("baseline:")).length;
   const watched = baselineRuns(); // the main watch's own runs, before the gate
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(fs.existsSync(marker), "the reviewer ran");
@@ -950,7 +950,7 @@ test("a gate failure of only main's known failures goes on to review with no fre
 
 test("a gate failure of a known failure plus another test is handled as before", async () => {
   const { root, wt } = await knownRedFixture(true);
-  await withPi(reviewerStub(), async () => {
+  await withReviewerStub(undefined, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "failed");
     assert.equal(result.mainRed, true);
@@ -994,7 +994,7 @@ test("a gate failure of only tests the change's base already failed goes on to r
   const { root, wt } = await fixedOnMainFixture(false);
   const base = sh(wt, "git", "merge-base", "HEAD", "main").trim();
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.ok(fs.existsSync(marker), "the reviewer ran");
@@ -1010,7 +1010,7 @@ test("a gate failure of only tests the change's base already failed goes on to r
 
 test("a gate failure beyond the base's red failures is still rejected on a green main", async () => {
   const { root, wt } = await fixedOnMainFixture(true);
-  await withPi(reviewerStub(), async () => {
+  await withReviewerStub(undefined, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
     assert.match(String(eventsOfType(root, "review_rejected")[0]?.reasons), /Y/);
@@ -1025,7 +1025,7 @@ test("a test that fails then passes on the gate's re-run is quarantined; a later
     "buildcheck-tool --flaky",
     `#!/bin/sh\nif [ -f '${flag}' ]; then exit 0; fi\ntouch '${flag}'\n${failing}`,
   );
-  await withPi(reviewerStub(), async () => {
+  await withReviewerStub(undefined, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     assert.deepEqual(

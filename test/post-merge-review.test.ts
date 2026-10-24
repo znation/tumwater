@@ -17,7 +17,7 @@ import { failRenameSyncOn } from "./helpers/fs-faults.js";
 import { gateFixture, reviewGate } from "./fixtures/gate-fixtures.js";
 import { headSha, makeRepo, pinOffMain, sh } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { piRanMarker, piRunResult, reviewerStub, withPi } from "./fakes/fake-pi.js";
+import { piRanMarker, piRunResult, withPi, withReviewerStub } from "./fakes/fake-pi.js";
 import { APPROVE, drained, entry, makePipeline, pinnedCommit, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { mergeRefName } from "../src/paths.js";
@@ -49,7 +49,7 @@ test("a listed role's change passes the gate with no reviewer run; an unlisted r
   const { root, wt } = await gateFixture();
   const config = { ...defaultConfig(), review: { ...defaultConfig().review, afterMerge: ["improve"] } };
   const marker = piRanMarker();
-  await withPi(reviewerStub(marker), async () => {
+  await withReviewerStub(marker, async () => {
     const { result } = await reviewGate(root, wt, { config });
     assert.equal(result.decision, "approved");
     assert.ok(!fs.existsSync(marker), "the reviewer must not run before the merge");

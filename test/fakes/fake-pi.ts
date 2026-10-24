@@ -126,6 +126,20 @@ export async function withApprovePi<T>(fn: () => Promise<T>): Promise<T> {
   return withPi(APPROVE_PI, fn);
 }
 
+/** Run one async block under the review tests' standard approving reviewer stub — the withPi
+ * form of `withPi(reviewerStub(marker), fn)`, which review-precheck.test.ts hand-rolled at
+ * eighteen sites. A test writes only its marker (the proof its review run happened, or
+ * undefined when it does not assert that) and its body, and the save/restore pairing cannot be
+ * forgotten or double-restore; tests composing a different reviewer reply (a logPromptsTo
+ * fragment or a custom verdict) keep withPi/reviewerStub directly, exactly as the merger tests
+ * reach past withApprovePi when they pin a distinct script. */
+export async function withReviewerStub<T>(
+  marker: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return withPi(reviewerStub(marker), fn);
+}
+
 /** The review tests' standard reviewer stub: a fake-pi script that creates `marker` (when
  * given — the test's proof the review run actually happened, asserted with existsSync) and
  * prints "VERDICT: approve" as the review run's one assistant turn. The single home of the
