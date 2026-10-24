@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledPlanEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
+import { withoutRefusalNotes, withoutHeldForOperatorNotes, backlogHolds, backlogInProgress, cancelledClaimNote, OPERATOR_HOLD_THRESHOLD, eligibleEntries, entryHold, heldCount, holdMark, holdsBacklogReaders, inProgressMark, mergedPrerequisiteRanges, operatorHeldEntries, refusalNote, refusedEntries, stalledEntries, waitingNote, waitingPartRanges, type EligibleEntry, type EntryHold, stillHeldNote } from "../src/backlog/backlog-eligibility.js";
 import { entryKey, plannedPartKeys, prerequisitesMerged, planDependencyProblems, plansReleasedBy, plansWaitingOn, releasedPartsNote, requiredParts, seriesPart, type PartRef } from "../src/backlog/backlog-parts.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
@@ -651,13 +651,27 @@ test("operatorHeldEntries lists the plans whose note held count reached the thre
       "_None._",
     ].join("\n"),
   );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### A held bug",
+      "**Needs review 2026-10-07 by feature: too large for one run (held 3)**",
+      "### An open bug",
+      "body",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
   assert.deepEqual(operatorHeldEntries(dir), [
     { file: "plans", index: 1, title: "Held up (planned 2026-10-03)" },
+    { file: "bugs", index: 0, title: "A held bug" },
   ]);
 });
 
-test("stalledPlanEntries lists the needs-review and needs-replan plans, excluding eligible and held-for-operator ones", () => {
-  assert.deepEqual(stalledPlanEntries(tmpdir()), []);
+test("stalledEntries lists the needs-review and needs-replan plans and bugs, excluding eligible and held-for-operator ones", () => {
+  assert.deepEqual(stalledEntries(tmpdir()), []);
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
@@ -676,9 +690,21 @@ test("stalledPlanEntries lists the needs-review and needs-replan plans, excludin
       "_None._",
     ].join("\n"),
   );
-  assert.deepEqual(stalledPlanEntries(dir), [
-    { index: 1, title: "Needs review (planned 2026-10-03)", hold: "needs-review" },
-    { index: 2, title: "Needs replan (planned 2026-10-03)", hold: "needs-replan" },
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### A held bug",
+      "**Needs review 2026-10-07 by feature: too large for one run**",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
+  assert.deepEqual(stalledEntries(dir), [
+    { file: "plans", index: 1, title: "Needs review (planned 2026-10-03)", hold: "needs-review" },
+    { file: "plans", index: 2, title: "Needs replan (planned 2026-10-03)", hold: "needs-replan" },
+    { file: "bugs", index: 0, title: "A held bug", hold: "needs-review" },
   ]);
 });
 

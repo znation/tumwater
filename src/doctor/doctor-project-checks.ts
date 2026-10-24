@@ -250,7 +250,8 @@ export function checkBuildCheck(
  * prefix slice-offset and
  * cluster normalization cannot drift), and warns only when a normalized check flapped more than
  * once, so a routine one-off flake stays quiet. ok/warn only — never a fail — so a flaky suite
- * cannot fail a scripted doctor pre-flight (the checkStalledPlans precedent; the exit-code rule is
+ * cannot fail a scripted doctor pre-flight (the checkStalledEntries precedent; the exit-code
+ * rule is
  * outcome.ts's). */
 export function checkFlakyChecks(root: string, now: number = Date.now()): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);

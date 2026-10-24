@@ -119,3 +119,13 @@ test("an entry named by a bug matches through its Open title's first six words",
   assert.ok(block);
   assert.match(block, /- Dashboard newest failure renders wrong counts \(reported 2026-10-01\) — waiting for the next failure/);
 });
+
+test("a held-for-operator bug names tumwater bug --release, a plan names plan --release", () => {
+  const held = "**Needs review 2026-10-23 by feature: x (held 3)**";
+  const bug = { title: "Dashboard newest failure renders wrong counts (reported 2026-10-01)", body: held };
+  const plan = { title: "Refactor all the things now quickly please (planned 2026-10-01)", body: held };
+  const bugBlock = notesBacklogBlock("Dashboard newest failure renders wrong counts", empty({ openBugs: [bug] }));
+  const planBlock = notesBacklogBlock("Refactor all the things now quickly please", empty({ planned: [plan] }));
+  assert.match(bugBlock!, /held for the operator \(tumwater bug --release\)/);
+  assert.match(planBlock!, /held for the operator \(tumwater plan --release\)/);
+});

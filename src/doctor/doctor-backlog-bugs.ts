@@ -31,7 +31,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * `questionFilingDate`/`openQuestionEntries` (src/backlog) unchanged. The age is the whole
  * days between the heading's `(asked by …)` stamp and now through backlog.js's ageInDays,
  * the one age formula, floored at 0; an undated heading is skipped. A warn, never a fail —
- * the checkStalledPlans/checkRefusedEntries precedent: a question awaiting a human is
+ * the checkStalledEntries/checkRefusedEntries precedent: a question awaiting a human is
  * operator signal, not a broken environment. */
 export function checkStaleQuestions(root: string): CheckOutcome {
   const doc = readBacklogChecked(root, "QUESTIONS.md");

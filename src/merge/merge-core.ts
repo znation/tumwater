@@ -383,7 +383,8 @@ async function recordRejectedChange(
     // leaving it for a fresh author pick that would restart the cycle. The surviving
     // objections go verbatim into the hold text, which is then committed on main. Best-effort:
     // it must never make the already-terminal exhaustion throw (a BUGS.md claim is never held
-    // — no role resolves a Needs-review hold on a bug).
+    // — the convergence hold is PLANS.md-only by design: it parks the revised plan for the plan
+    // role to clear, which resolves a bug's hold by splitting it rather than parking it).
     await holdEntryAfterExhaustion(root, role, state.claim, reasons);
     logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
     return;

@@ -114,15 +114,18 @@ function firstSixWords(normalizedKey: string): string {
   return normalizedKey.split(/\s+/).slice(0, 6).join(" ");
 }
 
-/** The wording of one named item's state: an eligibility hold, `done`, or `not in the backlog`. */
-function holdWording(state: PartState): string {
+/** The wording of one named item's state: an eligibility hold, `done`, or `not in the backlog`.
+ * `file` is which backlog the entry lives in, so a held-for-operator entry names the operator's
+ * matching release command (`tumwater plan --release` for a plan, `tumwater bug --release` for a
+ * bug) — the same Plan/Bug derivation the operator-held alert uses. */
+function holdWording(state: PartState, file: "plans" | "bugs" = "plans"): string {
   if (state === "done") return "done";
   if (state === "not-in-backlog") return "not in the backlog";
   if (state === null) return "eligible";
   if (state === "refused") return "refused (only the operator clears it)"; // vocabulary-ok: the plan-mandated refused hold wording refers to the tumwater operator
   if (state === "needs-review") return "needs review";
   if (state === "needs-replan") return "needs replan (the plan role rewrites it)";
-  if (state === "held-for-operator") return "held for the operator (tumwater plan --release)"; // vocabulary-ok: names the operator-held wording and the operator's release command
+  if (state === "held-for-operator") return `held for the operator (tumwater ${file === "bugs" ? "bug" : "plan"} --release)`; // vocabulary-ok: names the operator-held wording and the operator's release command
   if (state === "waiting-for-failure") return "waiting for the next failure";
   return `waits on ${state.blockedBy.join(", ")}`;
 }
@@ -150,7 +153,7 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
   const allEntries = [...planned, ...openBugs];
   const namedSeries = new Set<string>();
   const namedParts = new Map<string, { seriesLower: string; part: string; of: number; state: PartState }>();
-  const namedEntries = new Map<string, { title: string; state: PartState }>();
+  const namedEntries = new Map<string, { title: string; file: "plans" | "bugs"; state: PartState }>();
 
   for (const rawLine of notes.split("\n")) {
     const line = collapseWhitespace(rawLine).toLowerCase();
@@ -171,10 +174,10 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
         }
       }
     }
-    for (const entry of allEntries) {
+    for (const [i, entry] of allEntries.entries()) {
       const phrase = firstSixWords(entryKey(entry.title));
       if (phrase !== "" && line.includes(phrase)) {
-        namedEntries.set(entryKey(entry.title), { title: entry.title, state: entryHoldAgainst(entry, allParts) });
+        namedEntries.set(entryKey(entry.title), { title: entry.title, file: i < planned.length ? "plans" : "bugs", state: entryHoldAgainst(entry, allParts) });
       }
     }
   }
@@ -187,9 +190,9 @@ export function notesBacklogBlock(notes: string, backlog: NotesBacklog): string 
   for (const p of namedParts.values()) {
     const info = series.get(p.seriesLower);
     if (info === undefined) continue;
-    lines.push(`- ${info.name}, part ${p.part}/${p.of} — ${holdWording(p.state)}`);
+    lines.push(`- ${info.name}, part ${p.part}/${p.of} — ${holdWording(p.state, "plans")}`);
   }
-  for (const entry of namedEntries.values()) lines.push(`- ${entry.title} — ${holdWording(entry.state)}`);
+  for (const entry of namedEntries.values()) lines.push(`- ${entry.title} — ${holdWording(entry.state, entry.file)}`);
   if (lines.length === 0) return undefined;
   const shown = lines.slice(0, MAX_BLOCK_LINES - 1);
   return [HEADER, ...shown].join("\n");

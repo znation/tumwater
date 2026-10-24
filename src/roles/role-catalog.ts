@@ -139,6 +139,12 @@ within that budget, there is nothing to do.`,
       - A plan carrying a ${NEEDS_REVIEW_NOTE} note outranks adding another plan: split it into
         independently mergeable sub-plans that cross-reference each other (per PLAN_SIZING below,
         each with its own acceptance criteria), then remove the note. That split is this run's task.
+      - A BUGS.md \`## Open\` entry carrying a ${NEEDS_REVIEW_NOTE} or ${NEEDS_REPLAN_NOTE} note
+        (the feature or bugfix role parked it as too large for one run) also outranks adding another
+        plan: resolve it in the same run by splitting it into independently fixable sub-bugs (each
+        its own BUGS.md heading) then removing the note, or by lifting the note when the work does
+        not decompose, since no
+        other role takes a held bug. That split is this run's task.
       - A plan held by the automatic convergence hold (${CONVERGENCE_HOLD_MARKER}) also outranks
         adding another plan: the text after the dash is the reviewer's surviving objections, so read
         the quoted objections and the code they name and rewrite the plan so an implementation

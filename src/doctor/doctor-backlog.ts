@@ -136,7 +136,7 @@ const MERGE_WAIT_WINDOW_MS = DAY_MS;
  * holding a change being verified or merged right now — a slow review is not a stalled drain, and
  * an absent or never-throwing unreadable marker contributes the empty set. Reads the tree at `root`
  * with the already-exported readers, changing nothing in src/merge/. A warn, never a fail — the
- * checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate while the team is
+ * checkStaleQuestions/checkStalledEntries precedent: a queued wait is legitimate while the team is
  * genuinely held, and those holds already warn separately. */
 export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome {
   const withWait = (out: CheckOutcome): CheckOutcome => {

@@ -487,6 +487,13 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.match(find, /note with no `\(held N\)` tag \(the automatic convergence hold\) is lifted/);
   assert.match(find, /without writing a `\*\*Previously held 0\*\*` marker/);
 });
+test("the plan role resolves a BUGS.md hold", () => {
+  const find = oneLine(roleById("plan")!.find);
+  assert.match(find, /BUGS\.md entry/);
+  assert.match(find, /split/);
+  assert.match(find, /then removing the note/);
+  assert.match(find, /no other role takes a held bug/);
+});
 test("the director routes a user ruling on a marked plan", () => {
   const prompt = oneLine(buildDirectorPrompt("split plan X"));
   assert.match(prompt, /A decision about a marked plan/);

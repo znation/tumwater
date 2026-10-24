@@ -517,7 +517,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   that has waited a week for an answer, refused entries,
   a stale bug, a failed notify page, a broken plan dependency clause, a dirty primary checkout
   refusing merges, a stranded inbox prompt,
-  a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan stalled by a
+  a stalled merge queue, a merge-queue file the reader skips, a waiting bug held a week, a plan or bug stalled by a
   Needs review or Needs replan note, checks that flapped more than once in the last day, a
   stale or oversized flake quarantine, a revert off main that looks false or a revert burst,
   a burst of post-merge review rejections, each an already-merged commit,

@@ -67,7 +67,7 @@ export const DOCTOR_CHECK_NAMES = [
   "backlog headings",
   "backlog archive",
   "refusals",
-  "stalled plans",
+  "stalled entries",
   "plan dependencies",
   "stale questions",
   "stale bugs",

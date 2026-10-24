@@ -494,7 +494,7 @@ test("refused entries raise a standing amber alert right after the questions ale
 test("operator-held entries raise an amber alert naming the entry and tumwater plan --release", () => {
   const now = Date.now();
   const one = teamAlerts(base, [], [], now, [], [{ file: "plans", index: 2, title: "Held (planned 2026-10-14 by plan)" }]);
-  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["operator-held", "amber", "1 plan is held for you to release"]]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["operator-held", "amber", "1 backlog entry is held for you to release"]]);
   assert.ok(one[0]!.detail.includes("Held"));
   assert.ok(one[0]!.detail.includes("--release"));
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:2" }]);
@@ -502,33 +502,58 @@ test("operator-held entries raise an amber alert naming the entry and tumwater p
     { file: "plans", index: 0, title: "A (planned 2026-10-14)" },
     { file: "plans", index: 1, title: "B (planned 2026-10-14)" },
   ]);
-  assert.equal(two[0]!.title, "2 plans are held for you to release");
+  assert.equal(two[0]!.title, "2 backlog entries are held for you to release");
   assert.ok(two[0]!.detail.includes("— and 1 more"));
   assert.deepEqual(two[0]!.actions[0]?.arg, "plans:0");
+  // A mixed list (a held plan and a held bug) names each entry with its own file and remedy,
+  // so the bug is still handed its `tumwater bug --release` despite the plan being present.
+  const mixed = teamAlerts(base, [], [], now, [], [
+    { file: "plans", index: 0, title: "P (planned 2026-10-14)" },
+    { file: "bugs", index: 3, title: "B" },
+  ]);
+  assert.equal(mixed[0]!.title, "2 backlog entries are held for you to release");
+  assert.ok(mixed[0]!.detail.includes("Plan P") && mixed[0]!.detail.includes("tumwater plan --release"));
+  assert.ok(mixed[0]!.detail.includes("Bug B") && mixed[0]!.detail.includes("tumwater bug --release"));
   // An empty list raises no operator-held alert; an empty list on the extra param is fine.
   assert.deepEqual(teamAlerts(base, [], [], now, [], []), []);
 });
 
-test("stalled plans raise a standing amber alert naming the first plan and the plan-role fix", () => {
+test("stalled entries raise a standing amber alert naming the first entry and the plan-role fix", () => {
   const now = Date.now();
-  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [{ index: 2, title: "Split me (planned 2026-10-20)", hold: "needs-review" }]);
-  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stalled-plans", "amber", "1 plan is stalled in review"]]);
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [{ file: "plans", index: 2, title: "Split me (planned 2026-10-20)", hold: "needs-review" }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stalled-entries", "amber", "1 backlog entry is stalled in review"]]);
   assert.ok(one[0]!.detail.includes("Split me"));
   assert.ok(one[0]!.detail.includes("Needs review"));
   assert.ok(one[0]!.detail.includes("plan role"));
   assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "plans:2" }]);
   const two = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [
-    { index: 0, title: "A (planned 2026-10-14)", hold: "needs-replan" },
-    { index: 1, title: "B (planned 2026-10-14)", hold: "needs-review" },
+    { file: "plans", index: 0, title: "A (planned 2026-10-14)", hold: "needs-replan" },
+    { file: "plans", index: 1, title: "B (planned 2026-10-14)", hold: "needs-review" },
   ]);
-  assert.equal(two[0]!.title, "2 plans are stalled in review");
+  assert.equal(two[0]!.title, "2 backlog entries are stalled in review");
   assert.ok(two[0]!.detail.includes("Needs replan"));
   assert.deepEqual(two[0]!.actions[0]?.arg, "plans:0");
-  // An empty list raises no stalled-plans alert.
+  // An empty list raises no stalled-entries alert.
   assert.deepEqual(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], []), []);
-  // With both an operator-held row and a stalled row, operator-held precedes stalled-plans.
-  const both = teamAlerts(base, [], [], now, [], [{ file: "plans", index: 3, title: "Held (planned 2026-10-14)" }], [], [], [], null, [], [], [{ index: 2, title: "Split me (planned 2026-10-20)", hold: "needs-review" }]);
-  assert.deepEqual(both.map((a) => a.key), ["operator-held", "stalled-plans"]);
+  // With both an operator-held row and a stalled row, operator-held precedes stalled-entries.
+  const both = teamAlerts(base, [], [], now, [], [{ file: "plans", index: 3, title: "Held (planned 2026-10-14)" }], [], [], [], null, [], [], [{ file: "plans", index: 2, title: "Split me (planned 2026-10-20)", hold: "needs-review" }]);
+  assert.deepEqual(both.map((a) => a.key), ["operator-held", "stalled-entries"]);
+});
+
+test("a stalled bug raises the stalled-entries alert and a held bug the operator-held alert", () => {
+  const now = Date.now();
+  // A Needs-review bug, no stalled plan: one amber stalled-entries alert naming the bug.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [{ file: "bugs", index: 0, title: "Too-large bug", hold: "needs-review" }]);
+  assert.deepEqual(one.map((a) => [a.key, a.tone, a.title]), [["stalled-entries", "amber", "1 backlog entry is stalled in review"]]);
+  assert.ok(one[0]!.detail.includes("Bug"));
+  assert.ok(one[0]!.detail.includes("Too-large bug"));
+  assert.deepEqual(one[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "bugs:0" }]);
+  // A bug whose note reached the operator threshold surfaces in the operator-held alert.
+  const held = teamAlerts(base, [], [], now, [], [{ file: "bugs", index: 0, title: "Held bug" }], [], [], [], null, [], [], []);
+  assert.deepEqual(held.map((a) => [a.key, a.tone, a.title]), [["operator-held", "amber", "1 backlog entry is held for you to release"]]);
+  assert.ok(held[0]!.detail.includes("Bug"));
+  assert.ok(held[0]!.detail.includes("tumwater bug --release"));
+  assert.deepEqual(held[0]!.actions, [{ label: "Open backlog", act: "backlog", arg: "bugs:0" }]);
 });
 
 test("stale open bugs raise a standing amber alert right after the refused alert", () => {
@@ -1140,7 +1165,7 @@ test("planDependencyAlert and the surfaces carry a plan-dependency alert from PL
   assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /dependency wording holds nothing/);
 });
 
-test("stalledPlanEntries and the surfaces carry a stalled-plans alert from PLANS.md, and none without one", () => {
+test("stalledEntries and the surfaces carry a stalled-entries alert from PLANS.md, and none without one", () => {
   const now = Date.now();
   const root = makeRepo();
   writeBacklogFile(root, "PLANS.md", [
@@ -1163,14 +1188,14 @@ test("stalledPlanEntries and the surfaces carry a stalled-plans alert from PLANS
     { heading: "## Done" },
   ]);
   const payload = statusPayload(root, now) as { alerts: Array<{ key: string; title?: string; detail?: string; actions?: Array<{ arg?: string }> }> };
-  const alert = payload.alerts.find((a) => a.key === "stalled-plans");
-  assert.equal(alert?.title, "2 plans are stalled in review");
+  const alert = payload.alerts.find((a) => a.key === "stalled-entries");
+  assert.equal(alert?.title, "2 backlog entries are stalled in review");
   assert.ok(alert?.detail?.includes("Needs splitting"));
   assert.equal(alert?.actions?.[0]?.arg, "plans:1");
   const status = renderStatus(root, snapshot(root, undefined, now));
-  assert.match(status, /2 plans are stalled in review/);
+  assert.match(status, /2 backlog entries are stalled in review/);
   // A held-for-operator plan (a note at the held threshold) yields the operator-held alert
-  // and no stalled-plans alert.
+  // and no stalled-entries alert.
   const held = makeRepo();
   writeBacklogFile(held, "PLANS.md", [
     {
@@ -1185,7 +1210,7 @@ test("stalledPlanEntries and the surfaces carry a stalled-plans alert from PLANS
   ]);
   const heldPayload = statusPayload(held, now) as { alerts: Array<{ key: string }> };
   assert.ok(heldPayload.alerts.find((a) => a.key === "operator-held"));
-  assert.equal(heldPayload.alerts.find((a) => a.key === "stalled-plans"), undefined);
+  assert.equal(heldPayload.alerts.find((a) => a.key === "stalled-entries"), undefined);
   // A PLANS.md with only eligible plans produces neither alert.
   const clean = makeRepo();
   writeBacklogFile(clean, "PLANS.md", [
@@ -1193,8 +1218,8 @@ test("stalledPlanEntries and the surfaces carry a stalled-plans alert from PLANS
     { heading: "## Done" },
   ]);
   const cleanPayload = statusPayload(clean, now) as { alerts: Array<{ key: string }> };
-  assert.equal(cleanPayload.alerts.find((a) => a.key === "stalled-plans"), undefined);
-  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /plans are stalled in review/);
+  assert.equal(cleanPayload.alerts.find((a) => a.key === "stalled-entries"), undefined);
+  assert.doesNotMatch(renderStatus(clean, snapshot(clean, undefined, now)), /entries are stalled in review/);
 });
 
 test("plans filed under the wrong backlog section raise a standing amber alert", () => {

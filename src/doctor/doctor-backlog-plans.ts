@@ -3,7 +3,7 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { VALIDATION_GAP_TAGS } from "../roles/role-guidance.js";
 import path from "node:path";
 import { truncate } from "../text/text.js";
-import { donePlans, fixedBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
+import { donePlans, fixedBugEntries, openBugEntries, plannedPlanEntries, type BacklogEntry } from "../backlog/backlog.js";
 import { entryHold, heldCount } from "../backlog/backlog-eligibility.js";
 import { planDependencyProblems } from "../backlog/backlog-parts.js";
 import { BACKLOG_FILES, validationGapTag } from "../backlog/backlog-md.js";
@@ -17,7 +17,7 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
  * checks that re-verify BUGS.md's newest Fixed records against the tree (checkFixClaims,
  * checkValidationGaps) and the PLANS.md / backlog-file integrity checks that read sections and
  * clauses rather than a single document's entries (checkStrandedPlans, checkLiveFinished,
- * checkBacklogHeadings, checkStalledPlans, checkPlanDependencies). They import the shared helpers
+ * checkBacklogHeadings, checkStalledEntries, checkPlanDependencies). They import the shared helpers
  * (readDoc and its checked wrapper readBacklogChecked, andMore) from doctor-backlog.ts and the
  * heading-trim bounds,
  * and all of them warn instead of failing: damaged documentation is operator signal, not a
@@ -316,35 +316,43 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
       `that adds another copy — remove the duplicate in a deliberate edit)`);
 }
 
-/** Stalled plans — planned plans held by a **Needs review …** or **Needs replan …** note,
- * parked until the plan role splits or replans them. No role takes a held entry (the claim
- * gate refuses one) and nothing clears the note on its own, so the state is visible only as
- * the `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
+/** Stalled entries — plans or bugs held by a **Needs review …** or **Needs replan …** note,
+ * parked until the plan role splits or replans them, plus the held-for-operator entries
+ * parked until the operator releases them. No role takes a held entry (the claim gate refuses
+ * one) and nothing clears the note on its own, so the state is visible only as the
+ * `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
  * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
  * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
  * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
- * already classifies the notes, so this check adds no parsing: only the planned entries whose
- * hold is exactly needs-review, needs-replan, or held-for-operator are collected. A warn, never
- * a fail — the checkRefusedEntries precedent: a parked plan is operator signal, not a broken
- * environment; the plan role resolves the first two itself, and a held-for-operator plan is
- * the operator's to release (`tumwater plan --release`). */
-export function checkStalledPlans(root: string): CheckOutcome {
+ * already classifies the notes, so this check adds no parsing: only the entries whose hold is
+ * exactly needs-review, needs-replan, or held-for-operator are collected, from both PLANS.md
+ * and BUGS.md. A warn, never a fail — the checkRefusedEntries precedent: a parked entry is
+ * operator signal, not a broken environment; the plan role resolves the first two itself, and
+ * a held-for-operator entry is the operator's to release (`tumwater plan|bug --release`). */
+export function checkStalledEntries(root: string): CheckOutcome {
   const planned = plannedPlanEntries(root);
-  const stalled = planned.filter((entry) => {
+  const collect = (entry: BacklogEntry, file: "plans" | "bugs"): { file: "plans" | "bugs"; entry: BacklogEntry } | null => {
     const hold = entryHold(entry, planned);
-    return hold === "needs-review" || hold === "needs-replan" || hold === "held-for-operator"; // vocabulary-ok: the held-for-operator hold's key
-  });
+    return hold === "needs-review" || hold === "needs-replan" || hold === "held-for-operator" // vocabulary-ok: the held-for-operator hold's key
+      ? { file, entry }
+      : null;
+  };
+  const stalled = [
+    ...planned.map((e) => collect(e, "plans")),
+    ...openBugEntries(root).map((e) => collect(e, "bugs")),
+  ].filter((x): x is { file: "plans" | "bugs"; entry: BacklogEntry } => x !== null);
   const [first, ...rest] = stalled;
-  if (!first) return okOutcome("no planned plan is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
-  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
-  const hold = entryHold(first, planned);
-  const note = (first.body.split(/\n/).find(
+  if (!first) return okOutcome("no planned plan or open bug is held by a Needs-review, Needs-replan, or held-for-operator note"); // vocabulary-ok: names the held-for-operator hold
+  const more = andMore(rest, (s) => `"${truncate(s.entry.title, FIX_CLAIM_HEADING_MAX)}"`);
+  const head = first.file === "bugs" ? "BUGS.md bug" : "PLANS.md plan";
+  const hold = entryHold(first.entry, planned);
+  const note = (first.entry.body.split(/\n/).find(
     (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   if (hold === "held-for-operator") { // vocabulary-ok: the held-for-operator hold's key
-    return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.body)} times${more} — release it with tumwater plan --release`); // vocabulary-ok: a held-for-operator plan is the operator's to release
+    return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held for the operator ${heldCount(first.entry.body)} times${more} — release it with ${first.file === "bugs" ? "tumwater bug --release" : "tumwater plan --release"}`); // vocabulary-ok: a held-for-operator entry is the operator's to release
   }
-  return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
+  return warnOutcome(`${head} "${truncate(first.entry.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }
 
@@ -362,7 +370,7 @@ interface PlanDependencyProblem {
  * allocator (entryHoldAgainst) cannot see: a ref naming no heading (the hold is void, so the
  * dependent is claimable now), a clause that parses to no refs (it holds nothing), and a
  * dependency cycle (every part on it stays blocked forever). Reads the tree at `root` through
- * planDependencyProblems. A warn, never a fail, like checkStalledPlans: the plan role writes the
+ * planDependencyProblems. A warn, never a fail, like checkStalledEntries: the plan role writes the
  * clauses by hand and fixes them itself. The most serious kind is named — cycle, then dangling,
  * then unparsed — with a count of the other kinds. */
 export function planDependencyProblem(root: string): PlanDependencyProblem | null {

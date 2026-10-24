@@ -47,12 +47,14 @@ export const REVISION_BACKSTOP = 6;
  * motivation: the cap stops one cycle, the re-pick starts another). The hold is a
  * **Needs review …** note under the entry's heading — the same needs-review hold every surface
  * renders `[blocked: needs review]` and that the plan role resolves by splitting or replanning
- * the plan (doctor-backlog-plans' checkStalledPlans names it) — whose text names the surviving
+ * the plan (doctor-backlog-plans' checkStalledEntries names it) — whose text names the surviving
  * objections verbatim (they are already in `RunnerState.lastReview.reasons`), so the plan role
- * sees exactly what would not converge. PLANS.md plans only: no role clears a Needs-review note
- * on a BUGS.md entry (`tumwater bug --release` keeps it, INV-AT1, and no role resolves one for
- * a bug), so holding a bug would be a permanent dead-end; a bug that cannot converge stays with
- * the existing re-pick behaviour (reviewer-feedback delivery, part 4/4, addresses that churn).
+ * sees exactly what would not converge. PLANS.md plans only, by design: the convergence hold
+ * parks a revised plan whose author hit the round cap, so only the plan role needs to clear it;
+ * a role's own too-large Needs-review note on a BUGS.md entry is the bug path (the
+ * stalledEntries/operatorHeldEntries comments in src/backlog/backlog-eligibility.ts), which the
+ * plan role resolves by splitting it. A bug that cannot converge stays with the existing re-pick
+ * behaviour (reviewer-feedback delivery, part 4/4, addresses that churn).
  * Written through the primary worktree lock, as every other backlog write is, and then committed
  * on main by commitOperatorBacklogEdit — the commit every other backlog writer makes — so the
  * primary checkout stays clean for the next fast-forward and the hold reaches the worktrees

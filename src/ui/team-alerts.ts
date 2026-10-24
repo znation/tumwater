@@ -12,7 +12,7 @@ import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { FixClaimProblem, ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
 import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
-import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
+import type { RefusedEntry, StalledEntry } from "../backlog/backlog-eligibility.js";
 import type { ClaimState } from "../scheduling/claim-entries.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -505,7 +505,7 @@ interface BacklogAlertsInput {
   staleQuestions: readonly StaleQuestion[];
   refused: readonly RefusedEntry[];
   operatorHeld: readonly RefusedEntry[];
-  stalledPlans: readonly StalledPlan[];
+  stalledEntries: readonly StalledEntry[];
   planDependency: PlanDependencyProblem | null;
   strandedPlans: readonly StrandedPlanEntry[];
   duplicatedHeadings: readonly BacklogHeadingDuplicate[];
@@ -514,11 +514,11 @@ interface BacklogAlertsInput {
 }
 
 /** The backlog alerts, in emission order: open questions, refused entries, operator-held
- * plans, stalled plans, a broken plan-dependency clause, stranded plans, duplicated backlog
- * headings, and Fixed records with a bad Validation gap trace. Extracted from teamAlerts
- * (part 2/5 of the teamAlerts split) so the shared module stays small; the input names
- * exactly the fields this run reads. The caller pushes the returned alerts at the position
- * this run used to occupy, so the emitted key order is unchanged. */
+ * entries, stalled entries, a broken plan-dependency clause, stranded plans, duplicated
+ * backlog headings, and Fixed records with a bad Validation gap trace. Extracted from
+ * teamAlerts (part 2/5 of the teamAlerts split) so the shared module stays small; the input
+ * names exactly the fields this run reads. The caller pushes the returned alerts at the
+ * position this run used to occupy, so the emitted key order is unchanged. */
 function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
   const {
@@ -526,7 +526,7 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     staleQuestions,
     refused,
     operatorHeld,
-    stalledPlans,
+    stalledEntries,
     planDependency,
     strandedPlans,
     duplicatedHeadings,
@@ -578,8 +578,8 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
     });
   }
-  // A Needs-review/Needs-replan plan whose held count reached the operator threshold parks
-  // until a human releases it (tumwater plan --release, part 2/3); amber because only the
+  // A Needs-review/Needs-replan entry whose held count reached the operator threshold parks
+  // until a human releases it (tumwater plan|bug --release, part 2/3); amber because only the
   // operator can clear it, right after the refused alert, naming the entry like the refused
   // alert does. Unlike refused, a held-for-operator entry is still in the normal review
   // cycle below the threshold — only the at-past-threshold list reaches here (operatorHeldEntries).
@@ -588,29 +588,32 @@ function buildBacklogAlerts(input: BacklogAlertsInput): TeamAlert[] {
     out.push({
       key: "operator-held", // vocabulary-ok: the operator-held amber alert's key
       tone: "amber",
-      title: `${plural(operatorHeld.length, "plan is held", "plans are held")} for you to release`,
-      detail: `Plan ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater plan --release`,
+      title: `${plural(operatorHeld.length, "backlog entry is held", "backlog entries are held")} for you to release`,
+      detail: operatorHeld.some((r) => r.file === "bugs") && operatorHeld.some((r) => r.file === "plans")
+        ? operatorHeld.map((r) => `${r.file === "bugs" ? "Bug" : "Plan"} ${stripEntryStamp(r.title)} (tumwater ${r.file === "bugs" ? "bug" : "plan"} --release)`).join("; ")
+        : `${first.file === "bugs" ? "Bug" : "Plan"} ${entryListDetail(operatorHeld.map((r) => r.title))} — release it with tumwater ${first.file === "bugs" ? "bug" : "plan"} --release`,
       // The action lands the operator on the named entry: open the backlog card on the
       // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
       actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
     });
   }
-  // A plan parked by a Needs-review/Needs-replan note (the doctor's `stalled plans` row, behind
-  // the held threshold) sits until the plan role splits or replans it — amber because the plan
-  // role is the only one that can clear it, right after the operator-held alert, naming the first
-  // such plan in file order, its note kind, and the fix. Same `entryHold` classification as
-  // `operatorHeldEntries` and `checkStalledPlans`, so the always-on alert and the doctor cannot
-  // disagree on which holds are role-resolvable. A held-for-operator plan is excluded here.
-  if (stalledPlans.length) {
-    const first = stalledPlans[0]!;
+  // An entry parked by a Needs-review/Needs-replan note (the doctor's `stalled entries` row,
+  // behind the held threshold) sits until the plan role splits or replans it — amber because
+  // the plan role is the only one that can clear it, right after the operator-held alert,
+  // naming the first such entry in file order, its file, its note kind, and the fix. Same
+  // `entryHold` classification as `operatorHeldEntries` and `checkStalledEntries`, so the
+  // always-on alert and the doctor cannot disagree on which holds are role-resolvable. A
+  // held-for-operator entry is excluded here.
+  if (stalledEntries.length) {
+    const first = stalledEntries[0]!;
     out.push({
-      key: "stalled-plans",
+      key: "stalled-entries",
       tone: "amber",
-      title: `${plural(stalledPlans.length, "plan is stalled", "plans are stalled")} in review`,
-      detail: `Plan ${entryListDetail(stalledPlans.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans it, so a plan that keeps sitting here means the plan role is not running or keeps deferring`,
+      title: `${plural(stalledEntries.length, "backlog entry is stalled", "backlog entries are stalled")} in review`,
+      detail: `${first.file === "bugs" ? "Bug" : "Plan"} ${entryListDetail(stalledEntries.map((p) => p.title))} — ${first.hold === "needs-replan" ? "a Needs replan note parks it" : "a Needs review note parks it"}; the plan role splits or replans the entry, so one that keeps sitting here means the plan role is not running or keeps deferring`,
       // The action lands the operator on the named entry: open the backlog card on the
-      // plans tab and open that row (the dashboard's backlog arm reads `file:index`).
-      actions: [{ label: "Open backlog", act: "backlog", arg: `plans:${first.index}` }],
+      // file's tab and open that row (the dashboard's backlog arm reads `file:index`).
+      actions: [{ label: "Open backlog", act: "backlog", arg: `${first.file}:${first.index}` }],
     });
   }
   // A broken plan-dependency clause (the doctor's `plan dependencies` rule,
@@ -1279,7 +1282,7 @@ export function teamAlerts(
   planDependency: PlanDependencyProblem | null = null,
   staleWaitingBugs: readonly StaleWaitingBug[] = [],
   skippedMergeFiles: readonly string[] = [],
-  stalledPlans: readonly StalledPlan[] = [],
+  stalledEntries: readonly StalledEntry[] = [],
   quarantined: QuarantinedTests | null = null,
   strandedPlans: readonly StrandedPlanEntry[] = [],
   duplicatedHeadings: readonly BacklogHeadingDuplicate[] = [],
@@ -1300,7 +1303,7 @@ export function teamAlerts(
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles, staleClaims }));
-  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
+  out.push(...buildBacklogAlerts({ questions, staleQuestions, refused, operatorHeld, stalledEntries, planDependency, strandedPlans, duplicatedHeadings, validationGaps, fixClaims }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
   out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));

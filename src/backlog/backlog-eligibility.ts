@@ -372,44 +372,56 @@ export interface RefusedEntry {
   title: string;
 }
 
-/** The planned plans whose hold is `"held-for-operator"`, in file order: the plans parked
- * until the operator lifts them with `tumwater plan --release` (the `operator-held` team
- * alert's input), each carrying the backlog file and its 0-based position so a surface
- * opening the row can land on it, the same RefusedEntry shape refusedEntries returns. Only
- * plans — Needs-review/Needs-replan notes are a plan note, so a bug is never held this way.
+/** A planned plan or open bug whose hold is `"held-for-operator"`, in file order: the
+ * entries parked until the operator lifts them with `tumwater plan --release` or `tumwater
+ * bug --release` (the `operator-held` team alert's input), each carrying the backlog file
+ * and its 0-based position so a surface opening the row can land on it, the same RefusedEntry
+ * shape refusedEntries returns. The convergence hold writes only on plans, but a role's own
+ * too-large note can sit on a bug and reach this threshold, so a bug can be held this way too.
  * A missing file yields `[]`. */
 export function operatorHeldEntries(root: string): RefusedEntry[] {
   const holds = backlogHolds(root);
   const out: RefusedEntry[] = [];
-  plannedPlanEntries(root).forEach((e, i) => {
-    if (holds.plans[i] === "held-for-operator") out.push({ file: "plans", index: i, title: e.title }); // vocabulary-ok: the held-for-operator hold's key
-  });
+  const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): void => {
+    entries.forEach((e, i) => {
+      if (held[i] === "held-for-operator") out.push({ file, index: i, title: e.title }); // vocabulary-ok: the held-for-operator hold's key
+    });
+  };
+  entriesOf(plannedPlanEntries(root), holds.plans, "plans");
+  entriesOf(openBugEntries(root), holds.bugs, "bugs");
   return out;
 }
 
-/** A planned plan held by a Needs-review/Needs-replan note, plus the 0-based PLANS.md index
- * and hold that let a surface land on its row (`plans:<index>`) and tell the note kinds apart. */
-export interface StalledPlan {
+/** A planned plan or open bug held by a Needs-review/Needs-replan note, plus the 0-based
+ * index within its backlog file and hold that let a surface land on its row
+ * (`plans:<index>`/`bugs:<index>`) and tell the note kinds apart. */
+export interface StalledEntry {
+  file: "plans" | "bugs";
   index: number;
   title: string;
   hold: "needs-review" | "needs-replan";
 }
 
-/** The planned plans whose hold is exactly `"needs-review"` or `"needs-replan"`, in file
- * order: the plans parked by a Needs-review/Needs-replan note until the plan role splits or
- * replans them (the `stalled-plans` team alert's input), each carrying the 0-based PLANS.md
- * index and the hold. Same `backlogHolds(root)` + `plannedPlanEntries(root)` pair
- * `operatorHeldEntries` uses, so the alert and the doctor's `stalled plans` row classify
- * through the same `entryHold` and cannot disagree on which holds are role-resolvable. A
- * held-for-operator plan (a note at the held threshold) is excluded — it feeds
- * `operatorHeldEntries` and the `operator-held` alert instead. A missing file yields `[]`. */
-export function stalledPlanEntries(root: string): StalledPlan[] {
+/** The planned plans and open bugs whose hold is exactly `"needs-review"` or
+ * `"needs-replan"`, in file order: the entries parked by a Needs-review/Needs-replan note
+ * until the plan role splits or replans them (the `stalled-entries` team alert's input), each
+ * carrying its backlog file, 0-based index and the hold. Same `backlogHolds(root)` + the
+ * planned/`openBugEntries` readers `operatorHeldEntries` uses, so the alert and the doctor's
+ * `stalled entries` row classify through the same `entryHold` and cannot disagree on which
+ * holds are role-resolvable. A held-for-operator entry (a note at the held threshold) is
+ * excluded — it feeds `operatorHeldEntries` and the `operator-held` alert instead. A missing
+ * file yields `[]`. */
+export function stalledEntries(root: string): StalledEntry[] {
   const holds = backlogHolds(root);
-  const out: StalledPlan[] = [];
-  plannedPlanEntries(root).forEach((e, i) => {
-    const hold = holds.plans[i];
-    if (hold === "needs-review" || hold === "needs-replan") out.push({ index: i, title: e.title, hold });
-  });
+  const out: StalledEntry[] = [];
+  const entriesOf = (entries: readonly BacklogEntry[], held: readonly (EntryHold | null)[], file: "plans" | "bugs"): void => {
+    entries.forEach((e, i) => {
+      const hold = held[i];
+      if (hold === "needs-review" || hold === "needs-replan") out.push({ file, index: i, title: e.title, hold });
+    });
+  };
+  entriesOf(plannedPlanEntries(root), holds.plans, "plans");
+  entriesOf(openBugEntries(root), holds.bugs, "bugs");
   return out;
 }
 

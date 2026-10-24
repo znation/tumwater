@@ -3721,9 +3721,9 @@ non-converging cycle (the convergence rule); the hold is committed on main by
 `commitOperatorBacklogEdit`, like every other backlog write, and is best-effort, never turning
 the already-terminal exhaustion into a throw. The hold's `could not converge` marker
 (`CONVERGENCE_HOLD_MARKER`) is the same literal the plan role's charter names, so the plan role
-rewrites the plan from the note's quoted objections rather than leaving it parked. A BUGS.md claim is never held — no role resolves a
-Needs-review hold on a bug (`tumwater bug --release` keeps the note, INV-AT1), so holding one
-would be a permanent dead-end. Otherwise the ref points at the judged head and the round
+rewrites the plan from the note's quoted objections rather than leaving it parked. A BUGS.md claim is never held — the convergence hold is PLANS.md-only by design, parking a
+revised plan for the plan role to clear; a bug's hold reaches the plan role and is resolved by
+splitting instead of parking (`tumwater bug --release` keeps the note, INV-AT1). Otherwise the ref points at the judged head and the round
 advances. The director never revises.
 
 **Binds.** `src/merge/merge-core.ts` (`recordRejectedChange`); `src/runner/revision.ts`

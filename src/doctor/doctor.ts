@@ -65,7 +65,7 @@ import {
 } from "./doctor-codex-checks.js";
 import { backendQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
-import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledPlans, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
+import { checkBacklogHeadings, checkFixClaims, checkLiveFinished, checkPlanDependencies, checkStalledEntries, checkStrandedPlans, checkValidationGaps } from "./doctor-backlog-plans.js";
 import { checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQuestions, checkWaitingBugs } from "./doctor-backlog-bugs.js";
 import { checkMergeQueueFiles, checkPostReviews, checkStaleQueuedMerges, checkStalePrompts, checkUncommittedBacklog } from "./doctor-backlog.js";
 
@@ -209,7 +209,7 @@ export async function runDoctor(
     { name: "backlog headings", run: () => checkBacklogHeadings(root) },
     { name: "backlog archive", run: () => checkLiveFinished(root) },
     { name: "refusals", run: () => checkRefusedEntries(root) },
-    { name: "stalled plans", run: () => checkStalledPlans(root) },
+    { name: "stalled entries", run: () => checkStalledEntries(root) },
     { name: "plan dependencies", run: () => checkPlanDependencies(root) },
     { name: "stale questions", run: () => checkStaleQuestions(root) },
     { name: "stale bugs", run: () => checkStaleBugs(root) },
