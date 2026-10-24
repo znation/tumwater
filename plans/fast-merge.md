@@ -241,26 +241,36 @@ unrelated-key write leaves an absent key absent). `review.afterMerge` IS a defau
 
 - **Compile and lint before every merge** (decided 2026-10-19 by you). A type error on main breaks
   every role's gate and every agent's working tree at once; the gate catches it in seconds.
+  **Superseded 2026-10-24:** the compile/lint pass moves to the main watch's post-landing check
+  (PLANS.md's "Every commit is verified on main"); a commit is no longer stopped on its way in.
 - **Self-redeploy only runs a green commit** (decided 2026-10-19 by you). Tumwater runs its own
   main; a broken build deployed into the orchestrator could stop the team that would fix it.
 - **One owner for a red main.** Tumwater reverts the culprit and bugfix fixes forward. Every other
   role ignores main's known failures instead of fixing them: N parallel fixes of one break would
-  turn into N conflicting changes.
+  turn into N conflicting changes. **Superseded 2026-10-24:** the revert half is deleted by
+  PLANS.md's "Forward, never back"; the one-owner rule stands, with the `ci` role as that owner.
 - **Review before merge for every role not listed in `review.afterMerge`.** It catches what
   tests cannot (in the window it rejected 0.4 times per merged change, including an e2e test the
-  gate skips).
+  gate skips). **Superseded 2026-10-24:** there is one model review and it runs after landing, with
+  fix authority (PLANS.md's "Forward, never back" and "Every commit is verified on main").
 - **One change in flight per runner** (plans/merge-queue.md invariant 3).
 
 ## Decisions
 
 - **D1: no new role.** The post-merge check, bisect and revert are mechanical, so tumwater's own
   code does them. bugfix already receives the red-main heal prompt and keeps fix-forward and flake
-  root-causing.
+  root-causing. **Superseded 2026-10-24 (PLANS.md's `ci`-role plan):** the heal prompt's recipient
+  is the `ci` role, which owns main's greenness alongside the CI-parity run, and bugfix keeps only
+  the BUGS.md backlog.
 - **D2: revert first, fix forward second.** A revert is deterministic and takes seconds; the author
   gets the change back as a revision, which costs about what a rejection costs today.
+  **Superseded 2026-10-24:** nothing is ever taken off main — the fix is the first response
+  (PLANS.md's "Forward, never back").
 - **D3: more runners, not more changes per runner** (lever 1), for feature and bugfix only.
 - **D4: the merge lock runs the gate command** (`npm run test:gate`: lint, compile, affected tests),
   not a lint-and-compile-only script; it is skipped when the gate already verified the same tree.
+  **Superseded 2026-10-24:** the merge takes no gate run; the declared check runs on main's new tip
+  (PLANS.md's "Every commit is verified on main").
 - **D5: what tumwater cannot name, it does not excuse.** Known failures and quarantine work from
   parsed test titles (node:test's `✖` lines today); any other failure keeps today's fail-closed
   handling, so other projects lose nothing.
