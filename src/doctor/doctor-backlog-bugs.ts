@@ -89,16 +89,34 @@ export function waitingNoteDate(note: string): string | null {
   return /\d{4}-\d{2}-\d{2}/.exec(note)?.[0] ?? null;
 }
 
+/** True when `text` is a check-failure report that names `name` as a test that failed — the
+ * doctors' recurrence/regression evidence. The recurrence scans must not count any line that
+ * merely *contains* the quoted test name as the flake's return, or a warning that only quotes
+ * it — a quarantine-release lifecycle line, an unfiled-flake or housekeeping warning, a
+ * merge-blocked note, review prose — gets quoted as the failure that proves a recurrence or
+ * regression. Only the actual failure shapes the harness writes count: a `✖ <name>`
+ * failed-test line (which the gate's and merge's flake warnings quote verbatim — the `… failed
+ * then passed on retry — flaky: ✖ <name>…` pair and `known-flaky failure, merge kept:` — and
+ * which a check's own failing-test detail is built from), or a gate warning that lists `name`
+ * among main's known failures (`… known failures: <names>`) or a stale base's already-failed
+ * set (`… already failed, and main … is green: <names>`). Anything else names the test without
+ * failing it. */
+function isCheckFailure(text: string, name: string): boolean {
+  if (!text.includes(name)) return false;
+  return text.includes(`✖ ${name}`) || text.includes("known failures:") || text.includes("already failed");
+}
+
 /** Every event at or after `sinceMs` that records a failure naming `name`: a `warning` whose
- * message includes it (gate and merge flake warnings, a merge check kept for one retry), or a
- * `review_rejected` with a reason that includes it (its text is the first such reason). In
- * event order. */
+ * message is a check-failure report naming it (gate and merge flake warnings, a check failed
+ * for one retry, main's or a stale base's known-failure list), or a `review_rejected` with a
+ * reason that is one (its text is the first such reason). A line that merely quotes the test
+ * name in another context is not a failure (see isCheckFailure). In event order. */
 export function failureMentions(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string }[] {
   return events.flatMap((e) => {
     if (typeof e.ts !== "number" || e.ts < sinceMs) return [];
-    if (e.type === "warning" && typeof e.message === "string" && e.message.includes(name)) return [{ ts: e.ts, text: e.message }];
+    if (e.type === "warning" && typeof e.message === "string" && isCheckFailure(e.message, name)) return [{ ts: e.ts, text: e.message }];
     if (e.type === "review_rejected") {
-      const reason = stringList(e.reasons).find((r) => r.includes(name));
+      const reason = stringList(e.reasons).find((r) => isCheckFailure(r, name));
       if (reason !== undefined) return [{ ts: e.ts, text: reason }];
     }
     return [];

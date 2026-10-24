@@ -999,6 +999,50 @@ test("failureMentions collects flake warnings and rejection reasons naming the t
   assert.equal(failureMentions(events, FLAKY_TEST, 100)[2]?.text, `✖ ${FLAKY_TEST}`);
 });
 
+test("failureMentions ignores a warning or prose that merely quotes the test name", () => {
+  const ev = (e: Record<string, unknown>) => ({ source: "review", ...e }) as unknown as HarnessEvent;
+  const quarantine = `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open`;
+  const events = [
+    ev({ ts: 100, type: "warning", message: quarantine }),
+    ev({ ts: 110, type: "warning", message: `quarantined flaky tests are not filed in BUGS.md yet: ${FLAKY_TEST}` }),
+    ev({ ts: 120, type: "review_rejected", reasons: [`revertSubjectsOn blames ${FLAKY_TEST}`] }),
+    ev({ ts: 130, type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}` }),
+  ];
+  assert.deepEqual(failureMentions(events, FLAKY_TEST, 0).map((m) => m.ts), [130]);
+});
+
+test("failureMentions counts the no-glyph gate warnings that list the test among real failures", () => {
+  const ev = (e: Record<string, unknown>) => ({ source: "review", ...e }) as unknown as HarnessEvent;
+  const events = [
+    ev({ ts: 100, type: "warning", message: `gate check fails only main's known failures: ${FLAKY_TEST}, another` }),
+    ev({ ts: 110, type: "warning", message: `gate check fails only tests its base abc already failed, and main def is green: other, ${FLAKY_TEST}; going on to review` }),
+  ];
+  assert.deepEqual(failureMentions(events, FLAKY_TEST, 0).map((m) => m.ts), [100, 110]);
+});
+
+test("checkWaitingBugs stays ok when only a quarantine-release warning names the held test", () => {
+  const dir = tmpdir("doctor-waiting-quarantine-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
+    `**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: the message names the pid**\n`);
+  logEvent(dir, { source: "review", type: "warning", message: `quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open` });
+  assert.equal(checkWaitingBugs(dir).level, "ok");
+});
+
+test("checkRegressedFixes stays ok when only a quarantine-release warning names the fixed test", () => {
+  const out = checkRegressedFixes(fixedRoot([fixedHeading(FLAKY_TEST, 2)], [`quarantine released ${FLAKY_TEST}: its BUGS.md entry is no longer open`]));
+  assert.equal(out.level, "ok");
+});
+
+test("checkWaitingBugs stays ok when only a review-rejected prose reason names the held test", () => {
+  const dir = tmpdir("doctor-waiting-reviewprose-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
+    `**Waiting for the next failure ${daysAgoStamp(2)} by bugfix: the message names the pid**\n`);
+  logEvent(dir, { source: "review", type: "review_rejected", reasons: [`revertSubjectsOn blames ${FLAKY_TEST}`] });
+  assert.equal(checkWaitingBugs(dir).level, "ok");
+});
+
 test("checkWaitingBugs warns when the held bug's test failed again after the note's day", () => {
   const out = checkWaitingBugs(recurrenceRoot(2, `✖ ${FLAKY_TEST}`));
   assert.equal(out.level, "warn");
