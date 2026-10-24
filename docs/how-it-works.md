@@ -530,7 +530,9 @@ validation, and atomic write, so you never have to hand-edit the file.
   under their whole-queue positions, mirroring `tumwater queue --role <id>`. It also paints the
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` — the merged
   commits `review.afterMerge` put aside for post-merge review, each with its rejected (still
-  waiting on the revert) or failed-review status. A review one failed run from the
+  waiting on the revert) or failed-review status, and each row a two-click Accept posting
+  `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which the
+  `post-merge-risk` alert's shared advice names as the deliberate accept-unreviewed action). A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every
   surface and a `post-merge reviews` doctor row, and a review the drain actually drops
   raises the standing amber `dropped-post-reviews` alert describing the unreviewed commit.

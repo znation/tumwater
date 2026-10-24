@@ -6,7 +6,7 @@
  * shared sentence names ("…or accept the commit unreviewed deliberately"). It reads the same
  * FIFO list `readPostReviews` numbers 1..N and settles the entry by its commit, so the removed
  * entry is the very one the printed position named. */
-import { readPostReviews, settlePostReview } from "./post-merge-review.js";
+import { readPostReviews, settlePostReview, type PostReview } from "./post-merge-review.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { shortSha } from "../text/format.js";
 
@@ -20,23 +20,47 @@ export type AcceptPostReviewOutcome =
   | { status: "out-of-range"; depth: number }
   | { status: "rejected"; commit: string };
 
-/** Retire the Nth pending post-merge review — 1-based, as `tumwater reviews` numbers it —
- * accepting the commit unreviewed at the operator's request. `position` is resolved against
- * `readPostReviews` (the same readable FIFO list the command renders), so the position matches
- * the line `tumwater reviews` printed. The write goes through `settlePostReview` (whose failed
- * write already warns and never throws, INV-BT2), and the warning through
- * `warnEventBestEffort`, so this can never throw out of the command. An out-of-range position
- * writes nothing and returns the current readable depth; an entry carrying `rejected` writes
- * nothing and returns `rejected` — it is waiting on its revert, so removing it would skip the
- * revert (the revert must run first, then the revision can be reviewed). On success it removes
- * exactly that one entry, logging one `warning` under the entry's role. */
-export function acceptPostReview(root: string, position: number): AcceptPostReviewOutcome {
-  const entries = readPostReviews(root);
-  if (position < 1 || position > entries.length) return { status: "out-of-range", depth: entries.length };
-  const entry = entries[position - 1]!;
+/** Remove one readable entry the operator accepts unreviewed: refuse it (writing nothing) when
+ * it carries `rejected` — that entry is waiting on its revert, and removing it would skip the
+ * revert (the revert must run first, then the revision can be reviewed) — otherwise settle it
+ * with no verdict (`settlePostReview`; its failed write already warns and never throws, INV-BT2),
+ * log one `warning` under the entry's role, and return the `accepted` outcome naming what was
+ * retired. The single removal both `acceptPostReview` (by position) and `acceptPostReviewBySha`
+ * (by sha) share, so the CLI and the dashboard's post-review-accept cannot drift on what
+ * accepting means. */
+function removeAcceptedEntry(root: string, entry: PostReview): AcceptPostReviewOutcome {
   if (entry.rejected) return { status: "rejected", commit: entry.commit };
   settlePostReview(root, entry.commit, null);
   const message = `post-merge review of ${shortSha(entry.commit)} accepted unreviewed at the operator's request — the commit stays on main unreviewed`; // vocabulary-ok: the accepted-unreviewed wording those reasons it is the operator's choice
   warnEventBestEffort(root, entry.role, message);
   return { status: "accepted", role: entry.role, commit: entry.commit, summary: entry.summary };
+}
+
+/** Retire the Nth pending post-merge review — 1-based, as `tumwater reviews` numbers it —
+ * accepting the commit unreviewed at the operator's request. `position` is resolved against
+ * `readPostReviews` (the same readable FIFO list the command renders), so the position matches
+ * the line `tumwater reviews` printed. An out-of-range position writes nothing and returns the
+ * current readable depth; otherwise it runs the same `removeAcceptedEntry` the sha variant
+ * shares, so the two never drift on what accepting means (see `removeAcceptedEntry` for the
+ * removal, the revert-guard, the warning, and the never-throws guarantee). */
+export function acceptPostReview(root: string, position: number): AcceptPostReviewOutcome {
+  const entries = readPostReviews(root);
+  if (position < 1 || position > entries.length) return { status: "out-of-range", depth: entries.length };
+  return removeAcceptedEntry(root, entries[position - 1]!);
+}
+
+/** What removing a pending post-merge review by its commit did: `accepted`/`out-of-range`/
+ * `rejected` as `AcceptPostReviewOutcome` does (the sha variant never returns `out-of-range`);
+ * `gone` — a concurrent drain already settled the entry, so the client gets data, not an error,
+ * in the `/api/queue-cancel` gone idiom. */
+export type AcceptPostReviewByShaOutcome = AcceptPostReviewOutcome | { status: "gone" };
+
+/** Remove the pending post-merge review whose entry's commit is `sha` (the browser twin of
+ * `tumwater reviews --accept <n>`, resolving by commit because the dashboard rows carry one).
+ * A commit that matches none is `{ status: "gone" }` and changes nothing; otherwise it runs the
+ * same `removeAcceptedEntry` the position variant shares. */
+export function acceptPostReviewBySha(root: string, sha: string): AcceptPostReviewByShaOutcome {
+  const entry = readPostReviews(root).find((e) => e.commit.toLowerCase() === sha.toLowerCase());
+  if (!entry) return { status: "gone" };
+  return removeAcceptedEntry(root, entry);
 }

@@ -454,7 +454,7 @@ test("queue buttons carry no data-cancel in the drawer, and a malformed row rend
 });
 
 test("postReviewsHtml is empty until a commit waits and names each entry otherwise", () => {
-  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown): string }>(
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string): string }>(
     ["format", "labels", "pending-table"],
     ["postReviewsHtml"],
   );
@@ -471,5 +471,25 @@ test("postReviewsHtml is empty until a commit waits and names each entry otherwi
   assert.match(html, /bugfix 01234567 · fix the thing · <span class='mono'>\[2 failed review runs — last: boom\]<\/span>/);
   assert.match(html, /docs 11111111 · doc the no-verdict · <span class='mono'>\[2 failed review runs\]<\/span>/);
   assert.match(html, /clean fedcba98 · tidy · <span class='mono'>\[rejected — waiting to revert: &lt;revert&gt;; slow\]<\/span>/);
+  // A non-rejected entry carries a two-click Accept naming its full commit; a rejected entry
+  // renders none (the server would refuse it).
+  assert.match(html, /data-accept='abcdef1234567890'>Accept</);
+  assert.match(html, /data-accept='0123456789abcdef'>Accept</);
+  assert.doesNotMatch(html, /data-accept='fedcba9876543210'/);
   assert.doesNotMatch(html, /undefined|NaN/);
+});
+
+test("postReviewsHtml arms the clicked commit's Accept as Confirm accept", () => {
+  const { postReviewsHtml } = clientScope<{ postReviewsHtml(entries: unknown, armed?: string): string }>(
+    ["format", "labels", "pending-table"],
+    ["postReviewsHtml"],
+  );
+  const entries = [
+    { role: "feature", commit: "abcdef1234567890", summary: "add the thing" },
+    { role: "bugfix", commit: "0123456789abcdef", summary: "fix the thing" },
+  ];
+  const armed = postReviewsHtml(entries, "0123456789abcdef");
+  assert.match(armed, /data-accept='0123456789abcdef'>Confirm accept</);
+  assert.match(armed, /data-accept='abcdef1234567890'>Accept</);
+  assert.doesNotMatch(armed, /data-accept='abcdef1234567890'>Confirm accept/);
 });

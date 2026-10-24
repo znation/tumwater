@@ -2,7 +2,8 @@
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
  * restart, reclaim, abort, stop-schedule, role-notes, retire, revert, brief-edit, queue-cancel,
- * and commit-backlog — every POST handler that is not prompt/backlog/config/team. Each handler
+ * queue-top, post-review-accept, and commit-backlog — every POST handler that is not
+ * prompt/backlog/config/team. Each handler
  * adapts HTTP onto the domain work
  * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
  * its own `res`.
@@ -20,6 +21,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { previewRevert, revertFollowUp, revertMergedCommit } from "../operator/revert.js";
 import { cancelQueuedMergeBySha, type CancelQueuedByShaOutcome } from "../merge/merge-cancel.js";
+import { acceptPostReviewBySha, type AcceptPostReviewByShaOutcome } from "../review/post-review-accept.js";
 import { moveQueuedMergeToTopBySha, type TopQueuedByShaOutcome } from "../merge/merge-top.js";
 import { readMergeQueue } from "../merge/merge-queue.js";
 import { mergeChanges } from "../merge/merge-slot.js";
@@ -257,6 +259,32 @@ export async function handleQueueCancel(req: http.IncomingMessage, res: http.Ser
     commit: outcome.sha,
     summary: outcome.summary,
     message: `cancelled the merge of ${shortSha(outcome.sha)} — ${outcome.summary}`,
+  });
+}
+/** Handle POST /api/post-review-accept: the Post-merge reviews card row's two-click Accept —
+ * the browser twin of `tumwater reviews --accept <n>`, resolving by commit (the same removal
+ * `acceptPostReviewBySha` the CLI's position variant shares). A `sha` that is not 4-64 hex
+ * digits is a 400 and runs nothing. A sha no longer in the queue (a concurrent drain already
+ * settled it) is a 200 `{ status: "gone" }` data, not an error. A `rejected` entry is a 409
+ * carrying the CLI's wait-for-the-revert wording and changes nothing. Otherwise it answers the
+ * accepted entry's role/commit/summary and removes the entry. */
+export async function handlePostReviewAccept(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"sha": "1a2b3c4"}');
+  if (!body) return;
+  if (typeof body.sha !== "string" || !/^[0-9a-f]{4,64}$/i.test(body.sha))
+    return badRequest(res, `"sha" must be a hex commit id of 4-64 digits${gotSuffix(body.sha)}`);
+  const outcome: AcceptPostReviewByShaOutcome = acceptPostReviewBySha(root, body.sha);
+  if (outcome.status === "gone") return sendJson(res, 200, { ok: true, status: "gone" });
+  if (outcome.status === "rejected")
+    return sendJson(res, 409, { error: `post-merge review ${shortSha(outcome.commit)} is rejected and waiting on its revert — let the revert run, then review the revision` });
+  if (outcome.status !== "accepted") return;
+  sendJson(res, 200, {
+    ok: true,
+    status: "accepted",
+    role: outcome.role,
+    commit: outcome.commit,
+    summary: outcome.summary,
+    message: `accepted the post-merge review of ${shortSha(outcome.commit)} unreviewed — ${outcome.summary}`,
   });
 }
 /** Handle POST /api/queue-top: the Merge queue card row's Move to top button — the browser

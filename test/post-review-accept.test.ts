@@ -5,7 +5,7 @@ import { writeFileDeep } from "./helpers/write-file-deep.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { postReviewPath } from "../src/paths.js";
 import { readPostReviews } from "../src/review/post-merge-review.js";
-import { acceptPostReview } from "../src/review/post-review-accept.js";
+import { acceptPostReview, acceptPostReviewBySha } from "../src/review/post-review-accept.js";
 import { shortSha } from "../src/text/format.js";
 
 // acceptPostReview: the operator's deliberate retire of a pending post-merge review — the
@@ -77,4 +77,49 @@ test("acceptPostReview reports the depth out of range", () => {
 test("acceptPostReview reports depth zero for a missing file", () => {
   const root = makeRepo();
   assert.deepEqual(acceptPostReview(root, 1), { status: "out-of-range", depth: 0 });
+});
+
+test("acceptPostReviewBySha removes the matching entry and reports a gone sha", () => {
+  const root = makeRepo();
+  seedMany(root);
+  // Mixed case must not prevent the case-insensitive match.
+  const outcome = acceptPostReviewBySha(root, "B".repeat(40));
+  assert.deepEqual(outcome, {
+    status: "accepted",
+    role: "clean",
+    commit: "b".repeat(40),
+    summary: "rework the docs",
+  });
+  assert.deepEqual(
+    readPostReviews(root).map((e) => e.role),
+    ["improve", "coverage"],
+    "the matching entry is gone, the others keep FIFO order",
+  );
+  const warnings = eventsOfType(root, "warning").filter((e) => e.source === "clean");
+  assert.equal(warnings.length, 1, "exactly one warning under clean");
+  assert.ok(String(warnings[0]!.message).includes(shortSha("b".repeat(40))), "the warning names the short sha");
+
+  // A sha no longer in the queue is gone and changes nothing.
+  const before = readPostReviews(root);
+  assert.deepEqual(acceptPostReviewBySha(root, "z".repeat(40)), { status: "gone" });
+  assert.deepEqual(readPostReviews(root), before, "a gone sha writes no file");
+  assert.equal(eventsOfType(root, "warning").length, 1, "a gone sha logs no warning");
+});
+
+test("acceptPostReviewBySha refuses a rejected entry without writing", () => {
+  const root = makeRepo();
+  writeFileDeep(
+    postReviewPath(root),
+    JSON.stringify({
+      pending: [
+        { commit: "a".repeat(40), role: "improve", summary: "tidy the parser" },
+        { commit: "b".repeat(40), role: "clean", summary: "bad change", rejected: ["no tests"] },
+      ],
+    }),
+  );
+  const seed = readPostReviews(root);
+  const outcome = acceptPostReviewBySha(root, "b".repeat(40));
+  assert.deepEqual(outcome, { status: "rejected", commit: "b".repeat(40) });
+  assert.deepEqual(readPostReviews(root), seed, "nothing written on the rejected arm");
+  assert.equal(eventsOfType(root, "warning").filter((e) => e.source === "clean").length, 0);
 });

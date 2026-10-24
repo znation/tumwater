@@ -22,6 +22,11 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   // 5 s — the same confirmSlot two-click factory the drawer's note-clear/entry-cancel use, so a
   // stray click cannot remove an entry. Repaints the card (an armed row reads Confirm cancel).
   const queueCancelSlot = confirmSlot(() => renderPendingQueue(lastStatus));
+  let pendingAcceptCommit = "";
+  // The Post-merge reviews card's per-row accept, armed by a first click and fired by a second
+  // within 5 s — the same confirmSlot two-click factory, so a stray click cannot accept an
+  // entry unreviewed. Repaints the card (an armed row reads Confirm accept).
+  const reviewAcceptSlot = confirmSlot(() => renderPendingReviews(lastStatus));
   // pending-table:start
   // One role's state cell: the collector's three states, with "ready" split into pending vs
   // idle work. Never colors a degraded state as an active one.
@@ -231,15 +236,23 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     }
     return "";
   }
-  function postReviewsHtml(entries) {
+  function postReviewsHtml(entries, armed = "") {
     if (!Array.isArray(entries) || entries.length === 0) {
       return "<div class='card-head'><h2>Post-merge reviews</h2></div><div class='empty'>No merged commit is waiting for a post-merge review</div>";
     }
     const lines = entries.map((e) => {
       const label = postReviewStatusLabel(e);
-      return "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
+      let line = "<div class='queue-entry mono clamp1'>" + esc(e.role ? roleLabel(e.role) : "?") + " " + esc(shortSha(e.commit)) +
         " · " + esc(e.summary || "—") +
         (label ? " · <span class='mono'>" + esc(label) + "</span>" : "") + "</div>";
+      // A two-click Accept on every well-formed entry not waiting on its revert (the server
+      // refuses a rejected entry, so it renders no button): armed by the first click, fired by
+      // the second within 5 s (the confirmSlot guard), so a stray click cannot accept an entry
+      // unreviewed. Threaded the way pendingQueueHtml threads cancelArmedSha.
+      if (e && !Array.isArray(e.rejected) && typeof e.commit === "string") {
+        line += "<button type='button' class='btn btn-sm' data-accept='" + esc(e.commit) + "'>" + (armed === e.commit ? "Confirm accept" : "Accept") + "</button>";
+      }
+      return line;
     }).join("");
     return "<div class='card-head'><h2>Post-merge reviews</h2></div>" +
       "<div class='queue-head'>post-merge reviews (" + esc(entries.length) + "):</div>" + lines;
@@ -249,7 +262,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
   function renderPendingReviews(status) {
     const card = $("pendingreviews");
     if (!card) return;
-    card.innerHTML = postReviewsHtml(status && Array.isArray(status.postReviews) ? status.postReviews : []);
+    card.innerHTML = postReviewsHtml(status && Array.isArray(status.postReviews) ? status.postReviews : [], reviewAcceptSlot.armed(pendingAcceptCommit) ? pendingAcceptCommit : "");
   }
   // pending-table:end
   // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
@@ -330,6 +343,24 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       } else {
         pendingCancelSha = sha;
         queueCancelSlot.arm(sha);
+      }
+    });
+    // A Post-merge reviews row's Accept: the first click on an unarmed commit arms it
+    // (repainting that button as Confirm accept), a second on the armed commit within 5 s posts
+    // /api/post-review-accept then clears the arm and refetches so the removed row disappears.
+    $("pendingreviews").addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-accept]");
+      if (!b) return;
+      const commit = b.getAttribute("data-accept");
+      if (!commit) return;
+      if (reviewAcceptSlot.armed(commit)) {
+        await postAction("/api/post-review-accept", { sha: commit }, (d) => d && d.status === "accepted" ? "accepted the post-merge review of " + shortSha(d.commit) + " unreviewed — " + d.summary : "that review already left the queue");
+        pendingAcceptCommit = "";
+        reviewAcceptSlot.disarm();
+        fetchPending();
+      } else {
+        pendingAcceptCommit = commit;
+        reviewAcceptSlot.arm(commit);
       }
     });
     $("pendingqueue").addEventListener("change", (e) => {

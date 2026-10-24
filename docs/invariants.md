@@ -4221,12 +4221,15 @@ its entry without counting a failed run".
 `readPostReviews`, the same list `tumwater reviews` numbers), leaves every other entry in order, and
 logs one `warning` under the entry's role. An out-of-range position writes nothing and reports the
 current depth. An entry carrying `rejected` is refused without writing — it is waiting on its
-revert, and removing it would skip the revert. A failed store write warns and never throws
-(INV-BT2's write path), so `acceptPostReview` can never throw out of the command.
+revert, and removing it would skip the revert. The sha-addressed `acceptPostReviewBySha` removes
+only the entry whose commit matches and reports `{ status: "gone" }` (writing nothing) when none
+matches, so the dashboard's Accept and the CLI's `--accept <n>` share one removal and can never
+drift on what accepting means. A failed store write warns and never throws (INV-BT2's write path),
+so neither accept variant can throw out of its command.
 
-**Binds.** `src/review/post-review-accept.ts` (`acceptPostReview`).
+**Binds.** `src/review/post-review-accept.ts` (`acceptPostReview`, `acceptPostReviewBySha`).
 
-**Pinned by.** `test/post-review-accept.test.ts`.
+**Pinned by.** `test/post-review-accept.test.ts`, `test/gui-post-review-accept.test.ts`.
 
 ## Image-probe cache: a foreign entry reads as unprobed
 
