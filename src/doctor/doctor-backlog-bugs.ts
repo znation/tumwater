@@ -123,6 +123,15 @@ export function failureMentions(events: readonly HarnessEvent[], name: string, s
   });
 }
 
+/** The newest failure report at or after `since` naming `name` — `failureMentions`'s last
+ * mention — or undefined when none. The single home of the "did this flake come back after
+ * its boundary?" step, shared by the waiting-bug recurrence scan (checkWaitingBugs) and the
+ * regressed-fix match (matchedRegressedFixes), so both keep the same last-mention rule. */
+function lastFailureMention(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string } | undefined {
+  const mentions = failureMentions(events, name, sinceMs);
+  return mentions[mentions.length - 1];
+}
+
 /** The read-events window (ms) that reaches the oldest of `sinces` — `Date.now()` minus the
  * oldest timestamp, floored at 0 — so a recurrence check reads events past every candidate's
  * `since`. The single home of the "oldest of a set of since-times" step, shared by
@@ -166,8 +175,7 @@ export function checkWaitingBugs(root: string): CheckOutcome {
     const { events } = readEventsSince(root, sinceWindowMs(sinces));
     const recurred = held.flatMap((b) => {
       if (b.name === null || b.since === null) return [];
-      const mentions = failureMentions(events, b.name, b.since);
-      const newest = mentions[mentions.length - 1];
+      const newest = lastFailureMention(events, b.name, b.since);
       return newest ? [{ ...b, newest }] : [];
     });
     const [again, ...others] = recurred;
@@ -251,8 +259,7 @@ export function matchedRegressedFixes(
   events: readonly HarnessEvent[],
 ): RegressedFix[] {
   return candidates.flatMap((c) => {
-    const mentions = failureMentions(events, c.name, c.since);
-    const newest = mentions[mentions.length - 1];
+    const newest = lastFailureMention(events, c.name, c.since);
     return newest ? [{ ...c, newest }] : [];
   });
 }
