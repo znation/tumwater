@@ -565,7 +565,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   post-merge review queue as a Post-merge reviews card mirroring `tumwater reviews` with a Role picker that keeps only the chosen role's entries, the `tumwater reviews --role` twin, and a State picker that keeps only the chosen states — waiting, failing, rejected, each entry counted in the first state it matches — the `tumwater reviews --status` twin — the merged
   commits `review.afterMerge` put aside for post-merge review, each row naming the wait since the
   commit was queued for review (`<age> ago`, omitted for an entry an older file wrote without a
-  timestamp) matching `tumwater queue`'s age, each with its rejected or failed-review status, and each row a two-click Accept posting
+  timestamp) matching `tumwater queue`'s age, each with its rejected (still
+  waiting on the revert) or failed-review status, and each row a two-click Accept posting
   `POST /api/post-review-accept`, the browser twin of `tumwater reviews --accept <n>` (which the
   `post-merge-risk` alert's shared advice names as the deliberate accept-unreviewed action). A review one failed run from the
   `POST_REVIEW_FAILURE_LIMIT` drop raises the standing amber post-merge-risk alert on every

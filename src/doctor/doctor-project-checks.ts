@@ -269,11 +269,10 @@ export function checkFlakyChecks(root: string, now: number = Date.now()): CheckO
 /** A trailing day of at least `POST_MERGE_REJECT_WARN` post-merge `review_rejected` events — the
  * audit twin of the always-on `post-merge-churn` amber alert (src/ui/status-payload.ts
  * `postMergeChurnAlert`). Each rejection is an already-landed commit the reviewer turned back, so
- * it stays on main with the reviewer's reasons; `main's check` deliberately counts only
- * non-post-review reverts, so a churn day must not read as a clean main. Shares the alert's
- * window, threshold and event selection through `postMergeChurn`, so the doctor row and the
- * alert cannot disagree on when churn fires. ok/warn only — a churn burst does not stop
- * the team. */
+ * it cost a revert and a re-author; `main's check` deliberately counts only non-post-review
+ * reverts, so a churn day must not read as a clean main. Shares the alert's window, threshold and
+ * event selection through `postMergeChurn`, so the doctor row and the alert cannot disagree on
+ * when churn fires. ok/warn only — a churn burst does not stop the team. */
 export function checkPostMergeChurn(root: string): CheckOutcome {
   const { events } = readEventsSince(root, POST_MERGE_REJECT_WINDOW_MS);
   const churn = postMergeChurn(events);
@@ -281,7 +280,7 @@ export function checkPostMergeChurn(root: string): CheckOutcome {
   return warnOutcome(
     `${plural(churn.count, "post-merge review rejection")} in the last day (${churn.roles
       .map((r) => `${roleLabel(r.role)} ×${r.count}`)
-      .join(", ")}) — each commit had already reached main, so each stays on main with the reviewer's reasons; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
+      .join(", ")}) — each commit had already reached main, so each cost a revert and a re-author; narrow \`review.afterMerge\` for the noisy role or raise the authoring bar`,
   );
 }
 

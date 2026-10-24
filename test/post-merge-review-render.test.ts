@@ -118,7 +118,7 @@ test("entries render in input order with role, short sha and summary", () => {
   );
 });
 
-test("a rejected entry carries its rejected reasons", () => {
+test("a rejected entry carries its waiting-to-revert reasons", () => {
   const out = renderPostReviews([e({ rejected: ["no tests", "missing docs"] })]);
   assert.match(out, /\[rejected — waiting to revert: no tests; missing docs\]/);
 });
