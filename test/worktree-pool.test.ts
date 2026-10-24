@@ -594,6 +594,35 @@ test("a resumable but disabled role is removed and its pins never leak", async (
   assert.equal(slotForDir(root, canonical)?.pinnedFor, null, "a removed role's pin leaked");
 });
 
+test("a pin left by a removed role on a non-canonical slot is retired with its checkout", async () => {
+  // A leftover slot whose dir is NOT a canonical `_slot-<n>` checkout (a migrated legacy path)
+  // and whose pin belongs to a role no longer in the config must be dropped outright — clearing
+  // only the pin (as a canonical slot is) would orphan the legacy checkout on disk with no slot
+  // record to ever remove it. The dir sits outside the worktrees dir so the legacy-name pass
+  // does not already handle it; only the pin-retirement pass sees it.
+  const root = makeRepo();
+  writeConfig(root, { worktreeSlots: 2 });
+  const stray = join(root, "elsewhere");
+  mkdirSync(stray, { recursive: true });
+  writeFileSync(join(stray, "stale.txt"), "kept pin\n");
+  writeSlotsState(root, {
+    slots: [{ dir: stray, lease: null, pinnedFor: "clean", lastRole: null, lastReleasedAt: 1 }],
+  });
+
+  await retireLegacyRoleWorktrees(root, ["feature"]);
+  assert.equal(
+    readSlotsState(root).slots.some((slot) => slot.dir === stray),
+    false,
+    "the non-canonical slot survived without its role",
+  );
+  assert.equal(existsSync(stray), false, "the orphaned legacy checkout was left on disk");
+  assert.equal(
+    readSlotsState(root).slots.some((slot) => slot.pinnedFor === "clean"),
+    false,
+    "a removed role's pin leaked",
+  );
+});
+
 test("the migration leaves the director and underscore directories untouched", async () => {
   const root = makeRepo();
   writeConfig(root, { worktreeSlots: 2 });
