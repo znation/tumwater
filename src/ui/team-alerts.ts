@@ -207,10 +207,10 @@ function moreDetail(
   return restLabels.length > 0 ? ` · ${fold(restLabels)}` : "";
 }
 
-/** The display and command nouns for a backlog-file discriminator — the `"plans" | "bugs"`
- * `file` on RefusedEntry and StalledEntry: BUGS.md is a "Bug" and PLANS.md a "Plan", and the
- * lowercase form is the `tumwater bug|plan --release` command noun the refused and
- * operator-held alert bodies quote. */
+/** The display noun for a backlog-file discriminator — the `"plans" | "bugs"` `file` on
+ * RefusedEntry and StalledEntry: BUGS.md is a "Bug" and PLANS.md a "Plan", and the lowercase
+ * form is the `Refused plan|bug:` label and the `tumwater plan|bug --release` command noun the
+ * operator-held alert body interpolates. */
 function entryKindLabel(file: "plans" | "bugs"): "Bug" | "Plan" {
   return file === "bugs" ? "Bug" : "Plan";
 }
