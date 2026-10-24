@@ -183,10 +183,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     }
     if (key.ctrl && key.name === "o") {
       // The Activity type cycle is routed first on its own view (0); on the Health view the
-      // problems-only toggle precedes the History outcome cycle, and every other view keeps
-      // the History outcome cycle.
+      // problems-only toggle precedes the History outcome cycle; on the Pending view the
+      // post-merge review state filter is routed ahead of History's outcome cycle (its own arm
+      // consumes the key on Pending), and every other view keeps the History outcome cycle.
       if (session.view === 0) return activity.handleKey?.(key, ctx) ?? false;
       if (session.view === session.roleIds.length + 7) return health.handleKey?.(key, ctx) ?? false;
+      if (session.view === session.roleIds.length + 5) return pending.handleKey?.(key, ctx) ?? false;
       return history.handleKey?.(key, ctx) ?? false;
     }
     if (key.ctrl && key.name === "x") {

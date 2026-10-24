@@ -11,7 +11,7 @@ import { roleLabel } from "../../roles/role-labels.js";
 import { shortSha } from "../../text/format.js";
 import { humanAgo } from "../../text/datetime.js";
 import { readPostReviews, type PostReview } from "../../review/post-merge-review.js";
-import { renderPostReviews, postReviewStatusLabel, scopePostReviews } from "../../review/post-merge-review-render.js";
+import { renderPostReviews, postReviewStatusLabel, scopePostReviews, POST_REVIEW_STATES, postReviewState, type PostReviewState } from "../../review/post-merge-review-render.js";
 import { acceptPostReview } from "../../review/post-merge-review-accept.js";
 import { squash } from "../../text/text.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
@@ -115,6 +115,12 @@ export function createPendingPane(session: TuiPaneSession) {
   let overlapIndex = -1;
   let drillGen = 0;
   let roleScope: string | null = null;
+  // The pane-local `--status` filter (the Ctrl+O twin of `tumwater reviews --status` and the
+  // dashboard State picker): null means all, otherwise one of waiting/failing/rejected. It
+  // composes with the Ctrl+G role scope in the review block's filter text but is surfaced only
+  // by that header, and it never moves the History pane's outcome filter (the Pending arm in
+  // tui-panes.ts is routed ahead of History's).
+  let reviewState: PostReviewState | null = null;
   let head = "";
   // The Pending pane's row selection (null = list mode): the index into queueRows of the
   // merge shown in full, cleared on every Ctrl+T cycle like selectedQueued. Each row pairs a
@@ -143,19 +149,27 @@ export function createPendingPane(session: TuiPaneSession) {
   };
   // The one scoped traversal the review block's painting and the row selection both use, so
   // the painted block and the selected row's accept position cannot drift: the whole list with
-  // no scope when no Ctrl+G scope is active, else `scopePostReviews`'s kept entries and scope
-  // (each kept review keeping its whole-queue position, the `tumwater reviews --role <id>`
-  // twin).
+  // no scope when neither the Ctrl+G role scope nor the Ctrl+O state filter is active, else
+  // `scopePostReviews`'s kept entries and scope (each kept review keeping its whole-queue
+  // position, the `tumwater reviews --role <id>` / `--status <state>` / composed twin). The
+  // whole-list path stays byte-identical so an unfiltered pane reads unchanged.
   const scopedReviews = (): { entries: readonly PostReview[]; scope?: { roles: readonly string[]; positions: readonly number[]; total: number } } => {
-    if (roleScope === null) return { entries: lastReviews };
-    return scopePostReviews(lastReviews, [roleScope], (r) => r.role === roleScope);
+    if (roleScope === null && reviewState === null) return { entries: lastReviews };
+    const keep = (r: PostReview): boolean => (roleScope === null || r.role === roleScope) && (reviewState === null || postReviewState(r) === reviewState);
+    // The `--status <state>` filter text (or `--role <id> --status <state>` when composed with a
+    // Ctrl+G scope), passed only when a state filter is active: a role-only scope passes no filter
+    // so it keeps the `tumwater reviews --role <id>` twin's `no post-merge reviews for <id> …`
+    // no-match line (the CLI shares this path and passes no filter for `--role` alone).
+    const filterText = reviewState === null ? undefined : [roleScope !== null ? `--role ${roleScope}` : "", `--status ${reviewState}`].filter(Boolean).join(" ");
+    return scopePostReviews(lastReviews, roleScope === null ? [] : [roleScope], keep, filterText);
   };
   // The post-merge review block the pane paints under the merge queue and above the change
   // roster: `tumwater reviews`' own renderer over the queue `readPostReviews` reads, so the
   // TUI, the CLI, and the dashboard cannot drift on order or wording. Under a Ctrl+G scope it
   // narrows to the scoped role's entries, each kept under its whole-queue position. Empty only
   // when the whole queue is empty (no block, no header); a scope that keeps nothing still
-  // prints `renderPostReviews`'s `no post-merge reviews for <id> …` line.
+  // prints `renderPostReviews`'s no-match line — `no post-merge reviews for <id> …` for a
+  // role-only scope, `no post-merge reviews matching <filter> …` once a state filter joins.
   const reviewsHead = (): string => {
     if (lastReviews.length === 0) return "";
     const scoped = scopedReviews();
@@ -339,6 +353,28 @@ export function createPendingPane(session: TuiPaneSession) {
       const slots = [null, ...roles];
       const at = roleScope === null ? 0 : slots.indexOf(roleScope);
       roleScope = slots[(at + 1) % slots.length] ?? null;
+      rebuildQueueRows();
+      overlapIndex = -1;
+      ++drillGen;
+      head = queueAndReviews() + rosterText;
+      compose();
+      session.paneCache = base;
+      session.paneScroll = 0;
+      session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "o" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 5) {
+      // Ctrl+O on the Pending pane cycles the post-merge review state filter through all,
+      // waiting, failing and rejected and back — the `tumwater reviews --status` twin and the
+      // dashboard Post-merge reviews State picker, meaning the full state vocabulary even when
+      // the queue holds none of a state (the renderer's `no post-merge reviews matching
+      // --status …` line is the empty-selection state). Each kept review keeps its whole-queue
+      // position, so Ctrl+A still accepts the right entry under any filter. The pane's own arm
+      // is routed ahead of History's in tui-panes.ts, so it never advances the History outcome
+      // filter; the Ctrl+G role scope composes with this filter in the block's header.
+      const slots = [null, ...POST_REVIEW_STATES];
+      const at = reviewState === null ? 0 : slots.indexOf(reviewState);
+      reviewState = slots[(at + 1) % slots.length] ?? null;
       rebuildQueueRows();
       overlapIndex = -1;
       ++drillGen;

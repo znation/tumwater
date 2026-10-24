@@ -637,7 +637,11 @@ validation, and atomic write, so you never have to hand-edit the file.
   The post-merge review queue prints between the queue and the roster as a block
   from the same `readPostReviews`/`renderPostReviews` pair `tumwater reviews` uses, so the two
   surfaces are the observer twins of the CLI command, and the block follows the pane's Ctrl+G
-  role scope below.
+  role scope below. Ctrl+O narrows the same block to one state — all, waiting, failing,
+  rejected — the `tumwater reviews --status` / dashboard State-picker twin (composing with the
+  Ctrl+G role scope in the header's `--role <id> --status <state>` filter text), each kept
+  entry staying under its whole-queue position; its arm is routed ahead of History's on the
+  Pending view, so it never moves the History pane's outcome filter.
   Each Merge queue row carries a two-click Cancel (the first click arms it, a second within 5 s
   posts) through `POST /api/queue-cancel`, the browser twin of `tumwater queue --cancel <n>` —
   the same removal, so the browser, the CLI, and the TUI cannot drift on what cancelling means.

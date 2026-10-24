@@ -2687,6 +2687,128 @@ test("Ctrl+G on the Pending pane scopes the post-merge review block to each revi
   assert.ok(cache().includes("merge queue empty"), "and to the whole merge queue");
 });
 
+const ctrlO = (keys: ReturnType<typeof drillKeys>) => keys.handleKey(undefined, { ctrl: true, name: "o" });
+
+function pendingStateRig(pending: unknown[]): { keys: ReturnType<typeof createTuiKeys>; root: string } {
+  const root = makeRoot();
+  if (pending.length > 0) writeJsonFile(postReviewPath(root), { pending });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  return { keys, root };
+}
+
+test("Ctrl+O on the Pending pane cycles the post-merge review state filter under whole-queue positions", async () => {
+  const { keys, root } = pendingStateRig([
+    { role: "feature", commit: "a".repeat(40), summary: "waiting item" },
+    { role: "clean", commit: "b".repeat(40), summary: "failing item", failures: 2 },
+    { role: "qa", commit: "c".repeat(40), summary: "rejected item", rejected: ["no tests"] },
+  ]);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  const whole = renderPostReviews(readPostReviews(root));
+  assert.ok(cache().includes(whole), "an unfiltered pane paints the whole review block");
+
+  ctrlO(keys);
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --status waiting):"), "the first press selects waiting");
+  assert.ok(cache().includes(" 1. feature "), "the waiting entry keeps its whole-queue position 1");
+  assert.ok(!cache().includes("failing item") && !cache().includes("rejected item"), "the other states' entries are dropped");
+
+  ctrlO(keys);
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --status failing):"), "the second press selects failing");
+  assert.ok(cache().includes(" 2. clean "), "the failing entry keeps its whole-queue position 2");
+
+  ctrlO(keys);
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --status rejected):"), "the third press selects rejected");
+  assert.ok(cache().includes(" 3. qa "), "the rejected entry keeps its whole-queue position 3");
+
+  ctrlO(keys);
+  assert.ok(cache().includes(whole), "the fourth press returns to the whole review block byte-for-byte");
+});
+
+test("Ctrl+O on the Pending pane with a state the queue does not hold prints the no-match line, not an empty block", async () => {
+  const { keys } = pendingStateRig([
+    { role: "feature", commit: "a".repeat(40), summary: "waiting item" },
+    { role: "clean", commit: "b".repeat(40), summary: "another waiting item" },
+  ]);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  ctrlO(keys); // → waiting
+  assert.ok(cache().includes("post-merge review queue (2 of 2, --status waiting):"), "both waiting entries are kept");
+  ctrlO(keys); // → failing
+  assert.ok(cache().includes("no post-merge reviews matching --status failing (post-merge review queue holds 2)"), "a state with no entry prints the no-match line");
+  ctrlO(keys); // → rejected
+  assert.ok(cache().includes("no post-merge reviews matching --status rejected (post-merge review queue holds 2)"), "the no-match line repeats for the second empty state");
+  assert.ok(!cache().includes("post-merge review queue ("), "no empty block header is painted");
+  ctrlO(keys); // → all
+  assert.ok(cache().includes("post-merge review queue (2 entries):"), "back to the unfiltered header");
+});
+
+test("Ctrl+O composes with the Ctrl+G role scope on the Pending pane", async () => {
+  const { keys } = pendingStateRig([
+    { role: "feature", commit: "a".repeat(40), summary: "feature waiting" },
+    { role: "feature", commit: "c".repeat(40), summary: "feature rejected", rejected: ["no tests"] },
+    { role: "clean", commit: "b".repeat(40), summary: "clean rejected", rejected: ["bad"] },
+  ]);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  ctrlG(keys); // first Ctrl+G scope is the first review role (feature)
+  assert.ok(cache().includes("post-merge review queue (2 of 3, --role feature):"), "the Ctrl+G scope narrows to feature");
+  ctrlO(keys); // → waiting
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --role feature --status waiting):"), "the composed filter names role then state");
+  assert.ok(cache().includes(" 1. feature "), "the kept entry keeps its whole-queue position");
+  assert.ok(!cache().includes("clean rejected"), "the other role's entry is dropped");
+  ctrlO(keys); // → failing
+  assert.ok(cache().includes("no post-merge reviews matching --role feature --status failing (post-merge review queue holds 3)"), "a composed filter that keeps nothing prints the no-match line naming both");
+  ctrlO(keys); // → rejected
+  assert.ok(cache().includes("post-merge review queue (1 of 3, --role feature --status rejected):"), "the composed filter narrows to feature's rejected entry");
+  assert.ok(cache().includes(" 2. feature "), "the feature rejected entry keeps its whole-queue position 2");
+});
+
+test("Ctrl+G role-only scope on the Pending pane keeps the CLI twin's `for <id>` no-match line", async () => {
+  const root = makeRoot();
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 1, summary: "feature merge", enqueuedAt: 0 });
+  writeJsonFile(postReviewPath(root), { pending: [{ role: "clean", commit: "b".repeat(40), summary: "clean review" }] });
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => Promise.resolve({ mainBranch: "main", roles: [] }),
+    collectOverlaps: () => Promise.resolve({ mainBranch: "main", state: "no-base" as const, overlaps: [] }),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  await settle();
+  const cache = () => keys.state().paneCache ?? "";
+  ctrlG(keys); // first scope is the queued role feature, which holds no reviews
+  assert.ok(cache().includes("no post-merge reviews for feature (post-merge review queue holds 1)"), "a role-only scope that keeps nothing keeps the CLI twin's `for <id>` no-match line");
+  assert.ok(!cache().includes("matching --role feature"), "a role-only scope never names the filter");
+});
+
+test("Ctrl+O on the Pending pane does not advance the History pane's outcome filter", async () => {
+  const { keys } = pendingStateRig([]);
+  await settle();
+  assert.equal(keys.state().historyResult, "all", "History opens unfiltered");
+  ctrlO(keys); // Pending review state → waiting
+  assert.equal(keys.state().historyResult, "all", "a Pending Ctrl+O leaves the History outcome filter alone");
+  // Cycle forward through Queued, Health, Brief, Activity … back to History (roleIds.length + 4).
+  for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().view, 4, "back on History");
+  assert.equal(keys.state().historyResult, "all", "History still shows the default result on re-entry");
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().historyResult, "merged", "History's own Ctrl+O still cycles its outcome filter");
+});
+
 test("Ctrl+G on the Pending pane narrows the merge queue to each queued role under its whole-queue position", async () => {
   const root = makeRoot();
   enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 1, summary: "feature first", enqueuedAt: 0 });
