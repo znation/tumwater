@@ -8,7 +8,7 @@ import type { ClusterSection, FailureReportData, OutcomeRow } from "./failure-da
 import type { SpendCell } from "./time-spend.js";
 import { agree, plural } from "../text/phrases.js";
 import { shortSha, usd } from "../text/format.js";
-import { boundedWindowLine, clockHm, dayKey, dayLabel, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
+import { boundedWindowLine, dayKey, dayLabel, formatTime, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { eventTypeLabel } from "../events/event-labels.js";
@@ -356,6 +356,6 @@ function roleCell(role: string): string {
 /** A transition line's local `MM-DD HH:MM` stamp — the year is redundant inside the window and
  * the seconds add bytes without adding causality. */
 function stateChangeStamp(ts: number): string {
-  return `${monthDay(dayKey(ts))} ${clockHm(ts)}`;
+  return `${monthDay(dayKey(ts))} ${formatTime(new Date(ts)).slice(0, 5)}`;
 }
 

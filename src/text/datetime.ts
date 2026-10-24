@@ -33,9 +33,7 @@ export function pad2(n: number): string {
 }
 
 /** The local wall-clock `HH:MM` of an instant, the hours/minutes-only shape the burn-rate
- * forecast, the window badge, the role view's fallback line, and the failure digest's
- * transition stamps (failure-render.ts's stateChangeStamp) share — the last so reachable
- * through `formatTime(...).slice(0, 5)` instead. */
+ * forecast, the window badge, and the role view's fallback line share. */
 export function clockHm(ms: number): string {
   const d = new Date(ms);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
