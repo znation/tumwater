@@ -33,6 +33,7 @@ import { seamsInUse } from "../config/config-fallbacks.js";
 import { enforcedKeyCaps } from "../concurrency/semaphore.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { branchName, mergeLockDir, worktreesDir } from "../paths.js";
+import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { loadRunnerState } from "../runner/runner-state-load.js";
 import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
@@ -306,14 +307,19 @@ export function checkCheckContention(root: string, config: TumwaterConfig | unde
   return waitContentionRow(root, CHECK_WAIT_CHECK_WINDOW_MS, "check_wait", "check waits", checkWaitContention, config, now);
 }
 
-/** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
- * (disabled in tumwater.json, or an instance above the configured count). Retirable ids are
- * the ones `tumwater retire --role <id>` accepts (knownRoleIds, or any well-formed custom-role name
- * with a leftover branch); any other id is listed by
- * full branch name with a manual-delete hint. The director and enabled roles are skipped.
- * Read-only, like every check: it only lists refs; an unreadable tumwater.json skips it. */
-export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome> {
-  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+/** The ids `leftover role branches` calls retirable and the branches it leaves for manual
+ * deletion — the one walk the row and the reap share, so the two can never disagree on what a
+ * retirable leftover is. Retirable ids are the branches whose role is no longer enabled (disabled
+ * in tumwater.json, or an instance above the configured count) and that `tumwater retire --role
+ * <id>` accepts (knownRoleIds, or any well-formed custom-role name); a `tumwater/<id>` branch for
+ * any other id — a removed custom role or an id retire can't name — falls to `unknown` as its
+ * full branch name. The director and enabled roles are skipped. An unreadable tumwater.json
+ * (config null) sees no branches. */
+export async function retirableLeftoverRoles(
+  root: string,
+  config?: TumwaterConfig | null,
+): Promise<{ retirable: string[]; unknown: string[] }> {
+  if (!config) return { retirable: [], unknown: [] };
   const prefix = branchName("");
   const known = new Set(knownRoleIds(config));
   const retirable: string[] = [];
@@ -325,6 +331,17 @@ export async function checkLeftoverRoleBranches(root: string, config?: TumwaterC
     if (known.has(id) || CUSTOM_NAME_RE.test(id)) retirable.push(id);
     else unknown.push(branch);
   }
+  return { retirable, unknown };
+}
+
+/** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
+ * (disabled in tumwater.json, or an instance above the configured count), through the shared
+ * retirableLeftoverRoles walk. Any other id is listed by
+ * full branch name with a manual-delete hint. Read-only, like every check: it only lists refs;
+ * an unreadable tumwater.json skips it. */
+export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome> {
+  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  const { retirable, unknown } = await retirableLeftoverRoles(root, config);
   const parts: string[] = [];
   if (retirable.length > 0) {
     const n = retirable.length;
@@ -385,6 +402,48 @@ export function brokenPinDropLines(drop: BrokenPinDrop): string[] {
   if (drop.failed.length > 0)
     lines.push(`${plural(drop.failed.length, "pin could not be dropped", "pins could not be dropped")}: ${drop.failed.map((f) => `${f.ref} — ${f.reason}`).join(", ")}`);
   return lines;
+}
+
+/** What `doctor --retire-leftovers` did: the disabled roles its reap retired, each naming the
+ * artifacts `retireRole` removed, and the ones a rail refusal stopped (with the refusal's
+ * reason, left exactly as they were). */
+export interface LeftoverRetireReport {
+  retired: { role: string; removed: string[] }[];
+  failed: { role: string; reason: string }[];
+}
+
+/** The lines `doctor --retire-leftovers` prints, one per retired role naming its removed
+ * artifacts through the same wording `tumwater retire --role <id>` surfaces, and one naming
+ * each failed role and its reason. No lines for a run that retired and failed nothing. */
+export function leftoverRetireLines(report: LeftoverRetireReport): string[] {
+  const lines: string[] = [];
+  for (const r of report.retired)
+    lines.push(`retired ${r.role}: ${r.removed.map((a) => artifactPhrase(a, r.role)).join("; ")}`);
+  for (const f of report.failed) lines.push(`failed to retire ${f.role}: ${f.reason}`);
+  return lines;
+}
+
+/** Retire each disabled role `retirableLeftoverRoles` calls retirable — the reap behind `doctor
+ * --retire-leftovers` — through the same `retireRole` core `tumwater retire --role <id>` uses,
+ * never `--force` (exactly the CLI's own refusal policy). A thrown rail refusal is caught into
+ * `failed` with its reason and the loop continues, leaving that role exactly as it was.
+ * Read-only checks never call this. */
+export async function retireLeftovers(
+  root: string,
+  config?: TumwaterConfig | null,
+): Promise<LeftoverRetireReport> {
+  const { retirable } = await retirableLeftoverRoles(root, config);
+  const retired: { role: string; removed: string[] }[] = [];
+  const failed: { role: string; reason: string }[] = [];
+  for (const role of retirable) {
+    try {
+      const { removed } = await retireRole(root, role, {});
+      retired.push({ role, removed });
+    } catch (err) {
+      failed.push({ role, reason: errorMessage(err) });
+    }
+  }
+  return { retired, failed };
 }
 
 /** Drop each broken `refs/tumwater/` pin — the reap behind `doctor --drop-broken-pins` and the

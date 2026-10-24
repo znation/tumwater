@@ -16,7 +16,7 @@ import { parseCountFlag, parseGrepFlag, parseModelFlag, parseResultFlag } from "
 import type { OrphanKillReport } from "./doctor/doctor-orphans.js";
 import type { BacklogCommitReport } from "./doctor/doctor-backlog.js";
 import type { RootInstallResync } from "./build/dep-install.js";
-import type { BrokenPinDrop } from "./doctor/doctor-contention-checks.js";
+import type { BrokenPinDrop, LeftoverRetireReport } from "./doctor/doctor-contention-checks.js";
 import {
   grepFlagSpec,
   GUI_FLAG_SPECS,
@@ -51,6 +51,7 @@ import {
   COMMIT_BACKLOG_FLAG,
   RESYNC_INSTALL_FLAG,
   DROP_BROKEN_PINS_FLAG,
+  RETIRE_LEFTOVERS_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parseDoctorChecks, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -209,7 +210,7 @@ async function main(): Promise<void> {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
       const { positionals: checkNames, rest: doctorFlags } = peelPositionals(args);
-      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG]);
+      rejectUnknownArgs("doctor", doctorFlags, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG, KILL_ORPHANS_FLAG, COMMIT_BACKLOG_FLAG, RESYNC_INSTALL_FLAG, DROP_BROKEN_PINS_FLAG, RETIRE_LEFTOVERS_FLAG]);
       const only = parseDoctorChecks(checkNames);
       const { runDoctor } = await import("./doctor/doctor.js");
       let orphanKill: OrphanKillReport | undefined;
@@ -256,6 +257,19 @@ async function main(): Promise<void> {
           if (lines.length > 0) say("");
         }
       }
+      let leftoverRetire: LeftoverRetireReport | undefined;
+      if (args.includes("--retire-leftovers")) {
+        const { retireLeftovers, leftoverRetireLines } = await import("./doctor/doctor-contention-checks.js");
+        const { config } = loadConfigSafe(root); // the row's own config, so the reap and the report agree on what is retirable
+        leftoverRetire = await retireLeftovers(root, config);
+        // The text form prints the retire lines before the report; --json keeps stdout one
+        // document, carrying the result as `leftoverRetire` on the payload.
+        if (!args.includes("--json")) {
+          const lines = leftoverRetireLines(leftoverRetire);
+          for (const line of lines) say(line);
+          if (lines.length > 0) say("");
+        }
+      }
       const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
         "./doctor/doctor-render.js"
       );
@@ -277,9 +291,11 @@ async function main(): Promise<void> {
         resyncInstall === undefined ? withBacklogCommit(payload) : withBacklogCommit({ ...payload, resyncInstall });
       const withBrokenPinDrop = <T extends object>(payload: T) =>
         brokenPinDrop === undefined ? withResyncInstall(payload) : withResyncInstall({ ...payload, brokenPinDrop });
+      const withLeftoverRetire = <T extends object>(payload: T) =>
+        leftoverRetire === undefined ? withBrokenPinDrop(payload) : withBrokenPinDrop({ ...payload, leftoverRetire });
       if (args.includes("--problems"))
-        sayJsonOrRender(args, args.includes("--json") ? withBrokenPinDrop(problemsOnly(report)) : report, renderDoctorProblems);
-      else sayJsonOrRender(args, args.includes("--json") ? withBrokenPinDrop(report) : report, renderDoctor);
+        sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(problemsOnly(report)) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, args.includes("--json") ? withLeftoverRetire(report) : report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

@@ -670,6 +670,31 @@ test("doctor --drop-broken-pins drops the row's broken pins before the report", 
   assert.ok(!("brokenPinDrop" in plainJson));
 });
 
+test("doctor --retire-leftovers retires before the report and --json carries leftoverRetire", async () => {
+  const seed = () => {
+    const repo = makeRepo();
+    writeConfig(repo, { roles: { feature: { enabled: false } } });
+    sh(repo, "git", "branch", "tumwater/feature");
+    return repo;
+  };
+  const repo = seed();
+  const r = await cli(repo, "doctor", "--retire-leftovers");
+  assert.match(r.stdout, /^retired feature: the branch \(tumwater\/feature\)\n\n/);
+  assert.equal(sh(repo, "git", "branch").includes("tumwater/feature"), false, "feature's branch is gone");
+  const repoJson = seed();
+  const json = await cli(repoJson, "doctor", "--retire-leftovers", "--json");
+  const doc = JSON.parse(json.stdout);
+  assert.deepEqual(doc.leftoverRetire, { retired: [{ role: "feature", removed: ["branch"] }], failed: [] });
+  // Without the flag the branch and the row stay as found, and no retire line prints.
+  const repoPlain = seed();
+  const plain = await cli(repoPlain, "doctor");
+  assert.doesNotMatch(plain.stdout, /^retired feature/);
+  assert.equal(sh(repoPlain, "git", "branch").includes("tumwater/feature"), true, "the branch stays without the flag");
+  const plainJson = JSON.parse((await cli(repoPlain, "doctor", "--json")).stdout);
+  assert.equal(plainJson.checks.find((c: { name: string }) => c.name === "leftover role branches").level, "warn");
+  assert.ok(!("leftoverRetire" in plainJson));
+});
+
 test("runDoctorCheck turns a throwing or rejecting check into a fail row and passes other outcomes through", async () => {
   assert.deepEqual(
     await runDoctorCheck(() => {

@@ -40,6 +40,9 @@ import {
   checkWorktreePool,
   brokenPinDropLines,
   dropBrokenPins,
+  leftoverRetireLines,
+  retireLeftovers,
+  retirableLeftoverRoles,
 } from "../src/doctor/doctor-contention-checks.js";
 import {
   checkCodexAccount,
@@ -1442,6 +1445,47 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   writeConfig(root, {});
   assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
   assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
+});
+
+test("retireLeftovers retires each retirable role and reports a rail refusal", async () => {
+  const root = readyRepo();
+  // `feature`: a disabled role whose branch sits at main — retires, `removed` naming its branch.
+  // `clean`: a disabled role with unmerged work on its branch — the rail refuses to delete it.
+  writeConfig(root, {
+    diskHoldGB: 0,
+    diskReclaimGB: 0,
+    roles: { feature: { enabled: false }, clean: { enabled: false } },
+  });
+  sh(root, "git", "branch", "tumwater/feature");
+  sh(root, "git", "checkout", "-b", "tumwater/clean");
+  fs.writeFileSync(path.join(root, "clean.txt"), "x\n");
+  sh(root, "git", "add", "clean.txt");
+  sh(root, "git", "commit", "-m", "clean leftover");
+  sh(root, "git", "checkout", "-");
+  const config = loadConfig(root);
+  assert.deepEqual(
+    (await retirableLeftoverRoles(root, config)).retirable.sort(),
+    ["clean", "feature"],
+  );
+  const report = await retireLeftovers(root, config);
+  // feature retires (its branch is gone); clean is refused and left exactly as it was.
+  const retiredFeature = report.retired.find((r) => r.role === "feature");
+  assert.ok(retiredFeature, "feature is retired");
+  assert.deepEqual(retiredFeature.removed, ["branch"]);
+  assert.equal(sh(root, "git", "branch").includes("tumwater/feature"), false, "feature's branch is gone");
+  const failedClean = report.failed.find((f) => f.role === "clean");
+  assert.ok(failedClean, "clean is reported failed");
+  assert.match(failedClean.reason, /unmerged commit/);
+  assert.ok(sh(root, "git", "branch").includes("tumwater/clean"), "clean's unmerged branch survives");
+  const lines = leftoverRetireLines(report);
+  assert.ok(lines.some((l) => l.startsWith("retired feature: the branch")), lines.join("; "));
+  assert.ok(lines.some((l) => l.startsWith("failed to retire clean:")), lines.join("; "));
+  // A clean repo is unchanged end to end: nothing retirable, nothing reported, no lines.
+  const root2 = readyRepo();
+  const config2 = loadConfig(root2);
+  assert.deepEqual(await retirableLeftoverRoles(root2, config2), { retirable: [], unknown: [] });
+  assert.deepEqual(await retireLeftovers(root2, config2), { retired: [], failed: [] });
+  assert.deepEqual(leftoverRetireLines({ retired: [], failed: [] }), []);
 });
 
 test("checkTumwaterPins fails naming a pin whose commit is gone and reads ok for live pins", async () => {

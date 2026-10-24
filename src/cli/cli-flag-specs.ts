@@ -338,6 +338,13 @@ export const RESYNC_INSTALL_FLAG: FlagSpec = { names: ["--resync-install"] };
  * Value-less, like RESYNC_INSTALL_FLAG. */
 export const DROP_BROKEN_PINS_FLAG: FlagSpec = { names: ["--drop-broken-pins"] };
 
+/** The `--retire-leftovers` flag spec, accepted by `doctor`: first retire each disabled role's
+ * leftover worktree, branch and merge ref in one pass — the reap for the `leftover role
+ * branches` row, through the same `retireRole` core `tumwater retire --role <id>` uses. The
+ * fifth mutating doctor flag, after `--kill-orphans`, `--commit-backlog`, `--resync-install` and
+ * `--drop-broken-pins`. Value-less, like DROP_BROKEN_PINS_FLAG. */
+export const RETIRE_LEFTOVERS_FLAG: FlagSpec = { names: ["--retire-leftovers"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
