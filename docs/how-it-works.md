@@ -244,7 +244,7 @@ discards a role's in-flight merge.
   secret leaks, a false-fix claim on a doc-only tip, and backlog structure — against each first-parent
   commit's own diff in the watched range, attributed to that commit's own merging role; a violation is
   logged as a warning naming the rule and the head (the same reason text the
-  gate would reject with), deterministically within one poll, with no confirming re-run. No run or
+  gate would reject with), deterministically within one poll, with no confirming re-run. That warning in the trailing day raises a standing amber alert naming the tip and the rule on `tumwater status`, the dashboard and the TUI, so a diff the gate let through cannot sit on main unremarked. No run or
   merge waits for the watch. It hands the named commit to the merge slot, which reverts it before
   any merge pick (serialized with merges): it checks out main's tip in the `_merge` worktree,
   commits the inverse as `tumwater(tumwater): Revert <short sha>`, runs `check.gateCommand` on it

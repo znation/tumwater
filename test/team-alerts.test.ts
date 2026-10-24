@@ -1492,3 +1492,20 @@ test("a dropped post-merge review raises one standing amber alert", () => {
   const clean2 = makeRepo();
   assert.equal((statusPayload(clean2, now) as { alerts: Array<{ key: string }> }).alerts.find((a) => a.key === "dropped-post-reviews"), undefined);
 });
+
+test("a main diff-rule failure raises one standing amber alert", () => {
+  const now = Date.now();
+  const mainRuleFailure = { count: 2, latestTs: now - 60_000, latestMessage: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" };
+  // mainRuleFailure is the 27th positional argument, after droppedPostReviews; one position
+  // earlier it would land in the dropped-post-reviews slot and raise no alert.
+  const one = teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, mainRuleFailure);
+  const only = one.filter((a) => a.key === "main-diff-rules");
+  assert.equal(only.length, 1);
+  assert.equal(only[0]!.tone, "amber");
+  assert.match(only[0]!.title, /diff-rule failures on main in the last day/);
+  assert.match(only[0]!.detail, /main's tip ab12cd3e fails the diff rules: conflict markers in src\/a\.ts/);
+  assert.match(only[0]!.detail, /tumwater revert/);
+  assert.deepEqual(only[0]!.actions, [{ label: "See failures", act: "view", arg: "failures" }]);
+  // A trailing null adds none.
+  assert.equal(teamAlerts(base, [], [], now, [], [], [], [], [], null, [], [], [], null, [], [], [], null, null, null, [], null, null, null, null, null, null).find((a) => a.key === "main-diff-rules"), undefined);
+});

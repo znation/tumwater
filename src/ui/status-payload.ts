@@ -313,6 +313,31 @@ export function droppedPostReviewsAlert(root: string, now = Date.now()): Dropped
   const latest = hits[hits.length - 1];
   return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
 }
+/** A main watch tip failing the review gate's five diff rules can sit on main for a day — this
+ * is how far back the main-diff-rules alert looks, the same trailing-day convention every
+ * event-reading alert uses. */
+export const MAIN_RULE_FAILURE_WINDOW_MS = 24 * 60 * 60_000;
+/** The exact substring main-watch.ts's `watchRules` logs in its warning, so this feed matches a
+ * real rule failure and cannot drift from the wording the watch writes. */
+const MAIN_RULE_FAILURE_MARKER = "fails the diff rules";
+/** A main tip the watch's diff rules rejected in the trailing day. count is the distinct failing
+ * tips in the window (the watch logs one warning per tip, not per poll), latestTs the most
+ * recent one's event stamp, latestMessage its squashed wording. */
+export interface MainRuleFailure {
+  count: number;
+  latestTs: number;
+  latestMessage: string;
+}
+/** The always-on feed for the `main-diff-rules` team alert (src/ui/team-alerts.ts): reads only
+ * the `warning` event the main watch already writes, so it reaches the status poll without a
+ * git read or a rule re-run (the watch paid for the check) and cannot drift from the watch's
+ * wording. null when the day holds no such warning. eventsSince degrades an unreadable log, so
+ * one bounded event scan needs no try/catch (the primaryOverwriteBlocks precedent). */
+export function mainRuleFailures(root: string, now = Date.now()): MainRuleFailure | null {
+  const hits = eventsSince(root, MAIN_RULE_FAILURE_WINDOW_MS, now, (e) => e.type === "warning" && typeof e.message === "string" && e.message.includes(MAIN_RULE_FAILURE_MARKER));
+  const latest = hits[hits.length - 1];
+  return latest ? { count: hits.length, latestTs: latest.ts, latestMessage: String(latest.message) } : null;
+}
 /** A revert off main that looks false or a revert burst, the always-on twin of the doctor's
  * `main's check` revert rule (src/baseline/main-guardrails.ts revertGuardrail): the same
  * revertGuardrail the doctor calls over the same readEventsSince event window and
@@ -636,6 +661,6 @@ export function statusPayload(root: string, now = Date.now(), scope: readonly st
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (team-alerts.ts's teamAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now)),
+    alerts: teamAlerts(snap, questions, roles, now, refusedEntries(root), operatorHeldEntries(root), staleOpenBugs(root, now), stalePrompts(root, now), staleMerges(root, now), planDependencyAlert(root), staleWaitingBugs(root, now), skippedMergeFiles(root), stalledPlanEntries(root), quarantineAlert(root, now), strandedPlanEntriesFor(root), duplicatedBacklogHeadings(root), validationGapProblems(root), revertAlert(root, now), notifyFailures(root, now), primaryOverwriteBlocks(root, now), capacityContention(root, now), flappedChecksAlert(root, now), regressedFixesAlert(root, now), postMergeChurnAlert(root, now), postReviewRiskAlert(root), droppedPostReviewsAlert(root, now), mainRuleFailures(root, now)),
   };
 }

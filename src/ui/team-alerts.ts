@@ -11,7 +11,7 @@ import type { StatusSnapshot } from "../status/status-data.js";
 import type { RevertGuardrail } from "../baseline/main-guardrails.js";
 import { stripEntryStamp, type StrandedPlanEntry } from "../backlog/backlog-structure.js";
 import type { ValidationGapProblem } from "../doctor/doctor-backlog-plans.js";
-import type { CapacityBottleneck, DroppedPostReviews, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
+import type { CapacityBottleneck, DroppedPostReviews, MainRuleFailure, PostMergeChurn, RegressedFixAlert } from "./status-payload.js";
 import type { RefusedEntry, StalledPlan } from "../backlog/backlog-eligibility.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { chainFragments, pauseCountdown } from "./badges.js";
@@ -836,20 +836,22 @@ interface MergeAlertsInput {
   postMergeChurn: PostMergeChurn | null;
   postReviewRisk: PostReviewRisk | null;
   droppedPostReviews: DroppedPostReviews | null;
+  mainRuleFailure: MainRuleFailure | null;
   now: number;
 }
 
 /** The quarantine, flapped-check, revert and post-merge review alerts, in emission order: a
  * stale or oversized flake quarantine, checks flapping more than once, reverts off main, a
  * burst of post-merge review rejections, a post-merge review one failed run from being
- * dropped, and a post-merge review the drain dropped leaves its commit on main unreviewed.
+ * dropped, a post-merge review the drain dropped leaves its commit on main unreviewed, and a
+ * main tip the watch's diff rules rejected.
  * Extracted from teamAlerts (part 4/5 of the teamAlerts split) so the shared module stays
  * small; the input names exactly the fields this run reads (including `now`, which the
  * quarantine and dropped-post-reviews age lines need). The caller pushes the returned alerts
  * at the position this run used to occupy, so the emitted key order is unchanged. */
 function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
   const out: TeamAlert[] = [];
-  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now } = input;
+  const { quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now } = input;
   // A stale or oversized flake quarantine — the always-on twin of the doctor's `flaky checks`
   // row (main-guardrails.ts checkFlakyChecks, quarantineWarning): a quarantined test counts as
   // a known failure until its filed bug leaves BUGS.md `## Open`, so an old entry means the
@@ -944,6 +946,23 @@ function buildMergeAlerts(input: MergeAlertsInput): TeamAlert[] {
       title: `${plural(droppedPostReviews.count, "post-merge review was dropped", "post-merge reviews were dropped")} in the last day — ${plural(droppedPostReviews.count, "the commit sits", "the commits sit")} on main unreviewed`,
       detail: `most recently ${humanAgo(droppedPostReviews.latestTs, now)}: ${squash(droppedPostReviews.latestMessage, 160)} — the reviewer kept failing past \`POST_REVIEW_FAILURE_LIMIT\`, so the commit is beyond the review gate; fix the reviewer backend so later commits are reviewed`,
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
+    });
+  }
+  // A main tip the watch's five diff rules rejected in the trailing day — the always-on
+  // surface for the `warning` main-watch.ts's `watchRules` logs (`main's tip <short sha> fails
+  // the diff rules: <reason>`). The gate judges one change; the watch judges each first-parent
+  // commit's own diff, so a conflict marker, a protected edit, a leaked secret, a phantom fix
+  // claim or a broken backlog structure that reached main through a gate blind spot sits on
+  // main with only that event log to say so. status-payload.ts's mainRuleFailures feeds it
+  // from the same marker, so the alert and the watch cannot drift on what a rule failure is (a
+  // `main_check` or `review_rejected` carrying the same text never matches).
+  if (mainRuleFailure) {
+    out.push({
+      key: "main-diff-rules",
+      tone: "amber",
+      title: `${plural(mainRuleFailure.count, "diff-rule failure on main", "diff-rule failures on main")} in the last day`,
+      detail: `most recently ${humanAgo(mainRuleFailure.latestTs, now)}: ${squash(mainRuleFailure.latestMessage, 160)} — the gate approved a diff the watch's five rules reject, so main carries what the gate would refuse; repair the tip or revert it with \`tumwater revert <sha>\``,
+      actions: seeFailures(),
     });
   }
   return out;
@@ -1133,7 +1152,8 @@ function buildTailAlerts(input: TailAlertsInput): TeamAlert[] {
  * oversized flake quarantine, a revert off main that
  * looks false or a revert burst, a burst of post-merge review rejections, each a commit that
  * already reached main, a post-merge review one failed run from being dropped, a post-merge
- * review dropped after repeated failures, leaving its commit on main unreviewed, the fleet
+ * review dropped after repeated failures, leaving its commit on main unreviewed, a main tip the
+ * watch's five diff rules rejected, the fleet
  * waiting on capacity slots (workspace, provider or
  * check), a plan filed under the wrong backlog section, a duplicated
  * backlog section heading, a Fixed record with a bad Validation gap trace, a pause, a
@@ -1185,12 +1205,13 @@ export function teamAlerts(
   postMergeChurn: PostMergeChurn | null = null,
   postReviewRisk: PostReviewRisk | null = null,
   droppedPostReviews: DroppedPostReviews | null = null,
+  mainRuleFailure: MainRuleFailure | null = null,
 ): TeamAlert[] {
   const out: TeamAlert[] = [];
   out.push(...buildStatusAlerts({ snap, roles }));
   out.push(...buildBacklogAlerts({ questions, refused, operatorHeld, stalledPlans, planDependency, strandedPlans, duplicatedHeadings, validationGaps }));
   out.push(...buildBacklogFeedAlerts({ staleBugs, notifyFailure, staleWaitingBugs, stalePrompts, staleMerges, skippedMergeFiles, primaryOverwrite, now }));
-  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, now }));
+  out.push(...buildMergeAlerts({ quarantined, flappedChecks, reverts, postMergeChurn, postReviewRisk, droppedPostReviews, mainRuleFailure, now }));
   out.push(...buildTailAlerts({ snap, now, contention, regressedFixes, roles }));
 
   return out;

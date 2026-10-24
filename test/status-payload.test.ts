@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
-import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS } from "../src/ui/status-payload.js";
+import { statusPayload, capacityContention, flappedChecksAlert, regressedFixesAlert, REGRESSED_FIX_WINDOW_MS, postMergeChurnAlert, POST_MERGE_REJECT_WINDOW_MS, postReviewRiskAlert, droppedPostReviewsAlert, DROPPED_POST_REVIEW_WINDOW_MS, mainRuleFailures, MAIN_RULE_FAILURE_WINDOW_MS } from "../src/ui/status-payload.js";
 import { checkRegressedFixes } from "../src/doctor/doctor-backlog-bugs.js";
 import { checkPostReviews } from "../src/doctor/doctor-backlog.js";
 import { checkCheckContention, checkProviderContention, checkWorktreePool } from "../src/doctor/doctor-contention-checks.js";
@@ -938,4 +938,25 @@ test("droppedPostReviewsAlert fires on a day's dropped post-merge reviews", () =
   assert.ok(25 * 3600_000 > DROPPED_POST_REVIEW_WINDOW_MS, "the 25h-old drop predates the alert's daily window");
   assert.equal(droppedPostReviewsAlert(old, now), null);
   assert.equal(DROPPED_POST_REVIEW_WINDOW_MS, 24 * 60 * 60_000);
+});
+
+test("mainRuleFailures fires on a day's diff-rule warnings", () => {
+  const now = Date.now();
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: now - 120_000, source: "main", type: "warning", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
+    { ts: now - 60_000, source: "main", type: "main_check", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" },
+    { ts: now - 30_000, source: "main", type: "warning", message: "main watch could not check main" },
+  ]);
+  const alert = mainRuleFailures(root, now);
+  assert.notEqual(alert, null);
+  assert.equal(alert!.count, 1, "the main_check and marker-less warnings are excluded");
+  assert.equal(alert!.latestMessage, "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts");
+  assert.equal(alert!.latestTs, now - 120_000);
+  // A 25h-old match, outside the day's window under the pinned `now`, raises none.
+  const old = makeRepo();
+  writeEvents(old, [{ ts: now - 25 * 3600_000, source: "main", type: "warning", message: "main's tip ab12cd3e fails the diff rules: conflict markers in src/a.ts" }]);
+  assert.ok(25 * 3600_000 > MAIN_RULE_FAILURE_WINDOW_MS, "the 25h-old match predates the alert's daily window");
+  assert.equal(mainRuleFailures(old, now), null);
+  assert.equal(MAIN_RULE_FAILURE_WINDOW_MS, 24 * 60 * 60_000);
 });
