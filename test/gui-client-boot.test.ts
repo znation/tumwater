@@ -268,9 +268,9 @@ test("entry-release and entry-top toasts name a held entry instead of the role",
       scope.runAct(act, "plans:0");
       return out;
     };
-    const held = toast({ status, heldNote: "still held [blocked: needs review]: x", committed: true });
+    const held = toast({ status, heldNote: "still held [blocked: needs review]: x", committed: true, lifted: "refused" });
     assert.ok(held.includes("still held [blocked: needs review]") && !held.includes(role));
-    assert.ok(toast({ status, committed: true }).includes(role));
+    assert.ok(toast({ status, committed: true, lifted: "refused" }).includes(role));
   }
 });
 

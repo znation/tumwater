@@ -194,7 +194,7 @@ test("tryReleaseEntry leaves the bytes releaseEntry leaves and refuses without w
   fs.writeFileSync(path.join(a, "BUGS.md"), md);
   fs.writeFileSync(path.join(b, "BUGS.md"), md);
   releaseEntry(a, "bug", 1);
-  assert.deepEqual(tryReleaseEntry(b, "bug", 1, "one"), { status: "released", file: "BUGS.md", title: "one" });
+  assert.deepEqual(tryReleaseEntry(b, "bug", 1, "one"), { status: "released", file: "BUGS.md", title: "one", lifted: "refused" });
   assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), fs.readFileSync(path.join(a, "BUGS.md"), "utf8"));
   assert.ok(!fs.readFileSync(path.join(b, "BUGS.md"), "utf8").includes("Refused"));
 

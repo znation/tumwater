@@ -186,8 +186,8 @@ function heldAt(root: string, kind: "plan" | "bug", position: number): EntryHold
  * `tumwater plan|bug --release <n>` through the non-exiting tryReleaseEntry. Body as
  * backlog-cancel's. A released entry that is not still held is newly eligible, so the kind's
  * role is woken (a held one wakes no role and carries `heldNote`); `gone` and `moved` answer
- * okGone, and an entry with neither a Refused nor a Waiting-for-the-next-
- * failure note answers status "not_refused" with no write and no wake. */
+ * okGone, and an entry with none of the Refused, Waiting-for-the-next-failure, or
+ * held-for-operator notes answers status "not_refused" with no write and no wake. */
 export async function handleBacklogRelease(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
@@ -202,7 +202,7 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Release ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     const hold = heldAt(root, kind, position);
     if (hold === null) requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
-    sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
+    sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, lifted: outcome.lifted, committed, ...(hold === null ? {} : { heldNote: stillHeldNote(hold) }) });
   } else if (outcome.status === "not_refused") {
     sendJson(res, 200, { ok: true, status: "not_refused", title: outcome.title });
   } else {

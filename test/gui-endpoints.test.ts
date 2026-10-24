@@ -2362,12 +2362,12 @@ test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and an
   assert.ok(!fs.existsSync(wakePath));
 
   const plan = await serve({ kind: "plan", position: 1, title: "p1" });
-  assert.deepEqual(plan.data, { ok: true, status: "released", file: "PLANS.md", title: "p1", committed: false });
+  assert.deepEqual(plan.data, { ok: true, status: "released", file: "PLANS.md", title: "p1", committed: false, lifted: "refused" });
   assert.ok(!fs.readFileSync(plansPath, "utf8").includes("Refused"));
   assert.match(fs.readFileSync(wakePath, "utf8"), /feature/);
 
   const bug = await serve({ kind: "bug", position: 1, title: "b1" });
-  assert.deepEqual(bug.data, { ok: true, status: "released", file: "BUGS.md", title: "b1", committed: false });
+  assert.deepEqual(bug.data, { ok: true, status: "released", file: "BUGS.md", title: "b1", committed: false, lifted: "refused" });
   assert.match(fs.readFileSync(wakePath, "utf8"), /bugfix/);
 
   const bugsNow = fs.readFileSync(bugsPath, "utf8");
@@ -2409,7 +2409,7 @@ test("handleBacklogRelease lifts a Waiting for the next failure note from a bug"
   const root = tmpdir();
   writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### w1\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**\n\nbody" }, { heading: "## Fixed" }]);
   const out = await captureJson((res) => handleBacklogRelease(fakeReq(JSON.stringify({ kind: "bug", position: 1, title: "w1" })), res, root));
-  assert.deepEqual(out.data, { ok: true, status: "released", file: "BUGS.md", title: "w1", committed: false });
+  assert.deepEqual(out.data, { ok: true, status: "released", file: "BUGS.md", title: "w1", committed: false, lifted: "waiting-for-failure" });
   assert.ok(!fs.readFileSync(path.join(root, "BUGS.md"), "utf8").includes("Waiting for the next failure"));
   assert.match(fs.readFileSync(wakeRequestPath(root), "utf8"), /bugfix/);
 });

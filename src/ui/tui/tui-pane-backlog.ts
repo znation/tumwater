@@ -1,5 +1,5 @@
 import { tryCancelEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
-import { tryMoveEntryToTop, tryReleaseEntry } from "../../backlog/backlog-release.js";
+import { tryMoveEntryToTop, tryReleaseEntry, liftedNotePhrase } from "../../backlog/backlog-release.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "../../backlog/backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "../../backlog/backlog-parts.js";
 import { plannedPlanEntries } from "../../backlog/backlog.js";
@@ -147,9 +147,9 @@ export function createBacklogPane(
       entryScroll = 0;
       session.flashMessage(
         outcome.status === "released"
-          ? `released ${kind} #${position}: ${outcome.title}${heldTail}`
+          ? `released ${kind} #${position}: ${outcome.title} (lifted ${liftedNotePhrase(outcome.lifted)})${heldTail}`
           : outcome.status === "not_refused"
-            ? `that ${kind} carries no Refused or Waiting for the next failure note`
+            ? `that ${kind} carries no Refused, Waiting for the next failure, or held-for-operator note` // vocabulary-ok: the held-for-operator note's release wording
             : `that ${kind} was already removed or moved — nothing released`,
       );
     } catch (err) {

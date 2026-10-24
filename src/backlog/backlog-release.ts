@@ -13,25 +13,47 @@ import { fail } from "../cli/cli-output.js";
 import { trimTrailingBlankLines } from "../text/text.js";
 import { withPrimaryWorktreeLock } from "../concurrency/lock.js";
 
-/** Drop the Refused note from `entry`'s slice of `lines`, in place; an entry with none loses its
- * Waiting-for-the-next-failure note instead, and one with neither loses its held-for-operator
- * Needs-review/Needs-replan note (the `(held N)` count at/above threshold, plus its
- * **Previously held N** line). False (and `lines` untouched) when the entry carries none of the
- * three, shared by releaseEntry and tryReleaseEntry so they cannot drift. */
-function liftRefusal(lines: string[], entry: ActionableEntryRange): boolean {
-  const slice = lines.slice(entry.start - 1, entry.end);
-  let kept = withoutRefusalNotes(slice);
-  if (kept.length === slice.length) kept = withoutWaitingNotes(slice);
-  if (kept.length === slice.length) kept = withoutHeldForOperatorNotes(slice);
-  if (kept.length === slice.length) return false;
-  lines.splice(entry.start - 1, slice.length, ...kept);
-  return true;
+/** The kind of note a release lifts, reported on every surface so the operator can tell a
+ * refusal lifted from a failure-wait lifted from an operator-hold lifted. */
+export type LiftableHold = "refused" | "waiting-for-failure" | "held-for-operator";
+
+/** The prose naming the note `lifted` kind a release removed, shared by the CLI, TUI and the
+ * exit-announcers so their released lines cannot drift. */
+export function liftedNotePhrase(lifted: LiftableHold): string {
+  return lifted === "refused"
+    ? "the Refused note"
+    : lifted === "waiting-for-failure"
+      ? "the Waiting-for-the-next-failure note"
+      : "the held-for-operator note"; // vocabulary-ok: the held-for-operator note's release wording
 }
 
-/** What `tryReleaseEntry` did: `released` wrote the file; `gone`, `moved` and `not_refused`
- * refuse as data, writing nothing. */
+/** Drop the Refused note from `entry`'s slice of `lines`, in place, and return its kind; an
+ * entry with none loses its Waiting-for-the-next-failure note instead, and one with neither
+ * loses its held-for-operator Needs-review/Needs-replan note (the `(held N)` count at/above
+ * threshold, plus its **Previously held N** line). Null (and `lines` untouched) when the entry
+ * carries none of the three, shared by releaseEntry and tryReleaseEntry so they cannot drift. */
+function liftRefusal(lines: string[], entry: ActionableEntryRange): LiftableHold | null {
+  const slice = lines.slice(entry.start - 1, entry.end);
+  let kept = withoutRefusalNotes(slice);
+  if (kept.length === slice.length) {
+    kept = withoutWaitingNotes(slice);
+    if (kept.length === slice.length) {
+      kept = withoutHeldForOperatorNotes(slice);
+      if (kept.length === slice.length) return null;
+      lines.splice(entry.start - 1, slice.length, ...kept);
+      return "held-for-operator"; // vocabulary-ok: the held-for-operator note's release wording
+    }
+    lines.splice(entry.start - 1, slice.length, ...kept);
+    return "waiting-for-failure";
+  }
+  lines.splice(entry.start - 1, slice.length, ...kept);
+  return "refused";
+}
+
+/** What `tryReleaseEntry` did: `released` wrote the file and reports the hold it lifted;
+ * `gone`, `moved` and `not_refused` refuse as data, writing nothing. */
 export type ReleaseEntryOutcome =
-  | { status: "released"; file: string; title: string }
+  | { status: "released"; file: string; title: string; lifted: LiftableHold }
   | { status: "gone" }
   | { status: "moved"; title: string }
   | { status: "not_refused"; title: string };
@@ -52,24 +74,30 @@ export function tryReleaseEntry(
     if (entry === undefined) return { status: "gone" };
     if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
     const lines = md.split("\n");
-    if (!liftRefusal(lines, entry)) return { status: "not_refused", title: entry.title };
+    const lifted = liftRefusal(lines, entry);
+    if (lifted === null) return { status: "not_refused", title: entry.title };
     writeTextAtomic(file, lines.join("\n"));
-    return { status: "released", file: fileName, title: entry.title };
+    return { status: "released", file: fileName, title: entry.title, lifted };
   });
 }
 
 /** Lift the Refused, Waiting for the next failure, or held-for-operator note from the
  * `n`th entry (1-based, as `--list` numbers them) of the kind's open section and write the
- * file, under the same lock the cancel and edit writers hold.
+ * file, under the same lock the cancel and edit writers hold, returning which hold it lifted.
  * An out-of-range position fails with locateEntry's wording; an entry with neither note
  * fails too, writing nothing. */
-export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
+export function releaseEntry(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+): { file: string; title: string; lifted: LiftableHold } {
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withPrimaryWorktreeLock(root, () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused, Waiting for the next failure, or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
+    const lifted = liftRefusal(lines, entry);
+    if (lifted === null) fail(`${kind} #${n} "${entry.title}" carries no Refused, Waiting for the next failure, or held-for-operator note`); // vocabulary-ok: the held-for-operator note's release wording
     writeTextAtomic(file, lines.join("\n"));
-    return { file: fileName, title: entry.title };
+    return { file: fileName, title: entry.title, lifted };
   });
 }
 

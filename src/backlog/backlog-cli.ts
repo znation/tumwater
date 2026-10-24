@@ -13,6 +13,7 @@ import { plannedPlanEntries } from "./backlog.js";
 import { allLiveClaims } from "../runner/runner-state-load.js";
 import { backlogHolds, cancelledClaimNote, stillHeldNote } from "./backlog-eligibility.js";
 import { entryKey, plansReleasedBy, releasedPartsNote } from "./backlog-parts.js";
+import { liftedNotePhrase, type LiftableHold } from "./backlog-release.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
 import { requireReadyRepo } from "../cli/cli-repo-gate.js";
@@ -201,12 +202,13 @@ export async function cancelAndAnnounce(
  * released entry is eligible now, and that role may be backed off) with no queued prompt. An
  * entry still held after the release (another note, an unmerged prerequisite) wakes no one and
  * gets stillHeldNote instead of the wake line. Prints `released <command> in <file>: <title>`
- * plus that line, or only the `--json` payload (with `hold` when still held). */
+ * naming the note it lifted, plus that line, or only the `--json` payload (with `lifted`, and
+ * `hold` when still held). */
 export async function releaseAndAnnounce(
   root: string,
   args: string[],
   command: "bug" | "plan",
-  release: (n: number) => { file: string; title: string },
+  release: (n: number) => { file: string; title: string; lifted: LiftableHold },
   role: string,
 ): Promise<void> {
   const { json, position, rest } = scanPositionArgs(args, "--release", "--release 2");
@@ -218,9 +220,9 @@ export async function releaseAndAnnounce(
   const holds = backlogHolds(root);
   const hold = (command === "bug" ? holds.bugs : holds.plans)[position - 1] ?? null;
   const wake = hold === null ? requestWake(root, [role]) : "";
-  if (json) sayJson({ file: released.file, title: released.title, ...(hold === null ? {} : { hold }) });
+  if (json) sayJson({ file: released.file, title: released.title, lifted: released.lifted, ...(hold === null ? {} : { hold }) });
   else {
-    say(`released ${command} in ${released.file}: ${released.title}`);
+    say(`released ${command} in ${released.file}: ${released.title} (lifted ${liftedNotePhrase(released.lifted)})`);
     say(hold === null ? wake : stillHeldNote(hold));
   }
 }

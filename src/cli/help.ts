@@ -306,10 +306,11 @@ Usage:
                                    non-blank line is the symptom, the rest is the body kept
                                    line for line; wakes the bugfix role
   tumwater bug --release <n> [--json]
-                                   Lift the Refused or Waiting for the next failure note from the
-                                   Nth entry in BUGS.md ## Open (as \`tumwater bug --list\`
-                                   lists it), commit it on main, and wake the bugfix role; --json
-                                   prints {file, title}
+                                   Lift the Refused, Waiting for the next failure, or a
+                                   Needs-review/Needs-replan note held past its threshold
+                                   (one per run) from the Nth entry in BUGS.md ## Open (as
+                                   \`tumwater bug --list\` lists it), commit it on main, and wake
+                                   the bugfix role; --json prints {file, title, lifted}
   tumwater bug --top <n> [--json]
                                    Move the Nth entry (as \`tumwater bug --list\` lists it) to
                                    the head of BUGS.md ## Open, so bugfix claims it next; commit
@@ -362,9 +363,11 @@ Usage:
                                    the first non-blank line is the title, the rest is the body
                                    kept line for line; wakes the feature role
   tumwater plan --release <n> [--json]
-                                   Lift the Refused note from the Nth entry in PLANS.md ## Planned
+                                   Lift the Refused, Waiting for the next failure, or a
+                                   Needs-review/Needs-replan note held past its threshold
+                                   (one per run) from the Nth entry in PLANS.md ## Planned
                                    (as \`tumwater plan --list\` lists it), commit it on main,
-                                   and wake the feature role; --json prints {file, title}
+                                   and wake the feature role; --json prints {file, title, lifted}
   tumwater plan --top <n> [--json]
                                    Move the Nth entry (as \`tumwater plan --list\` lists it) to
                                    the head of PLANS.md ## Planned, so feature claims it next;
