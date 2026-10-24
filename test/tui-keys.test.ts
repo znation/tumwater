@@ -4335,6 +4335,104 @@ test("Ctrl+N opens the run-cap editor on Activity, and still files a new entry o
   assert.equal(keys.state().concurrencyMode, false, "the backlog Ctrl+N does not open the run-cap editor");
 });
 
+test("Ctrl+K on the Activity view opens the check-cap editor and Enter writes maxConcurrentChecks", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  // Activity (view 0) with an empty prompt: Ctrl+K opens the check-cap editor, pre-filled with
+  // the resolved default 2 (an unset key default-fills, never an empty line), typed 4, Enter
+  // writes it.
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, true, "Ctrl+K on Activity opens the check-cap editor");
+  assert.equal(keys.state().input, "2", "an unset key pre-fills the resolved default 2");
+  assert.match(keys.state().flash!, /edit the team's check cap/);
+  keys.handleKey(undefined, { name: "backspace" }); // clear the prefill
+  for (const ch of "4") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().checksMode, false, "Enter saves and leaves edit mode");
+  assert.match(keys.state().flash!, /max concurrent checks set to 4/);
+  assert.equal((readJson(path.join(root, "tumwater.json")) as { maxConcurrentChecks?: number }).maxConcurrentChecks, 4);
+});
+
+test("the check-cap editor refuses an invalid value and stays open", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (const bad of ["0", "2e0"]) {
+    keys.handleKey(undefined, { ctrl: true, name: "k" });
+    assert.equal(keys.state().checksMode, true, "Ctrl+K opens the check-cap editor");
+    keys.handleKey(undefined, { name: "backspace" }); // clear the prefilled default
+    for (const ch of bad) keys.handleKey(ch, { name: ch });
+    keys.handleKey(undefined, { name: "return" });
+    assert.equal(keys.state().checksMode, true, `${bad} stays in edit mode`);
+    assert.equal(
+      fs.existsSync(path.join(root, "tumwater.json")),
+      false,
+      `${bad} writes nothing (the greenfield file stays absent)`,
+    );
+    keys.handleKey(undefined, { name: "escape" });
+  }
+});
+
+test("Ctrl+K with a typed prompt still kills the line instead of opening the editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (const ch of "abc") keys.handleKey(ch, { name: ch });
+  assert.equal(keys.state().input, "abc");
+  assert.equal(keys.state().cursor, 3);
+  keys.handleKey(undefined, { name: "home" }); // caret to the start
+  assert.equal(keys.state().cursor, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, false, "a typed prompt does not open the check-cap editor");
+  assert.equal(keys.state().input, "", "Ctrl+K still kills from the cursor to the line end");
+  assert.equal(keys.state().flash, null, "no flash on the kill");
+});
+
+test("Ctrl+K closes the check-cap editor", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, true, "Ctrl+K opens the check-cap editor");
+  for (const ch of "4") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, false, "a second Ctrl+K closes the check-cap editor");
+  assert.equal(keys.state().input, "", "the saved draft is restored");
+});
+
+test("Ctrl+T closes the check-cap editor and restores the saved draft", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, true, "Ctrl+K opens the check-cap editor");
+  for (const ch of "4") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  assert.equal(keys.state().checksMode, false, "Ctrl+T closes the check-cap editor");
+  assert.equal(keys.state().input, "", "the saved draft is restored");
+});
+
+test("Enter on an empty check-cap line resets maxConcurrentChecks to the default", () => {
+  const root = makeRoot();
+  setConfigKey(root, "maxConcurrentChecks", "4");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "k" });
+  assert.equal(keys.state().checksMode, true, "Ctrl+K opens the check-cap editor");
+  assert.equal(keys.state().input, "4", "the set value pre-fills the line");
+  keys.handleKey(undefined, { name: "backspace" }); // clear the prefill to an empty line
+  assert.equal(keys.state().input, "", "the line is empty");
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().checksMode, false, "Enter on an empty line leaves edit mode");
+  assert.match(keys.state().flash!, /max concurrent checks reset to the default/);
+  assert.equal(
+    (readJson(path.join(root, "tumwater.json")) as { maxConcurrentChecks?: number }).maxConcurrentChecks,
+    undefined,
+    "the key is cleared from the file",
+  );
+});
+
 test("the Health tab caches renderDoctor of the seam's report, ignores a late resolution, and flashes a rejection", async () => {
   const root = makeRoot();
   const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], routing: [], verdict: "healthy" } as DoctorReport;

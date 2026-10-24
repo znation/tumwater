@@ -70,7 +70,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; roleModelMode?: boolean; providerCapsMode?: boolean; fallbackMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean; backendsMode?: boolean; modelMode?: boolean; instancesMode?: boolean; claudeReserveMode?: boolean }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; roleModelMode?: boolean; providerCapsMode?: boolean; fallbackMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean; backendsMode?: boolean; modelMode?: boolean; instancesMode?: boolean; claudeReserveMode?: boolean; checksMode?: boolean }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -83,6 +83,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.retireMode) keys = [["Enter", "retire role"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.concurrencyMode) keys = [["Enter", "save the run cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.checksMode) keys = [["Enter", "save the check cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.modelMode) keys = [["Enter", "save the model"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.quietMode) keys = [["Enter", mode.quietTeam ? "save team quiet hours" : "save quiet hours"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.intervalMode) keys = [["Enter", "save interval"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -120,9 +121,10 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; roleModelMode?: boolean; providerCapsMode?: boolean; fallbackMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean; backendsMode?: boolean; modelMode?: boolean; instancesMode?: boolean; claudeReserveMode?: boolean }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; notesEditFor?: string | null; briefEditMode?: boolean; images?: number; retireMode?: boolean; quietMode?: boolean; quietTeam?: boolean; intervalMode?: boolean; roleModelMode?: boolean; providerCapsMode?: boolean; fallbackMode?: boolean; instructionsEditFor?: string | null; concurrencyMode?: boolean; slotsMode?: boolean; notifyMode?: boolean; backendsMode?: boolean; modelMode?: boolean; instancesMode?: boolean; claudeReserveMode?: boolean; checksMode?: boolean }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
   if (mode.concurrencyMode) return [{ text: "run cap", tone: "brand" }, { text: " › " }];
+  if (mode.checksMode) return [{ text: "check cap", tone: "brand" }, { text: " › " }];
   if (mode.modelMode) return [{ text: "model", tone: "brand" }, { text: " › " }];
   if (mode.quietMode) return [{ text: mode.quietTeam ? "team quiet hours" : "quiet hours", tone: "brand" }, { text: " › " }];
   if (mode.slotsMode) return [{ text: "worktree slots", tone: "brand" }, { text: " › " }];

@@ -17,7 +17,7 @@ import type { TuiEditorSession } from "./tui-editor-session.js";
 interface TeamConfigKeySpec {
   /** The session's mutually-exclusive-held registry name this editor owns (and toggles on
    * the `held` object as it enters and leaves). */
-  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback" | "claudeReserve" | "model";
+  mode: "concurrency" | "slots" | "notify" | "providerCaps" | "fallback" | "claudeReserve" | "model" | "checks";
   /** The Ctrl+<key> arm that opens (and, while open, toggles out of) the editor. */
   openCtrl: string;
   /** The tumwater.json key the editor writes on Enter — cleared (`unsetConfigKey`) on an
@@ -31,6 +31,10 @@ interface TeamConfigKeySpec {
    * refuses it here, naming the key and staying in edit mode. A non-exponent spelling
    * falls through to validateConfig, whose message names the key. */
   plainIntegerKey?: boolean;
+  /** Set for the team keys that must not disturb a typed prompt line: the editor opens only
+   * while the prompt line is empty, so the key falls through to applyKey's kill/edit when the
+   * operator has typed text. The Ctrl+K check-cap editor is the only team key that needs this. */
+  requireEmptyPrompt?: boolean;
   /** The line the editor opens pre-filled with — one fresh read per open is the smallest
    * honest source, and a broken config degrades to no pre-fill with the write reporting
    * the error. */
@@ -79,6 +83,12 @@ export function createTeamConfigKeyEditor(
         return true;
       }
       if (ctx.view !== 0) return false;
+      // A check-cap editor with text on the line must fall through to applyKey's kill before the
+      // hold-guard runs: while another editor holds the (non-empty) line, Ctrl+K should still
+      // kill from the cursor to the line end rather than be consumed by the mutual-exclusion
+      // flash, and a typed draft must never be swallowed. Only Ctrl+K sets `requireEmptyPrompt`,
+      // so only it takes this fall-through.
+      if (spec.requireEmptyPrompt && session.input !== "") return false;
       if (session.editorEntryDenied(spec.mode)) return true;
       const existing = spec.prefill(session);
       restoreDraft = session.takeDraft();

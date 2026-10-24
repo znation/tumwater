@@ -71,6 +71,8 @@ interface TuiKeysState {
   budgetMode: boolean;
   /** The Activity view's Ctrl+N run-cap (`maxConcurrent`) editor holds the prompt line. */
   concurrencyMode: boolean;
+  /** The Activity view's Ctrl+K check-cap (`maxConcurrentChecks`) editor holds the prompt line. */
+  checksMode: boolean;
   /** The Activity view's Ctrl+A team-model editor holds the prompt line. */
   modelMode: boolean;
   rolePromptFor: string | null;

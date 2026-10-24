@@ -78,6 +78,9 @@ interface TuiHeld {
   /** The Activity view's Ctrl+Y claude subscription-window reserve editor holds the prompt
    * line, editing the team's top-level `claudeWindowReserve`. */
   claudeReserve: boolean;
+  /** The Activity view's Ctrl+K check-cap (`maxConcurrentChecks`) editor holds the prompt
+   * line. */
+  checks: boolean;
 }
 
 /** The prompt-line editor keys: the `entering` argument of the shared hold-guard helpers.
@@ -102,7 +105,8 @@ type EditorEnterKey =
   | "roleModel"
   | "model"
   | "instances"
-  | "claudeReserve";
+  | "claudeReserve"
+  | "checks";
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
  * `TuiEditorCtx`) instead of the whole `TuiEditorsDeps`: the one prompt line (`input`/`cursor`),
@@ -195,6 +199,7 @@ const HOLDER_SUBJECTS: ReadonlyArray<readonly [Exclude<NonNullable<Parameters<Tu
   ["roleModel", "role model edit"],
   ["instances", "role instances"],
   ["claudeReserve", "claude reserve"],
+  ["checks", "check cap edit"],
   ["budget", "budget edit"],
 ];
 
@@ -235,6 +240,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       model: false,
       instances: false,
       claudeReserve: false,
+      checks: false,
     },
     root: deps.root,
     now: deps.now,

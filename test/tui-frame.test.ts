@@ -195,6 +195,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   );
   assert.equal(hint({ kind: "activity", role: null, grep: null, type: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
   assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, concurrencyMode: true }, 300)), "Enter save the run cap · Esc cancel · Ctrl+D quit");
+  assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, checksMode: true }, 300)), "Enter save the check cap · Esc cancel · Ctrl+D quit");
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
@@ -278,6 +279,7 @@ test("the prompt line names who Enter sends to", () => {
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", queuedEditFor: null, answerFor: null })), "qa › ");
   assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, queuedEditFor: null, answerFor: null })), "daily cap $ ");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, concurrencyMode: true })), "run cap › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, checksMode: true })), "check cap › ");
   // The Activity Ctrl+A team-model editor prefixes the line with `model`.
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, modelMode: true })), "model › ");
   assert.equal(plain(hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, queuedEditFor: null, answerFor: null, modelMode: true }, 300)), "Enter save the model · Esc cancel · Ctrl+D quit");
